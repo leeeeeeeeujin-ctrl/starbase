@@ -39,6 +39,34 @@ function summarizeMembers(members) {
     })
 }
 
+function summarizeRemovedMembers(entries) {
+  if (!Array.isArray(entries)) return []
+  return entries
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object') {
+        return null
+      }
+      const ownerId = coerceUuid(entry.ownerId ?? entry.owner_id)
+      const heroId = coerceUuid(entry.heroId ?? entry.hero_id)
+      const slotIndex = Number.isFinite(Number(entry.slotIndex)) ? Number(entry.slotIndex) : null
+      const role = typeof entry.role === 'string' && entry.role.trim() ? entry.role.trim() : null
+      const reason = typeof entry.reason === 'string' && entry.reason.trim() ? entry.reason.trim() : null
+      const slotKey = typeof entry.slotKey === 'string' && entry.slotKey.trim() ? entry.slotKey.trim() : null
+      if (!ownerId && !heroId) {
+        return null
+      }
+      return {
+        ownerId,
+        heroId,
+        slotIndex,
+        role,
+        reason,
+        slotKey,
+      }
+    })
+    .filter(Boolean)
+}
+
 export function summarizeAssignments(assignments) {
   if (!Array.isArray(assignments)) return []
   return assignments.map((assignment, index) => {
@@ -56,6 +84,7 @@ export function summarizeAssignments(assignments) {
       role,
       slotIndex,
       members: summarizeMembers(assignment?.members),
+      removedMembers: summarizeRemovedMembers(assignment?.removedMembers),
     }
   })
 }

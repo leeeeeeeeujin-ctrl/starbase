@@ -14,6 +14,7 @@ import {
   loadQueueEntries,
   normalizeQueueEntry,
   removeQueueEntry,
+  sanitizeAssignments,
 } from '../../../lib/rank/matchmakingService'
 import { guessOwnerParticipant, normalizeHeroIdValue } from '../../../lib/rank/participantUtils'
 import {
@@ -893,9 +894,12 @@ export default function useMatchQueue({
         }
       }
 
+      const baseAssignments = Array.isArray(payload?.assignments) ? payload.assignments : []
+      const sanitizedAssignments = sanitizeAssignments(baseAssignments)
+
       if (!payload?.ready) {
         setPendingMatch({
-          assignments: Array.isArray(payload?.assignments) ? payload.assignments : [],
+          assignments: sanitizedAssignments,
           rooms: Array.isArray(payload?.rooms) ? payload.rooms : [],
           error: payload?.error || null,
           totalSlots: payload?.totalSlots ?? 0,
@@ -910,7 +914,7 @@ export default function useMatchQueue({
 
       setPendingMatch(null)
       const assignment = extractViewerAssignment({
-        assignments: payload.assignments,
+        assignments: sanitizedAssignments,
         viewerId,
         heroId: heroIdRef.current || heroId || '',
       })
@@ -921,7 +925,7 @@ export default function useMatchQueue({
         heroMap = new Map(Object.entries(payload.heroMap))
       }
       if (!heroMap) {
-        const members = flattenAssignmentMembers(payload.assignments)
+        const members = flattenAssignmentMembers(sanitizedAssignments)
         heroMap = await loadHeroesByIds(
           supabase,
           members.map((member) => member.hero_id || member.heroId),
@@ -930,7 +934,7 @@ export default function useMatchQueue({
 
       setStatus('matched')
       setMatch({
-        assignments: payload.assignments,
+        assignments: sanitizedAssignments,
         maxWindow: payload.maxWindow,
         heroMap,
         matchCode: payload.matchCode || '',

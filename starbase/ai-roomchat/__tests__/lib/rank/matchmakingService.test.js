@@ -9,6 +9,7 @@ import {
   extractViewerAssignment,
   runMatching,
   postCheckMatchAssignments,
+  sanitizeAssignments,
 } from '@/lib/rank/matchmakingService'
 import { computeRoleReadiness } from '@/lib/rank/matchRoleSummary'
 
@@ -1287,5 +1288,107 @@ describe('extractViewerAssignment', () => {
     })
 
     expect(assignment).toBeNull()
+  })
+})
+
+describe('sanitizeAssignments', () => {
+  it('removes duplicate owners and heroes across slots while tracking removals', () => {
+    const host = { id: 'q1', owner_id: 'owner-1', hero_id: 'hero-1', status: 'host' }
+    const hostClone = { id: 'q1b', owner_id: 'owner-1', hero_id: 'hero-1', status: 'host' }
+    const standin = { id: 'q2', owner_id: 'owner-2', hero_id: 'hero-2', status: 'waiting' }
+    const standinClone = { id: 'q2b', owner_id: 'owner-2', hero_id: 'hero-2', status: 'waiting' }
+    const crossSlot = { id: 'q3', owner_id: 'owner-1', hero_id: 'hero-1', status: 'host' }
+
+    const assignments = [
+      {
+        role: '공격 · 수비',
+        slotIndex: 0,
+        roleSlots: [
+          {
+            role: '공격',
+            slotIndex: 0,
+            members: [host, hostClone],
+            member: host,
+            occupied: true,
+          },
+          {
+            role: '수비',
+            slotIndex: 1,
+            members: [standin, standinClone],
+            member: standin,
+            occupied: true,
+          },
+          {
+            role: '지원',
+            slotIndex: 2,
+            members: [crossSlot],
+            member: crossSlot,
+            occupied: true,
+          },
+        ],
+        members: [host, hostClone, standin, standinClone, crossSlot],
+        filledSlots: 3,
+        missingSlots: 0,
+      },
+    ]
+
+    const sanitized = sanitizeAssignments(assignments)
+
+    expect(sanitized).toHaveLength(1)
+    const [assignment] = sanitized
+
+    expect(assignment.members).toEqual([
+      expect.objectContaining({ owner_id: 'owner-1', hero_id: 'hero-1' }),
+      expect.objectContaining({ owner_id: 'owner-2', hero_id: 'hero-2' }),
+    ])
+
+    expect(assignment.roleSlots[0].members).toHaveLength(1)
+    expect(assignment.roleSlots[1].members).toHaveLength(1)
+    expect(assignment.roleSlots[2].members).toHaveLength(0)
+    expect(assignment.roleSlots[2].occupied).toBe(false)
+
+    expect(assignment.filledSlots).toBe(2)
+    expect(assignment.missingSlots).toBe(1)
+
+    expect(assignment.removedMembers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ ownerId: 'owner-1', reason: 'duplicate_slot_member' }),
+        expect.objectContaining({ ownerId: 'owner-2', reason: 'duplicate_slot_member' }),
+        expect.objectContaining({ ownerId: 'owner-1', reason: 'duplicate_owner' }),
+      ]),
+    )
+  })
+
+  it('returns a shallow copy when assignments are empty or already sanitized', () => {
+    const emptyResult = sanitizeAssignments(null)
+    expect(emptyResult).toEqual([])
+
+    const cleanAssignments = [
+      {
+        role: '공격',
+        roleSlots: [
+          {
+            role: '공격',
+            slotIndex: 0,
+            members: [{ owner_id: 'o1', hero_id: 'h1' }],
+            occupied: true,
+          },
+        ],
+        members: [{ owner_id: 'o1', hero_id: 'h1' }],
+        filledSlots: 1,
+        missingSlots: 0,
+      },
+    ]
+
+    const sanitized = sanitizeAssignments(cleanAssignments)
+    expect(sanitized).toHaveLength(1)
+    expect(sanitized[0]).toEqual(
+      expect.objectContaining({
+        filledSlots: 1,
+        missingSlots: 0,
+        members: [expect.objectContaining({ owner_id: 'o1', hero_id: 'h1' })],
+        removedMembers: [],
+      }),
+    )
   })
 })

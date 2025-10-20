@@ -821,9 +821,199 @@ export async function loadHeroesByIds(supabaseClient, heroIds) {
   )
 }
 
+function normalizeId(value) {
+  if (value === null || value === undefined) return null
+  const text = String(value).trim()
+  return text || null
+}
+
+function buildRemovedMember(member, slot, reason, slotKey) {
+  if (!member || typeof member !== 'object') return null
+  const ownerId =
+    normalizeId(member.owner_id) ??
+    normalizeId(member.ownerId) ??
+    normalizeId(member.ownerID)
+  const heroId =
+    normalizeId(member.hero_id) ?? normalizeId(member.heroId) ?? normalizeId(member.heroID)
+  const role = normalizeId(slot?.role) ?? null
+  const slotIndex = Number.isFinite(Number(slot?.slotIndex)) ? Number(slot.slotIndex) : null
+  return {
+    ownerId,
+    heroId,
+    role,
+    slotIndex,
+    reason: reason || 'duplicate',
+    slotKey: slotKey || null,
+  }
+}
+
+export function sanitizeAssignments(assignments = []) {
+  if (!Array.isArray(assignments) || assignments.length === 0) {
+    return Array.isArray(assignments) ? assignments : []
+  }
+
+  return assignments
+    .map((assignment) => {
+      if (!assignment || typeof assignment !== 'object') return assignment
+
+      const ownerSeen = new Set()
+      const heroSeen = new Set()
+      const slotSeen = new Set()
+      const sanitizedRoleSlots = []
+      const removedMembers = []
+
+      const roleSlots = Array.isArray(assignment.roleSlots)
+        ? assignment.roleSlots
+        : Array.isArray(assignment.slots)
+        ? assignment.slots
+        : []
+
+      roleSlots.forEach((slot, slotOrdinal) => {
+        if (!slot || typeof slot !== 'object') {
+          return
+        }
+
+        const slotId = normalizeId(slot.slot_id ?? slot.slotId)
+        const slotIndex = Number.isFinite(Number(slot.slotIndex)) ? Number(slot.slotIndex) : null
+        const slotKey = slotId || (slotIndex !== null ? `slot:${slotIndex}` : `index:${slotOrdinal}`)
+
+        if (slotKey && slotSeen.has(slotKey)) {
+          const removed = Array.isArray(slot.members) ? slot.members : []
+          removed
+            .map((member) => buildRemovedMember(member, slot, 'duplicate_slot', slotKey))
+            .filter(Boolean)
+            .forEach((entry) => removedMembers.push(entry))
+          return
+        }
+
+        if (slotKey) {
+          slotSeen.add(slotKey)
+        }
+
+        const rawMembers = []
+        if (Array.isArray(slot.members)) {
+          rawMembers.push(...slot.members)
+        }
+        if (slot.member && !rawMembers.includes(slot.member)) {
+          rawMembers.unshift(slot.member)
+        }
+
+        const memberSeenInSlot = new Set()
+        const slotMembers = []
+
+        rawMembers.forEach((member) => {
+          if (!member || typeof member !== 'object') {
+            return
+          }
+
+          const normalizedOwner =
+            normalizeId(member.owner_id) ??
+            normalizeId(member.ownerId) ??
+            normalizeId(member.ownerID)
+          const normalizedHero =
+            normalizeId(member.hero_id) ?? normalizeId(member.heroId) ?? normalizeId(member.heroID)
+
+          const slotMemberKey = normalizedOwner || normalizedHero || `${slotKey}:member:${memberSeenInSlot.size}`
+          if (slotMemberKey && memberSeenInSlot.has(slotMemberKey)) {
+            const removed = buildRemovedMember(member, slot, 'duplicate_slot_member', slotKey)
+            if (removed) removedMembers.push(removed)
+            return
+          }
+          if (slotMemberKey) {
+            memberSeenInSlot.add(slotMemberKey)
+          }
+
+          if (normalizedOwner && ownerSeen.has(normalizedOwner)) {
+            const removed = buildRemovedMember(member, slot, 'duplicate_owner', slotKey)
+            if (removed) removedMembers.push(removed)
+            return
+          }
+          if (normalizedHero && heroSeen.has(normalizedHero)) {
+            const removed = buildRemovedMember(member, slot, 'duplicate_hero', slotKey)
+            if (removed) removedMembers.push(removed)
+            return
+          }
+
+          if (normalizedOwner) {
+            ownerSeen.add(normalizedOwner)
+          }
+          if (normalizedHero) {
+            heroSeen.add(normalizedHero)
+          }
+
+          const clone = { ...member }
+          if (normalizedOwner) {
+            clone.owner_id = normalizedOwner
+            clone.ownerId = normalizedOwner
+          }
+          if (normalizedHero) {
+            clone.hero_id = normalizedHero
+            clone.heroId = normalizedHero
+          }
+          slotMembers.push(clone)
+        })
+
+        const sanitizedSlot = { ...slot }
+        sanitizedSlot.members = slotMembers
+        sanitizedSlot.member = slotMembers.length ? { ...slotMembers[0] } : null
+        sanitizedSlot.occupied = slotMembers.length > 0
+        sanitizedRoleSlots.push(sanitizedSlot)
+      })
+
+      const sanitizedMembers = []
+      sanitizedRoleSlots.forEach((slot) => {
+        ensureArray(slot.members).forEach((member) => {
+          if (member) sanitizedMembers.push(member)
+        })
+      })
+
+      const filledSlots = sanitizedRoleSlots.filter((slot) => slot.occupied).length
+      const missingSlots = sanitizedRoleSlots.length - filledSlots
+
+      const sanitizedGroups = Array.isArray(assignment.groups)
+        ? assignment.groups
+            .map((group) => {
+              if (!group || typeof group !== 'object') return null
+              const indices = Array.isArray(group.slotIndices) ? group.slotIndices : []
+              const uniqueIndices = Array.from(
+                new Set(
+                  indices
+                    .map((value) => Number(value))
+                    .filter((value) => Number.isFinite(value)),
+                ),
+              )
+              return {
+                ...group,
+                slotIndices: uniqueIndices,
+                size: uniqueIndices.length || group.size || 0,
+              }
+            })
+            .filter(Boolean)
+        : []
+
+      const base = { ...assignment }
+      base.roleSlots = sanitizedRoleSlots
+      if (Array.isArray(assignment.slots)) {
+        base.slots = sanitizedRoleSlots
+      }
+      base.members = sanitizedMembers
+      base.filledSlots = filledSlots
+      base.missingSlots = missingSlots
+      base.groups = sanitizedGroups
+      base.removedMembers = [
+        ...(Array.isArray(assignment.removedMembers) ? assignment.removedMembers : []),
+        ...removedMembers,
+      ]
+
+      return base
+    })
+    .filter(Boolean)
+}
+
 export function flattenAssignmentMembers(assignments = []) {
+  const sanitized = sanitizeAssignments(assignments)
   const members = []
-  assignments.forEach((assignment) => {
+  sanitized.forEach((assignment) => {
     ensureArray(assignment.members).forEach((member) => {
       if (member) members.push(member)
     })
