@@ -39,54 +39,138 @@ function summarizeMembers(members) {
     })
 }
 
-function summarizeRemovedMembers(entries) {
+export function summarizeRemovedMembers(entries) {
   if (!Array.isArray(entries)) return []
-  return entries
-    .map((entry) => {
-      if (!entry || typeof entry !== 'object') {
-        return null
-      }
-      const ownerId = coerceUuid(entry.ownerId ?? entry.owner_id)
-      const heroId = coerceUuid(entry.heroId ?? entry.hero_id)
-      const slotIndex = Number.isFinite(Number(entry.slotIndex)) ? Number(entry.slotIndex) : null
-      const role = typeof entry.role === 'string' && entry.role.trim() ? entry.role.trim() : null
-      const reason = typeof entry.reason === 'string' && entry.reason.trim() ? entry.reason.trim() : null
-      const slotKey = typeof entry.slotKey === 'string' && entry.slotKey.trim() ? entry.slotKey.trim() : null
-      if (!ownerId && !heroId) {
-        return null
-      }
-      return {
-        ownerId,
-        heroId,
-        slotIndex,
-        role,
-        reason,
-        slotKey,
-      }
-    })
-    .filter(Boolean)
+  const seen = new Set()
+  const summarized = []
+
+  entries.forEach((entry) => {
+    if (!entry || typeof entry !== 'object') {
+      return
+    }
+    const ownerId = coerceUuid(entry.ownerId ?? entry.owner_id)
+    const heroId = coerceUuid(entry.heroId ?? entry.hero_id)
+    const slotIndex = Number.isFinite(Number(entry.slotIndex)) ? Number(entry.slotIndex) : null
+    const role = typeof entry.role === 'string' && entry.role.trim() ? entry.role.trim() : null
+    const reason = typeof entry.reason === 'string' && entry.reason.trim() ? entry.reason.trim() : null
+    const slotKey = typeof entry.slotKey === 'string' && entry.slotKey.trim() ? entry.slotKey.trim() : null
+
+    if (!ownerId && !heroId && slotIndex == null && !slotKey) {
+      return
+    }
+
+    const dedupeKey = [ownerId || '', heroId || '', slotIndex ?? '', slotKey || '', reason || ''].join('|')
+    if (seen.has(dedupeKey)) {
+      return
+    }
+    seen.add(dedupeKey)
+
+    summarized.push({ ownerId, heroId, slotIndex, role, reason, slotKey })
+  })
+
+  return summarized
 }
 
 export function summarizeAssignments(assignments) {
   if (!Array.isArray(assignments)) return []
-  return assignments.map((assignment, index) => {
-    const role =
-      typeof assignment?.role === 'string' && assignment.role.trim()
+
+  const summary = []
+
+  assignments.forEach((assignment, assignmentIndex) => {
+    if (!assignment || typeof assignment !== 'object') {
+      return
+    }
+
+    const slotEntries = Array.isArray(assignment.roleSlots)
+      ? assignment.roleSlots
+      : Array.isArray(assignment.slots)
+      ? assignment.slots
+      : []
+
+    const fallbackRole =
+      typeof assignment.role === 'string' && assignment.role.trim()
         ? assignment.role.trim()
-        : `슬롯 ${index + 1}`
-    const slotIndex =
-      Number.isInteger(assignment?.slotIndex)
+        : `슬롯 ${summary.length + 1}`
+
+    const ensureSummaryEntry = (slotIndex, roleLabel, fallbackIndex) => {
+      const resolvedIndex = Number.isInteger(slotIndex)
+        ? slotIndex
+        : Number.isInteger(fallbackIndex)
+        ? fallbackIndex
+        : summary.length
+      const resolvedRole = roleLabel || fallbackRole
+
+      let existing = summary.find((entry) => entry.slotIndex === resolvedIndex && entry.role === resolvedRole)
+      if (!existing) {
+        existing = summary.find((entry) => entry.slotIndex === resolvedIndex)
+      }
+      if (existing) {
+        return existing
+      }
+
+      const created = {
+        role: resolvedRole,
+        slotIndex: resolvedIndex,
+        members: [],
+        removedMembers: [],
+      }
+      summary.push(created)
+      return created
+    }
+
+    if (slotEntries.length > 0) {
+      slotEntries.forEach((slot, slotOrdinal) => {
+        if (!slot || typeof slot !== 'object') {
+          return
+        }
+        const slotIndex = Number.isInteger(slot.slotIndex)
+          ? slot.slotIndex
+          : Number.isInteger(slot.slot_index)
+          ? slot.slot_index
+          : slotOrdinal
+        const roleLabel =
+          typeof slot.role === 'string' && slot.role.trim() ? slot.role.trim() : fallbackRole
+        const target = ensureSummaryEntry(slotIndex, roleLabel, assignmentIndex * 1000 + slotOrdinal)
+        const members = Array.isArray(slot.members)
+          ? slot.members
+          : slot.member
+          ? [slot.member]
+          : []
+        target.members = summarizeMembers(members)
+      })
+    } else {
+      const slotIndex = Number.isInteger(assignment.slotIndex)
         ? assignment.slotIndex
-        : Number.isInteger(assignment?.slot_index)
+        : Number.isInteger(assignment.slot_index)
         ? assignment.slot_index
-        : index
-    return {
-      role,
-      slotIndex,
-      members: summarizeMembers(assignment?.members),
-      removedMembers: summarizeRemovedMembers(assignment?.removedMembers),
+        : assignmentIndex
+      const target = ensureSummaryEntry(slotIndex, fallbackRole, assignmentIndex * 1000)
+      target.members = summarizeMembers(assignment.members)
+    }
+
+    const removedMembers = summarizeRemovedMembers(assignment.removedMembers)
+    if (removedMembers.length > 0) {
+      removedMembers.forEach((entry) => {
+        const target = ensureSummaryEntry(entry.slotIndex, entry.role || fallbackRole, assignmentIndex * 1000)
+        if (!target.removedMembers.some((existing) => deepRemovedEqual(existing, entry))) {
+          target.removedMembers.push(entry)
+        }
+      })
     }
   })
+
+  return summary
+}
+
+function deepRemovedEqual(a, b) {
+  return (
+    a.ownerId === b.ownerId &&
+    a.heroId === b.heroId &&
+    a.slotIndex === b.slotIndex &&
+    a.role === b.role &&
+    a.reason === b.reason &&
+    a.slotKey === b.slotKey
+  )
 }
 
 export function summarizeParticipants(participants) {
