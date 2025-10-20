@@ -92,10 +92,23 @@ function sanitizeHistoryTurn(turn, index) {
   }
 }
 
+
 function sanitizeHistoryTurns(turns = []) {
   if (!Array.isArray(turns)) return []
+  const seen = new Set()
   return turns
-    .map((turn, index) => sanitizeHistoryTurn(turn, index))
+    .map((turn, index) => {
+      const sanitized = sanitizeHistoryTurn(turn, index)
+      if (!sanitized) return null
+      // 중복/불일치 검증: idx, role, ownerId, heroId 기준
+      const key = `${sanitized.idx}::${sanitized.role}`
+      if (seen.has(key)) {
+        console.warn('[matchDataStore] 중복 턴 감지:', { key, turn: sanitized })
+        return null
+      }
+      seen.add(key)
+      return sanitized
+    })
     .filter(Boolean)
 }
 
