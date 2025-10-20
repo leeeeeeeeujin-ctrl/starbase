@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 1280" role="img" aria-labelledby="title desc">
+  <title id="title">Industrial skyline</title>
+  <desc id="desc">A stylised sci-fi industrial cityscape glowing with cyan and violet lights.</desc>
+  <defs>
+    <linearGradient id="sky" x1="10%" y1="0%" x2="90%" y2="100%">
+      <stop offset="0%" stop-color="#0b1330" />
+      <stop offset="55%" stop-color="#101c46" />
+      <stop offset="100%" stop-color="#050914" />
+    </linearGradient>
+    <linearGradient id="light" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#74d8ff" stop-opacity="0.75" />
+      <stop offset="100%" stop-color="#74d8ff" stop-opacity="0" />
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#b18cff" />
+      <stop offset="100%" stop-color="#4d7bff" />
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="18" result="blur" />
+      <feColorMatrix type="matrix" values="0 0 0 0 0.32 0 0 0 0 0.52 0 0 0 0 0.96 0 0 0 0.5 0" />
+    </filter>
+  </defs>
+  <rect width="1440" height="1280" fill="url(#sky)" />
+  <g opacity="0.55">
+    <rect x="1020" y="140" width="160" height="520" fill="url(#light)" />
+    <rect x="840" y="200" width="90" height="360" fill="url(#light)" />
+  </g>
+  <g fill="#0b1026">
+    <path d="M100 1280 L100 720 L190 720 L210 620 L270 600 L280 470 L360 420 L370 360 L430 340 L450 260 L530 240 L540 180 L610 160 L620 110 L680 96 L700 60 L780 40 L820 0 L1440 0 L1440 1280 Z" />
+  </g>
+  <g fill="#121a3a">
+    <path d="M280 1280 L280 780 L360 760 L380 580 L450 560 L470 460 L540 420 L560 320 L650 300 L690 200 L760 180 L780 120 L860 90 L890 0 L1180 0 L1180 1280 Z" opacity="0.85" />
+  </g>
+  <g fill="#1c264a">
+    <path d="M520 1280 L520 840 L620 820 L640 640 L720 600 L740 500 L820 460 L840 360 L940 320 L980 240 L1100 200 L1130 120 L1240 110 L1280 40 L1440 20 L1440 1280 Z" opacity="0.9" />
+  </g>
+  <g fill="#222f5a" opacity="0.9">
+    <rect x="980" y="460" width="110" height="820" />
+    <rect x="1140" y="520" width="120" height="760" />
+    <rect x="1320" y="580" width="70" height="700" />
+  </g>
+  <g fill="url(#accent)" opacity="0.72">
+    <rect x="460" y="890" width="28" height="190" />
+    <rect x="520" y="820" width="24" height="260" />
+    <rect x="690" y="700" width="32" height="420" />
+    <rect x="860" y="600" width="26" height="520" />
+    <rect x="1040" y="680" width="28" height="400" />
+    <rect x="1200" y="760" width="24" height="320" />
+  </g>
+  <g fill="#8ad8ff" opacity="0.58">
+    <circle cx="980" cy="300" r="6" />
+    <circle cx="1080" cy="240" r="7" />
+    <circle cx="1240" cy="280" r="5" />
+    <circle cx="1320" cy="220" r="6" />
+    <circle cx="1160" cy="170" r="4" />
+  </g>
+  <g opacity="0.38" filter="url(#glow)">
+    <rect x="760" y="560" width="80" height="320" />
+    <rect x="900" y="520" width="56" height="360" />
+  </g>
+  <path d="M260 1160 L340 1140 L420 1160 L500 1120 L580 1135 L660 1100 L740 1110 L820 1070 L900 1090 L980 1060 L1060 1080 L1140 1040 L1220 1050 L1300 1010 L1380 1020 L1440 980 L1440 1280 L0 1280 Z" fill="#030614" opacity="0.82" />
+</svg>

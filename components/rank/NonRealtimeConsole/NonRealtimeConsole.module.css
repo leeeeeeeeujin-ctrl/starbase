@@ -1,0 +1,364 @@
+.wrapper {
+  min-height: 100vh;
+  padding: 32px;
+  background: linear-gradient(135deg, #0f172a, #111827);
+  color: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.wrapperEmbedded {
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 24px;
+  color: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.wrapperEmbedded h1 {
+  font-size: 20px;
+  margin: 0;
+}
+
+.wrapperEmbedded .subtitle {
+  font-size: 13px;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.headerControls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.controlField {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 240px;
+}
+
+.controlField span {
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.controlField input {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: inherit;
+}
+
+.controlField select {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: inherit;
+  font-weight: 600;
+}
+
+.controlField input[disabled] {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.controlGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.inlineControls {
+  display: flex;
+  gap: 8px;
+}
+
+.inlineControls input {
+  flex: 1;
+}
+
+.inlineControls button {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: none;
+  background: #38bdf8;
+  color: #0f172a;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.subtitle {
+  color: rgba(226, 232, 240, 0.75);
+}
+
+.error {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  padding: 12px 16px;
+  border-radius: 8px;
+}
+
+.status {
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  padding: 12px 16px;
+  border-radius: 8px;
+}
+
+.layout {
+  display: grid;
+  gap: 24px;
+}
+
+.section {
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 16px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.slotCard {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.slotMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+}
+
+.slotType {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(56, 189, 248, 0.2);
+  color: #38bdf8;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.promptBlock {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.promptBlock h3 {
+  margin-top: 0;
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: rgba(226, 232, 240, 0.8);
+}
+
+.promptBlock pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-size: 13px;
+  line-height: 1.45;
+  color: rgba(226, 232, 240, 0.95);
+}
+
+.primaryButton {
+  align-self: flex-start;
+  padding: 10px 20px;
+  border-radius: 999px;
+  border: none;
+  background: linear-gradient(90deg, #38bdf8, #818cf8);
+  color: #0f172a;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.primaryButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.participantList {
+  display: grid;
+  gap: 16px;
+}
+
+.participantCard {
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 12px;
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.participantCard header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.participantRole {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(129, 140, 248, 0.2);
+  color: #a5b4fc;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.participantStatus {
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.participantStatusActive {
+  background: rgba(74, 222, 128, 0.2);
+  color: #4ade80;
+}
+
+.participantStatusSpectator {
+  background: rgba(96, 165, 250, 0.18);
+  color: #93c5fd;
+}
+
+.participantStatusDefeated {
+  background: rgba(248, 113, 113, 0.2);
+  color: #fca5a5;
+}
+
+.participantOutcome {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(226, 232, 240, 0.8);
+}
+
+.participantCard label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.participantCard input {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: inherit;
+}
+
+.abilityGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.historyColumns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.historyBlock {
+  min-height: 180px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 12px;
+  padding: 16px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.turnList {
+  display: grid;
+  gap: 16px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.turnList li {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 12px;
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.turnList header {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 600;
+}
+
+.bridgeBadge {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.25);
+  color: #4ade80;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.turnPrompt,
+.turnResponse {
+  display: grid;
+  gap: 6px;
+}
+
+.turnPrompt pre,
+.turnResponse pre {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  padding: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.turnOutcome {
+  color: rgba(226, 232, 240, 0.8);
+  font-size: 14px;
+}
+
+.turnBridgeInfo {
+  color: rgba(56, 189, 248, 0.85);
+  font-weight: 600;
+}
+
+.placeholder {
+  color: rgba(148, 163, 184, 0.75);
+}
+
+@media (min-width: 1024px) {
+  .layout {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .section {
+    height: fit-content;
+  }
+}

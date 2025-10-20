@@ -1,0 +1,1064 @@
+.page {
+  max-width: 720px;
+  margin: 24px auto 96px;
+  padding: 0 18px 64px;
+  color: #f8fafc;
+  font-family: 'Pretendard', 'Noto Sans KR', sans-serif;
+}
+
+.header {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.backButton {
+  justify-self: flex-start;
+  background: rgba(15, 23, 42, 0.35);
+  color: #e2e8f0;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 12px;
+  padding: 6px 12px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.backButton:hover {
+  background: rgba(30, 41, 59, 0.6);
+}
+
+.title {
+  font-size: 30px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.subtitle {
+  margin: 0;
+  color: rgba(226, 232, 240, 0.8);
+  font-size: 15px;
+}
+
+.card {
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 26px;
+  padding: 22px;
+  margin-bottom: 24px;
+  backdrop-filter: blur(14px);
+  box-shadow: 0 28px 56px rgba(15, 23, 42, 0.45);
+}
+
+.sectionTitle {
+  margin: 0 0 14px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.sectionHint {
+  margin: 0 0 12px;
+  color: rgba(226, 232, 240, 0.78);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.rosterPicker {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.rosterPickerHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rosterPickerTitle {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.rosterPickerHint {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(226, 232, 240, 0.72);
+}
+
+.rosterPickerGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+}
+
+.rosterPickerCard {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(30, 41, 59, 0.32);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.rosterPickerCard:hover:not(:disabled) {
+  border-color: rgba(96, 165, 250, 0.55);
+  box-shadow: 0 12px 28px rgba(59, 130, 246, 0.28);
+}
+
+.rosterPickerCardActive {
+  border-color: rgba(96, 165, 250, 0.75);
+  background: rgba(59, 130, 246, 0.2);
+  box-shadow: 0 16px 32px rgba(59, 130, 246, 0.32);
+}
+
+.rosterPickerAvatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  object-fit: cover;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.45);
+}
+
+.rosterPickerAvatarPlaceholder {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: rgba(71, 85, 105, 0.45);
+  border: 1px dashed rgba(148, 163, 184, 0.45);
+}
+
+.rosterPickerMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rosterPickerName {
+  font-size: 15px;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.rosterPickerRole {
+  font-size: 13px;
+  color: rgba(226, 232, 240, 0.75);
+}
+
+.rosterPickerScore {
+  font-size: 12px;
+  color: rgba(148, 163, 184, 0.9);
+}
+
+.rosterPickerStatus {
+  font-size: 12px;
+  color: #facc15;
+  font-weight: 600;
+}
+
+.statusRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.18);
+  color: #93c5fd;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.heroBadge {
+  display: inline-flex;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(71, 85, 105, 0.35);
+  color: rgba(226, 232, 240, 0.85);
+  font-size: 13px;
+}
+
+.roleBadge {
+  display: inline-flex;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(20, 184, 166, 0.25);
+  color: rgba(165, 243, 252, 0.9);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.heroOptionList {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.heroOptionItem {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(30, 41, 59, 0.35);
+  transition: border 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  cursor: pointer;
+}
+
+.heroOptionItemActive {
+  border-color: rgba(96, 165, 250, 0.65);
+  background: rgba(59, 130, 246, 0.25);
+  box-shadow: 0 12px 28px rgba(59, 130, 246, 0.35);
+}
+
+.heroOptionRadio {
+  accent-color: #60a5fa;
+  width: 18px;
+  height: 18px;
+}
+
+.heroOptionContent {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.heroOptionAvatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  object-fit: cover;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.45);
+}
+
+.heroOptionAvatarPlaceholder {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  background: rgba(71, 85, 105, 0.45);
+  border: 1px dashed rgba(148, 163, 184, 0.45);
+}
+
+.heroOptionMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.heroOptionName {
+  font-size: 15px;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.heroOptionDetail {
+  font-size: 13px;
+  color: rgba(226, 232, 240, 0.75);
+}
+
+.heroOptionStatus {
+  font-size: 12px;
+  color: #facc15;
+  font-weight: 600;
+}
+
+.heroManualForm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.heroManualLabel {
+  font-size: 13px;
+  color: rgba(226, 232, 240, 0.78);
+}
+
+.heroManualControls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.heroManualInput {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.5);
+  color: #f8fafc;
+  font-size: 14px;
+}
+
+.heroManualInput:focus {
+  outline: none;
+  border-color: rgba(96, 165, 250, 0.65);
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.25);
+}
+
+.heroManualButton {
+  padding: 10px 16px;
+  border-radius: 12px;
+  border: none;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.9), rgba(37, 99, 235, 0.9));
+  color: #f8fafc;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 12px 24px rgba(37, 99, 235, 0.35);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.heroManualButton:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 28px rgba(37, 99, 235, 0.45);
+}
+
+.heroManualHint {
+  margin: 0;
+  font-size: 12px;
+  color: rgba(226, 232, 240, 0.65);
+}
+
+.autoJoinNotice {
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(71, 85, 105, 0.3);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  margin-bottom: 10px;
+}
+
+.autoJoinDebug {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(30, 41, 59, 0.45);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+}
+
+.autoJoinDebugTitle {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(248, 250, 252, 0.9);
+}
+
+.autoJoinDebugList {
+  margin: 0;
+  padding-left: 18px;
+  color: rgba(226, 232, 240, 0.85);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.autoJoinDebugItem + .autoJoinDebugItem {
+  margin-top: 4px;
+}
+
+.autoFlow {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.autoSteps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.autoStep {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(71, 85, 105, 0.28);
+  transition: background 0.2s ease, border 0.2s ease, box-shadow 0.2s ease;
+}
+
+.autoStepIndicator {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgba(148, 163, 184, 0.55);
+  flex-shrink: 0;
+}
+
+.autoStepLabel {
+  font-size: 14px;
+  color: rgba(226, 232, 240, 0.85);
+  font-weight: 500;
+}
+
+.autoStepActive {
+  border-color: rgba(96, 165, 250, 0.65);
+  background: rgba(59, 130, 246, 0.25);
+  box-shadow: 0 14px 30px rgba(59, 130, 246, 0.25);
+}
+
+.autoStepActive .autoStepIndicator {
+  background: rgba(96, 165, 250, 0.95);
+}
+
+.autoStepActive .autoStepLabel {
+  color: #bfdbfe;
+}
+
+.autoStepDone {
+  border-color: rgba(34, 197, 94, 0.5);
+  background: rgba(16, 185, 129, 0.18);
+}
+
+.autoStepDone .autoStepIndicator {
+  background: rgba(74, 222, 128, 0.9);
+}
+
+.autoStepDone .autoStepLabel {
+  color: #bbf7d0;
+}
+
+.autoStepPending {
+  opacity: 0.75;
+}
+
+.autoStepPending .autoStepIndicator {
+  background: rgba(148, 163, 184, 0.35);
+}
+
+.cancelLink {
+  align-self: flex-start;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.4);
+  color: rgba(226, 232, 240, 0.85);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease, color 0.2s ease;
+}
+
+.cancelLink:hover:not(:disabled) {
+  background: rgba(30, 41, 59, 0.65);
+  color: #f8fafc;
+}
+
+.cancelLink:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.lockedRole {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px;
+  border-radius: 18px;
+  background: rgba(71, 85, 105, 0.35);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  margin-bottom: 16px;
+}
+
+.lockedRoleLabel {
+  font-size: 13px;
+  color: rgba(226, 232, 240, 0.7);
+}
+
+.lockedRoleName {
+  font-size: 18px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.roleGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.roleButton {
+  flex: 1 1 45%;
+  min-width: 120px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid transparent;
+  background: rgba(71, 85, 105, 0.45);
+  color: #e2e8f0;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.2s ease, border 0.2s ease, background 0.2s ease;
+}
+
+.roleButton:hover {
+  transform: translateY(-2px);
+  border-color: rgba(148, 163, 184, 0.6);
+}
+
+.roleButtonActive {
+  background: rgba(59, 130, 246, 0.55);
+  border-color: rgba(96, 165, 250, 0.9);
+  box-shadow: 0 14px 34px rgba(59, 130, 246, 0.35);
+}
+
+.roleName {
+  display: block;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.roleSlots {
+  display: block;
+  margin-top: 4px;
+  font-size: 13px;
+  color: rgba(226, 232, 240, 0.7);
+}
+
+.actionRow {
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.manualActions {
+  display: grid;
+  gap: 12px;
+}
+
+.blockerList {
+  margin: 4px 0 0;
+  padding-left: 20px;
+  color: rgba(226, 232, 240, 0.75);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.blockerListItem {
+  margin: 2px 0;
+}
+
+.primaryButton,
+.secondaryButton {
+  flex: 1;
+  padding: 12px 16px;
+  border-radius: 16px;
+  font-size: 15px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.primaryButton {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.85), rgba(37, 99, 235, 0.85));
+  color: #fff;
+}
+
+.secondaryButton {
+  background: rgba(71, 85, 105, 0.6);
+  color: #e2e8f0;
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.errorText {
+  margin-top: 12px;
+  font-size: 14px;
+  color: #fca5a5;
+}
+
+.emptyHint {
+  margin: 8px 0 0;
+  color: rgba(226, 232, 240, 0.7);
+  font-size: 14px;
+}
+
+.queueGrid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.queueColumn {
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(30, 41, 59, 0.45);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.queueRole {
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.queueCount {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(226, 232, 240, 0.75);
+}
+
+.queueReady {
+  margin: 6px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--success-foreground, #34d399);
+}
+
+.queuePending {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--warning-foreground, #f97316);
+}
+
+.plannerHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.plannerActions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.plannerButton {
+  padding: 10px 18px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: rgba(30, 41, 59, 0.55);
+  color: #e2e8f0;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease, border 0.2s ease;
+}
+
+.plannerButton:hover {
+  background: rgba(51, 65, 85, 0.7);
+  border-color: rgba(148, 163, 184, 0.65);
+  transform: translateY(-1px);
+}
+
+.plannerButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.exportButton {
+  background: rgba(34, 197, 94, 0.18);
+  border-color: rgba(74, 222, 128, 0.45);
+  color: #bbf7d0;
+}
+
+.exportButton:hover {
+  background: rgba(34, 197, 94, 0.28);
+  border-color: rgba(74, 222, 128, 0.65);
+}
+
+.plannerTimestamp {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: rgba(148, 163, 184, 0.85);
+}
+
+.successText {
+  margin: 12px 0 0;
+  font-size: 14px;
+  color: #86efac;
+}
+
+.matchGrid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  margin-bottom: 18px;
+}
+
+.matchColumn {
+  padding: 16px;
+  border-radius: 20px;
+  background: rgba(30, 41, 59, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.slotList {
+  display: grid;
+  gap: 14px;
+}
+
+.slotItem {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+}
+
+.slotHeader {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.slotIndexLabel {
+  font-size: 14px;
+  font-weight: 700;
+  color: #bfdbfe;
+}
+
+.slotRoleLabel {
+  font-size: 13px;
+  color: rgba(226, 232, 240, 0.78);
+}
+
+.memberList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.emptySlot {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(226, 232, 240, 0.72);
+  font-style: italic;
+}
+
+.memberItem {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  gap: 12px;
+  align-items: center;
+}
+
+.memberAvatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  object-fit: cover;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.memberAvatarPlaceholder {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: rgba(71, 85, 105, 0.4);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.memberMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.memberName {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.memberSourceBadge {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(71, 85, 105, 0.35);
+  color: rgba(226, 232, 240, 0.82);
+}
+
+.memberSourceRealtime {
+  background: rgba(59, 130, 246, 0.2);
+  color: #93c5fd;
+}
+
+.memberSourceStandin {
+  background: rgba(244, 114, 182, 0.22);
+  color: #fbcfe8;
+}
+
+.memberSourceUnknown {
+  background: rgba(148, 163, 184, 0.25);
+  color: rgba(226, 232, 240, 0.75);
+}
+
+.memberScore {
+  font-size: 13px;
+  color: rgba(226, 232, 240, 0.7);
+}
+
+.votePanel {
+  margin-top: 8px;
+  padding: 18px;
+  border-radius: 20px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.voteHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.voteTitle {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.voteCountdown {
+  font-size: 13px;
+  color: #facc15;
+}
+
+.voteOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.voteButton {
+  flex: 1 1 90px;
+  min-width: 90px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(71, 85, 105, 0.45);
+  color: #e2e8f0;
+  font-size: 14px;
+  cursor: pointer;
+  transition: transform 0.2s ease, border 0.2s ease, background 0.2s ease;
+}
+
+.voteButton:hover {
+  transform: translateY(-2px);
+  border-color: rgba(148, 163, 184, 0.6);
+}
+
+.voteButtonActive {
+  background: rgba(59, 130, 246, 0.6);
+  border-color: rgba(96, 165, 250, 0.9);
+  box-shadow: 0 12px 30px rgba(59, 130, 246, 0.35);
+}
+
+.voteButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.voteResult {
+  margin: 0 0 10px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.voteHint {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(226, 232, 240, 0.75);
+}
+
+.countdownOverlay {
+  margin-top: 22px;
+  display: grid;
+  place-items: center;
+  gap: 12px;
+}
+
+.countdownCircle {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  border: 3px solid rgba(96, 165, 250, 0.75);
+  display: grid;
+  place-items: center;
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.countdownNumber {
+  font-size: 36px;
+  font-weight: 700;
+  color: #bfdbfe;
+}
+
+.countdownHint {
+  margin: 0;
+  font-size: 14px;
+  color: rgba(226, 232, 240, 0.8);
+}
+
+.debugHoldBox {
+  margin-top: 18px;
+  border-radius: 14px;
+  border: 1px solid rgba(96, 165, 250, 0.45);
+  background: rgba(30, 64, 175, 0.28);
+  padding: 14px 16px;
+  display: grid;
+  gap: 10px;
+}
+
+.debugHoldTitle {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #dbeafe;
+}
+
+.debugHoldText {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(226, 232, 240, 0.85);
+  line-height: 1.6;
+}
+
+.debugHoldMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.debugHoldMetaItem {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(15, 23, 42, 0.55);
+  font-size: 12px;
+  color: rgba(191, 219, 254, 0.9);
+}
+
+.debugHoldIssues {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: #fef9c3;
+  line-height: 1.6;
+}
+
+.debugHoldIssue + .debugHoldIssue {
+  margin-top: 4px;
+}
+
+.debugHoldHint {
+  margin: 0;
+  font-size: 12px;
+  color: rgba(165, 243, 252, 0.85);
+}
+
+.diagnosticList {
+  margin: 0 0 12px;
+  padding-left: 18px;
+  color: rgba(226, 232, 240, 0.85);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.diagnosticItem + .diagnosticItem {
+  margin-top: 6px;
+}
+
+.retryRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.retryButton {
+  padding: 10px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(96, 165, 250, 0.55);
+  background: rgba(30, 64, 175, 0.45);
+  color: #dbeafe;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.retryButton:hover:not(:disabled) {
+  background: rgba(37, 99, 235, 0.65);
+  transform: translateY(-1px);
+}
+
+.retryButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.retryHint {
+  color: rgba(148, 163, 184, 0.85);
+  font-size: 12px;
+}
+
+.dropInCountdown {
+  margin: 16px 0 0;
+  padding: 12px 16px;
+  border-radius: 16px;
+  background: rgba(37, 99, 235, 0.28);
+  border: 1px solid rgba(96, 165, 250, 0.55);
+  color: #dbeafe;
+  font-size: 13px;
+  text-align: center;
+  line-height: 1.5;
+}
+
+@media (max-width: 600px) {
+  .page {
+    padding: 0 14px 56px;
+  }
+
+  .card {
+    padding: 20px;
+  }
+
+  .actionRow {
+    flex-direction: column;
+  }
+
+  .voteOptions {
+    flex-direction: column;
+  }
+}

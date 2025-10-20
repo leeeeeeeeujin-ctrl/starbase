@@ -1,0 +1,16 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap');
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: 'Noto Sans KR', sans-serif;
+  background-color: #040507;
+  color: #ffffff;
+}
+a { color: #2563eb; text-decoration: none; }
+a:hover { text-decoration: underline; }
+button,
+a,
+[role='button'] {
+  -webkit-tap-highlight-color: transparent;
+}
