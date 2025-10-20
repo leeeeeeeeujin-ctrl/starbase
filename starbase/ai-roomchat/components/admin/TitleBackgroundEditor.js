@@ -25,11 +25,13 @@ export default function TitleBackgroundEditor() {
     setLoading(true)
     setStatus(null)
 
-    try {
+      try {
       const response = await fetch('/api/admin/title-settings')
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}))
-        throw new Error(payload.error || '타이틀 배경을 불러오지 못했습니다.')
+          const supa = payload.meta?.supabase
+          const extra = supa?.code || supa?.message ? ` (supabase: ${supa?.code || ''} ${supa?.message || ''})` : ''
+          throw new Error((payload.error || '타이틀 배경을 불러오지 못했습니다.') + extra)
       }
 
       const payload = await response.json()
@@ -127,7 +129,9 @@ export default function TitleBackgroundEditor() {
               missingBucket: Boolean(payload.meta?.missingBucket),
             })
           }
-          throw new Error(payload.error || '타이틀 배경을 저장하지 못했습니다.')
+          const supa = payload.meta?.supabase
+          const extra = supa?.code || supa?.message ? ` (supabase: ${supa?.code || ''} ${supa?.message || ''})` : ''
+          throw new Error((payload.error || '타이틀 배경을 저장하지 못했습니다.') + extra)
         }
 
         setMeta({ missingTable: Boolean(payload.meta?.missingTable), missingBucket: Boolean(payload.meta?.missingBucket) })
