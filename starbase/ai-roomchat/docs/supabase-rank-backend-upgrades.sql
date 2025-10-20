@@ -1671,13 +1671,15 @@ begin
             'owner_id', owner_id::text,
             'hero_id', hero_id::text,
             'role', role,
-            'slot_index', slot_index
+            'slot_index', slot_index,
+            'slot_id', slot_id::text
           )
       ) as sanitized_entry,
       owner_id,
       hero_id,
       role,
       slot_index,
+      slot_id,
       ord
     from (
       select
@@ -1685,24 +1687,41 @@ begin
         row_number() over () as ord
     ) indexed
     cross join lateral (
-      select
-        nullif(trim(indexed.entry->>'owner_id'), '')::uuid as owner_id,
-        nullif(trim(indexed.entry->>'hero_id'), '')::uuid as hero_id,
-        coalesce(nullif(indexed.entry->>'role', ''), '역할 미지정') as role,
-        coalesce((indexed.entry->>'slot_index')::integer, indexed.ord - 1) as slot_index,
+      select *,
         row_number() over (
-          partition by nullif(trim(indexed.entry->>'owner_id'), '')::uuid
-          order by coalesce((indexed.entry->>'slot_index')::integer, indexed.ord - 1),
-            nullif(trim(indexed.entry->>'hero_id'), ''),
-            coalesce(nullif(indexed.entry->>'role', ''), '역할 미지정'),
+          partition by owner_id
+          order by slot_index, hero_id::text, role, ord
+        ) as owner_rank,
+        row_number() over (
+          partition by slot_token
+          order by ord, owner_id::text
+        ) as slot_rank
+      from (
+        select *,
+          coalesce(slot_id_text, 'slot-index:' || slot_index::text) as slot_token
+        from (
+          select
+            nullif(trim(indexed.entry->>'owner_id'), '')::uuid as owner_id,
+            nullif(trim(indexed.entry->>'hero_id'), '')::uuid as hero_id,
+            coalesce(nullif(indexed.entry->>'role', ''), '역할 미지정') as role,
+            coalesce((indexed.entry->>'slot_index')::integer, indexed.ord - 1) as slot_index,
+            nullif(trim(indexed.entry->>'slot_id'), '')::uuid as slot_id,
+            nullif(trim(indexed.entry->>'slot_id'), '') as slot_id_text,
             indexed.ord
-        ) as owner_rank
+        ) base0
+      ) base
     ) attributes
     where attributes.owner_id is not null
       and attributes.owner_rank = 1
+      and attributes.slot_rank = 1
   )
   select coalesce(
-      jsonb_agg(sanitized_entry order by slot_index, owner_id::text, ord),
+      jsonb_agg(
+        sanitized_entry
+        order by slot_index,
+          coalesce(slot_id::text, owner_id::text, ''),
+          ord
+      ),
       '[]'::jsonb
     )
     into v_payload

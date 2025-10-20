@@ -276,40 +276,69 @@ begin
     raise exception 'invalid_roster';
   end if;
 
+  with normalized as (
+    select
+      jsonb_strip_nulls(
+        entry
+          || jsonb_build_object(
+            'owner_id', owner_id::text,
+            'hero_id', hero_id::text,
+            'role', role,
+            'slot_index', slot_index,
+            'slot_id', slot_id::text
+          )
+      ) as sanitized_entry,
+      owner_id,
+      hero_id,
+      role,
+      slot_index,
+      slot_id,
+      ord
+    from (
+      select
+        jsonb_array_elements(p_roster) as entry,
+        row_number() over () as ord
+    ) indexed
+    cross join lateral (
+      select *,
+        row_number() over (
+          partition by owner_id
+          order by slot_index, hero_id::text, role, ord
+        ) as owner_rank,
+        row_number() over (
+          partition by slot_token
+          order by ord, owner_id::text
+        ) as slot_rank
+      from (
+        select *,
+          coalesce(slot_id_text, 'slot-index:' || slot_index::text) as slot_token
+        from (
+          select
+            nullif(trim(indexed.entry->>'owner_id'), '')::uuid as owner_id,
+            nullif(trim(indexed.entry->>'hero_id'), '')::uuid as hero_id,
+            coalesce(nullif(indexed.entry->>'role', ''), '역할 미지정') as role,
+            coalesce((indexed.entry->>'slot_index')::integer, indexed.ord - 1) as slot_index,
+            nullif(trim(indexed.entry->>'slot_id'), '')::uuid as slot_id,
+            nullif(trim(indexed.entry->>'slot_id'), '') as slot_id_text,
+            indexed.ord
+        ) base0
+      ) base
+    ) attributes
+    where attributes.owner_id is not null
+      and attributes.owner_rank = 1
+      and attributes.slot_rank = 1
+  )
   select coalesce(
       jsonb_agg(
-        jsonb_build_object(
-          'owner_id', owner_id::text,
-          'hero_id', hero_id::text,
-          'role', role,
-          'slot_index', slot_index
-        )
+        sanitized_entry
+        order by slot_index,
+          coalesce(slot_id::text, owner_id::text, ''),
+          ord
       ),
       '[]'::jsonb
     )
     into v_payload
-  from (
-    select owner_id, hero_id, role, slot_index
-    from (
-      select
-        nullif(trim(entry->>'owner_id'), '')::uuid as owner_id,
-        nullif(trim(entry->>'hero_id'), '')::uuid as hero_id,
-        coalesce(nullif(entry->>'role', ''), '역할 미지정') as role,
-        coalesce((entry->>'slot_index')::integer, ord - 1) as slot_index,
-        row_number() over (
-          partition by nullif(trim(entry->>'owner_id'), '')::uuid
-          order by coalesce((entry->>'slot_index')::integer, ord - 1),
-            nullif(trim(entry->>'hero_id'), ''),
-            coalesce(nullif(entry->>'role', ''), '역할 미지정'),
-            ord
-        ) as owner_rank
-      from (
-        select jsonb_array_elements(p_roster) as entry, row_number() over () as ord
-      ) indexed
-    ) ranked
-    where owner_id is not null
-      and owner_rank = 1
-  ) deduped;
+  from normalized;
 
   if jsonb_typeof(v_payload) <> 'array' or jsonb_array_length(v_payload) = 0 then
     return query
@@ -331,7 +360,8 @@ begin
       (value->>'owner_id')::uuid as owner_id,
       nullif(value->>'hero_id', '')::uuid as hero_id,
       coalesce(nullif(value->>'role', ''), '역할 미지정') as role,
-      coalesce((value->>'slot_index')::integer, ord::integer - 1) as slot_index
+      coalesce((value->>'slot_index')::integer, ord::integer - 1) as slot_index,
+      ord
     from jsonb_array_elements(v_payload) with ordinality as payload(value, ord)
   ), inserted_rows as (
     insert into public.rank_match_queue (

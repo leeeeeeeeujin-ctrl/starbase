@@ -348,6 +348,7 @@ describe('POST /api/rank/stage-room-match', () => {
         sanitizedRoster: [
           {
             owner_id: 'owner-1',
+            slot_id: 'slot-a',
             slot_index: 0,
             hero_id: '00000000-0000-4000-8000-000000000111',
             role: '딜러',
@@ -432,8 +433,20 @@ describe('POST /api/rank/stage-room-match', () => {
         queueInserted: 1,
         queueRemoved: 1,
         sanitizedRoster: [
-          { owner_id: 'owner-1', slot_index: 0, hero_id: 'hero-a', role: '탱커' },
-          { owner_id: 'owner-2', slot_index: 2, hero_id: 'hero-c', role: '힐러' },
+          {
+            owner_id: 'owner-1',
+            slot_id: 'slot-a',
+            slot_index: 0,
+            hero_id: 'hero-a',
+            role: '탱커',
+          },
+          {
+            owner_id: 'owner-2',
+            slot_id: 'slot-c',
+            slot_index: 2,
+            hero_id: 'hero-c',
+            role: '힐러',
+          },
         ],
       },
     })
@@ -451,5 +464,104 @@ describe('POST /api/rank/stage-room-match', () => {
       'owner-1',
       'owner-2',
     ])
+  })
+
+  test('filters sanitized roster duplicates targeting the same slot', async () => {
+    extractBearerToken.mockReturnValue('token-1')
+    fetchUserByToken.mockResolvedValue({ ok: true, user: { id: 'owner-1' } })
+    const normalizedRoster = [
+      {
+        owner_id: 'owner-1',
+        slot_id: 'slot-a',
+        slot_index: 0,
+        hero_id: 'hero-a',
+        role: '탱커',
+      },
+      {
+        owner_id: 'owner-2',
+        slot_id: 'slot-b',
+        slot_index: 1,
+        hero_id: 'hero-b',
+        role: '딜러',
+      },
+    ]
+    parseStageRequestBody.mockReturnValue({
+      ok: true,
+      value: {
+        matchInstanceId: 'match-1',
+        roomId: 'room-1',
+        gameId: 'game-1',
+        roster: normalizedRoster,
+        heroMap: {},
+        readyVote: {},
+        asyncFillMeta: null,
+        matchMode: null,
+        slotTemplate: {},
+        allowPartial: false,
+        verificationRoles: [],
+        verificationSlots: [],
+      },
+    })
+    fetchRoomContext.mockResolvedValue({
+      ok: true,
+      ownerId: 'owner-1',
+      mode: 'solo',
+      slotTemplate: { version: 1, source: 'room', updatedAt: '2023-01-01T00:00:00.000Z' },
+    })
+    verifyRolesAndSlots.mockResolvedValue({ ok: true })
+    fetchParticipantStats.mockResolvedValue({ ok: true, map: new Map() })
+    fetchHeroSummaries.mockResolvedValue({ ok: true, map: new Map(), heroMapFromRequest: {} })
+    mergeRosterMetadata.mockReturnValue(normalizedRoster)
+    callPrepareMatchSession.mockResolvedValue({
+      ok: true,
+      data: {
+        sessionId: 'session-1',
+        slotTemplateVersion: 3,
+        slotTemplateUpdatedAt: '2023-04-04T00:00:00.000Z',
+        queueReconciled: 3,
+        queueInserted: 2,
+        queueRemoved: 1,
+        sanitizedRoster: [
+          {
+            owner_id: 'owner-1',
+            slot_id: 'slot-a',
+            slot_index: 0,
+            hero_id: 'hero-a',
+            role: '탱커',
+          },
+          {
+            owner_id: 'owner-3',
+            slot_id: 'slot-a',
+            slot_index: 0,
+            hero_id: 'hero-x',
+            role: '힐러',
+          },
+          {
+            owner_id: 'owner-2',
+            slot_id: 'slot-b',
+            slot_index: 1,
+            hero_id: 'hero-b',
+            role: '딜러',
+          },
+        ],
+      },
+    })
+
+    const res = createRes()
+    await handler(createReq({ body: {} }), res)
+
+    expect(res.statusCode).toBe(200)
+    expect(res.body.roster).toHaveLength(2)
+    expect(res.body.roster).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ owner_id: 'owner-1', slot_id: 'slot-a', slot_index: 0 }),
+        expect.objectContaining({ owner_id: 'owner-2', slot_id: 'slot-b', slot_index: 1 }),
+      ]),
+    )
+    expect(res.body.roster).toEqual(
+      expect.not.arrayContaining([
+        expect.objectContaining({ owner_id: 'owner-3' }),
+      ]),
+    )
   })
 })

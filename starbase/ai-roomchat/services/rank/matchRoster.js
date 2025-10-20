@@ -275,6 +275,42 @@ export function applySanitizedRoster(hydratedRoster = [], sanitized = []) {
   }
 
   const pool = hydratedRoster.map((entry) => ({ entry: { ...entry }, used: false }))
+  const seenSlots = new Set()
+
+  const normalizedSanitized = []
+
+  sanitized.forEach((raw) => {
+    const slotId = toUuid(raw?.slot_id ?? raw?.slotId)
+    const slotIndex = toSlotIndex(raw?.slot_index ?? raw?.slotIndex, null)
+    const ownerId = toUuid(raw?.owner_id ?? raw?.ownerId)
+    const heroId = toUuid(raw?.hero_id ?? raw?.heroId)
+    const role = toTrimmed(raw?.role) || '역할 미지정'
+
+    const slotKey =
+      slotId || (Number.isInteger(slotIndex) && slotIndex >= 0
+        ? `slot_index:${slotIndex}`
+        : null)
+
+    if (slotKey && seenSlots.has(slotKey)) {
+      return
+    }
+
+    if (slotKey) {
+      seenSlots.add(slotKey)
+    }
+
+    normalizedSanitized.push({
+      slotId,
+      slotIndex: Number.isInteger(slotIndex) && slotIndex >= 0 ? slotIndex : null,
+      ownerId,
+      heroId,
+      role,
+    })
+  })
+
+  if (!normalizedSanitized.length) {
+    return hydratedRoster
+  }
 
   function consume(predicate) {
     for (const candidate of pool) {
@@ -287,13 +323,8 @@ export function applySanitizedRoster(hydratedRoster = [], sanitized = []) {
     return null
   }
 
-  return sanitized.map((raw, index) => {
-    const slotId = toUuid(raw?.slot_id ?? raw?.slotId)
-    const ownerId = toUuid(raw?.owner_id ?? raw?.ownerId)
-    const slotIndex = toSlotIndex(raw?.slot_index ?? raw?.slotIndex, null)
-    const heroId = toUuid(raw?.hero_id ?? raw?.heroId)
-    const role = toTrimmed(raw?.role) || '역할 미지정'
-
+  return normalizedSanitized.map((raw, index) => {
+    const { slotId, ownerId, slotIndex, heroId, role } = raw
     const match =
       (slotId &&
         consume((entry) => entry.slot_id && entry.slot_id === slotId)) ||
