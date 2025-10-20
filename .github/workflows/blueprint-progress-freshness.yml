@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: starbase/ai-roomchat/starbase/ai-roomchat
+        working-directory: starbase/ai-roomchat
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

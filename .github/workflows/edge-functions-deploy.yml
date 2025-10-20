@@ -20,7 +20,7 @@ permissions:
 
 defaults:
   run:
-    working-directory: starbase/ai-roomchat/starbase/ai-roomchat
+    working-directory: starbase/ai-roomchat
 
 jobs:
   deploy:
