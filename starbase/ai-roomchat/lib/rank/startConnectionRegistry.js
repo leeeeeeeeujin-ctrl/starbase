@@ -240,6 +240,31 @@ function buildEntryKey(entry) {
   return `${entry.gameId}::${entry.ownerId}`
 }
 
+
+function validateEntry(entry, existingMap) {
+  // 중복/불일치 검증: slotIndex, role, ownerId, heroId 기준
+  const key = buildEntryKey(entry)
+  if (existingMap.has(key)) {
+    const existing = existingMap.get(key)
+    // slotIndex, role, ownerId, heroId 불일치 체크
+    if (
+      existing.slotIndex !== entry.slotIndex ||
+      existing.role !== entry.role ||
+      existing.ownerId !== entry.ownerId ||
+      existing.heroId !== entry.heroId
+    ) {
+      console.warn('[startConnectionRegistry] 중복 키 불일치:', {
+        key,
+        기존: existing,
+        신규: entry,
+      })
+      // 불일치 발생 시 기존 엔트리 유지, 신규 무시
+      return false
+    }
+  }
+  return true
+}
+
 function mergeEntries(existingEntries, updates) {
   const merged = new Map()
   existingEntries.forEach((entry) => {
@@ -250,7 +275,9 @@ function mergeEntries(existingEntries, updates) {
   updates.forEach((entry) => {
     const normalized = normaliseEntry(entry)
     if (!normalized) return
-    merged.set(buildEntryKey(normalized), normalized)
+    if (validateEntry(normalized, merged)) {
+      merged.set(buildEntryKey(normalized), normalized)
+    }
   })
   return Array.from(merged.values())
 }
