@@ -3,6 +3,7 @@
 import React, { useCallback, useState } from 'react'
 
 import { startGoogleOAuth } from '../lib/auth'
+import { logError } from '../../lib/utils/debugTool'
 
 export default function AuthButton() {
   const [pending, setPending] = useState(false)
@@ -21,7 +22,7 @@ export default function AuthButton() {
 
       alert(`로그인 실패: ${result.message}`)
     } catch (error) {
-      console.error(error)
+      logError(error, 'AuthButton: signIn error')
       alert('로그인 중 오류가 발생했습니다.')
     } finally {
       setPending(false)

@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 
 import { supabase } from '../lib/supabase'
+import { logError } from '../../lib/utils/debugTool'
 
 function getInitials(name) {
   if (!name) return '유'
@@ -35,11 +36,11 @@ export default function LogoutButton({ onAfter, avatarUrl, displayName }) {
 
   async function signOut() {
     const { error } = await supabase.auth.signOut()
-    if (error) {
-      console.error('로그아웃에 실패했습니다:', error)
-      alert(error.message)
-      return
-    }
+      if (error) {
+        logError(error, 'LogoutButton: signOut error')
+        alert(error.message)
+        return
+      }
     setOpen(false)
     if (onAfter) onAfter()
   }
