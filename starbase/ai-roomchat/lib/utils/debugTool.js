@@ -1,3 +1,21 @@
+// 에러 로깅 유틸
+export function logError(error, context = '') {
+  if (console && typeof console.error === 'function') {
+    console.error(`[debugTool] ERROR${context ? ' [' + context + ']' : ''}:`, error)
+  }
+}
+
+// 상태 시각화 유틸
+export function visualizeState(state, label = 'STATE') {
+  try {
+    const output = debugState(state, { label, log: false })
+    if (console && typeof console.log === 'function') {
+      console.log(`[debugTool] ${label}:\n${output}`)
+    }
+  } catch (e) {
+    logError(e, 'visualizeState')
+  }
+}
 // 디버그 툴: 객체/배열/상태 시각화 및 중복/불일치/미할당 체크
 export function debugState(state, options = {}) {
   if (!state) return '[debugTool] state is null or undefined'
