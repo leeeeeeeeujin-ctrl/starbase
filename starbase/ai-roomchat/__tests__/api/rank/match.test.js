@@ -27,6 +27,7 @@ jest.mock('@/lib/rank/matchmakingService', () => ({
   flattenAssignmentMembers: jest.fn(),
   postCheckMatchAssignments: jest.fn(),
   sanitizeAssignments: jest.fn(),
+  sanitizeRooms: jest.fn((rooms) => rooms),
 }))
 
 jest.mock('@/lib/rank/db', () => ({
@@ -49,6 +50,7 @@ const {
   flattenAssignmentMembers,
   postCheckMatchAssignments,
   sanitizeAssignments: sanitizeAssignmentsMock,
+  sanitizeRooms: sanitizeRoomsMock,
 } = require('@/lib/rank/matchmakingService')
 
 function createReq(body = {}) {
@@ -233,7 +235,8 @@ describe('POST /api/rank/match', () => {
     computeRoleReadiness.mockReturnValue({ ready: true, buckets: [] })
     sanitizeAssignmentsMock
       .mockImplementationOnce(() => sanitizedFirst)
-      .mockImplementationOnce(() => sanitizedSecond)
+      .mockImplementation(() => sanitizedSecond)
+    sanitizeRoomsMock.mockImplementation((rooms) => rooms)
 
     flattenAssignmentMembers.mockReturnValue(sanitizedMembers)
 
@@ -278,7 +281,9 @@ describe('POST /api/rank/match', () => {
     expect(flattenAssignmentMembers).toHaveBeenCalledWith(sanitizedSecond)
 
     expect(sanitizeAssignmentsMock).toHaveBeenCalledTimes(2)
-    expect(Array.isArray(sanitizeAssignmentsMock.mock.calls[0][0])).toBe(true)
-    expect(Array.isArray(sanitizeAssignmentsMock.mock.calls[1][0])).toBe(true)
+    expect(sanitizeRoomsMock).toHaveBeenCalledTimes(2)
+    sanitizeAssignmentsMock.mock.calls.forEach((call) => {
+      expect(Array.isArray(call[0])).toBe(true)
+    })
   })
 })

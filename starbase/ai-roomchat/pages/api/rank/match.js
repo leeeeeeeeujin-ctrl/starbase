@@ -6,6 +6,7 @@ import {
   flattenAssignmentMembers,
   postCheckMatchAssignments,
   sanitizeAssignments,
+  sanitizeRooms,
 } from '@/lib/rank/matchmakingService'
 import {
   buildCandidateSample,
@@ -558,6 +559,9 @@ export default async function handler(req, res) {
           matchCode: dropInResult.matchCode || dropInResult.dropInTarget?.roomCode || null,
         })
 
+        const sanitizedDropInAssignments = sanitizeAssignments(dropInResult.assignments)
+        const sanitizedDropInRooms = sanitizeRooms(dropInResult.rooms || [])
+
         await logStage({
           stage: 'drop_in',
           status: 'matched',
@@ -565,18 +569,20 @@ export default async function handler(req, res) {
           match_code: dropInResult.matchCode || dropInResult.dropInTarget?.roomCode || null,
           score_window: dropInResult.maxWindow || null,
           metadata: {
-            assignments: buildAssignmentSummary(dropInResult.assignments),
+            assignments: buildAssignmentSummary(sanitizedDropInAssignments),
             dropInTarget: dropInResult.dropInTarget || null,
             dropInMeta: dropInResult.meta || null,
           },
         })
 
-        const members = flattenAssignmentMembers(dropInResult.assignments)
+        const members = flattenAssignmentMembers(sanitizedDropInAssignments)
         const heroIds = members.map((member) => member.hero_id || member.heroId).filter(Boolean)
         const heroMap = heroIds.length ? await loadHeroesByIds(supabase, heroIds) : new Map()
 
         return res.status(200).json({
           ...dropInResult,
+          assignments: sanitizedDropInAssignments,
+          rooms: sanitizedDropInRooms,
           matchType: dropInResult.matchType || 'drop_in',
           matchCode: dropInResult.matchCode || dropInResult.dropInTarget?.roomCode || null,
           heroMap: mapToPlain(heroMap),
@@ -607,6 +613,7 @@ export default async function handler(req, res) {
     assignments = hydrateAssignmentsWithStandins(assignments, standinLookup)
     rooms = hydrateRoomsWithStandins(rooms, standinLookup)
     assignments = sanitizeAssignments(assignments)
+    rooms = sanitizeRooms(rooms)
     let aggregatedRemovedMembers = collectAssignmentRemovedMembers(assignments)
 
     let readiness = computeRoleReadiness({
@@ -629,7 +636,7 @@ export default async function handler(req, res) {
       })
 
       assignments = sanitizeAssignments(postCheckResult.assignments)
-      rooms = postCheckResult.rooms
+      rooms = sanitizeRooms(postCheckResult.rooms)
       aggregatedRemovedMembers = mergeRemovedMembersLists([
         aggregatedRemovedMembers,
         postCheckResult?.removedMembers || [],

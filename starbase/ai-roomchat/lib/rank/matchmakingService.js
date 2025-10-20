@@ -1020,3 +1020,131 @@ export function flattenAssignmentMembers(assignments = []) {
   })
   return members
 }
+
+function cloneMembers(members = []) {
+  if (!Array.isArray(members)) return []
+  return members
+    .map((member) => {
+      if (!member || typeof member !== 'object') return null
+      return { ...member }
+    })
+    .filter(Boolean)
+}
+
+function mergeRoomRemovedMembers(...lists) {
+  const merged = []
+  const seen = new Set()
+  lists.forEach((list) => {
+    if (!Array.isArray(list)) return
+    list.forEach((entry) => {
+      if (!entry || typeof entry !== 'object') return
+      const ownerId = normalizeId(entry.ownerId ?? entry.owner_id)
+      const heroId = normalizeId(entry.heroId ?? entry.hero_id)
+      const role = normalizeId(entry.role)
+      const reason = normalizeId(entry.reason)
+      const slotIndexRaw = entry.slotIndex ?? entry.slot_index
+      const slotIndex = Number.isFinite(Number(slotIndexRaw)) ? Number(slotIndexRaw) : null
+      const key = [ownerId || '', heroId || '', role || '', slotIndex ?? '', reason || ''].join('|')
+      if (seen.has(key)) return
+      seen.add(key)
+      merged.push({
+        ...entry,
+        ownerId: ownerId || entry.ownerId || entry.owner_id || null,
+        heroId: heroId || entry.heroId || entry.hero_id || null,
+        slotIndex: slotIndex,
+        role: role || entry.role || null,
+        reason: reason || entry.reason || null,
+      })
+    })
+  })
+  return merged
+}
+
+function sanitizeRoomGroups(groups = []) {
+  if (!Array.isArray(groups)) return []
+  return groups
+    .map((group) => {
+      if (!group || typeof group !== 'object') return null
+      const indices = Array.isArray(group.slotIndices) ? group.slotIndices : []
+      const unique = Array.from(
+        new Set(
+          indices
+            .map((value) => Number(value))
+            .filter((value) => Number.isFinite(value)),
+        ),
+      )
+      return {
+        ...group,
+        slotIndices: unique,
+        size: unique.length || group.size || 0,
+      }
+    })
+    .filter(Boolean)
+}
+
+export function sanitizeRooms(rooms = []) {
+  if (!Array.isArray(rooms) || rooms.length === 0) {
+    return Array.isArray(rooms) ? rooms : []
+  }
+
+  return rooms.map((room, index) => {
+    if (!room || typeof room !== 'object') {
+      return room
+    }
+
+    const slotList = Array.isArray(room.slots) ? room.slots : []
+    const members = Array.isArray(room.members) ? room.members : []
+
+    const syntheticAssignment = {
+      role: room.label || room.role || `room-${index + 1}`,
+      roleSlots: slotList,
+      members,
+      groups: Array.isArray(room.groups) ? room.groups : [],
+      removedMembers: Array.isArray(room.removedMembers) ? room.removedMembers : [],
+    }
+
+    const [sanitized] = sanitizeAssignments([syntheticAssignment])
+    if (!sanitized) {
+      return {
+        ...room,
+        slots: slotList,
+        members,
+        groups: sanitizeRoomGroups(room.groups),
+      }
+    }
+
+    const sanitizedSlots = Array.isArray(sanitized.roleSlots) ? sanitized.roleSlots : []
+    const normalizedSlots = sanitizedSlots.map((slot) => {
+      if (!slot || typeof slot !== 'object') return slot
+      const slotMembers = cloneMembers(slot.members)
+      return {
+        ...slot,
+        members: slotMembers,
+        member: slotMembers.length ? { ...slotMembers[0] } : null,
+        occupied: slotMembers.length > 0,
+      }
+    })
+
+    const sanitizedMembers = cloneMembers(sanitized.members)
+    const baseRemoved = Array.isArray(room.removedMembers) ? room.removedMembers : []
+    const sanitizedRemoved = Array.isArray(sanitized.removedMembers)
+      ? sanitized.removedMembers
+      : []
+
+    return {
+      ...room,
+      slots: normalizedSlots,
+      members: sanitizedMembers,
+      filledSlots:
+        typeof sanitized.filledSlots === 'number'
+          ? sanitized.filledSlots
+          : normalizedSlots.filter((slot) => slot?.occupied).length,
+      missingSlots:
+        typeof sanitized.missingSlots === 'number'
+          ? sanitized.missingSlots
+          : Math.max(0, normalizedSlots.length - sanitizedMembers.length),
+      groups: sanitizeRoomGroups(room.groups),
+      removedMembers: mergeRoomRemovedMembers(baseRemoved, sanitizedRemoved),
+    }
+  })
+}

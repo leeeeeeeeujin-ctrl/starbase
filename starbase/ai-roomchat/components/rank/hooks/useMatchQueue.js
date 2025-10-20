@@ -15,6 +15,7 @@ import {
   normalizeQueueEntry,
   removeQueueEntry,
   sanitizeAssignments,
+  sanitizeRooms,
 } from '../../../lib/rank/matchmakingService'
 import { guessOwnerParticipant, normalizeHeroIdValue } from '../../../lib/rank/participantUtils'
 import {
@@ -895,12 +896,14 @@ export default function useMatchQueue({
       }
 
       const baseAssignments = Array.isArray(payload?.assignments) ? payload.assignments : []
+      const baseRooms = Array.isArray(payload?.rooms) ? payload.rooms : []
       const sanitizedAssignments = sanitizeAssignments(baseAssignments)
+      const sanitizedRooms = sanitizeRooms(baseRooms)
 
       if (!payload?.ready) {
         setPendingMatch({
           assignments: sanitizedAssignments,
-          rooms: Array.isArray(payload?.rooms) ? payload.rooms : [],
+          rooms: sanitizedRooms,
           error: payload?.error || null,
           totalSlots: payload?.totalSlots ?? 0,
           maxWindow: payload?.maxWindow ?? 0,
@@ -944,7 +947,7 @@ export default function useMatchQueue({
         sampleMeta: meta,
         dropInTarget: payload.dropInTarget || null,
         dropInMeta: payload.meta || null,
-        rooms: Array.isArray(payload.rooms) ? payload.rooms : [],
+        rooms: sanitizedRooms,
         roles: payloadRoles,
         slotLayout: payloadLayout,
         gameId,

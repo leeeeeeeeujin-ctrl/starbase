@@ -10,6 +10,7 @@ import {
   runMatching,
   postCheckMatchAssignments,
   sanitizeAssignments,
+  sanitizeRooms,
 } from '@/lib/rank/matchmakingService'
 import { computeRoleReadiness } from '@/lib/rank/matchRoleSummary'
 
@@ -1390,5 +1391,53 @@ describe('sanitizeAssignments', () => {
         removedMembers: [],
       }),
     )
+  })
+})
+
+describe('sanitizeRooms', () => {
+  it('deduplicates slot occupants and accumulates removed members', () => {
+    const room = {
+      id: 'room-1',
+      label: '공격 · 수비',
+      slots: [
+        {
+          role: '공격',
+          slotIndex: 0,
+          members: [
+            { owner_id: 'owner-1', hero_id: 'hero-1', status: 'host' },
+            { owner_id: 'owner-1', hero_id: 'hero-1', status: 'host' },
+          ],
+          member: { owner_id: 'owner-1', hero_id: 'hero-1', status: 'host' },
+          occupied: true,
+        },
+        {
+          role: '수비',
+          slotIndex: 1,
+          members: [
+            { owner_id: 'owner-2', hero_id: 'hero-2', status: 'waiting', standin: true },
+            { owner_id: 'owner-2', hero_id: 'hero-2', status: 'waiting', standin: true },
+          ],
+          member: { owner_id: 'owner-2', hero_id: 'hero-2', status: 'waiting', standin: true },
+          occupied: true,
+        },
+      ],
+    }
+
+    const [sanitized] = sanitizeRooms([room])
+
+    expect(sanitized.slots[0].members).toHaveLength(1)
+    expect(sanitized.slots[1].members).toHaveLength(1)
+    expect(sanitized.members).toEqual([
+      expect.objectContaining({ owner_id: 'owner-1', hero_id: 'hero-1' }),
+      expect.objectContaining({ owner_id: 'owner-2', hero_id: 'hero-2' }),
+    ])
+    expect(sanitized.removedMembers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ ownerId: 'owner-1', reason: 'duplicate_slot_member' }),
+        expect.objectContaining({ ownerId: 'owner-2', reason: 'duplicate_slot_member' }),
+      ]),
+    )
+    expect(sanitized.filledSlots).toBe(2)
+    expect(sanitized.missingSlots).toBe(0)
   })
 })

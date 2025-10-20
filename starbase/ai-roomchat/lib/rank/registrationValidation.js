@@ -121,7 +121,8 @@ export function prepareRegistrationPayload(raw) {
   }
 
   const trimmedName = typeof raw.name === 'string' ? raw.name.trim() : ''
-  const trimmedDescription = typeof raw.description === 'string' ? raw.description : ''
+  const trimmedDescription =
+    typeof raw.description === 'string' ? raw.description.trim() : ''
   const imageUrl = typeof raw.image_url === 'string' ? raw.image_url : ''
   const realtime = normalizeRealtimeMode(raw.realtime_match ?? REALTIME_MODES.OFF)
 
@@ -143,7 +144,7 @@ export function prepareRegistrationPayload(raw) {
 
   const gameInsert = {
     name: trimmedName || '새 게임',
-    description: trimmedDescription,
+    description: trimmedDescription || '',
     image_url: imageUrl,
     prompt_set_id: promptSetId,
     realtime_match: realtime,
