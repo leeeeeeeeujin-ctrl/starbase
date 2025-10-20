@@ -62,8 +62,60 @@ jobs:
       RANK_EDGE_DEPLOY_REQUIRE_SMOKE: ${{ matrix.require_smoke }}
       RANK_EDGE_DEPLOY_REQUIRE_PAGERDUTY: ${{ matrix.require_pagerduty }}
     steps:
+
+
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Debug: print working directory and files
+        run: |
+          echo "PWD: $(pwd)"
+          echo "Listing root:"
+          ls -al
+          echo "Listing starbase:"
+          ls -al starbase || true
+          echo "Listing starbase/ai-roomchat:"
+          ls -al starbase/ai-roomchat || true
+
+      - name: Debug: print working directory and files
+        run: |
+          echo "PWD: $(pwd)"
+          echo "Listing root:"
+          ls -al
+          echo "Listing starbase:"
+          ls -al starbase || true
+          echo "Listing starbase/ai-roomchat:"
+          ls -al starbase/ai-roomchat || true
+
+      - name: Debug: print working directory and files
+        run: |
+          echo "PWD: $(pwd)"
+          echo "Listing root:"
+          ls -al
+          echo "Listing starbase:"
+          ls -al starbase || true
+          echo "Listing starbase/ai-roomchat:"
+          ls -al starbase/ai-roomchat || true
+
+      - name: Debug: print working directory and files
+        run: |
+          echo "PWD: $(pwd)"
+          echo "Listing root:"
+          ls -al
+          echo "Listing starbase:"
+          ls -al starbase || true
+          echo "Listing starbase/ai-roomchat:"
+          ls -al starbase/ai-roomchat || true
+
+      - name: Debug: print working directory and files
+        run: |
+          echo "PWD: $(pwd)"
+          echo "Listing root:"
+          ls -al
+          echo "Listing starbase:"
+          ls -al starbase || true
+          echo "Listing starbase/ai-roomchat:"
+          ls -al starbase/ai-roomchat || true
 
       - name: Setup Node.js 18
         uses: actions/setup-node@v4
