@@ -5,6 +5,7 @@ import {
   runMatching,
   flattenAssignmentMembers,
   postCheckMatchAssignments,
+  sanitizeAssignments,
 } from '@/lib/rank/matchmakingService'
 import {
   buildCandidateSample,
@@ -171,6 +172,77 @@ function normalizeHostQueueEntry(raw) {
   }
 
   return entry
+}
+
+function normalizeRemovedMember(entry) {
+  if (!entry || typeof entry !== 'object') return null
+
+  const ownerId = entry.ownerId ?? entry.owner_id ?? null
+  const heroId = entry.heroId ?? entry.hero_id ?? null
+  const role = entry.role ?? entry.roleName ?? null
+  const slotIndexRaw = entry.slotIndex ?? entry.slot_index
+  const slotIndex = Number.isFinite(Number(slotIndexRaw))
+    ? Number(slotIndexRaw)
+    : null
+  const reason = entry.reason ?? entry.code ?? null
+  const slotKey = entry.slotKey ?? entry.slot_key ?? null
+
+  if (!ownerId && !heroId && !reason) {
+    return null
+  }
+
+  const normalized = {
+    ownerId: ownerId || null,
+    heroId: heroId || null,
+    role: role || null,
+    slotIndex,
+    reason: reason || null,
+  }
+
+  if (slotKey) {
+    normalized.slotKey = String(slotKey)
+  }
+
+  return normalized
+}
+
+function mergeRemovedMembersLists(lists = []) {
+  const merged = []
+  const seen = new Set()
+
+  lists
+    .filter(Array.isArray)
+    .forEach((list) => {
+      list.forEach((entry) => {
+        const normalized = normalizeRemovedMember(entry)
+        if (!normalized) return
+        const key = [
+          normalized.ownerId || '',
+          normalized.heroId || '',
+          normalized.role || '',
+          normalized.slotIndex ?? '',
+          normalized.reason || '',
+          normalized.slotKey || '',
+        ].join('|')
+        if (seen.has(key)) return
+        seen.add(key)
+        merged.push(normalized)
+      })
+    })
+
+  return merged
+}
+
+function collectAssignmentRemovedMembers(assignments = []) {
+  const removed = []
+  assignments.forEach((assignment) => {
+    if (!assignment || typeof assignment !== 'object') return
+    if (!Array.isArray(assignment.removedMembers)) return
+    assignment.removedMembers.forEach((entry) => {
+      removed.push(entry)
+    })
+  })
+  return mergeRemovedMembersLists([removed])
 }
 
 function isStandinCandidate(entry) {
@@ -534,6 +606,9 @@ export default async function handler(req, res) {
     let rooms = Array.isArray(result.rooms) ? result.rooms : []
     assignments = hydrateAssignmentsWithStandins(assignments, standinLookup)
     rooms = hydrateRoomsWithStandins(rooms, standinLookup)
+    assignments = sanitizeAssignments(assignments)
+    let aggregatedRemovedMembers = collectAssignmentRemovedMembers(assignments)
+
     let readiness = computeRoleReadiness({
       roles,
       slotLayout,
@@ -553,8 +628,13 @@ export default async function handler(req, res) {
         slotLayout,
       })
 
-      assignments = postCheckResult.assignments
+      assignments = sanitizeAssignments(postCheckResult.assignments)
       rooms = postCheckResult.rooms
+      aggregatedRemovedMembers = mergeRemovedMembersLists([
+        aggregatedRemovedMembers,
+        postCheckResult?.removedMembers || [],
+        collectAssignmentRemovedMembers(assignments),
+      ])
       readiness = computeRoleReadiness({
         roles,
         slotLayout,
@@ -566,6 +646,10 @@ export default async function handler(req, res) {
 
     if (!matchReady) {
       const errorCode = postCheckResult ? 'post_check_pending' : result.error || null
+      const combinedRemoved = mergeRemovedMembersLists([
+        aggregatedRemovedMembers,
+        postCheckResult?.removedMembers || [],
+      ])
       await logStage({
         stage: toggles.realtimeEnabled ? 'realtime_pool' : 'standard_pool',
         status: 'pending',
@@ -575,7 +659,7 @@ export default async function handler(req, res) {
           sampleMeta,
           assignments: buildAssignmentSummary(assignments),
           roleBuckets: readiness.buckets,
-          postCheckRemoved: postCheckResult?.removedMembers || [],
+          postCheckRemoved: combinedRemoved,
         },
       })
 
@@ -590,7 +674,7 @@ export default async function handler(req, res) {
         roles: serializeRoles(roles),
         slotLayout: serializeSlotLayout(slotLayout),
         roleBuckets: readiness.buckets,
-        removedMembers: postCheckResult?.removedMembers || [],
+        removedMembers: combinedRemoved,
       })
     }
 
@@ -611,7 +695,7 @@ export default async function handler(req, res) {
         sampleMeta,
         assignments: buildAssignmentSummary(assignments),
         roleBuckets: readiness.buckets,
-        postCheckRemoved: postCheckResult?.removedMembers || [],
+        postCheckRemoved: aggregatedRemovedMembers,
       },
     })
 
@@ -632,7 +716,7 @@ export default async function handler(req, res) {
       roles: serializeRoles(roles),
       slotLayout: serializeSlotLayout(slotLayout),
       roleBuckets: readiness.buckets,
-      removedMembers: postCheckResult?.removedMembers || [],
+      removedMembers: aggregatedRemovedMembers,
     })
   } catch (error) {
     await recordMatchmakingLog(supabase, {
