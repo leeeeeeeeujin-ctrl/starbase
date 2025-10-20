@@ -9,6 +9,8 @@ const {
 
 let mockCreateClientImplementation
 let mockWithTableQuery
+let roomQueryResponse
+let rosterQueryResponse
 
 jest.mock('@supabase/supabase-js', () => ({
   createClient: (...args) => mockCreateClientImplementation(...args),
@@ -127,12 +129,15 @@ describe('POST /api/rank/ready-timeout', () => {
       },
     ]
 
+    roomQueryResponse = { data: { owner_id: 'host-1' }, error: null }
+    rosterQueryResponse = { data: rosterRows, error: null }
+
     mockWithTableQuery = jest.fn(async (_client, logicalName) => {
       if (logicalName === 'rank_rooms') {
-        return { data: { owner_id: 'host-1' }, error: null }
+        return roomQueryResponse
       }
       if (logicalName === 'rank_match_roster') {
-        return { data: rosterRows, error: null }
+        return rosterQueryResponse
       }
       return { data: null, error: null }
     })
