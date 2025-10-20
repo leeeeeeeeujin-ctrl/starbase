@@ -3,7 +3,7 @@
 import React, { useCallback, useState } from 'react'
 
 import { startGoogleOAuth } from '../lib/auth'
-import { logError } from '../../lib/utils/debugTool'
+import { logError } from '../lib/utils/debugTool'
 
 export default function AuthButton() {
   const [pending, setPending] = useState(false)

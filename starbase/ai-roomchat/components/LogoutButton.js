@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 
 import { supabase } from '../lib/supabase'
-import { logError } from '../../lib/utils/debugTool'
+import { logError } from '../lib/utils/debugTool'
 
 function getInitials(name) {
   if (!name) return '유'
