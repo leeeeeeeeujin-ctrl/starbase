@@ -1994,3 +1994,91 @@ grant execute on function public.prepare_rank_match_session(
   jsonb,
   boolean
 ) to authenticated, service_role;
+
+-- =========================================
+--  Realtime triggers: rank_match_queue
+-- =========================================
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'rank_match_queue'
+  ) then
+    execute 'alter publication supabase_realtime add table public.rank_match_queue';
+  end if;
+exception
+  when insufficient_privilege then
+    raise notice '[rank_match_queue realtime] publication update skipped due to insufficient privilege';
+  when undefined_object then
+    raise notice '[rank_match_queue realtime] supabase_realtime publication missing; skip add table';
+end;
+$$;
+
+create or replace function public.broadcast_rank_match_queue()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_event text := TG_OP;
+  v_game uuid := null;
+  v_owner uuid := null;
+  v_mode text := null;
+  v_status text := null;
+  v_topics text[];
+  v_new jsonb := null;
+  v_old jsonb := null;
+begin
+  if TG_OP = 'DELETE' then
+    v_game := OLD.game_id;
+    v_owner := OLD.owner_id;
+    v_mode := lower(nullif(trim(coalesce(OLD.mode, '')), ''));
+    v_status := lower(nullif(trim(coalesce(OLD.status, '')), ''));
+  elsif TG_OP = 'INSERT' then
+    v_game := NEW.game_id;
+    v_owner := NEW.owner_id;
+    v_mode := lower(nullif(trim(coalesce(NEW.mode, '')), ''));
+    v_status := lower(nullif(trim(coalesce(NEW.status, '')), ''));
+  else
+    v_game := coalesce(NEW.game_id, OLD.game_id);
+    v_owner := coalesce(NEW.owner_id, OLD.owner_id);
+    v_mode := lower(nullif(trim(coalesce(NEW.mode, OLD.mode, '')), ''));
+    v_status := lower(nullif(trim(coalesce(NEW.status, OLD.status, '')), ''));
+  end if;
+
+  if TG_OP in ('INSERT', 'UPDATE') then
+    v_new := to_jsonb(NEW);
+  end if;
+
+  if TG_OP in ('UPDATE', 'DELETE') then
+    v_old := to_jsonb(OLD);
+  end if;
+
+  v_topics := array[
+    case when v_game is not null then 'rank_match_queue:game:' || v_game::text end,
+    case when v_owner is not null then 'rank_match_queue:owner:' || v_owner::text end,
+    case when v_mode is not null and v_mode <> '' then 'rank_match_queue:mode:' || v_mode end,
+    case when v_status is not null and v_status <> '' then 'rank_match_queue:status:' || v_status end
+  ];
+
+  perform public.emit_realtime_payload(
+    v_topics,
+    v_event,
+    TG_TABLE_NAME,
+    TG_TABLE_SCHEMA,
+    v_new,
+    v_old
+  );
+
+  return null;
+end;
+$$;
+
+drop trigger if exists trg_rank_match_queue_broadcast on public.rank_match_queue;
+create trigger trg_rank_match_queue_broadcast
+after insert or update or delete on public.rank_match_queue
+for each row execute function public.broadcast_rank_match_queue();
