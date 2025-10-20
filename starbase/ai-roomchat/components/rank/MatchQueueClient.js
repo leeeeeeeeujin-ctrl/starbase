@@ -13,6 +13,7 @@ import {
 } from '../../lib/rank/startSessionChannel'
 import { buildMatchMetaPayload, storeStartMatchMeta } from './startConfig'
 import { clearMatchConfirmation, saveMatchConfirmation } from './matchStorage'
+import { MATCH_DEBUG_HOLD_ENABLED, buildDebugHoldSnapshot } from './matchDebugUtils'
 
 import useMatchQueue from './hooks/useMatchQueue'
 import useLocalMatchPlanner from './hooks/useLocalMatchPlanner'
@@ -435,6 +436,7 @@ export default function MatchQueueClient({
     exportPlan: exportPlanner,
   } = useLocalMatchPlanner({ gameId, mode, enabled: true })
   const [countdown, setCountdown] = useState(null)
+  const [debugHold, setDebugHold] = useState(null)
   const countdownTimerRef = useRef(null)
   const navigationLockRef = useRef(false)
   const matchMetaSignatureRef = useRef('')
@@ -1296,12 +1298,49 @@ export default function MatchQueueClient({
   ])
 
   useEffect(() => {
-    if (autoStart) return
-    if (state.status !== 'matched' || !state.match || isDropInMatch) return
-    if (finalTimer == null) return
-    if (voteRemaining != null && voteRemaining > 0) return
-    if (countdown != null) return
+    if (autoStart) {
+      if (debugHold) setDebugHold(null)
+      return
+    }
+    if (state.status !== 'matched' || !state.match || isDropInMatch) {
+      if (debugHold) setDebugHold(null)
+      return
+    }
+    if (finalTimer == null) {
+      if (debugHold) setDebugHold(null)
+      return
+    }
+    if (voteRemaining != null && voteRemaining > 0) {
+      if (debugHold) setDebugHold(null)
+      return
+    }
+    if (MATCH_DEBUG_HOLD_ENABLED) {
+      setCountdown(null)
+      const holdSnapshot = buildDebugHoldSnapshot({
+        queueMode: mode || null,
+        sessionId: state.match?.sessionId || null,
+        matchCode: state.match?.matchCode || state.match?.match_code || null,
+        assignments: state.match?.assignments || [],
+        participants: state.match?.assignments || [],
+      })
+      const signature = `${holdSnapshot.queueMode || ''}-${holdSnapshot.sessionId || ''}-${holdSnapshot.matchCode || ''}`
+      const previousSignature = debugHold
+        ? `${debugHold.queueMode || ''}-${debugHold.sessionId || ''}-${debugHold.matchCode || ''}`
+        : ''
+      if (!debugHold || signature !== previousSignature) {
+        setDebugHold(holdSnapshot)
+        try {
+          console.info('[MatchQueue] 디버그 홀드 활성화', holdSnapshot)
+        } catch (error) {
+          // eslint-disable-next-line no-console
+          console.log('[MatchQueue] 디버그 홀드 활성화', holdSnapshot)
+        }
+      }
+      return
+    }
 
+    if (debugHold) setDebugHold(null)
+    if (countdown != null) return
     setCountdown(5)
   }, [
     autoStart,
@@ -1311,22 +1350,26 @@ export default function MatchQueueClient({
     finalTimer,
     voteRemaining,
     countdown,
+    debugHold,
+    mode,
   ])
 
   useEffect(() => {
     if (state.status === 'matched' && state.match && finalTimer != null) {
       return
     }
+    if (debugHold) setDebugHold(null)
     setCountdown(null)
     navigationLockRef.current = false
     if (countdownTimerRef.current) {
       clearTimeout(countdownTimerRef.current)
       countdownTimerRef.current = null
     }
-  }, [state.status, state.match, finalTimer])
+  }, [state.status, state.match, finalTimer, debugHold])
 
   useEffect(() => {
     if (countdown == null) return
+    if (MATCH_DEBUG_HOLD_ENABLED) return
 
     if (countdown === 0) {
       setCountdown(null)
@@ -1381,12 +1424,17 @@ export default function MatchQueueClient({
         console.debug('[MatchQueueClient] 매치 메타 stamp 생성 실패', stampError)
       }
 
+      const holdSignature =
+        MATCH_DEBUG_HOLD_ENABLED && debugHold
+          ? `${debugHold.queueMode || ''}-${debugHold.sessionId || ''}-${debugHold.matchCode || ''}-${debugHold.generatedAt || ''}`
+          : ''
       const signature = JSON.stringify({
         matchCode: state.match.matchCode || '',
         turnTimer: turnTimerValue,
         viewerHeroId: state.heroId || '',
         viewerRole: viewerRoleName,
         assignmentStamp,
+        holdSignature,
       })
 
       if (matchMetaSignatureRef.current !== signature) {
@@ -1400,6 +1448,7 @@ export default function MatchQueueClient({
           viewerHeroId: state.heroId || null,
           viewerHeroName: state.heroMeta?.name || null,
           autoStart: Boolean(autoStart),
+          debugHold: MATCH_DEBUG_HOLD_ENABLED && debugHold ? debugHold : undefined,
         })
         if (payload) {
           storeStartMatchMeta(payload)
@@ -1426,6 +1475,7 @@ export default function MatchQueueClient({
     state.heroId,
     state.heroMeta?.name,
     autoStart,
+    debugHold,
   ])
 
   useEffect(() => {
@@ -2092,11 +2142,53 @@ export default function MatchQueueClient({
             메인 룸에서 방을 열어둔 상태라면 즉시 입장해 전투를 시작할 수 있습니다.
           </p>
         ) : null}
-          <div className={styles.matchGrid}>
-            {state.match.assignments.map((assignment, index) => (
-              <div key={`${assignment.role}-${index}`} className={styles.matchColumn}>
-                <h3 className={styles.queueRole}>{assignment.role}</h3>
-                <MemberList assignment={assignment} heroMap={state.match.heroMap} />
+        {debugHold ? (
+          <div className={styles.debugHoldBox}>
+            <p className={styles.debugHoldTitle}>디버그 모드: 자동 시작이 보류 중입니다.</p>
+            <p className={styles.debugHoldText}>
+              전투 화면을 열기 전에 구성된 로스터와 큐 정렬 결과를 확인하세요. 매치 준비 페이지에서도 동일한 로그를
+              확인할 수 있습니다.
+            </p>
+            <div className={styles.debugHoldMeta}>
+              {debugHold.queueMode ? (
+                <span className={styles.debugHoldMetaItem}>
+                  모드: {debugHold.queueMode === 'realtime' ? '실시간' : '비실시간'}
+                </span>
+              ) : null}
+              {debugHold.matchCode ? (
+                <span className={styles.debugHoldMetaItem}>매치 코드: {debugHold.matchCode}</span>
+              ) : null}
+              {debugHold.sessionId ? (
+                <span className={styles.debugHoldMetaItem}>세션: {debugHold.sessionId}</span>
+              ) : null}
+              {Number.isFinite(debugHold.reconciled) ? (
+                <span className={styles.debugHoldMetaItem}>재정렬 {debugHold.reconciled}명</span>
+              ) : null}
+              {Number.isFinite(debugHold.inserted) ? (
+                <span className={styles.debugHoldMetaItem}>재삽입 {debugHold.inserted}명</span>
+              ) : null}
+              {Number.isFinite(debugHold.removed) ? (
+                <span className={styles.debugHoldMetaItem}>제거 {debugHold.removed}명</span>
+              ) : null}
+            </div>
+            {debugHold.issues?.length ? (
+              <ul className={styles.debugHoldIssues}>
+                {debugHold.issues.map((issue, index) => (
+                  <li key={`queue-hold-issue-${index}`} className={styles.debugHoldIssue}>
+                    {issue}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className={styles.debugHoldHint}>중복 배정이 감지되지 않았습니다.</p>
+            )}
+          </div>
+        ) : null}
+        <div className={styles.matchGrid}>
+          {state.match.assignments.map((assignment, index) => (
+            <div key={`${assignment.role}-${index}`} className={styles.matchColumn}>
+              <h3 className={styles.queueRole}>{assignment.role}</h3>
+              <MemberList assignment={assignment} heroMap={state.match.heroMap} />
               </div>
             ))}
           </div>

@@ -346,7 +346,12 @@ describe('POST /api/rank/stage-room-match', () => {
         queueInserted: 3,
         queueRemoved: 2,
         sanitizedRoster: [
-          { owner_id: 'owner-1', slot_index: 0, hero_id: 'hero-y', role: '딜러' },
+          {
+            owner_id: 'owner-1',
+            slot_index: 0,
+            hero_id: '00000000-0000-4000-8000-000000000111',
+            role: '딜러',
+          },
         ],
       },
     })
@@ -375,7 +380,7 @@ describe('POST /api/rank/stage-room-match', () => {
         expect.objectContaining({
           owner_id: 'owner-1',
           slot_index: 0,
-          hero_id: 'hero-y',
+          hero_id: '00000000-0000-4000-8000-000000000111',
           role: '딜러',
         }),
       ],

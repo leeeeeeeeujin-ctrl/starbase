@@ -20,6 +20,7 @@ import { loadMatchFlowSnapshot } from '@/modules/rank/matchRealtimeSync'
 import { readActiveSession, subscribeActiveSession } from '@/lib/rank/activeSessionStorage'
 import { normalizeRealtimeMode, isRealtimeEnabled } from '@/lib/rank/realtimeModes'
 import { formatPlayNumber } from '@/utils/characterPlayFormatting'
+import { MATCH_DEBUG_HOLD_ENABLED, buildDebugHoldSnapshot } from '@/components/rank/matchDebugUtils'
 
 const ASYNC_MATCH_ENDPOINT = '/api/rank/match'
 
@@ -412,6 +413,83 @@ const overlayStyles = {
     fontSize: 11,
     color: 'rgba(186,230,253,0.68)',
     textAlign: 'center',
+  },
+  debugHoldPanel: {
+    borderRadius: 16,
+    border: '1px solid rgba(96,165,250,0.45)',
+    background: 'rgba(30,64,175,0.35)',
+    padding: '12px 14px',
+    display: 'grid',
+    gap: 10,
+  },
+  debugHoldTitle: {
+    margin: 0,
+    fontSize: 14,
+    fontWeight: 700,
+    color: '#e0f2fe',
+  },
+  debugHoldMessage: {
+    margin: 0,
+    fontSize: 12,
+    color: 'rgba(190,242,255,0.85)',
+    lineHeight: 1.6,
+  },
+  debugHoldMeta: {
+    margin: 0,
+    fontSize: 12,
+    color: 'rgba(165,243,252,0.82)',
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  debugHoldMetaItem: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '2px 8px',
+    borderRadius: 999,
+    border: '1px solid rgba(125,211,252,0.45)',
+    background: 'rgba(8,47,73,0.6)',
+  },
+  debugHoldIssues: {
+    margin: 0,
+    paddingLeft: 18,
+    fontSize: 12,
+    color: '#fef9c3',
+    lineHeight: 1.6,
+  },
+  debugHoldIssue: {
+    marginTop: 4,
+  },
+  debugHoldGrid: {
+    display: 'grid',
+    gap: 10,
+    gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+  },
+  debugHoldColumn: {
+    borderRadius: 12,
+    border: '1px solid rgba(148,163,184,0.35)',
+    background: 'rgba(15,23,42,0.6)',
+    padding: '10px 12px',
+    display: 'grid',
+    gap: 6,
+  },
+  debugHoldRole: {
+    margin: 0,
+    fontSize: 12,
+    fontWeight: 700,
+    color: '#bae6fd',
+  },
+  debugHoldMember: {
+    margin: 0,
+    fontSize: 11,
+    color: 'rgba(226,232,240,0.9)',
+    lineHeight: 1.5,
+    wordBreak: 'break-word',
+  },
+  debugHoldMemberMeta: {
+    display: 'block',
+    fontSize: 10,
+    color: 'rgba(148,163,184,0.85)',
   },
   countdownBlock: {
     borderRadius: 16,
@@ -891,6 +969,7 @@ function MatchingOverlay({
   queueMode,
   matchCode,
   countdown,
+  debugHold,
   debugEntries,
   debugOpen,
   onToggleDebug,
@@ -913,9 +992,44 @@ function MatchingOverlay({
     status === 'sampling' ||
     status === 'assembling'
 
+  const debugHoldActive = Boolean(debugHold?.active)
+  const debugHoldAssignments = Array.isArray(debugHold?.assignments) ? debugHold.assignments : []
+  const debugHoldIssues = Array.isArray(debugHold?.issues) ? debugHold.issues : []
+  const debugHoldMetaItems = []
+  if (debugHold?.queueMode) {
+    debugHoldMetaItems.push(`모드: ${debugHold.queueMode}`)
+  }
+  if (debugHold?.sessionId) {
+    debugHoldMetaItems.push(`세션: ${debugHold.sessionId}`)
+  }
+  if (debugHold?.matchCode) {
+    debugHoldMetaItems.push(`매치: ${debugHold.matchCode}`)
+  }
+  if (Number.isFinite(debugHold?.reconciled)) {
+    debugHoldMetaItems.push(`큐 정렬 ${debugHold.reconciled}명`)
+  }
+  if (Number.isFinite(debugHold?.inserted)) {
+    debugHoldMetaItems.push(`큐 재삽입 ${debugHold.inserted}명`)
+  }
+  if (Number.isFinite(debugHold?.removed)) {
+    debugHoldMetaItems.push(`큐 삭제 ${debugHold.removed}명`)
+  }
+  if (debugHold?.generatedAt) {
+    try {
+      const stamp = new Date(debugHold.generatedAt)
+      if (!Number.isNaN(stamp.getTime())) {
+        debugHoldMetaItems.push(
+          `기록: ${stamp.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`,
+        )
+      }
+    } catch (error) {
+      // ignore malformed stamp
+    }
+  }
+
   const headline = (() => {
     if (countdownActive) return '전투 준비 완료'
-    if (ready) return '매칭이 준비됐어요'
+    if (ready) return debugHoldActive ? '매칭이 완료되었습니다' : '매칭이 준비됐어요'
     if (failed) return '매칭을 준비하지 못했습니다'
     if (status === 'awaiting-room') return '방을 준비하는 중'
     if (status === 'staging') return '매칭 구성 중'
@@ -936,6 +1050,12 @@ function MatchingOverlay({
       return `${gameName} 전투로 이동합니다…`
     }
     if (ready) {
+      if (debugHoldActive) {
+        return (
+          message ||
+          `${gameName} 전투 자동 시작이 일시 중지되었습니다. 디버그 정보를 확인한 뒤 전투 화면을 여세요.`
+        )
+      }
       return message || `${heroName}이(가) ${gameName} 전투를 시작할 준비가 끝났습니다.`
     }
     if (status === 'staging') {
@@ -978,7 +1098,13 @@ function MatchingOverlay({
 
   const showProgress = inFlight && !countdownActive
   const showCancel = inFlight && !countdownActive
-  const primaryLabel = ready ? '확인' : failed ? '닫기' : '진행 중'
+  const primaryLabel = ready
+    ? debugHoldActive
+      ? '전투 화면 열기'
+      : '확인'
+    : failed
+    ? '닫기'
+    : '진행 중'
   const primaryEnabled = ready || failed
   const showActions = !countdownActive && (showCancel || ready || failed)
 
@@ -1065,6 +1191,60 @@ function MatchingOverlay({
           ) : (
             <p style={overlayStyles.countdownEmpty}>대전 상대 정보를 불러오는 중입니다…</p>
           )}
+        </div>
+      ) : null}
+      {debugHoldActive ? (
+        <div style={overlayStyles.debugHoldPanel}>
+          <p style={overlayStyles.debugHoldTitle}>자동 시작이 비활성화되었습니다.</p>
+          {debugHold?.note ? (
+            <p style={overlayStyles.debugHoldMessage}>{debugHold.note}</p>
+          ) : null}
+          {debugHoldMetaItems.length ? (
+            <p style={overlayStyles.debugHoldMeta}>
+              {debugHoldMetaItems.map((item) => (
+                <span key={item} style={overlayStyles.debugHoldMetaItem}>
+                  {item}
+                </span>
+              ))}
+            </p>
+          ) : null}
+          {debugHoldIssues.length ? (
+            <ul style={overlayStyles.debugHoldIssues}>
+              {debugHoldIssues.map((issue, index) => (
+                <li key={`hold-issue-${index}`} style={overlayStyles.debugHoldIssue}>
+                  {issue}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {debugHoldAssignments.length ? (
+            <div style={overlayStyles.debugHoldGrid}>
+              {debugHoldAssignments.map((assignment, index) => (
+                <div key={`${assignment.role}-${index}`} style={overlayStyles.debugHoldColumn}>
+                  <p style={overlayStyles.debugHoldRole}>{assignment.role}</p>
+                  {assignment.members.length ? (
+                    assignment.members.map((member) => {
+                      const ownerLabel = member.ownerId ? `소유자 ${member.ownerId}` : '소유자 정보 없음'
+                      const heroLabel = member.heroId ? `히어로 ${member.heroId}` : '히어로 정보 없음'
+                      return (
+                        <p key={`${assignment.role}-${member.index}`} style={overlayStyles.debugHoldMember}>
+                          {member.heroName || '참가자'}
+                          <span style={overlayStyles.debugHoldMemberMeta}>
+                            {ownerLabel} · {heroLabel}
+                            {member.standin ? ' · 대역' : ''}
+                            {member.ready ? ' · 준비 완료' : ''}
+                            {member.status ? ` · ${member.status}` : ''}
+                          </span>
+                        </p>
+                      )
+                    })
+                  ) : (
+                    <p style={overlayStyles.debugHoldMember}>배정된 인원이 없습니다.</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
       {showActions ? (
@@ -1248,6 +1428,7 @@ export default function CharacterPlayPanel({ hero, playData }) {
     queueMode: null,
     matchCode: null,
     countdown: null,
+    debugHold: null,
   })
   const matchTaskRef = useRef(null)
   const queuePollRef = useRef(null)
@@ -1797,6 +1978,7 @@ export default function CharacterPlayPanel({ hero, playData }) {
       queueMode: null,
       matchCode: null,
       countdown: null,
+      debugHold: null,
     })
     appendDebug('overlay:reset')
   }, [appendDebug, clearCountdown, clearQueueWatch])
@@ -1837,6 +2019,10 @@ export default function CharacterPlayPanel({ hero, playData }) {
       participants = [],
       fallbackParticipant = null,
       initialSeconds = 5,
+      assignments = [],
+      reconciled = null,
+      inserted = null,
+      removed = null,
     }) => {
       if (!gameId || typeof window === 'undefined') return
 
@@ -1849,6 +2035,66 @@ export default function CharacterPlayPanel({ hero, playData }) {
           : fallbackParticipant
           ? [fallbackParticipant]
           : []
+
+      const holdSnapshot = MATCH_DEBUG_HOLD_ENABLED
+        ? buildDebugHoldSnapshot({
+            queueMode,
+            sessionId,
+            matchCode,
+            assignments,
+            participants: finalParticipants,
+            reconciled,
+            inserted,
+            removed,
+            note:
+              queueMode === 'realtime'
+                ? '실시간 매치 자동 시작이 일시 중단되었습니다. 디버그 정보를 확인한 뒤 전투 화면을 여세요.'
+                : '비실시간 매치 자동 시작이 일시 중단되었습니다. 구성 결과를 확인한 뒤 전투 화면을 여세요.',
+          })
+        : null
+
+      if (MATCH_DEBUG_HOLD_ENABLED) {
+        autoLaunchRef.current = false
+        pendingLaunchRef.current = {
+          gameId,
+          queueMode,
+          sessionId,
+          matchCode,
+        }
+        countdownRemainingRef.current = seconds
+
+        appendDebug('overlay:launch-hold', {
+          gameId,
+          queueMode,
+          sessionId,
+          matchCode,
+          assignments: holdSnapshot?.assignments || [],
+          issues: holdSnapshot?.issues || [],
+        })
+
+        setMatchingState((prev) => ({
+          ...prev,
+          open: true,
+          phase: 'ready',
+          progress: 100,
+          message:
+            queueMode === 'realtime'
+              ? '디버그 모드: 자동 시작을 중단했습니다. 수동으로 전투 화면을 열어 주세요.'
+              : '디버그 모드: 자동 시작을 중단했습니다. 구성 결과를 확인해 주세요.',
+          error: '',
+          queueMode,
+          sessionId: sessionId ?? prev.sessionId ?? null,
+          matchCode: matchCode ?? prev.matchCode ?? null,
+          countdown: null,
+          debugHold: holdSnapshot,
+        }))
+
+        if (countdownTimerRef.current) {
+          clearInterval(countdownTimerRef.current)
+          countdownTimerRef.current = null
+        }
+        return
+      }
 
       autoLaunchRef.current = true
       pendingLaunchRef.current = {
@@ -1885,6 +2131,7 @@ export default function CharacterPlayPanel({ hero, playData }) {
           remaining: seconds,
           participants: finalParticipants,
         },
+        debugHold: null,
       }))
 
       if (countdownTimerRef.current) {
@@ -1978,6 +2225,7 @@ export default function CharacterPlayPanel({ hero, playData }) {
         participants,
         fallbackParticipant,
         initialSeconds: 5,
+        assignments: matchData?.assignments || [],
       })
     },
     [
@@ -2109,6 +2357,7 @@ export default function CharacterPlayPanel({ hero, playData }) {
       autoLaunchRef.current = false
       return
     }
+    if (MATCH_DEBUG_HOLD_ENABLED) return
     if (matchingState.phase !== 'ready') return
     if (matchingState.queueMode !== 'realtime') return
     if (proceedInFlightRef.current) return
@@ -2346,6 +2595,7 @@ export default function CharacterPlayPanel({ hero, playData }) {
                 participants: payload.participants,
                 fallbackParticipant,
                 initialSeconds: 5,
+                assignments: result?.assignments || [],
               })
             }
           } catch (setupError) {
@@ -2637,6 +2887,7 @@ export default function CharacterPlayPanel({ hero, playData }) {
         queueMode={matchingState.queueMode}
         matchCode={matchingState.matchCode}
         countdown={matchingState.countdown}
+        debugHold={matchingState.debugHold}
         debugEntries={debugEntries}
         debugOpen={debugOpen}
         onToggleDebug={() => setDebugOpen((prev) => !prev)}
