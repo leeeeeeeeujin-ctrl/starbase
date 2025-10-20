@@ -341,7 +341,7 @@ function emitUpdate(gameKey, snapshot) {
   if (!listeners || listeners.size === 0) return
   // 디버그/테스트 유틸 적용: 전달되는 snapshot의 주요 정보 시각화 및 기록
   try {
-    const { logError, visualizeState } = require('@/lib/utils/debugTool')
+    const { logError, visualizeState } = require('../../lib/utils/debugTool')
     visualizeState(snapshot, `emitUpdate: 전달된 게임 상태 [${gameKey}]`)
   } catch (e) {}
   listeners.forEach((listener) => {
@@ -361,7 +361,7 @@ function emitUpdate(gameKey, snapshot) {
       listener(enriched)
     } catch (error) {
       try {
-        const { logError } = require('@/lib/utils/debugTool')
+        const { logError } = require('../../lib/utils/debugTool')
         logError(error, '[matchDataStore] 구독자 알림 실패')
       } catch (e) {}
     }
