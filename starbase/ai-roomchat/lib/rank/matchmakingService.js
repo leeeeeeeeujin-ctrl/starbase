@@ -702,7 +702,118 @@ export function runMatching({ mode, roles, queue }) {
   if (!matcher) {
     return { ready: false, assignments: [], totalSlots: 0, error: { type: 'unsupported_mode' } }
   }
-  return matcher({ roles, queue })
+  const result = matcher({ roles, queue })
+
+  // Safe fallback: If enabled and not ready, try a simple exact-fit per-role assignment
+  // ignoring score windows, preserving earliest-joined ordering.
+  const SAFE = String(process.env.RANK_MATCH_SAFE_FALLBACK || '').toLowerCase()
+  const safeEnabled = SAFE === '1' || SAFE === 'true' || SAFE === 'yes'
+  if (!result?.ready && safeEnabled) {
+    const fallback = buildExactFitFallbackAssignments(roles, queue)
+    if (fallback.ready) return fallback
+  }
+
+  return result
+}
+
+// ---------------------------------------------------------------------------
+// Safe exact-fit fallback (minimalistic, score-agnostic)
+// ---------------------------------------------------------------------------
+
+function buildExactFitFallbackAssignments(rawRoles = [], rawQueue = []) {
+  const roles = normalizeRolesForFallback(rawRoles)
+  const totalSlots = roles.reduce((acc, r) => acc + r.slotCount, 0)
+  if (totalSlots === 0) {
+    return { ready: false, assignments: [], totalSlots, maxWindow: 0, error: { type: 'no_active_slots' } }
+  }
+
+  // Normalize queue shape we expect from loadQueueEntries
+  const queue = Array.isArray(rawQueue)
+    ? rawQueue
+        .map((row) => normalizeQueueRowForFallback(row))
+        .filter((e) => e && e.role && e.id)
+        .sort((a, b) => a.joinedAt - b.joinedAt)
+    : []
+
+  const byRole = new Map()
+  queue.forEach((e) => {
+    if (!byRole.has(e.role)) byRole.set(e.role, [])
+    byRole.get(e.role).push(e)
+  })
+
+  const usedHeroIds = new Set()
+  const assignments = []
+
+  for (const role of roles) {
+    const candidates = (byRole.get(role.name) || []).slice()
+    let need = role.slotCount
+    const picked = []
+
+    for (const entry of candidates) {
+      if (need <= 0) break
+      // ensure hero uniqueness globally across roles
+      const heroId = entry.hero_id || entry.heroId
+      if (heroId && usedHeroIds.has(String(heroId))) {
+        continue
+      }
+      picked.push(entry)
+      if (heroId) usedHeroIds.add(String(heroId))
+      need -= 1
+    }
+
+    const roleSlots = []
+    for (let i = 0; i < picked.length; i += 1) roleSlots.push(i)
+
+    assignments.push({
+      role: role.name,
+      slots: role.slotCount,
+      roleSlots: roleSlots,
+      members: picked.map((e) => ({ ...e.original })),
+      groups: [],
+      ready: picked.length >= role.slotCount,
+      anchorScore: null,
+      joinedAt: picked[0]?.joinedAt || null,
+    })
+  }
+
+  const filled = assignments.reduce((acc, a) => acc + (Array.isArray(a.members) ? a.members.length : 0), 0)
+  const ready = assignments.every((a) => a.ready)
+  return { ready, assignments, totalSlots, maxWindow: 0 }
+}
+
+function normalizeRolesForFallback(raw = []) {
+  const out = []
+  for (const r of Array.isArray(raw) ? raw : []) {
+    if (!r) continue
+    const name = typeof r === 'string' ? r : r.name || r.role
+    const slotCount = Number(r?.slot_count ?? r?.slotCount ?? r?.slots ?? 0)
+    if (!name || !Number.isFinite(slotCount) || slotCount <= 0) continue
+    out.push({ name: String(name).trim(), slotCount: Math.trunc(slotCount) })
+  }
+  return out
+}
+
+function normalizeQueueRowForFallback(row) {
+  if (!row || typeof row !== 'object') return null
+  const id = row.id ?? row.queue_id ?? row.queueId
+  const role = row.role || row.role_name || row.roleName
+  if (!id || !role) return null
+  // Prefer hero_id; fallback to first of hero_ids; else null
+  let heroId = row.hero_id ?? row.heroId ?? null
+  if (!heroId && Array.isArray(row.hero_ids) && row.hero_ids.length) {
+    heroId = row.hero_ids[0]
+  }
+  const joinedAtRaw = row.joined_at ?? row.joinedAt ?? row.created_at ?? row.createdAt
+  const joinedAt = Number.isFinite(Date.parse(joinedAtRaw)) ? Date.parse(joinedAtRaw) : Date.now()
+  return {
+    id: String(id),
+    role: String(role).trim(),
+    hero_id: heroId != null ? String(heroId) : null,
+    owner_id: row.owner_id ?? row.ownerId ?? null,
+    score: Number.isFinite(Number(row.score)) ? Number(row.score) : 1000,
+    joinedAt,
+    original: row,
+  }
 }
 
 export function extractViewerAssignment({ assignments = [], viewerId, heroId }) {

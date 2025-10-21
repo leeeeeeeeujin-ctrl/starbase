@@ -69,8 +69,76 @@ export default async function handler(req, res) {
   }
 
   const limit = coerceLimit(req.query?.limit)
+  const rawSimple = Array.isArray(req.query?.simple) ? req.query.simple[0] : req.query?.simple
+  const simple = typeof rawSimple === 'string' && ['1', 'true', 'yes', 'on'].includes(rawSimple.toLowerCase())
+  const requestIdFilter = typeof req.query?.requestId === 'string' ? req.query.requestId.trim() : ''
 
   try {
+    // Simple mode: skip counts/aggregations and just return recent rows
+    if (simple) {
+  const extendedSelect = 'id, game_id, room_id, session_id, stage, status, reason, match_code, score_window, mode_col:mode, drop_in, request_id, metadata, created_at'
+      const baseSelect = 'id, game_id, room_id, session_id, stage, status, reason, match_code, score_window, created_at'
+
+      async function runSelect(selectClause, includeFilter = true) {
+        let q = supabase
+          .from('rank_matchmaking_logs')
+          .select(selectClause)
+          .order('created_at', { ascending: false })
+          .limit(limit)
+        if (includeFilter && requestIdFilter) q = q.eq('request_id', requestIdFilter)
+        return withTable(supabase, 'rank_matchmaking_logs', () => q)
+      }
+
+      let rowsResult = await runSelect(extendedSelect)
+      if (rowsResult?.error) {
+        // 컬럼 미존재 또는 PostgREST가 mode를 ordered-set aggregate로 파싱할 때 폴백
+        const msg = String(rowsResult.error?.message || '')
+        const isMissingColumn = msg.includes('column') && msg.includes('does not exist')
+        const isModeAggregate = msg.includes('WITHIN GROUP') || msg.toLowerCase().includes('ordered-set')
+        if (isMissingColumn || isModeAggregate) {
+          // request_id 컬럼이 없다면 필터 제거 후 재시도
+          const missingRequestId = msg.toLowerCase().includes('request_id')
+          rowsResult = await runSelect(baseSelect, !missingRequestId)
+        }
+      }
+
+      if (rowsResult?.error) {
+        if (isMissingSupabaseTable(rowsResult.error)) {
+          return res.status(200).json({ available: false, reason: 'missing_table' })
+        }
+        throw rowsResult.error
+      }
+
+      const rows = Array.isArray(rowsResult?.data) ? rowsResult.data : []
+      const recent = rows.map((row) => ({
+        id: row.id,
+        gameId: row.game_id,
+        roomId: row.room_id,
+        sessionId: row.session_id,
+        mode: row.mode_col || row.mode || null,
+        stage: row.stage,
+        status: row.status,
+        reason: row.reason,
+        matchCode: row.match_code,
+        scoreWindow: row.score_window,
+        requestId: row.request_id || null,
+          dropIn: row.drop_in || false,
+          metadata: sanitizeMetadata(row.metadata),
+        createdAt: row.created_at,
+      }))
+
+      return res.status(200).json({
+        available: true,
+        fetchedAt: new Date().toISOString(),
+        limit,
+        total: null,
+        last24h: null,
+        stageBuckets: null,
+        statusCounts: null,
+        recent,
+      })
+    }
+
     const countResult = await withTable(supabase, 'rank_matchmaking_logs', (table) =>
       supabase.from(table).select('id', { count: 'exact', head: true }),
     )
@@ -95,13 +163,29 @@ export default async function handler(req, res) {
 
     const last24h = lastDayResult?.count ?? 0
 
-    const rowsResult = await withTable(supabase, 'rank_matchmaking_logs', (table) =>
-      supabase
-        .from(table)
-        .select('id, game_id, room_id, session_id, mode, stage, status, reason, match_code, score_window, drop_in, metadata, created_at')
+  const extendedSelect = 'id, game_id, room_id, session_id, stage, status, reason, match_code, score_window, mode_col:mode, drop_in, request_id, metadata, created_at'
+    const baseSelect = 'id, game_id, room_id, session_id, stage, status, reason, match_code, score_window, created_at'
+
+    async function runSelect(selectClause, includeFilter = true) {
+      let q = supabase
+        .from('rank_matchmaking_logs')
+        .select(selectClause)
         .order('created_at', { ascending: false })
-        .limit(limit),
-    )
+        .limit(limit)
+      if (includeFilter && requestIdFilter) q = q.eq('request_id', requestIdFilter)
+      return withTable(supabase, 'rank_matchmaking_logs', () => q)
+    }
+
+    let rowsResult = await runSelect(extendedSelect)
+    if (rowsResult?.error) {
+      const msg = String(rowsResult.error?.message || '')
+      const isMissingColumn = msg.includes('column') && msg.includes('does not exist')
+      const isModeAggregate = msg.includes('WITHIN GROUP') || msg.toLowerCase().includes('ordered-set')
+      if (isMissingColumn || isModeAggregate) {
+        const missingRequestId = msg.toLowerCase().includes('request_id')
+        rowsResult = await runSelect(baseSelect, !missingRequestId)
+      }
+    }
 
     if (rowsResult?.error) {
       throw rowsResult.error
@@ -117,13 +201,14 @@ export default async function handler(req, res) {
       gameId: row.game_id,
       roomId: row.room_id,
       sessionId: row.session_id,
-      mode: row.mode,
+      mode: row.mode_col || row.mode || null,
       stage: row.stage,
       status: row.status,
       reason: row.reason,
       matchCode: row.match_code,
       scoreWindow: row.score_window,
-      dropIn: Boolean(row.drop_in),
+      requestId: row.request_id || null,
+      dropIn: row.drop_in || false,
       metadata: sanitizeMetadata(row.metadata),
       createdAt: row.created_at,
     }))

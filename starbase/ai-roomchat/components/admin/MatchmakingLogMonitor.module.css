@@ -31,6 +31,52 @@
 .actions {
   display: flex;
   align-items: center;
+  gap: 0.75rem;
+}
+
+.searchForm {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.searchInput {
+  border: 1px solid rgba(133, 151, 255, 0.35);
+  background: rgba(20, 28, 52, 0.85);
+  color: rgba(232, 237, 255, 0.92);
+  border-radius: 999px;
+  padding: 0.45rem 1rem;
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.18s ease;
+  min-width: 200px;
+}
+
+.searchInput:focus {
+  border-color: rgba(169, 186, 255, 0.75);
+}
+
+.searchButton {
+  border: 1px solid rgba(133, 151, 255, 0.45);
+  background: rgba(44, 58, 102, 0.9);
+  color: rgba(232, 237, 255, 0.92);
+  border-radius: 999px;
+  padding: 0.45rem 1rem;
+  font-size: 0.9rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+.searchButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.searchButton:not(:disabled):hover {
+  background: rgba(66, 82, 138, 0.95);
+  border-color: rgba(169, 186, 255, 0.75);
 }
 
 .refreshButton {
@@ -273,11 +319,38 @@
   letter-spacing: 0.06em;
 }
 
+.multiSlotBadge {
+  font-size: 0.7rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(255, 180, 120, 0.2);
+  border: 1px solid rgba(255, 180, 120, 0.5);
+  color: #ffb078;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
 .recentMeta {
   display: flex;
   gap: 0.75rem;
   font-size: 0.85rem;
   color: rgba(204, 212, 255, 0.75);
+}
+
+.requestId {
+  font-family: 'Fira Code', 'Roboto Mono', monospace;
+  font-size: 0.8rem;
+  color: rgba(169, 186, 255, 0.8);
+}
+
+.recentDetail {
+  margin: 0;
+  font-size: 0.88rem;
+  color: rgba(255, 216, 170, 0.88);
+  background: rgba(56, 40, 14, 0.4);
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 180, 110, 0.3);
 }
 
 .recentReason {

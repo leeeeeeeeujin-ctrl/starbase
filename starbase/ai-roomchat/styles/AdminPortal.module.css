@@ -10,7 +10,7 @@
 
 .main {
   width: 100%;
-  max-width: 840px;
+  max-width: 1400px;
   background: rgba(7, 10, 18, 0.82);
   backdrop-filter: blur(14px);
   border: 1px solid rgba(94, 113, 255, 0.25);
@@ -30,6 +30,70 @@
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.5rem;
+  border-bottom: 2px solid rgba(94, 113, 255, 0.2);
+  padding-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.tab {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  background: transparent;
+  color: rgba(220, 228, 255, 0.7);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 12px 12px 0 0;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.tab:hover {
+  background: rgba(94, 113, 255, 0.1);
+  color: rgba(220, 228, 255, 0.9);
+}
+
+.tab.active {
+  background: rgba(94, 113, 255, 0.2);
+  color: #ffffff;
+  border-bottom: 3px solid rgba(149, 167, 255, 0.8);
+}
+
+.tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(149, 167, 255, 0.8), transparent);
+}
+
+.tabContent {
+  margin-top: 1.5rem;
+}
+
+.tabPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .grid {

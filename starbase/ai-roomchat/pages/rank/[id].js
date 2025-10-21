@@ -15,6 +15,10 @@ export default function GameRoomPage() {
 
   const [showLeaderboard, setShowLeaderboard] = useState(false)
   const [pickRole, setPickRole] = useState('')
+  const [mode, setMode] = useState('rank_solo')
+  const [matchResult, setMatchResult] = useState(null)
+  const [dropInResult, setDropInResult] = useState(null)
+  const [opLoading, setOpLoading] = useState(false)
 
   const handleRequireLogin = useCallback(() => {
     router.replace('/')
@@ -242,6 +246,87 @@ export default function GameRoomPage() {
         roleOccupancy={roleOccupancy}
         roleLeaderboards={roleLeaderboards}
       />
+
+      {/* Quick actions: allowed to change main game page UI */}
+      <div style={{ marginTop: 16, padding: 16, borderTop: '1px solid rgba(148,163,255,0.25)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+          <label style={{ fontSize: 14, opacity: 0.85 }}>Mode</label>
+          <select value={mode} onChange={(e) => setMode(e.target.value)} style={{ padding: '6px 10px', borderRadius: 8 }}>
+            <option value="rank_solo">Rank Solo</option>
+            <option value="rank_duo">Rank Duo</option>
+            <option value="casual_match">Casual Match</option>
+          </select>
+          <button
+            onClick={async () => {
+              if (!id) return
+              setOpLoading(true)
+              setMatchResult(null)
+              try {
+                const res = await fetch('/api/rank/match', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ gameId: id, mode }),
+                })
+                const data = await res.json().catch(() => ({}))
+                setMatchResult({ ok: res.ok, data })
+              } catch (e) {
+                setMatchResult({ ok: false, data: { error: e.message } })
+              } finally {
+                setOpLoading(false)
+              }
+            }}
+            disabled={opLoading}
+            style={{ padding: '8px 12px', borderRadius: 10, background: '#4f46e5', color: '#fff', border: 'none', cursor: 'pointer' }}
+          >
+            {opLoading ? 'Matching…' : 'Quick Match'}
+          </button>
+          <button
+            onClick={async () => {
+              if (!id) return
+              setOpLoading(true)
+              setDropInResult(null)
+              try {
+                const res = await fetch('/api/rank/drop-in', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ gameId: id, mode }),
+                })
+                const data = await res.json().catch(() => ({}))
+                setDropInResult({ ok: res.ok, data })
+              } catch (e) {
+                setDropInResult({ ok: false, data: { error: e.message } })
+              } finally {
+                setOpLoading(false)
+              }
+            }}
+            disabled={opLoading}
+            style={{ padding: '8px 12px', borderRadius: 10, background: '#0ea5e9', color: '#083344', border: 'none', cursor: 'pointer' }}
+          >
+            {opLoading ? 'Applying…' : 'Drop-in Now'}
+          </button>
+        </div>
+
+        {(matchResult || dropInResult) && (
+          <div style={{ display: 'grid', gap: 8 }}>
+            {matchResult && (
+              <div style={{ background: 'rgba(79,70,229,0.08)', border: '1px solid rgba(79,70,229,0.25)', borderRadius: 12, padding: 12 }}>
+                <strong>Match Result:</strong>
+                <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, margin: '6px 0 0' }}>
+                  {JSON.stringify(matchResult.data, null, 2)}
+                </pre>
+              </div>
+            )}
+            {dropInResult && (
+              <div style={{ background: 'rgba(14,165,233,0.08)', border: '1px solid rgba(14,165,233,0.25)', borderRadius: 12, padding: 12 }}>
+                <strong>Drop-in Result:</strong>
+                <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, margin: '6px 0 0' }}>
+                  {JSON.stringify(dropInResult.data, null, 2)}
+                </pre>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {showLeaderboard && (
         <LeaderboardDrawer gameId={id} onClose={() => setShowLeaderboard(false)} />

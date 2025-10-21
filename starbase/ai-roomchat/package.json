@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "vercel:env": "node scripts/syncVercelEnv.js",
     "refresh:blueprint-progress": "node scripts/refresh-rank-blueprint-progress.js",
     "check:blueprint-progress-freshness": "node scripts/check-rank-blueprint-progress-freshness.js",
     "check:blueprint-next-actions": "node scripts/check-rank-blueprint-next-actions.js",
@@ -19,6 +20,7 @@
   "dependencies": {
     "@supabase/auth-helpers-nextjs": "^0.10.0",
     "@supabase/supabase-js": "2.45.4",
+    "openai": "^4.67.1",
     "googleapis": "^161.0.0",
     "next": "14.2.5",
     "node-fetch": "^3.3.2",

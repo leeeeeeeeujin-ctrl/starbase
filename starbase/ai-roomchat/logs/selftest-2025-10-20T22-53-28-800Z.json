@@ -1,0 +1,21 @@
+{
+  "ok": false,
+  "steps": [
+    {
+      "name": "fetch-data",
+      "status": "ok",
+      "durationMs": 426,
+      "gameId": "32016769-a967-44ea-81e6-3142a1fad5fb",
+      "gameName": "433434666",
+      "heroCount": 8
+    },
+    {
+      "name": "error",
+      "status": "fail",
+      "durationMs": 743,
+      "message": "매칭 실패: 알 수 없는 오류",
+      "stack": "Error: 매칭 실패: 알 수 없는 오류\n    at createRealSimulation (file:///C:/Users/yujin/Documents/234423/starbase/ai-roomchat/starbase/ai-roomchat/lib/realTableSimulator.js:83:11)\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async runSelftest (C:\\Users\\yujin\\Documents\\234423\\starbase\\ai-roomchat\\starbase\\ai-roomchat\\scripts\\runSelftest.js:79:21)"
+    }
+  ],
+  "timestamp": "2025-10-20T22:53:28.800Z"
+}

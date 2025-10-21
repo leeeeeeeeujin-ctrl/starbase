@@ -453,7 +453,10 @@ function normalizeJoinedAt(value) {
     return value.trim()
   }
   if (Number.isFinite(value)) {
-    return new Date(value).toISOString()
+    try {
+      const d = new Date(value)
+      if (!Number.isNaN(d.getTime())) return d.toISOString()
+    } catch {}
   }
   return new Date().toISOString()
 }

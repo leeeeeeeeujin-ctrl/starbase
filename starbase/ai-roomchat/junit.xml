@@ -1,0 +1,914 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="jest tests" tests="297" failures="10" errors="0" time="8.396">
+  <testsuite name="matchRankParticipants" errors="0" failures="3" skipped="0" timestamp="2025-10-20T16:21:29" time="1.948" tests="3">
+    <testcase classname="matchRankParticipants marks a room ready when a single-slot role fills its lone seat" name="matchRankParticipants marks a room ready when a single-slot role fills its lone seat" time="0.034">
+      <failure>RangeError: Invalid time value
+    at Date.toISOString (&lt;anonymous&gt;)
+    at toISOString (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\lib\rank\matching.js:456:28)
+    at normalizeJoinedAt (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\lib\rank\matching.js:383:23)
+    at normaliseQueueMember (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\lib\rank\matching.js:179:20)
+    at Array.forEach (&lt;anonymous&gt;)
+    at forEach (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\lib\rank\matching.js:175:14)
+    at buildQueueGroups (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\lib\rank\matching.js:43:18)
+    at Object.&lt;anonymous&gt; (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\__tests__\lib\rank\matching.test.js:36:41)
+    at Promise.then.completed (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\utils.js:298:28)
+    at new Promise (&lt;anonymous&gt;)
+    at callAsyncCircusFn (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\utils.js:231:10)
+    at _callCircusTest (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:316:40)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at _runTest (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:252:3)
+    at _runTestsForDescribeBlock (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:126:9)
+    at _runTestsForDescribeBlock (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:121:9)
+    at run (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:71:3)
+    at runAndTransformResultsToJestFormat (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\legacy-code-todo-rewrite\jestAdapterInit.js:122:21)
+    at jestAdapter (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\legacy-code-todo-rewrite\jestAdapter.js:79:19)
+    at runTestInternal (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-runner\build\runTest.js:367:16)
+    at runTest (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-runner\build\runTest.js:444:34)
+    at Object.worker (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-runner\build\testWorker.js:106:12)</failure>
+    </testcase>
+    <testcase classname="matchRankParticipants combines groups from different roles when score gaps stay within the window" name="matchRankParticipants combines groups from different roles when score gaps stay within the window" time="0.001">
+      <failure>RangeError: Invalid time value
+    at Date.toISOString (&lt;anonymous&gt;)
+    at toISOString (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\lib\rank\matching.js:456:28)
+    at normalizeJoinedAt (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\lib\rank\matching.js:383:23)
+    at normaliseQueueMember (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\lib\rank\matching.js:179:20)
+    at Array.forEach (&lt;anonymous&gt;)
+    at forEach (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\lib\rank\matching.js:175:14)
+    at buildQueueGroups (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\lib\rank\matching.js:43:18)
+    at Object.&lt;anonymous&gt; (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\__tests__\lib\rank\matching.test.js:55:41)
+    at Promise.then.completed (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\utils.js:298:28)
+    at new Promise (&lt;anonymous&gt;)
+    at callAsyncCircusFn (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\utils.js:231:10)
+    at _callCircusTest (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:316:40)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at _runTest (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:252:3)
+    at _runTestsForDescribeBlock (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:126:9)
+    at _runTestsForDescribeBlock (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:121:9)
+    at run (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:71:3)
+    at runAndTransformResultsToJestFormat (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\legacy-code-todo-rewrite\jestAdapterInit.js:122:21)
+    at jestAdapter (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\legacy-code-todo-rewrite\jestAdapter.js:79:19)
+    at runTestInternal (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-runner\build\runTest.js:367:16)
+    at runTest (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-runner\build\runTest.js:444:34)
+    at Object.worker (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-runner\build\testWorker.js:106:12)</failure>
+    </testcase>
+    <testcase classname="matchRankParticipants splits rooms when cross-role score gaps exceed the allowed window" name="matchRankParticipants splits rooms when cross-role score gaps exceed the allowed window" time="0.005">
+      <failure>RangeError: Invalid time value
+    at Date.toISOString (&lt;anonymous&gt;)
+    at toISOString (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\lib\rank\matching.js:456:28)
+    at normalizeJoinedAt (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\lib\rank\matching.js:383:23)
+    at normaliseQueueMember (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\lib\rank\matching.js:179:20)
+    at Array.forEach (&lt;anonymous&gt;)
+    at forEach (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\lib\rank\matching.js:175:14)
+    at buildQueueGroups (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\lib\rank\matching.js:43:18)
+    at Object.&lt;anonymous&gt; (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\__tests__\lib\rank\matching.test.js:73:41)
+    at Promise.then.completed (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\utils.js:298:28)
+    at new Promise (&lt;anonymous&gt;)
+    at callAsyncCircusFn (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\utils.js:231:10)
+    at _callCircusTest (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:316:40)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at _runTest (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:252:3)
+    at _runTestsForDescribeBlock (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:126:9)
+    at _runTestsForDescribeBlock (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:121:9)
+    at run (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:71:3)
+    at runAndTransformResultsToJestFormat (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\legacy-code-todo-rewrite\jestAdapterInit.js:122:21)
+    at jestAdapter (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\legacy-code-todo-rewrite\jestAdapter.js:79:19)
+    at runTestInternal (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-runner\build\runTest.js:367:16)
+    at runTest (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-runner\build\runTest.js:444:34)
+    at Object.worker (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-runner\build\testWorker.js:106:12)</failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="ActiveMatchOverlay" errors="0" failures="1" skipped="0" timestamp="2025-10-20T16:21:29" time="2.007" tests="2">
+    <testcase classname="ActiveMatchOverlay renders overlay when the active session is still valid" name="ActiveMatchOverlay renders overlay when the active session is still valid" time="0.109">
+      <failure>Error: expect(received).not.toBeNull()
+
+Received: null
+    at Object.toBeNull (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\__tests__\components\rank\ActiveMatchOverlay.test.js:114:22)</failure>
+    </testcase>
+    <testcase classname="ActiveMatchOverlay clears stale session storage when participant is missing" name="ActiveMatchOverlay clears stale session storage when participant is missing" time="0.007">
+    </testcase>
+  </testsuite>
+  <testsuite name="promptInterpreter" errors="0" failures="2" skipped="0" timestamp="2025-10-20T16:21:29" time="2.155" tests="7">
+    <testcase classname="promptInterpreter interprets prompt with rules and variables" name="promptInterpreter interprets prompt with rules and variables" time="0.045">
+      <failure>Error: expect(received).toContain(expected) // indexOf
+
+Expected substring: &quot;활성화된 전역 변수: none&quot;
+Received string:    &quot;[규칙]
+게임 진행 전 반드시 체크할 것.
+- 분석/통찰은 조건이 모호하면 실패로 처리하라.
+- 상대를 이해했더라도 능력이 월등하지 않으면 대항 불가. 이해는 행동보다 늦다.
+- 능력은 여건이 될 때만 사용하되, 상시발동 능력은 제약 없이 가능하다.
+- 전투 가능하면 우위를, 불가하면 격차를 서술하라. 언더도그 서사는 배제한다.
+- 전술은 허용하되 역량 차이를 과도하게 상쇄하지 마라. 개연성을 우선하라.
+- 악인이 지는 클리셰 없이 제3자 시점에서 강약만으로 승패를 가려라.
+- 아래 캐릭터는 누구도 주인공이 아니다. 적과 적이 싸워 강약을 가리는 글이다.
+- 글을 300자로 써라.
+(필수) 플레이어는 서로 협력해 위기를 해결하라.
+시네마틱 연출을 중시하라.
+- 응답의 마지막 여덟 줄 중 위 다섯 줄은 공란으로 남겨 두고, 맨 아래 세 줄만 다음 형식으로 채워라.
+- 마지막에서 세 번째 줄에는 이번 턴에서 독보적인 활약을 펼친 캐릭터 이름을 적되, 적합한 인물이 없으면 비워 둔다.
+- 마지막에서 두 번째 줄에는 활성화된 변수명을 공백으로 구분해 적고, 없다면 \&quot;무\&quot;만 적어라.
+- 마지막 줄에는 해당 턴의 판정을 캐릭터 이름과 함께 \&quot;승리\&quot;, \&quot;패배\&quot;, \&quot;탈락\&quot; 중 하나로 선언하고, 판정이 없다면 \&quot;무\&quot;만 적어라.·
+[전역 변수 지침]
+- 전역 변수 FIRE_GUARD: 화염 장벽을 세웠다면 활성화. → 만족하면 응답의 둘째 줄(끝에서 두 번째)에 \&quot;FIRE_GUARD\&quot;를 적어라.
+- 전역 변수 FIRE_GUARD: 화염 장벽을 유지 중일 때. → 만족하면 응답의 둘째 줄(끝에서 두 번째)에 \&quot;FIRE_GUARD\&quot;를 적어라.
+- [전역:CONTROL] 지시: 군중 제어를 우선하라.·
+[로컬 변수 지침]
+- 로컬 변수 LOCAL_CHECK: 해당 슬롯 특수 조건이 충족되면 활성화. → 만족하면 응답의 둘째 줄(끝에서 두 번째)에 \&quot;LOCAL_CHECK\&quot;를 적어라.
+- 로컬 변수 LOCAL_CHECK: 특수 조건 충족. → 만족하면 응답의 둘째 줄(끝에서 두 번째)에 \&quot;LOCAL_CHECK\&quot;를 적어라.
+- [로컬:LOCAL_ONLY] 지시: 이 슬롯만의 경고를 추가하라.·
+[전역 변수 상태]
+- 활성화된 전역 변수: 무·
+[로컬 변수 상태]
+- 활성화된 로컬 변수: 무&quot;
+    at Object.toContain (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\__tests__\lib\rank\promptInterpreter.test.js:75:31)
+    at Promise.then.completed (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\utils.js:298:28)
+    at new Promise (&lt;anonymous&gt;)
+    at callAsyncCircusFn (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\utils.js:231:10)
+    at _callCircusTest (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:316:40)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at _runTest (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:252:3)
+    at _runTestsForDescribeBlock (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:126:9)
+    at _runTestsForDescribeBlock (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:121:9)
+    at run (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:71:3)
+    at runAndTransformResultsToJestFormat (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\legacy-code-todo-rewrite\jestAdapterInit.js:122:21)
+    at jestAdapter (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\legacy-code-todo-rewrite\jestAdapter.js:79:19)
+    at runTestInternal (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-runner\build\runTest.js:367:16)
+    at runTest (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-runner\build\runTest.js:444:34)
+    at Object.worker (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-runner\build\testWorker.js:106:12)</failure>
+    </testcase>
+    <testcase classname="promptInterpreter includes active variable state summaries when provided" name="promptInterpreter includes active variable state summaries when provided" time="0.004">
+    </testcase>
+    <testcase classname="promptInterpreter supports history and pick placeholders while reusing participant maps" name="promptInterpreter supports history and pick placeholders while reusing participant maps" time="0.003">
+    </testcase>
+    <testcase classname="promptInterpreter maps one-based slot placeholders to zero-based participants without duplication" name="promptInterpreter maps one-based slot placeholders to zero-based participants without duplication" time="0.014">
+    </testcase>
+    <testcase classname="promptInterpreter omits default formatting guidance when checklist already covers it" name="promptInterpreter omits default formatting guidance when checklist already covers it" time="0.002">
+      <failure>Error: expect(received).not.toContain(expected) // indexOf
+
+Expected substring: not &quot;- 마지막에서 세 번째 줄에는 이번 턴에서 독보적인 활약을 펼친 캐릭터 이름을 적되, 적합한 인물이 없으면 비워 둔다.&quot;
+Received string:        &quot;[규칙]
+마지막 줄=승패, 마지막 둘째줄=변수명들, 마지막 5줄=공백.
+- 마지막에서 세 번째 줄에는 이번 턴에서 독보적인 활약을 펼친 캐릭터 이름을 적되, 적합한 인물이 없으면 비워 둔다.
+- 마지막 줄에는 해당 턴의 판정을 캐릭터 이름과 함께 \&quot;승리\&quot;, \&quot;패배\&quot;, \&quot;탈락\&quot; 중 하나로 선언하고, 판정이 없다면 \&quot;무\&quot;만 적어라.
+
+[전역 변수 지침]
+- 전역 변수 FIRE_GUARD: 화염 장벽을 세웠다면 활성화. → 만족하면 응답의 둘째 줄(끝에서 두 번째)에 \&quot;FIRE_GUARD\&quot;를 적어라.
+- 전역 변수 FIRE_GUARD: 화염 장벽을 유지 중일 때. → 만족하면 응답의 둘째 줄(끝에서 두 번째)에 \&quot;FIRE_GUARD\&quot;를 적어라.
+- [전역:CONTROL] 지시: 군중 제어를 우선하라.
+
+[로컬 변수 지침]
+- 로컬 변수 LOCAL_CHECK: 해당 슬롯 특수 조건이 충족되면 활성화. → 만족하면 응답의 둘째 줄(끝에서 두 번째)에 \&quot;LOCAL_CHECK\&quot;를 적어라.
+- 로컬 변수 LOCAL_CHECK: 특수 조건 충족. → 만족하면 응답의 둘째 줄(끝에서 두 번째)에 \&quot;LOCAL_CHECK\&quot;를 적어라.
+- [로컬:LOCAL_ONLY] 지시: 이 슬롯만의 경고를 추가하라.
+
+[전역 변수 상태]
+- 활성화된 전역 변수: 무
+
+[로컬 변수 상태]
+- 활성화된 로컬 변수: 무&quot;
+    at Object.toContain (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\__tests__\lib\rank\promptInterpreter.test.js:162:35)
+    at Promise.then.completed (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\utils.js:298:28)
+    at new Promise (&lt;anonymous&gt;)
+    at callAsyncCircusFn (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\utils.js:231:10)
+    at _callCircusTest (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:316:40)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at _runTest (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:252:3)
+    at _runTestsForDescribeBlock (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:126:9)
+    at _runTestsForDescribeBlock (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:121:9)
+    at run (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:71:3)
+    at runAndTransformResultsToJestFormat (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\legacy-code-todo-rewrite\jestAdapterInit.js:122:21)
+    at jestAdapter (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\legacy-code-todo-rewrite\jestAdapter.js:79:19)
+    at runTestInternal (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-runner\build\runTest.js:367:16)
+    at runTest (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-runner\build\runTest.js:444:34)
+    at Object.worker (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-runner\build\testWorker.js:106:12)</failure>
+    </testcase>
+    <testcase classname="promptInterpreter prefers toggle-provided rules over duplicate base guidance" name="promptInterpreter prefers toggle-provided rules over duplicate base guidance" time="0.002">
+    </testcase>
+    <testcase classname="promptInterpreter replaces spectator slots with active heroes from the same role" name="promptInterpreter replaces spectator slots with active heroes from the same role" time="0.011">
+    </testcase>
+  </testsuite>
+  <testsuite name="startConnectionRegistry" errors="0" failures="2" skipped="0" timestamp="2025-10-20T16:21:31" time="0.184" tests="3">
+    <testcase classname="startConnectionRegistry registerMatchConnections stores roster entries for each assignment" name="startConnectionRegistry registerMatchConnections stores roster entries for each assignment" time="0.032">
+      <failure>Error: expect(received).toBe(expected) // Object.is equality
+
+Expected: 1
+Received: 0
+    at Object.toBe (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\__tests__\lib\rank\startConnectionRegistry.test.js:89:32)
+    at Promise.then.completed (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\utils.js:298:28)
+    at new Promise (&lt;anonymous&gt;)
+    at callAsyncCircusFn (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\utils.js:231:10)
+    at _callCircusTest (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:316:40)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at _runTest (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:252:3)
+    at _runTestsForDescribeBlock (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:126:9)
+    at _runTestsForDescribeBlock (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:121:9)
+    at run (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:71:3)
+    at runAndTransformResultsToJestFormat (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\legacy-code-todo-rewrite\jestAdapterInit.js:122:21)
+    at jestAdapter (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\legacy-code-todo-rewrite\jestAdapter.js:79:19)
+    at runTestInternal (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-runner\build\runTest.js:367:16)
+    at runTest (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-runner\build\runTest.js:444:34)
+    at Object.worker (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-runner\build\testWorker.js:106:12)</failure>
+    </testcase>
+    <testcase classname="startConnectionRegistry registerMatchConnections updates existing owner entry with latest hero and slot data" name="startConnectionRegistry registerMatchConnections updates existing owner entry with latest hero and slot data" time="0.008">
+      <failure>Error: expect(received).toBe(expected) // Object.is equality
+
+Expected: 2
+Received: 0
+    at Object.toBe (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\__tests__\lib\rank\startConnectionRegistry.test.js:129:32)
+    at Promise.then.completed (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\utils.js:298:28)
+    at new Promise (&lt;anonymous&gt;)
+    at callAsyncCircusFn (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\utils.js:231:10)
+    at _callCircusTest (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:316:40)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at _runTest (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:252:3)
+    at _runTestsForDescribeBlock (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:126:9)
+    at _runTestsForDescribeBlock (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:121:9)
+    at run (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:71:3)
+    at runAndTransformResultsToJestFormat (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\legacy-code-todo-rewrite\jestAdapterInit.js:122:21)
+    at jestAdapter (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\legacy-code-todo-rewrite\jestAdapter.js:79:19)
+    at runTestInternal (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-runner\build\runTest.js:367:16)
+    at runTest (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-runner\build\runTest.js:444:34)
+    at Object.worker (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-runner\build\testWorker.js:106:12)</failure>
+    </testcase>
+    <testcase classname="startConnectionRegistry removeConnectionEntries clears roster for the specified game" name="startConnectionRegistry removeConnectionEntries clears roster for the specified game" time="0.002">
+    </testcase>
+  </testsuite>
+  <testsuite name="rank prompt compileTemplate" errors="0" failures="1" skipped="0" timestamp="2025-10-20T16:21:31" time="0.148" tests="3">
+    <testcase classname="rank prompt compileTemplate supports zero-based slot placeholders" name="rank prompt compileTemplate supports zero-based slot placeholders" time="0.007">
+      <failure>Error: expect(received).toBe(expected) // Object.is equality
+
+Expected: &quot;Alpha vs Beta&quot;
+Received: &quot;Alpha vs Alpha&quot;
+    at Object.toBe (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\__tests__\lib\rank\prompt.test.js:30:18)
+    at Promise.then.completed (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\utils.js:298:28)
+    at new Promise (&lt;anonymous&gt;)
+    at callAsyncCircusFn (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\utils.js:231:10)
+    at _callCircusTest (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:316:40)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at _runTest (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:252:3)
+    at _runTestsForDescribeBlock (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:126:9)
+    at _runTestsForDescribeBlock (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:121:9)
+    at run (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\run.js:71:3)
+    at runAndTransformResultsToJestFormat (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\legacy-code-todo-rewrite\jestAdapterInit.js:122:21)
+    at jestAdapter (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-circus\build\legacy-code-todo-rewrite\jestAdapter.js:79:19)
+    at runTestInternal (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-runner\build\runTest.js:367:16)
+    at runTest (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-runner\build\runTest.js:444:34)
+    at Object.worker (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\jest-runner\build\testWorker.js:106:12)</failure>
+    </testcase>
+    <testcase classname="rank prompt compileTemplate fills slot metadata for zero-based placeholders" name="rank prompt compileTemplate fills slot metadata for zero-based placeholders" time="0.001">
+    </testcase>
+    <testcase classname="rank prompt compileTemplate produces zero-based random slot index" name="rank prompt compileTemplate produces zero-based random slot index" time="0.002">
+    </testcase>
+  </testsuite>
+  <testsuite name="useMakerHome" errors="0" failures="1" skipped="0" timestamp="2025-10-20T16:21:31" time="0.384" tests="3">
+    <testcase classname="useMakerHome invokes onUnauthorized when no user is returned" name="useMakerHome invokes onUnauthorized when no user is returned" time="0.041">
+    </testcase>
+    <testcase classname="useMakerHome refreshes prompt sets for the authenticated user" name="useMakerHome refreshes prompt sets for the authenticated user" time="0.004">
+    </testcase>
+    <testcase classname="useMakerHome imports prompt set bundles and records version notices" name="useMakerHome imports prompt set bundles and records version notices" time="0.001">
+      <failure>Error: 로그인이 필요합니다.
+    at Object.importFromFile (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\hooks\maker\useMakerHome.js:187:23)
+    at importFromFile (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\__tests__\hooks\maker\useMakerHome.test.js:141:25)
+    at act (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\node_modules\react\cjs\react.development.js:2512:16)
+    at Object.&lt;anonymous&gt; (C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\__tests__\hooks\maker\useMakerHome.test.js:140:14)</failure>
+    </testcase>
+  </testsuite>
+  <testsuite name="POST /api/rank/session-meta" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:31" time="0.438" tests="24">
+    <testcase classname="POST /api/rank/session-meta rejects non-POST methods" name="POST /api/rank/session-meta rejects non-POST methods" time="0.044">
+    </testcase>
+    <testcase classname="POST /api/rank/session-meta requires authorization" name="POST /api/rank/session-meta requires authorization" time="0.004">
+    </testcase>
+    <testcase classname="POST /api/rank/session-meta returns 401 when Supabase user lookup fails" name="POST /api/rank/session-meta returns 401 when Supabase user lookup fails" time="0.011">
+    </testcase>
+    <testcase classname="POST /api/rank/session-meta persists session meta and turn-state events" name="POST /api/rank/session-meta persists session meta and turn-state events" time="0.021">
+    </testcase>
+    <testcase classname="POST /api/rank/session-meta passes extras payload to the RPC when provided" name="POST /api/rank/session-meta passes extras payload to the RPC when provided" time="0.013">
+    </testcase>
+    <testcase classname="POST /api/rank/session-meta returns 404 when session is not found" name="POST /api/rank/session-meta returns 404 when session is not found" time="0.006">
+    </testcase>
+    <testcase classname="POST /api/rank/session-meta rejects when caller is not the session owner" name="POST /api/rank/session-meta rejects when caller is not the session owner" time="0.069">
+    </testcase>
+    <testcase classname="POST /api/rank/session-meta falls back to user RPC when service role auth fails" name="POST /api/rank/session-meta falls back to user RPC when service role auth fails" time="0.01">
+    </testcase>
+    <testcase classname="POST /api/rank/session-meta returns 500 when both service role and fallback RPC calls fail" name="POST /api/rank/session-meta returns 500 when both service role and fallback RPC calls fail" time="0.016">
+    </testcase>
+    <testcase classname="POST /api/rank/session-meta allows session collaborators occupying the room to update meta" name="POST /api/rank/session-meta allows session collaborators occupying the room to update meta" time="0.007">
+    </testcase>
+    <testcase classname="POST /api/rank/session-meta allows collaborators when logs are missing but room belongs to session owner" name="POST /api/rank/session-meta allows collaborators when logs are missing but room belongs to session owner" time="0.024">
+    </testcase>
+    <testcase classname="POST /api/rank/session-meta rejects room collaborators when room game does not match session" name="POST /api/rank/session-meta rejects room collaborators when room game does not match session" time="0.008">
+    </testcase>
+    <testcase classname="POST /api/rank/session-meta rejects room collaborators when room owner differs from session owner" name="POST /api/rank/session-meta rejects room collaborators when room owner differs from session owner" time="0.011">
+    </testcase>
+    <testcase classname="POST /api/rank/session-meta rejects room collaborators when session room differs from payload" name="POST /api/rank/session-meta rejects room collaborators when session room differs from payload" time="0.005">
+    </testcase>
+    <testcase classname="POST /api/rank/session-meta rejects collaborators when fallback room is owned by someone else" name="POST /api/rank/session-meta rejects collaborators when fallback room is owned by someone else" time="0.01">
+    </testcase>
+    <testcase classname="POST /api/rank/session-meta allows session collaborators recorded in match roster to update meta" name="POST /api/rank/session-meta allows session collaborators recorded in match roster to update meta" time="0.004">
+    </testcase>
+    <testcase classname="POST /api/rank/session-meta rejects collaborators without active seats or roster entries" name="POST /api/rank/session-meta rejects collaborators without active seats or roster entries" time="0.01">
+    </testcase>
+    <testcase classname="POST /api/rank/session-meta rejects when session game does not match request payload" name="POST /api/rank/session-meta rejects when session game does not match request payload" time="0.018">
+    </testcase>
+    <testcase classname="POST /api/rank/session-meta returns 400 when session lookup fails" name="POST /api/rank/session-meta returns 400 when session lookup fails" time="0.005">
+    </testcase>
+    <testcase classname="POST /api/rank/session-meta propagates upsert errors" name="POST /api/rank/session-meta propagates upsert errors" time="0.008">
+    </testcase>
+    <testcase classname="POST /api/rank/session-meta continues when turn-state event RPC fails" name="POST /api/rank/session-meta continues when turn-state event RPC fails" time="0.005">
+    </testcase>
+    <testcase classname="POST /api/rank/session-meta falls back to direct table upsert when session meta RPC is missing" name="POST /api/rank/session-meta falls back to direct table upsert when session meta RPC is missing" time="0.005">
+    </testcase>
+    <testcase classname="POST /api/rank/session-meta falls back to direct table upsert when session meta RPC reports an ambiguous session_id" name="POST /api/rank/session-meta falls back to direct table upsert when session meta RPC reports an ambiguous session_id" time="0.01">
+    </testcase>
+    <testcase classname="POST /api/rank/session-meta omits missing legacy columns when falling back to the table upsert" name="POST /api/rank/session-meta omits missing legacy columns when falling back to the table upsert" time="0.004">
+    </testcase>
+  </testsuite>
+  <testsuite name="StartClient hooks" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:31" time="0.66" tests="7">
+    <testcase classname="StartClient hooks increments history version when bumping" name="StartClient hooks increments history version when bumping" time="0.016">
+    </testcase>
+    <testcase classname="StartClient hooks enforces manual response requirement with custom alert" name="StartClient hooks enforces manual response requirement with custom alert" time="0.012">
+    </testcase>
+    <testcase classname="StartClient hooks checks cooldowns and voids session via useStartCooldown" name="StartClient hooks checks cooldowns and voids session via useStartCooldown" time="0.013">
+    </testcase>
+    <testcase classname="StartClient hooks persists active session lifecycle records" name="StartClient hooks persists active session lifecycle records" time="0.006">
+    </testcase>
+    <testcase classname="StartClient hooks voids stalled sessions after exceeding watchdog threshold" name="StartClient hooks voids stalled sessions after exceeding watchdog threshold" time="0.346">
+    </testcase>
+    <testcase classname="StartClient hooks resets watchdog timer when new progress is detected" name="StartClient hooks resets watchdog timer when new progress is detected" time="0.004">
+    </testcase>
+    <testcase classname="StartClient hooks tracks API key changes and emits timeline events" name="StartClient hooks tracks API key changes and emits timeline events" time="0.01">
+    </testcase>
+  </testsuite>
+  <testsuite name="notify-audio-event-trends helpers" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:32" time="0.387" tests="9">
+    <testcase classname="notify-audio-event-trends helpers normalises buckets and fills gaps" name="notify-audio-event-trends helpers normalises buckets and fills gaps" time="0.009">
+    </testcase>
+    <testcase classname="notify-audio-event-trends helpers summarises trend deltas" name="notify-audio-event-trends helpers summarises trend deltas" time="0.003">
+    </testcase>
+    <testcase classname="notify-audio-event-trends helpers formats delta strings" name="notify-audio-event-trends helpers formats delta strings" time="0.07">
+    </testcase>
+    <testcase classname="notify-audio-event-trends helpers builds Slack payload with anomaly and distribution" name="notify-audio-event-trends helpers builds Slack payload with anomaly and distribution" time="0.002">
+    </testcase>
+    <testcase classname="notify-audio-event-trends helpers formats numbers with thousands separators" name="notify-audio-event-trends helpers formats numbers with thousands separators" time="0.001">
+    </testcase>
+    <testcase classname="notify-audio-event-trends helpers detects anomalies based on deltas" name="notify-audio-event-trends helpers detects anomalies based on deltas" time="0.011">
+    </testcase>
+    <testcase classname="notify-audio-event-trends helpers summarises hero distribution" name="notify-audio-event-trends helpers summarises hero distribution" time="0.001">
+    </testcase>
+    <testcase classname="notify-audio-event-trends helpers includes subscription highlights in Slack payload" name="notify-audio-event-trends helpers includes subscription highlights in Slack payload" time="0.001">
+    </testcase>
+    <testcase classname="notify-audio-event-trends helpers summarises filters and slack metadata for subscriptions" name="notify-audio-event-trends helpers summarises filters and slack metadata for subscriptions" time="0.001">
+    </testcase>
+  </testsuite>
+  <testsuite name="fetchLatestSessionRow" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:32" time="0.204" tests="23">
+    <testcase classname="fetchLatestSessionRow returns the RPC payload when available" name="fetchLatestSessionRow returns the RPC payload when available" time="0.001">
+    </testcase>
+    <testcase classname="fetchLatestSessionRow returns session history when rank_turns rows exist" name="fetchLatestSessionRow returns session history when rank_turns rows exist" time="0.008">
+    </testcase>
+    <testcase classname="fetchLatestSessionRow passes the owner filter when provided" name="fetchLatestSessionRow passes the owner filter when provided" time="0.001">
+    </testcase>
+    <testcase classname="fetchLatestSessionRow returns null when the RPC reports ambiguity" name="fetchLatestSessionRow returns null when the RPC reports ambiguity" time="0.027">
+    </testcase>
+    <testcase classname="fetchLatestSessionRow returns null when the RPC is missing" name="fetchLatestSessionRow returns null when the RPC is missing" time="0.005">
+    </testcase>
+    <testcase classname="fetchLatestSessionRow uses the latest-session API in the browser" name="fetchLatestSessionRow uses the latest-session API in the browser" time="0.001">
+    </testcase>
+    <testcase classname="fetchLatestSessionRow emits diagnostics when the browser API fails" name="fetchLatestSessionRow emits diagnostics when the browser API fails" time="0.002">
+    </testcase>
+    <testcase classname="fetchLatestSessionRow emits diagnostics when the browser API reports a 200 response with RPC metadata" name="fetchLatestSessionRow emits diagnostics when the browser API reports a 200 response with RPC metadata" time="0.001">
+    </testcase>
+    <testcase classname="fetchLatestSessionRow returns a session row when the browser API recovers from an ordered-set error" name="fetchLatestSessionRow returns a session row when the browser API recovers from an ordered-set error" time="0.001">
+    </testcase>
+    <testcase classname="fetchLatestSessionRow emits an ordered-set hint when the browser API reports a WITHIN GROUP error" name="fetchLatestSessionRow emits an ordered-set hint when the browser API reports a WITHIN GROUP error" time="0.001">
+    </testcase>
+    <testcase classname="loadMatchFlowSnapshot throws an ordered-set aggregate error when the snapshot RPC fails without WITHIN GROUP" name="loadMatchFlowSnapshot throws an ordered-set aggregate error when the snapshot RPC fails without WITHIN GROUP" time="0.001">
+    </testcase>
+    <testcase classname="loadMatchFlowSnapshot throws a snapshot return type mismatch error when the RPC body is misconfigured" name="loadMatchFlowSnapshot throws a snapshot return type mismatch error when the RPC body is misconfigured" time="0.001">
+    </testcase>
+    <testcase classname="loadMatchFlowSnapshot throws a snapshot SQL syntax error when the RPC was pasted with placeholders" name="loadMatchFlowSnapshot throws a snapshot SQL syntax error when the RPC was pasted with placeholders" time="0.001">
+    </testcase>
+    <testcase classname="loadMatchFlowSnapshot maps the RPC snapshot payload into the match-ready structure" name="loadMatchFlowSnapshot maps the RPC snapshot payload into the match-ready structure" time="0.001">
+    </testcase>
+    <testcase classname="loadMatchFlowSnapshot fills pending async seats with stand-in candidates" name="loadMatchFlowSnapshot fills pending async seats with stand-in candidates" time="0.009">
+    </testcase>
+    <testcase classname="loadMatchFlowSnapshot creates placeholder roster entries when async seats are missing" name="loadMatchFlowSnapshot creates placeholder roster entries when async seats are missing" time="0.001">
+    </testcase>
+    <testcase classname="loadMatchFlowSnapshot hydrates async fill queue via the async stand-in API when the snapshot queue is empty" name="loadMatchFlowSnapshot hydrates async fill queue via the async stand-in API when the snapshot queue is empty" time="0.002">
+    </testcase>
+    <testcase classname="loadMatchFlowSnapshot assigns stand-ins even when initial roster is empty" name="loadMatchFlowSnapshot assigns stand-ins even when initial roster is empty" time="0.002">
+    </testcase>
+    <testcase classname="loadMatchFlowSnapshot fills vacancies when pending seat data is missing but seat indexes reveal gaps" name="loadMatchFlowSnapshot fills vacancies when pending seat data is missing but seat indexes reveal gaps" time="0.001">
+    </testcase>
+    <testcase classname="loadMatchFlowSnapshot prefers stand-in candidates that match the pending seat role" name="loadMatchFlowSnapshot prefers stand-in candidates that match the pending seat role" time="0.001">
+    </testcase>
+    <testcase classname="loadMatchFlowSnapshot chooses the closest rating stand-in when multiple candidates share the role" name="loadMatchFlowSnapshot chooses the closest rating stand-in when multiple candidates share the role" time="0.006">
+    </testcase>
+    <testcase classname="loadMatchFlowSnapshot raises a latest-session hint when the RPC is unavailable" name="loadMatchFlowSnapshot raises a latest-session hint when the RPC is unavailable" time="0.007">
+    </testcase>
+    <testcase classname="loadMatchFlowSnapshot raises an ordered-set hint when the latest-session RPC is missing WITHIN GROUP" name="loadMatchFlowSnapshot raises an ordered-set hint when the latest-session RPC is missing WITHIN GROUP" time="0.002">
+    </testcase>
+  </testsuite>
+  <testsuite name="GET /api/admin/audio-events" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:32" time="0.302" tests="11">
+    <testcase classname="GET /api/admin/audio-events rejects non-GET methods" name="GET /api/admin/audio-events rejects non-GET methods" time="0.05">
+    </testcase>
+    <testcase classname="GET /api/admin/audio-events requires the admin password to be configured" name="GET /api/admin/audio-events requires the admin password to be configured" time="0.003">
+    </testcase>
+    <testcase classname="GET /api/admin/audio-events rejects missing session tokens" name="GET /api/admin/audio-events rejects missing session tokens" time="0.01">
+    </testcase>
+    <testcase classname="GET /api/admin/audio-events rejects invalid session tokens" name="GET /api/admin/audio-events rejects invalid session tokens" time="0.004">
+    </testcase>
+    <testcase classname="GET /api/admin/audio-events returns filtered audio events with stats" name="GET /api/admin/audio-events returns filtered audio events with stats" time="0.022">
+    </testcase>
+    <testcase classname="GET /api/admin/audio-events returns empty payload with missing-table notice when audio events table is absent" name="GET /api/admin/audio-events returns empty payload with missing-table notice when audio events table is absent" time="0.003">
+    </testcase>
+    <testcase classname="GET /api/admin/audio-events returns weekly trend data when requested" name="GET /api/admin/audio-events returns weekly trend data when requested" time="0.005">
+    </testcase>
+    <testcase classname="GET /api/admin/audio-events marks weekly trend as missing when the RPC is unavailable" name="GET /api/admin/audio-events marks weekly trend as missing when the RPC is unavailable" time="0.003">
+    </testcase>
+    <testcase classname="GET /api/admin/audio-events returns CSV when requested" name="GET /api/admin/audio-events returns CSV when requested" time="0.008">
+    </testcase>
+    <testcase classname="GET /api/admin/audio-events propagates Supabase errors" name="GET /api/admin/audio-events propagates Supabase errors" time="0.039">
+    </testcase>
+    <testcase classname="GET /api/admin/audio-events handles unexpected errors" name="GET /api/admin/audio-events handles unexpected errors" time="0.033">
+    </testcase>
+  </testsuite>
+  <testsuite name="loadActiveRoles" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:32" time="0.284" tests="36">
+    <testcase classname="loadActiveRoles limits slot counts to active slots when a layout exists" name="loadActiveRoles limits slot counts to active slots when a layout exists" time="0.006">
+    </testcase>
+    <testcase classname="loadActiveRoles falls back to declared counts when no slot layout exists" name="loadActiveRoles falls back to declared counts when no slot layout exists" time="0">
+    </testcase>
+    <testcase classname="loadActiveRoles aggregates duplicate role rows for the same game" name="loadActiveRoles aggregates duplicate role rows for the same game" time="0.001">
+    </testcase>
+    <testcase classname="loadActiveRoles falls back to the rank_games.roles array only when tables are empty" name="loadActiveRoles falls back to the rank_games.roles array only when tables are empty" time="0.001">
+    </testcase>
+    <testcase classname="postCheckMatchAssignments removes duplicate hero entries that do not match their participant role" name="postCheckMatchAssignments removes duplicate hero entries that do not match their participant role" time="0.008">
+    </testcase>
+    <testcase classname="postCheckMatchAssignments enforces role capacity limits after removing duplicates" name="postCheckMatchAssignments enforces role capacity limits after removing duplicates" time="0.001">
+    </testcase>
+    <testcase classname="postCheckMatchAssignments realigns slot roles to declared roles when assignments use merged labels" name="postCheckMatchAssignments realigns slot roles to declared roles when assignments use merged labels" time="0.007">
+    </testcase>
+    <testcase classname="loadRoleLayout builds layout from slot rows when present" name="loadRoleLayout builds layout from slot rows when present" time="0">
+    </testcase>
+    <testcase classname="loadRoleLayout falls back to role rows when slot layout roles mismatch" name="loadRoleLayout falls back to role rows when slot layout roles mismatch" time="0">
+    </testcase>
+    <testcase classname="loadRoleLayout creates layout from role counts when slots are missing" name="loadRoleLayout creates layout from role counts when slots are missing" time="0">
+    </testcase>
+    <testcase classname="loadRoleLayout returns slot layout derived from inline roles array" name="loadRoleLayout returns slot layout derived from inline roles array" time="0.006">
+    </testcase>
+    <testcase classname="loadMatchSampleSource falls back to participant pool when realtime queue is empty" name="loadMatchSampleSource falls back to participant pool when realtime queue is empty" time="0.003">
+    </testcase>
+    <testcase classname="loadMatchSampleSource falls back to queue entries when participant pool is empty" name="loadMatchSampleSource falls back to queue entries when participant pool is empty" time="0.004">
+    </testcase>
+    <testcase classname="loadMatchSampleSource waits for realtime queue before injecting stand-ins when under threshold" name="loadMatchSampleSource waits for realtime queue before injecting stand-ins when under threshold" time="0.001">
+    </testcase>
+    <testcase classname="loadMatchSampleSource keeps realtime queues limited to actual entrants after the wait threshold" name="loadMatchSampleSource keeps realtime queues limited to actual entrants after the wait threshold" time="0.001">
+    </testcase>
+    <testcase classname="enqueueParticipant prefers the participant record hero when queuing" name="enqueueParticipant prefers the participant record hero when queuing" time="0.002">
+    </testcase>
+    <testcase classname="enqueueParticipant falls back to explicit hero when participant entry is missing" name="enqueueParticipant falls back to explicit hero when participant entry is missing" time="0.007">
+    </testcase>
+    <testcase classname="enqueueParticipant selects the hero that matches the requested role when multiple entries exist" name="enqueueParticipant selects the hero that matches the requested role when multiple entries exist" time="0.001">
+    </testcase>
+    <testcase classname="enqueueParticipant allows queuing when already waiting in another queue during the test override" name="enqueueParticipant allows queuing when already waiting in another queue during the test override" time="0.001">
+    </testcase>
+    <testcase classname="enqueueParticipant prevents queuing when already matched in the same queue" name="enqueueParticipant prevents queuing when already matched in the same queue" time="0.007">
+    </testcase>
+    <testcase classname="enqueueParticipant replaces an existing waiting entry in the same queue" name="enqueueParticipant replaces an existing waiting entry in the same queue" time="0">
+    </testcase>
+    <testcase classname="loadOwnerParticipantRoster returns a roster map scoped to the provided owners" name="loadOwnerParticipantRoster returns a roster map scoped to the provided owners" time="0.001">
+    </testcase>
+    <testcase classname="loadOwnerParticipantRoster preserves hero and role assignments for each participant entry" name="loadOwnerParticipantRoster preserves hero and role assignments for each participant entry" time="0.001">
+    </testcase>
+    <testcase classname="runMatching groups solos and duos into a single room within the score window" name="runMatching groups solos and duos into a single room within the score window" time="0.007">
+    </testcase>
+    <testcase classname="runMatching returns a pending room when slots are missing" name="runMatching returns a pending room when slots are missing" time="0.001">
+    </testcase>
+    <testcase classname="runMatching keeps duplicate heroes in separate waiting rooms" name="runMatching keeps duplicate heroes in separate waiting rooms" time="0.001">
+    </testcase>
+    <testcase classname="runMatching ignores participant-pool stand-ins when assembling realtime rooms" name="runMatching ignores participant-pool stand-ins when assembling realtime rooms" time="0.007">
+    </testcase>
+    <testcase classname="runMatching rejects parties that exceed the score window" name="runMatching rejects parties that exceed the score window" time="0.002">
+    </testcase>
+    <testcase classname="filterStaleQueueEntries separates fresh and stale entries based on updated timestamp" name="filterStaleQueueEntries separates fresh and stale entries based on updated timestamp" time="0.001">
+    </testcase>
+    <testcase classname="heartbeatQueueEntry updates the queue entry timestamp when waiting" name="heartbeatQueueEntry updates the queue entry timestamp when waiting" time="0">
+    </testcase>
+    <testcase classname="extractViewerAssignment returns the assignment when the viewer owns a member" name="extractViewerAssignment returns the assignment when the viewer owns a member" time="0">
+    </testcase>
+    <testcase classname="extractViewerAssignment falls back to hero ownership when owner information is missing" name="extractViewerAssignment falls back to hero ownership when owner information is missing" time="0.015">
+    </testcase>
+    <testcase classname="extractViewerAssignment returns null when no members match the viewer or hero" name="extractViewerAssignment returns null when no members match the viewer or hero" time="0.001">
+    </testcase>
+    <testcase classname="sanitizeAssignments removes duplicate owners and heroes across slots while tracking removals" name="sanitizeAssignments removes duplicate owners and heroes across slots while tracking removals" time="0.002">
+    </testcase>
+    <testcase classname="sanitizeAssignments returns a shallow copy when assignments are empty or already sanitized" name="sanitizeAssignments returns a shallow copy when assignments are empty or already sanitized" time="0.012">
+    </testcase>
+    <testcase classname="sanitizeRooms deduplicates slot occupants and accumulates removed members" name="sanitizeRooms deduplicates slot occupants and accumulates removed members" time="0.001">
+    </testcase>
+  </testsuite>
+  <testsuite name="buildSessionMetaRequest" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:32" time="0.156" tests="2">
+    <testcase classname="buildSessionMetaRequest includes sanitized drop-in metadata in turn state events" name="buildSessionMetaRequest includes sanitized drop-in metadata in turn state events" time="0.011">
+    </testcase>
+    <testcase classname="buildSessionMetaRequest passes extras from session meta into the meta payload" name="buildSessionMetaRequest passes extras from session meta into the meta payload" time="0.001">
+    </testcase>
+  </testsuite>
+  <testsuite name="buildCandidateSample" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:32" time="0.255" tests="9">
+    <testcase classname="buildCandidateSample returns queue entries unchanged when realtime matching is enabled" name="buildCandidateSample returns queue entries unchanged when realtime matching is enabled" time="0.002">
+    </testcase>
+    <testcase classname="buildCandidateSample filters participant pool by score window, role targets, and ownership when offline" name="buildCandidateSample filters participant pool by score window, role targets, and ownership when offline" time="0.016">
+    </testcase>
+    <testcase classname="buildCandidateSample falls back to duplicate-owner stand-ins when no unique candidates exist" name="buildCandidateSample falls back to duplicate-owner stand-ins when no unique candidates exist" time="0.001">
+    </testcase>
+    <testcase classname="extractMatchingToggles treats string &quot;false&quot; realtime flag as disabled" name="extractMatchingToggles treats string &quot;false&quot; realtime flag as disabled" time="0">
+    </testcase>
+    <testcase classname="extractMatchingToggles treats string &quot;true&quot; realtime flag as enabled" name="extractMatchingToggles treats string &quot;true&quot; realtime flag as enabled" time="0.001">
+    </testcase>
+    <testcase classname="extractMatchingToggles parses drop-in rule aliases" name="extractMatchingToggles parses drop-in rule aliases" time="0">
+    </testcase>
+    <testcase classname="extractMatchingToggles treats manual string flags as disabled realtime" name="extractMatchingToggles treats manual string flags as disabled realtime" time="0.001">
+    </testcase>
+    <testcase classname="extractMatchingToggles honours match_source overrides for manual games" name="extractMatchingToggles honours match_source overrides for manual games" time="0.001">
+    </testcase>
+    <testcase classname="extractMatchingToggles honours match_source overrides for realtime games" name="extractMatchingToggles honours match_source overrides for realtime games" time="0">
+    </testcase>
+  </testsuite>
+  <testsuite name="RosterPanel visibility controls" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:32" time="0.219" tests="3">
+    <testcase classname="RosterPanel visibility controls masks roster details for unauthorized viewers when details are hidden" name="RosterPanel visibility controls masks roster details for unauthorized viewers when details are hidden" time="0.023">
+    </testcase>
+    <testcase classname="RosterPanel visibility controls reveals full roster details when visibility is enabled" name="RosterPanel visibility controls reveals full roster details when visibility is enabled" time="0.004">
+    </testcase>
+    <testcase classname="RosterPanel visibility controls shows viewer seat details even when roster details are hidden globally" name="RosterPanel visibility controls shows viewer seat details even when roster details are hidden globally" time="0.002">
+    </testcase>
+  </testsuite>
+  <testsuite name="TurnInfoPanel" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:33" time="0.149" tests="1">
+    <testcase classname="TurnInfoPanel highlights critical timer and triggers vibration" name="TurnInfoPanel highlights critical timer and triggers vibration" time="0.013">
+    </testcase>
+  </testsuite>
+  <testsuite name="POST /api/rank/match" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:33" time="0.112" tests="1">
+    <testcase classname="POST /api/rank/match returns sanitized assignments and aggregates removed members" name="POST /api/rank/match returns sanitized assignments and aggregates removed members" time="0.019">
+    </testcase>
+  </testsuite>
+  <testsuite name="buildBattleLogDraft" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:33" time="0.383" tests="2">
+    <testcase classname="buildBattleLogDraft normalizes logs, history, participants, and timeline metadata" name="buildBattleLogDraft normalizes logs, history, participants, and timeline metadata" time="0.047">
+    </testcase>
+    <testcase classname="buildBattleLogDraft annotates drop-in replacements from queue snapshot" name="buildBattleLogDraft annotates drop-in replacements from queue snapshot" time="0.002">
+    </testcase>
+  </testsuite>
+  <testsuite name="POST /api/rank/stage-room-match" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:33" time="0.279" tests="12">
+    <testcase classname="POST /api/rank/stage-room-match rejects non-POST methods" name="POST /api/rank/stage-room-match rejects non-POST methods" time="0.002">
+    </testcase>
+    <testcase classname="POST /api/rank/stage-room-match requires bearer token" name="POST /api/rank/stage-room-match requires bearer token" time="0.002">
+    </testcase>
+    <testcase classname="POST /api/rank/stage-room-match returns 401 when user lookup fails" name="POST /api/rank/stage-room-match returns 401 when user lookup fails" time="0.002">
+    </testcase>
+    <testcase classname="POST /api/rank/stage-room-match returns parse error when request invalid" name="POST /api/rank/stage-room-match returns parse error when request invalid" time="0.002">
+    </testcase>
+    <testcase classname="POST /api/rank/stage-room-match rejects callers who are not the room owner" name="POST /api/rank/stage-room-match rejects callers who are not the room owner" time="0.033">
+    </testcase>
+    <testcase classname="POST /api/rank/stage-room-match propagates role verification failure" name="POST /api/rank/stage-room-match propagates role verification failure" time="0.002">
+    </testcase>
+    <testcase classname="POST /api/rank/stage-room-match propagates participant lookup errors" name="POST /api/rank/stage-room-match propagates participant lookup errors" time="0.001">
+    </testcase>
+    <testcase classname="POST /api/rank/stage-room-match propagates hero lookup errors" name="POST /api/rank/stage-room-match propagates hero lookup errors" time="0.001">
+    </testcase>
+    <testcase classname="POST /api/rank/stage-room-match propagates prepare session errors" name="POST /api/rank/stage-room-match propagates prepare session errors" time="0">
+    </testcase>
+    <testcase classname="POST /api/rank/stage-room-match returns session details on success" name="POST /api/rank/stage-room-match returns session details on success" time="0.003">
+    </testcase>
+    <testcase classname="POST /api/rank/stage-room-match applies sanitized roster when duplicates removed" name="POST /api/rank/stage-room-match applies sanitized roster when duplicates removed" time="0.001">
+    </testcase>
+    <testcase classname="POST /api/rank/stage-room-match filters sanitized roster duplicates targeting the same slot" name="POST /api/rank/stage-room-match filters sanitized roster duplicates targeting the same slot" time="0.009">
+    </testcase>
+  </testsuite>
+  <testsuite name="audio monitor rules API" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:33" time="0.372" tests="9">
+    <testcase classname="audio monitor rules API rejects unsupported methods" name="audio monitor rules API rejects unsupported methods" time="0.068">
+    </testcase>
+    <testcase classname="audio monitor rules API requires configured password" name="audio monitor rules API requires configured password" time="0.003">
+    </testcase>
+    <testcase classname="audio monitor rules API rejects missing session cookie" name="audio monitor rules API rejects missing session cookie" time="0.002">
+    </testcase>
+    <testcase classname="audio monitor rules API rejects invalid session cookie" name="audio monitor rules API rejects invalid session cookie" time="0.003">
+    </testcase>
+    <testcase classname="audio monitor rules API returns stored favorites and subscriptions" name="audio monitor rules API returns stored favorites and subscriptions" time="0.008">
+    </testcase>
+    <testcase classname="audio monitor rules API creates a favorite rule" name="audio monitor rules API creates a favorite rule" time="0.005">
+    </testcase>
+    <testcase classname="audio monitor rules API rejects subscription without channel info" name="audio monitor rules API rejects subscription without channel info" time="0.003">
+    </testcase>
+    <testcase classname="audio monitor rules API updates an existing subscription" name="audio monitor rules API updates an existing subscription" time="0.03">
+    </testcase>
+    <testcase classname="audio monitor rules API deletes a rule" name="audio monitor rules API deletes a rule" time="0.003">
+    </testcase>
+  </testsuite>
+  <testsuite name="pickNextEdge priority handling" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:33" time="0.105" tests="5">
+    <testcase classname="pickNextEdge priority handling prefers variable-driven bridges over other matches" name="pickNextEdge priority handling prefers variable-driven bridges over other matches" time="0.002">
+    </testcase>
+    <testcase classname="pickNextEdge priority handling breaks ties within the same priority group using numeric priority" name="pickNextEdge priority handling breaks ties within the same priority group using numeric priority" time="0">
+    </testcase>
+    <testcase classname="pickNextEdge priority handling prefers response-driven bridges over prompt/turn checks" name="pickNextEdge priority handling prefers response-driven bridges over prompt/turn checks" time="0.001">
+    </testcase>
+    <testcase classname="pickNextEdge priority handling falls back to prompt/turn bridges when no higher tier matches" name="pickNextEdge priority handling falls back to prompt/turn bridges when no higher tier matches" time="0">
+    </testcase>
+    <testcase classname="pickNextEdge priority handling returns fallback edge when no candidates match" name="pickNextEdge priority handling returns fallback edge when no candidates match" time="0.001">
+    </testcase>
+  </testsuite>
+  <testsuite name="POST /api/rank/async-standins" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:33" time="0.179" tests="7">
+    <testcase classname="POST /api/rank/async-standins returns 400 when the payload is invalid" name="POST /api/rank/async-standins returns 400 when the payload is invalid" time="0.017">
+    </testcase>
+    <testcase classname="POST /api/rank/async-standins returns 500 when the RPC throws an error" name="POST /api/rank/async-standins returns 500 when the RPC throws an error" time="0.011">
+    </testcase>
+    <testcase classname="POST /api/rank/async-standins assigns stand-in candidates across multiple seats" name="POST /api/rank/async-standins assigns stand-in candidates across multiple seats" time="0.005">
+    </testcase>
+    <testcase classname="POST /api/rank/async-standins falls back to any role when role-specific results are empty" name="POST /api/rank/async-standins falls back to any role when role-specific results are empty" time="0.002">
+    </testcase>
+    <testcase classname="POST /api/rank/async-standins normalizes generic role labels to null before querying" name="POST /api/rank/async-standins normalizes generic role labels to null before querying" time="0.014">
+    </testcase>
+    <testcase classname="POST /api/rank/async-standins selects a random candidate within tolerance pool" name="POST /api/rank/async-standins selects a random candidate within tolerance pool" time="0.002">
+    </testcase>
+    <testcase classname="POST /api/rank/async-standins widens score tolerance before falling back to generic role" name="POST /api/rank/async-standins widens score tolerance before falling back to generic role" time="0.007">
+    </testcase>
+  </testsuite>
+  <testsuite name="GET /api/admin/errors" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:33" time="0.271" tests="6">
+    <testcase classname="GET /api/admin/errors rejects non-GET methods" name="GET /api/admin/errors rejects non-GET methods" time="0.015">
+    </testcase>
+    <testcase classname="GET /api/admin/errors requires the admin password to be configured" name="GET /api/admin/errors requires the admin password to be configured" time="0.002">
+    </testcase>
+    <testcase classname="GET /api/admin/errors rejects missing session tokens" name="GET /api/admin/errors rejects missing session tokens" time="0.006">
+    </testcase>
+    <testcase classname="GET /api/admin/errors rejects invalid session tokens" name="GET /api/admin/errors rejects invalid session tokens" time="0.008">
+    </testcase>
+    <testcase classname="GET /api/admin/errors returns recent error reports with stats" name="GET /api/admin/errors returns recent error reports with stats" time="0.008">
+    </testcase>
+    <testcase classname="GET /api/admin/errors propagates Supabase errors" name="GET /api/admin/errors propagates Supabase errors" time="0.049">
+    </testcase>
+  </testsuite>
+  <testsuite name="POST /api/rank/ready-timeout" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:33" time="0.148" tests="4">
+    <testcase classname="POST /api/rank/ready-timeout requires authorization" name="POST /api/rank/ready-timeout requires authorization" time="0.016">
+    </testcase>
+    <testcase classname="POST /api/rank/ready-timeout skips updates when no owners are missing" name="POST /api/rank/ready-timeout skips updates when no owners are missing" time="0.004">
+    </testcase>
+    <testcase classname="POST /api/rank/ready-timeout replaces unready owners with stand-in candidates" name="POST /api/rank/ready-timeout replaces unready owners with stand-in candidates" time="0.01">
+    </testcase>
+    <testcase classname="POST /api/rank/ready-timeout returns 404 when the room owner cannot be resolved" name="POST /api/rank/ready-timeout returns 404 when the room owner cannot be resolved" time="0.003">
+    </testcase>
+  </testsuite>
+  <testsuite name="matchDataStore" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:33" time="0.185" tests="9">
+    <testcase classname="matchDataStore stores hero selection per game" name="matchDataStore stores hero selection per game" time="0.007">
+    </testcase>
+    <testcase classname="matchDataStore keeps participation lists and hero options" name="matchDataStore keeps participation lists and hero options" time="0.004">
+    </testcase>
+    <testcase classname="matchDataStore builds async fill snapshot for async lobbies" name="matchDataStore builds async fill snapshot for async lobbies" time="0.003">
+    </testcase>
+    <testcase classname="matchDataStore persists match snapshots to session storage" name="matchDataStore persists match snapshots to session storage" time="0.001">
+    </testcase>
+    <testcase classname="matchDataStore stores slot template data with version metadata" name="matchDataStore stores slot template data with version metadata" time="0.007">
+    </testcase>
+    <testcase classname="matchDataStore merges session meta updates and supports clearing data" name="matchDataStore merges session meta updates and supports clearing data" time="0.01">
+    </testcase>
+    <testcase classname="matchDataStore clears stale session entries after TTL cleanup" name="matchDataStore clears stale session entries after TTL cleanup" time="0.005">
+    </testcase>
+    <testcase classname="matchDataStore updates confirmation payloads consistently" name="matchDataStore updates confirmation payloads consistently" time="0.002">
+    </testcase>
+    <testcase classname="matchDataStore notifies subscribers when session data changes" name="matchDataStore notifies subscribers when session data changes" time="0.002">
+    </testcase>
+  </testsuite>
+  <testsuite name="POST /api/errors/report" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:33" time="0.166" tests="5">
+    <testcase classname="POST /api/errors/report rejects non-POST methods" name="POST /api/errors/report rejects non-POST methods" time="0.016">
+    </testcase>
+    <testcase classname="POST /api/errors/report validates presence of error message" name="POST /api/errors/report validates presence of error message" time="0.008">
+    </testcase>
+    <testcase classname="POST /api/errors/report persists sanitized payloads" name="POST /api/errors/report persists sanitized payloads" time="0.006">
+    </testcase>
+    <testcase classname="POST /api/errors/report enforces throttling per ip/session pair" name="POST /api/errors/report enforces throttling per ip/session pair" time="0.004">
+    </testcase>
+    <testcase classname="POST /api/errors/report returns 500 when persistence fails" name="POST /api/errors/report returns 500 when persistence fails" time="0.043">
+    </testcase>
+  </testsuite>
+  <testsuite name="detectOpenAIPreset" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:33" time="0.134" tests="5">
+    <testcase classname="detectOpenAIPreset requires an API key" name="detectOpenAIPreset requires an API key" time="0.007">
+    </testcase>
+    <testcase classname="detectOpenAIPreset detects Responses API when probe succeeds" name="detectOpenAIPreset detects Responses API when probe succeeds" time="0.003">
+    </testcase>
+    <testcase classname="detectOpenAIPreset falls back to Chat Completions when Responses fails" name="detectOpenAIPreset falls back to Chat Completions when Responses fails" time="0.001">
+    </testcase>
+    <testcase classname="detectOpenAIPreset returns invalid key error without calling chat probe" name="detectOpenAIPreset returns invalid key error without calling chat probe" time="0">
+    </testcase>
+    <testcase classname="detectOpenAIPreset handles network error on first probe and still records tries" name="detectOpenAIPreset handles network error on first probe and still records tries" time="0.01">
+    </testcase>
+  </testsuite>
+  <testsuite name="POST /api/rank/ready-check" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:34" time="0.139" tests="2">
+    <testcase classname="POST /api/rank/ready-check recovers the session via RPC when the direct lookup misses" name="POST /api/rank/ready-check recovers the session via RPC when the direct lookup misses" time="0.01">
+    </testcase>
+    <testcase classname="POST /api/rank/ready-check recovers the session via service-role table fallback" name="POST /api/rank/ready-check recovers the session via service-role table fallback" time="0.013">
+    </testcase>
+  </testsuite>
+  <testsuite name="outcomeLedger.parseResultAssignments" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:33" time="0.17" tests="4">
+    <testcase classname="outcomeLedger.parseResultAssignments extracts hero names and statuses from result line" name="outcomeLedger.parseResultAssignments extracts hero names and statuses from result line" time="0.034">
+    </testcase>
+    <testcase classname="outcomeLedger.parseResultAssignments falls back to actors when no hero name present" name="outcomeLedger.parseResultAssignments falls back to actors when no hero name present" time="0.005">
+    </testcase>
+    <testcase classname="outcomeLedger.parseResultAssignments ignores draw outcomes" name="outcomeLedger.parseResultAssignments ignores draw outcomes" time="0">
+    </testcase>
+    <testcase classname="outcomeLedger recordOutcomeLedger updates ledger entries with wins and losses" name="outcomeLedger recordOutcomeLedger updates ledger entries with wins and losses" time="0.016">
+    </testcase>
+  </testsuite>
+  <testsuite name="POST /api/rank/register-game" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:34" time="0.232" tests="6">
+    <testcase classname="POST /api/rank/register-game requires a bearer token" name="POST /api/rank/register-game requires a bearer token" time="0.022">
+    </testcase>
+    <testcase classname="POST /api/rank/register-game registers the game when RPCs succeed" name="POST /api/rank/register-game registers the game when RPCs succeed" time="0.014">
+    </testcase>
+    <testcase classname="POST /api/rank/register-game returns 400 when verification fails" name="POST /api/rank/register-game returns 400 when verification fails" time="0.042">
+    </testcase>
+    <testcase classname="POST /api/rank/register-game continues when verification RPC is missing" name="POST /api/rank/register-game continues when verification RPC is missing" time="0.007">
+    </testcase>
+    <testcase classname="POST /api/rank/register-game rejects unknown prompt sets" name="POST /api/rank/register-game rejects unknown prompt sets" time="0.012">
+    </testcase>
+    <testcase classname="POST /api/rank/register-game returns 500 when prompt set lookup fails" name="POST /api/rank/register-game returns 500 when prompt set lookup fails" time="0.003">
+    </testcase>
+  </testsuite>
+  <testsuite name="promptEngine template" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:34" time="0.086" tests="2">
+    <testcase classname="promptEngine template supports zero-based slot placeholders" name="promptEngine template supports zero-based slot placeholders" time="0.003">
+    </testcase>
+    <testcase classname="promptEngine template clears missing slot placeholders for zero-based values" name="promptEngine template clears missing slot placeholders for zero-based values" time="0">
+    </testcase>
+  </testsuite>
+  <testsuite name="GET /api/rank/turn-events" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:34" time="0.167" tests="5">
+    <testcase classname="GET /api/rank/turn-events rejects non-GET methods" name="GET /api/rank/turn-events rejects non-GET methods" time="0.019">
+    </testcase>
+    <testcase classname="GET /api/rank/turn-events requires a session id" name="GET /api/rank/turn-events requires a session id" time="0.007">
+    </testcase>
+    <testcase classname="GET /api/rank/turn-events rejects invalid limit" name="GET /api/rank/turn-events rejects invalid limit" time="0.003">
+    </testcase>
+    <testcase classname="GET /api/rank/turn-events propagates rpc errors" name="GET /api/rank/turn-events propagates rpc errors" time="0.021">
+    </testcase>
+    <testcase classname="GET /api/rank/turn-events returns events from RPC" name="GET /api/rank/turn-events returns events from RPC" time="0.003">
+    </testcase>
+  </testsuite>
+  <testsuite name="promptEngine/parseOutcome" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:34" time="0.193" tests="4">
+    <testcase classname="promptEngine/parseOutcome ignores trailing empty lines when reading outcome metadata" name="promptEngine/parseOutcome ignores trailing empty lines when reading outcome metadata" time="0.002">
+    </testcase>
+    <testcase classname="promptEngine/parseOutcome keeps blank actor or variable lines intact" name="promptEngine/parseOutcome keeps blank actor or variable lines intact" time="0.003">
+    </testcase>
+    <testcase classname="promptEngine/parseOutcome parses variable tokens separated by punctuation and deduplicates them" name="promptEngine/parseOutcome parses variable tokens separated by punctuation and deduplicates them" time="0.001">
+    </testcase>
+    <testcase classname="promptEngine/parseOutcome cleans actor names with comma-separated values and removes duplicates" name="promptEngine/parseOutcome cleans actor names with comma-separated values and removes duplicates" time="0.001">
+    </testcase>
+  </testsuite>
+  <testsuite name="matchRoleSummary helpers" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:34" time="0.115" tests="2">
+    <testcase classname="matchRoleSummary helpers summarises slot layout occupancy and detects readiness" name="matchRoleSummary helpers summarises slot layout occupancy and detects readiness" time="0.008">
+    </testcase>
+    <testcase classname="matchRoleSummary helpers falls back to role counts when layout is unavailable" name="matchRoleSummary helpers falls back to role counts when layout is unavailable" time="0.001">
+    </testcase>
+  </testsuite>
+  <testsuite name="buildRoleSummaries" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:34" time="0.217" tests="3">
+    <testcase classname="buildRoleSummaries derives role summaries from slot layout and assignments" name="buildRoleSummaries derives role summaries from slot layout and assignments" time="0.011">
+    </testcase>
+    <testcase classname="buildRoleSummaries falls back to roles when slot layout is unavailable" name="buildRoleSummaries falls back to roles when slot layout is unavailable" time="0.001">
+    </testcase>
+    <testcase classname="buildRoleSummaries increments totals from assignments when layout is missing" name="buildRoleSummaries increments totals from assignments when layout is missing" time="0">
+    </testcase>
+  </testsuite>
+  <testsuite name="participants helpers" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:34" time="0.121" tests="3">
+    <testcase classname="participants helpers collects unique owner ids in first-seen order" name="participants helpers collects unique owner ids in first-seen order" time="0.002">
+    </testcase>
+    <testcase classname="participants helpers builds an owner-participant map keyed by normalized owner id" name="participants helpers builds an owner-participant map keyed by normalized owner id" time="0.001">
+    </testcase>
+    <testcase classname="participants helpers creates a roster snapshot with hero metadata" name="participants helpers creates a roster snapshot with hero metadata" time="0">
+    </testcase>
+  </testsuite>
+  <testsuite name="matchDebugUtils.summarizeAssignments" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:34" time="0.194" tests="3">
+    <testcase classname="matchDebugUtils.summarizeAssignments flattens role slots and preserves individual roles" name="matchDebugUtils.summarizeAssignments flattens role slots and preserves individual roles" time="0.002">
+    </testcase>
+    <testcase classname="matchDebugUtils.summarizeAssignments falls back to aggregated members when slots are missing" name="matchDebugUtils.summarizeAssignments falls back to aggregated members when slots are missing" time="0.001">
+    </testcase>
+    <testcase classname="matchDebugUtils.summarizeRemovedMembers deduplicates identical removed entries" name="matchDebugUtils.summarizeRemovedMembers deduplicates identical removed entries" time="0.005">
+    </testcase>
+  </testsuite>
+  <testsuite name="POST /api/rank/latest-session" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:34" time="0.126" tests="1">
+    <testcase classname="POST /api/rank/latest-session opens the circuit on ordered-set errors and bypasses RPC calls until cooldown expires" name="POST /api/rank/latest-session opens the circuit on ordered-set errors and bypasses RPC calls until cooldown expires" time="0.054">
+    </testcase>
+  </testsuite>
+  <testsuite name="buildMatchOverlaySummary" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:34" time="0.143" tests="3">
+    <testcase classname="buildMatchOverlaySummary groups members by individual slot roles" name="buildMatchOverlaySummary groups members by individual slot roles" time="0.002">
+    </testcase>
+    <testcase classname="buildMatchOverlaySummary preserves missing slot counts from role summaries" name="buildMatchOverlaySummary preserves missing slot counts from role summaries" time="0.001">
+    </testcase>
+    <testcase classname="buildMatchOverlaySummary falls back to room slots when assignments are empty" name="buildMatchOverlaySummary falls back to room slots when assignments are empty" time="0">
+    </testcase>
+  </testsuite>
+  <testsuite name="roomCleanupGuards" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:34" time="0.153" tests="8">
+    <testcase classname="roomCleanupGuards normalizeRoomStatus handles nullish values" name="roomCleanupGuards normalizeRoomStatus handles nullish values" time="0.002">
+    </testcase>
+    <testcase classname="roomCleanupGuards slotHasOccupancy detects occupant owner id variations" name="roomCleanupGuards slotHasOccupancy detects occupant owner id variations" time="0.001">
+    </testcase>
+    <testcase classname="roomCleanupGuards slotHasReadyFlag recognises ready markers" name="roomCleanupGuards slotHasReadyFlag recognises ready markers" time="0">
+    </testcase>
+    <testcase classname="roomCleanupGuards shouldDeferRoomCleanup returns false when not host" name="roomCleanupGuards shouldDeferRoomCleanup returns false when not host" time="0">
+    </testcase>
+    <testcase classname="roomCleanupGuards shouldDeferRoomCleanup defers when status is active" name="roomCleanupGuards shouldDeferRoomCleanup defers when status is active" time="0">
+    </testcase>
+    <testcase classname="roomCleanupGuards shouldDeferRoomCleanup defers when any slot occupied" name="roomCleanupGuards shouldDeferRoomCleanup defers when any slot occupied" time="0.001">
+    </testcase>
+    <testcase classname="roomCleanupGuards shouldDeferRoomCleanup defers when any slot ready" name="roomCleanupGuards shouldDeferRoomCleanup defers when any slot ready" time="0">
+    </testcase>
+    <testcase classname="roomCleanupGuards shouldDeferRoomCleanup allows cleanup for empty open room" name="roomCleanupGuards shouldDeferRoomCleanup allows cleanup for empty open room" time="0">
+    </testcase>
+  </testsuite>
+  <testsuite name="buildHistorySeedEntries" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:34" time="0.19" tests="3">
+    <testcase classname="buildHistorySeedEntries returns empty array for invalid payloads" name="buildHistorySeedEntries returns empty array for invalid payloads" time="0.002">
+    </testcase>
+    <testcase classname="buildHistorySeedEntries normalizes turns including hidden entries for AI memory" name="buildHistorySeedEntries normalizes turns including hidden entries for AI memory" time="0.001">
+    </testcase>
+    <testcase classname="buildHistorySeedEntries respects suppression flags from metadata and summary payloads" name="buildHistorySeedEntries respects suppression flags from metadata and summary payloads" time="0">
+    </testcase>
+  </testsuite>
+  <testsuite name="roleLayoutLoader" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:34" time="0.148" tests="3">
+    <testcase classname="roleLayoutLoader loads active roles and slots from Supabase tables" name="roleLayoutLoader loads active roles and slots from Supabase tables" time="0.003">
+    </testcase>
+    <testcase classname="roleLayoutLoader falls back to inline rank_games roles when tables have no data" name="roleLayoutLoader falls back to inline rank_games roles when tables have no data" time="0.001">
+    </testcase>
+    <testcase classname="roleLayoutLoader exposes active role counts when loading active roles" name="roleLayoutLoader exposes active role counts when loading active roles" time="0.001">
+    </testcase>
+  </testsuite>
+  <testsuite name="reconcileParticipantsForGame" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:35" time="0.153" tests="4">
+    <testcase classname="reconcileParticipantsForGame keeps participants whose roles match the slot layout" name="reconcileParticipantsForGame keeps participants whose roles match the slot layout" time="0.002">
+    </testcase>
+    <testcase classname="reconcileParticipantsForGame removes participants whose roles conflict with slot expectations" name="reconcileParticipantsForGame removes participants whose roles conflict with slot expectations" time="0.007">
+    </testcase>
+    <testcase classname="reconcileParticipantsForGame consults matching metadata when layout data is incomplete" name="reconcileParticipantsForGame consults matching metadata when layout data is incomplete" time="0.001">
+    </testcase>
+    <testcase classname="formatPreflightSummary produces a readable summary for removed participants" name="formatPreflightSummary produces a readable summary for removed participants" time="0.001">
+    </testcase>
+  </testsuite>
+  <testsuite name="asyncStandinUtils" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:35" time="0.138" tests="10">
+    <testcase classname="asyncStandinUtils sanitizeSeatRequests filters invalid entries" name="asyncStandinUtils sanitizeSeatRequests filters invalid entries" time="0.006">
+    </testcase>
+    <testcase classname="asyncStandinUtils parseSeatRequestsInput handles csv style input" name="asyncStandinUtils parseSeatRequestsInput handles csv style input" time="0.001">
+    </testcase>
+    <testcase classname="asyncStandinUtils parseSeatRequestsInput handles json input" name="asyncStandinUtils parseSeatRequestsInput handles json input" time="0.001">
+    </testcase>
+    <testcase classname="asyncStandinUtils toSeatRequestsPayload converts to API shape" name="asyncStandinUtils toSeatRequestsPayload converts to API shape" time="0">
+    </testcase>
+    <testcase classname="asyncStandinUtils buildDebugSeatExample returns default seats" name="asyncStandinUtils buildDebugSeatExample returns default seats" time="0">
+    </testcase>
+    <testcase classname="asyncStandinUtils createPlaceholderCandidate returns normalized stand-in details" name="asyncStandinUtils createPlaceholderCandidate returns normalized stand-in details" time="0.001">
+    </testcase>
+    <testcase classname="asyncStandinUtils deriveGapForSeat prefers score gap when seat has score reference" name="asyncStandinUtils deriveGapForSeat prefers score gap when seat has score reference" time="0">
+    </testcase>
+    <testcase classname="asyncStandinUtils deriveGapForSeat falls back to rating gap" name="asyncStandinUtils deriveGapForSeat falls back to rating gap" time="0.001">
+    </testcase>
+    <testcase classname="asyncStandinUtils pickRandomCandidateForSeat widens tolerance when needed" name="asyncStandinUtils pickRandomCandidateForSeat widens tolerance when needed" time="0.001">
+    </testcase>
+    <testcase classname="asyncStandinUtils pickRandomCandidateForSeat returns null when candidates are all excluded" name="asyncStandinUtils pickRandomCandidateForSeat returns null when candidates are all excluded" time="0.001">
+    </testcase>
+  </testsuite>
+  <testsuite name="normalizeHeroIdValue" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:35" time="0.126" tests="9">
+    <testcase classname="normalizeHeroIdValue normalizes numeric ids to strings" name="normalizeHeroIdValue normalizes numeric ids to strings" time="0.001">
+    </testcase>
+    <testcase classname="normalizeHeroIdValue returns null for empty strings" name="normalizeHeroIdValue returns null for empty strings" time="0">
+    </testcase>
+    <testcase classname="resolveParticipantHeroId prefers direct hero_id when present" name="resolveParticipantHeroId prefers direct hero_id when present" time="0">
+    </testcase>
+    <testcase classname="resolveParticipantHeroId falls back to hero_ids array when direct id missing" name="resolveParticipantHeroId falls back to hero_ids array when direct id missing" time="0.001">
+    </testcase>
+    <testcase classname="resolveParticipantHeroId falls back to nested hero object id" name="resolveParticipantHeroId falls back to nested hero object id" time="0">
+    </testcase>
+    <testcase classname="normalizeParticipantRecord normalizes participant fields for roster indexing" name="normalizeParticipantRecord normalizes participant fields for roster indexing" time="0.001">
+    </testcase>
+    <testcase classname="buildOwnerParticipantIndex groups participants by owner and sorts by recency" name="buildOwnerParticipantIndex groups participants by owner and sorts by recency" time="0.001">
+    </testcase>
+    <testcase classname="guessOwnerParticipant prefers matching role entries when available" name="guessOwnerParticipant prefers matching role entries when available" time="0">
+    </testcase>
+    <testcase classname="guessOwnerParticipant falls back to explicit hero when roster missing" name="guessOwnerParticipant falls back to explicit hero when roster missing" time="0.001">
+    </testcase>
+  </testsuite>
+  <testsuite name="buildDropInExtensionTimelineEvent" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:35" time="0.092" tests="3">
+    <testcase classname="buildDropInExtensionTimelineEvent creates an applied bonus event when deadline is active" name="buildDropInExtensionTimelineEvent creates an applied bonus event when deadline is active" time="0.002">
+    </testcase>
+    <testcase classname="buildDropInExtensionTimelineEvent creates a queued bonus event when no active deadline" name="buildDropInExtensionTimelineEvent creates a queued bonus event when no active deadline" time="0">
+    </testcase>
+    <testcase classname="buildDropInExtensionTimelineEvent returns null when bonus is not positive" name="buildDropInExtensionTimelineEvent returns null when bonus is not positive" time="0.001">
+    </testcase>
+  </testsuite>
+  <testsuite name="chatHistory utilities" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:35" time="0.105" tests="2">
+    <testcase classname="chatHistory utilities normalizes history entries for request payloads" name="chatHistory utilities normalizes history entries for request payloads" time="0.001">
+    </testcase>
+    <testcase classname="chatHistory utilities applies limits and matches provider sanitizer output" name="chatHistory utilities applies limits and matches provider sanitizer output" time="0.002">
+    </testcase>
+  </testsuite>
+  <testsuite name="buildSlotsFromParticipants" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:35" time="0.117" tests="3">
+    <testcase classname="buildSlotsFromParticipants places heroes into their zero-based slot positions" name="buildSlotsFromParticipants places heroes into their zero-based slot positions" time="0.011">
+    </testcase>
+    <testcase classname="buildSlotsFromParticipants keeps empty slots empty when indices are missing" name="buildSlotsFromParticipants keeps empty slots empty when indices are missing" time="0.002">
+    </testcase>
+    <testcase classname="buildSlotsFromParticipants appends overflow entries without slot numbers at the end" name="buildSlotsFromParticipants appends overflow entries without slot numbers at the end" time="0.001">
+    </testcase>
+  </testsuite>
+  <testsuite name="prepareRegistrationPayload" errors="0" failures="0" skipped="0" timestamp="2025-10-20T16:21:35" time="0.082" tests="3">
+    <testcase classname="prepareRegistrationPayload requires at least one active slot with a role" name="prepareRegistrationPayload requires at least one active slot with a role" time="0.002">
+    </testcase>
+    <testcase classname="prepareRegistrationPayload derives role slot counts from the provided slots" name="prepareRegistrationPayload derives role slot counts from the provided slots" time="0.001">
+    </testcase>
+    <testcase classname="prepareRegistrationPayload accepts slot_map alias and trims role names" name="prepareRegistrationPayload accepts slot_map alias and trims role names" time="0">
+    </testcase>
+  </testsuite>
+</testsuites>

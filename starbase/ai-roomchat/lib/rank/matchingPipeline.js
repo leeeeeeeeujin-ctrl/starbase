@@ -215,6 +215,7 @@ function isRealtimeRoomMatch(room, mode) {
 
 function buildRoomStats({ slots = [], participantScores }) {
   const openSlotsByRole = new Map()
+  const openSlotCountByRole = new Map()
   const firstOpenSlotByRole = new Map()
   const roleScoreBuckets = new Map()
   const occupantScores = []
@@ -225,7 +226,12 @@ function buildRoomStats({ slots = [], participantScores }) {
     if (!roleName) return
     const ownerId = normalizeId(slot.occupant_owner_id || slot.occupantOwnerId)
     if (!ownerId) {
-      openSlotsByRole.set(roleName, (openSlotsByRole.get(roleName) || 0) + 1)
+      // Store both the slot array and count
+      if (!openSlotsByRole.has(roleName)) {
+        openSlotsByRole.set(roleName, [])
+      }
+      openSlotsByRole.get(roleName).push(slot)
+      openSlotCountByRole.set(roleName, (openSlotCountByRole.get(roleName) || 0) + 1)
       if (!firstOpenSlotByRole.has(roleName)) {
         firstOpenSlotByRole.set(roleName, slot)
       }
@@ -257,6 +263,7 @@ function buildRoomStats({ slots = [], participantScores }) {
 
   return {
     openSlotsByRole,
+    openSlotCountByRole,
     firstOpenSlotByRole,
     roleAverages,
     occupantCount: occupantScores.length,
@@ -892,19 +899,64 @@ export async function findRealtimeDropInTarget({ supabase, gameId, mode, roles =
       dropInSlotId: claim.slot.id,
     })
 
+    // Check for additional open slots of the same role in this room
+    const stats = roomStats.get(candidate.room.id)
+    const roleName = normalizeRoleName(candidate.slot.role) || normalizeRoleName(candidate.entry.role)
+    const allOpenSlotsForRole = stats?.openSlotsByRole?.get(roleName) || []
+    
+    // Find other viable queue entries for this role within drop-in window
+    const additionalMembers = []
+    const claimedSlotIds = new Set([claim.slot.id])
+    const usedOwnerIds = new Set([normalizeId(candidate.entry.owner_id)])
+    
+    if (allOpenSlotsForRole.length > 1 && viableEntries.length > 1) {
+      for (const otherEntry of viableEntries) {
+        if (additionalMembers.length >= allOpenSlotsForRole.length - 1) break
+        if (normalizeRoleName(otherEntry.role) !== roleName) continue
+        
+        const otherOwnerId = normalizeId(otherEntry.owner_id)
+        if (usedOwnerIds.has(otherOwnerId)) continue
+        
+        const otherScore = deriveQueueEntryScore(otherEntry)
+        const gap = Math.abs(otherScore - candidate.entryScore)
+        if (gap > dropInWindow) continue
+        
+        // Find an unclaimed slot for this entry
+        const availableSlot = allOpenSlotsForRole.find(s => !claimedSlotIds.has(s.id))
+        if (!availableSlot) continue
+        
+        // Claim this slot
+        const claimResult = await claimRealtimeSlot({ supabase, slotId: availableSlot.id, entry: otherEntry, mode })
+        if (!claimResult?.claimed) continue
+        
+        claimedSlotIds.add(availableSlot.id)
+        usedOwnerIds.add(otherOwnerId)
+        additionalMembers.push({
+          ...buildMemberFromEntry(otherEntry),
+          slotIndex: Number.isFinite(Number(availableSlot.slot_index)) ? Number(availableSlot.slot_index) : 0,
+        })
+      }
+    }
+
     const roleSlots = []
     if (Number.isFinite(Number(claim.slot.slot_index))) {
       roleSlots.push(Number(claim.slot.slot_index))
     } else {
       roleSlots.push(0)
     }
+    additionalMembers.forEach(m => {
+      if (Number.isFinite(m.slotIndex)) {
+        roleSlots.push(m.slotIndex)
+      }
+    })
 
+    const allMembers = [member, ...additionalMembers]
     const assignments = [
       {
-        role: normalizeRoleName(candidate.slot.role) || normalizeRoleName(candidate.entry.role),
-        slots: 1,
+        role: roleName,
+        slots: allMembers.length,
         roleSlots,
-        members: [member],
+        members: allMembers,
         groupKey:
           `drop_in:${
             normalizeId(member.id) || normalizeId(member.owner_id) || normalizeId(claim.slot.id) || normalizeId(candidate.room.id)
@@ -940,7 +992,7 @@ export async function findRealtimeDropInTarget({ supabase, gameId, mode, roles =
         averageScore:
           candidate.stats.roleAverages.get(normalizeRoleName(candidate.slot.role)) ?? candidate.stats.overallAverage ?? null,
         occupantCount: candidate.stats.occupantCount,
-        openSlotsBefore: candidate.stats.openSlotsByRole.get(normalizeRoleName(candidate.slot.role)) || 1,
+        openSlotsBefore: (candidate.stats.openSlotCountByRole || candidate.stats.openSlotsByRole)?.get(normalizeRoleName(candidate.slot.role)) || 1,
         claimedAt: claim.now,
       },
       meta: attemptMeta,

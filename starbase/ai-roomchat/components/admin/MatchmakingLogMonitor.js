@@ -54,6 +54,9 @@ function StageStat({ stage }) {
 }
 
 function RecentRow({ entry }) {
+  const metadata = entry.metadata || {}
+  const multiSlot = metadata.claimedSlotIds?.length > 1
+  
   return (
     <li className={styles.recentRow}>
       <div className={styles.recentHeader}>
@@ -62,14 +65,21 @@ function RecentRow({ entry }) {
           {entry.status || 'unknown'}
         </span>
         {entry.dropIn && <span className={styles.dropInBadge}>drop-in</span>}
+        {multiSlot && <span className={styles.multiSlotBadge}>multi-slot</span>}
       </div>
       <div className={styles.recentMeta}>
         <span>{entry.mode || '—'}</span>
         {entry.matchCode && <span>match: {entry.matchCode}</span>}
+        {entry.requestId && <span className={styles.requestId}>req: {entry.requestId}</span>}
         {typeof entry.scoreWindow === 'number' && (
           <span>Δ {entry.scoreWindow}</span>
         )}
       </div>
+      {multiSlot && metadata.claimedSlotIds && (
+        <p className={styles.recentDetail}>
+          🎯 슬롯 {metadata.claimedSlotIds.length}개 동시 점령: {metadata.claimedSlotIds.join(', ')}
+        </p>
+      )}
       {entry.reason && <p className={styles.recentReason}>{entry.reason}</p>}
       <p className={styles.recentTimestamp}>{formatTimestamp(entry.createdAt)}</p>
     </li>
@@ -81,6 +91,7 @@ export default function MatchmakingLogMonitor() {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState(null)
   const [payload, setPayload] = useState(null)
+  const [requestIdFilter, setRequestIdFilter] = useState('')
 
   const fetchLogs = async (manual = false) => {
     if (manual) {
@@ -91,7 +102,11 @@ export default function MatchmakingLogMonitor() {
     setError(null)
 
     try {
-      const response = await fetch(`/api/admin/matchmaking-logs?limit=${LIMIT}`)
+      let url = `/api/admin/matchmaking-logs?limit=${LIMIT}`
+      if (requestIdFilter.trim()) {
+        url += `&requestId=${encodeURIComponent(requestIdFilter.trim())}`
+      }
+      const response = await fetch(url)
       if (!response.ok) {
         const detail = await response.json().catch(() => ({}))
         throw new Error(detail?.detail || '로그를 불러오지 못했습니다.')
@@ -109,6 +124,11 @@ export default function MatchmakingLogMonitor() {
   useEffect(() => {
     fetchLogs(false)
   }, [])
+  
+  const handleSearch = (e) => {
+    e.preventDefault()
+    fetchLogs(true)
+  }
 
   const isUnavailable = payload && payload.available === false
 
@@ -120,6 +140,18 @@ export default function MatchmakingLogMonitor() {
           <p className={styles.subtitle}>드롭인/비실시간 파이프라인 이벤트를 한눈에 확인하세요.</p>
         </div>
         <div className={styles.actions}>
+          <form onSubmit={handleSearch} className={styles.searchForm}>
+            <input
+              type="text"
+              placeholder="requestId로 검색..."
+              value={requestIdFilter}
+              onChange={(e) => setRequestIdFilter(e.target.value)}
+              className={styles.searchInput}
+            />
+            <button type="submit" className={styles.searchButton} disabled={loading || refreshing}>
+              검색
+            </button>
+          </form>
           <button
             type="button"
             className={styles.refreshButton}

@@ -5,6 +5,11 @@ import { parseCookies } from '@/lib/server/cookies';
 import TitleBackgroundEditor from '@/components/admin/TitleBackgroundEditor';
 import AnnouncementManager from '@/components/admin/AnnouncementManager';
 import MatchmakingLogMonitor from '@/components/admin/MatchmakingLogMonitor';
+import MatchmakingAnalytics from '@/components/admin/MatchmakingAnalytics';
+import MockGameSimulator from '@/components/admin/MockGameSimulator';
+import RealGameSimulator from '@/components/admin/RealGameSimulator';
+import TestGameSimulator from '@/components/admin/TestGameSimulator';
+import SessionInspector from '@/components/admin/SessionInspector';
 
 const COOKIE_NAME = 'rank_admin_portal_session';
 
@@ -12,6 +17,7 @@ export default function AdminPortal({ authorized, misconfigured }) {
   const [password, setPassword] = useState('');
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('matchmaking');
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -89,10 +95,68 @@ export default function AdminPortal({ authorized, misconfigured }) {
           </section>
         ) : (
           <section className={styles.section}>
-            <div className={styles.grid}>
-              <TitleBackgroundEditor />
-              <AnnouncementManager />
-              <MatchmakingLogMonitor />
+            <nav className={styles.tabs}>
+              <button
+                className={`${styles.tab} ${activeTab === 'matchmaking' ? styles.active : ''}`}
+                onClick={() => setActiveTab('matchmaking')}
+              >
+                매칭/로그
+              </button>
+              <button
+                className={`${styles.tab} ${activeTab === 'analytics' ? styles.active : ''}`}
+                onClick={() => setActiveTab('analytics')}
+              >
+                통계/집계
+              </button>
+              <button
+                className={`${styles.tab} ${activeTab === 'sessions' ? styles.active : ''}`}
+                onClick={() => setActiveTab('sessions')}
+              >
+                세션 검사
+              </button>
+              <button
+                className={`${styles.tab} ${activeTab === 'simulators' ? styles.active : ''}`}
+                onClick={() => setActiveTab('simulators')}
+              >
+                시뮬레이터
+              </button>
+              <button
+                className={`${styles.tab} ${activeTab === 'content' ? styles.active : ''}`}
+                onClick={() => setActiveTab('content')}
+              >
+                콘텐츠 관리
+              </button>
+            </nav>
+
+            <div className={styles.tabContent}>
+              {activeTab === 'matchmaking' && (
+                <div className={styles.tabPanel}>
+                  <MatchmakingLogMonitor />
+                </div>
+              )}
+              {activeTab === 'analytics' && (
+                <div className={styles.tabPanel}>
+                  <MatchmakingAnalytics />
+                </div>
+              )}
+              {activeTab === 'sessions' && (
+                <div className={styles.tabPanel}>
+                  <SessionInspector />
+                </div>
+              )}
+              {activeTab === 'simulators' && (
+                <div className={styles.tabPanel}>
+                  <MockGameSimulator />
+                  <RealGameSimulator />
+                  <TestGameSimulator />
+                </div>
+              )}
+              {activeTab === 'content' && (
+                <div className={styles.tabPanel}>
+                  <TitleBackgroundEditor />
+                  <AnnouncementManager />
+                </div>
+              )}
             </div>
           </section>
         )}

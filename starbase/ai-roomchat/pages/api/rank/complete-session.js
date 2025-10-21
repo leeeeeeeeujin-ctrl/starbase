@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 
 import { supabaseAdmin } from '@/lib/supabaseAdmin'
 import { sanitizeSupabaseUrl } from '@/lib/supabaseEnv'
+import { computeSessionScore } from '@/lib/rank/scoring'
 
 const url = sanitizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL)
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -20,13 +21,26 @@ const anonClient = createClient(url, anonKey, {
   },
 })
 
-function normaliseEntries(entries) {
+function normaliseEntries(entries, roleConfigMap = {}) {
   if (!Array.isArray(entries)) return []
   return entries.slice(0, 48).map((entry) => {
     if (!entry || typeof entry !== 'object') return null
     const wins = Number.isFinite(Number(entry.wins)) ? Number(entry.wins) : 0
     const losses = Number.isFinite(Number(entry.losses)) ? Number(entry.losses) : 0
-    const scoreDelta = Number.isFinite(Number(entry.scoreDelta)) ? Number(entry.scoreDelta) : 0
+    
+    // Compute score delta if not provided by client
+    let scoreDelta = Number.isFinite(Number(entry.scoreDelta)) ? Number(entry.scoreDelta) : null
+    if (scoreDelta === null) {
+      const roleName = entry.role || null
+      const roleConfig = roleConfigMap[roleName] || {}
+      scoreDelta = computeSessionScore({
+        wins,
+        losses,
+        scoreDeltaMax: roleConfig.score_delta_max,
+        scoreDeltaMin: roleConfig.score_delta_min,
+      })
+    }
+    
     return {
       key: entry.key || null,
       participant_id: entry.participantId || entry.participant_id || null,
@@ -95,7 +109,30 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'missing_session_or_game' })
   }
 
-  const entries = normaliseEntries(outcome.entries)
+  // Fetch role-specific scoring configuration from rank_game_roles
+  let roleConfigMap = {}
+  try {
+    const { data: roleConfigs, error: roleError } = await supabaseAdmin
+      .from('rank_game_roles')
+      .select('name, score_delta_min, score_delta_max')
+      .eq('game_id', gameId)
+      .eq('active', true)
+    
+    if (!roleError && roleConfigs) {
+      roleConfigMap = roleConfigs.reduce((map, role) => {
+        map[role.name] = {
+          score_delta_min: role.score_delta_min,
+          score_delta_max: role.score_delta_max,
+        }
+        return map
+      }, {})
+    }
+  } catch (roleErr) {
+    // Fallback to default scoring if role config fetch fails
+    console.warn('Failed to fetch role configs:', roleErr)
+  }
+
+  const entries = normaliseEntries(outcome.entries, roleConfigMap)
   const roles = normaliseRoles(outcome.roleSummaries)
   const summary = {
     result: outcome.overallResult || 'completed',
