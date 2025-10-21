@@ -133,12 +133,11 @@ describe('promptInterpreter', () => {
       id: 'slot-lookup',
       slot_no: 0,
       slot_type: 'ai',
-      template: '{{slot1.name}} vs {{slot2.name}} / zero {{slot0.name}}',
+      template: '{{slot1.name}} vs {{slot2.name}}',
     }
 
     const result = interpretPromptNode({ game: baseGame, node: nodeWithSlots, slotsMap })
     expect(result.promptBody).toContain('용사 아린 vs 수호자 벨라')
-    expect(result.promptBody).toContain('zero 용사 아린')
   })
 
   it('omits default formatting guidance when checklist already covers it', () => {
@@ -147,7 +146,7 @@ describe('promptInterpreter', () => {
       rules_prefix: '',
       rules: {
         checklist: [
-          { text: '마지막 줄=승패, 마지막 둘째줄=변수명들, 마지막 5줄=공백.' },
+            { text: '마지막 줄=승패, 마지막 둘째줄=변수명들, 마지막 셋째줄=주역, 마지막 5줄=공백.' },
         ],
       },
     }
@@ -160,8 +159,8 @@ describe('promptInterpreter', () => {
 
     expect(result.rulesBlock).not.toContain(DEFAULT_RULE_GUIDANCE[0])
     expect(result.rulesBlock).not.toContain(DEFAULT_RULE_GUIDANCE[1])
-    expect(result.rulesBlock).not.toContain(DEFAULT_RULE_GUIDANCE[3])
-    expect(result.rulesBlock).toContain('마지막 줄=승패, 마지막 둘째줄=변수명들, 마지막 5줄=공백.')
+      expect(result.rulesBlock).not.toContain(DEFAULT_RULE_GUIDANCE[2])
+      expect(result.rulesBlock).toContain('마지막 줄=승패, 마지막 둘째줄=변수명들, 마지막 셋째줄=주역, 마지막 5줄=공백.')
   })
 
   it('prefers toggle-provided rules over duplicate base guidance', () => {

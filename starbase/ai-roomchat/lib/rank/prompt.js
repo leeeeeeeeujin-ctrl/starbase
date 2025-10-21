@@ -86,21 +86,8 @@ function findFallbackHero({ pools, key, excludeHeroId }) {
 function placeholderLabels(slotNo) {
   const numeric = Number(slotNo)
   if (!Number.isFinite(numeric)) return []
-  const labels = new Set()
-  // Disambiguate zero-based vs one-based placeholders:
-  // - slot0 = zero-based first (slotNo=0)
-  // - slot1 = one-based first (slotNo=0) OR zero-based second (slotNo=1)
-  // - slot2 = one-based second (slotNo=1)
-  // To avoid conflicts, we map:
-  // - slotNo=0 → ['0', '1'] (supports both slot0 and slot1 for first participant)
-  // - slotNo=N (N>0) → [String(N+1)] (one-based only, e.g., slotNo=1 → '2')
-  if (numeric === 0) {
-    labels.add('0')
-    labels.add('1')
-  } else {
-    labels.add(String(numeric + 1))
-  }
-  return Array.from(labels)
+  // One-based indexing: slot1 = first participant (slotNo=0), slot2 = second (slotNo=1), etc.
+  return [String(numeric + 1)]
 }
 
 function clearSlotPlaceholders(text, slotNo) {
