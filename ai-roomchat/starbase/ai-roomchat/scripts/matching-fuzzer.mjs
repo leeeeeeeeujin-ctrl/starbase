@@ -3,8 +3,13 @@
   runs matchRankParticipants, and checks invariants. Produces a brief report.
 */
 
-import * as matching from '../lib/rank/matching.js'
-const { matchRankParticipants } = matching
+// Dynamic import to handle ES module properly
+let matchRankParticipants
+
+async function init() {
+  const matching = await import('../lib/rank/matching.js')
+  matchRankParticipants = matching.matchRankParticipants
+}
 
 function randInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min }
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)] }
@@ -61,7 +66,8 @@ function checkInvariants(result) {
   return { ok: true }
 }
 
-function run(iterations = 200) {
+async function run(iterations = 200) {
+  await init()
   let pass = 0, fail = 0
   for (let i = 0; i < iterations; i += 1) {
     const roles = mkRoles()
@@ -75,4 +81,4 @@ function run(iterations = 200) {
 }
 
 const iters = Number(process.argv[2]) || 200
-run(iters)
+await run(iters)
