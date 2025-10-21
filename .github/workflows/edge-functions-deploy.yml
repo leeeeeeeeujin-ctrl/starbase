@@ -62,51 +62,9 @@ jobs:
       RANK_EDGE_DEPLOY_REQUIRE_SMOKE: ${{ matrix.require_smoke }}
       RANK_EDGE_DEPLOY_REQUIRE_PAGERDUTY: ${{ matrix.require_pagerduty }}
     steps:
-
-
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Debug: print working directory and files
-        run: |
-          echo "PWD: $(pwd)"
-          echo "Listing root:"
-          ls -al
-          echo "Listing starbase:"
-          ls -al starbase || true
-          echo "Listing starbase/ai-roomchat:"
-          ls -al starbase/ai-roomchat || true
-
-      - name: Debug: print working directory and files
-        run: |
-          echo "PWD: $(pwd)"
-          echo "Listing root:"
-          ls -al
-          echo "Listing starbase:"
-          ls -al starbase || true
-          echo "Listing starbase/ai-roomchat:"
-          ls -al starbase/ai-roomchat || true
-
-      - name: Debug: print working directory and files
-        run: |
-          echo "PWD: $(pwd)"
-          echo "Listing root:"
-          ls -al
-          echo "Listing starbase:"
-          ls -al starbase || true
-          echo "Listing starbase/ai-roomchat:"
-          ls -al starbase/ai-roomchat || true
-
-      - name: Debug: print working directory and files
-        run: |
-          echo "PWD: $(pwd)"
-          echo "Listing root:"
-          ls -al
-          echo "Listing starbase:"
-          ls -al starbase || true
-          echo "Listing starbase/ai-roomchat:"
-          ls -al starbase/ai-roomchat || true
-
+      
       - name: Debug: print working directory and files
         run: |
           echo "PWD: $(pwd)"
@@ -140,7 +98,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: junit-report
-          path: starbase/ai-roomchat/starbase/ai-roomchat/reports/junit/junit.xml
+          path: starbase/ai-roomchat/reports/junit/junit.xml
           if-no-files-found: warn
 
       - name: Install Supabase CLI
