@@ -5,14 +5,18 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   test-and-build:
     name: Run tests and build
     runs-on: ubuntu-latest
     defaults:
-      on:
-        workflow_dispatch:
+      run:
+        working-directory: starbase/ai-roomchat
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 18
           cache: 'npm'
@@ -22,10 +26,10 @@ jobs:
       - name: Restore Next.js build cache
         uses: actions/cache@v4
         with:
-          path: .next/cache
-          key: ${{ runner.os }}-next-${{ hashFiles('package-lock.json') }}-${{ hashFiles('next.config.js', 'next.config.mjs', 'pages/**/*', 'components/**/*', 'lib/**/*', 'styles/**/*', 'data/**/*') }}
+          path: starbase/ai-roomchat/.next/cache
+          key: ${{ runner.os }}-next-${{ hashFiles('starbase/ai-roomchat/package-lock.json') }}-${{ hashFiles('starbase/ai-roomchat/next.config.js', 'starbase/ai-roomchat/next.config.mjs', 'starbase/ai-roomchat/pages/**/*', 'starbase/ai-roomchat/components/**/*', 'starbase/ai-roomchat/lib/**/*', 'starbase/ai-roomchat/styles/**/*', 'starbase/ai-roomchat/data/**/*') }}
           restore-keys: |
-            ${{ runner.os }}-next-${{ hashFiles('package-lock.json') }}-
+            ${{ runner.os }}-next-${{ hashFiles('starbase/ai-roomchat/package-lock.json') }}-
       - name: Prepare test reports directory
         run: mkdir -p reports/junit
       - name: Run unit tests
@@ -44,4 +48,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: pr-jest-report
-          path: reports/junit/junit.xml
+          path: starbase/ai-roomchat/reports/junit/junit.xml
