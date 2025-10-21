@@ -8,6 +8,7 @@ import { act, create } from 'react-test-renderer'
 const mockReadActiveSession = jest.fn()
 const mockSubscribeActiveSession = jest.fn(() => () => {})
 const mockClearActiveSessionRecord = jest.fn()
+const mockFetchLatestSessionRow = jest.fn()
 
 jest.mock('../../../lib/rank/activeSessionStorage', () => ({
   readActiveSession: (...args) => mockReadActiveSession(...args),
@@ -50,6 +51,12 @@ jest.mock('../../../lib/supabase', () => ({
   },
 }))
 
+// In jsdom, fetchLatestSessionRow takes the browser path (API fetch) and returns null.
+// Mock it to return a valid active session row so the overlay remains visible for the happy path.
+jest.mock('../../../modules/rank/matchRealtimeSync', () => ({
+  fetchLatestSessionRow: (...args) => mockFetchLatestSessionRow(...args),
+}))
+
 jest.mock('next/router', () => ({
   useRouter: () => ({
     asPath: '/',
@@ -86,6 +93,13 @@ describe('ActiveMatchOverlay', () => {
     })
 
     mockGetUser.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null })
+
+    mockFetchLatestSessionRow.mockResolvedValue({
+      id: 'session-1',
+      status: 'active',
+      owner_id: 'user-1',
+      game_id: 'game-1',
+    })
 
     mockSessionQuery.select.mockClear()
     mockSessionQuery.eq.mockClear()
