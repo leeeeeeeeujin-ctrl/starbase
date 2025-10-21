@@ -102,7 +102,8 @@ describe('useMakerHome', () => {
     mockList.mockResolvedValue(success(rows))
 
     const hook = renderHook()
-    for (let i = 0; i < 5 && mockList.mock.calls.length === 0; i += 1) {
+    // Wait for hydration + bootstrap effects to run reliably in CI
+    for (let i = 0; i < 10 && mockList.mock.calls.length === 0; i += 1) {
       await flushPromises()
     }
 
