@@ -15,7 +15,12 @@
     "notify:audio-events": "node scripts/notify-audio-event-trends.js",
     "deploy:edge-functions": "node scripts/deploy-edge-functions.js",
     "check:edge-deploy-config": "node scripts/verify-edge-deploy-config.js",
-    "simulate:start-engine": "node scripts/start-engine-simulator.js"
+    "simulate:start-engine": "node scripts/start-engine-simulator.js",
+    "status": "node scripts/status-check.js",
+    "commit": "node scripts/quick-commit.js",
+    "workflow": "node scripts/dev-workflow.js",
+    "ai-workers": "node scripts/ai-worker-pool-openai.js",
+    "test:ai-workers": "node scripts/test-ai-workers.js"
   },
   "dependencies": {
     "@supabase/auth-helpers-nextjs": "^0.10.0",
