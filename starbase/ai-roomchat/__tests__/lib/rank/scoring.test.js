@@ -11,7 +11,7 @@ describe('scoring utils', () => {
 
   test('floor/ceiling applied', () => {
     expect(computeSessionScore({ wins: 1, winPoint: 3, lossPenalty: 10, floor: -4 })).toBe(-4)
-    expect(computeSessionScore({ wins: 10, winPoint: 5, lossPenalty: 0, ceiling: 40 })).toBe(40)
+    expect(computeSessionScore({ wins: 10, winPoint: 5, lossPenalty: 0, winCap: 10, ceiling: 40 })).toBe(40)
   })
 
   test('applyScoreDelta with bounds', () => {
