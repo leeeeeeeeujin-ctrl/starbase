@@ -1,0 +1,48 @@
+name: run-ad-hoc-command
+
+on:
+  workflow_dispatch:
+    inputs:
+      shell:
+        description: 'Shell to use (bash or pwsh)'
+        required: true
+        default: 'bash'
+        type: choice
+        options:
+          - bash
+          - pwsh
+      command:
+        description: 'Command to run (e.g., npm test or node scripts/... )'
+        required: true
+        default: 'npm test'
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+          cache-dependency-path: ai-roomchat/starbase/ai-roomchat/package-lock.json
+      - name: Install deps
+        working-directory: ai-roomchat/starbase/ai-roomchat
+        run: npm ci
+      - name: Run command (bash)
+        if: ${{ inputs.shell == 'bash' }}
+        working-directory: ai-roomchat/starbase/ai-roomchat
+        env:
+          ADMIN_PORTAL_PASSWORD: localdev
+        run: |
+          echo ">>> ${{ inputs.command }}"
+          ${{ inputs.command }}
+      - name: Run command (PowerShell)
+        if: ${{ inputs.shell == 'pwsh' }}
+        shell: pwsh
+        working-directory: ai-roomchat/starbase/ai-roomchat
+        env:
+          ADMIN_PORTAL_PASSWORD: localdev
+        run: |
+          Write-Host ">>> ${{ inputs.command }}"
+          Invoke-Expression "${{ inputs.command }}"

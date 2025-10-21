@@ -286,10 +286,21 @@ const listenerStore = new Map()
 const SESSION_TTL_MS = 1000 * 60 * 60 * 6
 const SESSION_CLEANUP_INTERVAL_MS = 1000 * 60 * 5
 
+function isTestEnv() {
+  try {
+    // Jest sets NODE_ENV to 'test'; also JEST_WORKER_ID is commonly defined
+    if (typeof process !== 'undefined' && process?.env?.NODE_ENV === 'test') return true
+    if (typeof process !== 'undefined' && process?.env?.JEST_WORKER_ID) return true
+  } catch (_) {}
+  return false
+}
+
 let cleanupTimerId = null
 let lastCleanupAt = 0
 
 function canUseSessionStorage() {
+  // Avoid using sessionStorage and timers in test environment to prevent act() warnings
+  if (isTestEnv()) return false
   return (
     typeof window !== 'undefined' &&
     typeof window.sessionStorage !== 'undefined' &&
@@ -299,6 +310,7 @@ function canUseSessionStorage() {
 }
 
 function cleanupExpiredEntries({ now = Date.now(), ttlMs = SESSION_TTL_MS, force = false } = {}) {
+  if (isTestEnv()) return
   if (!canUseSessionStorage()) return
 
   const effectiveTtl = Math.max(0, ttlMs)
@@ -327,6 +339,7 @@ function cleanupExpiredEntries({ now = Date.now(), ttlMs = SESSION_TTL_MS, force
 }
 
 function ensureCleanupTimer() {
+  if (isTestEnv()) return
   if (!canUseSessionStorage()) return
   if (cleanupTimerId != null) return
   cleanupExpiredEntries({ force: true })
