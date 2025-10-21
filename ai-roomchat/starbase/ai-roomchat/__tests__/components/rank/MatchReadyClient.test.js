@@ -77,6 +77,10 @@ beforeEach(() => {
   jest.useFakeTimers()
 })
 
+afterEach(() => {
+  jest.useRealTimers()
+})
+
 function collectText(node) {
   if (!node) return []
   if (typeof node === 'string') return [node]

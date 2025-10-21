@@ -104,9 +104,12 @@ describe('ActiveMatchOverlay', () => {
     let renderer
     await act(async () => {
       renderer = create(<ActiveMatchOverlay />)
+      // Wait for useEffect to run
+      await Promise.resolve()
     })
 
     await act(async () => {
+      // Allow state updates to settle
       await Promise.resolve()
     })
 

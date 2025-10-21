@@ -246,20 +246,15 @@ function validateEntry(entry, existingMap) {
   const key = buildEntryKey(entry)
   if (existingMap.has(key)) {
     const existing = existingMap.get(key)
-    // slotIndex, role, ownerId, heroId 불일치 체크
+    // slotIndex, role, heroId가 다르면 업데이트를 허용(최신 데이터 반영)
+    // ownerId는 key의 일부이므로 동일 ownerId에 대해 최신 hero/slot을 덮어씀
     if (
       existing.slotIndex !== entry.slotIndex ||
       existing.role !== entry.role ||
-      existing.ownerId !== entry.ownerId ||
       existing.heroId !== entry.heroId
     ) {
-      console.warn('[startConnectionRegistry] 중복 키 불일치:', {
-        key,
-        기존: existing,
-        신규: entry,
-      })
-      // 불일치 발생 시 기존 엔트리 유지, 신규 무시
-      return false
+      // 최신 데이터로 교체 허용
+      return true
     }
   }
   return true
