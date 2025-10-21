@@ -101,7 +101,19 @@ describe('useMakerHome', () => {
     ]
     mockList.mockResolvedValue(success(rows))
 
-    const hook = renderHook()
+    let hook
+    await act(async () => {
+      hook = renderHook()
+      // Wait for hydration effect
+      await Promise.resolve()
+    })
+    
+    await act(async () => {
+      // Wait for bootstrap effect
+      await Promise.resolve()
+    })
+
+    // Wait for async operations
     for (let i = 0; i < 5 && mockList.mock.calls.length === 0; i += 1) {
       await flushPromises()
     }
@@ -126,7 +138,16 @@ describe('useMakerHome', () => {
     mockList.mockResolvedValue(success([]))
     mockInsertBundle.mockResolvedValue(success({ id: 'set-99' }))
 
-    const hook = renderHook()
+    let hook
+    await act(async () => {
+      hook = renderHook()
+      await Promise.resolve()
+    })
+    
+    await act(async () => {
+      await Promise.resolve()
+    })
+    
     await flushPromises()
 
     const payload = {

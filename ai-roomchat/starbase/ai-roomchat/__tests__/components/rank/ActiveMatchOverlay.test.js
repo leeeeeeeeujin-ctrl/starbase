@@ -21,6 +21,12 @@ jest.mock('../../../lib/supabaseTables', () => ({
   withTable: (...args) => mockWithTable(...args),
 }))
 
+const mockFetchLatestSessionRow = jest.fn()
+
+jest.mock('../../../modules/rank/matchRealtimeSync', () => ({
+  fetchLatestSessionRow: (...args) => mockFetchLatestSessionRow(...args),
+}))
+
 const mockGetUser = jest.fn()
 
 const mockSessionQuery = {
@@ -72,6 +78,13 @@ describe('ActiveMatchOverlay', () => {
       turn: 3,
     })
 
+    mockFetchLatestSessionRow.mockResolvedValue({
+      id: 'session-1',
+      status: 'active',
+      owner_id: 'user-1',
+      game_id: 'game-1',
+    })
+
     mockWithTable.mockImplementation(async (_client, logicalName) => {
       if (logicalName === 'rank_games') {
         return { data: { id: 'game-1' }, error: null }
@@ -104,13 +117,11 @@ describe('ActiveMatchOverlay', () => {
     let renderer
     await act(async () => {
       renderer = create(<ActiveMatchOverlay />)
-      // Wait for useEffect to run
-      await Promise.resolve()
     })
 
+    // Force re-render to apply useEffect state changes
     await act(async () => {
-      // Allow state updates to settle
-      await Promise.resolve()
+      renderer.update(<ActiveMatchOverlay />)
     })
 
     const tree = renderer.toJSON()

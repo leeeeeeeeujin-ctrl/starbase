@@ -227,6 +227,15 @@ function matchMemberToSlot(member, slots, usedIndices) {
     }
   }
 
+  // Fallback: assign to first unused slot
+  for (let index = 0; index < slots.length; index += 1) {
+    if (usedIndices.has(index)) continue
+    const slot = slots[index]
+    if (!slot) continue
+    usedIndices.add(index)
+    return { slot, index }
+  }
+
   return null
 }
 

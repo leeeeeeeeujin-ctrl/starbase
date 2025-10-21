@@ -310,8 +310,8 @@ function canUseSessionStorage() {
 }
 
 function cleanupExpiredEntries({ now = Date.now(), ttlMs = SESSION_TTL_MS, force = false } = {}) {
-  if (isTestEnv()) return
-  if (!canUseSessionStorage()) return
+  if (!force && isTestEnv()) return
+  if (!force && !canUseSessionStorage()) return
 
   const effectiveTtl = Math.max(0, ttlMs)
   if (!force && effectiveTtl === 0) {

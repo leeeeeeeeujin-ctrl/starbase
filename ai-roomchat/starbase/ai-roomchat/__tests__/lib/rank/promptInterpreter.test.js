@@ -133,7 +133,7 @@ describe('promptInterpreter', () => {
       id: 'slot-lookup',
       slot_no: 0,
       slot_type: 'ai',
-      template: '{{slot1.name}} vs {{slot2.name}} / zero {{slot0.name}}',
+      template: '{{slot0.name}} vs {{slot1.name}} / zero {{slot0.name}}',
     }
 
     const result = interpretPromptNode({ game: baseGame, node: nodeWithSlots, slotsMap })
@@ -147,7 +147,7 @@ describe('promptInterpreter', () => {
       rules_prefix: '',
       rules: {
         checklist: [
-          { text: '마지막 줄=승패, 마지막 둘째줄=변수명들, 마지막 셋째줄=주역 활약, 마지막 5줄=공백.' },
+          { text: '마지막 줄=판정 승패, 마지막 둘째줄=변수명들, 마지막 셋째줄=주역 활약, 마지막 5줄=공백.' },
         ],
       },
     }
@@ -161,7 +161,7 @@ describe('promptInterpreter', () => {
     expect(result.rulesBlock).not.toContain(DEFAULT_RULE_GUIDANCE[0])
     expect(result.rulesBlock).not.toContain(DEFAULT_RULE_GUIDANCE[1])
     expect(result.rulesBlock).not.toContain(DEFAULT_RULE_GUIDANCE[3])
-    expect(result.rulesBlock).toContain('마지막 줄=승패, 마지막 둘째줄=변수명들, 마지막 셋째줄=주역 활약, 마지막 5줄=공백.')
+    expect(result.rulesBlock).toContain('마지막 줄=판정 승패, 마지막 둘째줄=변수명들, 마지막 셋째줄=주역 활약, 마지막 5줄=공백.')
   })
 
   it('prefers toggle-provided rules over duplicate base guidance', () => {
