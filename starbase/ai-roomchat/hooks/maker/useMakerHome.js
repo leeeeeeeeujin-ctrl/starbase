@@ -183,7 +183,22 @@ export function useMakerHome({ onUnauthorized } = {}) {
   const importFromFile = useCallback(
     async (file) => {
       if (!file) return null
-      if (!userId) {
+
+      // If userId isn't hydrated yet, try to fetch it on demand to make import resilient
+      let effectiveUserId = userId
+      if (!effectiveUserId) {
+        try {
+          const { data: authData } = await supabase.auth.getUser()
+          effectiveUserId = authData?.user?.id || null
+          if (effectiveUserId) {
+            setUserId(effectiveUserId)
+          }
+        } catch (e) {
+          // ignore and fall through to error handling below
+        }
+      }
+
+      if (!effectiveUserId) {
         const error = new Error('로그인이 필요합니다.')
         setFromError(error)
         throw error
@@ -206,13 +221,13 @@ export function useMakerHome({ onUnauthorized } = {}) {
         return Number.isFinite(candidate) ? Number(candidate) : null
       })()
 
-      const result = await insertPromptSetBundle(userId, bundle)
+      const result = await insertPromptSetBundle(effectiveUserId, bundle)
       if (result.error) {
         setFromError(result.error)
         throw result.error
       }
 
-      await refresh(userId)
+      await refresh(effectiveUserId)
 
       const noticeMessages = []
 
