@@ -1,0 +1,33 @@
+{
+  "name": "starbase-dev",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:18",
+  "features": {
+    "ghcr.io/devcontainers/features/powershell:1": {}
+  },
+  "workspaceFolder": "/workspaces/starbase",
+  "postCreateCommand": "cd ai-roomchat/starbase/ai-roomchat && npm ci",
+  "containerEnv": {
+    "ADMIN_PORTAL_PASSWORD": "localdev"
+  },
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": {
+      "label": "Next.js dev server",
+      "onAutoForward": "openBrowser"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.windows": "PowerShell",
+        "files.eol": "\n",
+        "task.allowAutomaticTasks": "on"
+      },
+      "extensions": [
+        "ms-vscode.powershell",
+        "dbaeumer.vscode-eslint"
+      ]
+    }
+  },
+  "remoteUser": "node"
+}
