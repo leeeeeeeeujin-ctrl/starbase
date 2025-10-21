@@ -17,7 +17,7 @@ const DEFAULT_RULE_GUIDANCE_ENTRIES = [
   {
     text:
       '- 마지막에서 세 번째 줄에는 이번 턴에서 독보적인 활약을 펼친 캐릭터 이름을 적되, 적합한 인물이 없으면 비워 둔다.',
-    matchers: [/마지막/, /(셋|세).*줄/, /(활약|주역|독보)/],
+    matchers: [/마지막.*줄/],
   },
   {
     text:
