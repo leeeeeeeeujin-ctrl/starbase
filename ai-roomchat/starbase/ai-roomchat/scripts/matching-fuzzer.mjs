@@ -3,7 +3,7 @@
   runs matchRankParticipants, and checks invariants. Produces a brief report.
 */
 
-const { matchRankParticipants } = require('../lib/rank/matching')
+import { matchRankParticipants } from '../lib/rank/matching.js'
 
 function randInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min }
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)] }
@@ -73,7 +73,5 @@ function run(iterations = 200) {
   console.log(JSON.stringify({ iterations, pass, fail }))
 }
 
-if (require.main === module) {
-  const iters = Number(process.argv[2]) || 200
-  run(iters)
-}
+const iters = Number(process.argv[2]) || 200
+run(iters)
