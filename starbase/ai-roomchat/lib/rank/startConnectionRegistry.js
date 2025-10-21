@@ -242,11 +242,10 @@ function buildEntryKey(entry) {
 
 
 function validateEntry(entry, existingMap) {
-  // 중복/불일치 검증: slotIndex, role, ownerId, heroId 기준
+  // 중복 키는 최신 정보로 덮어씁니다. 불일치가 있으면 경고만 남기고 업데이트 허용.
   const key = buildEntryKey(entry)
   if (existingMap.has(key)) {
     const existing = existingMap.get(key)
-    // slotIndex, role, ownerId, heroId 불일치 체크
     if (
       existing.slotIndex !== entry.slotIndex ||
       existing.role !== entry.role ||
@@ -258,8 +257,6 @@ function validateEntry(entry, existingMap) {
         기존: existing,
         신규: entry,
       })
-      // 불일치 발생 시 기존 엔트리 유지, 신규 무시
-      return false
     }
   }
   return true
@@ -344,7 +341,12 @@ export function registerMatchConnections({
         normaliseString(heroRecord?.hero_name) ||
         normaliseString(member.hero_name ?? member.heroName ?? member.name) ||
         null
-      const matched = matchMemberToSlot(member, slotEntries, usedSlotIndices)
+      let matched = matchMemberToSlot(member, slotEntries, usedSlotIndices)
+      // Fallback: if no member/role match but exactly one roleSlot is provided, use that slot
+      if (!matched && Array.isArray(slotEntries) && slotEntries.length === 1) {
+        matched = { slot: slotEntries[0], index: 0 }
+        usedSlotIndices.add(0)
+      }
       const slotIndex = matched?.slot?.slotIndex ?? matched?.index ?? null
       const slotIndices =
         matched && matched.slot ? normaliseSlotIndices([matched.slot], 1) : normaliseSlotIndices(assignment.roleSlots, members.length)

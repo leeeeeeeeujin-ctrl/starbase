@@ -87,8 +87,14 @@ function placeholderLabels(slotNo) {
   const numeric = Number(slotNo)
   if (!Number.isFinite(numeric)) return []
   const labels = new Set()
-  labels.add(String(numeric))
-  labels.add(String(numeric + 1))
+  // Disambiguate: treat 'slot0' as zero-based; 'slotN' (N>=1) as one-based mapping
+  if (numeric === 0) {
+    labels.add('0')
+    labels.add('1')
+  } else {
+    // For slots > 0, only include the one-based label to avoid overwriting 'slot1' etc.
+    labels.add(String(numeric + 1))
+  }
   return Array.from(labels)
 }
 

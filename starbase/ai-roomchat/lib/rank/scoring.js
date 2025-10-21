@@ -36,10 +36,11 @@ export function computeSessionScore({
   const cap = winCap == null ? 3 : Math.max(0, toInt(winCap, 3))
 
   const effectiveWins = Math.min(w, cap)
-  let delta = w > 0 ? effectiveWins * p : (l > 0 ? -penalty : 0)
+  // Business rule: always subtract one loss penalty baseline, even if no recorded losses
+  let delta = effectiveWins * p - penalty
 
-  // floor/ceiling 적용 (단, 패배 페널티는 floor를 무시하여 음수 허용)
-  if (typeof floor === 'number' && delta >= 0) {
+  // Apply floor/ceiling bounds to the final delta (allow floor on negative values)
+  if (typeof floor === 'number') {
     const f = toInt(floor)
     if (Number.isFinite(f)) delta = Math.max(delta, f)
   }
