@@ -86,7 +86,15 @@ function findFallbackHero({ pools, key, excludeHeroId }) {
 function placeholderLabels(slotNo) {
   const numeric = Number(slotNo)
   if (!Number.isFinite(numeric)) return []
-  // One-based indexing: slot1 = first participant (slotNo=0), slot2 = second (slotNo=1), etc.
+  // Mixed zero-based and one-based support:
+  // - slot0 = zero-based first (slotNo=0)
+  // - slot1 = one-based first (slotNo=0)
+  // - slot2 = one-based second (slotNo=1)
+  // For slotNo=0, support both slot0 and slot1
+  // For slotNo>0, support only one-based (slotN+1)
+  if (numeric === 0) {
+    return ['0', '1']
+  }
   return [String(numeric + 1)]
 }
 

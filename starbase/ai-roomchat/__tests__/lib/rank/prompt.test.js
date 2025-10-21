@@ -23,7 +23,7 @@ describe('rank prompt compileTemplate', () => {
     }
 
     const { text } = compileTemplate({
-        template: '{{slot1.name}} vs {{slot2.name}}',
+        template: '{{slot0.name}} vs {{slot2.name}}',
       slotsMap,
     })
 
@@ -37,7 +37,7 @@ describe('rank prompt compileTemplate', () => {
 
     const { text } = compileTemplate({
       template:
-          '{{slot1.slotNo}}/{{slot1.slotNumber}}/{{slot1.slotIndex}}/{{slot1.role}}',
+          '{{slot0.slotNo}}/{{slot0.slotNumber}}/{{slot0.slotIndex}}/{{slot0.role}}',
       slotsMap,
     })
 
