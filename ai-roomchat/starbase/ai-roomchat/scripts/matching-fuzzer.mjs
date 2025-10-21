@@ -3,7 +3,8 @@
   runs matchRankParticipants, and checks invariants. Produces a brief report.
 */
 
-import { matchRankParticipants } from '../lib/rank/matching.js'
+import * as matching from '../lib/rank/matching.js'
+const { matchRankParticipants } = matching
 
 function randInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min }
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)] }
