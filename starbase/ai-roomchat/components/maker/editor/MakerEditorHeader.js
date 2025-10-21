@@ -26,37 +26,91 @@ export default function MakerEditorHeader({
   collapsed,
   onToggleCollapse,
   onOpenVariables,
+  onCreateWithAI,
+  onOpenCodeEditor,
   quickActions = [],
 }) {
   if (collapsed) {
     return (
       <header
         style={{
-          background: '#fff',
+          background: 'linear-gradient(90deg, #1e1b4b 0%, #312e81 100%)',
           borderRadius: 16,
-          padding: '10px 14px',
-          boxShadow: '0 12px 28px -22px rgba(15, 23, 42, 0.42)',
+          padding: '12px 16px',
+          boxShadow: '0 15px 35px -10px rgba(30, 27, 75, 0.5)',
           display: 'flex',
           alignItems: 'center',
-          gap: 8,
+          gap: 10,
           flexWrap: 'wrap',
+          border: '1px solid rgba(255,255,255,0.15)',
         }}
       >
         <button
           type="button"
           onClick={onBack}
-          style={{ ...baseButton, borderColor: '#dbeafe', background: '#eff6ff', color: '#1d4ed8' }}
+          style={{ 
+            ...baseButton, 
+            background: 'rgba(255,255,255,0.15)', 
+            color: '#e0e7ff',
+            border: '1px solid rgba(255,255,255,0.2)'
+          }}
         >
           ← 목록
         </button>
         <button
           type="button"
           onClick={onToggleCollapse}
-          style={{ ...baseButton, borderColor: '#dbeafe', background: '#eff6ff', color: '#1d4ed8' }}
+          style={{ 
+            ...baseButton, 
+            background: 'rgba(255,255,255,0.2)', 
+            color: '#ffffff',
+            border: '1px solid rgba(255,255,255,0.3)',
+            fontWeight: 700
+          }}
         >
-          ▼ 펼치기
+          ▼ 🎮 게임 제작 도구 펼치기
         </button>
-        <strong style={{ fontSize: 14, color: '#0f172a', flex: '0 1 auto' }}>{setName || '이름 없는 세트'}</strong>
+        <strong style={{ 
+          fontSize: 16, 
+          color: '#ffffff', 
+          flex: '1 1 auto',
+          textShadow: '0 1px 3px rgba(0,0,0,0.3)'
+        }}>
+          {setName || '새로운 게임'}
+        </strong>
+        
+        {/* 🚀 접혀있어도 AI 버튼은 보이게! */}
+        <button
+          onClick={onCreateWithAI}
+          style={{ 
+            ...baseButton,
+            padding: '8px 16px',
+            background: 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)',
+            color: '#ffffff',
+            fontWeight: 700,
+            border: 'none',
+            boxShadow: '0 4px 12px rgba(139, 92, 246, 0.4)',
+            fontSize: 14
+          }}
+        >
+          🤖 AI 게임
+        </button>
+        <button
+          onClick={onOpenCodeEditor}
+          style={{ 
+            ...baseButton,
+            padding: '8px 16px',
+            background: 'linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)',
+            color: '#ffffff',
+            fontWeight: 700,
+            border: 'none',
+            boxShadow: '0 4px 12px rgba(245, 158, 11, 0.4)',
+            fontSize: 14
+          }}
+        >
+          ⚡ 코드
+        </button>
+        
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           {quickActions.map((action) => (
             <button
@@ -67,9 +121,11 @@ export default function MakerEditorHeader({
               style={{
                 ...baseButton,
                 padding: '5px 9px',
-                background: '#0f172a',
+                background: 'rgba(15, 23, 42, 0.8)',
                 color: '#fff',
                 opacity: action.disabled ? 0.55 : 1,
+                border: '1px solid rgba(255,255,255,0.2)',
+                backdropFilter: 'blur(8px)'
               }}
             >
               {action.label}
@@ -78,14 +134,24 @@ export default function MakerEditorHeader({
           <button
             type="button"
             onClick={onOpenVariables}
-            style={{ ...baseButton, background: '#f8fafc', borderColor: '#cbd5f5', color: '#0f172a' }}
+            style={{ 
+              ...baseButton, 
+              background: 'rgba(248, 250, 252, 0.15)', 
+              color: '#e0e7ff',
+              border: '1px solid rgba(255,255,255,0.2)'
+            }}
           >
             변수
           </button>
           <button
             type="button"
             onClick={onGoLobby}
-            style={{ ...baseButton, background: '#0f172a', color: '#fff' }}
+            style={{ 
+              ...baseButton, 
+              background: 'rgba(15, 23, 42, 0.8)', 
+              color: '#fff',
+              border: '1px solid rgba(255,255,255,0.2)'
+            }}
           >
             허브
           </button>
@@ -97,46 +163,159 @@ export default function MakerEditorHeader({
   return (
     <header
       style={{
-        background: '#ffffff',
-        borderRadius: 16,
-        padding: '12px 16px',
-        boxShadow: '0 16px 40px -34px rgba(15, 23, 42, 0.38)',
+        background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #1e40af 100%)',
+        borderRadius: 20,
+        padding: '16px 20px',
+        boxShadow: '0 25px 50px -12px rgba(30, 27, 75, 0.6)',
         display: 'grid',
-        gap: 10,
+        gap: 16,
+        border: '1px solid rgba(255,255,255,0.1)',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <button
           onClick={onBack}
-          style={{ ...baseButton, borderColor: '#dbeafe', background: '#eff6ff', color: '#1d4ed8' }}
+          style={{ 
+            ...baseButton, 
+            background: 'rgba(255,255,255,0.15)', 
+            color: '#e0e7ff',
+            border: '1px solid rgba(255,255,255,0.2)',
+            backdropFilter: 'blur(10px)'
+          }}
         >
           ← 목록
         </button>
-        <strong style={{ fontSize: 18, color: '#0f172a', flex: '1 1 auto' }}>{setName || '이름 없는 세트'}</strong>
+        <strong style={{ 
+          fontSize: 20, 
+          color: '#ffffff', 
+          flex: '1 1 auto',
+          textShadow: '0 2px 8px rgba(0,0,0,0.3)'
+        }}>
+          🎮 {setName || '새로운 게임 제작'}
+        </strong>
         <button
           type="button"
           onClick={onToggleCollapse}
-          style={{ ...baseButton, borderColor: '#e2e8f0', background: '#f8fafc', color: '#334155' }}
+          style={{ 
+            ...baseButton, 
+            background: 'rgba(255,255,255,0.1)', 
+            color: '#cbd5e1',
+            border: '1px solid rgba(255,255,255,0.15)'
+          }}
         >
           ▲ 접기
         </button>
       </div>
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+
+      {/* 🚀 메인 AI 액션 버튼들 - 매우 크고 눈에 띄게! */}
+      <div style={{ 
+        display: 'flex', 
+        gap: 12, 
+        flexWrap: 'wrap',
+        marginBottom: 8
+      }}>
+        <button
+          onClick={onCreateWithAI}
+          style={{ 
+            padding: '16px 32px',
+            borderRadius: 16,
+            background: 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 50%, #10b981 100%)',
+            color: '#ffffff',
+            fontWeight: 800,
+            fontSize: 16,
+            border: 'none',
+            boxShadow: '0 10px 25px -5px rgba(139, 92, 246, 0.5), inset 0 1px 0 rgba(255,255,255,0.3)',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+            transform: 'translateY(-1px)',
+            textShadow: '0 1px 3px rgba(0,0,0,0.3)',
+            minWidth: 200,
+            position: 'relative',
+            overflow: 'hidden'
+          }}
+          onMouseOver={(e) => {
+            e.target.style.transform = 'translateY(-2px)'
+            e.target.style.boxShadow = '0 15px 35px -5px rgba(139, 92, 246, 0.7), inset 0 1px 0 rgba(255,255,255,0.3)'
+          }}
+          onMouseOut={(e) => {
+            e.target.style.transform = 'translateY(-1px)'
+            e.target.style.boxShadow = '0 10px 25px -5px rgba(139, 92, 246, 0.5), inset 0 1px 0 rgba(255,255,255,0.3)'
+          }}
+        >
+          <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            🤖 <span>AI로 게임 만들기</span>
+          </span>
+        </button>
+        
+        <button
+          onClick={onOpenCodeEditor}
+          style={{ 
+            padding: '16px 32px',
+            borderRadius: 16,
+            background: 'linear-gradient(135deg, #f59e0b 0%, #ef4444 50%, #dc2626 100%)',
+            color: '#ffffff',
+            fontWeight: 800,
+            fontSize: 16,
+            border: 'none',
+            boxShadow: '0 10px 25px -5px rgba(245, 158, 11, 0.5), inset 0 1px 0 rgba(255,255,255,0.3)',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+            transform: 'translateY(-1px)',
+            textShadow: '0 1px 3px rgba(0,0,0,0.3)',
+            minWidth: 180,
+            position: 'relative',
+            overflow: 'hidden'
+          }}
+          onMouseOver={(e) => {
+            e.target.style.transform = 'translateY(-2px)'
+            e.target.style.boxShadow = '0 15px 35px -5px rgba(245, 158, 11, 0.7), inset 0 1px 0 rgba(255,255,255,0.3)'
+          }}
+          onMouseOut={(e) => {
+            e.target.style.transform = 'translateY(-1px)'
+            e.target.style.boxShadow = '0 10px 25px -5px rgba(245, 158, 11, 0.5), inset 0 1px 0 rgba(255,255,255,0.3)'
+          }}
+        >
+          <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            ⚡ <span>JavaScript 코드 실행</span>
+          </span>
+        </button>
+      </div>
+
+      {/* 기본 프롬프트 추가 버튼들 */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <button
           onClick={onAddPrompt}
-          style={{ ...baseButton, background: '#1f2937', color: '#fff' }}
+          style={{ 
+            ...baseButton, 
+            background: 'rgba(31, 41, 55, 0.8)', 
+            color: '#ffffff',
+            border: '1px solid rgba(255,255,255,0.2)',
+            backdropFilter: 'blur(8px)'
+          }}
         >
-          + 프롬프트
+          + AI 프롬프트
         </button>
         <button
           onClick={onAddUserAction}
-          style={{ ...baseButton, background: '#0ea5e9', color: '#fff' }}
+          style={{ 
+            ...baseButton, 
+            background: 'rgba(14, 165, 233, 0.8)', 
+            color: '#ffffff',
+            border: '1px solid rgba(255,255,255,0.2)',
+            backdropFilter: 'blur(8px)'
+          }}
         >
-          + 유저
+          + 유저 액션
         </button>
         <button
           onClick={onAddSystem}
-          style={{ ...baseButton, background: '#475569', color: '#fff' }}
+          style={{ 
+            ...baseButton, 
+            background: 'rgba(71, 85, 105, 0.8)', 
+            color: '#ffffff',
+            border: '1px solid rgba(255,255,255,0.2)',
+            backdropFilter: 'blur(8px)'
+          }}
         >
           + 시스템
         </button>
@@ -146,45 +325,68 @@ export default function MakerEditorHeader({
           disabled={busy}
           style={{
             ...baseButton,
-            background: '#111827',
-            color: '#fff',
-            opacity: busy ? 0.55 : 1,
+            background: busy ? 'rgba(17, 24, 39, 0.5)' : 'rgba(17, 24, 39, 0.9)',
+            color: '#ffffff',
+            opacity: busy ? 0.6 : 1,
+            border: '1px solid rgba(255,255,255,0.2)',
+            backdropFilter: 'blur(8px)',
+            fontWeight: 700
           }}
         >
-          {busy ? '저장 중…' : '저장 (⌘/Ctrl+S)'}
+          {busy ? '💾 저장 중…' : '💾 저장'}
         </button>
         <button
           type="button"
           onClick={onOpenVariables}
-          style={{ ...baseButton, borderColor: '#cbd5f5', background: '#f8fafc', color: '#0f172a' }}
+          style={{ 
+            ...baseButton, 
+            background: 'rgba(248, 250, 252, 0.15)', 
+            color: '#e0e7ff',
+            border: '1px solid rgba(255,255,255,0.3)',
+            backdropFilter: 'blur(8px)'
+          }}
         >
-          변수 설정
+          🎛️ 변수 설정
         </button>
       </div>
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+
+      {/* 유틸리티 버튼들 */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <button
           onClick={onExport}
-          style={{ ...baseButton, background: '#e0f2fe', color: '#0369a1' }}
+          style={{ 
+            ...baseButton, 
+            background: 'rgba(224, 242, 254, 0.15)', 
+            color: '#bfdbfe',
+            border: '1px solid rgba(191, 219, 254, 0.3)'
+          }}
         >
-          내보내기
+          📤 내보내기
         </button>
         <label
           style={{
             ...baseButton,
-            border: '1px dashed #94a3b8',
-            background: '#f8fafc',
-            color: '#0f172a',
+            border: '1px dashed rgba(148, 163, 184, 0.5)',
+            background: 'rgba(248, 250, 252, 0.1)',
+            color: '#e2e8f0',
             cursor: 'pointer',
+            backdropFilter: 'blur(8px)'
           }}
         >
-          가져오기
+          📥 가져오기
           <input type="file" accept="application/json" onChange={onImport} style={{ display: 'none' }} />
         </label>
         <button
           onClick={onGoLobby}
-          style={{ ...baseButton, background: '#0f172a', color: '#fff' }}
+          style={{ 
+            ...baseButton, 
+            background: 'rgba(15, 23, 42, 0.8)', 
+            color: '#ffffff',
+            border: '1px solid rgba(255,255,255,0.2)',
+            backdropFilter: 'blur(8px)'
+          }}
         >
-          랭킹 허브
+          🏆 랭킹 허브
         </button>
       </div>
     </header>

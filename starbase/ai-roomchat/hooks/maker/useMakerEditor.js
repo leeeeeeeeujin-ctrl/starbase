@@ -273,7 +273,7 @@ export function useMakerEditor() {
   }, [router])
 
   const addPromptNode = useCallback(
-    (type = 'ai') => {
+    (type = 'ai', template = '') => {
       const flowId = `tmp_${Date.now()}`
 
       setNodes((existing) => {
@@ -283,9 +283,9 @@ export function useMakerEditor() {
           {
             id: flowId,
             type: 'prompt',
-            position: { x: 160, y: 120 },
+            position: { x: 160 + (existing.length * 200), y: 120 + (existing.length * 50) },
             data: {
-              template: '',
+              template: template,
               slot_type: type,
               slot_pick: '1',
               isStart: false,
