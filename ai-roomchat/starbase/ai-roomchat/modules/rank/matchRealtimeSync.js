@@ -1,5 +1,6 @@
 import { addDebugEvent, addSupabaseDebugEvent } from '@/lib/debugCollector'
 import { withTable } from '@/lib/supabaseTables'
+import { warn as logWarn } from '@/lib/logger'
 
 function isBrowserEnvironment() {
   return typeof window !== 'undefined' && typeof window.document !== 'undefined'
@@ -1009,7 +1010,7 @@ async function fetchSessionViaApi(gameId, ownerId) {
     if (hasDiagnostics) {
       const derivedHint = deriveLatestSessionHint(failure)
 
-      console.warn('[matchRealtimeSync] latest-session API failed:', failure)
+      logWarn('[matchRealtimeSync] latest-session API failed:', failure)
 
       addSupabaseDebugEvent({
         source: 'latest-session-api',
@@ -1025,7 +1026,7 @@ async function fetchSessionViaApi(gameId, ownerId) {
 
     return { session: formatted, error: null, hint: null }
   } catch (error) {
-    console.warn('[matchRealtimeSync] latest-session API threw:', error)
+    logWarn('[matchRealtimeSync] latest-session API threw:', error)
     addDebugEvent({
       level: 'error',
       source: 'latest-session-api',
@@ -1061,7 +1062,7 @@ export async function fetchLatestSessionRow(supabaseClient, gameId, options = {}
     try {
       emitDiagnostics(payload)
     } catch (error) {
-      console.warn('[matchRealtimeSync] latest-session diagnostics handler failed:', error)
+      logWarn('[matchRealtimeSync] latest-session diagnostics handler failed:', error)
     }
   }
 
@@ -1099,12 +1100,12 @@ export async function fetchLatestSessionRow(supabaseClient, gameId, options = {}
       }
 
       if (rpcError?.code === 'PGRST203') {
-        console.warn(
+        logWarn(
           '[matchRealtimeSync] fetch_latest_rank_session_v2 RPC ambiguous (PGRST203); please drop legacy overloads',
           rpcError,
         )
       } else if (!isRpcMissing(rpcError)) {
-        console.warn('[matchRealtimeSync] fetch_latest_rank_session_v2 RPC failed:', rpcError)
+        logWarn('[matchRealtimeSync] fetch_latest_rank_session_v2 RPC failed:', rpcError)
       }
 
       const hint = deriveLatestSessionHint({ supabaseError: rpcError })
@@ -1112,7 +1113,7 @@ export async function fetchLatestSessionRow(supabaseClient, gameId, options = {}
         report({ source: 'fetch_latest_rank_session_v2', hint, error: rpcError })
       }
     } catch (rpcException) {
-      console.warn('[matchRealtimeSync] fetch_latest_rank_session_v2 RPC threw:', rpcException)
+      logWarn('[matchRealtimeSync] fetch_latest_rank_session_v2 RPC threw:', rpcException)
       const hint = deriveLatestSessionHint({ error: rpcException })
       if (hint) {
         report({ source: 'fetch_latest_rank_session_v2', hint, error: rpcException })
@@ -1120,7 +1121,7 @@ export async function fetchLatestSessionRow(supabaseClient, gameId, options = {}
     }
   }
 
-  console.warn(
+  logWarn(
     '[matchRealtimeSync] fetch_latest_rank_session_v2 RPC unavailable; returning null to avoid legacy rank_sessions query',
   )
   const fallbackHint = deriveLatestSessionHint({})
