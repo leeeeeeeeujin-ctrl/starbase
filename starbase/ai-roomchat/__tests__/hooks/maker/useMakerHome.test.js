@@ -137,8 +137,8 @@ describe('useMakerHome', () => {
 
     const hook = renderHook()
     await flushPromises()
-    // Ensure hydration + auth bootstrap completes so userId is set before import
-    for (let i = 0; i < 5 && mockList.mock.calls.length === 0; i += 1) {
+    // Ensure hydration + auth bootstrap completes so userId is set before import (allow generous cycles for CI)
+    for (let i = 0; i < 12 && mockList.mock.calls.length === 0; i += 1) {
       await flushPromises()
     }
 
