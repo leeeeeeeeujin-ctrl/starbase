@@ -198,7 +198,9 @@ describe('MatchReadyClient store integration', () => {
     if (console.warn && typeof console.warn.mockRestore === 'function') {
       console.warn.mockRestore()
     }
-    clearGameMatchData(gameId)
+    act(() => {
+      clearGameMatchData(gameId)
+    })
   })
 
   it('refreshes the applied turn timer when session meta updates in the store', async () => {
