@@ -6,7 +6,7 @@ module.exports = {
     '^.+\\\.module\\\.css$': '<rootDir>/__mocks__/styleMock.js',
   },
   transform: {
-    '^.+\\.(js|jsx|ts|tsx)$': 'babel-jest',
+    '^.+\\.(js|jsx|ts|tsx|mjs)$': 'babel-jest',
   },
   setupFiles: ['<rootDir>/jest.setup.js'],
   reporters: [

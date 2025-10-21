@@ -7,7 +7,7 @@
 let matchRankParticipants
 
 async function init() {
-  const matching = await import('../lib/rank/matching.js')
+  const matching = await import('../lib/rank/matching.mjs')
   matchRankParticipants = matching.matchRankParticipants
 }
 

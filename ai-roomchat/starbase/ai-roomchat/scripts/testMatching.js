@@ -1,5 +1,5 @@
 // 매칭 함수 단독 테스트 - 실제 테스트 코드를 기반으로
-import { matchRankParticipants } from '../lib/rank/matching.js'
+import { matchRankParticipants } from '../lib/rank/matching.mjs'
 
 // 테스트 코드와 똑같이
 function buildQueueEntry({ id, ownerId, heroId, role, score }) {
