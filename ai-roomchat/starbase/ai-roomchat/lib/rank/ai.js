@@ -1,0 +1,386 @@
+// lib/rank/ai.js
+import {
+  DEFAULT_GEMINI_MODE,
+  DEFAULT_GEMINI_MODEL,
+  buildGeminiModelCandidates,
+  normalizeGeminiMode,
+  normalizeGeminiModelId,
+} from './geminiConfig'
+import { sanitizeHistoryForProvider } from './chatHistory'
+
+function safeParseJson(value) {
+  if (!value) return null
+  try {
+    return JSON.parse(value)
+  } catch (error) {
+    return null
+  }
+}
+
+function sanitizeDetail(detail) {
+  if (typeof detail !== 'string') {
+    return ''
+  }
+  return detail.trim().slice(0, 500)
+}
+
+let cachedFetchImpl = null
+
+async function getRuntimeFetch() {
+  if (typeof fetch === 'function') {
+    return fetch
+  }
+  if (!cachedFetchImpl) {
+    const mod = await import('node-fetch')
+    cachedFetchImpl = mod.default
+  }
+  return cachedFetchImpl
+}
+
+function buildNetworkError(error) {
+  const detail = error?.message ? sanitizeDetail(error.message) : ''
+  return detail ? { error: 'ai_network_error', detail } : { error: 'ai_network_error' }
+}
+
+function mapHistoryEntries(history = []) {
+  if (!Array.isArray(history) || history.length === 0) {
+    return []
+  }
+
+  return history
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object') return null
+      const content = typeof entry.content === 'string' ? entry.content : ''
+      if (!content) return null
+      const role = entry.role === 'assistant' ? 'assistant' : 'user'
+      return { role, content }
+    })
+    .filter(Boolean)
+}
+
+function deriveGoogleError(status, rawBody) {
+  const parsed = safeParseJson(rawBody)
+  const message =
+    parsed?.error?.message ||
+    parsed?.error?.status ||
+    (Array.isArray(parsed?.error?.details)
+      ? parsed.error.details
+          .map((entry) => entry?.reason || entry?.message || '')
+          .filter(Boolean)
+          .join('\n')
+      : '') ||
+    sanitizeDetail(rawBody)
+
+  const lower = message.toLowerCase()
+  if (status === 401) {
+    return { error: 'invalid_user_api_key', detail: message }
+  }
+  if (status === 429) {
+    return { error: 'quota_exhausted', detail: message }
+  }
+  if (status === 403 || lower.includes('permission') || lower.includes('api key not valid')) {
+    return { error: 'invalid_user_api_key', detail: message }
+  }
+  if (status === 404 || lower.includes('model') && lower.includes('not found')) {
+    return { retry: true, detail: message }
+  }
+  if (status === 400 && lower.includes('safety')) {
+    return { error: 'ai_prompt_blocked', detail: message }
+  }
+  if (status === 400 && lower.includes('unsupported location')) {
+    return { error: 'invalid_user_api_key', detail: message }
+  }
+  if (!message) {
+    return { error: 'ai_failed', detail: '' }
+  }
+  return { error: 'ai_failed', detail: message }
+}
+
+async function callGemini({ apiKey, system, prompt, mode, model, history = [] }) {
+  const runtimeFetch = await getRuntimeFetch()
+  const preparedPrompt = typeof prompt === 'string' ? prompt : ''
+  const trimmedSystem = typeof system === 'string' ? system.trim() : ''
+  const normalizedMode = normalizeGeminiMode(mode)
+  const selectedModel = normalizeGeminiModelId(model)
+  const modelCandidates = buildGeminiModelCandidates(normalizedMode, selectedModel)
+  if (!modelCandidates.length) {
+    modelCandidates.push(normalizeGeminiModelId(DEFAULT_GEMINI_MODEL))
+  }
+
+  const baseUrl =
+    normalizedMode === 'v1'
+      ? 'https://generativelanguage.googleapis.com/v1/models'
+      : 'https://generativelanguage.googleapis.com/v1beta/models'
+
+  const supportsSystemInstruction = normalizedMode === DEFAULT_GEMINI_MODE
+
+  const endpoints = modelCandidates.map((modelId) => ({
+    url: `${baseUrl}/${modelId}:generateContent`,
+    supportsSystemInstruction,
+  }))
+
+  let lastFailure = null
+
+  for (const endpoint of endpoints) {
+    const historyMessages = mapHistoryEntries(history)
+    const finalPrompt =
+      endpoint.supportsSystemInstruction || !trimmedSystem
+        ? preparedPrompt
+        : trimmedSystem
+        ? `${trimmedSystem}\n\n${preparedPrompt}`
+        : trimmedSystem
+
+    const body = {
+      contents: [
+        ...historyMessages.map((entry) => ({
+          role: entry.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: entry.content }],
+        })),
+        {
+          role: 'user',
+          parts: [{ text: finalPrompt }],
+        },
+      ],
+    }
+
+    if (endpoint.supportsSystemInstruction && trimmedSystem) {
+      body.systemInstruction = {
+        role: 'system',
+        parts: [{ text: trimmedSystem }],
+      }
+    }
+
+    const headers = {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey,
+    }
+
+    let resp
+    try {
+      resp = await runtimeFetch(endpoint.url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      })
+    } catch (error) {
+      lastFailure = buildNetworkError(error)
+      continue
+    }
+
+    let text = ''
+    try {
+      text = await resp.text()
+    } catch (error) {
+      lastFailure = buildNetworkError(error)
+      continue
+    }
+
+    if (resp.ok) {
+      const json = safeParseJson(text)
+      const parts = json?.candidates?.[0]?.content?.parts
+      const content = Array.isArray(parts)
+        ? parts
+            .filter((part) => typeof part?.text === 'string')
+            .map((part) => part.text)
+            .join('\n')
+        : ''
+      return { text: typeof content === 'string' ? content : '' }
+    }
+
+    const derived = deriveGoogleError(resp.status, text)
+    if (derived.retry) {
+      lastFailure = { error: 'ai_failed', detail: derived.detail }
+      continue
+    }
+    return derived
+  }
+
+  return lastFailure || { error: 'ai_failed' }
+}
+
+function deriveOpenAIError(status, rawBody) {
+  const parsed = safeParseJson(rawBody)
+  const message =
+    parsed?.error?.message ||
+    parsed?.error?.code ||
+    sanitizeDetail(rawBody)
+
+  if (status === 401) {
+    return { error: 'invalid_user_api_key', detail: message }
+  }
+  if (status === 429) {
+    return { error: 'quota_exhausted', detail: message }
+  }
+  if (status === 403) {
+    return { error: 'invalid_user_api_key', detail: message }
+  }
+  if (!message) {
+    return { error: 'ai_failed', detail: '' }
+  }
+  return { error: 'ai_failed', detail: message }
+}
+
+async function callOpenAIResponses({ apiKey, system, prompt, history = [] }) {
+  const runtimeFetch = await getRuntimeFetch()
+  const headers = {
+    Authorization: `Bearer ${apiKey}`,
+    'Content-Type': 'application/json',
+  }
+
+  const historyMessages = mapHistoryEntries(history)
+
+  const input = []
+  if (system) {
+    input.push({
+      role: 'system',
+      content: [{ type: 'text', text: system }],
+    })
+  }
+  historyMessages.forEach((entry) => {
+    input.push({
+      role: entry.role,
+      content: [{ type: 'text', text: entry.content }],
+    })
+  })
+  input.push({
+    role: 'user',
+    content: [{ type: 'text', text: prompt }],
+  })
+
+  let resp
+  try {
+    resp = await runtimeFetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        input,
+        temperature: 0.7,
+      }),
+    })
+  } catch (error) {
+    return buildNetworkError(error)
+  }
+
+  let text = ''
+  try {
+    text = await resp.text()
+  } catch (error) {
+    return buildNetworkError(error)
+  }
+  if (!resp.ok) {
+    return deriveOpenAIError(resp.status, text)
+  }
+
+  const json = safeParseJson(text)
+  let value = ''
+  if (Array.isArray(json?.output)) {
+    value = json.output
+      .filter((item) => item?.type === 'message')
+      .flatMap((item) => item?.message?.content || [])
+      .filter((part) => part?.type === 'text' && typeof part.text === 'string')
+      .map((part) => part.text)
+      .join('\n')
+  }
+  if (!value && typeof json?.output_text === 'string') {
+    value = json.output_text
+  }
+  return { text: typeof value === 'string' ? value : '' }
+}
+
+async function callOpenAIChat({ apiKey, system, prompt, history = [] }) {
+  const runtimeFetch = await getRuntimeFetch()
+  const headers = {
+    Authorization: `Bearer ${apiKey}`,
+    'Content-Type': 'application/json',
+  }
+
+  const historyMessages = mapHistoryEntries(history)
+
+  let resp
+  try {
+    resp = await runtimeFetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          ...(system ? [{ role: 'system', content: system }] : []),
+          ...historyMessages.map((entry) => ({ role: entry.role, content: entry.content })),
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.7,
+      }),
+    })
+  } catch (error) {
+    return buildNetworkError(error)
+  }
+
+  let text = ''
+  try {
+    text = await resp.text()
+  } catch (error) {
+    return buildNetworkError(error)
+  }
+  if (!resp.ok) {
+    return deriveOpenAIError(resp.status, text)
+  }
+
+  const json = safeParseJson(text)
+  const value = json?.choices?.[0]?.message?.content ?? ''
+  return { text: typeof value === 'string' ? value : '' }
+}
+
+export async function callChat({
+  userApiKey,
+  system,
+  user,
+  history = [],
+  apiVersion = 'gemini',
+  providerOptions = {},
+}) {
+  const trimmedKey = typeof userApiKey === 'string' ? userApiKey.trim() : ''
+  if (!trimmedKey) {
+    return { error: 'missing_user_api_key' }
+  }
+
+  const trimmedPrompt = typeof user === 'string' ? user : ''
+  if (!trimmedPrompt.trim()) {
+    return { error: 'missing_prompt' }
+  }
+
+  const trimmedSystem = typeof system === 'string' ? system.trim() : ''
+
+  const normalizedHistory = sanitizeHistoryForProvider(history, { limit: 48 })
+
+  try {
+    if (apiVersion === 'gemini') {
+      return await callGemini({
+        apiKey: trimmedKey,
+        system: trimmedSystem,
+        prompt: trimmedPrompt,
+        mode: providerOptions.geminiMode || providerOptions.mode,
+        model: providerOptions.geminiModel || providerOptions.model,
+        history: normalizedHistory,
+      })
+    }
+
+    if (apiVersion === 'responses') {
+      return await callOpenAIResponses({
+        apiKey: trimmedKey,
+        system: trimmedSystem,
+        prompt: trimmedPrompt,
+        history: normalizedHistory,
+      })
+    }
+
+    return await callOpenAIChat({
+      apiKey: trimmedKey,
+      system: trimmedSystem,
+      prompt: trimmedPrompt,
+      history: normalizedHistory,
+    })
+  } catch (error) {
+    return { error: 'ai_network_error' }
+  }
+}

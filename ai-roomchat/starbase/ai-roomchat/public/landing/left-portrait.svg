@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 1280" role="img" aria-labelledby="title desc">
+  <title id="title">Aurora fox pilot</title>
+  <desc id="desc">A silver-haired pilot with fox ears looking up at the night sky, painted in soft blue light.</desc>
+  <defs>
+    <radialGradient id="bg" cx="28%" cy="18%" r="80%">
+      <stop offset="0%" stop-color="#1c2e66" />
+      <stop offset="40%" stop-color="#101b3d" />
+      <stop offset="100%" stop-color="#040614" />
+    </radialGradient>
+    <linearGradient id="hair" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f1f5ff" />
+      <stop offset="50%" stop-color="#dbe4ff" />
+      <stop offset="100%" stop-color="#9fb4ff" />
+    </linearGradient>
+    <linearGradient id="skin" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbe5d3" />
+      <stop offset="60%" stop-color="#f7cdb8" />
+      <stop offset="100%" stop-color="#d7a890" />
+    </linearGradient>
+    <linearGradient id="suit" x1="10%" y1="0%" x2="90%" y2="100%">
+      <stop offset="0%" stop-color="#1f2948" />
+      <stop offset="50%" stop-color="#11162a" />
+      <stop offset="100%" stop-color="#050712" />
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="12" result="blur" />
+      <feColorMatrix type="matrix" values="0 0 0 0 0.56 0 0 0 0 0.74 0 0 0 0 1 0 0 0 0.45 0" />
+    </filter>
+  </defs>
+  <rect width="960" height="1280" fill="url(#bg)" />
+  <g opacity="0.6" filter="url(#glow)">
+    <ellipse cx="180" cy="200" rx="220" ry="120" />
+  </g>
+  <g opacity="0.35">
+    <circle cx="120" cy="150" r="3" fill="#fff" />
+    <circle cx="340" cy="220" r="2" fill="#9cc7ff" />
+    <circle cx="420" cy="120" r="2.5" fill="#fff" />
+    <circle cx="260" cy="80" r="1.5" fill="#d0e6ff" />
+    <circle cx="480" cy="260" r="1.8" fill="#fff" />
+    <circle cx="560" cy="180" r="1.2" fill="#dbe8ff" />
+  </g>
+  <g transform="translate(140 200)">
+    <path d="M120 140 C90 120 70 70 110 20 C150 -25 210 -10 250 45 C310 130 290 260 220 300 L120 140" fill="url(#hair)" />
+    <path d="M282 40 C272 -30 315 -90 370 -88 C416 -86 430 -42 418 18 C402 -5 374 -5 360 45 Z" fill="#f1f5ff" />
+    <path d="M76 82 C56 30 78 -15 120 -30 C160 -44 206 -26 214 8 C164 16 132 48 116 112 Z" fill="#f7fbff" />
+    <path d="M208 188 C260 176 300 132 324 70 C368 106 380 198 324 238 Z" fill="#dbe6ff" />
+    <circle cx="220" cy="210" r="86" fill="url(#skin)" />
+    <path d="M170 210 C178 210 188 196 188 188 C188 176 180 168 170 168 C160 168 152 178 152 188 C152 198 160 210 170 210 Z" fill="#2b3a59" opacity="0.12" />
+    <path d="M270 210 C278 210 288 196 288 188 C288 176 280 168 270 168 C260 168 252 178 252 188 C252 198 260 210 270 210 Z" fill="#2b3a59" opacity="0.12" />
+    <path d="M214 238 C232 248 260 250 282 238 C276 262 244 280 214 268 Z" fill="#d1987c" opacity="0.5" />
+    <path d="M106 330 C160 286 260 284 318 320 C380 360 420 430 430 540 L420 620 C340 610 240 610 160 620 L134 512 Z" fill="url(#suit)" />
+    <path d="M120 340 C150 320 188 310 220 314 C204 366 182 406 142 414 Z" fill="#0d1327" opacity="0.85" />
+    <path d="M330 330 C360 350 382 382 390 430 C332 430 304 390 294 344 Z" fill="#0f142b" opacity="0.85" />
+    <path d="M210 128 C256 134 290 126 312 104 C304 146 264 170 222 168 Z" fill="#fff" opacity="0.32" />
+    <path d="M132 88 C120 52 140 22 180 16 C184 44 170 70 132 88 Z" fill="#fff" opacity="0.5" />
+  </g>
+</svg>

@@ -1,0 +1,152 @@
+name: Deploy Supabase Edge Functions
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'supabase/functions/**'
+      - 'scripts/deploy-edge-functions.js'
+      - 'package.json'
+      - '.github/workflows/edge-functions-deploy.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: edge-functions-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: starbase/ai-roomchat
+
+jobs:
+  deploy:
+    name: Deploy Edge Functions
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: staging
+            github_environment: rank-edge-staging
+            require_smoke: 'false'
+            require_pagerduty: 'false'
+          - name: production
+            github_environment: rank-edge-production
+            require_smoke: 'true'
+            require_pagerduty: 'true'
+    environment: ${{ matrix.github_environment }}
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE: ${{ secrets.SUPABASE_SERVICE_ROLE }}
+      RANK_EDGE_DEPLOY_SLACK_WEBHOOK_URL: ${{ secrets.RANK_EDGE_DEPLOY_SLACK_WEBHOOK_URL }}
+      RANK_EDGE_DEPLOY_SLACK_WEBHOOK_AUTH: ${{ secrets.RANK_EDGE_DEPLOY_SLACK_WEBHOOK_AUTH }}
+      RANK_EDGE_DEPLOY_SLACK_MENTION: ${{ secrets.RANK_EDGE_DEPLOY_SLACK_MENTION }}
+      RANK_EDGE_DEPLOY_SLACK_NOTIFY_SUCCESS: ${{ secrets.RANK_EDGE_DEPLOY_SLACK_NOTIFY_SUCCESS }}
+      RANK_EDGE_DEPLOY_PAGERDUTY_ROUTING_KEY: ${{ secrets.RANK_EDGE_DEPLOY_PAGERDUTY_ROUTING_KEY }}
+      RANK_EDGE_DEPLOY_PAGERDUTY_SEVERITY: ${{ secrets.RANK_EDGE_DEPLOY_PAGERDUTY_SEVERITY }}
+      RANK_EDGE_DEPLOY_PAGERDUTY_SOURCE: ${{ secrets.RANK_EDGE_DEPLOY_PAGERDUTY_SOURCE }}
+      RANK_EDGE_DEPLOY_MAX_ATTEMPTS: ${{ secrets.RANK_EDGE_DEPLOY_MAX_ATTEMPTS }}
+      RANK_EDGE_DEPLOY_BASE_RETRY_MS: ${{ secrets.RANK_EDGE_DEPLOY_BASE_RETRY_MS }}
+      RANK_EDGE_DEPLOY_FUNCTIONS: ${{ secrets.RANK_EDGE_DEPLOY_FUNCTIONS }}
+      RANK_EDGE_DEPLOY_SMOKE_TEST_URLS: ${{ secrets.RANK_EDGE_DEPLOY_SMOKE_TEST_URLS }}
+      RANK_EDGE_DEPLOY_SMOKE_TEST_METHOD: ${{ secrets.RANK_EDGE_DEPLOY_SMOKE_TEST_METHOD }}
+      RANK_EDGE_DEPLOY_SMOKE_TEST_HEADERS: ${{ secrets.RANK_EDGE_DEPLOY_SMOKE_TEST_HEADERS }}
+      RANK_EDGE_DEPLOY_SMOKE_TEST_TIMEOUT_MS: ${{ secrets.RANK_EDGE_DEPLOY_SMOKE_TEST_TIMEOUT_MS }}
+      RANK_EDGE_DEPLOY_ENVIRONMENT: ${{ matrix.name }}
+      RANK_EDGE_DEPLOY_REQUIRE_SMOKE: ${{ matrix.require_smoke }}
+      RANK_EDGE_DEPLOY_REQUIRE_PAGERDUTY: ${{ matrix.require_pagerduty }}
+    steps:
+
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Debug: print working directory and files
+        run: |
+          echo "PWD: $(pwd)"
+          echo "Listing root:"
+          ls -al
+          echo "Listing starbase:"
+          ls -al starbase || true
+          echo "Listing starbase/ai-roomchat:"
+          ls -al starbase/ai-roomchat || true
+
+      - name: Debug: print working directory and files
+        run: |
+          echo "PWD: $(pwd)"
+          echo "Listing root:"
+          ls -al
+          echo "Listing starbase:"
+          ls -al starbase || true
+          echo "Listing starbase/ai-roomchat:"
+          ls -al starbase/ai-roomchat || true
+
+      - name: Debug: print working directory and files
+        run: |
+          echo "PWD: $(pwd)"
+          echo "Listing root:"
+          ls -al
+          echo "Listing starbase:"
+          ls -al starbase || true
+          echo "Listing starbase/ai-roomchat:"
+          ls -al starbase/ai-roomchat || true
+
+      - name: Debug: print working directory and files
+        run: |
+          echo "PWD: $(pwd)"
+          echo "Listing root:"
+          ls -al
+          echo "Listing starbase:"
+          ls -al starbase || true
+          echo "Listing starbase/ai-roomchat:"
+          ls -al starbase/ai-roomchat || true
+
+      - name: Debug: print working directory and files
+        run: |
+          echo "PWD: $(pwd)"
+          echo "Listing root:"
+          ls -al
+          echo "Listing starbase:"
+          ls -al starbase || true
+          echo "Listing starbase/ai-roomchat:"
+          ls -al starbase/ai-roomchat || true
+
+      - name: Setup Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+          cache-dependency-path: starbase/ai-roomchat/package-lock.json
+
+      - name: Validate secret configuration
+        run: npm run check:edge-deploy-config
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests and generate JUnit report
+        run: npm test -- --ci --reporters=default --reporters=jest-junit
+        env:
+          JEST_JUNIT_OUTPUT_DIR: ./reports/junit
+          JEST_JUNIT_OUTPUT_NAME: junit.xml
+
+      - name: Upload test results (JUnit)
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-report
+          path: starbase/ai-roomchat/starbase/ai-roomchat/reports/junit/junit.xml
+          if-no-files-found: warn
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deploy Edge Functions with retry, smoke tests & alerts
+        run: npm run deploy:edge-functions

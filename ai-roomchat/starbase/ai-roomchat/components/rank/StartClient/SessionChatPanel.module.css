@@ -1,0 +1,150 @@
+.section {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #e2e8f0;
+  backdrop-filter: blur(12px);
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(226, 232, 240, 0.76);
+}
+
+.actions {
+  flex-shrink: 0;
+}
+
+.refreshButton {
+  appearance: none;
+  border: none;
+  border-radius: 999px;
+  padding: 8px 16px;
+  background: rgba(96, 165, 250, 0.18);
+  color: #bfdbfe;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.refreshButton:hover:not(:disabled) {
+  background: rgba(96, 165, 250, 0.32);
+  color: #eff6ff;
+}
+
+.refreshButton:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.errorBanner {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(248, 113, 113, 0.16);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  color: #fecaca;
+  font-size: 13px;
+  display: grid;
+  gap: 4px;
+}
+
+.errorDetail {
+  font-size: 12px;
+  color: rgba(254, 202, 202, 0.8);
+}
+
+.messageScroll {
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 6px;
+  display: block;
+}
+
+.messageList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.messageItem {
+  background: rgba(15, 23, 42, 0.65);
+  border-radius: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  display: grid;
+  gap: 6px;
+}
+
+.metaRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.speaker {
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.roleBadge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.2);
+  color: rgba(226, 232, 240, 0.9);
+}
+
+.timestamp {
+  margin-left: auto;
+  color: rgba(148, 163, 184, 0.8);
+}
+
+.body {
+  margin: 0;
+  white-space: pre-wrap;
+  line-height: 1.55;
+  font-size: 14px;
+  color: rgba(226, 232, 240, 0.95);
+}
+
+.emptyState {
+  padding: 36px 16px;
+  border-radius: 12px;
+  text-align: center;
+  color: rgba(148, 163, 184, 0.85);
+  border: 1px dashed rgba(148, 163, 184, 0.4);
+}
+
+@media (max-width: 960px) {
+  .section {
+    padding: 14px;
+  }
+
+  .messageScroll {
+    max-height: 260px;
+  }
+}
+

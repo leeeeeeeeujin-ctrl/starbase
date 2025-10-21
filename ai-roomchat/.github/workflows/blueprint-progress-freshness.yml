@@ -1,0 +1,51 @@
+name: Blueprint progress freshness
+
+on:
+  schedule:
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+jobs:
+  freshness-check:
+    name: Verify snapshot freshness
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: starbase/ai-roomchat
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Use Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+          cache-dependency-path: starbase/ai-roomchat/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Restore Next.js build cache
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: ${{ runner.os }}-next-${{ hashFiles('package-lock.json') }}-${{ hashFiles('next.config.js', 'next.config.mjs', 'pages/**/*', 'components/**/*', 'lib/**/*', 'styles/**/*', 'data/**/*') }}
+          restore-keys: |
+            ${{ runner.os }}-next-${{ hashFiles('package-lock.json') }}-
+      - name: Prepare test reports directory
+        run: mkdir -p reports/junit
+      - name: Run unit tests
+        id: run-tests
+        run: npm test -- --runInBand
+      - name: Build application
+        run: CI=1 npm run build
+      - name: Run freshness check
+        run: npm run check:blueprint-progress-freshness
+      - name: Check next-action deadlines
+        run: npm run check:blueprint-next-actions
+      - name: Publish audio event trend notification
+        run: npm run notify:audio-events
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scheduled-jest-report
+          path: reports/junit/junit.xml
