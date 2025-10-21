@@ -2,7 +2,7 @@
 const { spawnSync } = require('node:child_process')
 
 const iterations = Number(process.argv[2]) || 300
-const p = spawnSync(process.execPath, ['scripts/matching-fuzzer.js', String(iterations)], { encoding: 'utf8' })
+const p = spawnSync(process.execPath, ['scripts/matching-fuzzer.mjs', String(iterations)], { encoding: 'utf8' })
 if (p.error) {
   console.error(p.error)
   process.exit(1)
