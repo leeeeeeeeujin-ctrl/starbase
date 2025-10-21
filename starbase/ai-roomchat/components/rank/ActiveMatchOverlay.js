@@ -115,12 +115,12 @@ function formatSummary(session) {
 export default function ActiveMatchOverlay() {
   const router = useRouter()
   const { asPath } = router
-  const [session, setSession] = useState(null)
+  // Initialise from storage immediately so first render can show overlay without waiting for effects
+  const [session, setSession] = useState(() => readActiveSession())
   const [forceHide, setForceHide] = useState(false)
   const [refreshToken, setRefreshToken] = useState(0)
 
   useEffect(() => {
-    setSession(readActiveSession())
     return subscribeActiveSession((payload) => {
       setSession(payload || null)
     })
