@@ -51,18 +51,11 @@ function checkInvariants(result) {
       seen.add(hero)
     }
   }
-  // Group counts per role must not exceed slotCount
-  const capacity = new Map()
+  // Each assignment (room) must not exceed its own slot capacity
   for (const asn of result.assignments || []) {
-    capacity.set(asn.role, asn.slots)
-  }
-  const filled = new Map()
-  for (const asn of result.assignments || []) {
-    const c = (asn.members || []).length
-    filled.set(asn.role, (filled.get(asn.role) || 0) + c)
-  }
-  for (const [role, cap] of capacity.entries()) {
-    if ((filled.get(role) || 0) > cap) return { ok: false, reason: 'overfill' }
+    const filled = (asn.members || []).length
+    const cap = asn.slots || 0
+    if (filled > cap) return { ok: false, reason: 'overfill', filled, cap }
   }
   return { ok: true }
 }
