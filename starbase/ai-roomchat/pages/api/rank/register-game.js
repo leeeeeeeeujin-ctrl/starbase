@@ -35,6 +35,9 @@ export default async function handler(req, res) {
     const realtimeMode = normalizeRealtimeMode(prepared.game.realtime_match ?? REALTIME_MODES.OFF)
     const sanitizedGame = {
       ...prepared.game,
+      name: prepared.game.name || '새 게임',
+      description:
+        typeof prepared.game.description === 'string' ? prepared.game.description : '',
       realtime_match: realtimeMode,
     }
 

@@ -13,7 +13,7 @@
 ## Game & Match Flow
 - Rank overlays subscribe to the browser session cache, revalidating with Supabase auth and fetching the latest session rows so stale entries are cleaned up automatically.【F:components/rank/ActiveMatchOverlay.js†L115-L200】
 - The realtime sync module aggressively normalises roster rows, hero metadata, and role groupings, offering deterministic slot templates for downstream UI and RPC payloads.【F:modules/rank/matchRealtimeSync.js†L1-L168】
-- Stage-room API endpoints authenticate via the anon client, fan out to service-role reads, verify role/slot templates, and ultimately synchronise rosters through dedicated RPCs (`verify_rank_roles_and_slots`, `sync_rank_match_roster`).【F:pages/api/rank/stage-room-match.js†L1-L370】
+- Stage-room API endpoints now rely on the shared match services to authenticate, load room context, hydrate roster metadata, and invoke the consolidated `prepare_rank_match_session` RPC so Supabase enforces the full transaction server-side.【F:pages/api/rank/stage-room-match.js†L1-L118】【F:services/rank/matchSupabase.js†L35-L224】
 - Turn-event polling is already lifted into `fetch_rank_turn_state_events` RPC calls, aligning with the practice of keeping latency-sensitive reads in database functions.【F:pages/api/rank/turn-events.js†L1-L81】
 
 ## Domain Services & Tooling

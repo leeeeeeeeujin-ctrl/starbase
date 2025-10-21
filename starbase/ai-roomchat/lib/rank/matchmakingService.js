@@ -597,23 +597,63 @@ export async function enqueueParticipant(
     }
   }
 
-  const duplicateEntries = Array.isArray(duplicateCheck?.data)
-    ? duplicateCheck.data.filter((entry) => {
-        if (!entry) return false
-        const entryGameId = entry.game_id ?? entry.gameId
-        const entryMode = entry.mode
-        const entryStatus = entry.status
+  let duplicateEntries = []
+  const otherGameQueueEntries = []
 
-        const sameGame = String(entryGameId ?? '') === String(gameId ?? '')
-        const sameMode = String(entryMode ?? '') === String(mode ?? '')
+  if (Array.isArray(duplicateCheck?.data)) {
+    duplicateEntries = duplicateCheck.data.filter((entry) => {
+      if (!entry) return false
+      const entryGameId = entry.game_id ?? entry.gameId
+      const entryMode = entry.mode
+      const entryStatus = (entry.status || '').toString().toLowerCase()
 
-        if (sameGame && sameMode && entryStatus === 'waiting') {
-          return false
+      const sameGame = String(entryGameId ?? '') === String(gameId ?? '')
+      const sameMode = String(entryMode ?? '') === String(mode ?? '')
+      const isWaiting = entryStatus === 'waiting'
+      const isMatched = entryStatus === 'matched'
+
+      if (!sameGame) {
+        if (isWaiting || isMatched) {
+          otherGameQueueEntries.push(entry)
         }
+        // Temporary override: allow multi-game queueing during test cycle.
+        // TODO(ranked-launch): Reinstate cross-game queue lock once game shutdown &
+        // cleanup flows are complete.
+        return false
+      }
 
-        return true
-      })
-    : []
+      if (sameMode && isWaiting) {
+        return false
+      }
+
+      return isMatched || sameGame
+    })
+  }
+
+  if (otherGameQueueEntries.length > 0) {
+    const otherGameIds = Array.from(
+      new Set(
+        otherGameQueueEntries
+          .map((entry) => entry?.game_id ?? entry?.gameId)
+          .map((value) => (value == null ? null : String(value))),
+      ),
+    ).filter(Boolean)
+
+    if (otherGameIds.length > 0) {
+      const cleanupResult = await withTable(supabaseClient, 'rank_match_queue', (table) =>
+        supabaseClient
+          .from(table)
+          .update({ status: 'abandoned', party_key: null, updated_at: nowIso() })
+          .eq('owner_id', ownerId)
+          .in('status', ['waiting', 'matched'])
+          .in('game_id', otherGameIds),
+      )
+
+      if (cleanupResult?.error) {
+        console.warn('다른 게임 대기열 정리 실패:', cleanupResult.error)
+      }
+    }
+  }
 
   if (duplicateEntries.length > 0) {
     return {
@@ -781,12 +821,330 @@ export async function loadHeroesByIds(supabaseClient, heroIds) {
   )
 }
 
+function normalizeId(value) {
+  if (value === null || value === undefined) return null
+  const text = String(value).trim()
+  return text || null
+}
+
+function buildRemovedMember(member, slot, reason, slotKey) {
+  if (!member || typeof member !== 'object') return null
+  const ownerId =
+    normalizeId(member.owner_id) ??
+    normalizeId(member.ownerId) ??
+    normalizeId(member.ownerID)
+  const heroId =
+    normalizeId(member.hero_id) ?? normalizeId(member.heroId) ?? normalizeId(member.heroID)
+  const role = normalizeId(slot?.role) ?? null
+  const slotIndex = Number.isFinite(Number(slot?.slotIndex)) ? Number(slot.slotIndex) : null
+  return {
+    ownerId,
+    heroId,
+    role,
+    slotIndex,
+    reason: reason || 'duplicate',
+    slotKey: slotKey || null,
+  }
+}
+
+export function sanitizeAssignments(assignments = []) {
+  if (!Array.isArray(assignments) || assignments.length === 0) {
+    return Array.isArray(assignments) ? assignments : []
+  }
+
+  return assignments
+    .map((assignment) => {
+      if (!assignment || typeof assignment !== 'object') return assignment
+
+      const ownerSeen = new Set()
+      const heroSeen = new Set()
+      const slotSeen = new Set()
+      const sanitizedRoleSlots = []
+      const removedMembers = []
+
+      const roleSlots = Array.isArray(assignment.roleSlots)
+        ? assignment.roleSlots
+        : Array.isArray(assignment.slots)
+        ? assignment.slots
+        : []
+
+      roleSlots.forEach((slot, slotOrdinal) => {
+        if (!slot || typeof slot !== 'object') {
+          return
+        }
+
+        const slotId = normalizeId(slot.slot_id ?? slot.slotId)
+        const slotIndex = Number.isFinite(Number(slot.slotIndex)) ? Number(slot.slotIndex) : null
+        const slotKey = slotId || (slotIndex !== null ? `slot:${slotIndex}` : `index:${slotOrdinal}`)
+
+        if (slotKey && slotSeen.has(slotKey)) {
+          const removed = Array.isArray(slot.members) ? slot.members : []
+          removed
+            .map((member) => buildRemovedMember(member, slot, 'duplicate_slot', slotKey))
+            .filter(Boolean)
+            .forEach((entry) => removedMembers.push(entry))
+          return
+        }
+
+        if (slotKey) {
+          slotSeen.add(slotKey)
+        }
+
+        const rawMembers = []
+        if (Array.isArray(slot.members)) {
+          rawMembers.push(...slot.members)
+        }
+        if (slot.member && !rawMembers.includes(slot.member)) {
+          rawMembers.unshift(slot.member)
+        }
+
+        const memberSeenInSlot = new Set()
+        const slotMembers = []
+
+        rawMembers.forEach((member) => {
+          if (!member || typeof member !== 'object') {
+            return
+          }
+
+          const normalizedOwner =
+            normalizeId(member.owner_id) ??
+            normalizeId(member.ownerId) ??
+            normalizeId(member.ownerID)
+          const normalizedHero =
+            normalizeId(member.hero_id) ?? normalizeId(member.heroId) ?? normalizeId(member.heroID)
+
+          const slotMemberKey = normalizedOwner || normalizedHero || `${slotKey}:member:${memberSeenInSlot.size}`
+          if (slotMemberKey && memberSeenInSlot.has(slotMemberKey)) {
+            const removed = buildRemovedMember(member, slot, 'duplicate_slot_member', slotKey)
+            if (removed) removedMembers.push(removed)
+            return
+          }
+          if (slotMemberKey) {
+            memberSeenInSlot.add(slotMemberKey)
+          }
+
+          if (normalizedOwner && ownerSeen.has(normalizedOwner)) {
+            const removed = buildRemovedMember(member, slot, 'duplicate_owner', slotKey)
+            if (removed) removedMembers.push(removed)
+            return
+          }
+          if (normalizedHero && heroSeen.has(normalizedHero)) {
+            const removed = buildRemovedMember(member, slot, 'duplicate_hero', slotKey)
+            if (removed) removedMembers.push(removed)
+            return
+          }
+
+          if (normalizedOwner) {
+            ownerSeen.add(normalizedOwner)
+          }
+          if (normalizedHero) {
+            heroSeen.add(normalizedHero)
+          }
+
+          const clone = { ...member }
+          if (normalizedOwner) {
+            clone.owner_id = normalizedOwner
+            clone.ownerId = normalizedOwner
+          }
+          if (normalizedHero) {
+            clone.hero_id = normalizedHero
+            clone.heroId = normalizedHero
+          }
+          slotMembers.push(clone)
+        })
+
+        const sanitizedSlot = { ...slot }
+        sanitizedSlot.members = slotMembers
+        sanitizedSlot.member = slotMembers.length ? { ...slotMembers[0] } : null
+        sanitizedSlot.occupied = slotMembers.length > 0
+        sanitizedRoleSlots.push(sanitizedSlot)
+      })
+
+      const sanitizedMembers = []
+      sanitizedRoleSlots.forEach((slot) => {
+        ensureArray(slot.members).forEach((member) => {
+          if (member) sanitizedMembers.push(member)
+        })
+      })
+
+      const filledSlots = sanitizedRoleSlots.filter((slot) => slot.occupied).length
+      const missingSlots = sanitizedRoleSlots.length - filledSlots
+
+      const sanitizedGroups = Array.isArray(assignment.groups)
+        ? assignment.groups
+            .map((group) => {
+              if (!group || typeof group !== 'object') return null
+              const indices = Array.isArray(group.slotIndices) ? group.slotIndices : []
+              const uniqueIndices = Array.from(
+                new Set(
+                  indices
+                    .map((value) => Number(value))
+                    .filter((value) => Number.isFinite(value)),
+                ),
+              )
+              return {
+                ...group,
+                slotIndices: uniqueIndices,
+                size: uniqueIndices.length || group.size || 0,
+              }
+            })
+            .filter(Boolean)
+        : []
+
+      const base = { ...assignment }
+      base.roleSlots = sanitizedRoleSlots
+      if (Array.isArray(assignment.slots)) {
+        base.slots = sanitizedRoleSlots
+      }
+      base.members = sanitizedMembers
+      base.filledSlots = filledSlots
+      base.missingSlots = missingSlots
+      base.groups = sanitizedGroups
+      base.removedMembers = [
+        ...(Array.isArray(assignment.removedMembers) ? assignment.removedMembers : []),
+        ...removedMembers,
+      ]
+
+      return base
+    })
+    .filter(Boolean)
+}
+
 export function flattenAssignmentMembers(assignments = []) {
+  const sanitized = sanitizeAssignments(assignments)
   const members = []
-  assignments.forEach((assignment) => {
+  sanitized.forEach((assignment) => {
     ensureArray(assignment.members).forEach((member) => {
       if (member) members.push(member)
     })
   })
   return members
+}
+
+function cloneMembers(members = []) {
+  if (!Array.isArray(members)) return []
+  return members
+    .map((member) => {
+      if (!member || typeof member !== 'object') return null
+      return { ...member }
+    })
+    .filter(Boolean)
+}
+
+function mergeRoomRemovedMembers(...lists) {
+  const merged = []
+  const seen = new Set()
+  lists.forEach((list) => {
+    if (!Array.isArray(list)) return
+    list.forEach((entry) => {
+      if (!entry || typeof entry !== 'object') return
+      const ownerId = normalizeId(entry.ownerId ?? entry.owner_id)
+      const heroId = normalizeId(entry.heroId ?? entry.hero_id)
+      const role = normalizeId(entry.role)
+      const reason = normalizeId(entry.reason)
+      const slotIndexRaw = entry.slotIndex ?? entry.slot_index
+      const slotIndex = Number.isFinite(Number(slotIndexRaw)) ? Number(slotIndexRaw) : null
+      const key = [ownerId || '', heroId || '', role || '', slotIndex ?? '', reason || ''].join('|')
+      if (seen.has(key)) return
+      seen.add(key)
+      merged.push({
+        ...entry,
+        ownerId: ownerId || entry.ownerId || entry.owner_id || null,
+        heroId: heroId || entry.heroId || entry.hero_id || null,
+        slotIndex: slotIndex,
+        role: role || entry.role || null,
+        reason: reason || entry.reason || null,
+      })
+    })
+  })
+  return merged
+}
+
+function sanitizeRoomGroups(groups = []) {
+  if (!Array.isArray(groups)) return []
+  return groups
+    .map((group) => {
+      if (!group || typeof group !== 'object') return null
+      const indices = Array.isArray(group.slotIndices) ? group.slotIndices : []
+      const unique = Array.from(
+        new Set(
+          indices
+            .map((value) => Number(value))
+            .filter((value) => Number.isFinite(value)),
+        ),
+      )
+      return {
+        ...group,
+        slotIndices: unique,
+        size: unique.length || group.size || 0,
+      }
+    })
+    .filter(Boolean)
+}
+
+export function sanitizeRooms(rooms = []) {
+  if (!Array.isArray(rooms) || rooms.length === 0) {
+    return Array.isArray(rooms) ? rooms : []
+  }
+
+  return rooms.map((room, index) => {
+    if (!room || typeof room !== 'object') {
+      return room
+    }
+
+    const slotList = Array.isArray(room.slots) ? room.slots : []
+    const members = Array.isArray(room.members) ? room.members : []
+
+    const syntheticAssignment = {
+      role: room.label || room.role || `room-${index + 1}`,
+      roleSlots: slotList,
+      members,
+      groups: Array.isArray(room.groups) ? room.groups : [],
+      removedMembers: Array.isArray(room.removedMembers) ? room.removedMembers : [],
+    }
+
+    const [sanitized] = sanitizeAssignments([syntheticAssignment])
+    if (!sanitized) {
+      return {
+        ...room,
+        slots: slotList,
+        members,
+        groups: sanitizeRoomGroups(room.groups),
+      }
+    }
+
+    const sanitizedSlots = Array.isArray(sanitized.roleSlots) ? sanitized.roleSlots : []
+    const normalizedSlots = sanitizedSlots.map((slot) => {
+      if (!slot || typeof slot !== 'object') return slot
+      const slotMembers = cloneMembers(slot.members)
+      return {
+        ...slot,
+        members: slotMembers,
+        member: slotMembers.length ? { ...slotMembers[0] } : null,
+        occupied: slotMembers.length > 0,
+      }
+    })
+
+    const sanitizedMembers = cloneMembers(sanitized.members)
+    const baseRemoved = Array.isArray(room.removedMembers) ? room.removedMembers : []
+    const sanitizedRemoved = Array.isArray(sanitized.removedMembers)
+      ? sanitized.removedMembers
+      : []
+
+    return {
+      ...room,
+      slots: normalizedSlots,
+      members: sanitizedMembers,
+      filledSlots:
+        typeof sanitized.filledSlots === 'number'
+          ? sanitized.filledSlots
+          : normalizedSlots.filter((slot) => slot?.occupied).length,
+      missingSlots:
+        typeof sanitized.missingSlots === 'number'
+          ? sanitized.missingSlots
+          : Math.max(0, normalizedSlots.length - sanitizedMembers.length),
+      groups: sanitizeRoomGroups(room.groups),
+      removedMembers: mergeRoomRemovedMembers(baseRemoved, sanitizedRemoved),
+    }
+  })
 }

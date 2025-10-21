@@ -1,472 +1,567 @@
-const { describe, it, expect, beforeEach, afterEach } = require('@jest/globals')
+import handler from '@/pages/api/rank/stage-room-match'
+import {
+  extractBearerToken,
+  parseStageRequestBody,
+} from '@/services/rank/matchStageRequest'
+import {
+  callPrepareMatchSession,
+  fetchHeroSummaries,
+  fetchParticipantStats,
+  fetchRoomContext,
+  fetchUserByToken,
+  mergeRosterMetadata,
+  verifyRolesAndSlots,
+} from '@/services/rank/matchSupabase'
 
-const {
-  createApiRequest,
-  createMockResponse,
-  loadApiRoute,
-  registerSupabaseAdminMock,
-} = require('../testUtils')
-
-let mockCreateClientImplementation = () => {
-  throw new Error('createClient mock not configured')
-}
-let mockWithTableQuery
-
-jest.mock('@supabase/supabase-js', () => ({
-  createClient: (...args) => mockCreateClientImplementation(...args),
+jest.mock('@/services/rank/matchStageRequest', () => ({
+  extractBearerToken: jest.fn(),
+  parseStageRequestBody: jest.fn(),
 }))
 
-jest.mock('@/lib/supabaseTables', () => ({
-  withTableQuery: (...args) => mockWithTableQuery(...args),
+jest.mock('@/services/rank/matchSupabase', () => ({
+  callPrepareMatchSession: jest.fn(),
+  fetchHeroSummaries: jest.fn(),
+  fetchParticipantStats: jest.fn(),
+  fetchRoomContext: jest.fn(),
+  fetchUserByToken: jest.fn(),
+  mergeRosterMetadata: jest.fn(),
+  verifyRolesAndSlots: jest.fn(),
 }))
 
-function loadHandler() {
-  return loadApiRoute('rank', 'stage-room-match')
+function createReq({ method = 'POST', headers = {}, body = {} } = {}) {
+  return { method, headers, body }
 }
+
+function createRes() {
+  return {
+    statusCode: 200,
+    headers: {},
+    body: null,
+    setHeader(name, value) {
+      this.headers[name] = value
+    },
+    status(code) {
+      this.statusCode = code
+      return this
+    },
+    json(payload) {
+      this.body = payload
+      return this
+    },
+  }
+}
+
+beforeEach(() => {
+  jest.resetAllMocks()
+})
 
 describe('POST /api/rank/stage-room-match', () => {
-  let getUserMock
-  let rpcMock
-
-  beforeEach(() => {
-    jest.resetModules()
-    jest.clearAllMocks()
-
-    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co'
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'anon-key'
-
-    getUserMock = jest.fn().mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null })
-    mockCreateClientImplementation = jest.fn(() => ({
-      auth: { getUser: getUserMock },
-    }))
-
-    rpcMock = jest.fn().mockResolvedValue({ data: [], error: null })
-    registerSupabaseAdminMock(jest.fn(), rpcMock)
-
-    mockWithTableQuery = jest.fn().mockImplementation(async () => ({ data: [], error: null }))
-  })
-
-  afterEach(() => {
-    delete process.env.NEXT_PUBLIC_SUPABASE_URL
-    delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  })
-
-  it('rejects non-POST methods', async () => {
-    const handler = loadHandler()
-
-    const req = createApiRequest({ method: 'GET' })
-    const res = createMockResponse()
+  test('rejects non-POST methods', async () => {
+    const req = createReq({ method: 'GET' })
+    const res = createRes()
 
     await handler(req, res)
 
     expect(res.statusCode).toBe(405)
     expect(res.headers.Allow).toEqual(['POST'])
+    expect(res.body).toEqual({ error: 'method_not_allowed' })
   })
 
-  it('requires a bearer token', async () => {
-    const handler = loadHandler()
-
-    const req = createApiRequest({ method: 'POST' })
-    const res = createMockResponse()
+  test('requires bearer token', async () => {
+    extractBearerToken.mockReturnValue(null)
+    const req = createReq()
+    const res = createRes()
 
     await handler(req, res)
 
     expect(res.statusCode).toBe(401)
     expect(res.body).toEqual({ error: 'unauthorized' })
-    expect(getUserMock).not.toHaveBeenCalled()
-    expect(rpcMock).not.toHaveBeenCalled()
+    expect(fetchUserByToken).not.toHaveBeenCalled()
   })
 
-  it('returns 409 when the roster version conflicts', async () => {
-    const handler = loadHandler()
-
-    const roster = [
-      {
-        slotIndex: 0,
-        role: '딜러',
-        ownerId: 'owner-1',
-        heroId: 'hero-1',
-        ready: true,
-      },
-    ]
-
-    mockWithTableQuery.mockResolvedValueOnce({ data: [], error: null })
-    mockWithTableQuery.mockResolvedValueOnce({ data: [], error: null })
-
-    rpcMock
-      .mockResolvedValueOnce({ data: [], error: null })
-      .mockResolvedValueOnce({ data: null, error: { message: 'slot_version_conflict' } })
-
-    const req = createApiRequest({
-      method: 'POST',
-      headers: { authorization: 'Bearer session-token' },
-      body: {
-        match_instance_id: 'match-1',
-        room_id: 'room-1',
-        game_id: 'game-1',
-        roster,
-        slot_template: {
-          version: 123,
-          source: 'client',
-          updated_at: '2025-02-01T10:00:00Z',
-          slots: [
-            { slot_index: 0, role: '딜러', active: true },
-            { slot_index: 1, role: '탱커', active: true },
-          ],
-          roles: [
-            { name: '딜러', slot_count: 1 },
-            { name: '탱커', slot_count: 1 },
-          ],
-        },
-      },
-    })
-    const res = createMockResponse()
+  test('returns 401 when user lookup fails', async () => {
+    extractBearerToken.mockReturnValue('token-1')
+    fetchUserByToken.mockResolvedValue({ ok: false })
+    const req = createReq()
+    const res = createRes()
 
     await handler(req, res)
 
-    expect(getUserMock).toHaveBeenCalledWith('session-token')
-    expect(rpcMock).toHaveBeenNthCalledWith(
-      1,
-      'verify_rank_roles_and_slots',
-      expect.objectContaining({
-        p_roles: expect.any(Array),
-        p_slots: expect.any(Array),
-      }),
-    )
-    expect(rpcMock).toHaveBeenNthCalledWith(
-      2,
-      'sync_rank_match_roster',
-      expect.objectContaining({
-        p_game_id: 'game-1',
-        p_room_id: 'room-1',
-        p_match_instance_id: 'match-1',
-        p_slot_template_version: expect.any(Number),
-      }),
-    )
-    expect(res.statusCode).toBe(409)
-    expect(res.body).toEqual({ error: 'slot_version_conflict' })
+    expect(fetchUserByToken).toHaveBeenCalledWith('token-1')
+    expect(res.statusCode).toBe(401)
+    expect(res.body).toEqual({ error: 'unauthorized' })
   })
 
-  it('stages the roster and returns the summary payload', async () => {
-    const handler = loadHandler()
+  test('returns parse error when request invalid', async () => {
+    extractBearerToken.mockReturnValue('token-1')
+    fetchUserByToken.mockResolvedValue({ ok: true, user: { id: 'owner-1' } })
+    parseStageRequestBody.mockReturnValue({ ok: false, error: 'missing_room_id' })
 
-    const roster = [
-      {
-        slotIndex: 1,
-        slotId: 'slot-1',
-        role: '서포터',
-        ownerId: 'owner-2',
-        heroId: 'hero-2',
-        heroName: '베타',
-        ready: false,
-        joinedAt: '2025-02-03T12:00:00Z',
-      },
-    ]
+    const req = createReq({ body: {} })
+    const res = createRes()
 
-    mockWithTableQuery
-      .mockResolvedValueOnce({ data: [{ owner_id: 'owner-2', score: 1500, rating: 1200 }], error: null })
-      .mockResolvedValueOnce({
-        data: [
-          {
-            id: 'hero-2',
-            name: '베타',
-            description: '지원형',
-            image_url: 'https://cdn/hero-2.png',
-          },
-        ],
-        error: null,
-      })
-
-    rpcMock
-      .mockResolvedValueOnce({ data: [], error: null })
-      .mockResolvedValueOnce({
-        data: [
-          {
-            inserted_count: 1,
-            slot_template_version: 456,
-            slot_template_updated_at: '2025-02-03T12:00:00Z',
-          },
-        ],
-        error: null,
-      })
-
-    const req = createApiRequest({
-      method: 'POST',
-      headers: { authorization: 'Bearer bearer-token' },
-      body: {
-        match_instance_id: 'match-2',
-        room_id: 'room-9',
-        game_id: 'game-42',
-        roster,
-        hero_map: {
-          'hero-2': { id: 'hero-2', name: '베타' },
-        },
-        slot_template: {
-          version: 987,
-          source: 'room-stage',
-          updated_at: '2025-02-03T12:00:00Z',
-          slots: [
-            { slot_index: 1, role: '서포터', active: true },
-          ],
-          roles: [
-            { name: '서포터', slot_count: 1 },
-          ],
-        },
-      },
-    })
-    const res = createMockResponse()
-
-    await handler(req, res)
-
-    expect(getUserMock).toHaveBeenCalledWith('bearer-token')
-    expect(mockWithTableQuery).toHaveBeenNthCalledWith(1, expect.any(Object), 'rank_participants', expect.any(Function))
-    expect(mockWithTableQuery).toHaveBeenNthCalledWith(2, expect.any(Object), 'heroes', expect.any(Function))
-    expect(rpcMock).toHaveBeenNthCalledWith(
-      1,
-      'verify_rank_roles_and_slots',
-      expect.objectContaining({
-        p_roles: expect.any(Array),
-        p_slots: expect.any(Array),
-      }),
-    )
-    expect(rpcMock).toHaveBeenNthCalledWith(
-      2,
-      'sync_rank_match_roster',
-      expect.objectContaining({
-        p_room_id: 'room-9',
-        p_game_id: 'game-42',
-        p_match_instance_id: 'match-2',
-        p_roster: expect.arrayContaining([
-          expect.objectContaining({
-            slot_index: 1,
-            role: '서포터',
-            owner_id: 'owner-2',
-            hero_id: 'hero-2',
-            ready: false,
-          }),
-        ]),
-      }),
-    )
-    expect(res.statusCode).toBe(200)
-    expect(res.body).toEqual({
-      ok: true,
-      staged: 1,
-      slot_template_version: 456,
-      slot_template_updated_at: '2025-02-03T12:00:00Z',
-    })
-  })
-
-  it('propagates stand-in metadata when participant stats are missing', async () => {
-    const handler = loadHandler()
-
-    const roster = [
-      {
-        slotIndex: 0,
-        role: '딜러',
-        ownerId: 'standin-owner',
-        heroId: 'standin-hero',
-        heroName: '스탠딘',
-        ready: true,
-        standin: true,
-        matchSource: 'async_standin',
-        score: 1777,
-        rating: 1550,
-        battles: 123,
-        winRate: 0.66,
-        status: 'standin',
-      },
-    ]
-
-    mockWithTableQuery
-      .mockResolvedValueOnce({ data: [], error: null })
-      .mockResolvedValueOnce({ data: [], error: null })
-
-    rpcMock
-      .mockResolvedValueOnce({ data: [], error: null })
-      .mockResolvedValueOnce({
-        data: [
-          {
-            inserted_count: 1,
-            slot_template_version: 99,
-            slot_template_updated_at: '2025-02-04T00:00:00Z',
-          },
-        ],
-        error: null,
-      })
-
-    const req = createApiRequest({
-      method: 'POST',
-      headers: { authorization: 'Bearer session-token' },
-      body: {
-        match_instance_id: 'match-standin',
-        room_id: 'room-standin',
-        game_id: 'game-standin',
-        roster,
-        slot_template: {
-          version: 42,
-          source: 'room-stage',
-          updated_at: '2025-02-04T00:00:00Z',
-          slots: [{ slot_index: 0, role: '딜러', active: true }],
-          roles: [{ name: '딜러', slot_count: 1 }],
-        },
-      },
-    })
-    const res = createMockResponse()
-
-    await handler(req, res)
-
-    expect(rpcMock).toHaveBeenNthCalledWith(
-      2,
-      'sync_rank_match_roster',
-      expect.objectContaining({
-        p_roster: expect.arrayContaining([
-          expect.objectContaining({
-            slot_index: 0,
-            owner_id: 'standin-owner',
-            standin: true,
-            match_source: 'async_standin',
-            score: 1777,
-            rating: 1550,
-            battles: 123,
-            win_rate: 0.66,
-            status: 'standin',
-          }),
-        ]),
-      }),
-    )
-    expect(res.statusCode).toBe(200)
-    expect(res.body).toEqual({
-      ok: true,
-      staged: 1,
-      slot_template_version: 99,
-      slot_template_updated_at: '2025-02-04T00:00:00Z',
-    })
-  })
-
-  it('clears placeholder owner IDs before syncing roster rows', async () => {
-    const handler = loadHandler()
-
-    const roster = [
-      {
-        slotIndex: 2,
-        role: '탱커',
-        ownerId: 'placeholder-owner',
-        placeholderOwnerId: 'placeholder-owner',
-        heroId: null,
-        heroName: 'AI 자동 대역',
-        ready: true,
-        standin: true,
-        standinPlaceholder: true,
-        matchSource: 'async_standin_placeholder',
-        score: null,
-        rating: null,
-        battles: null,
-        winRate: null,
-        status: 'standin',
-      },
-    ]
-
-    mockWithTableQuery
-      .mockResolvedValueOnce({ data: [], error: null })
-      .mockResolvedValueOnce({ data: [], error: null })
-
-    rpcMock
-      .mockResolvedValueOnce({ data: [], error: null })
-      .mockResolvedValueOnce({
-        data: [
-          {
-            inserted_count: 1,
-            slot_template_version: 77,
-            slot_template_updated_at: '2025-02-05T00:00:00Z',
-          },
-        ],
-        error: null,
-      })
-
-    const req = createApiRequest({
-      method: 'POST',
-      headers: { authorization: 'Bearer standin' },
-      body: {
-        match_instance_id: 'match-placeholder',
-        room_id: 'room-placeholder',
-        game_id: 'game-placeholder',
-        roster,
-        slot_template: {
-          version: 11,
-          source: 'room-stage',
-          updated_at: '2025-02-05T00:00:00Z',
-          slots: [{ slot_index: 2, role: '탱커', active: true }],
-          roles: [{ name: '탱커', slot_count: 1 }],
-        },
-      },
-    })
-    const res = createMockResponse()
-
-    await handler(req, res)
-
-    expect(rpcMock).toHaveBeenNthCalledWith(
-      2,
-      'sync_rank_match_roster',
-      expect.objectContaining({
-        p_roster: expect.arrayContaining([
-          expect.objectContaining({
-            slot_index: 2,
-            owner_id: null,
-            match_source: 'async_standin_placeholder',
-            standin: true,
-          }),
-        ]),
-      }),
-    )
-    expect(res.statusCode).toBe(200)
-    expect(res.body).toEqual({
-      ok: true,
-      staged: 1,
-      slot_template_version: 77,
-      slot_template_updated_at: '2025-02-05T00:00:00Z',
-    })
-  })
-
-  it('propagates verification errors from the RPC', async () => {
-    const handler = loadHandler()
-
-    rpcMock.mockResolvedValueOnce({
-      data: null,
-      error: { message: 'invalid_roles', details: 'slot_count_mismatch:딜러' },
-    })
-
-    const req = createApiRequest({
-      method: 'POST',
-      headers: { authorization: 'Bearer tkn' },
-      body: {
-        match_instance_id: 'match-77',
-        room_id: 'room-22',
-        game_id: 'game-88',
-        roster: [
-          { slotIndex: 0, role: '딜러', ownerId: 'owner-x', heroId: 'hero-x', ready: true },
-        ],
-        slot_template: {
-          version: 1,
-          slots: [
-            { slot_index: 0, role: '딜러', active: true },
-            { slot_index: 1, role: '딜러', active: true },
-          ],
-          roles: [
-            { name: '딜러', slot_count: 1 },
-          ],
-        },
-      },
-    })
-
-    const res = createMockResponse()
     await handler(req, res)
 
     expect(res.statusCode).toBe(400)
-    expect(res.body).toEqual({
-      error: 'roles_slots_invalid',
-      detail: 'slot_count_mismatch:딜러',
+    expect(res.body).toEqual({ error: 'missing_room_id' })
+  })
+
+  test('rejects callers who are not the room owner', async () => {
+    extractBearerToken.mockReturnValue('token-1')
+    fetchUserByToken.mockResolvedValue({ ok: true, user: { id: 'owner-1' } })
+    parseStageRequestBody.mockReturnValue({
+      ok: true,
+      value: {
+        matchInstanceId: 'match-1',
+        roomId: 'room-1',
+        gameId: 'game-1',
+        roster: [{ owner_id: 'owner-1', slot_index: 0 }],
+        heroMap: {},
+        readyVote: {},
+        asyncFillMeta: null,
+        matchMode: null,
+        slotTemplate: {},
+        verificationRoles: [],
+        verificationSlots: [],
+      },
     })
-    expect(rpcMock).toHaveBeenCalledTimes(1)
-    expect(getUserMock).toHaveBeenCalledWith('tkn')
+    fetchRoomContext.mockResolvedValue({
+      ok: true,
+      ownerId: 'owner-2',
+      mode: 'solo',
+      slotTemplate: { version: 1, source: 'room', updatedAt: '2023-01-01T00:00:00.000Z' },
+    })
+
+    const req = createReq({ body: {} })
+    const res = createRes()
+
+    await handler(req, res)
+
+    expect(res.statusCode).toBe(403)
+    expect(res.body).toEqual({ error: 'forbidden' })
+  })
+
+  test('propagates role verification failure', async () => {
+    extractBearerToken.mockReturnValue('token-1')
+    fetchUserByToken.mockResolvedValue({ ok: true, user: { id: 'owner-1' } })
+    parseStageRequestBody.mockReturnValue({
+      ok: true,
+      value: {
+        matchInstanceId: 'match-1',
+        roomId: 'room-1',
+        gameId: 'game-1',
+        roster: [{ owner_id: 'owner-1', slot_index: 0 }],
+        heroMap: {},
+        readyVote: {},
+        asyncFillMeta: null,
+        matchMode: null,
+        slotTemplate: {},
+        verificationRoles: ['tank'],
+        verificationSlots: [{ id: 'slot-1' }],
+      },
+    })
+    fetchRoomContext.mockResolvedValue({
+      ok: true,
+      ownerId: 'owner-1',
+      mode: 'solo',
+      slotTemplate: { version: 1, source: 'room', updatedAt: '2023-01-01T00:00:00.000Z' },
+    })
+    verifyRolesAndSlots.mockResolvedValue({
+      ok: false,
+      status: 400,
+      body: { error: 'roles_slots_invalid' },
+    })
+
+    const res = createRes()
+
+    await handler(createReq({ body: {} }), res)
+
+    expect(verifyRolesAndSlots).toHaveBeenCalledWith(['tank'], [{ id: 'slot-1' }])
+    expect(res.statusCode).toBe(400)
+    expect(res.body).toEqual({ error: 'roles_slots_invalid' })
+  })
+
+  test('propagates participant lookup errors', async () => {
+    extractBearerToken.mockReturnValue('token-1')
+    fetchUserByToken.mockResolvedValue({ ok: true, user: { id: 'owner-1' } })
+    parseStageRequestBody.mockReturnValue({
+      ok: true,
+      value: {
+        matchInstanceId: 'match-1',
+        roomId: 'room-1',
+        gameId: 'game-1',
+        roster: [{ owner_id: 'owner-1', slot_index: 0 }],
+        heroMap: {},
+        readyVote: {},
+        asyncFillMeta: null,
+        matchMode: null,
+        slotTemplate: {},
+        verificationRoles: [],
+        verificationSlots: [],
+      },
+    })
+    fetchRoomContext.mockResolvedValue({
+      ok: true,
+      ownerId: 'owner-1',
+      mode: 'solo',
+      slotTemplate: { version: 1, source: 'room', updatedAt: '2023-01-01T00:00:00.000Z' },
+    })
+    verifyRolesAndSlots.mockResolvedValue({ ok: true })
+    fetchParticipantStats.mockResolvedValue({
+      ok: false,
+      status: 400,
+      body: { error: 'participant_lookup_failed' },
+    })
+
+    const res = createRes()
+    await handler(createReq({ body: {} }), res)
+
+    expect(res.statusCode).toBe(400)
+    expect(res.body).toEqual({ error: 'participant_lookup_failed' })
+  })
+
+  test('propagates hero lookup errors', async () => {
+    extractBearerToken.mockReturnValue('token-1')
+    fetchUserByToken.mockResolvedValue({ ok: true, user: { id: 'owner-1' } })
+    parseStageRequestBody.mockReturnValue({
+      ok: true,
+      value: {
+        matchInstanceId: 'match-1',
+        roomId: 'room-1',
+        gameId: 'game-1',
+        roster: [{ owner_id: 'owner-1', slot_index: 0 }],
+        heroMap: {},
+        readyVote: {},
+        asyncFillMeta: null,
+        matchMode: null,
+        slotTemplate: {},
+        verificationRoles: [],
+        verificationSlots: [],
+      },
+    })
+    fetchRoomContext.mockResolvedValue({
+      ok: true,
+      ownerId: 'owner-1',
+      mode: 'solo',
+      slotTemplate: { version: 1, source: 'room', updatedAt: '2023-01-01T00:00:00.000Z' },
+    })
+    verifyRolesAndSlots.mockResolvedValue({ ok: true })
+    fetchParticipantStats.mockResolvedValue({ ok: true, map: new Map() })
+    fetchHeroSummaries.mockResolvedValue({
+      ok: false,
+      status: 400,
+      body: { error: 'hero_lookup_failed' },
+    })
+
+    const res = createRes()
+    await handler(createReq({ body: {} }), res)
+
+    expect(res.statusCode).toBe(400)
+    expect(res.body).toEqual({ error: 'hero_lookup_failed' })
+  })
+
+  test('propagates prepare session errors', async () => {
+    extractBearerToken.mockReturnValue('token-1')
+    fetchUserByToken.mockResolvedValue({ ok: true, user: { id: 'owner-1' } })
+    const normalizedRoster = [{ owner_id: 'owner-1', slot_index: 0 }]
+    parseStageRequestBody.mockReturnValue({
+      ok: true,
+      value: {
+        matchInstanceId: 'match-1',
+        roomId: 'room-1',
+        gameId: 'game-1',
+        roster: normalizedRoster,
+        heroMap: {},
+        readyVote: {},
+        asyncFillMeta: null,
+        matchMode: null,
+        slotTemplate: {},
+        verificationRoles: [],
+        verificationSlots: [],
+      },
+    })
+    fetchRoomContext.mockResolvedValue({
+      ok: true,
+      ownerId: 'owner-1',
+      mode: 'solo',
+      slotTemplate: { version: 1, source: 'room', updatedAt: '2023-01-01T00:00:00.000Z' },
+    })
+    verifyRolesAndSlots.mockResolvedValue({ ok: true })
+    fetchParticipantStats.mockResolvedValue({ ok: true, map: new Map() })
+    fetchHeroSummaries.mockResolvedValue({ ok: true, map: new Map(), heroMapFromRequest: {} })
+    mergeRosterMetadata.mockReturnValue(normalizedRoster)
+    callPrepareMatchSession.mockResolvedValue({
+      ok: false,
+      status: 500,
+      body: { error: 'missing_prepare_rank_match_session' },
+    })
+
+    const res = createRes()
+    await handler(createReq({ body: {} }), res)
+
+    expect(res.statusCode).toBe(500)
+    expect(res.body).toEqual({ error: 'missing_prepare_rank_match_session' })
+  })
+
+  test('returns session details on success', async () => {
+    extractBearerToken.mockReturnValue('token-1')
+    fetchUserByToken.mockResolvedValue({ ok: true, user: { id: 'owner-1' } })
+    const normalizedRoster = [
+      { owner_id: 'owner-1', slot_index: 0, hero_name: 'Alice', hero_id: 'hero-x' },
+    ]
+    parseStageRequestBody.mockReturnValue({
+      ok: true,
+      value: {
+        matchInstanceId: 'match-1',
+        roomId: 'room-1',
+        gameId: 'game-1',
+        roster: normalizedRoster,
+        heroMap: {},
+        readyVote: { confirm: true },
+        asyncFillMeta: { enabled: true },
+        matchMode: 'duo',
+        slotTemplate: { version: 10, source: 'client', updatedAt: '2023-02-02T00:00:00.000Z' },
+        allowPartial: false,
+        verificationRoles: [],
+        verificationSlots: [],
+      },
+    })
+    fetchRoomContext.mockResolvedValue({
+      ok: true,
+      ownerId: 'owner-1',
+      mode: 'solo',
+      slotTemplate: { version: 1, source: 'room', updatedAt: '2023-01-01T00:00:00.000Z' },
+    })
+    verifyRolesAndSlots.mockResolvedValue({ ok: true })
+    fetchParticipantStats.mockResolvedValue({ ok: true, map: new Map() })
+    fetchHeroSummaries.mockResolvedValue({ ok: true, map: new Map(), heroMapFromRequest: {} })
+    mergeRosterMetadata.mockReturnValue(normalizedRoster)
+    callPrepareMatchSession.mockResolvedValue({
+      ok: true,
+      data: {
+        sessionId: 'session-1',
+        slotTemplateVersion: 10,
+        slotTemplateUpdatedAt: '2023-02-02T00:00:00.000Z',
+        queueReconciled: 5,
+        queueInserted: 3,
+        queueRemoved: 2,
+        sanitizedRoster: [
+          {
+            owner_id: 'owner-1',
+            slot_id: 'slot-a',
+            slot_index: 0,
+            hero_id: '00000000-0000-4000-8000-000000000111',
+            role: '딜러',
+          },
+        ],
+      },
+    })
+
+    const res = createRes()
+    await handler(createReq({ body: {} }), res)
+
+    expect(callPrepareMatchSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        roomId: 'room-1',
+        gameId: 'game-1',
+        matchInstanceId: 'match-1',
+        mode: 'duo',
+        readyVote: { confirm: true },
+        asyncFillMeta: { enabled: true },
+        allowPartial: false,
+      }),
+    )
+    expect(res.statusCode).toBe(200)
+    expect(res.body).toEqual({
+      session_id: 'session-1',
+      slot_template_version: 10,
+      slot_template_updated_at: '2023-02-02T00:00:00.000Z',
+      queue: { reconciled: 5, inserted: 3, removed: 2 },
+      roster: [
+        expect.objectContaining({
+          owner_id: 'owner-1',
+          slot_index: 0,
+          hero_id: '00000000-0000-4000-8000-000000000111',
+          role: '딜러',
+        }),
+      ],
+    })
+  })
+
+  test('applies sanitized roster when duplicates removed', async () => {
+    extractBearerToken.mockReturnValue('token-1')
+    fetchUserByToken.mockResolvedValue({ ok: true, user: { id: 'owner-1' } })
+    const normalizedRoster = [
+      { owner_id: 'owner-1', slot_index: 0, hero_id: 'hero-a', role: '탱커' },
+      { owner_id: 'owner-1', slot_index: 1, hero_id: 'hero-b', role: '딜러' },
+      { owner_id: 'owner-2', slot_index: 2, hero_id: 'hero-c', role: '힐러' },
+    ]
+    parseStageRequestBody.mockReturnValue({
+      ok: true,
+      value: {
+        matchInstanceId: 'match-1',
+        roomId: 'room-1',
+        gameId: 'game-1',
+        roster: normalizedRoster,
+        heroMap: {},
+        readyVote: {},
+        asyncFillMeta: null,
+        matchMode: null,
+        slotTemplate: {},
+        allowPartial: true,
+        verificationRoles: [],
+        verificationSlots: [],
+      },
+    })
+    fetchRoomContext.mockResolvedValue({
+      ok: true,
+      ownerId: 'owner-1',
+      mode: 'solo',
+      slotTemplate: { version: 1, source: 'room', updatedAt: '2023-01-01T00:00:00.000Z' },
+    })
+    verifyRolesAndSlots.mockResolvedValue({ ok: true })
+    fetchParticipantStats.mockResolvedValue({ ok: true, map: new Map() })
+    fetchHeroSummaries.mockResolvedValue({ ok: true, map: new Map(), heroMapFromRequest: {} })
+    mergeRosterMetadata.mockReturnValue(normalizedRoster)
+    callPrepareMatchSession.mockResolvedValue({
+      ok: true,
+      data: {
+        sessionId: 'session-1',
+        slotTemplateVersion: 2,
+        slotTemplateUpdatedAt: '2023-03-03T00:00:00.000Z',
+        queueReconciled: 2,
+        queueInserted: 1,
+        queueRemoved: 1,
+        sanitizedRoster: [
+          {
+            owner_id: 'owner-1',
+            slot_id: 'slot-a',
+            slot_index: 0,
+            hero_id: 'hero-a',
+            role: '탱커',
+          },
+          {
+            owner_id: 'owner-2',
+            slot_id: 'slot-c',
+            slot_index: 2,
+            hero_id: 'hero-c',
+            role: '힐러',
+          },
+        ],
+      },
+    })
+
+    const res = createRes()
+    await handler(createReq({ body: {} }), res)
+
+    expect(callPrepareMatchSession).toHaveBeenCalledWith(
+      expect.objectContaining({ allowPartial: true }),
+    )
+    expect(res.statusCode).toBe(200)
+    expect(res.body.queue).toEqual({ reconciled: 2, inserted: 1, removed: 1 })
+    expect(res.body.roster).toHaveLength(2)
+    expect(res.body.roster.map((entry) => entry.owner_id)).toEqual([
+      'owner-1',
+      'owner-2',
+    ])
+  })
+
+  test('filters sanitized roster duplicates targeting the same slot', async () => {
+    extractBearerToken.mockReturnValue('token-1')
+    fetchUserByToken.mockResolvedValue({ ok: true, user: { id: 'owner-1' } })
+    const normalizedRoster = [
+      {
+        owner_id: 'owner-1',
+        slot_id: 'slot-a',
+        slot_index: 0,
+        hero_id: 'hero-a',
+        role: '탱커',
+      },
+      {
+        owner_id: 'owner-2',
+        slot_id: 'slot-b',
+        slot_index: 1,
+        hero_id: 'hero-b',
+        role: '딜러',
+      },
+    ]
+    parseStageRequestBody.mockReturnValue({
+      ok: true,
+      value: {
+        matchInstanceId: 'match-1',
+        roomId: 'room-1',
+        gameId: 'game-1',
+        roster: normalizedRoster,
+        heroMap: {},
+        readyVote: {},
+        asyncFillMeta: null,
+        matchMode: null,
+        slotTemplate: {},
+        allowPartial: false,
+        verificationRoles: [],
+        verificationSlots: [],
+      },
+    })
+    fetchRoomContext.mockResolvedValue({
+      ok: true,
+      ownerId: 'owner-1',
+      mode: 'solo',
+      slotTemplate: { version: 1, source: 'room', updatedAt: '2023-01-01T00:00:00.000Z' },
+    })
+    verifyRolesAndSlots.mockResolvedValue({ ok: true })
+    fetchParticipantStats.mockResolvedValue({ ok: true, map: new Map() })
+    fetchHeroSummaries.mockResolvedValue({ ok: true, map: new Map(), heroMapFromRequest: {} })
+    mergeRosterMetadata.mockReturnValue(normalizedRoster)
+    callPrepareMatchSession.mockResolvedValue({
+      ok: true,
+      data: {
+        sessionId: 'session-1',
+        slotTemplateVersion: 3,
+        slotTemplateUpdatedAt: '2023-04-04T00:00:00.000Z',
+        queueReconciled: 3,
+        queueInserted: 2,
+        queueRemoved: 1,
+        sanitizedRoster: [
+          {
+            owner_id: 'owner-1',
+            slot_id: 'slot-a',
+            slot_index: 0,
+            hero_id: 'hero-a',
+            role: '탱커',
+          },
+          {
+            owner_id: 'owner-3',
+            slot_id: 'slot-a',
+            slot_index: 0,
+            hero_id: 'hero-x',
+            role: '힐러',
+          },
+          {
+            owner_id: 'owner-2',
+            slot_id: 'slot-b',
+            slot_index: 1,
+            hero_id: 'hero-b',
+            role: '딜러',
+          },
+        ],
+      },
+    })
+
+    const res = createRes()
+    await handler(createReq({ body: {} }), res)
+
+    expect(res.statusCode).toBe(200)
+    expect(res.body.roster).toHaveLength(2)
+    expect(res.body.roster).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ owner_id: 'owner-1', slot_id: 'slot-a', slot_index: 0 }),
+        expect.objectContaining({ owner_id: 'owner-2', slot_id: 'slot-b', slot_index: 1 }),
+      ]),
+    )
+    expect(res.body.roster).toEqual(
+      expect.not.arrayContaining([
+        expect.objectContaining({ owner_id: 'owner-3' }),
+      ]),
+    )
   })
 })

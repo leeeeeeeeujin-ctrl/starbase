@@ -712,12 +712,51 @@
   border: 1px solid rgba(148, 163, 184, 0.35);
 }
 
+.slotList {
+  display: grid;
+  gap: 14px;
+}
+
+.slotItem {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+}
+
+.slotHeader {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.slotIndexLabel {
+  font-size: 14px;
+  font-weight: 700;
+  color: #bfdbfe;
+}
+
+.slotRoleLabel {
+  font-size: 13px;
+  color: rgba(226, 232, 240, 0.78);
+}
+
 .memberList {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
   gap: 12px;
+}
+
+.emptySlot {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(226, 232, 240, 0.72);
+  font-style: italic;
 }
 
 .memberItem {
@@ -889,6 +928,63 @@
   margin: 0;
   font-size: 14px;
   color: rgba(226, 232, 240, 0.8);
+}
+
+.debugHoldBox {
+  margin-top: 18px;
+  border-radius: 14px;
+  border: 1px solid rgba(96, 165, 250, 0.45);
+  background: rgba(30, 64, 175, 0.28);
+  padding: 14px 16px;
+  display: grid;
+  gap: 10px;
+}
+
+.debugHoldTitle {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #dbeafe;
+}
+
+.debugHoldText {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(226, 232, 240, 0.85);
+  line-height: 1.6;
+}
+
+.debugHoldMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.debugHoldMetaItem {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(15, 23, 42, 0.55);
+  font-size: 12px;
+  color: rgba(191, 219, 254, 0.9);
+}
+
+.debugHoldIssues {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: #fef9c3;
+  line-height: 1.6;
+}
+
+.debugHoldIssue + .debugHoldIssue {
+  margin-top: 4px;
+}
+
+.debugHoldHint {
+  margin: 0;
+  font-size: 12px;
+  color: rgba(165, 243, 252, 0.85);
 }
 
 .diagnosticList {

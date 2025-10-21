@@ -29,7 +29,7 @@
 ## 5. 서버와의 계약
 - `/api/rank/session-meta`는 프런트에서 정규화한 `sessionMeta`를 `upsert_match_session_meta`, `enqueue_rank_turn_state_event` RPC에 전달한다.【F:pages/api/rank/session-meta.js†L73-L155】
 - `/api/rank/turn-events`는 `fetch_rank_turn_state_events` RPC를 호출해 최근 턴 로그를 가져온다. StartClient는 재접속 시 이 엔드포인트로 누락 이벤트를 보충한다.【F:pages/api/rank/turn-events.js†L20-L112】
-- `stage-room-match`는 `sync_rank_match_roster` RPC를 통해 슬롯 템플릿 버전을 검증하며, 성공 시 `matchDataStore`에 `slotTemplate`을 저장한다.【F:pages/api/rank/stage-room-match.js†L40-L137】【F:lib/rank/matchFlow.js†L248-L408】
+- `stage-room-match`는 공유 서비스가 조립한 로스터를 `prepare_rank_match_session` RPC로 전송해 슬롯 템플릿 버전을 갱신하고, 성공 시 `matchDataStore`에 `slotTemplate`을 저장한다.【F:pages/api/rank/stage-room-match.js†L1-L118】【F:services/rank/matchSupabase.js†L191-L216】【F:lib/rank/matchFlow.js†L248-L408】
 
 ## 6. 페이지별 참조 요약
 | 위치 | 읽는 데이터 | 쓰는 데이터 |

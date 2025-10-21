@@ -13,6 +13,7 @@ import {
 } from '../../lib/rank/startSessionChannel'
 import { buildMatchMetaPayload, storeStartMatchMeta } from './startConfig'
 import { clearMatchConfirmation, saveMatchConfirmation } from './matchStorage'
+import { MATCH_DEBUG_HOLD_ENABLED, buildDebugHoldSnapshot } from './matchDebugUtils'
 
 import useMatchQueue from './hooks/useMatchQueue'
 import useLocalMatchPlanner from './hooks/useLocalMatchPlanner'
@@ -102,50 +103,154 @@ function pickAutoHeroCandidate({ heroOptions = [], viewerRoster = [], targetRole
   return fallback || ''
 }
 
+function toSlotIndex(value) {
+  if (value == null) return null
+  const numeric = Number(value)
+  return Number.isInteger(numeric) && numeric >= 0 ? numeric : null
+}
+
+function buildSlotEntries(assignment) {
+  if (!assignment || typeof assignment !== 'object') {
+    return []
+  }
+
+  const fallbackRole =
+    typeof assignment.role === 'string' && assignment.role.trim()
+      ? assignment.role.trim()
+      : '역할 미지정'
+
+  const roleSlots = Array.isArray(assignment.roleSlots)
+    ? assignment.roleSlots
+    : Array.isArray(assignment.slots)
+    ? assignment.slots
+    : []
+
+  if (roleSlots.length) {
+    return roleSlots
+      .map((slot, ordinal) => {
+        if (!slot || typeof slot !== 'object') {
+          return null
+        }
+
+        const slotIndex =
+          toSlotIndex(slot.slotIndex ?? slot.slot_index ?? slot.slotNo ?? slot.slot_no ?? slot.index) ?? null
+        const displayIndex = slotIndex != null ? slotIndex : ordinal
+        const slotRole =
+          typeof slot.role === 'string' && slot.role.trim() ? slot.role.trim() : fallbackRole
+        const members = Array.isArray(slot.members)
+          ? slot.members.filter(Boolean)
+          : slot.member
+          ? [slot.member].filter(Boolean)
+          : []
+
+        return {
+          key:
+            slot.slot_id ||
+            slot.slotId ||
+            (slotIndex != null ? `slot-${slotIndex}` : `slot-ordinal-${ordinal}`),
+          slotIndex,
+          displayIndex,
+          role: slotRole,
+          members,
+        }
+      })
+      .filter(Boolean)
+      .sort((a, b) => {
+        if (a.slotIndex != null && b.slotIndex != null) {
+          return a.slotIndex - b.slotIndex
+        }
+        if (a.slotIndex != null) return -1
+        if (b.slotIndex != null) return 1
+        return a.displayIndex - b.displayIndex
+      })
+      .map((entry, order) => ({ ...entry, order }))
+  }
+
+  const members = Array.isArray(assignment.members) ? assignment.members.filter(Boolean) : []
+  if (!members.length) {
+    return []
+  }
+
+  return [
+    {
+      key: 'fallback-slot',
+      slotIndex: null,
+      displayIndex: 0,
+      role: fallbackRole,
+      members,
+      order: 0,
+    },
+  ]
+}
+
 function MemberList({ assignment, heroMap }) {
-  if (!assignment) return null
-  const members = Array.isArray(assignment.members) ? assignment.members : []
-  if (!members.length) return null
+  const slots = buildSlotEntries(assignment)
+  if (!slots.length) return null
+
   return (
-    <ul className={styles.memberList}>
-      {members.map((member) => {
-        const key =
-          member.id || `${member.owner_id || member.ownerId}-${member.hero_id || member.heroId}`
-        const heroId = member.hero_id || member.heroId
-        const hero = resolveHero(heroMap, heroId)
-        const label = hero?.name || member.name || member.hero_name || '미지정 영웅'
-        const score = member.score ?? member.rating ?? member.mmr
-        const source = member.match_source || (member.standin ? 'participant_pool' : 'realtime_queue')
-        const sourceLabel =
-          source === 'participant_pool' ? '대역' : source === 'realtime_queue' ? '실시간' : '기타'
-        const sourceClass =
-          source === 'participant_pool'
-            ? styles.memberSourceStandin
-            : source === 'realtime_queue'
-            ? styles.memberSourceRealtime
-            : styles.memberSourceUnknown
+    <div className={styles.slotList}>
+      {slots.map((slot) => {
+        const displayNumber = (slot.slotIndex != null ? slot.slotIndex : slot.order) + 1
+        const slotLabel = `${displayNumber}슬롯`
+        const slotMembers = slot.members || []
         return (
-          <li key={key} className={styles.memberItem}>
-            {hero?.image_url ? (
-              <img
-                className={styles.memberAvatar}
-                src={hero.image_url}
-                alt={label}
-              />
-            ) : (
-              <div className={styles.memberAvatarPlaceholder} />
-            )}
-            <div className={styles.memberMeta}>
-              <span className={styles.memberName}>{label}</span>
-              <span className={`${styles.memberSourceBadge} ${sourceClass}`}>{sourceLabel}</span>
-              {Number.isFinite(score) ? (
-                <span className={styles.memberScore}>{score}</span>
-              ) : null}
+          <div key={`${slot.key}-${slot.order}`} className={styles.slotItem}>
+            <div className={styles.slotHeader}>
+              <span className={styles.slotIndexLabel}>{slotLabel}</span>
+              <span className={styles.slotRoleLabel}>{slot.role || '역할 미지정'}</span>
             </div>
-          </li>
+            {slotMembers.length ? (
+              <ul className={styles.memberList}>
+                {slotMembers.map((member, memberIndex) => {
+                  if (!member || typeof member !== 'object') {
+                    return null
+                  }
+                  const key =
+                    member.id ||
+                    `${member.owner_id || member.ownerId}-${member.hero_id || member.heroId}-${memberIndex}`
+                  const heroId = member.hero_id || member.heroId
+                  const hero = resolveHero(heroMap, heroId)
+                  const label = hero?.name || member.name || member.hero_name || '미지정 영웅'
+                  const score = member.score ?? member.rating ?? member.mmr
+                  const source =
+                    member.match_source || (member.standin ? 'participant_pool' : 'realtime_queue')
+                  const sourceLabel =
+                    source === 'participant_pool' ? '대역' : source === 'realtime_queue' ? '실시간' : '기타'
+                  const sourceClass =
+                    source === 'participant_pool'
+                      ? styles.memberSourceStandin
+                      : source === 'realtime_queue'
+                      ? styles.memberSourceRealtime
+                      : styles.memberSourceUnknown
+                  return (
+                    <li key={key} className={styles.memberItem}>
+                      {hero?.image_url ? (
+                        <img
+                          className={styles.memberAvatar}
+                          src={hero.image_url}
+                          alt={label}
+                        />
+                      ) : (
+                        <div className={styles.memberAvatarPlaceholder} />
+                      )}
+                      <div className={styles.memberMeta}>
+                        <span className={styles.memberName}>{label}</span>
+                        <span className={`${styles.memberSourceBadge} ${sourceClass}`}>{sourceLabel}</span>
+                        {Number.isFinite(score) ? (
+                          <span className={styles.memberScore}>{score}</span>
+                        ) : null}
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            ) : (
+              <p className={styles.emptySlot}>현재 비어 있습니다.</p>
+            )}
+          </div>
         )
       })}
-    </ul>
+    </div>
   )
 }
 
@@ -435,6 +540,7 @@ export default function MatchQueueClient({
     exportPlan: exportPlanner,
   } = useLocalMatchPlanner({ gameId, mode, enabled: true })
   const [countdown, setCountdown] = useState(null)
+  const [debugHold, setDebugHold] = useState(null)
   const countdownTimerRef = useRef(null)
   const navigationLockRef = useRef(false)
   const matchMetaSignatureRef = useRef('')
@@ -1296,12 +1402,49 @@ export default function MatchQueueClient({
   ])
 
   useEffect(() => {
-    if (autoStart) return
-    if (state.status !== 'matched' || !state.match || isDropInMatch) return
-    if (finalTimer == null) return
-    if (voteRemaining != null && voteRemaining > 0) return
-    if (countdown != null) return
+    if (autoStart) {
+      if (debugHold) setDebugHold(null)
+      return
+    }
+    if (state.status !== 'matched' || !state.match || isDropInMatch) {
+      if (debugHold) setDebugHold(null)
+      return
+    }
+    if (finalTimer == null) {
+      if (debugHold) setDebugHold(null)
+      return
+    }
+    if (voteRemaining != null && voteRemaining > 0) {
+      if (debugHold) setDebugHold(null)
+      return
+    }
+    if (MATCH_DEBUG_HOLD_ENABLED) {
+      setCountdown(null)
+      const holdSnapshot = buildDebugHoldSnapshot({
+        queueMode: mode || null,
+        sessionId: state.match?.sessionId || null,
+        matchCode: state.match?.matchCode || state.match?.match_code || null,
+        assignments: state.match?.assignments || [],
+        participants: state.match?.assignments || [],
+      })
+      const signature = `${holdSnapshot.queueMode || ''}-${holdSnapshot.sessionId || ''}-${holdSnapshot.matchCode || ''}`
+      const previousSignature = debugHold
+        ? `${debugHold.queueMode || ''}-${debugHold.sessionId || ''}-${debugHold.matchCode || ''}`
+        : ''
+      if (!debugHold || signature !== previousSignature) {
+        setDebugHold(holdSnapshot)
+        try {
+          console.info('[MatchQueue] 디버그 홀드 활성화', holdSnapshot)
+        } catch (error) {
+          // eslint-disable-next-line no-console
+          console.log('[MatchQueue] 디버그 홀드 활성화', holdSnapshot)
+        }
+      }
+      return
+    }
 
+    if (debugHold) setDebugHold(null)
+    if (countdown != null) return
     setCountdown(5)
   }, [
     autoStart,
@@ -1311,22 +1454,26 @@ export default function MatchQueueClient({
     finalTimer,
     voteRemaining,
     countdown,
+    debugHold,
+    mode,
   ])
 
   useEffect(() => {
     if (state.status === 'matched' && state.match && finalTimer != null) {
       return
     }
+    if (debugHold) setDebugHold(null)
     setCountdown(null)
     navigationLockRef.current = false
     if (countdownTimerRef.current) {
       clearTimeout(countdownTimerRef.current)
       countdownTimerRef.current = null
     }
-  }, [state.status, state.match, finalTimer])
+  }, [state.status, state.match, finalTimer, debugHold])
 
   useEffect(() => {
     if (countdown == null) return
+    if (MATCH_DEBUG_HOLD_ENABLED) return
 
     if (countdown === 0) {
       setCountdown(null)
@@ -1381,12 +1528,17 @@ export default function MatchQueueClient({
         console.debug('[MatchQueueClient] 매치 메타 stamp 생성 실패', stampError)
       }
 
+      const holdSignature =
+        MATCH_DEBUG_HOLD_ENABLED && debugHold
+          ? `${debugHold.queueMode || ''}-${debugHold.sessionId || ''}-${debugHold.matchCode || ''}-${debugHold.generatedAt || ''}`
+          : ''
       const signature = JSON.stringify({
         matchCode: state.match.matchCode || '',
         turnTimer: turnTimerValue,
         viewerHeroId: state.heroId || '',
         viewerRole: viewerRoleName,
         assignmentStamp,
+        holdSignature,
       })
 
       if (matchMetaSignatureRef.current !== signature) {
@@ -1400,6 +1552,7 @@ export default function MatchQueueClient({
           viewerHeroId: state.heroId || null,
           viewerHeroName: state.heroMeta?.name || null,
           autoStart: Boolean(autoStart),
+          debugHold: MATCH_DEBUG_HOLD_ENABLED && debugHold ? debugHold : undefined,
         })
         if (payload) {
           storeStartMatchMeta(payload)
@@ -1426,6 +1579,7 @@ export default function MatchQueueClient({
     state.heroId,
     state.heroMeta?.name,
     autoStart,
+    debugHold,
   ])
 
   useEffect(() => {
@@ -2092,11 +2246,53 @@ export default function MatchQueueClient({
             메인 룸에서 방을 열어둔 상태라면 즉시 입장해 전투를 시작할 수 있습니다.
           </p>
         ) : null}
-          <div className={styles.matchGrid}>
-            {state.match.assignments.map((assignment, index) => (
-              <div key={`${assignment.role}-${index}`} className={styles.matchColumn}>
-                <h3 className={styles.queueRole}>{assignment.role}</h3>
-                <MemberList assignment={assignment} heroMap={state.match.heroMap} />
+        {debugHold ? (
+          <div className={styles.debugHoldBox}>
+            <p className={styles.debugHoldTitle}>디버그 모드: 자동 시작이 보류 중입니다.</p>
+            <p className={styles.debugHoldText}>
+              전투 화면을 열기 전에 구성된 로스터와 큐 정렬 결과를 확인하세요. 매치 준비 페이지에서도 동일한 로그를
+              확인할 수 있습니다.
+            </p>
+            <div className={styles.debugHoldMeta}>
+              {debugHold.queueMode ? (
+                <span className={styles.debugHoldMetaItem}>
+                  모드: {debugHold.queueMode === 'realtime' ? '실시간' : '비실시간'}
+                </span>
+              ) : null}
+              {debugHold.matchCode ? (
+                <span className={styles.debugHoldMetaItem}>매치 코드: {debugHold.matchCode}</span>
+              ) : null}
+              {debugHold.sessionId ? (
+                <span className={styles.debugHoldMetaItem}>세션: {debugHold.sessionId}</span>
+              ) : null}
+              {Number.isFinite(debugHold.reconciled) ? (
+                <span className={styles.debugHoldMetaItem}>재정렬 {debugHold.reconciled}명</span>
+              ) : null}
+              {Number.isFinite(debugHold.inserted) ? (
+                <span className={styles.debugHoldMetaItem}>재삽입 {debugHold.inserted}명</span>
+              ) : null}
+              {Number.isFinite(debugHold.removed) ? (
+                <span className={styles.debugHoldMetaItem}>제거 {debugHold.removed}명</span>
+              ) : null}
+            </div>
+            {debugHold.issues?.length ? (
+              <ul className={styles.debugHoldIssues}>
+                {debugHold.issues.map((issue, index) => (
+                  <li key={`queue-hold-issue-${index}`} className={styles.debugHoldIssue}>
+                    {issue}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className={styles.debugHoldHint}>중복 배정이 감지되지 않았습니다.</p>
+            )}
+          </div>
+        ) : null}
+        <div className={styles.matchGrid}>
+          {state.match.assignments.map((assignment, index) => (
+            <div key={`${assignment.role}-${index}`} className={styles.matchColumn}>
+              <h3 className={styles.queueRole}>{assignment.role}</h3>
+              <MemberList assignment={assignment} heroMap={state.match.heroMap} />
               </div>
             ))}
           </div>

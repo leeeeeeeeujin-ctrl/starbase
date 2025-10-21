@@ -357,23 +357,10 @@ export default async function handler(req, res) {
     return res.status(200).json({ updated: false, assignments: [], message: 'no_missing_owners' })
   }
 
-  const roomOwnerId = await fetchRoomOwner(roomId)
+  let roomOwnerId = null
 
-  if (roomOwnerId && roomOwnerId !== userId) {
-    const { data: rosterMembership } = await withTableQuery(
-      supabaseAdmin,
-      'rank_match_roster',
-      (from) =>
-        from
-          .select('owner_id')
-          .eq('match_instance_id', matchInstanceId)
-          .eq('owner_id', userId)
-          .limit(1),
-    )
-
-    if (!Array.isArray(rosterMembership) || rosterMembership.length === 0) {
-      return res.status(403).json({ error: 'forbidden' })
-    }
+  if (roomId) {
+    roomOwnerId = await fetchRoomOwner(roomId)
   }
 
   const rosterResult = await withTableQuery(supabaseAdmin, 'rank_match_roster', (from) =>
@@ -392,6 +379,34 @@ export default async function handler(req, res) {
   const rosterRows = Array.isArray(rosterResult.data) ? rosterResult.data : []
   if (!rosterRows.length) {
     return res.status(404).json({ error: 'roster_not_found' })
+  }
+
+  const derivedRoomId = toOptionalUuid(rosterRows[0]?.room_id ?? rosterRows[0]?.roomId)
+  const effectiveRoomId = roomId || derivedRoomId || null
+
+  if (!roomOwnerId && effectiveRoomId) {
+    roomOwnerId = await fetchRoomOwner(effectiveRoomId)
+  }
+
+  if (!roomOwnerId) {
+    return res.status(404).json({ error: 'room_not_found' })
+  }
+
+  if (roomOwnerId !== userId) {
+    const { data: rosterMembership } = await withTableQuery(
+      supabaseAdmin,
+      'rank_match_roster',
+      (from) =>
+        from
+          .select('owner_id')
+          .eq('match_instance_id', matchInstanceId)
+          .eq('owner_id', userId)
+          .limit(1),
+    )
+
+    if (!Array.isArray(rosterMembership) || rosterMembership.length === 0) {
+      return res.status(403).json({ error: 'forbidden' })
+    }
   }
 
   const normalizedRoster = mapRosterRows(rosterRows)
@@ -445,7 +460,7 @@ export default async function handler(req, res) {
         placeholder: false,
         metadata: {
           matchInstanceId,
-          roomId: roomId || rosterRows[0]?.room_id || null,
+          roomId: effectiveRoomId,
           gameId,
         },
       })
@@ -459,7 +474,7 @@ export default async function handler(req, res) {
       placeholder: true,
       metadata: {
         matchInstanceId,
-        roomId: roomId || rosterRows[0]?.room_id || null,
+        roomId: effectiveRoomId,
         gameId,
       },
     })
@@ -476,7 +491,7 @@ export default async function handler(req, res) {
   const nowIso = new Date().toISOString()
   const defaultMeta = {
     matchInstanceId,
-    roomId: roomId || rosterRows[0]?.room_id || null,
+    roomId: effectiveRoomId,
     gameId,
   }
   const insertRows = buildInsertRows(normalizedRoster, replacements, heroSummaryMap, nowIso, defaultMeta)
@@ -497,9 +512,10 @@ export default async function handler(req, res) {
   }, nowIso)
 
   const rpcPayload = {
-    p_room_id: roomId || rosterRows[0]?.room_id || null,
+    p_room_id: effectiveRoomId,
     p_game_id: gameId,
     p_match_instance_id: matchInstanceId,
+    p_request_owner_id: roomOwnerId,
     p_slot_template_version: slotTemplateVersion || Date.now(),
     p_slot_template_source: slotTemplateSource,
     p_slot_template_updated_at: slotTemplateUpdatedAt || nowIso,
@@ -509,6 +525,13 @@ export default async function handler(req, res) {
   const { error: syncError } = await supabaseAdmin.rpc('sync_rank_match_roster', rpcPayload)
 
   if (syncError) {
+    const message = syncError.message || ''
+    if (message.includes('room_owner_mismatch')) {
+      return res.status(403).json({ error: 'forbidden' })
+    }
+    if (message.includes('room_not_found')) {
+      return res.status(404).json({ error: 'room_not_found' })
+    }
     return res.status(500).json({ error: 'sync_failed', supabaseError: syncError })
   }
 

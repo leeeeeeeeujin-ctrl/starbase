@@ -33,10 +33,12 @@ export const brawlModeCopy = {
 export const realtimeModeCopy = {
   label: '실시간 매칭 모드',
   options: [
+    { value: 'OFF', label: '비실시간 (턴/비동기)' },
     { value: 'STANDARD', label: '실시간 (표준)' },
     { value: 'PULSE', label: 'Pulse 실시간 (역할 제한)' },
   ],
-  helper: 'Pulse 실시간은 방장과 같은 역할군에 동시에 참여할 수 있는 인원을 제한합니다.',
+  helper:
+    '비실시간은 턴/비동기 흐름으로 진행되며, Pulse 실시간은 방장과 같은 역할군에 동시에 참여할 수 있는 인원을 제한합니다.',
 }
 
 export const imageFieldCopy = {
