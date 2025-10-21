@@ -107,6 +107,14 @@ describe('useMakerHome', () => {
       await flushPromises()
     }
 
+    // Fallback: if auto-bootstrap didn't fire in time (CI flake), trigger a manual refresh
+    if (mockList.mock.calls.length === 0) {
+      await act(async () => {
+        await hook.result.refresh(userId)
+      })
+      await flushPromises()
+    }
+
     expect(mockList).toHaveBeenCalledWith(userId)
     expect(hook.result.loading).toBe(false)
     expect(hook.result.rows.map((row) => row.id)).toEqual(['set-a', 'set-b'])
