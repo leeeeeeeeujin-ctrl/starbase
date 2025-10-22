@@ -227,15 +227,6 @@ function matchMemberToSlot(member, slots, usedIndices) {
     }
   }
 
-  // Fallback: assign to first unused slot
-  for (let index = 0; index < slots.length; index += 1) {
-    if (usedIndices.has(index)) continue
-    const slot = slots[index]
-    if (!slot) continue
-    usedIndices.add(index)
-    return { slot, index }
-  }
-
   return null
 }
 
@@ -251,19 +242,21 @@ function buildEntryKey(entry) {
 
 
 function validateEntry(entry, existingMap) {
-  // 중복/불일치 검증: slotIndex, role, ownerId, heroId 기준
+  // 중복 키는 최신 정보로 덮어씁니다. 불일치가 있으면 경고만 남기고 업데이트 허용.
   const key = buildEntryKey(entry)
   if (existingMap.has(key)) {
     const existing = existingMap.get(key)
-    // slotIndex, role, heroId가 다르면 업데이트를 허용(최신 데이터 반영)
-    // ownerId는 key의 일부이므로 동일 ownerId에 대해 최신 hero/slot을 덮어씀
     if (
       existing.slotIndex !== entry.slotIndex ||
       existing.role !== entry.role ||
+      existing.ownerId !== entry.ownerId ||
       existing.heroId !== entry.heroId
     ) {
-      // 최신 데이터로 교체 허용
-      return true
+      console.warn('[startConnectionRegistry] 중복 키 불일치:', {
+        key,
+        기존: existing,
+        신규: entry,
+      })
     }
   }
   return true
@@ -348,7 +341,12 @@ export function registerMatchConnections({
         normaliseString(heroRecord?.hero_name) ||
         normaliseString(member.hero_name ?? member.heroName ?? member.name) ||
         null
-      const matched = matchMemberToSlot(member, slotEntries, usedSlotIndices)
+      let matched = matchMemberToSlot(member, slotEntries, usedSlotIndices)
+      // Fallback: if no member/role match but exactly one roleSlot is provided, use that slot
+      if (!matched && Array.isArray(slotEntries) && slotEntries.length === 1) {
+        matched = { slot: slotEntries[0], index: 0 }
+        usedSlotIndices.add(0)
+      }
       const slotIndex = matched?.slot?.slotIndex ?? matched?.index ?? null
       const slotIndices =
         matched && matched.slot ? normaliseSlotIndices([matched.slot], 1) : normaliseSlotIndices(assignment.roleSlots, members.length)

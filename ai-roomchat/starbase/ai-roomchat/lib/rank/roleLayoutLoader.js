@@ -238,38 +238,13 @@ function mergeSlotAssignments(baseLayout = [], slotRows = []) {
 }
 
 function normaliseRolesAndSlots(roleRows = [], slotRows = [], gameRoleSlots = []) {
-  // Heuristic: only treat rank_games.roles as a slot-level layout if it clearly
-  // resembles one (duplicates or explicit slot indices in objects). If it's
-  // just a distinct role list (e.g., ["공격","수비"]), prefer rank_game_slots.
   const inlineLayout = deriveGameRoleSlots(gameRoleSlots)
   if (inlineLayout.length > 0) {
-    const rawArray = Array.isArray(gameRoleSlots) ? gameRoleSlots : []
-    const distinctNames = new Set(
-      rawArray
-        .map((v) =>
-          typeof v === 'string'
-            ? normalizeRoleName(v)
-            : typeof v === 'object' && v
-            ? normalizeRoleName(v.name ?? v.role ?? v.label ?? '')
-            : '',
-        )
-        .filter((n) => n),
-    )
-
-    const hasExplicitIndices = rawArray.some(
-      (v) => typeof v === 'object' && v && (Number.isFinite(Number(v.slot_index)) || Number.isFinite(Number(v.slotIndex))),
-    )
-
-    const looksLikeSlotLayout = hasExplicitIndices || inlineLayout.length > distinctNames.size
-
-    if (looksLikeSlotLayout) {
-      const mergedInlineLayout = mergeSlotAssignments(inlineLayout, slotRows)
-      return {
-        roles: buildRolesFromLayout(mergedInlineLayout),
-        slotLayout: mergedInlineLayout,
-      }
+    const mergedInlineLayout = mergeSlotAssignments(inlineLayout, slotRows)
+    return {
+      roles: buildRolesFromLayout(mergedInlineLayout),
+      slotLayout: mergedInlineLayout,
     }
-    // else: fall through to prefer slotRows/roleRows below
   }
 
   const rolesFromRows = buildRolesFromRoleRows(roleRows)

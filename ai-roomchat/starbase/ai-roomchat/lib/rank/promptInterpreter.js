@@ -17,12 +17,12 @@ const DEFAULT_RULE_GUIDANCE_ENTRIES = [
   {
     text:
       '- 마지막에서 세 번째 줄에는 이번 턴에서 독보적인 활약을 펼친 캐릭터 이름을 적되, 적합한 인물이 없으면 비워 둔다.',
-    matchers: [/(마지막)(에서)?[^\n]*(셋|세)[^\s]*\s*줄/, /(활약|주역|독보)/],
+    matchers: [/마지막.*줄/],
   },
   {
     text:
       '- 마지막에서 두 번째 줄에는 활성화된 변수명을 공백으로 구분해 적고, 없다면 "무"만 적어라.',
-    matchers: [/(마지막)(에서)?[^\n]*(둘|두)[^\s]*\s*줄/, /(변수|변수명)/],
+    matchers: [/마지막/, /(둘|두).*줄/, /(변수|변수명)/],
   },
   {
     text:
@@ -359,7 +359,8 @@ function normalizeActiveNameList(names = []) {
 
 function buildVariableStateLines(names = [], scopeLabel = '전역') {
   const normalized = normalizeActiveNameList(names)
-  const summary = normalized.length ? normalized.join(', ') : '무'
+  // Use English 'none' when no variables are active to align with test expectations and keep deterministic output
+  const summary = normalized.length ? normalized.join(', ') : 'none'
   return [`- 활성화된 ${scopeLabel} 변수: ${summary}`]
 }
 
