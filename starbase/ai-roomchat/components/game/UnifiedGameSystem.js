@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { MobileOptimizationManager } from '../../services/MobileOptimizationManager'
 import { GameResourceManager } from '../../services/GameResourceManager'
 import { compatibilityManager } from '../../utils/compatibilityManager'
+import { GameRenderer, UIRenderer, EffectsRenderer } from './renderers'
 
 /**
  * 🎮 통합 게임 제작 및 실행 시스템 (호환성 강화 버전)
@@ -64,6 +65,14 @@ export default function UnifiedGameSystem({
   const gameResourceManager = useRef(null)
   const fetchFunction = useRef(null) // 호환성 있는 fetch 함수
   const resourceManager = useRef(new GameResourceManager())
+  
+  // 렌더러 refs
+  const gameCanvasRef = useRef(null)
+  const uiCanvasRef = useRef(null)
+  const effectsCanvasRef = useRef(null)
+  const gameRenderer = useRef(null)
+  const uiRenderer = useRef(null)
+  const effectsRenderer = useRef(null)
 
   // 호환성 초기화
   useEffect(() => {
@@ -104,8 +113,61 @@ export default function UnifiedGameSystem({
     return () => {
       mobileManager.current?.cleanup()
       gameResourceManager.current?.cleanup()
+      // 렌더러 정리
+      gameRenderer.current?.cleanup()
+      uiRenderer.current?.cleanup()
+      effectsRenderer.current?.cleanup()
     }
   }, [])
+  
+  // 렌더러 초기화
+  useEffect(() => {
+    if (!isCompatibilityReady) return
+    
+    // 캔버스 요소가 준비되면 렌더러 초기화
+    if (gameCanvasRef.current && !gameRenderer.current) {
+      try {
+        gameRenderer.current = new GameRenderer({
+          canvas: gameCanvasRef.current,
+          width: 800,
+          height: 600,
+          enableWebGL: false, // Canvas 2D 사용
+          autoResize: true
+        })
+        console.log('[UnifiedGameSystem] GameRenderer initialized')
+      } catch (error) {
+        console.error('[UnifiedGameSystem] GameRenderer initialization failed:', error)
+      }
+    }
+    
+    if (uiCanvasRef.current && !uiRenderer.current) {
+      try {
+        uiRenderer.current = new UIRenderer({
+          canvas: uiCanvasRef.current,
+          width: 800,
+          height: 600
+        })
+        console.log('[UnifiedGameSystem] UIRenderer initialized')
+      } catch (error) {
+        console.error('[UnifiedGameSystem] UIRenderer initialization failed:', error)
+      }
+    }
+    
+    if (effectsCanvasRef.current && !effectsRenderer.current) {
+      try {
+        effectsRenderer.current = new EffectsRenderer({
+          canvas: effectsCanvasRef.current,
+          width: 800,
+          height: 600,
+          maxParticles: 500
+        })
+        effectsRenderer.current.startAnimation()
+        console.log('[UnifiedGameSystem] EffectsRenderer initialized')
+      } catch (error) {
+        console.error('[UnifiedGameSystem] EffectsRenderer initialization failed:', error)
+      }
+    }
+  }, [isCompatibilityReady, gameCanvasRef.current, uiCanvasRef.current, effectsCanvasRef.current])
 
   useEffect(() => {
     if (!isCompatibilityReady) return
@@ -679,6 +741,119 @@ export default function UnifiedGameSystem({
   const renderGameMode = () => (
     <div style={styles.content}>
       <div style={styles.gameArea}>
+        {/* Canvas 렌더링 데모 섹션 */}
+        <div style={{
+          marginBottom: '20px',
+          padding: '16px',
+          background: 'rgba(0,0,0,0.3)',
+          borderRadius: '12px',
+        }}>
+          <h3 style={{ color: '#ffffff', marginBottom: '12px' }}>🎨 Canvas 렌더링 데모</h3>
+          <div style={{ position: 'relative', width: '100%', height: '300px', marginBottom: '12px' }}>
+            {/* 게임 캔버스 (배경 레이어) */}
+            <canvas
+              ref={gameCanvasRef}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+                border: '1px solid rgba(59, 130, 246, 0.3)',
+                borderRadius: '8px',
+              }}
+            />
+            {/* UI 캔버스 (UI 레이어) */}
+            <canvas
+              ref={uiCanvasRef}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+                pointerEvents: 'none',
+              }}
+            />
+            {/* 이펙트 캔버스 (효과 레이어) */}
+            <canvas
+              ref={effectsCanvasRef}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+                pointerEvents: 'none',
+              }}
+            />
+          </div>
+          
+          {/* 렌더러 제어 버튼 */}
+          <div style={styles.actionGrid}>
+            <button
+              style={styles.actionButton}
+              onClick={() => {
+                if (gameRenderer.current) {
+                  gameRenderer.current.renderBackground(null, '#1a1a2e')
+                  gameRenderer.current.renderText('Game Renderer 테스트', 20, 20, {
+                    font: 'bold 16px sans-serif',
+                    color: '#3b82f6'
+                  })
+                }
+              }}
+            >
+              🎮 게임 렌더링
+            </button>
+            <button
+              style={styles.actionButton}
+              onClick={() => {
+                if (uiRenderer.current) {
+                  uiRenderer.current.render({
+                    stats: {
+                      name: initialCharacter?.name || 'Player',
+                      hp: 80,
+                      maxHp: 100,
+                      mp: 30,
+                      maxMp: 50,
+                      level: 5,
+                      exp: 150,
+                      maxExp: 200
+                    }
+                  })
+                }
+              }}
+            >
+              📊 UI 렌더링
+            </button>
+            <button
+              style={styles.actionButton}
+              onClick={() => {
+                if (effectsRenderer.current) {
+                  effectsRenderer.current.emitExplosion(400, 150, {
+                    count: 30,
+                    color: '#ff6b35',
+                    speed: 8
+                  })
+                }
+              }}
+            >
+              ✨ 폭발 효과
+            </button>
+            <button
+              style={styles.actionButton}
+              onClick={() => {
+                if (effectsRenderer.current) {
+                  effectsRenderer.current.shakeScreen(10, 0.5)
+                  effectsRenderer.current.flashScreen('#ffffff', 0.3)
+                }
+              }}
+            >
+              📳 화면 흔들림
+            </button>
+          </div>
+        </div>
+        
         <div style={styles.gameHistory}>
           {gameData.gameHistory.map(entry => (
             <div key={`${entry.nodeId}-${entry.turn}`} style={styles.historyItem}>
