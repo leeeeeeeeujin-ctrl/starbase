@@ -2,6 +2,8 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { MobileOptimizationManager } from '../../services/MobileOptimizationManager'
 import { GameResourceManager } from '../../services/GameResourceManager'
 import { compatibilityManager } from '../../utils/compatibilityManager'
+import * as GameEngine from './logic/GameEngine'
+import * as ScoreManager from './logic/ScoreManager'
 
 /**
  * 🎮 통합 게임 제작 및 실행 시스템 (호환성 강화 버전)
@@ -192,32 +194,9 @@ export default function UnifiedGameSystem({
     }
   }, [])
 
-  // 프롬프트 템플릿 컴파일
+  // 프롬프트 템플릿 컴파일 (GameEngine 사용)
   const compileTemplate = useCallback((template, variables = {}) => {
-    let compiled = template
-    
-    // 변수 치환
-    Object.entries(variables).forEach(([key, value]) => {
-      const regex = new RegExp(key.replace(/[{}]/g, '\\$&'), 'g')
-      compiled = compiled.replace(regex, String(value))
-    })
-
-    // 조건부 블록 처리 {{#if 조건}} ... {{/if}}
-    compiled = compiled.replace(/\{\{#if\s+(.+?)\}\}(.*?)\{\{\/if\}\}/gs, (match, condition, content) => {
-      const conditionValue = variables[`{{${condition}}}`]
-      return conditionValue ? content : ''
-    })
-
-    // 반복 블록 처리 {{#each 배열}} ... {{/each}}
-    compiled = compiled.replace(/\{\{#each\s+(.+?)\}\}(.*?)\{\{\/each\}\}/gs, (match, arrayName, content) => {
-      const arrayValue = variables[`{{${arrayName}}}`]
-      if (Array.isArray(arrayValue)) {
-        return arrayValue.map(item => content.replace(/\{\{this\}\}/g, item)).join('\n')
-      }
-      return ''
-    })
-
-    return compiled
+    return GameEngine.compileTemplate(template, variables)
   }, [])
 
   // 노드 추가 (Maker 기능)
@@ -421,37 +400,15 @@ export default function UnifiedGameSystem({
     }
   }, [gameData.characterData])
 
-  // 다음 노드 찾기
+  // 다음 노드 찾기 (GameEngine 사용)
   const findNextNode = useCallback((currentNode, response) => {
-    // 연결된 노드들 중 조건에 맞는 것 찾기
-    const connections = currentNode.connections || []
-    
-    for (const connection of connections) {
-      const targetNode = gameData.nodes.find(n => n.id === connection.targetId)
-      
-      // 조건 확인
-      if (connection.condition && !evaluateCondition(connection.condition, response)) {
-        continue
-      }
-      
-      return targetNode
-    }
+    return GameEngine.findNextNode(gameData, currentNode, response)
+  }, [gameData])
 
-    // 기본적으로 다음 노드 반환
-    const currentIndex = gameData.nodes.findIndex(n => n.id === currentNode.id)
-    return gameData.nodes[currentIndex + 1] || null
-  }, [gameData.nodes])
-
-  // 조건 평가
+  // 조건 평가 (GameEngine 사용)
   const evaluateCondition = useCallback((condition, response) => {
-    // 간단한 키워드 매칭
-    if (condition.type === 'keyword') {
-      return condition.keywords.some(keyword => 
-        response.toLowerCase().includes(keyword.toLowerCase())
-      )
-    }
-    return true
-  }, [])
+    return GameEngine.evaluateCondition(condition, response, gameData.variables)
+  }, [gameData.variables])
 
   // 사용자 액션 처리
   const handleUserAction = useCallback((action) => {
