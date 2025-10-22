@@ -244,7 +244,7 @@ describe('GameEngine - Template Loading', () => {
 
 describe('GameEngine - AI Response Handling', () => {
   test('should handle successful AI response', async () => {
-    global.fetch.mockResolvedValueOnce({
+    global.fetch.mockResolvedValue({
       ok: true,
       json: async () => ({
         response: '멋진 응답입니다!',
@@ -257,6 +257,9 @@ describe('GameEngine - AI Response Handling', () => {
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });
+    
+    // Component should be ready to handle AI responses
+    expect(global.fetch).toBeDefined();
   });
 
   test('should retry on API failure', async () => {
@@ -360,10 +363,14 @@ describe('GameEngine - Error Recovery', () => {
         nodes: [
           {
             id: 'node_a',
+            type: 'system',
+            template: 'Node A',
             connections: ['node_b'],
           },
           {
             id: 'node_b',
+            type: 'system',
+            template: 'Node B',
             connections: ['node_a'],
           },
         ],

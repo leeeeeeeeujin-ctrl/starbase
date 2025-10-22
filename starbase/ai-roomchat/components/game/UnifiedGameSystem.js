@@ -107,47 +107,6 @@ export default function UnifiedGameSystem({
     }
   }, [])
 
-  useEffect(() => {
-    if (!isCompatibilityReady) return
-    
-    let mounted = true
-    
-    const initializeSystem = async () => {
-      try {
-        // 모바일 최적화 초기화 (호환성 정보 기반)
-        if (mobileManager.current && compatibilityInfo) {
-          await mobileManager.current.initialize({
-            element: null, // 나중에 ref로 연결
-            enableTouchOptimization: compatibilityInfo.features.touchDevice || compatibilityInfo.device.mobile,
-            enableKeyboardNavigation: true,
-            enableResponsiveLayout: true,
-            compatibilityLevel: compatibilityInfo.level,
-          })
-        }
-        
-        if (!mounted) return
-        
-        // 캐릭터 데이터가 있으면 변수로 등록
-        if (initialCharacter) {
-          registerCharacterVariables(initialCharacter)
-        }
-        
-        // 게임 템플릿 로드
-        if (gameTemplateId) {
-          await loadGameTemplate(gameTemplateId)
-        }
-      } catch (error) {
-        console.error('시스템 초기화 실패:', error)
-      }
-    }
-
-    initializeSystem()
-    
-    return () => {
-      mounted = false
-    }
-  }, [initialCharacter, gameTemplateId, isCompatibilityReady, compatibilityInfo, registerCharacterVariables, loadGameTemplate])
-
   // 캐릭터 변수 등록 (테스트에서 검증된 로직 적용)
   const registerCharacterVariables = useCallback((character) => {
     const characterVars = {
@@ -191,6 +150,47 @@ export default function UnifiedGameSystem({
       console.error('게임 템플릿 로드 실패:', error)
     }
   }, [])
+
+  useEffect(() => {
+    if (!isCompatibilityReady) return
+    
+    let mounted = true
+    
+    const initializeSystem = async () => {
+      try {
+        // 모바일 최적화 초기화 (호환성 정보 기반)
+        if (mobileManager.current && compatibilityInfo) {
+          await mobileManager.current.initialize({
+            element: null, // 나중에 ref로 연결
+            enableTouchOptimization: compatibilityInfo.features.touchDevice || compatibilityInfo.device.mobile,
+            enableKeyboardNavigation: true,
+            enableResponsiveLayout: true,
+            compatibilityLevel: compatibilityInfo.level,
+          })
+        }
+        
+        if (!mounted) return
+        
+        // 캐릭터 데이터가 있으면 변수로 등록
+        if (initialCharacter) {
+          registerCharacterVariables(initialCharacter)
+        }
+        
+        // 게임 템플릿 로드
+        if (gameTemplateId) {
+          await loadGameTemplate(gameTemplateId)
+        }
+      } catch (error) {
+        console.error('시스템 초기화 실패:', error)
+      }
+    }
+
+    initializeSystem()
+    
+    return () => {
+      mounted = false
+    }
+  }, [initialCharacter, gameTemplateId, isCompatibilityReady, compatibilityInfo, registerCharacterVariables, loadGameTemplate])
 
   // 프롬프트 템플릿 컴파일
   const compileTemplate = useCallback((template, variables = {}) => {
