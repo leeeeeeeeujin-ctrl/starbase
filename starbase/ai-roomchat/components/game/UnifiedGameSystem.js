@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { MobileOptimizationManager } from '../../services/MobileOptimizationManager'
 import { GameResourceManager } from '../../services/GameResourceManager'
 import { compatibilityManager } from '../../utils/compatibilityManager'
+import { GameRenderer, UIRenderer, EffectsRenderer } from './renderers'
 
 /**
  * 🎮 통합 게임 제작 및 실행 시스템 (호환성 강화 버전)
@@ -65,6 +66,14 @@ export default function UnifiedGameSystem({
   const fetchFunction = useRef(null) // 호환성 있는 fetch 함수
   const resourceManager = useRef(new GameResourceManager())
 
+  // 렌더러 refs
+  const gameCanvasRef = useRef(null)
+  const uiCanvasRef = useRef(null)
+  const effectsCanvasRef = useRef(null)
+  const gameRenderer = useRef(null)
+  const uiRenderer = useRef(null)
+  const effectsRenderer = useRef(null)
+
   // 호환성 초기화
   useEffect(() => {
     const initializeCompatibility = async () => {
@@ -104,8 +113,61 @@ export default function UnifiedGameSystem({
     return () => {
       mobileManager.current?.cleanup()
       gameResourceManager.current?.cleanup()
+      // 렌더러 정리
+      gameRenderer.current?.cleanup()
+      uiRenderer.current?.cleanup()
+      effectsRenderer.current?.cleanup()
     }
   }, [])
+
+  // 렌더러 초기화
+  useEffect(() => {
+    if (!isCompatibilityReady) return
+
+    // 캔버스 요소가 준비되면 렌더러 초기화
+    if (gameCanvasRef.current && !gameRenderer.current) {
+      try {
+        gameRenderer.current = new GameRenderer({
+          canvas: gameCanvasRef.current,
+          width: 800,
+          height: 600,
+          enableWebGL: false, // Canvas 2D 사용
+          autoResize: true
+        })
+        console.log('[UnifiedGameSystem] GameRenderer initialized')
+      } catch (error) {
+        console.error('[UnifiedGameSystem] GameRenderer initialization failed:', error)
+      }
+    }
+
+    if (uiCanvasRef.current && !uiRenderer.current) {
+      try {
+        uiRenderer.current = new UIRenderer({
+          canvas: uiCanvasRef.current,
+          width: 800,
+          height: 600
+        })
+        console.log('[UnifiedGameSystem] UIRenderer initialized')
+      } catch (error) {
+        console.error('[UnifiedGameSystem] UIRenderer initialization failed:', error)
+      }
+    }
+    
+    if (effectsCanvasRef.current && !effectsRenderer.current) {
+      try {
+        effectsRenderer.current = new EffectsRenderer({
+          canvas: effectsCanvasRef.current,
+          width: 800,
+          height: 600,
+          maxParticles: 500
+        })
+        effectsRenderer.current.startAnimation()
+        console.log('[UnifiedGameSystem] EffectsRenderer initialized')
+      } catch (error) {
+        console.error('[UnifiedGameSystem] EffectsRenderer initialization failed:', error)
+      }
+    }
+  }, [isCompatibilityReady, gameCanvasRef.current, uiCanvasRef.current, effectsCanvasRef.current])
 
   // 캐릭터 변수 등록 (테스트에서 검증된 로직 적용)
   const registerCharacterVariables = useCallback((character) => {
