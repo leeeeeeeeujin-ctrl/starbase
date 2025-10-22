@@ -54,45 +54,30 @@ module.exports = {
   // 추가 플러그인
   plugins: [
     // 클래스 속성 지원 (IE 호환)
-    '@babel/plugin-proposal-class-properties',
+    '@babel/plugin-transform-class-properties',
     
     // Optional Chaining & Nullish Coalescing (IE 호환)
-    '@babel/plugin-proposal-optional-chaining',
-    '@babel/plugin-proposal-nullish-coalescing-operator',
+    '@babel/plugin-transform-optional-chaining',
+    '@babel/plugin-transform-nullish-coalescing-operator',
     
     // Private 메서드 (최신 브라우저 지원)
-    '@babel/plugin-proposal-private-methods',
+    '@babel/plugin-transform-private-methods',
     
     // 동적 import (코드 분할용)
     '@babel/plugin-syntax-dynamic-import',
-    
-    // 환경별 조건부 컴파일
-    [
-      'babel-plugin-transform-define',
-      {
-        'process.env.BABEL_ENV': process.env.BABEL_ENV || process.env.NODE_ENV,
-        'process.env.SUPPORT_IE': process.env.SUPPORT_IE === 'true'
-      }
-    ]
   ],
   
   // 환경별 설정
   env: {
     // 개발 환경
     development: {
-      plugins: [
-        // Hot reloading 지원
-        'react-refresh/babel'
-      ]
+      plugins: []
     },
     
     // 프로덕션 환경
     production: {
       plugins: [
-        // Dead code elimination
-        'babel-plugin-transform-remove-console',
-        
-        // 번들 크기 최적화
+        // 번들 크기 최적화 (lodash만 유지)
         [
           'babel-plugin-transform-imports',
           {
