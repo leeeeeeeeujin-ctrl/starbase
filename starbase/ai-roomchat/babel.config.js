@@ -62,9 +62,6 @@ module.exports = {
     
     // Private 메서드 (최신 브라우저 지원)
     '@babel/plugin-transform-private-methods',
-    
-    // 동적 import (코드 분할용)
-    '@babel/plugin-syntax-dynamic-import',
   ],
   
   // 환경별 설정
@@ -76,18 +73,7 @@ module.exports = {
     
     // 프로덕션 환경
     production: {
-      plugins: [
-        // 번들 크기 최적화 (lodash만 유지)
-        [
-          'babel-plugin-transform-imports',
-          {
-            'lodash': {
-              transform: 'lodash/${member}',
-              preventFullImport: true
-            }
-          }
-        ]
-      ]
+      plugins: []
     },
     
     // 테스트 환경
