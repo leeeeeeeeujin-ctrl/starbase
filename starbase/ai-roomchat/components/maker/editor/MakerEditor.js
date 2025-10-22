@@ -10,6 +10,8 @@ import MakerEditorPanel from './MakerEditorPanel'
 import VariableDrawer from './VariableDrawer'
 import AdvancedToolsPanel from './AdvancedToolsPanel'
 import CodeEditor from './CodeEditor'
+import MultiLanguageCodeEditor from './MultiLanguageCodeEditor'
+import GameSimulator from './GameSimulator'
 
 export default function MakerEditor() {
   const { status, graph, selection, variables, persistence, history, version } = useMakerEditor()
@@ -70,7 +72,11 @@ export default function MakerEditor() {
   
   // ⚡ JavaScript 코드 에디터
   const [codeEditorOpen, setCodeEditorOpen] = useState(false)
+  const [showCodeEditor, setShowCodeEditor] = useState(false)
+  const [showMultiLanguageEditor, setShowMultiLanguageEditor] = useState(false)
   const [gameCode, setGameCode] = useState('')
+  const [showGameSimulator, setShowGameSimulator] = useState(false)
+  const [simulationResults, setSimulationResults] = useState(null)
   
   const handleCreateWithAI = useCallback(async () => {
     const userPrompt = prompt('🎮 어떤 게임을 만들고 싶으세요?\n\n예시:\n• "중세 기사들이 용과 싸우는 게임"\n• "우주에서 외계인과 전투하는 게임"\n• "좀비 아포칼립스 생존 게임"')
@@ -148,6 +154,74 @@ export default function MakerEditor() {
   // 코드 에디터 열기
   const openCodeEditor = useCallback(() => {
     setCodeEditorOpen(true)
+  }, [])
+
+  // 🎮 게임 시뮬레이션 상태
+  const [gameSimulatorOpen, setGameSimulatorOpen] = useState(false)
+  
+  // 게임 시뮬레이션 시작
+  const startGameSimulation = useCallback(() => {
+    if (!nodes || nodes.length === 0) {
+      alert('시뮬레이션할 게임 노드가 없습니다. 먼저 프롬프트를 추가하세요.')
+      return
+    }
+
+    // 현재 게임 데이터를 JSON 형태로 변환
+    const gameData = {
+      meta: {
+        version: 2,
+        createdAt: new Date().toISOString(),
+        createdBy: 'Game Simulator'
+      },
+      set: {
+        name: setInfo?.name || '시뮬레이션 게임',
+        description: '게임 시뮬레이션 테스트'
+      },
+      slots: nodes.map((node, index) => ({
+        slot_no: parseInt(node.id) || index,
+        slot_type: node.type || 'ai',
+        template: node.data?.label || '',
+        is_start: node.data?.isStart || false,
+        canvas_x: node.position?.x || 0,
+        canvas_y: node.position?.y || 0,
+        var_rules_global: {},
+        var_rules_local: {}
+      })),
+      bridges: edges.map(edge => ({
+        from_slot_id: edge.source,
+        to_slot_id: edge.target,
+        trigger_words: [],
+        conditions: [],
+        priority: 1,
+        probability: 1
+      }))
+    }
+
+    console.log('🎮 게임 시뮬레이션 데이터:', gameData)
+    setGameSimulatorOpen(true)
+  }, [nodes, edges, setInfo])
+
+  // 시뮬레이션 결과 처리
+  const handleSimulationResult = useCallback((result) => {
+    console.log('🎯 시뮬레이션 결과:', result)
+    if (result.success) {
+      alert(`시뮬레이션 완료!\n총 ${result.logs.length}개의 로그가 생성되었습니다.`)
+    }
+  }, [])
+
+  // 다중 언어 코드 실행 핸들러
+  const handleMultiLanguageCodeExecution = useCallback((result) => {
+    if (result.action === 'close') {
+      setShowMultiLanguageEditor(false)
+    } else {
+      console.log('🚀 다중 언어 코드 실행 결과:', result)
+      
+      // 실행 결과를 게임에 적용하는 로직
+      if (result.success && result.result) {
+        // JavaScript 실행 결과를 노드로 변환하거나 게임 상태 업데이트
+        console.log('🎮 게임 상태 업데이트:', result.result)
+      }
+    }
   }, [])
 
   const collapsedQuickActions = useMemo(
@@ -315,6 +389,8 @@ export default function MakerEditor() {
           onOpenVariables={() => setVariableDrawerOpen(true)}
           onCreateWithAI={handleCreateWithAI}
           onOpenCodeEditor={openCodeEditor}
+          onOpenMultiLanguageEditor={() => setShowMultiLanguageEditor(true)}
+          onStartSimulation={startGameSimulation}
           quickActions={collapsedQuickActions}
         />
 
@@ -632,6 +708,46 @@ export default function MakerEditor() {
           edges: edges,
           selectedNode: selectedNode
         }}
+      />
+
+      {/* 🚀 다중 언어 개발 환경 */}
+      <MultiLanguageCodeEditor
+        visible={showMultiLanguageEditor}
+        initialCode={''}
+        gameContext={{
+          nodes: nodes,
+          edges: edges,
+          gameInfo: setInfo
+        }}
+        onCodeRun={handleMultiLanguageCodeExecution}
+      />
+
+      {/* 🎮 게임 시뮬레이터 */}
+      <GameSimulator
+        visible={gameSimulatorOpen}
+        gameData={{
+          meta: {
+            version: 2,
+            createdAt: new Date().toISOString()
+          },
+          set: {
+            name: setInfo?.name || '시뮬레이션 게임'
+          },
+          slots: nodes.map((node, index) => ({
+            slot_no: parseInt(node.id) || index,
+            slot_type: node.type || 'ai',
+            template: node.data?.label || '',
+            is_start: node.data?.isStart || index === 0,
+            canvas_x: node.position?.x || 0,
+            canvas_y: node.position?.y || 0
+          })),
+          bridges: edges.map(edge => ({
+            from_slot_id: edge.source,
+            to_slot_id: edge.target
+          }))
+        }}
+        onClose={() => setGameSimulatorOpen(false)}
+        onSimulationResult={handleSimulationResult}
       />
 
       {/* 코드 에디터 닫기 버튼 */}
