@@ -2,29 +2,6 @@
   "name": "ai-roomchat-pages",
   "version": "0.1.0",
   "private": true,
-  "browserslist": {
-    "production": [
-      "ie >= 11",
-      "edge >= 14",
-      "chrome >= 70",
-      "firefox >= 65",
-      "safari >= 12",
-      "ios >= 12",
-      "android >= 7.0",
-      "> 1%",
-      "not dead"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version",
-      "ie >= 11"
-    ],
-    "test": [
-      "current node",
-      "ie >= 11"
-    ]
-  },
   "engines": {
     "node": ">=16.0.0",
     "npm": ">=8.0.0"
