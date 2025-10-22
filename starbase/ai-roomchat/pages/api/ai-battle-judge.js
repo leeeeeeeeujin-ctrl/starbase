@@ -6,26 +6,96 @@
  */
 
 export default async function handler(req, res) {
+  // CORS 헤더 추가
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end()
+  }
+
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' })
+    return res.status(405).json({ 
+      error: 'Method not allowed',
+      message: 'Only POST requests are accepted' 
+    })
+  }
+
+  // 요청 데이터 검증
+  const { character, action, turn, gameSettings, previousTurns, prompt, gameState } = req.body
+
+  if (!character && !prompt) {
+    return res.status(400).json({
+      error: 'Bad request',
+      message: 'Character data or prompt is required'
+    })
   }
 
   try {
-    const { character, action, turn, gameSettings, previousTurns } = req.body
+    let battleResult
 
-    // AI 판정 시스템 호출
-    const battleResult = await processAIBattleJudgment({
-      character,
-      action,
-      turn,
-      gameSettings,
-      previousTurns,
-    })
+    if (prompt && gameState) {
+      // 통합 게임 시스템에서의 호출
+      battleResult = await processUnifiedGamePrompt({
+        prompt,
+        gameState,
+        character,
+      })
+    } else {
+      // 기존 배틀 시스템에서의 호출
+      battleResult = await processAIBattleJudgment({
+        character,
+        action,
+        turn,
+        gameSettings,
+        previousTurns,
+      })
+    }
 
     res.status(200).json(battleResult)
   } catch (error) {
     console.error('AI 배틀 판정 오류:', error)
-    res.status(500).json({ error: 'AI 판정 처리 중 오류가 발생했습니다' })
+    
+    // 에러 타입에 따른 적절한 응답
+    const status = error.name === 'ValidationError' ? 400 : 500
+    const message = process.env.NODE_ENV === 'development' 
+      ? error.message 
+      : 'AI 판정 처리 중 오류가 발생했습니다'
+
+    res.status(status).json({ 
+      error: 'AI processing failed',
+      message,
+      ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
+    })
+  }
+}
+
+// 통합 게임 시스템용 프롬프트 처리
+async function processUnifiedGamePrompt(context) {
+  const { prompt, gameState, character } = context
+
+  try {
+    const aiResponse = await callAIJudge(prompt)
+    
+    return {
+      narrative: aiResponse,
+      response: aiResponse,
+      success: true,
+      timestamp: new Date().toISOString(),
+    }
+  } catch (error) {
+    console.error('통합 게임 프롬프트 처리 오류:', error)
+    
+    // 더 나은 폴백 응답
+    const characterName = character?.name || '플레이어'
+    return {
+      narrative: `${characterName}이(가) 잠시 생각에 잠깁니다. 다음에는 어떤 일이 일어날까요?`,
+      response: `${characterName}이(가) 잠시 생각에 잠깁니다. 다음에는 어떤 일이 일어날까요?`,
+      success: false,
+      fallback: true,
+      timestamp: new Date().toISOString(),
+    }
   }
 }
 

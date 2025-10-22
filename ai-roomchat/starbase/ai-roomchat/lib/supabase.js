@@ -8,8 +8,14 @@ import { createSupabaseAuthConfig } from './supabaseAuthConfig'
 // NEXT_PUBLIC_SUPABASE_URL=https://jvopmawzszamguydylwu.supabase.co
 // NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
-const url = sanitizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL)
-const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+const rawUrl = sanitizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL)
+const rawAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+const isCiBuild = String(process.env.CI || '').toLowerCase() === 'true' || String(process.env.CI || '') === '1'
+const isTestEnv = String(process.env.NODE_ENV || '').toLowerCase() === 'test'
+
+const url = rawUrl || (isCiBuild || isTestEnv ? 'http://localhost/dummy-supabase' : rawUrl)
+const anon = rawAnon || (isCiBuild || isTestEnv ? 'anon-placeholder' : rawAnon)
 
 if (!url || !anon) {
   throw new Error('Missing Supabase env. Check NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY')

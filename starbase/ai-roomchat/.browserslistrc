@@ -1,0 +1,26 @@
+# 브라우저 호환성 타겟 정의
+# https://github.com/browserslist/browserslist
+
+[production]
+# 프로덕션 환경: 더 넓은 호환성
+ie >= 11
+edge >= 14
+chrome >= 70
+firefox >= 65
+safari >= 12
+ios >= 12
+android >= 70
+samsung >= 10
+> 0.2%
+not dead
+not op_mini all
+
+[development]  
+# 개발 환경: 최신 브라우저만
+last 1 chrome version
+last 1 firefox version
+last 1 safari version
+
+[test]
+# 테스트 환경: Node.js 현재 버전
+current node

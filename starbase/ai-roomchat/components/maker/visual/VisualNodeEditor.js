@@ -5,70 +5,24 @@
  * - 실시간 코드 생성 및 미리보기
  * - 게임 개발에 특화된 노드 라이브러리
  * - AI 컨텍스트와 완벽한 연동
+ * 
+ * 🔧 호환성 지원:
+ * - IE 11+, Safari 12+, Chrome 70+, Firefox 65+
+ * - 터치 디바이스 및 모바일 최적화
+ * - 키보드 네비게이션 지원
+ * - 고대비 모드 및 접근성 기능
  */
 
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { CompatibilityManager } from '../../../utils/compatibilityManager';
+import { MobileOptimizationManager } from '../../../utils/mobileOptimizationManager';
+import { NODE_TYPES, NODE_CATEGORIES } from './constants';
+import NodePalette from './components/NodePalette';
+import CodeViewer from './components/CodeViewer';
+import GamePreview from './components/GamePreview';
+import NodePropertiesPanel from './components/NodePropertiesPanel';
 
-// 노드 타입 정의
-const NODE_TYPES = {
-  // 이벤트 노드
-  EVENTS: {
-    START: { label: '게임 시작', color: '#22c55e', icon: '🚀', category: 'events' },
-    UPDATE: { label: '매 프레임', color: '#3b82f6', icon: '🔄', category: 'events' },
-    CLICK: { label: '클릭 시', color: '#8b5cf6', icon: '👆', category: 'events' },
-    COLLISION: { label: '충돌 시', color: '#ef4444', icon: '💥', category: 'events' },
-    KEY_PRESS: { label: '키 입력', color: '#f59e0b', icon: '⌨️', category: 'events' },
-    TIMER: { label: '타이머', color: '#06b6d4', icon: '⏰', category: 'events' }
-  },
-  
-  // 액션 노드
-  ACTIONS: {
-    MOVE: { label: '이동하기', color: '#10b981', icon: '🏃', category: 'actions' },
-    ROTATE: { label: '회전하기', color: '#f97316', icon: '🔄', category: 'actions' },
-    SCALE: { label: '크기 변경', color: '#8b5cf6', icon: '📏', category: 'actions' },
-    PLAY_SOUND: { label: '소리 재생', color: '#ec4899', icon: '🔊', category: 'actions' },
-    SHOW_TEXT: { label: '텍스트 표시', color: '#3b82f6', icon: '💬', category: 'actions' },
-    CHANGE_SCENE: { label: '장면 변경', color: '#ef4444', icon: '🎬', category: 'actions' },
-    SPAWN_OBJECT: { label: '오브젝트 생성', color: '#22c55e', icon: '✨', category: 'actions' },
-    DESTROY: { label: '파괴하기', color: '#dc2626', icon: '💥', category: 'actions' }
-  },
-  
-  // 조건 노드
-  CONDITIONS: {
-    IF: { label: '만약', color: '#f59e0b', icon: '❓', category: 'conditions' },
-    COMPARE: { label: '비교', color: '#06b6d4', icon: '⚖️', category: 'conditions' },
-    AND: { label: '그리고', color: '#8b5cf6', icon: '&', category: 'conditions' },
-    OR: { label: '또는', color: '#ec4899', icon: '|', category: 'conditions' },
-    NOT: { label: '아니면', color: '#ef4444', icon: '!', category: 'conditions' }
-  },
-  
-  // 변수 노드
-  VARIABLES: {
-    SET: { label: '변수 설정', color: '#f97316', icon: '📦', category: 'variables' },
-    GET: { label: '변수 가져오기', color: '#10b981', icon: '📤', category: 'variables' },
-    CHANGE: { label: '변수 변경', color: '#3b82f6', icon: '📊', category: 'variables' },
-    RANDOM: { label: '랜덤 숫자', color: '#8b5cf6', icon: '🎲', category: 'variables' }
-  },
-  
-  // 게임 특화 노드
-  GAME: {
-    PLAYER: { label: '플레이어', color: '#22c55e', icon: '👤', category: 'game' },
-    ENEMY: { label: '적', color: '#ef4444', icon: '👹', category: 'game' },
-    ITEM: { label: '아이템', color: '#f59e0b', icon: '💎', category: 'game' },
-    SCORE: { label: '점수', color: '#3b82f6', icon: '🏆', category: 'game' },
-    HEALTH: { label: '체력', color: '#dc2626', icon: '❤️', category: 'game' },
-    LEVEL: { label: '레벨', color: '#8b5cf6', icon: '🎯', category: 'game' }
-  }
-};
-
-// 노드 카테고리
-const NODE_CATEGORIES = [
-  { id: 'events', label: '이벤트', icon: '⚡', color: '#22c55e' },
-  { id: 'actions', label: '액션', icon: '🎬', color: '#3b82f6' },
-  { id: 'conditions', label: '조건', icon: '🤔', color: '#f59e0b' },
-  { id: 'variables', label: '변수', icon: '📊', color: '#8b5cf6' },
-  { id: 'game', label: '게임', icon: '🎮', color: '#ec4899' }
-];
+// 노드 타입 및 카테고리는 constants에서 import
 
 const VisualNodeEditor = ({ 
   onClose, 
@@ -78,6 +32,10 @@ const VisualNodeEditor = ({
   isMobile = false,
   deviceTier = 'medium'
 }) => {
+  // 호환성 상태
+  const [compatibilityInfo, setCompatibilityInfo] = useState(null);
+  const [isCompatibilityReady, setIsCompatibilityReady] = useState(false);
+  
   const [nodes, setNodes] = useState(existingNodes);
   const [selectedNode, setSelectedNode] = useState(null);
   const [draggedNode, setDraggedNode] = useState(null);
@@ -88,6 +46,39 @@ const VisualNodeEditor = ({
   
   const canvasRef = useRef(null);
   const nodeIdCounter = useRef(1);
+  const touchManager = useRef(null);
+  
+  // 호환성 초기화
+  useEffect(() => {
+    const initializeCompatibility = async () => {
+      try {
+        const info = CompatibilityManager.getCompatibilityInfo();
+        setCompatibilityInfo(info);
+        
+        // 터치 매니저 초기화 (모바일 디바이스용)
+        if (info.device.mobile || info.features.touchDevice) {
+          touchManager.current = new MobileOptimizationManager();
+          await touchManager.current.initialize({
+            element: canvasRef.current,
+            enableTouchOptimization: true,
+            enableKeyboardNavigation: true,
+            compatibilityLevel: info.level,
+          });
+        }
+        
+        setIsCompatibilityReady(true);
+      } catch (error) {
+        console.error('[VisualNodeEditor] 호환성 초기화 실패:', error);
+        setIsCompatibilityReady(true); // 실패해도 기본 기능은 동작
+      }
+    };
+
+    initializeCompatibility();
+
+    return () => {
+      touchManager.current?.cleanup();
+    };
+  }, []);
   
   // 모바일 최적화 설정
   const mobileOptimized = useMemo(() => ({
@@ -253,28 +244,37 @@ const VisualNodeEditor = ({
     return paramMap[type] || {};
   };
   
-  // 드래그 시작
+  // 드래그 시작 (터치 이벤트 호환성 포함)
   const handleDragStart = useCallback((e, nodeType) => {
     e.preventDefault();
+    
+    // 터치 이벤트와 마우스 이벤트 통합 처리
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    
     const rect = e.currentTarget.getBoundingClientRect();
     setDraggedNode({
       type: nodeType,
       offset: {
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top
+        x: clientX - rect.left,
+        y: clientY - rect.top
       }
     });
   }, []);
   
-  // 캔버스에 드롭
+  // 캔버스에 드롭 (터치 이벤트 호환성 포함)
   const handleCanvasDrop = useCallback((e) => {
     e.preventDefault();
     if (!draggedNode || !canvasRef.current) return;
     
+    // 터치 이벤트와 마우스 이벤트 통합 처리
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    
     const rect = canvasRef.current.getBoundingClientRect();
     const position = {
-      x: e.clientX - rect.left - draggedNode.offset.x,
-      y: e.clientY - rect.top - draggedNode.offset.y
+      x: clientX - rect.left - draggedNode.offset.x,
+      y: clientY - rect.top - draggedNode.offset.y
     };
     
     const newNode = createNode(draggedNode.type, position);
@@ -598,6 +598,16 @@ const VisualNodeEditor = ({
               }}
               onDrop={handleCanvasDrop}
               onDragOver={(e) => e.preventDefault()}
+              onTouchEnd={handleCanvasDrop} // 터치 디바이스 지원
+              onKeyDown={(e) => {
+                // 키보드 네비게이션 지원 (접근성)
+                if (e.key === 'Delete' && selectedNode) {
+                  deleteNode(selectedNode.id);
+                } else if (e.key === 'Escape') {
+                  setSelectedNode(null);
+                }
+              }}
+              tabIndex={0} // 키보드 포커스 가능하도록
             >
               {/* 그리드 배경 */}
               <div style={{
@@ -668,364 +678,6 @@ const VisualNodeEditor = ({
           onClose={() => setSelectedNode(null)}
           isMobile={isMobile}
         />
-      )}
-    </div>
-  );
-};
-
-// 노드 팔레트 컴포넌트
-const NodePalette = ({ 
-  activeCategory, 
-  onCategoryChange, 
-  onDragStart,
-  isMobile,
-  deviceTier,
-  mobileOptimized 
-}) => {
-  return (
-    <div style={{
-      width: isMobile ? '100%' : '280px',
-      background: 'rgba(15, 23, 42, 0.9)',
-      borderRight: isMobile ? 'none' : '2px solid rgba(255,255,255,0.1)',
-      borderBottom: isMobile ? '2px solid rgba(255,255,255,0.1)' : 'none',
-      display: 'flex',
-      flexDirection: isMobile ? 'row' : 'column',
-      maxHeight: isMobile ? '120px' : 'none',
-      overflowX: isMobile ? 'auto' : 'visible',
-      overflowY: isMobile ? 'hidden' : 'auto'
-    }}>
-      {/* 카테고리 탭 */}
-      <div style={{
-        display: 'flex',
-        flexDirection: isMobile ? 'column' : 'row',
-        flexWrap: isMobile ? 'nowrap' : 'wrap',
-        padding: 8,
-        gap: 4,
-        borderBottom: isMobile ? 'none' : '1px solid rgba(255,255,255,0.1)',
-        borderRight: isMobile ? '1px solid rgba(255,255,255,0.1)' : 'none',
-        minWidth: isMobile ? '100px' : 'auto'
-      }}>
-        {NODE_CATEGORIES.map(category => (
-          <button
-            key={category.id}
-            onClick={() => onCategoryChange(category.id)}
-            style={{
-              background: activeCategory === category.id 
-                ? category.color 
-                : 'rgba(255,255,255,0.1)',
-              border: 'none',
-              borderRadius: 6,
-              color: '#ffffff',
-              padding: isMobile ? '6px' : '8px 12px',
-              cursor: 'pointer',
-              fontSize: isMobile ? 10 : 12,
-              fontWeight: 600,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              whiteSpace: 'nowrap',
-              flex: isMobile ? '0 0 auto' : 'none'
-            }}
-          >
-            <span>{category.icon}</span>
-            {!isMobile && <span>{category.label}</span>}
-          </button>
-        ))}
-      </div>
-      
-      {/* 노드 목록 */}
-      <div style={{
-        flex: 1,
-        padding: 8,
-        display: 'flex',
-        flexDirection: isMobile ? 'row' : 'column',
-        gap: 6,
-        overflowX: isMobile ? 'auto' : 'visible',
-        overflowY: isMobile ? 'hidden' : 'auto'
-      }}>
-        {Object.entries(NODE_TYPES[activeCategory.toUpperCase()] || {}).map(([key, nodeType]) => (
-          <div
-            key={key}
-            draggable
-            onDragStart={(e) => onDragStart(e, key)}
-            style={{
-              background: `linear-gradient(135deg, ${nodeType.color}dd, ${nodeType.color}aa)`,
-              border: '2px solid rgba(255,255,255,0.3)',
-              borderRadius: 8,
-              padding: isMobile ? '6px 8px' : '8px 12px',
-              cursor: 'grab',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              fontSize: mobileOptimized.fontSize - 2,
-              fontWeight: 600,
-              color: '#ffffff',
-              transition: deviceTier === 'high' ? 'all 0.2s ease' : 'none',
-              minWidth: isMobile ? '120px' : 'auto',
-              flexShrink: 0
-            }}
-            onMouseDown={(e) => e.currentTarget.style.cursor = 'grabbing'}
-            onMouseUp={(e) => e.currentTarget.style.cursor = 'grab'}
-          >
-            <span style={{ fontSize: mobileOptimized.fontSize }}>
-              {nodeType.icon}
-            </span>
-            <span style={{ 
-              overflow: 'hidden', 
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap'
-            }}>
-              {nodeType.label}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-// 코드 뷰어 컴포넌트
-const CodeViewer = ({ code, onCodeChange, isMobile }) => {
-  return (
-    <div style={{
-      width: '100%',
-      height: '100%',
-      padding: 20,
-      background: '#0f172a',
-      color: '#f1f5f9',
-      fontFamily: 'monospace',
-      fontSize: isMobile ? 12 : 14,
-      overflow: 'auto'
-    }}>
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        marginBottom: 20,
-        paddingBottom: 10,
-        borderBottom: '1px solid rgba(255,255,255,0.1)'
-      }}>
-        <h3 style={{ margin: 0, color: '#3b82f6' }}>생성된 코드</h3>
-        <button
-          onClick={() => navigator.clipboard.writeText(code)}
-          style={{
-            background: 'rgba(59, 130, 246, 0.2)',
-            border: '1px solid #3b82f6',
-            borderRadius: 6,
-            color: '#3b82f6',
-            padding: '6px 12px',
-            cursor: 'pointer',
-            fontSize: 12
-          }}
-        >
-          📋 복사
-        </button>
-      </div>
-      
-      <pre style={{
-        margin: 0,
-        whiteSpace: 'pre-wrap',
-        wordWrap: 'break-word'
-      }}>
-        {code}
-      </pre>
-    </div>
-  );
-};
-
-// 게임 미리보기 컴포넌트
-const GamePreview = ({ nodes, generatedCode, isMobile }) => {
-  return (
-    <div style={{
-      width: '100%',
-      height: '100%',
-      padding: 20,
-      background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 100%)',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center'
-    }}>
-      <div style={{
-        background: 'rgba(255,255,255,0.1)',
-        borderRadius: 16,
-        padding: 40,
-        textAlign: 'center',
-        maxWidth: isMobile ? '90%' : '500px'
-      }}>
-        <div style={{ fontSize: isMobile ? 48 : 64, marginBottom: 20 }}>🎮</div>
-        <h3 style={{ 
-          margin: 0, 
-          color: '#ffffff', 
-          fontSize: isMobile ? 18 : 24,
-          marginBottom: 15 
-        }}>
-          게임 미리보기
-        </h3>
-        <p style={{ 
-          color: '#cbd5e1', 
-          fontSize: isMobile ? 14 : 16,
-          marginBottom: 20,
-          lineHeight: 1.6
-        }}>
-          현재 {nodes.length}개의 노드로 구성된 게임 로직이 있습니다.
-          실제 게임 실행은 코드 생성 후 가능합니다.
-        </p>
-        
-        {nodes.length > 0 && (
-          <div style={{
-            background: 'rgba(0,0,0,0.3)',
-            borderRadius: 8,
-            padding: 15,
-            marginTop: 20
-          }}>
-            <h4 style={{ 
-              color: '#22c55e', 
-              fontSize: 14, 
-              margin: '0 0 10px 0' 
-            }}>
-              노드 구성:
-            </h4>
-            {NODE_CATEGORIES.map(category => {
-              const count = nodes.filter(node => 
-                NODE_TYPES[category.id.toUpperCase()]?.[node.type]
-              ).length;
-              return count > 0 ? (
-                <div key={category.id} style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  color: '#e2e8f0',
-                  fontSize: 12,
-                  marginBottom: 4
-                }}>
-                  <span>{category.icon} {category.label}</span>
-                  <span>{count}개</span>
-                </div>
-              ) : null;
-            })}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-// 노드 속성 패널
-const NodePropertiesPanel = ({ node, onNodeUpdate, onClose, isMobile }) => {
-  const [parameters, setParameters] = useState(node.data.parameters || {});
-  
-  const updateParameter = (key, value) => {
-    const newParameters = { ...parameters, [key]: value };
-    setParameters(newParameters);
-    
-    const updatedNode = {
-      ...node,
-      data: {
-        ...node.data,
-        parameters: newParameters
-      }
-    };
-    
-    onNodeUpdate(updatedNode);
-  };
-  
-  return (
-    <div style={{
-      position: isMobile ? 'fixed' : 'absolute',
-      top: isMobile ? '50%' : '20px',
-      right: isMobile ? '50%' : '20px',
-      transform: isMobile ? 'translate(50%, -50%)' : 'none',
-      width: isMobile ? '90%' : '250px',
-      maxWidth: isMobile ? '350px' : 'none',
-      background: 'rgba(15, 23, 42, 0.95)',
-      border: '2px solid rgba(255,255,255,0.2)',
-      borderRadius: 12,
-      padding: 16,
-      zIndex: 1001,
-      boxShadow: '0 15px 35px -5px rgba(0,0,0,0.5)'
-    }}>
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        marginBottom: 16,
-        paddingBottom: 12,
-        borderBottom: '1px solid rgba(255,255,255,0.1)'
-      }}>
-        <h4 style={{
-          margin: 0,
-          color: '#ffffff',
-          fontSize: 16,
-          fontWeight: 700,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8
-        }}>
-          <span>{node.data.icon}</span>
-          <span>{node.data.label}</span>
-        </h4>
-        
-        <button
-          onClick={onClose}
-          style={{
-            background: 'rgba(255,255,255,0.1)',
-            border: 'none',
-            borderRadius: 6,
-            color: '#ffffff',
-            width: 24,
-            height: 24,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: 14
-          }}
-        >
-          ×
-        </button>
-      </div>
-      
-      {Object.entries(parameters).map(([key, value]) => (
-        <div key={key} style={{ marginBottom: 12 }}>
-          <label style={{
-            display: 'block',
-            color: '#e2e8f0',
-            fontSize: 13,
-            fontWeight: 600,
-            marginBottom: 6
-          }}>
-            {key}
-          </label>
-          
-          <input
-            type={typeof value === 'number' ? 'number' : 'text'}
-            value={value}
-            onChange={(e) => updateParameter(
-              key, 
-              typeof value === 'number' ? parseFloat(e.target.value) || 0 : e.target.value
-            )}
-            style={{
-              width: '100%',
-              background: 'rgba(255,255,255,0.1)',
-              border: '1px solid rgba(255,255,255,0.2)',
-              borderRadius: 6,
-              color: '#ffffff',
-              padding: '8px 12px',
-              fontSize: 14
-            }}
-          />
-        </div>
-      ))}
-      
-      {Object.keys(parameters).length === 0 && (
-        <div style={{
-          color: '#64748b',
-          fontSize: 14,
-          textAlign: 'center',
-          fontStyle: 'italic'
-        }}>
-          이 노드에는 설정 가능한 매개변수가 없습니다.
-        </div>
       )}
     </div>
   );
