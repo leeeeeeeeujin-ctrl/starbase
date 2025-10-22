@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { MobileOptimizationManager } from '../../services/MobileOptimizationManager'
 import { GameResourceManager } from '../../services/GameResourceManager'
 import { compatibilityManager } from '../../utils/compatibilityManager'
+import { InputManager } from './input/InputManager'
 
 /**
  * 🎮 통합 게임 제작 및 실행 시스템 (호환성 강화 버전)
@@ -64,6 +65,7 @@ export default function UnifiedGameSystem({
   const gameResourceManager = useRef(null)
   const fetchFunction = useRef(null) // 호환성 있는 fetch 함수
   const resourceManager = useRef(new GameResourceManager())
+  const inputManager = useRef(null) // 통합 입력 관리자
 
   // 호환성 초기화
   useEffect(() => {
@@ -104,6 +106,7 @@ export default function UnifiedGameSystem({
     return () => {
       mobileManager.current?.cleanup()
       gameResourceManager.current?.cleanup()
+      inputManager.current?.cleanup()
     }
   }, [])
 
@@ -123,6 +126,36 @@ export default function UnifiedGameSystem({
             enableResponsiveLayout: true,
             compatibilityLevel: compatibilityInfo.level,
           })
+        }
+        
+        // 입력 관리자 초기화
+        if (compatibilityInfo) {
+          inputManager.current = new InputManager({
+            element: document, // 전역 입력 감지
+            enableKeyboard: true,
+            enableTouch: compatibilityInfo.features.touchDevice || compatibilityInfo.device.mobile,
+            enableGamepad: false, // 필요시 활성화
+            keyboardOptions: {
+              debounceDelay: 100,
+              throttleDelay: 50,
+              enableShortcuts: true
+            },
+            touchOptions: {
+              enableGestures: true,
+              preventDefaultTouch: false,
+              tapThreshold: 10,
+              swipeThreshold: 100,
+              longPressDuration: 500
+            },
+            onInput: (event) => {
+              // 게임 모드에서만 입력 처리
+              if (systemMode === 'game' && gameExecutionState.awaitingUserInput) {
+                handleGameInput(event)
+              }
+            }
+          })
+          
+          await inputManager.current.initialize()
         }
         
         if (!mounted) return
@@ -477,6 +510,38 @@ export default function UnifiedGameSystem({
       }
     }
   }, [gameExecutionState, gameData, findNextNode, executeNode])
+
+  // 게임 입력 처리 (통합 입력 관리자에서 호출)
+  const handleGameInput = useCallback((inputEvent) => {
+    // 키보드 입력 처리
+    if (inputEvent.type === 'keyboard' && inputEvent.originalEvent.type === 'keydown') {
+      const key = inputEvent.key.toLowerCase()
+      
+      // 방향키 또는 WASD로 선택
+      if (key === '1' || key === 'arrowleft') {
+        handleUserAction('공격')
+      } else if (key === '2' || key === 'arrowup') {
+        handleUserAction('방어')
+      } else if (key === '3' || key === 'arrowright') {
+        handleUserAction('탐색')
+      } else if (key === '4' || key === 'arrowdown') {
+        handleUserAction('대화')
+      }
+    }
+    
+    // 터치 제스처 처리
+    if (inputEvent.type === 'touch' && inputEvent.gesture) {
+      if (inputEvent.gesture === 'swipe-left') {
+        handleUserAction('공격')
+      } else if (inputEvent.gesture === 'swipe-up') {
+        handleUserAction('방어')
+      } else if (inputEvent.gesture === 'swipe-right') {
+        handleUserAction('탐색')
+      } else if (inputEvent.gesture === 'swipe-down') {
+        handleUserAction('대화')
+      }
+    }
+  }, [handleUserAction])
 
   const styles = {
     container: {
