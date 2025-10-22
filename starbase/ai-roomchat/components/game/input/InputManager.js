@@ -1,602 +1,303 @@
 /**
- * 🎯 Input Manager
- * 
- * Unified input management system that coordinates keyboard, touch, and gamepad input.
- * Provides a single interface for all input handling with event routing and compatibility.
- * 
- * 🔧 Features:
- * - Unified interface for all input types
- * - Event routing and prioritization
- * - Cross-browser compatibility
- * - Integration with MobileOptimizationManager
- * - Memory leak prevention
- * - Input recording and replay support
- * 
- * @version 1.0.0
- * @compatibility IE11+, Safari 12+, Chrome 70+, Firefox 65+
+ * InputManager - 사용자 입력 관리 모듈
+ * 키보드, 마우스, 터치 입력을 처리하고 게임 액션으로 변환
  */
-
-import { KeyboardHandler } from './KeyboardHandler';
-import { TouchHandler } from './TouchHandler';
-import { GamepadHandler } from './GamepadHandler';
-import { compatibilityManager } from '../../../utils/compatibilityManager';
-
-/**
- * InputManager class
- * Manages all input handlers and provides unified event routing
- */
-export class InputManager {
-  /**
-   * Constructor
-   * @param {Object} options - Configuration options
-   * @param {HTMLElement} [options.element] - Target element for input events
-   * @param {boolean} [options.enableKeyboard=true] - Enable keyboard input
-   * @param {boolean} [options.enableTouch=true] - Enable touch/pointer input
-   * @param {boolean} [options.enableGamepad=false] - Enable gamepad input
-   * @param {boolean} [options.enableRecording=false] - Enable input recording
-   * @param {Object} [options.keyboardOptions] - Options for KeyboardHandler
-   * @param {Object} [options.touchOptions] - Options for TouchHandler
-   * @param {Object} [options.gamepadOptions] - Options for GamepadHandler
-   * @param {Function} [options.onInput] - Global input callback
-   */
+export default class InputManager {
   constructor(options = {}) {
-    this.element = options.element || null;
-    this.enableKeyboard = options.enableKeyboard !== false;
-    this.enableTouch = options.enableTouch !== false;
-    this.enableGamepad = options.enableGamepad || false;
-    this.enableRecording = options.enableRecording || false;
-    
-    // Global input callback
-    this.onInput = options.onInput || null;
-    
-    // Handlers
-    this.keyboardHandler = null;
-    this.touchHandler = null;
-    this.gamepadHandler = null;
-    
-    // Handler options
-    this.keyboardOptions = options.keyboardOptions || {};
-    this.touchOptions = options.touchOptions || {};
-    this.gamepadOptions = options.gamepadOptions || {};
-    
-    // Input event listeners
-    this.inputListeners = new Map();
-    
-    // Input recording
-    this.recording = [];
-    this.isRecording = false;
-    this.recordingStartTime = 0;
-    
-    // Input state
-    this.inputState = {
-      keyboard: new Set(),
-      touch: { active: false, x: 0, y: 0 },
-      gamepad: new Map()
-    };
-    
-    // Compatibility info
-    this.compatibilityInfo = null;
-    this.isInitialized = false;
-    
-    // Bind methods
-    this.handleKeyboardInput = this.handleKeyboardInput.bind(this);
-    this.handleTouchInput = this.handleTouchInput.bind(this);
-    this.handleGamepadInput = this.handleGamepadInput.bind(this);
-  }
-  
-  /**
-   * Initialize input manager
-   * @returns {Promise<void>}
-   */
-  async initialize() {
-    if (this.isInitialized) {
-      console.warn('[InputManager] Already initialized');
-      return;
+    this.options = {
+      enableKeyboard: true,
+      enableMouse: true,
+      enableTouch: true,
+      ...options,
     }
-    
+    this.listeners = []
+    this.inputQueue = []
+    this.isInitialized = false
+    this.eventHandlers = {}
+  }
+
+  /**
+   * 입력 관리자 초기화
+   */
+  async initialize(targetElement) {
     try {
-      // Get compatibility info
-      this.compatibilityInfo = compatibilityManager.getCompatibilityInfo();
-      
-      console.log('[InputManager] Initializing with options:', {
-        keyboard: this.enableKeyboard,
-        touch: this.enableTouch,
-        gamepad: this.enableGamepad
-      });
-      
-      // Initialize keyboard handler
-      if (this.enableKeyboard) {
-        await this.initializeKeyboard();
+      if (!targetElement) {
+        throw new Error('Target element is required')
       }
-      
-      // Initialize touch handler
-      if (this.enableTouch) {
-        await this.initializeTouch();
+
+      this.targetElement = targetElement
+
+      // 키보드 이벤트 설정
+      if (this.options.enableKeyboard) {
+        this.setupKeyboardEvents()
       }
-      
-      // Initialize gamepad handler
-      if (this.enableGamepad) {
-        await this.initializeGamepad();
+
+      // 마우스 이벤트 설정
+      if (this.options.enableMouse) {
+        this.setupMouseEvents()
       }
-      
-      this.isInitialized = true;
-      console.log('[InputManager] Initialized successfully');
-      
+
+      // 터치 이벤트 설정
+      if (this.options.enableTouch) {
+        this.setupTouchEvents()
+      }
+
+      this.isInitialized = true
+      return true
     } catch (error) {
-      console.error('[InputManager] Initialization failed:', error);
-      throw error;
+      console.error('[InputManager] 초기화 실패:', error)
+      return false
     }
   }
-  
+
   /**
-   * Initialize keyboard handler
-   * @private
+   * 키보드 이벤트 설정
    */
-  async initializeKeyboard() {
-    this.keyboardHandler = new KeyboardHandler({
-      element: this.element,
-      onKeyDown: this.handleKeyboardInput,
-      onKeyUp: this.handleKeyboardInput,
-      ...this.keyboardOptions
-    });
-    
-    await this.keyboardHandler.initialize();
+  setupKeyboardEvents() {
+    const keyDownHandler = (e) => {
+      this.handleKeyDown(e)
+    }
+
+    const keyUpHandler = (e) => {
+      this.handleKeyUp(e)
+    }
+
+    document.addEventListener('keydown', keyDownHandler)
+    document.addEventListener('keyup', keyUpHandler)
+
+    this.eventHandlers.keydown = keyDownHandler
+    this.eventHandlers.keyup = keyUpHandler
   }
-  
+
   /**
-   * Initialize touch handler
-   * @private
+   * 마우스 이벤트 설정
    */
-  async initializeTouch() {
-    this.touchHandler = new TouchHandler({
-      element: this.element,
-      onTouchStart: this.handleTouchInput,
-      onTouchMove: this.handleTouchInput,
-      onTouchEnd: this.handleTouchInput,
-      onTap: this.handleTouchInput,
-      onSwipe: this.handleTouchInput,
-      onPinch: this.handleTouchInput,
-      onLongPress: this.handleTouchInput,
-      ...this.touchOptions
-    });
-    
-    await this.touchHandler.initialize();
+  setupMouseEvents() {
+    const clickHandler = (e) => {
+      this.handleClick(e)
+    }
+
+    const moveHandler = (e) => {
+      this.handleMouseMove(e)
+    }
+
+    this.targetElement.addEventListener('click', clickHandler)
+    this.targetElement.addEventListener('mousemove', moveHandler)
+
+    this.eventHandlers.click = clickHandler
+    this.eventHandlers.mousemove = moveHandler
   }
-  
+
   /**
-   * Initialize gamepad handler
-   * @private
+   * 터치 이벤트 설정
    */
-  async initializeGamepad() {
-    this.gamepadHandler = new GamepadHandler({
-      onButtonPress: this.handleGamepadInput,
-      onButtonRelease: this.handleGamepadInput,
-      onAxisMove: this.handleGamepadInput,
-      ...this.gamepadOptions
-    });
-    
-    await this.gamepadHandler.initialize();
+  setupTouchEvents() {
+    const touchStartHandler = (e) => {
+      this.handleTouchStart(e)
+    }
+
+    const touchEndHandler = (e) => {
+      this.handleTouchEnd(e)
+    }
+
+    this.targetElement.addEventListener('touchstart', touchStartHandler)
+    this.targetElement.addEventListener('touchend', touchEndHandler)
+
+    this.eventHandlers.touchstart = touchStartHandler
+    this.eventHandlers.touchend = touchEndHandler
   }
-  
+
   /**
-   * Handle keyboard input
-   * @param {Object} event - Normalized keyboard event
-   * @private
+   * 키보드 입력 처리
    */
-  handleKeyboardInput(event) {
-    const inputEvent = {
-      type: 'keyboard',
-      source: 'keyboard',
-      key: event.key,
-      code: event.code,
-      modifiers: {
-        ctrl: event.ctrlKey,
-        shift: event.shiftKey,
-        alt: event.altKey,
-        meta: event.metaKey
-      },
+  handleKeyDown(e) {
+    const action = this.mapKeyToAction(e.key)
+    if (action) {
+      this.queueInput({
+        type: 'keyboard',
+        action: action,
+        key: e.key,
+        timestamp: Date.now(),
+      })
+      this.notifyListeners(action)
+    }
+  }
+
+  /**
+   * 키 업 처리
+   */
+  handleKeyUp(e) {
+    // 필요 시 구현
+  }
+
+  /**
+   * 클릭 처리
+   */
+  handleClick(e) {
+    const rect = this.targetElement.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+
+    this.queueInput({
+      type: 'click',
+      action: 'select',
+      x: x,
+      y: y,
       timestamp: Date.now(),
-      originalEvent: event
-    };
-    
-    // Update state
-    if (event.originalEvent.type === 'keydown') {
-      this.inputState.keyboard.add(event.key);
-    } else if (event.originalEvent.type === 'keyup') {
-      this.inputState.keyboard.delete(event.key);
-    }
-    
-    // Record if enabled
-    if (this.isRecording) {
-      this.recordInput(inputEvent);
-    }
-    
-    // Route event
-    this.routeInput(inputEvent);
+    })
+    this.notifyListeners('select', { x, y })
   }
-  
+
   /**
-   * Handle touch input
-   * @param {Object} event - Normalized touch event or gesture data
-   * @private
+   * 마우스 이동 처리
    */
-  handleTouchInput(event) {
-    const inputEvent = {
-      type: 'touch',
-      source: event.type || 'touch',
-      x: event.x || 0,
-      y: event.y || 0,
-      gesture: event.direction || event.type || null,
-      timestamp: Date.now(),
-      originalEvent: event
-    };
-    
-    // Update state
-    this.inputState.touch = {
-      active: event.type !== 'touchend',
-      x: event.x || 0,
-      y: event.y || 0
-    };
-    
-    // Record if enabled
-    if (this.isRecording) {
-      this.recordInput(inputEvent);
-    }
-    
-    // Route event
-    this.routeInput(inputEvent);
+  handleMouseMove(e) {
+    const rect = this.targetElement.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+
+    this.notifyListeners('move', { x, y })
   }
-  
+
   /**
-   * Handle gamepad input
-   * @param {Object} event - Gamepad event data
-   * @private
+   * 터치 시작 처리
    */
-  handleGamepadInput(event) {
-    const inputEvent = {
-      type: 'gamepad',
-      source: 'gamepad',
-      gamepadIndex: event.gamepadIndex,
-      button: event.buttonName,
-      axis: event.axisName,
-      value: event.value,
-      timestamp: Date.now(),
-      originalEvent: event
-    };
-    
-    // Update state
-    if (event.buttonName) {
-      if (!this.inputState.gamepad.has(event.gamepadIndex)) {
-        this.inputState.gamepad.set(event.gamepadIndex, new Set());
-      }
-      
-      const buttons = this.inputState.gamepad.get(event.gamepadIndex);
-      if (event.value > 0) {
-        buttons.add(event.buttonName);
-      } else {
-        buttons.delete(event.buttonName);
-      }
+  handleTouchStart(e) {
+    if (e.touches.length > 0) {
+      const touch = e.touches[0]
+      const rect = this.targetElement.getBoundingClientRect()
+      const x = touch.clientX - rect.left
+      const y = touch.clientY - rect.top
+
+      this.queueInput({
+        type: 'touch',
+        action: 'tap',
+        x: x,
+        y: y,
+        timestamp: Date.now(),
+      })
+      this.notifyListeners('tap', { x, y })
     }
-    
-    // Record if enabled
-    if (this.isRecording) {
-      this.recordInput(inputEvent);
-    }
-    
-    // Route event
-    this.routeInput(inputEvent);
   }
-  
+
   /**
-   * Route input event to appropriate listeners
-   * @param {Object} inputEvent - Normalized input event
-   * @private
+   * 터치 종료 처리
    */
-  routeInput(inputEvent) {
-    // Call global callback
-    if (this.onInput) {
-      this.onInput(inputEvent);
+  handleTouchEnd(e) {
+    // 필요 시 구현
+  }
+
+  /**
+   * 키를 액션으로 매핑
+   */
+  mapKeyToAction(key) {
+    const keyMap = {
+      'ArrowUp': 'move_up',
+      'w': 'move_up',
+      'W': 'move_up',
+      'ArrowDown': 'move_down',
+      's': 'move_down',
+      'S': 'move_down',
+      'ArrowLeft': 'move_left',
+      'a': 'move_left',
+      'A': 'move_left',
+      'ArrowRight': 'move_right',
+      'd': 'move_right',
+      'D': 'move_right',
+      ' ': 'action',
+      'Enter': 'confirm',
+      'Escape': 'cancel',
+      '1': 'action1',
+      '2': 'action2',
+      '3': 'action3',
+      '4': 'action4',
     }
-    
-    // Call type-specific listeners
-    const typeListeners = this.inputListeners.get(inputEvent.type);
-    if (typeListeners) {
-      typeListeners.forEach(listener => {
+
+    return keyMap[key] || null
+  }
+
+  /**
+   * 입력 큐에 추가
+   */
+  queueInput(input) {
+    this.inputQueue.push(input)
+    // 큐 크기 제한
+    if (this.inputQueue.length > 100) {
+      this.inputQueue.shift()
+    }
+  }
+
+  /**
+   * 입력 큐에서 가져오기
+   */
+  getQueuedInputs() {
+    const inputs = [...this.inputQueue]
+    this.inputQueue = []
+    return inputs
+  }
+
+  /**
+   * 이벤트 리스너 등록
+   */
+  on(action, callback) {
+    this.listeners.push({ action, callback })
+  }
+
+  /**
+   * 이벤트 리스너 제거
+   */
+  off(action, callback) {
+    this.listeners = this.listeners.filter(
+      l => l.action !== action || l.callback !== callback
+    )
+  }
+
+  /**
+   * 리스너에게 알림
+   */
+  notifyListeners(action, data = {}) {
+    this.listeners
+      .filter(l => l.action === action || l.action === '*')
+      .forEach(l => {
         try {
-          listener(inputEvent);
+          l.callback({ action, data })
         } catch (error) {
-          console.error('[InputManager] Listener error:', error);
+          console.error('[InputManager] 리스너 실행 오류:', error)
         }
-      });
-    }
-    
-    // Call wildcard listeners
-    const wildcardListeners = this.inputListeners.get('*');
-    if (wildcardListeners) {
-      wildcardListeners.forEach(listener => {
-        try {
-          listener(inputEvent);
-        } catch (error) {
-          console.error('[InputManager] Wildcard listener error:', error);
-        }
-      });
-    }
+      })
   }
-  
+
   /**
-   * Add input event listener
-   * @param {string} type - Input type ('keyboard', 'touch', 'gamepad', or '*' for all)
-   * @param {Function} callback - Event callback
-   */
-  on(type, callback) {
-    if (!this.inputListeners.has(type)) {
-      this.inputListeners.set(type, new Set());
-    }
-    
-    this.inputListeners.get(type).add(callback);
-  }
-  
-  /**
-   * Remove input event listener
-   * @param {string} type - Input type
-   * @param {Function} callback - Event callback
-   */
-  off(type, callback) {
-    const listeners = this.inputListeners.get(type);
-    if (listeners) {
-      listeners.delete(callback);
-    }
-  }
-  
-  /**
-   * Start recording input
-   */
-  startRecording() {
-    if (this.isRecording) {
-      console.warn('[InputManager] Already recording');
-      return;
-    }
-    
-    this.recording = [];
-    this.recordingStartTime = Date.now();
-    this.isRecording = true;
-    
-    console.log('[InputManager] Recording started');
-  }
-  
-  /**
-   * Stop recording input
-   * @returns {Array} Recorded input events
-   */
-  stopRecording() {
-    if (!this.isRecording) {
-      console.warn('[InputManager] Not recording');
-      return [];
-    }
-    
-    this.isRecording = false;
-    const recorded = [...this.recording];
-    
-    console.log('[InputManager] Recording stopped:', recorded.length, 'events');
-    
-    return recorded;
-  }
-  
-  /**
-   * Record input event
-   * @param {Object} inputEvent - Input event to record
-   * @private
-   */
-  recordInput(inputEvent) {
-    const recordEntry = {
-      ...inputEvent,
-      relativeTime: Date.now() - this.recordingStartTime
-    };
-    
-    this.recording.push(recordEntry);
-  }
-  
-  /**
-   * Replay recorded input
-   * @param {Array} recording - Recorded input events
-   * @param {number} speed - Playback speed multiplier (default: 1.0)
-   * @returns {Promise<void>}
-   */
-  async replay(recording, speed = 1.0) {
-    if (!recording || recording.length === 0) {
-      console.warn('[InputManager] No recording to replay');
-      return;
-    }
-    
-    console.log('[InputManager] Replaying', recording.length, 'events');
-    
-    for (let i = 0; i < recording.length; i++) {
-      const event = recording[i];
-      const nextEvent = recording[i + 1];
-      
-      // Route the event
-      this.routeInput(event);
-      
-      // Wait for next event delay
-      if (nextEvent) {
-        const delay = (nextEvent.relativeTime - event.relativeTime) / speed;
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
-    }
-    
-    console.log('[InputManager] Replay complete');
-  }
-  
-  /**
-   * Get current input state
-   * @returns {Object} Current state of all inputs
-   */
-  getState() {
-    return {
-      keyboard: {
-        pressed: Array.from(this.inputState.keyboard)
-      },
-      touch: {
-        ...this.inputState.touch
-      },
-      gamepad: {
-        connected: this.gamepadHandler ? 
-                   this.gamepadHandler.getAllGamepads().map(gp => gp.index) : 
-                   []
-      }
-    };
-  }
-  
-  /**
-   * Check if specific key is pressed
-   * @param {string} key - Key to check
-   * @returns {boolean} True if pressed
-   */
-  isKeyPressed(key) {
-    return this.inputState.keyboard.has(key);
-  }
-  
-  /**
-   * Check if touch is active
-   * @returns {boolean} True if touch active
-   */
-  isTouchActive() {
-    return this.inputState.touch.active;
-  }
-  
-  /**
-   * Get touch position
-   * @returns {Object} Touch position {x, y}
-   */
-  getTouchPosition() {
-    return {
-      x: this.inputState.touch.x,
-      y: this.inputState.touch.y
-    };
-  }
-  
-  /**
-   * Check if gamepad button is pressed
-   * @param {number} gamepadIndex - Gamepad index
-   * @param {string} button - Button name
-   * @returns {boolean} True if pressed
-   */
-  isGamepadButtonPressed(gamepadIndex, button) {
-    const buttons = this.inputState.gamepad.get(gamepadIndex);
-    return buttons ? buttons.has(button) : false;
-  }
-  
-  /**
-   * Set element for input handlers
-   * @param {HTMLElement} element - New target element
-   */
-  setElement(element) {
-    this.element = element;
-    
-    // Update handlers if initialized
-    if (this.isInitialized) {
-      if (this.keyboardHandler) {
-        this.keyboardHandler.cleanup();
-        this.keyboardHandler = null;
-        if (this.enableKeyboard) {
-          this.initializeKeyboard().catch(console.error);
-        }
-      }
-      
-      if (this.touchHandler) {
-        this.touchHandler.cleanup();
-        this.touchHandler = null;
-        if (this.enableTouch) {
-          this.initializeTouch().catch(console.error);
-        }
-      }
-    }
-  }
-  
-  /**
-   * Enable or disable specific input type
-   * @param {string} type - Input type ('keyboard', 'touch', 'gamepad')
-   * @param {boolean} enabled - Enable or disable
-   */
-  setInputEnabled(type, enabled) {
-    switch (type) {
-      case 'keyboard':
-        this.enableKeyboard = enabled;
-        if (enabled && !this.keyboardHandler && this.isInitialized) {
-          this.initializeKeyboard().catch(console.error);
-        } else if (!enabled && this.keyboardHandler) {
-          this.keyboardHandler.cleanup();
-          this.keyboardHandler = null;
-        }
-        break;
-        
-      case 'touch':
-        this.enableTouch = enabled;
-        if (enabled && !this.touchHandler && this.isInitialized) {
-          this.initializeTouch().catch(console.error);
-        } else if (!enabled && this.touchHandler) {
-          this.touchHandler.cleanup();
-          this.touchHandler = null;
-        }
-        break;
-        
-      case 'gamepad':
-        this.enableGamepad = enabled;
-        if (enabled && !this.gamepadHandler && this.isInitialized) {
-          this.initializeGamepad().catch(console.error);
-        } else if (!enabled && this.gamepadHandler) {
-          this.gamepadHandler.cleanup();
-          this.gamepadHandler = null;
-        }
-        break;
-        
-      default:
-        console.warn('[InputManager] Unknown input type:', type);
-    }
-  }
-  
-  /**
-   * Cleanup and remove all event listeners
-   * Prevents memory leaks
+   * 리소스 정리
    */
   cleanup() {
-    if (!this.isInitialized) return;
-    
-    console.log('[InputManager] Cleaning up...');
-    
-    // Stop recording
-    if (this.isRecording) {
-      this.stopRecording();
+    // 키보드 이벤트 제거
+    if (this.eventHandlers.keydown) {
+      document.removeEventListener('keydown', this.eventHandlers.keydown)
     }
-    
-    // Cleanup handlers
-    if (this.keyboardHandler) {
-      this.keyboardHandler.cleanup();
-      this.keyboardHandler = null;
+    if (this.eventHandlers.keyup) {
+      document.removeEventListener('keyup', this.eventHandlers.keyup)
     }
-    
-    if (this.touchHandler) {
-      this.touchHandler.cleanup();
-      this.touchHandler = null;
+
+    // 마우스 이벤트 제거
+    if (this.eventHandlers.click && this.targetElement) {
+      this.targetElement.removeEventListener('click', this.eventHandlers.click)
     }
-    
-    if (this.gamepadHandler) {
-      this.gamepadHandler.cleanup();
-      this.gamepadHandler = null;
+    if (this.eventHandlers.mousemove && this.targetElement) {
+      this.targetElement.removeEventListener('mousemove', this.eventHandlers.mousemove)
     }
-    
-    // Clear listeners
-    this.inputListeners.clear();
-    
-    // Clear state
-    this.inputState.keyboard.clear();
-    this.inputState.gamepad.clear();
-    
-    this.isInitialized = false;
-    this.element = null;
-    
-    console.log('[InputManager] Cleanup complete');
+
+    // 터치 이벤트 제거
+    if (this.eventHandlers.touchstart && this.targetElement) {
+      this.targetElement.removeEventListener('touchstart', this.eventHandlers.touchstart)
+    }
+    if (this.eventHandlers.touchend && this.targetElement) {
+      this.targetElement.removeEventListener('touchend', this.eventHandlers.touchend)
+    }
+
+    this.eventHandlers = {}
+    this.listeners = []
+    this.inputQueue = []
+    this.isInitialized = false
   }
 }
-
-export default InputManager;

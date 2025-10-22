@@ -2,11 +2,21 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { MobileOptimizationManager } from '../../services/MobileOptimizationManager'
 import { GameResourceManager } from '../../services/GameResourceManager'
 import { compatibilityManager } from '../../utils/compatibilityManager'
-import { GameRenderer, UIRenderer, EffectsRenderer } from './renderers'
-import { InputManager } from './input/InputManager'
+
+// 모듈 Import
+import GameRenderer from './renderers/GameRenderer'
+import UIRenderer from './renderers/UIRenderer'
+import EffectsRenderer from './renderers/EffectsRenderer'
+import InputManager from './input/InputManager'
+import GameEngine from './logic/GameEngine'
+import PhysicsEngine from './logic/PhysicsEngine'
+import EntityManager from './logic/EntityManager'
+import ScoreManager from './logic/ScoreManager'
 
 /**
- * 🎮 통합 게임 제작 및 실행 시스템 (호환성 강화 버전)
+ * 🎮 통합 게임 제작 및 실행 시스템 (모듈화된 오케스트레이션 버전)
+ * 
+ * 역할: 각 모듈들을 조율하는 가볍고 명확한 오케스트레이터
  * 
  * 기능:
  * 1. 프롬프트 제작기 (노드/템플릿/변수 시스템)
@@ -15,6 +25,11 @@ import { InputManager } from './input/InputManager'
  * 4. 모바일 최적화된 UI/UX
  * 5. IE 11+ 브라우저 호환성
  * 6. 저사양 디바이스 성능 최적화
+ * 
+ * 모듈 구조:
+ * - 렌더링: GameRenderer, UIRenderer, EffectsRenderer
+ * - 입력: InputManager
+ * - 로직: GameEngine, PhysicsEngine, EntityManager, ScoreManager
  * 
  * 호환성:
  * - IE 11+, Safari 12+, Chrome 70+, Firefox 65+
@@ -33,6 +48,16 @@ export default function UnifiedGameSystem({
   // 호환성 상태 추가
   const [compatibilityInfo, setCompatibilityInfo] = useState(null)
   const [isCompatibilityReady, setIsCompatibilityReady] = useState(false)
+  
+  // 모듈 참조
+  const gameRendererRef = useRef(null)
+  const uiRendererRef = useRef(null)
+  const effectsRendererRef = useRef(null)
+  const inputManagerRef = useRef(null)
+  const gameEngineRef = useRef(null)
+  const physicsEngineRef = useRef(null)
+  const entityManagerRef = useRef(null)
+  const scoreManagerRef = useRef(null)
   
   // 시스템 상태
   const [systemMode, setSystemMode] = useState('maker') // maker, game, result
@@ -66,15 +91,134 @@ export default function UnifiedGameSystem({
   const gameResourceManager = useRef(null)
   const fetchFunction = useRef(null) // 호환성 있는 fetch 함수
   const resourceManager = useRef(new GameResourceManager())
+  const gameContainerRef = useRef(null)
+  const animationFrameRef = useRef(null)
   
-  // 렌더러 refs
-  const gameCanvasRef = useRef(null)
-  const uiCanvasRef = useRef(null)
-  const effectsCanvasRef = useRef(null)
-  const gameRenderer = useRef(null)
-  const uiRenderer = useRef(null)
-  const effectsRenderer = useRef(null)
-  const inputManager = useRef(null) // 통합 입력 관리자
+  // 이벤트 버스 (모듈 간 통신)
+  const eventBus = useRef({
+    listeners: {},
+    on: (event, callback) => {
+      if (!eventBus.current.listeners[event]) {
+        eventBus.current.listeners[event] = []
+      }
+      eventBus.current.listeners[event].push(callback)
+    },
+    off: (event, callback) => {
+      if (!eventBus.current.listeners[event]) return
+      eventBus.current.listeners[event] = eventBus.current.listeners[event].filter(
+        cb => cb !== callback
+      )
+    },
+    emit: (event, data) => {
+      if (!eventBus.current.listeners[event]) return
+      eventBus.current.listeners[event].forEach(callback => {
+        try {
+          callback(data)
+        } catch (error) {
+          console.error(`[EventBus] 이벤트 처리 오류 (${event}):`, error)
+        }
+      })
+    },
+  })
+
+  // 모듈 초기화 함수
+  const initializeModules = useCallback(async () => {
+    try {
+      console.log('[UnifiedGameSystem] 모듈 초기화 시작')
+      
+      // GameEngine 초기화
+      gameEngineRef.current = new GameEngine({ tickRate: 60 })
+      await gameEngineRef.current.initialize()
+      
+      // EntityManager 초기화
+      entityManagerRef.current = new EntityManager({ maxEntities: 1000 })
+      await entityManagerRef.current.initialize()
+      
+      // PhysicsEngine 초기화
+      physicsEngineRef.current = new PhysicsEngine({
+        gravity: 9.8,
+        enableCollisions: true,
+      })
+      await physicsEngineRef.current.initialize()
+      
+      // ScoreManager 초기화
+      scoreManagerRef.current = new ScoreManager({
+        enableAchievements: true,
+        enableStats: true,
+      })
+      await scoreManagerRef.current.initialize()
+      
+      // InputManager 초기화 (게임 컨테이너가 있을 때)
+      if (gameContainerRef.current) {
+        inputManagerRef.current = new InputManager({
+          enableKeyboard: true,
+          enableMouse: true,
+          enableTouch: compatibilityInfo?.features.touchDevice || false,
+        })
+        await inputManagerRef.current.initialize(gameContainerRef.current)
+      }
+      
+      // 렌더러는 나중에 게임 모드에서 초기화
+      
+      console.log('[UnifiedGameSystem] 모듈 초기화 완료')
+      return true
+    } catch (error) {
+      console.error('[UnifiedGameSystem] 모듈 초기화 실패:', error)
+      return false
+    }
+  }, [compatibilityInfo])
+
+  // 모듈 정리 함수
+  const cleanupModules = useCallback(() => {
+    console.log('[UnifiedGameSystem] 모듈 정리 시작')
+    
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current)
+      animationFrameRef.current = null
+    }
+    
+    if (gameRendererRef.current) {
+      gameRendererRef.current.cleanup()
+      gameRendererRef.current = null
+    }
+    
+    if (uiRendererRef.current) {
+      uiRendererRef.current.cleanup()
+      uiRendererRef.current = null
+    }
+    
+    if (effectsRendererRef.current) {
+      effectsRendererRef.current.cleanup()
+      effectsRendererRef.current = null
+    }
+    
+    if (inputManagerRef.current) {
+      inputManagerRef.current.cleanup()
+      inputManagerRef.current = null
+    }
+    
+    if (gameEngineRef.current) {
+      gameEngineRef.current.cleanup()
+      gameEngineRef.current = null
+    }
+    
+    if (physicsEngineRef.current) {
+      physicsEngineRef.current.cleanup()
+      physicsEngineRef.current = null
+    }
+    
+    if (entityManagerRef.current) {
+      entityManagerRef.current.cleanup()
+      entityManagerRef.current = null
+    }
+    
+    if (scoreManagerRef.current) {
+      scoreManagerRef.current.cleanup()
+      scoreManagerRef.current = null
+    }
+    
+    console.log('[UnifiedGameSystem] 모듈 정리 완료')
+  }, [])
 
   // 호환성 초기화
   useEffect(() => {
@@ -115,62 +259,9 @@ export default function UnifiedGameSystem({
     return () => {
       mobileManager.current?.cleanup()
       gameResourceManager.current?.cleanup()
-      // 렌더러 정리
-      gameRenderer.current?.cleanup()
-      uiRenderer.current?.cleanup()
-      effectsRenderer.current?.cleanup()
-      inputManager.current?.cleanup()
+      cleanupModules()
     }
   }, [])
-  
-  // 렌더러 초기화
-  useEffect(() => {
-    if (!isCompatibilityReady) return
-    
-    // 캔버스 요소가 준비되면 렌더러 초기화
-    if (gameCanvasRef.current && !gameRenderer.current) {
-      try {
-        gameRenderer.current = new GameRenderer({
-          canvas: gameCanvasRef.current,
-          width: 800,
-          height: 600,
-          enableWebGL: false, // Canvas 2D 사용
-          autoResize: true
-        })
-        console.log('[UnifiedGameSystem] GameRenderer initialized')
-      } catch (error) {
-        console.error('[UnifiedGameSystem] GameRenderer initialization failed:', error)
-      }
-    }
-    
-    if (uiCanvasRef.current && !uiRenderer.current) {
-      try {
-        uiRenderer.current = new UIRenderer({
-          canvas: uiCanvasRef.current,
-          width: 800,
-          height: 600
-        })
-        console.log('[UnifiedGameSystem] UIRenderer initialized')
-      } catch (error) {
-        console.error('[UnifiedGameSystem] UIRenderer initialization failed:', error)
-      }
-    }
-    
-    if (effectsCanvasRef.current && !effectsRenderer.current) {
-      try {
-        effectsRenderer.current = new EffectsRenderer({
-          canvas: effectsCanvasRef.current,
-          width: 800,
-          height: 600,
-          maxParticles: 500
-        })
-        effectsRenderer.current.startAnimation()
-        console.log('[UnifiedGameSystem] EffectsRenderer initialized')
-      } catch (error) {
-        console.error('[UnifiedGameSystem] EffectsRenderer initialization failed:', error)
-      }
-    }
-  }, [isCompatibilityReady, gameCanvasRef.current, uiCanvasRef.current, effectsCanvasRef.current])
 
   useEffect(() => {
     if (!isCompatibilityReady) return
@@ -190,37 +281,10 @@ export default function UnifiedGameSystem({
           })
         }
         
-        // 입력 관리자 초기화
-        if (compatibilityInfo) {
-          inputManager.current = new InputManager({
-            element: document, // 전역 입력 감지
-            enableKeyboard: true,
-            enableTouch: compatibilityInfo.features.touchDevice || compatibilityInfo.device.mobile,
-            enableGamepad: false, // 필요시 활성화
-            keyboardOptions: {
-              debounceDelay: 100,
-              throttleDelay: 50,
-              enableShortcuts: true
-            },
-            touchOptions: {
-              enableGestures: true,
-              preventDefaultTouch: false,
-              tapThreshold: 10,
-              swipeThreshold: 100,
-              longPressDuration: 500
-            },
-            onInput: (event) => {
-              // 게임 모드에서만 입력 처리
-              if (systemMode === 'game' && gameExecutionState.awaitingUserInput) {
-                handleGameInput(event)
-              }
-            }
-          })
-          
-          await inputManager.current.initialize()
-        }
-        
         if (!mounted) return
+        
+        // 모듈 초기화
+        await initializeModules()
         
         // 캐릭터 데이터가 있으면 변수로 등록
         if (initialCharacter) {
@@ -241,7 +305,7 @@ export default function UnifiedGameSystem({
     return () => {
       mounted = false
     }
-  }, [initialCharacter, gameTemplateId, isCompatibilityReady, compatibilityInfo, registerCharacterVariables, loadGameTemplate])
+  }, [initialCharacter, gameTemplateId, isCompatibilityReady, compatibilityInfo, registerCharacterVariables, loadGameTemplate, initializeModules])
 
   // 캐릭터 변수 등록 (테스트에서 검증된 로직 적용)
   const registerCharacterVariables = useCallback((character) => {
@@ -363,6 +427,47 @@ export default function UnifiedGameSystem({
     }))
   }, [])
 
+  // 게임 루프 업데이트 (오케스트레이션)
+  const updateGameLoop = useCallback(() => {
+    if (!gameEngineRef.current?.isGameRunning()) {
+      return
+    }
+
+    try {
+      // GameEngine 업데이트
+      const deltaTime = gameEngineRef.current.update()
+
+      // EntityManager 업데이트
+      if (entityManagerRef.current) {
+        const entities = entityManagerRef.current.getAllEntities()
+        entityManagerRef.current.updateAll(deltaTime)
+        
+        // PhysicsEngine 업데이트
+        if (physicsEngineRef.current) {
+          physicsEngineRef.current.update(deltaTime, entities)
+        }
+      }
+
+      // 렌더링 업데이트
+      if (gameRendererRef.current) {
+        gameRendererRef.current.render(gameData)
+      }
+      
+      if (uiRendererRef.current) {
+        uiRendererRef.current.render(gameData, gameExecutionState)
+      }
+      
+      if (effectsRendererRef.current) {
+        effectsRendererRef.current.render(deltaTime)
+      }
+
+      // 다음 프레임 예약
+      animationFrameRef.current = requestAnimationFrame(updateGameLoop)
+    } catch (error) {
+      console.error('[UnifiedGameSystem] 게임 루프 오류:', error)
+    }
+  }, [gameData, gameExecutionState])
+
   // 게임 실행 시작
   const startGameExecution = useCallback(() => {
     if (gameData.nodes.length === 0) {
@@ -379,8 +484,15 @@ export default function UnifiedGameSystem({
       activeVariables: { ...gameData.variables },
     }))
     
+    // GameEngine 시작
+    if (gameEngineRef.current) {
+      gameEngineRef.current.start()
+      // 게임 루프 시작
+      animationFrameRef.current = requestAnimationFrame(updateGameLoop)
+    }
+    
     executeNode(startNode.id)
-  }, [gameData])
+  }, [gameData, updateGameLoop])
 
   // 노드 실행
   const executeNode = useCallback(async (nodeId) => {
@@ -388,6 +500,9 @@ export default function UnifiedGameSystem({
     if (!node) return
 
     setGameExecutionState(prev => ({ ...prev, isProcessing: true }))
+    
+    // 이벤트 발송: 노드 실행 시작
+    eventBus.current.emit('node:start', { nodeId, node })
 
     try {
       // 템플릿 컴파일
@@ -408,6 +523,7 @@ export default function UnifiedGameSystem({
           isProcessing: false,
           awaitingUserInput: true,
         }))
+        eventBus.current.emit('input:required', { nodeId, prompt: compiledPrompt })
         return
       }
 
@@ -434,11 +550,31 @@ export default function UnifiedGameSystem({
         isProcessing: false,
         awaitingUserInput: false,
       }))
+      
+      // GameEngine 턴 진행
+      if (gameEngineRef.current) {
+        gameEngineRef.current.nextTurn()
+      }
+      
+      // ScoreManager 통계 기록
+      if (scoreManagerRef.current) {
+        scoreManagerRef.current.recordStat('totalTurns', 1)
+        scoreManagerRef.current.recordStat('totalResponses', 1)
+      }
+      
+      // 이벤트 발송: 노드 실행 완료
+      eventBus.current.emit('node:complete', { nodeId, response, historyEntry })
 
       // 다음 노드 찾기 및 실행
       const nextNode = findNextNode(node, response)
       if (nextNode) {
         setTimeout(() => executeNode(nextNode.id), 1000)
+      } else {
+        // 게임 종료
+        eventBus.current.emit('game:end', { gameData, score: scoreManagerRef.current?.getScore() })
+        if (onGameEnd) {
+          onGameEnd({ gameData, score: scoreManagerRef.current?.getScore() })
+        }
       }
 
     } catch (error) {
@@ -448,8 +584,9 @@ export default function UnifiedGameSystem({
         isProcessing: false,
         awaitingUserInput: false,
       }))
+      eventBus.current.emit('node:error', { nodeId, error })
     }
-  }, [gameData, gameExecutionState, compileTemplate])
+  }, [gameData, gameExecutionState, compileTemplate, onGameEnd])
 
   // AI 응답 생성 (에러 핸들링 강화)
   const generateAIResponse = useCallback(async (prompt, gameState) => {
@@ -552,6 +689,9 @@ export default function UnifiedGameSystem({
   const handleUserAction = useCallback((action) => {
     if (!gameExecutionState.awaitingUserInput) return
 
+    // 이벤트 발송: 사용자 액션
+    eventBus.current.emit('input:action', { action })
+
     // 액션을 변수로 저장
     const actionVar = '{{사용자.액션}}'
     setGameExecutionState(prev => ({
@@ -562,6 +702,12 @@ export default function UnifiedGameSystem({
       },
       awaitingUserInput: false,
     }))
+    
+    // ScoreManager 통계 기록
+    if (scoreManagerRef.current) {
+      scoreManagerRef.current.recordStat('playerActions', 1)
+      scoreManagerRef.current.addScore(10) // 액션당 10점
+    }
 
     // 현재 노드의 다음 노드 실행
     const currentNode = gameData.nodes.find(n => n.id === gameData.currentNode)
@@ -572,38 +718,6 @@ export default function UnifiedGameSystem({
       }
     }
   }, [gameExecutionState, gameData, findNextNode, executeNode])
-
-  // 게임 입력 처리 (통합 입력 관리자에서 호출)
-  const handleGameInput = useCallback((inputEvent) => {
-    // 키보드 입력 처리
-    if (inputEvent.type === 'keyboard' && inputEvent.originalEvent.type === 'keydown') {
-      const key = inputEvent.key.toLowerCase()
-      
-      // 방향키 또는 WASD로 선택
-      if (key === '1' || key === 'arrowleft') {
-        handleUserAction('공격')
-      } else if (key === '2' || key === 'arrowup') {
-        handleUserAction('방어')
-      } else if (key === '3' || key === 'arrowright') {
-        handleUserAction('탐색')
-      } else if (key === '4' || key === 'arrowdown') {
-        handleUserAction('대화')
-      }
-    }
-    
-    // 터치 제스처 처리
-    if (inputEvent.type === 'touch' && inputEvent.gesture) {
-      if (inputEvent.gesture === 'swipe-left') {
-        handleUserAction('공격')
-      } else if (inputEvent.gesture === 'swipe-up') {
-        handleUserAction('방어')
-      } else if (inputEvent.gesture === 'swipe-right') {
-        handleUserAction('탐색')
-      } else if (inputEvent.gesture === 'swipe-down') {
-        handleUserAction('대화')
-      }
-    }
-  }, [handleUserAction])
 
   const styles = {
     container: {
@@ -806,119 +920,6 @@ export default function UnifiedGameSystem({
   const renderGameMode = () => (
     <div style={styles.content}>
       <div style={styles.gameArea}>
-        {/* Canvas 렌더링 데모 섹션 */}
-        <div style={{
-          marginBottom: '20px',
-          padding: '16px',
-          background: 'rgba(0,0,0,0.3)',
-          borderRadius: '12px',
-        }}>
-          <h3 style={{ color: '#ffffff', marginBottom: '12px' }}>🎨 Canvas 렌더링 데모</h3>
-          <div style={{ position: 'relative', width: '100%', height: '300px', marginBottom: '12px' }}>
-            {/* 게임 캔버스 (배경 레이어) */}
-            <canvas
-              ref={gameCanvasRef}
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                height: '100%',
-                border: '1px solid rgba(59, 130, 246, 0.3)',
-                borderRadius: '8px',
-              }}
-            />
-            {/* UI 캔버스 (UI 레이어) */}
-            <canvas
-              ref={uiCanvasRef}
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                height: '100%',
-                pointerEvents: 'none',
-              }}
-            />
-            {/* 이펙트 캔버스 (효과 레이어) */}
-            <canvas
-              ref={effectsCanvasRef}
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                height: '100%',
-                pointerEvents: 'none',
-              }}
-            />
-          </div>
-          
-          {/* 렌더러 제어 버튼 */}
-          <div style={styles.actionGrid}>
-            <button
-              style={styles.actionButton}
-              onClick={() => {
-                if (gameRenderer.current) {
-                  gameRenderer.current.renderBackground(null, '#1a1a2e')
-                  gameRenderer.current.renderText('Game Renderer 테스트', 20, 20, {
-                    font: 'bold 16px sans-serif',
-                    color: '#3b82f6'
-                  })
-                }
-              }}
-            >
-              🎮 게임 렌더링
-            </button>
-            <button
-              style={styles.actionButton}
-              onClick={() => {
-                if (uiRenderer.current) {
-                  uiRenderer.current.render({
-                    stats: {
-                      name: initialCharacter?.name || 'Player',
-                      hp: 80,
-                      maxHp: 100,
-                      mp: 30,
-                      maxMp: 50,
-                      level: 5,
-                      exp: 150,
-                      maxExp: 200
-                    }
-                  })
-                }
-              }}
-            >
-              📊 UI 렌더링
-            </button>
-            <button
-              style={styles.actionButton}
-              onClick={() => {
-                if (effectsRenderer.current) {
-                  effectsRenderer.current.emitExplosion(400, 150, {
-                    count: 30,
-                    color: '#ff6b35',
-                    speed: 8
-                  })
-                }
-              }}
-            >
-              ✨ 폭발 효과
-            </button>
-            <button
-              style={styles.actionButton}
-              onClick={() => {
-                if (effectsRenderer.current) {
-                  effectsRenderer.current.shakeScreen(10, 0.5)
-                  effectsRenderer.current.flashScreen('#ffffff', 0.3)
-                }
-              }}
-            >
-              📳 화면 흔들림
-            </button>
-          </div>
-        </div>
-        
         <div style={styles.gameHistory}>
           {gameData.gameHistory.map(entry => (
             <div key={`${entry.nodeId}-${entry.turn}`} style={styles.historyItem}>
@@ -982,30 +983,37 @@ export default function UnifiedGameSystem({
   )
 
   return (
-    <div style={styles.container}>
+    <div style={styles.container} ref={gameContainerRef}>
       <header style={styles.header}>
         <h1 style={styles.title}>
           통합 게임 시스템 {initialCharacter?.name && `- ${initialCharacter.name}`}
         </h1>
-        <div style={styles.modeToggle}>
-          <button
-            style={{
-              ...styles.modeButton,
-              ...(systemMode === 'maker' ? styles.modeButtonActive : {}),
-            }}
-            onClick={() => setSystemMode('maker')}
-          >
-            제작기
-          </button>
-          <button
-            style={{
-              ...styles.modeButton,
-              ...(systemMode === 'game' ? styles.modeButtonActive : {}),
-            }}
-            onClick={startGameExecution}
-          >
-            게임 실행
-          </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+          {scoreManagerRef.current && systemMode === 'game' && (
+            <div style={{ color: '#22c55e', fontSize: '16px', fontWeight: 'bold' }}>
+              점수: {scoreManagerRef.current.getScore()}
+            </div>
+          )}
+          <div style={styles.modeToggle}>
+            <button
+              style={{
+                ...styles.modeButton,
+                ...(systemMode === 'maker' ? styles.modeButtonActive : {}),
+              }}
+              onClick={() => setSystemMode('maker')}
+            >
+              제작기
+            </button>
+            <button
+              style={{
+                ...styles.modeButton,
+                ...(systemMode === 'game' ? styles.modeButtonActive : {}),
+              }}
+              onClick={startGameExecution}
+            >
+              게임 실행
+            </button>
+          </div>
         </div>
       </header>
 

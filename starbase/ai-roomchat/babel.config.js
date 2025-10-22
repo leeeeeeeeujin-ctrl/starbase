@@ -3,6 +3,21 @@ module.exports = {
     [
       '@babel/preset-env',
       {
+        // 호환성 중심 브라우저 타겟 설정
+        targets: {
+          browsers: [
+            'ie >= 11',           // Internet Explorer 11+
+            'edge >= 14',         // Edge 14+  
+            'chrome >= 70',       // Chrome 70+
+            'firefox >= 65',      // Firefox 65+
+            'safari >= 12',       // Safari 12+
+            'ios >= 12',          // iOS Safari 12+
+            'android >= 70',      // Android Chrome 70+
+            'samsung >= 10'       // Samsung Internet 10+
+          ],
+          // Node.js 환경도 고려
+          node: '14'
+        },
         // 필요한 폴리필만 자동 주입
         useBuiltIns: 'usage',
         corejs: {
@@ -17,7 +32,12 @@ module.exports = {
         
         // 변환 옵션
         loose: true,        // 더 빠른 코드 생성
-        bugfixes: true      // 버그 수정 포함
+        bugfixes: true,     // 버그 수정 포함
+        
+        // 제외할 변환들 (성능상 이유로)
+        exclude: [
+          'transform-typeof-symbol'  // 불필요한 변환 제외
+        ]
       }
     ],
     [
@@ -33,8 +53,15 @@ module.exports = {
   
   // 추가 플러그인
   plugins: [
-    // Runtime 변환 (IE 호환)
-    '@babel/plugin-transform-runtime'
+    // 클래스 속성 지원 (IE 호환)
+    '@babel/plugin-transform-class-properties',
+    
+    // Optional Chaining & Nullish Coalescing (IE 호환)
+    '@babel/plugin-transform-optional-chaining',
+    '@babel/plugin-transform-nullish-coalescing-operator',
+    
+    // Private 메서드 (최신 브라우저 지원)
+    '@babel/plugin-transform-private-methods',
   ],
   
   // 환경별 설정
