@@ -1,0 +1,24 @@
+name: Build Dev Docker Image
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Docker image
+        run: |
+          docker build -t starbase-dev:latest .
+      - name: Save Docker image as artifact
+        run: |
+          docker save starbase-dev:latest | gzip > starbase-dev-latest.tar.gz
+      - name: Upload Docker image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: starbase-dev-latest
+          path: starbase-dev-latest.tar.gz

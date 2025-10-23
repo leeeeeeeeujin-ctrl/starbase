@@ -36,7 +36,7 @@ export function computeSessionScore({
   const cap = winCap == null ? 3 : Math.max(0, toInt(winCap, 3))
 
   const effectiveWins = Math.min(w, cap)
-  // Business rule: always subtract one loss penalty baseline, even if no recorded losses
+  // Business rule: subtract one baseline loss penalty (legacy rule/tests expect a single baseline subtraction)
   let delta = effectiveWins * p - penalty
 
   // Apply floor/ceiling bounds to the final delta (allow floor on negative values)

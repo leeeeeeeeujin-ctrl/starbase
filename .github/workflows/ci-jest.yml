@@ -1,0 +1,55 @@
+name: CI - Jest (ai-roomchat)
+
+on:
+  push:
+    branches: [ main, 'copilot/**', '**' ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  jest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies (ai-roomchat)
+        working-directory: ai-roomchat/starbase/ai-roomchat
+        run: npm ci
+
+      - name: Run Jest
+        working-directory: ai-roomchat/starbase/ai-roomchat
+        run: npm test --silent -- --reporters=default
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jest-results
+          path: ai-roomchat/starbase/ai-roomchat/junit.xml
+
+  comment-pr:
+    needs: jest
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Comment PR with test status
+        uses: peter-evans/create-or-update-comment@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            **CI Jest (ai-roomchat)** ran for this PR.
+
+            - Repository: `ai-roomchat/starbase/ai-roomchat`
+            - Command: `npm test` (silent)
+
+            If you need a full log or junit artifact, check the Actions run artifacts.

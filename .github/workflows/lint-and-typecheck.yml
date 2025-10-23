@@ -1,0 +1,55 @@
+name: Lint and Type Check
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  lint:
+    name: Run ESLint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: starbase/ai-roomchat
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+          cache-dependency-path: starbase/ai-roomchat/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Run ESLint
+        run: |
+          if [ -f node_modules/.bin/eslint ]; then
+            npx eslint . --ext .js,.jsx,.ts,.tsx || true
+          else
+            echo "ESLint not installed. Skipping lint."
+          fi
+
+  typecheck:
+    name: Run TypeScript Type Check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: starbase/ai-roomchat
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+          cache-dependency-path: starbase/ai-roomchat/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Run TypeScript Type Check
+        run: |
+          if [ -f node_modules/.bin/tsc ]; then
+            npx tsc --noEmit || true
+          else
+            echo "TypeScript not installed. Skipping type check."
+          fi

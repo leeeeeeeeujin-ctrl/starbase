@@ -359,8 +359,8 @@ function normalizeActiveNameList(names = []) {
 
 function buildVariableStateLines(names = [], scopeLabel = '전역') {
   const normalized = normalizeActiveNameList(names)
-  // Use English 'none' when no variables are active to align with test expectations and keep deterministic output
-  const summary = normalized.length ? normalized.join(', ') : 'none'
+  // Use Korean '무' when no variables are active per localization expectations in tests
+  const summary = normalized.length ? normalized.join(', ') : '무'
   return [`- 활성화된 ${scopeLabel} 변수: ${summary}`]
 }
 

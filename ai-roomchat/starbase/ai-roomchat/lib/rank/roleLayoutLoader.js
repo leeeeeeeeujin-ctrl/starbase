@@ -240,11 +240,27 @@ function mergeSlotAssignments(baseLayout = [], slotRows = []) {
 function normaliseRolesAndSlots(roleRows = [], slotRows = [], gameRoleSlots = []) {
   const inlineLayout = deriveGameRoleSlots(gameRoleSlots)
   if (inlineLayout.length > 0) {
-    const mergedInlineLayout = mergeSlotAssignments(inlineLayout, slotRows)
-    return {
-      roles: buildRolesFromLayout(mergedInlineLayout),
-      slotLayout: mergedInlineLayout,
+    // If inlineLayout appears to be just a distinct role list (no duplicates)
+    // and explicit slotRows exist, prefer the explicit slotRows as the
+    // canonical layout. This allows rank_games.roles that are simply a list
+    // of distinct roles to act like role declarations rather than a slot
+    // layout. If inlineLayout contains duplicates it clearly describes a
+    // layout and should be used.
+    const roleNames = inlineLayout
+      .map((s) => normalizeRoleName(s && s.role))
+      .filter((n) => typeof n === 'string' && n.length > 0)
+    const uniqueNames = new Set(roleNames)
+
+    const looksLikeDistinctRoleList = roleNames.length > 0 && uniqueNames.size === roleNames.length
+
+    if (!looksLikeDistinctRoleList || !Array.isArray(slotRows) || slotRows.length === 0) {
+      const mergedInlineLayout = mergeSlotAssignments(inlineLayout, slotRows)
+      return {
+        roles: buildRolesFromLayout(mergedInlineLayout),
+        slotLayout: mergedInlineLayout,
+      }
     }
+    // Otherwise fall through so explicit slotRows are preferred below
   }
 
   const rolesFromRows = buildRolesFromRoleRows(roleRows)
