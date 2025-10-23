@@ -1,0 +1,38 @@
+name: PR checks
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  app-checks:
+    name: "App: format / lint / test"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies (app)
+        run: |
+          cd ai-roomchat/starbase/ai-roomchat
+          npm ci
+
+      - name: Format check (Prettier)
+        run: |
+          cd ai-roomchat/starbase/ai-roomchat
+          npx prettier --ignore-path .prettierignore --check .
+
+      - name: Lint (ESLint)
+        run: |
+          cd ai-roomchat/starbase/ai-roomchat
+          npm run lint --silent
+
+      - name: Run unit tests
+        run: |
+          cd ai-roomchat/starbase/ai-roomchat
+          npm test --silent
