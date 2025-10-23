@@ -1,6 +1,6 @@
-'use client'
+'use client';
 
-import { useCallback } from 'react'
+import { useCallback } from 'react';
 
 import {
   acceptFriendRequest as acceptFriendRequestRpc,
@@ -8,103 +8,103 @@ import {
   declineFriendRequest as declineFriendRequestRpc,
   deleteFriendshipByOwner,
   requestFriendshipByHero,
-} from '../../lib/social/friends'
+} from '../../lib/social/friends';
 
 export function useFriendActions(viewer, refreshSocial) {
-  const viewerId = viewer?.user_id
+  const viewerId = viewer?.user_id;
 
   const addFriend = useCallback(
     async ({ heroId }) => {
       if (!viewerId) {
-        return { ok: false, error: '로그인이 필요합니다.' }
+        return { ok: false, error: '로그인이 필요합니다.' };
       }
 
       try {
-        await requestFriendshipByHero({ viewerId, heroId })
-        await refreshSocial()
-        return { ok: true }
+        await requestFriendshipByHero({ viewerId, heroId });
+        await refreshSocial();
+        return { ok: true };
       } catch (error) {
-        return { ok: false, error: error?.message || '친구 요청을 보내지 못했습니다.' }
+        return { ok: false, error: error?.message || '친구 요청을 보내지 못했습니다.' };
       }
     },
-    [refreshSocial, viewerId],
-  )
+    [refreshSocial, viewerId]
+  );
 
   const removeFriend = useCallback(
-    async (friend) => {
+    async friend => {
       if (!viewerId) {
-        return { ok: false, error: '로그인이 필요합니다.' }
+        return { ok: false, error: '로그인이 필요합니다.' };
       }
 
-      const ownerId = friend?.friendOwnerId || friend?.ownerId
+      const ownerId = friend?.friendOwnerId || friend?.ownerId;
       if (!ownerId) {
-        return { ok: false, error: '친구 정보를 찾을 수 없습니다.' }
+        return { ok: false, error: '친구 정보를 찾을 수 없습니다.' };
       }
 
       try {
-        await deleteFriendshipByOwner({ viewerId, friendOwnerId: ownerId })
-        await refreshSocial()
-        return { ok: true }
+        await deleteFriendshipByOwner({ viewerId, friendOwnerId: ownerId });
+        await refreshSocial();
+        return { ok: true };
       } catch (error) {
-        return { ok: false, error: error?.message || '친구를 삭제하지 못했습니다.' }
+        return { ok: false, error: error?.message || '친구를 삭제하지 못했습니다.' };
       }
     },
-    [refreshSocial, viewerId],
-  )
+    [refreshSocial, viewerId]
+  );
 
   const acceptFriendRequest = useCallback(
-    async (requestId) => {
+    async requestId => {
       if (!viewerId) {
-        return { ok: false, error: '로그인이 필요합니다.' }
+        return { ok: false, error: '로그인이 필요합니다.' };
       }
-      if (!requestId) return { ok: false, error: '요청 정보를 찾을 수 없습니다.' }
+      if (!requestId) return { ok: false, error: '요청 정보를 찾을 수 없습니다.' };
 
       try {
-        await acceptFriendRequestRpc({ requestId, actorId: viewerId })
-        await refreshSocial()
-        return { ok: true }
+        await acceptFriendRequestRpc({ requestId, actorId: viewerId });
+        await refreshSocial();
+        return { ok: true };
       } catch (error) {
-        return { ok: false, error: error?.message || '친구 요청을 수락하지 못했습니다.' }
+        return { ok: false, error: error?.message || '친구 요청을 수락하지 못했습니다.' };
       }
     },
-    [refreshSocial, viewerId],
-  )
+    [refreshSocial, viewerId]
+  );
 
   const declineFriendRequest = useCallback(
-    async (requestId) => {
+    async requestId => {
       if (!viewerId) {
-        return { ok: false, error: '로그인이 필요합니다.' }
+        return { ok: false, error: '로그인이 필요합니다.' };
       }
-      if (!requestId) return { ok: false, error: '요청 정보를 찾을 수 없습니다.' }
+      if (!requestId) return { ok: false, error: '요청 정보를 찾을 수 없습니다.' };
 
       try {
-        await declineFriendRequestRpc({ requestId, actorId: viewerId })
-        await refreshSocial()
-        return { ok: true }
+        await declineFriendRequestRpc({ requestId, actorId: viewerId });
+        await refreshSocial();
+        return { ok: true };
       } catch (error) {
-        return { ok: false, error: error?.message || '친구 요청을 거절하지 못했습니다.' }
+        return { ok: false, error: error?.message || '친구 요청을 거절하지 못했습니다.' };
       }
     },
-    [refreshSocial, viewerId],
-  )
+    [refreshSocial, viewerId]
+  );
 
   const cancelFriendRequest = useCallback(
-    async (requestId) => {
+    async requestId => {
       if (!viewerId) {
-        return { ok: false, error: '로그인이 필요합니다.' }
+        return { ok: false, error: '로그인이 필요합니다.' };
       }
-      if (!requestId) return { ok: false, error: '요청 정보를 찾을 수 없습니다.' }
+      if (!requestId) return { ok: false, error: '요청 정보를 찾을 수 없습니다.' };
 
       try {
-        await cancelFriendRequestRpc({ requestId, actorId: viewerId })
-        await refreshSocial()
-        return { ok: true }
+        await cancelFriendRequestRpc({ requestId, actorId: viewerId });
+        await refreshSocial();
+        return { ok: true };
       } catch (error) {
-        return { ok: false, error: error?.message || '친구 요청을 취소하지 못했습니다.' }
+        return { ok: false, error: error?.message || '친구 요청을 취소하지 못했습니다.' };
       }
     },
-    [refreshSocial, viewerId],
-  )
+    [refreshSocial, viewerId]
+  );
 
   return {
     addFriend,
@@ -112,5 +112,5 @@ export function useFriendActions(viewer, refreshSocial) {
     acceptFriendRequest,
     declineFriendRequest,
     cancelFriendRequest,
-  }
+  };
 }

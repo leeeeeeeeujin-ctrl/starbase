@@ -1,6 +1,5 @@
-
-import { useCharacterDashboardContext } from '../../context'
-import HeroProfileCard from '../left/HeroProfileCard'
+import { useCharacterDashboardContext } from '../../context';
+import HeroProfileCard from '../left/HeroProfileCard';
 
 const styles = {
   panel: {
@@ -49,7 +48,7 @@ const styles = {
     fontWeight: 600,
     color: '#f8fafc',
   },
-}
+};
 
 export default function OverviewPanel() {
   const {
@@ -63,10 +62,9 @@ export default function OverviewPanel() {
     onDelete,
     audioSource,
     bgmDuration,
-  } = useCharacterDashboardContext()
+  } = useCharacterDashboardContext();
 
-  const description =
-    edit?.description || hero?.description || '설명이 입력되지 않았습니다.'
+  const description = edit?.description || hero?.description || '설명이 입력되지 않았습니다.';
 
   return (
     <div style={styles.panel}>
@@ -87,17 +85,15 @@ export default function OverviewPanel() {
         <div>
           <h3 style={{ ...styles.sectionTitle, fontSize: 18 }}>능력</h3>
           <div style={styles.abilityGrid}>
-            {abilityCards.map((ability) => (
+            {abilityCards.map(ability => (
               <div key={ability.key} style={styles.abilityCard}>
                 <span style={styles.abilityLabel}>{ability.label}</span>
-                <span style={styles.abilityValue}>
-                  {ability.value ? ability.value : '미입력'}
-                </span>
+                <span style={styles.abilityValue}>{ability.value ? ability.value : '미입력'}</span>
               </div>
             ))}
           </div>
         </div>
       </section>
     </div>
-  )
+  );
 }

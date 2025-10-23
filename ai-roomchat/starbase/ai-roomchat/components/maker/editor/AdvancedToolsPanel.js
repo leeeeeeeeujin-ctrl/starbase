@@ -1,6 +1,6 @@
-'use client'
+'use client';
 
-import { useMemo } from 'react'
+import { useMemo } from 'react';
 
 export default function AdvancedToolsPanel({
   expanded = false,
@@ -10,13 +10,13 @@ export default function AdvancedToolsPanel({
   onExport = () => {},
   onClear = () => {},
 }) {
-  const entryCount = Array.isArray(historyEntries) ? historyEntries.length : 0
+  const entryCount = Array.isArray(historyEntries) ? historyEntries.length : 0;
   const latestTimestamp = useMemo(() => {
     if (!Array.isArray(historyEntries) || historyEntries.length === 0) {
-      return null
+      return null;
     }
-    const latest = historyEntries[0]
-    if (!latest?.timestamp) return null
+    const latest = historyEntries[0];
+    if (!latest?.timestamp) return null;
     try {
       return new Date(latest.timestamp).toLocaleString('ko-KR', {
         hour12: false,
@@ -25,12 +25,12 @@ export default function AdvancedToolsPanel({
         hour: '2-digit',
         minute: '2-digit',
         second: '2-digit',
-      })
+      });
     } catch (error) {
-      console.warn('[AdvancedToolsPanel] 최근 타임스탬프 포맷 실패', error)
-      return null
+      console.warn('[AdvancedToolsPanel] 최근 타임스탬프 포맷 실패', error);
+      return null;
     }
-  }, [historyEntries])
+  }, [historyEntries]);
 
   return (
     <section
@@ -78,8 +78,8 @@ export default function AdvancedToolsPanel({
       {expanded && (
         <div style={{ display: 'grid', gap: 12 }}>
           <p style={{ margin: 0, fontSize: 12, color: '#475569', lineHeight: 1.6 }}>
-            히스토리는 로컬 스토리지에 저장됩니다. 같은 브라우저에서만 공유되며, 필요하면 JSON으로 내보내 다른 환경에
-            보관할 수 있습니다.
+            히스토리는 로컬 스토리지에 저장됩니다. 같은 브라우저에서만 공유되며, 필요하면 JSON으로
+            내보내 다른 환경에 보관할 수 있습니다.
           </p>
 
           <div
@@ -95,7 +95,9 @@ export default function AdvancedToolsPanel({
             }}
           >
             <span style={{ fontWeight: 700, color: '#0f172a' }}>스토리지 키</span>
-            <code style={{ fontFamily: 'Menlo, ui-monospace, SFMono-Regular, monospace' }}>{storageKey || 'maker:history:{setId}'}</code>
+            <code style={{ fontFamily: 'Menlo, ui-monospace, SFMono-Regular, monospace' }}>
+              {storageKey || 'maker:history:{setId}'}
+            </code>
           </div>
 
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -118,14 +120,16 @@ export default function AdvancedToolsPanel({
             <button
               type="button"
               onClick={() => {
-                if (entryCount === 0) return
+                if (entryCount === 0) return;
                 if (typeof window !== 'undefined') {
-                  const confirmed = window.confirm('저장된 자동 업그레이드 히스토리를 모두 삭제할까요?')
+                  const confirmed = window.confirm(
+                    '저장된 자동 업그레이드 히스토리를 모두 삭제할까요?'
+                  );
                   if (!confirmed) {
-                    return
+                    return;
                   }
                 }
-                onClear()
+                onClear();
               }}
               disabled={entryCount === 0}
               style={{
@@ -144,7 +148,8 @@ export default function AdvancedToolsPanel({
 
           {entryCount === 0 ? (
             <p style={{ margin: 0, fontSize: 12, color: '#94a3b8' }}>
-              아직 자동 업그레이드 내역이 없습니다. 저장 후 자동 갱신이 실행되면 이곳에 기록이 쌓입니다.
+              아직 자동 업그레이드 내역이 없습니다. 저장 후 자동 갱신이 실행되면 이곳에 기록이
+              쌓입니다.
             </p>
           ) : (
             <ol
@@ -159,7 +164,7 @@ export default function AdvancedToolsPanel({
                 overflowY: 'auto',
               }}
             >
-              {historyEntries.map((entry) => (
+              {historyEntries.map(entry => (
                 <li key={entry.id} style={{ display: 'grid', gap: 6 }}>
                   <strong style={{ fontSize: 13 }}>{entry.message}</strong>
                   <span style={{ fontSize: 11, color: '#64748b' }}>
@@ -175,11 +180,21 @@ export default function AdvancedToolsPanel({
                       : '타임스탬프 없음'}
                   </span>
                   {entry.summary && (
-                    <p style={{ margin: 0, fontSize: 12, color: '#475569', lineHeight: 1.5 }}>{entry.summary}</p>
+                    <p style={{ margin: 0, fontSize: 12, color: '#475569', lineHeight: 1.5 }}>
+                      {entry.summary}
+                    </p>
                   )}
                   {Array.isArray(entry.details) && entry.details.length > 0 && (
-                    <ul style={{ margin: '0 0 0 18px', padding: 0, fontSize: 12, lineHeight: 1.5, color: '#1f2937' }}>
-                      {entry.details.map((detail) => (
+                    <ul
+                      style={{
+                        margin: '0 0 0 18px',
+                        padding: 0,
+                        fontSize: 12,
+                        lineHeight: 1.5,
+                        color: '#1f2937',
+                      }}
+                    >
+                      {entry.details.map(detail => (
                         <li key={detail}>{detail}</li>
                       ))}
                     </ul>
@@ -191,5 +206,5 @@ export default function AdvancedToolsPanel({
         </div>
       )}
     </section>
-  )
+  );
 }

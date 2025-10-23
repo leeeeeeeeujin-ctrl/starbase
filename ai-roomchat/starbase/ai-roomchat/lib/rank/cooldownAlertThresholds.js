@@ -1,23 +1,23 @@
-import cooldownAlertThresholds from '@/config/rank/cooldownAlertThresholds'
-import { recordCooldownThresholdChange } from '@/lib/rank/cooldownAlertThresholdAuditTrail'
+import cooldownAlertThresholds from '@/config/rank/cooldownAlertThresholds';
+import { recordCooldownThresholdChange } from '@/lib/rank/cooldownAlertThresholdAuditTrail';
 
 const defaultThresholds = Object.freeze({
   ...cooldownAlertThresholds,
-})
+});
 
-let lastResolvedSnapshot = null
-let lastResolvedSignature = null
+let lastResolvedSnapshot = null;
+let lastResolvedSignature = null;
 
 function cloneThresholds(value = {}) {
-  return JSON.parse(JSON.stringify(value))
+  return JSON.parse(JSON.stringify(value));
 }
 
 function buildThresholdSignature(thresholds = {}) {
-  const normalized = {}
-  const metrics = Object.keys(thresholds).sort()
+  const normalized = {};
+  const metrics = Object.keys(thresholds).sort();
 
   for (const metric of metrics) {
-    const group = thresholds[metric] || {}
+    const group = thresholds[metric] || {};
     normalized[metric] = {
       warning:
         typeof group.warning === 'number'
@@ -31,14 +31,14 @@ function buildThresholdSignature(thresholds = {}) {
           : group.critical === null
             ? null
             : null,
-    }
+    };
   }
 
-  return JSON.stringify(normalized)
+  return JSON.stringify(normalized);
 }
 
 function maybeAuditThresholdChange(nextThresholds, context) {
-  const signature = buildThresholdSignature(nextThresholds)
+  const signature = buildThresholdSignature(nextThresholds);
 
   if (lastResolvedSignature && signature !== lastResolvedSignature) {
     try {
@@ -46,104 +46,101 @@ function maybeAuditThresholdChange(nextThresholds, context) {
         previous: lastResolvedSnapshot,
         next: nextThresholds,
         context,
-      })
+      });
     } catch (error) {
       console.error('[cooldown-alert-thresholds] 감사 로그 전송 실패', {
         error,
-      })
+      });
     }
   }
 
-  lastResolvedSnapshot = cloneThresholds(nextThresholds)
-  lastResolvedSignature = signature
+  lastResolvedSnapshot = cloneThresholds(nextThresholds);
+  lastResolvedSignature = signature;
 }
 
 function toFiniteNumber(value) {
-  const numeric = Number(value)
-  return Number.isFinite(numeric) ? numeric : null
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
 }
 
 function sanitizeThresholdValue(value) {
   if (value === null) {
-    return { type: 'null', value: null }
+    return { type: 'null', value: null };
   }
 
   if (typeof value === 'string' && value.trim().toLowerCase() === 'null') {
-    return { type: 'null', value: null }
+    return { type: 'null', value: null };
   }
 
-  const numeric = toFiniteNumber(value)
+  const numeric = toFiniteNumber(value);
   if (numeric === null) {
-    return { type: 'invalid', value: null }
+    return { type: 'invalid', value: null };
   }
 
-  return { type: 'number', value: numeric }
+  return { type: 'number', value: numeric };
 }
 
 function mergeThresholdGroup(base = {}, override = {}) {
-  const merged = { ...base }
+  const merged = { ...base };
 
   if (!override || typeof override !== 'object') {
-    return merged
+    return merged;
   }
 
   if (Object.prototype.hasOwnProperty.call(override, 'warning')) {
-    const warningValue = sanitizeThresholdValue(override.warning)
+    const warningValue = sanitizeThresholdValue(override.warning);
     if (warningValue.type === 'number') {
-      merged.warning = warningValue.value
+      merged.warning = warningValue.value;
     } else if (warningValue.type === 'null') {
-      merged.warning = null
+      merged.warning = null;
     }
   }
 
   if (Object.prototype.hasOwnProperty.call(override, 'critical')) {
-    const criticalValue = sanitizeThresholdValue(override.critical)
+    const criticalValue = sanitizeThresholdValue(override.critical);
     if (criticalValue.type === 'number') {
-      merged.critical = criticalValue.value
+      merged.critical = criticalValue.value;
     } else if (criticalValue.type === 'null') {
-      merged.critical = null
+      merged.critical = null;
     }
   }
 
-  return merged
+  return merged;
 }
 
 export function resolveCooldownAlertThresholds(overrides = {}) {
   if (!overrides || typeof overrides !== 'object') {
-    return { ...defaultThresholds }
+    return { ...defaultThresholds };
   }
 
-  const keys = new Set([
-    ...Object.keys(defaultThresholds),
-    ...Object.keys(overrides),
-  ])
+  const keys = new Set([...Object.keys(defaultThresholds), ...Object.keys(overrides)]);
 
-  const resolved = {}
+  const resolved = {};
   for (const key of keys) {
-    const baseGroup = defaultThresholds[key] || {}
-    const overrideGroup = overrides[key] || {}
-    resolved[key] = mergeThresholdGroup(baseGroup, overrideGroup)
+    const baseGroup = defaultThresholds[key] || {};
+    const overrideGroup = overrides[key] || {};
+    resolved[key] = mergeThresholdGroup(baseGroup, overrideGroup);
   }
 
-  return resolved
+  return resolved;
 }
 
 export function loadCooldownAlertThresholds(options = {}) {
-  const env = options.env || process.env || {}
-  const rawValue = env.RANK_COOLDOWN_ALERT_THRESHOLDS
+  const env = options.env || process.env || {};
+  const rawValue = env.RANK_COOLDOWN_ALERT_THRESHOLDS;
 
-  let overrides = null
+  let overrides = null;
   if (rawValue) {
     try {
-      overrides = JSON.parse(rawValue)
+      overrides = JSON.parse(rawValue);
     } catch (error) {
-      console.warn('[cooldown-alert-thresholds] Failed to parse overrides', error)
+      console.warn('[cooldown-alert-thresholds] Failed to parse overrides', error);
     }
   }
 
   const resolved = overrides
     ? resolveCooldownAlertThresholds(overrides)
-    : cloneThresholds(defaultThresholds)
+    : cloneThresholds(defaultThresholds);
 
   const context = {
     source: rawValue
@@ -153,114 +150,114 @@ export function loadCooldownAlertThresholds(options = {}) {
       : 'default',
     rawEnvValue: rawValue || null,
     overrides: overrides || null,
-  }
+  };
 
-  maybeAuditThresholdChange(resolved, context)
+  maybeAuditThresholdChange(resolved, context);
 
-  return resolved
+  return resolved;
 }
 
 function compareThresholds(value, thresholds = {}) {
-  const { warning, critical } = thresholds
-  if (value === null || value === undefined) return 'ok'
-  if (typeof critical === 'number' && value >= critical) return 'critical'
-  if (typeof warning === 'number' && value >= warning) return 'warning'
-  return 'ok'
+  const { warning, critical } = thresholds;
+  if (value === null || value === undefined) return 'ok';
+  if (typeof critical === 'number' && value >= critical) return 'critical';
+  if (typeof warning === 'number' && value >= warning) return 'warning';
+  return 'ok';
 }
 
 function compareFloorThresholds(value, thresholds = {}) {
-  const { warning, critical } = thresholds
-  if (value === null || value === undefined) return 'ok'
-  if (typeof critical === 'number' && value <= critical) return 'critical'
-  if (typeof warning === 'number' && value <= warning) return 'warning'
-  return 'ok'
+  const { warning, critical } = thresholds;
+  if (value === null || value === undefined) return 'ok';
+  if (typeof critical === 'number' && value <= critical) return 'critical';
+  if (typeof warning === 'number' && value <= warning) return 'warning';
+  return 'ok';
 }
 
 function buildIssue(metric, severity, message, details) {
-  return { metric, severity, message, details: details ?? null }
+  return { metric, severity, message, details: details ?? null };
 }
 
 function toDate(value) {
-  if (!value) return null
-  const date = value instanceof Date ? value : new Date(value)
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) {
-    return null
+    return null;
   }
-  return date
+  return date;
 }
 
 function hoursBetween(later, earlier) {
-  const laterDate = toDate(later)
-  const earlierDate = toDate(earlier)
+  const laterDate = toDate(later);
+  const earlierDate = toDate(earlier);
   if (!laterDate || !earlierDate) {
-    return null
+    return null;
   }
-  const diffMs = laterDate.getTime() - earlierDate.getTime()
+  const diffMs = laterDate.getTime() - earlierDate.getTime();
   if (!Number.isFinite(diffMs) || diffMs < 0) {
-    return null
+    return null;
   }
-  return diffMs / (1000 * 60 * 60)
+  return diffMs / (1000 * 60 * 60);
 }
 
 function evaluateTimelineUploads(timeline, thresholds, options = {}) {
-  const now = options.now ? toDate(options.now) : new Date()
-  const recent = Array.isArray(timeline?.recent) ? timeline.recent : []
-  const summary = timeline?.summary?.overall || null
+  const now = options.now ? toDate(options.now) : new Date();
+  const recent = Array.isArray(timeline?.recent) ? timeline.recent : [];
+  const summary = timeline?.summary?.overall || null;
   const hasAnyEntries = Boolean(
-    recent.length || (Array.isArray(timeline?.summary?.groups) && timeline.summary.groups.length),
-  )
+    recent.length || (Array.isArray(timeline?.summary?.groups) && timeline.summary.groups.length)
+  );
 
-  const issues = []
+  const issues = [];
 
-  let failureStreak = 0
+  let failureStreak = 0;
   for (const entry of recent) {
     if (!entry || typeof entry !== 'object') {
-      continue
+      continue;
     }
     if (entry.status === 'failed') {
-      failureStreak += 1
-      continue
+      failureStreak += 1;
+      continue;
     }
     if (entry.status === 'uploaded') {
-      break
+      break;
     }
     if (entry.status === 'skipped') {
-      break
+      break;
     }
   }
 
   const failureSeverity = compareThresholds(
     failureStreak,
-    thresholds.timelineUploadFailureStreak || {},
-  )
+    thresholds.timelineUploadFailureStreak || {}
+  );
   if (failureSeverity !== 'ok') {
     issues.push(
       buildIssue(
         'timelineUploadFailureStreak',
         failureSeverity,
         `타임라인 내보내기 업로드가 ${failureStreak}회 연속 실패했습니다.`,
-        { failureStreak },
-      ),
-    )
+        { failureStreak }
+      )
+    );
   }
 
-  const lastSuccessAt = summary?.lastSuccessAt || null
-  let hoursSinceLastSuccess = null
+  const lastSuccessAt = summary?.lastSuccessAt || null;
+  let hoursSinceLastSuccess = null;
   if (lastSuccessAt) {
-    hoursSinceLastSuccess = hoursBetween(now, lastSuccessAt)
+    hoursSinceLastSuccess = hoursBetween(now, lastSuccessAt);
   } else if (summary && hasAnyEntries) {
-    hoursSinceLastSuccess = Number.POSITIVE_INFINITY
+    hoursSinceLastSuccess = Number.POSITIVE_INFINITY;
   }
 
   const staleHoursValue =
     typeof hoursSinceLastSuccess === 'number' && Number.isFinite(hoursSinceLastSuccess)
       ? Number(hoursSinceLastSuccess.toFixed(1))
-      : null
+      : null;
 
   const staleSeverity = compareThresholds(
     hoursSinceLastSuccess,
-    thresholds.timelineUploadStaleHours || {},
-  )
+    thresholds.timelineUploadStaleHours || {}
+  );
   if (staleSeverity !== 'ok') {
     issues.push(
       buildIssue(
@@ -272,16 +269,16 @@ function evaluateTimelineUploads(timeline, thresholds, options = {}) {
         {
           lastSuccessAt,
           hoursSinceLastSuccess: staleHoursValue,
-        },
-      ),
-    )
+        }
+      )
+    );
   }
 
-  const status = issues.some((issue) => issue.severity === 'critical')
+  const status = issues.some(issue => issue.severity === 'critical')
     ? 'critical'
-    : issues.some((issue) => issue.severity === 'warning')
+    : issues.some(issue => issue.severity === 'warning')
       ? 'warning'
-      : 'ok'
+      : 'ok';
 
   return {
     status,
@@ -291,85 +288,70 @@ function evaluateTimelineUploads(timeline, thresholds, options = {}) {
       lastSuccessAt,
       hoursSinceLastSuccess: staleHoursValue,
     },
-  }
+  };
 }
 
 function evaluateTotals(totals, thresholds) {
-  if (!totals) return { status: 'ok', issues: [] }
+  if (!totals) return { status: 'ok', issues: [] };
 
-  const issues = []
-  const failureRate = toFiniteNumber(totals.estimatedFailureRate)
-  const triggeredRatio = totals.trackedKeys
-    ? totals.currentlyTriggered / totals.trackedKeys
-    : 0
-  const avgAlertDurationMs = toFiniteNumber(totals.avgAlertDurationMs)
-  const avgRotationDurationMs = toFiniteNumber(totals.avgRotationDurationMs)
-  const docLinkAttachmentRate = toFiniteNumber(totals.docLinkAttachmentRate)
-  const lastDocLinkAttachmentRate = toFiniteNumber(
-    totals.lastDocLinkAttachmentRate,
-  )
+  const issues = [];
+  const failureRate = toFiniteNumber(totals.estimatedFailureRate);
+  const triggeredRatio = totals.trackedKeys ? totals.currentlyTriggered / totals.trackedKeys : 0;
+  const avgAlertDurationMs = toFiniteNumber(totals.avgAlertDurationMs);
+  const avgRotationDurationMs = toFiniteNumber(totals.avgRotationDurationMs);
+  const docLinkAttachmentRate = toFiniteNumber(totals.docLinkAttachmentRate);
+  const lastDocLinkAttachmentRate = toFiniteNumber(totals.lastDocLinkAttachmentRate);
 
-  const failureSeverity = compareThresholds(failureRate, thresholds.failureRate)
+  const failureSeverity = compareThresholds(failureRate, thresholds.failureRate);
   if (failureSeverity !== 'ok') {
     issues.push(
-      buildIssue(
-        'failureRate',
-        failureSeverity,
-        '실패 비율이 높습니다.',
-        { value: failureRate },
-      ),
-    )
+      buildIssue('failureRate', failureSeverity, '실패 비율이 높습니다.', { value: failureRate })
+    );
   }
 
-  const triggeredSeverity = compareThresholds(
-    triggeredRatio,
-    thresholds.triggeredRatio,
-  )
+  const triggeredSeverity = compareThresholds(triggeredRatio, thresholds.triggeredRatio);
   if (triggeredSeverity !== 'ok') {
     issues.push(
-      buildIssue(
-        'triggeredRatio',
-        triggeredSeverity,
-        '쿨다운 중인 키 비중이 높습니다.',
-        { value: Number(triggeredRatio.toFixed(3)) },
-      ),
-    )
+      buildIssue('triggeredRatio', triggeredSeverity, '쿨다운 중인 키 비중이 높습니다.', {
+        value: Number(triggeredRatio.toFixed(3)),
+      })
+    );
   }
 
   const alertDurationSeverity = compareThresholds(
     avgAlertDurationMs,
-    thresholds.avgAlertDurationMs,
-  )
+    thresholds.avgAlertDurationMs
+  );
   if (alertDurationSeverity !== 'ok') {
     issues.push(
       buildIssue(
         'avgAlertDurationMs',
         alertDurationSeverity,
         '알림 발송 소요 시간이 길어지고 있습니다.',
-        { value: avgAlertDurationMs },
-      ),
-    )
+        { value: avgAlertDurationMs }
+      )
+    );
   }
 
   const rotationDurationSeverity = compareThresholds(
     avgRotationDurationMs,
-    thresholds.avgRotationDurationMs,
-  )
+    thresholds.avgRotationDurationMs
+  );
   if (rotationDurationSeverity !== 'ok') {
     issues.push(
       buildIssue(
         'avgRotationDurationMs',
         rotationDurationSeverity,
         '자동 키 교체 소요 시간이 길어지고 있습니다.',
-        { value: avgRotationDurationMs },
-      ),
-    )
+        { value: avgRotationDurationMs }
+      )
+    );
   }
 
   const attachmentSeverity = compareFloorThresholds(
     docLinkAttachmentRate,
-    thresholds.docLinkAttachmentRate,
-  )
+    thresholds.docLinkAttachmentRate
+  );
   if (attachmentSeverity !== 'ok') {
     issues.push(
       buildIssue(
@@ -381,15 +363,15 @@ function evaluateTotals(totals, thresholds) {
             typeof docLinkAttachmentRate === 'number'
               ? Number(docLinkAttachmentRate.toFixed(3))
               : null,
-        },
-      ),
-    )
+        }
+      )
+    );
   }
 
   const lastAttachmentSeverity = compareFloorThresholds(
     lastDocLinkAttachmentRate,
-    thresholds.lastDocLinkAttachmentRate,
-  )
+    thresholds.lastDocLinkAttachmentRate
+  );
   if (lastAttachmentSeverity !== 'ok') {
     issues.push(
       buildIssue(
@@ -401,98 +383,93 @@ function evaluateTotals(totals, thresholds) {
             typeof lastDocLinkAttachmentRate === 'number'
               ? Number(lastDocLinkAttachmentRate.toFixed(3))
               : null,
-        },
-      ),
-    )
+        }
+      )
+    );
   }
 
-  const status = issues.some((issue) => issue.severity === 'critical')
+  const status = issues.some(issue => issue.severity === 'critical')
     ? 'critical'
-    : issues.some((issue) => issue.severity === 'warning')
+    : issues.some(issue => issue.severity === 'warning')
       ? 'warning'
-      : 'ok'
+      : 'ok';
 
-  return { status, issues }
+  return { status, issues };
 }
 
 function evaluateProvider(provider, thresholds) {
   if (!provider) {
-    return { status: 'ok', issues: [] }
+    return { status: 'ok', issues: [] };
   }
 
-  const issues = []
-  const failureRate = toFiniteNumber(provider.estimatedFailureRate)
+  const issues = [];
+  const failureRate = toFiniteNumber(provider.estimatedFailureRate);
   const triggeredRatio = provider.trackedKeys
     ? provider.currentlyTriggered / provider.trackedKeys
-    : 0
-  const avgAlertDurationMs = toFiniteNumber(provider.avgAlertDurationMs)
-  const avgRotationDurationMs = toFiniteNumber(provider.avgRotationDurationMs)
-  const docLinkAttachmentRate = toFiniteNumber(provider.docLinkAttachmentRate)
-  const lastDocLinkAttachmentRate = toFiniteNumber(
-    provider.lastDocLinkAttachmentRate,
-  )
+    : 0;
+  const avgAlertDurationMs = toFiniteNumber(provider.avgAlertDurationMs);
+  const avgRotationDurationMs = toFiniteNumber(provider.avgRotationDurationMs);
+  const docLinkAttachmentRate = toFiniteNumber(provider.docLinkAttachmentRate);
+  const lastDocLinkAttachmentRate = toFiniteNumber(provider.lastDocLinkAttachmentRate);
 
-  const failureSeverity = compareThresholds(failureRate, thresholds.failureRate)
+  const failureSeverity = compareThresholds(failureRate, thresholds.failureRate);
   if (failureSeverity !== 'ok') {
     issues.push(
       buildIssue(
         'failureRate',
         failureSeverity,
         `${provider.provider} 제공자의 실패 비율이 높습니다.`,
-        { value: failureRate },
-      ),
-    )
+        { value: failureRate }
+      )
+    );
   }
 
-  const triggeredSeverity = compareThresholds(
-    triggeredRatio,
-    thresholds.triggeredRatio,
-  )
+  const triggeredSeverity = compareThresholds(triggeredRatio, thresholds.triggeredRatio);
   if (triggeredSeverity !== 'ok') {
     issues.push(
       buildIssue(
         'triggeredRatio',
         triggeredSeverity,
         `${provider.provider} 제공자의 쿨다운 키 비중이 높습니다.`,
-        { value: Number(triggeredRatio.toFixed(3)) },
-      ),
-    )
+        { value: Number(triggeredRatio.toFixed(3)) }
+      )
+    );
   }
 
   const alertDurationSeverity = compareThresholds(
     avgAlertDurationMs,
-    thresholds.avgAlertDurationMs,
-  )
+    thresholds.avgAlertDurationMs
+  );
   if (alertDurationSeverity !== 'ok') {
     issues.push(
       buildIssue(
         'avgAlertDurationMs',
         alertDurationSeverity,
         `${provider.provider} 제공자의 알림 발송 시간이 길어지고 있습니다.`,
-        { value: avgAlertDurationMs },
-      ),
-    )
+        { value: avgAlertDurationMs }
+      )
+    );
   }
 
   const rotationDurationSeverity = compareThresholds(
     avgRotationDurationMs,
-    thresholds.avgRotationDurationMs,
-  )
+    thresholds.avgRotationDurationMs
+  );
   if (rotationDurationSeverity !== 'ok') {
     issues.push(
       buildIssue(
         'avgRotationDurationMs',
         rotationDurationSeverity,
         `${provider.provider} 제공자의 자동 키 교체 시간이 길어지고 있습니다.`,
-        { value: avgRotationDurationMs },
-      ),
-    )
+        { value: avgRotationDurationMs }
+      )
+    );
   }
 
   const attachmentSeverity = compareFloorThresholds(
     docLinkAttachmentRate,
-    thresholds.docLinkAttachmentRate,
-  )
+    thresholds.docLinkAttachmentRate
+  );
   if (attachmentSeverity !== 'ok') {
     issues.push(
       buildIssue(
@@ -504,15 +481,15 @@ function evaluateProvider(provider, thresholds) {
             typeof docLinkAttachmentRate === 'number'
               ? Number(docLinkAttachmentRate.toFixed(3))
               : null,
-        },
-      ),
-    )
+        }
+      )
+    );
   }
 
   const lastAttachmentSeverity = compareFloorThresholds(
     lastDocLinkAttachmentRate,
-    thresholds.lastDocLinkAttachmentRate,
-  )
+    thresholds.lastDocLinkAttachmentRate
+  );
   if (lastAttachmentSeverity !== 'ok') {
     issues.push(
       buildIssue(
@@ -524,49 +501,39 @@ function evaluateProvider(provider, thresholds) {
             typeof lastDocLinkAttachmentRate === 'number'
               ? Number(lastDocLinkAttachmentRate.toFixed(3))
               : null,
-        },
-      ),
-    )
+        }
+      )
+    );
   }
 
-  const status = issues.some((issue) => issue.severity === 'critical')
+  const status = issues.some(issue => issue.severity === 'critical')
     ? 'critical'
-    : issues.some((issue) => issue.severity === 'warning')
+    : issues.some(issue => issue.severity === 'warning')
       ? 'warning'
-      : 'ok'
+      : 'ok';
 
-  return { status, issues }
+  return { status, issues };
 }
 
 function evaluateAttempt(attempt, thresholds) {
-  if (!attempt) return { status: 'ok', issues: [] }
-  const issues = []
-  const attemptCount = toFiniteNumber(attempt.attemptCount)
-  const triggered = Boolean(attempt.triggered)
-  const docLinkAttached = attempt.docLinkAttached
-  const attachmentCount = toFiniteNumber(attempt.docLinkAttachmentCount)
+  if (!attempt) return { status: 'ok', issues: [] };
+  const issues = [];
+  const attemptCount = toFiniteNumber(attempt.attemptCount);
+  const triggered = Boolean(attempt.triggered);
+  const docLinkAttached = attempt.docLinkAttached;
+  const attachmentCount = toFiniteNumber(attempt.docLinkAttachmentCount);
 
   if (typeof attemptCount === 'number') {
-    const severity = compareThresholds(
-      attemptCount,
-      thresholds.attemptsWithoutSuccess,
-    )
+    const severity = compareThresholds(attemptCount, thresholds.attemptsWithoutSuccess);
     if (severity !== 'ok') {
       issues.push(
-        buildIssue(
-          'attemptCount',
-          severity,
-          '재시도 횟수가 많습니다.',
-          { value: attemptCount },
-        ),
-      )
+        buildIssue('attemptCount', severity, '재시도 횟수가 많습니다.', { value: attemptCount })
+      );
     }
   }
 
   if (triggered) {
-    issues.push(
-      buildIssue('triggered', 'warning', '이 키는 아직 쿨다운 상태입니다.'),
-    )
+    issues.push(buildIssue('triggered', 'warning', '이 키는 아직 쿨다운 상태입니다.'));
   }
 
   if (docLinkAttached === false) {
@@ -575,62 +542,58 @@ function evaluateAttempt(attempt, thresholds) {
         'docLinkAttached',
         'warning',
         '런북 링크가 첨부되지 않았습니다.',
-        attachmentCount !== null ? { attachments: attachmentCount } : null,
-      ),
-    )
+        attachmentCount !== null ? { attachments: attachmentCount } : null
+      )
+    );
   }
 
-  const status = issues.some((issue) => issue.severity === 'critical')
+  const status = issues.some(issue => issue.severity === 'critical')
     ? 'critical'
-    : issues.some((issue) => issue.severity === 'warning')
+    : issues.some(issue => issue.severity === 'warning')
       ? 'warning'
-      : 'ok'
+      : 'ok';
 
-  return { status, issues }
+  return { status, issues };
 }
 
-export function evaluateCooldownAlerts(
-  report,
-  thresholds = defaultThresholds,
-  options = {},
-) {
-  const safeReport = report || {}
+export function evaluateCooldownAlerts(report, thresholds = defaultThresholds, options = {}) {
+  const safeReport = report || {};
   const appliedThresholds = {
     ...defaultThresholds,
     ...(thresholds || {}),
-  }
-  const evaluationOptions = options || {}
+  };
+  const evaluationOptions = options || {};
 
-  const totals = evaluateTotals(safeReport.totals, appliedThresholds)
+  const totals = evaluateTotals(safeReport.totals, appliedThresholds);
   const providers = Array.isArray(safeReport.providers)
-    ? safeReport.providers.map((provider) => {
-        const evaluation = evaluateProvider(provider, appliedThresholds)
+    ? safeReport.providers.map(provider => {
+        const evaluation = evaluateProvider(provider, appliedThresholds);
         return {
           provider: provider.provider || 'unknown',
           status: evaluation.status,
           issues: evaluation.issues,
-        }
+        };
       })
-    : []
+    : [];
 
   const attempts = Array.isArray(safeReport.latestAttempts)
-    ? safeReport.latestAttempts.map((attempt) => {
-        const evaluation = evaluateAttempt(attempt, appliedThresholds)
+    ? safeReport.latestAttempts.map(attempt => {
+        const evaluation = evaluateAttempt(attempt, appliedThresholds);
         return {
           keyHash: attempt.keyHash || null,
           provider: attempt.provider || null,
           status: evaluation.status,
           issues: evaluation.issues,
           attemptedAt: attempt.attemptedAt || null,
-        }
+        };
       })
-    : []
+    : [];
 
   const timelineUploads = evaluateTimelineUploads(
     evaluationOptions.timelineUploads,
     appliedThresholds,
-    evaluationOptions,
-  )
+    evaluationOptions
+  );
 
   return {
     thresholds: appliedThresholds,
@@ -638,7 +601,7 @@ export function evaluateCooldownAlerts(
     providers,
     attempts,
     timelineUploads,
-  }
+  };
 }
 
-export { defaultThresholds, evaluateTimelineUploads }
+export { defaultThresholds, evaluateTimelineUploads };

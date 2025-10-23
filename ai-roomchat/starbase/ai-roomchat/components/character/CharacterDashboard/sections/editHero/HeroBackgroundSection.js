@@ -1,4 +1,4 @@
-import { modalStyles } from './styles'
+import { modalStyles } from './styles';
 
 export default function HeroBackgroundSection({
   backgroundSource,
@@ -15,7 +15,11 @@ export default function HeroBackgroundSection({
           <div style={modalStyles.sectionHelp}>JPG, PNG 등 일반 이미지 형식을 권장합니다.</div>
         </div>
         <div style={modalStyles.sectionActions}>
-          <button type="button" onClick={() => inputRef.current?.click()} style={modalStyles.uploadButton}>
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            style={modalStyles.uploadButton}
+          >
             배경 업로드
           </button>
           <button type="button" onClick={onClear} style={modalStyles.clearButton}>
@@ -34,10 +38,10 @@ export default function HeroBackgroundSection({
         ref={inputRef}
         type="file"
         accept="image/*"
-        onChange={(event) => onUpload(event.target.files?.[0] || null)}
+        onChange={event => onUpload(event.target.files?.[0] || null)}
         style={{ display: 'none' }}
       />
       {error ? <div style={modalStyles.errorText}>{error}</div> : null}
     </div>
-  )
+  );
 }

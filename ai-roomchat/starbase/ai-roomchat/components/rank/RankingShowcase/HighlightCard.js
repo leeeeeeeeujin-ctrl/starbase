@@ -1,7 +1,7 @@
-import { baseCardStyle } from './utils'
+import { baseCardStyle } from './utils';
 
 export function HighlightCard({ hero, stats, onInvite, onWhisper, onProfile, gameId, heroId }) {
-  if (!hero) return null
+  if (!hero) return null;
 
   return (
     <section
@@ -13,7 +13,9 @@ export function HighlightCard({ hero, stats, onInvite, onWhisper, onProfile, gam
         gap: 18,
       }}
     >
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+      <header
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}
+      >
         <div style={{ display: 'grid', gap: 6 }}>
           <span style={{ fontSize: 12, opacity: 0.8 }}>이번 주 1위</span>
           <h2 style={{ margin: 0, fontSize: 26 }}>{hero.name}</h2>
@@ -54,7 +56,9 @@ export function HighlightCard({ hero, stats, onInvite, onWhisper, onProfile, gam
         </div>
       </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr', gap: 20, alignItems: 'center' }}>
+      <div
+        style={{ display: 'grid', gridTemplateColumns: '110px 1fr', gap: 20, alignItems: 'center' }}
+      >
         <button
           type="button"
           onClick={() =>
@@ -78,7 +82,11 @@ export function HighlightCard({ hero, stats, onInvite, onWhisper, onProfile, gam
           }}
         >
           {hero.image_url ? (
-            <img src={hero.image_url} alt={hero.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            <img
+              src={hero.image_url}
+              alt={hero.name}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            />
           ) : (
             <div
               style={{
@@ -144,7 +152,7 @@ export function HighlightCard({ hero, stats, onInvite, onWhisper, onProfile, gam
         </ul>
       </div>
     </section>
-  )
+  );
 }
 
 //

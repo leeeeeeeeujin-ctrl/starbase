@@ -35,7 +35,11 @@ export function LeaderRow({ entry, rank, onWhisper, onProfile }) {
         }}
       >
         {entry.hero?.image_url ? (
-          <img src={entry.hero.image_url} alt={entry.hero?.name || ''} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          <img
+            src={entry.hero.image_url}
+            alt={entry.hero?.name || ''}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
         ) : (
           <div
             style={{
@@ -63,7 +67,9 @@ export function LeaderRow({ entry, rank, onWhisper, onProfile }) {
         {onWhisper ? (
           <button
             type="button"
-            onClick={() => onWhisper({ heroId: entry.heroId, heroName: entry.hero?.name, gameId: entry.game_id })}
+            onClick={() =>
+              onWhisper({ heroId: entry.heroId, heroName: entry.hero?.name, gameId: entry.game_id })
+            }
             style={{
               padding: '6px 10px',
               borderRadius: 999,
@@ -78,7 +84,7 @@ export function LeaderRow({ entry, rank, onWhisper, onProfile }) {
         ) : null}
       </div>
     </li>
-  )
+  );
 }
 
 //

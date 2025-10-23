@@ -14,36 +14,36 @@ may be skipped.
 <!-- TOC depthFrom:1 depthTo:6 withLinks:1 updateOnSave:1 orderedList:0 -->
 
 - [REST or JSON-RPC authenticator](#rest-or-json-rpc-authenticator)
-	- [Configuration](#configuration)
-	- [Request](#request)
-	- [Response](#response)
-	- [Recognized error responses](#recognized-error-responses)
-	- [The server must implement the following endpoints:](#the-server-must-implement-the-following-endpoints)
-		- [`add` Add new authentication record](#add-add-new-authentication-record)
-			- [Sample request](#sample-request)
-			- [Sample response (rec values may change)](#sample-response-rec-values-may-change)
-		- [`auth` Request for authentication](#auth-request-for-authentication)
-			- [Sample request](#sample-request)
-			- [Sample response when the account already exists (optional challenge included)](#sample-response-when-the-account-already-exists-optional-challenge-included)
-			- [Sample response when the account needs to be created by Tinode](#sample-response-when-the-account-needs-to-be-created-by-tinode)
-		- [`checkunique` Checks if provided authentication record is unique.](#checkunique-checks-if-provided-authentication-record-is-unique)
-			- [Sample request](#sample-request)
-			- [Sample response](#sample-response)
-		- [`del` Requests to delete authentication record.](#del-requests-to-delete-authentication-record)
-			- [Sample request](#sample-request)
-			- [Sample response](#sample-response)
-		- [`gen` Generate authentication secret.](#gen-generate-authentication-secret)
-			- [Sample request](#sample-request)
-			- [Sample response](#sample-response)
-		- [`link` Requests server to link new account ID to authentication record.](#link-requests-server-to-link-new-account-id-to-authentication-record)
-			- [Sample request](#sample-request)
-			- [Sample response](#sample-response)
-		- [`upd` Update authentication record.](#upd-update-authentication-record)
-			- [Sample request](#sample-request)
-			- [Sample response](#sample-response)
-		- [`rtagns` Get a list of restricted tag namespaces.](#rtagns-get-a-list-of-restricted-tag-namespaces)
-			- [Sample request](#sample-request)
-			- [Sample response](#sample-response)
+  - [Configuration](#configuration)
+  - [Request](#request)
+  - [Response](#response)
+  - [Recognized error responses](#recognized-error-responses)
+  - [The server must implement the following endpoints:](#the-server-must-implement-the-following-endpoints)
+    - [`add` Add new authentication record](#add-add-new-authentication-record)
+      - [Sample request](#sample-request)
+      - [Sample response (rec values may change)](#sample-response-rec-values-may-change)
+    - [`auth` Request for authentication](#auth-request-for-authentication)
+      - [Sample request](#sample-request)
+      - [Sample response when the account already exists (optional challenge included)](#sample-response-when-the-account-already-exists-optional-challenge-included)
+      - [Sample response when the account needs to be created by Tinode](#sample-response-when-the-account-needs-to-be-created-by-tinode)
+    - [`checkunique` Checks if provided authentication record is unique.](#checkunique-checks-if-provided-authentication-record-is-unique)
+      - [Sample request](#sample-request)
+      - [Sample response](#sample-response)
+    - [`del` Requests to delete authentication record.](#del-requests-to-delete-authentication-record)
+      - [Sample request](#sample-request)
+      - [Sample response](#sample-response)
+    - [`gen` Generate authentication secret.](#gen-generate-authentication-secret)
+      - [Sample request](#sample-request)
+      - [Sample response](#sample-response)
+    - [`link` Requests server to link new account ID to authentication record.](#link-requests-server-to-link-new-account-id-to-authentication-record)
+      - [Sample request](#sample-request)
+      - [Sample response](#sample-response)
+    - [`upd` Update authentication record.](#upd-update-authentication-record)
+      - [Sample request](#sample-request)
+      - [Sample response](#sample-response)
+    - [`rtagns` Get a list of restricted tag namespaces.](#rtagns-get-a-list-of-restricted-tag-namespaces)
+      - [Sample request](#sample-request)
+      - [Sample response](#sample-response)
 
 <!-- /TOC -->
 
@@ -68,8 +68,10 @@ Add the following section to the `auth_config` in [tinode.conf](../../tinode.con
   ...
 },
 ```
+
 If you want to use your authenticator **instead** of stock `basic` (login-password) authentication,
 add logical renaming and disable `rest` at the original name:
+
 ```js
 ...
 "auth_config": {
@@ -137,16 +139,16 @@ The error is returned as json:
 
 See [here](../../store/types/types.go#L24) for an up to date list of supported error messages.
 
-* "internal": database failure or other internal catch-all failure.
-* "malformed": request cannot be parsed or otherwise wrong.
-* "failed": authentication failed (wrong login or password, etc).
-* "duplicate value": duplicate credential, i.e. attempt to create a record with a non-unique login.
-* "unsupported": the operation is not supported.
-* "expired": the secret has expired.
-* "policy": policy violation, e.g. password too weak.
-* "credentials": credentials like email or captcha must be validated.
-* "not found": the object was not found.
-* "denied": the operation is not permitted.
+- "internal": database failure or other internal catch-all failure.
+- "malformed": request cannot be parsed or otherwise wrong.
+- "failed": authentication failed (wrong login or password, etc).
+- "duplicate value": duplicate credential, i.e. attempt to create a record with a non-unique login.
+- "unsupported": the operation is not supported.
+- "expired": the secret has expired.
+- "policy": policy violation, e.g. password too weak.
+- "credentials": credentials like email or captcha must be validated.
+- "not found": the object was not found.
+- "denied": the operation is not permitted.
 
 ## The server must implement the following endpoints:
 
@@ -156,6 +158,7 @@ This endpoint requests server to add a new authentication record. This endpoint 
 If accounts are managed externally, it's likely to be unused and should generally return an error `"unsupported"`.
 
 #### Sample request
+
 ```json
 {
   "endpoint": "add",
@@ -171,6 +174,7 @@ If accounts are managed externally, it's likely to be unused and should generall
 ```
 
 #### Sample response (rec values may change)
+
 ```json
 {
   "rec": {
@@ -190,6 +194,7 @@ If this is a very first login and the server manages the accounts, the server ma
 be used by client (Tinode) to create the account. The server may optionally return a challenge as `byteval`.
 
 #### Sample request
+
 ```json
 {
   "endpoint": "auth",
@@ -199,6 +204,7 @@ be used by client (Tinode) to create the account. The server may optionally retu
 ```
 
 #### Sample response when the account already exists (optional challenge included)
+
 ```json
 {
   "rec": {
@@ -211,6 +217,7 @@ be used by client (Tinode) to create the account. The server may optionally retu
 ```
 
 #### Sample response when the account needs to be created by Tinode
+
 ```js
 {
   "rec": {
@@ -236,6 +243,7 @@ Request is used for account creation. If accounts are managed by the server, the
 an error `"unsupported"`.
 
 #### Sample request
+
 ```json
 {
   "endpoint": "checkunique",
@@ -245,6 +253,7 @@ an error `"unsupported"`.
 ```
 
 #### Sample response
+
 ```json
 {
   "boolval": true
@@ -256,44 +265,46 @@ an error `"unsupported"`.
 If accounts are managed by the server, the server should respond with an error `"unsupported"`.
 
 #### Sample request
+
 ```json
 {
   "endpoint": "del",
   "rec": {
-    "uid": "LELEQHDWbgY",
+    "uid": "LELEQHDWbgY"
   }
 }
 ```
 
 #### Sample response
+
 ```json
 {}
 ```
-
 
 ### `gen` Generate authentication secret.
 
 If accounts are managed by the server, the server should respond with an error `"unsupported"`.
 
 #### Sample request
+
 ```json
 {
   "endpoint": "gen",
   "rec": {
     "uid": "LELEQHDWbgY",
-    "authlvl": "auth",
+    "authlvl": "auth"
   }
 }
 ```
 
 #### Sample response
+
 ```json
 {
   "byteval": "9X6m3tWeBEMlDxlcFAABAAEAbVs",
-  "ts": "2018-12-04T15:17:02.627Z",
+  "ts": "2018-12-04T15:17:02.627Z"
 }
 ```
-
 
 ### `link` Requests server to link new account ID to authentication record.
 
@@ -301,28 +312,30 @@ If server requested Tinode to create a new account, this endpoint is used to lin
 server's authentication record. If linking is successful, the server should respond with a non-empty json.
 
 #### Sample request
+
 ```json
 {
   "endpoint": "link",
   "secret": "Ym9iOmJvYjEyMw==",
   "rec": {
     "uid": "LELEQHDWbgY",
-    "authlvl": "auth",
-  },
+    "authlvl": "auth"
+  }
 }
 ```
 
 #### Sample response
+
 ```json
 {}
 ```
-
 
 ### `upd` Update authentication record.
 
 If accounts are managed by the server, the server should respond with an error `"unsupported"`.
 
 #### Sample request
+
 ```json
 {
   "endpoint": "upd",
@@ -330,12 +343,13 @@ If accounts are managed by the server, the server should respond with an error `
   "addr": "111.22.33.44",
   "rec": {
     "uid": "LELEQHDWbgY",
-    "authlvl": "auth",
+    "authlvl": "auth"
   }
 }
 ```
 
 #### Sample response
+
 ```json
 {}
 ```
@@ -351,13 +365,15 @@ I.e. if server allows only logins of 3-8 ASCII letters and numbers then the rege
 which is base64-encoded as `XlthLXowLTlfXXszLDh9JA==`.
 
 #### Sample request
+
 ```json
 {
-  "endpoint": "rtagns",
+  "endpoint": "rtagns"
 }
 ```
 
 #### Sample response
+
 ```json
 {
   "strarr": ["basic", "email", "tel"],

@@ -1,14 +1,13 @@
-
-import { useCharacterDashboardContext } from '../../context'
-import StatPageSelector from '../left/StatPageSelector'
-import GameStatCarousel from '../left/GameStatCarousel'
+import { useCharacterDashboardContext } from '../../context';
+import StatPageSelector from '../left/StatPageSelector';
+import GameStatCarousel from '../left/GameStatCarousel';
 
 const styles = {
   panel: {
     display: 'grid',
     gap: 24,
   },
-}
+};
 
 export default function StatsPanel() {
   const {
@@ -20,7 +19,7 @@ export default function StatsPanel() {
     selectedGameId,
     onSelectGame,
     selectedEntry,
-  } = useCharacterDashboardContext()
+  } = useCharacterDashboardContext();
 
   return (
     <div style={styles.panel}>
@@ -37,5 +36,5 @@ export default function StatsPanel() {
         selectedEntry={selectedEntry}
       />
     </div>
-  )
+  );
 }

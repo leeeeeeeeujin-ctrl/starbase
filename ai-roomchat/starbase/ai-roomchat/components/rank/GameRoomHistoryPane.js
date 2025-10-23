@@ -1,6 +1,6 @@
-import TimelineSection from './Timeline/TimelineSection'
-import styles from './GameRoomView.module.css'
-import { describeDropInSummary, formatDate } from '@/lib/rank/gameRoomHistory'
+import TimelineSection from './Timeline/TimelineSection';
+import styles from './GameRoomView.module.css';
+import { describeDropInSummary, formatDate } from '@/lib/rank/gameRoomHistory';
 
 /**
  * @param {Object} props
@@ -72,16 +72,20 @@ export default function GameRoomHistoryPane({
             <span className={styles.sectionBadge}>{personalReplays.length}</span>
           </div>
           <ul className={styles.replayList}>
-            {personalReplays.map((entry) => (
+            {personalReplays.map(entry => (
               <li key={entry.id} className={styles.replayItem}>
                 <div>
                   <div className={styles.replayHeaderRow}>
                     <span className={styles.replayLabel}>{entry.label}</span>
-                    <span className={styles.replayResult}>{(entry.result || 'unknown').toUpperCase()}</span>
+                    <span className={styles.replayResult}>
+                      {(entry.result || 'unknown').toUpperCase()}
+                    </span>
                   </div>
                   <div className={styles.replayMetaRow}>
                     {entry.generatedAt ? (
-                      <span className={styles.replayMeta}>생성 {formatDate(entry.generatedAt)}</span>
+                      <span className={styles.replayMeta}>
+                        생성 {formatDate(entry.generatedAt)}
+                      </span>
                     ) : null}
                     {Number.isFinite(entry.turnCount) ? (
                       <span className={styles.replayMeta}>턴 {entry.turnCount}</span>
@@ -90,7 +94,9 @@ export default function GameRoomHistoryPane({
                       <span className={styles.replayMeta}>타임라인 {entry.timelineCount}</span>
                     ) : null}
                     {entry.dropIn ? (
-                      <span className={styles.replayMeta}>{describeDropInSummary(entry.dropIn)}</span>
+                      <span className={styles.replayMeta}>
+                        {describeDropInSummary(entry.dropIn)}
+                      </span>
                     ) : null}
                     {entry.reason ? (
                       <span className={styles.replayMetaReason}>{entry.reason}</span>
@@ -98,7 +104,11 @@ export default function GameRoomHistoryPane({
                   </div>
                 </div>
                 <div className={styles.replayActions}>
-                  <button type="button" className={styles.replayButton} onClick={() => onDownloadReplay(entry)}>
+                  <button
+                    type="button"
+                    className={styles.replayButton}
+                    onClick={() => onDownloadReplay(entry)}
+                  >
                     JSON 저장
                   </button>
                 </div>
@@ -115,16 +125,20 @@ export default function GameRoomHistoryPane({
             <span className={styles.sectionBadge}>{sharedReplays.length}</span>
           </div>
           <ul className={styles.replayList}>
-            {sharedReplays.map((entry) => (
+            {sharedReplays.map(entry => (
               <li key={entry.id} className={styles.replayItem}>
                 <div>
                   <div className={styles.replayHeaderRow}>
                     <span className={styles.replayLabel}>{entry.label}</span>
-                    <span className={styles.replayResult}>{(entry.result || 'unknown').toUpperCase()}</span>
+                    <span className={styles.replayResult}>
+                      {(entry.result || 'unknown').toUpperCase()}
+                    </span>
                   </div>
                   <div className={styles.replayMetaRow}>
                     {entry.generatedAt ? (
-                      <span className={styles.replayMeta}>생성 {formatDate(entry.generatedAt)}</span>
+                      <span className={styles.replayMeta}>
+                        생성 {formatDate(entry.generatedAt)}
+                      </span>
                     ) : null}
                     {Number.isFinite(entry.turnCount) ? (
                       <span className={styles.replayMeta}>턴 {entry.turnCount}</span>
@@ -133,7 +147,9 @@ export default function GameRoomHistoryPane({
                       <span className={styles.replayMeta}>타임라인 {entry.timelineCount}</span>
                     ) : null}
                     {entry.dropIn ? (
-                      <span className={styles.replayMeta}>{describeDropInSummary(entry.dropIn)}</span>
+                      <span className={styles.replayMeta}>
+                        {describeDropInSummary(entry.dropIn)}
+                      </span>
                     ) : null}
                     {entry.reason ? (
                       <span className={styles.replayMetaReason}>{entry.reason}</span>
@@ -141,7 +157,11 @@ export default function GameRoomHistoryPane({
                   </div>
                 </div>
                 <div className={styles.replayActions}>
-                  <button type="button" className={styles.replayButton} onClick={() => onDownloadReplay(entry)}>
+                  <button
+                    type="button"
+                    className={styles.replayButton}
+                    onClick={() => onDownloadReplay(entry)}
+                  >
                     JSON 저장
                   </button>
                 </div>
@@ -151,5 +171,5 @@ export default function GameRoomHistoryPane({
         </section>
       ) : null}
     </>
-  )
+  );
 }

@@ -26,10 +26,10 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: '메소드가 허용되지 않습니다.' });
   }
 
-    const auth = ensureAuthorised(req);
-    if (!auth.ok) {
-      return res.status(auth.status).json({ error: auth.message });
-    }
+  const auth = ensureAuthorised(req);
+  if (!auth.ok) {
+    return res.status(auth.status).json({ error: auth.message });
+  }
 
   try {
     const { sessionId } = req.query;
@@ -39,19 +39,19 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: '세션 ID가 필요합니다.' });
     }
 
-  const supabase = supabaseAdmin;
-    
+    const supabase = supabaseAdmin;
+
     let aiClient = null;
     if (apiKey) {
       aiClient = new OpenAI({ apiKey });
     }
 
-  const results = await autoAdvanceSimulation(supabaseAdmin, sessionId, turns, aiClient);
+    const results = await autoAdvanceSimulation(supabaseAdmin, sessionId, turns, aiClient);
     return res.status(200).json({ results });
   } catch (error) {
     console.error('시뮬레이션 진행 오류:', error);
-    return res.status(500).json({ 
-      error: error.message || '진행 실패' 
+    return res.status(500).json({
+      error: error.message || '진행 실패',
     });
   }
 }

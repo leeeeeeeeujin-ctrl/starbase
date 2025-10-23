@@ -2,18 +2,18 @@
  * @jest-environment jsdom
  */
 
-import { act, create } from 'react-test-renderer'
+import { act, create } from 'react-test-renderer';
 
-import { success, failure } from '../../../lib/maker/promptSets/result'
-import { useMakerHome } from '../../../hooks/maker/useMakerHome'
+import { success, failure } from '../../../lib/maker/promptSets/result';
+import { useMakerHome } from '../../../hooks/maker/useMakerHome';
 
-const mockGetUser = jest.fn()
-const mockList = jest.fn()
-const mockCreate = jest.fn()
-const mockRename = jest.fn()
-const mockRemove = jest.fn()
-const mockInsertBundle = jest.fn()
-const mockReadBundle = jest.fn()
+const mockGetUser = jest.fn();
+const mockList = jest.fn();
+const mockCreate = jest.fn();
+const mockRename = jest.fn();
+const mockRemove = jest.fn();
+const mockInsertBundle = jest.fn();
+const mockReadBundle = jest.fn();
 
 jest.mock('../../../lib/supabase', () => ({
   supabase: {
@@ -21,10 +21,10 @@ jest.mock('../../../lib/supabase', () => ({
       getUser: (...args) => mockGetUser(...args),
     },
   },
-}))
+}));
 
 jest.mock('../../../lib/maker/promptSets', () => {
-  const actual = jest.requireActual('../../../lib/maker/promptSets')
+  const actual = jest.requireActual('../../../lib/maker/promptSets');
   return {
     ...actual,
     promptSetsRepository: {
@@ -35,138 +35,138 @@ jest.mock('../../../lib/maker/promptSets', () => {
     },
     insertPromptSetBundle: (...args) => mockInsertBundle(...args),
     readPromptSetBundle: (...args) => mockReadBundle(...args),
-  }
-})
+  };
+});
 
 function renderHook(props = {}) {
-  let result
-  const Test = (testProps) => {
-    result = useMakerHome(testProps)
-    return null
-  }
-  const renderer = create(<Test {...props} />)
+  let result;
+  const Test = testProps => {
+    result = useMakerHome(testProps);
+    return null;
+  };
+  const renderer = create(<Test {...props} />);
   return {
     get result() {
-      return result
+      return result;
     },
-    rerender: (nextProps) => {
+    rerender: nextProps => {
       act(() => {
-        renderer.update(<Test {...nextProps} />)
-      })
+        renderer.update(<Test {...nextProps} />);
+      });
     },
     unmount: () => renderer.unmount(),
-  }
+  };
 }
 
 async function flushPromises() {
   await act(async () => {
-    await Promise.resolve()
-  })
+    await Promise.resolve();
+  });
 }
 
 describe('useMakerHome', () => {
   beforeEach(() => {
-    mockGetUser.mockReset()
-    mockList.mockReset()
-    mockCreate.mockReset()
-    mockRename.mockReset()
-    mockRemove.mockReset()
-    mockInsertBundle.mockReset()
-    mockReadBundle.mockReset()
-    if (window.localStorage) window.localStorage.clear()
-    if (window.sessionStorage) window.sessionStorage.clear()
-  })
+    mockGetUser.mockReset();
+    mockList.mockReset();
+    mockCreate.mockReset();
+    mockRename.mockReset();
+    mockRemove.mockReset();
+    mockInsertBundle.mockReset();
+    mockReadBundle.mockReset();
+    if (window.localStorage) window.localStorage.clear();
+    if (window.sessionStorage) window.sessionStorage.clear();
+  });
 
   it('invokes onUnauthorized when no user is returned', async () => {
-    mockGetUser.mockResolvedValue({ data: { user: null }, error: null })
-    mockList.mockResolvedValue(success([]))
-    const onUnauthorized = jest.fn()
+    mockGetUser.mockResolvedValue({ data: { user: null }, error: null });
+    mockList.mockResolvedValue(success([]));
+    const onUnauthorized = jest.fn();
 
-    const hook = renderHook({ onUnauthorized })
-    await flushPromises()
-    await flushPromises()
+    const hook = renderHook({ onUnauthorized });
+    await flushPromises();
+    await flushPromises();
 
-    expect(onUnauthorized).toHaveBeenCalledTimes(1)
-    expect(hook.result.loading).toBe(false)
-    expect(hook.result.rows).toEqual([])
-  })
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+    expect(hook.result.loading).toBe(false);
+    expect(hook.result.rows).toEqual([]);
+  });
 
   it('refreshes prompt sets for the authenticated user', async () => {
-    const userId = 'user-1'
-    mockGetUser.mockResolvedValue({ data: { user: { id: userId } }, error: null })
+    const userId = 'user-1';
+    mockGetUser.mockResolvedValue({ data: { user: { id: userId } }, error: null });
     const rows = [
       { id: 'set-a', name: 'A', created_at: '2023-02-03T00:00:00Z' },
       { id: 'set-b', name: 'B', created_at: '2023-02-02T00:00:00Z' },
-    ]
-    mockList.mockResolvedValue(success(rows))
+    ];
+    mockList.mockResolvedValue(success(rows));
 
-    let hook
+    let hook;
     await act(async () => {
-      hook = renderHook()
+      hook = renderHook();
       // Wait for hydration effect
-      await Promise.resolve()
-    })
-    
+      await Promise.resolve();
+    });
+
     await act(async () => {
       // Wait for bootstrap effect
-      await Promise.resolve()
-    })
+      await Promise.resolve();
+    });
 
     // Wait for async operations
     for (let i = 0; i < 5 && mockList.mock.calls.length === 0; i += 1) {
-      await flushPromises()
+      await flushPromises();
     }
 
-    expect(mockList).toHaveBeenCalledWith(userId)
-    expect(hook.result.loading).toBe(false)
-    expect(hook.result.rows.map((row) => row.id)).toEqual(['set-a', 'set-b'])
+    expect(mockList).toHaveBeenCalledWith(userId);
+    expect(hook.result.loading).toBe(false);
+    expect(hook.result.rows.map(row => row.id)).toEqual(['set-a', 'set-b']);
 
-    mockList.mockResolvedValue(failure(new Error('불러오기 실패')))
+    mockList.mockResolvedValue(failure(new Error('불러오기 실패')));
 
     await act(async () => {
-      await hook.result.refresh()
-    })
-    await flushPromises()
+      await hook.result.refresh();
+    });
+    await flushPromises();
 
-    expect(hook.result.errorMessage).toBe('불러오기 실패')
-  })
+    expect(hook.result.errorMessage).toBe('불러오기 실패');
+  });
 
   it('imports prompt set bundles and records version notices', async () => {
-    const userId = 'designer-123'
-    mockGetUser.mockResolvedValue({ data: { user: { id: userId } }, error: null })
-    mockList.mockResolvedValue(success([]))
-    mockInsertBundle.mockResolvedValue(success({ id: 'set-99' }))
+    const userId = 'designer-123';
+    mockGetUser.mockResolvedValue({ data: { user: { id: userId } }, error: null });
+    mockList.mockResolvedValue(success([]));
+    mockInsertBundle.mockResolvedValue(success({ id: 'set-99' }));
 
-    let hook
+    let hook;
     await act(async () => {
-      hook = renderHook()
-      await Promise.resolve()
-    })
-    
+      hook = renderHook();
+      await Promise.resolve();
+    });
+
     await act(async () => {
-      await Promise.resolve()
-    })
-    
-    await flushPromises()
+      await Promise.resolve();
+    });
+
+    await flushPromises();
 
     const payload = {
       meta: { variableRulesVersion: 99 },
       set: { name: 'Legacy' },
-    }
+    };
     const file = {
       text: () => Promise.resolve(JSON.stringify(payload)),
-    }
+    };
 
     await act(async () => {
-      await hook.result.importFromFile(file)
-    })
+      await hook.result.importFromFile(file);
+    });
 
     expect(mockInsertBundle).toHaveBeenCalledWith(userId, {
       meta: { variableRulesVersion: 99 },
       set: { name: 'Legacy' },
       slots: [],
       bridges: [],
-    })
-    expect(hook.result.noticeMessage).toContain('v99')
-  })
-})
+    });
+    expect(hook.result.noticeMessage).toContain('v99');
+  });
+});

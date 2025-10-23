@@ -1,9 +1,9 @@
 // components/rank/ParticipantCard.js
-import { useState } from 'react'
+import { useState } from 'react';
 
 export default function ParticipantCard({ p }) {
-  const [open, setOpen] = useState(false)
-  const hero = p.hero
+  const [open, setOpen] = useState(false);
+  const hero = p.hero;
   return (
     <div
       style={{
@@ -51,7 +51,7 @@ export default function ParticipantCard({ p }) {
           </div>
         </div>
         <button
-          onClick={() => setOpen((o) => !o)}
+          onClick={() => setOpen(o => !o)}
           style={{
             padding: '6px 12px',
             borderRadius: 999,
@@ -80,5 +80,5 @@ export default function ParticipantCard({ p }) {
         </div>
       )}
     </div>
-  )
+  );
 }

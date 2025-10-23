@@ -2,9 +2,9 @@
  * @jest-environment jsdom
  */
 
-import TestRenderer from 'react-test-renderer'
+import TestRenderer from 'react-test-renderer';
 
-import RosterPanel from '@/components/rank/StartClient/RosterPanel'
+import RosterPanel from '@/components/rank/StartClient/RosterPanel';
 
 const baseParticipants = [
   {
@@ -38,17 +38,21 @@ const baseParticipants = [
       ability1: '치유의 빛',
     },
   },
-]
+];
 
 function collectText(node) {
-  if (!node) return []
-  if (typeof node === 'string') return [node]
-  if (typeof node === 'number') return [String(node)]
+  if (!node) return [];
+  if (typeof node === 'string') return [node];
+  if (typeof node === 'number') return [String(node)];
   if (Array.isArray(node)) {
-    return node.flatMap(collectText)
+    return node.flatMap(collectText);
   }
-  const children = Array.isArray(node.children) ? node.children : node.children ? [node.children] : []
-  return children.flatMap(collectText)
+  const children = Array.isArray(node.children)
+    ? node.children
+    : node.children
+      ? [node.children]
+      : [];
+  return children.flatMap(collectText);
 }
 
 describe('RosterPanel visibility controls', () => {
@@ -62,19 +66,19 @@ describe('RosterPanel visibility controls', () => {
         viewerOwnerId=""
         normalizedHostRole="전략가"
         normalizedViewerRole="탐험가"
-      />, 
-    )
+      />
+    );
 
-    const textContent = collectText(renderer.toJSON()).join(' ')
-    const normalized = textContent.replace(/\s+/g, ' ').trim()
+    const textContent = collectText(renderer.toJSON()).join(' ');
+    const normalized = textContent.replace(/\s+/g, ' ').trim();
 
-    expect(normalized).toContain('비공개 참가자')
-    expect(normalized).toContain('점수 숨김')
-    expect(normalized).toContain('승률 숨김')
-    expect(normalized).toContain('상세 능력 정보는 현재 비공개 상태입니다.')
-    expect(normalized).not.toContain('창공 베기')
-    expect(normalized).not.toContain('용맹한 전략가')
-  })
+    expect(normalized).toContain('비공개 참가자');
+    expect(normalized).toContain('점수 숨김');
+    expect(normalized).toContain('승률 숨김');
+    expect(normalized).toContain('상세 능력 정보는 현재 비공개 상태입니다.');
+    expect(normalized).not.toContain('창공 베기');
+    expect(normalized).not.toContain('용맹한 전략가');
+  });
 
   it('reveals full roster details when visibility is enabled', () => {
     const renderer = TestRenderer.create(
@@ -86,18 +90,18 @@ describe('RosterPanel visibility controls', () => {
         viewerOwnerId=""
         normalizedHostRole="전략가"
         normalizedViewerRole="전략가"
-      />, 
-    )
+      />
+    );
 
-    const textContent = collectText(renderer.toJSON()).join(' ')
-    const normalized = textContent.replace(/\s+/g, ' ').trim()
+    const textContent = collectText(renderer.toJSON()).join(' ');
+    const normalized = textContent.replace(/\s+/g, ' ').trim();
 
-    expect(normalized).toContain('알파')
-    expect(normalized).toContain('점수 1200')
-    expect(normalized).toContain('승률 60%')
-    expect(normalized).toContain('창공 베기')
-    expect(normalized).toContain('용맹한 전략가')
-  })
+    expect(normalized).toContain('알파');
+    expect(normalized).toContain('점수 1200');
+    expect(normalized).toContain('승률 60%');
+    expect(normalized).toContain('창공 베기');
+    expect(normalized).toContain('용맹한 전략가');
+  });
 
   it('shows viewer seat details even when roster details are hidden globally', () => {
     const renderer = TestRenderer.create(
@@ -109,15 +113,15 @@ describe('RosterPanel visibility controls', () => {
         viewerOwnerId="owner-1"
         normalizedHostRole="전략가"
         normalizedViewerRole="전략가"
-      />, 
-    )
+      />
+    );
 
-    const textContent = collectText(renderer.toJSON()).join(' ')
-    const normalized = textContent.replace(/\s+/g, ' ').trim()
+    const textContent = collectText(renderer.toJSON()).join(' ');
+    const normalized = textContent.replace(/\s+/g, ' ').trim();
 
-    expect(normalized).toContain('알파')
-    expect(normalized).toContain('점수 1200')
-    expect(normalized).toContain('승률 60%')
-    expect(normalized).toContain('내 좌석')
-  })
-})
+    expect(normalized).toContain('알파');
+    expect(normalized).toContain('점수 1200');
+    expect(normalized).toContain('승률 60%');
+    expect(normalized).toContain('내 좌석');
+  });
+});

@@ -31,12 +31,12 @@ export default async function handler(req, res) {
   }
 
   try {
-  const sessions = await listTestSimulations(supabaseAdmin);
+    const sessions = await listTestSimulations(supabaseAdmin);
     return res.status(200).json({ sessions });
   } catch (error) {
     console.error('시뮬레이션 목록 조회 오류:', error);
-    return res.status(500).json({ 
-      error: error.message || '목록 조회 실패' 
+    return res.status(500).json({
+      error: error.message || '목록 조회 실패',
     });
   }
 }

@@ -1,8 +1,8 @@
-import { GameSection } from './GameSection'
-import { HighlightCard } from './HighlightCard'
-import { LeaderRow } from './LeaderRow'
-import { useRankingShowcaseData } from './useRankingShowcaseData'
-import { baseCardStyle } from './utils'
+import { GameSection } from './GameSection';
+import { HighlightCard } from './HighlightCard';
+import { LeaderRow } from './LeaderRow';
+import { useRankingShowcaseData } from './useRankingShowcaseData';
+import { baseCardStyle } from './utils';
 
 export default function RankingShowcase({
   onInvite,
@@ -12,7 +12,7 @@ export default function RankingShowcase({
 }) {
   const { loading, error, highlight, leaders, perGameSections, topStats } = useRankingShowcaseData({
     maxGameSections,
-  })
+  });
 
   if (loading) {
     return (
@@ -20,7 +20,7 @@ export default function RankingShowcase({
         <strong>랭킹 정보를 불러오는 중…</strong>
         <span style={{ fontSize: 13, opacity: 0.7 }}>잠시만 기다려 주세요.</span>
       </div>
-    )
+    );
   }
 
   if (error) {
@@ -29,18 +29,20 @@ export default function RankingShowcase({
         <strong>랭킹 정보를 불러오는 중 오류가 발생했습니다.</strong>
         <span style={{ fontSize: 13, lineHeight: 1.6 }}>{error}</span>
       </div>
-    )
+    );
   }
 
   if (!highlight) {
     return (
-      <div style={baseCardStyle}>아직 집계된 랭킹이 없습니다. 게임을 플레이해 순위를 만들어 보세요.</div>
-    )
+      <div style={baseCardStyle}>
+        아직 집계된 랭킹이 없습니다. 게임을 플레이해 순위를 만들어 보세요.
+      </div>
+    );
   }
 
   const highlightStats = highlight
     ? { ...(topStats || {}), rating: Math.round(highlight.rating ?? highlight.score ?? 0) }
-    : null
+    : null;
 
   return (
     <div style={{ display: 'grid', gap: 18 }}>
@@ -75,7 +77,7 @@ export default function RankingShowcase({
         <section style={baseCardStyle}>
           <h3 style={{ margin: 0 }}>게임별 상위권</h3>
           <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 14 }}>
-            {perGameSections.map((section) => (
+            {perGameSections.map(section => (
               <GameSection
                 key={section.gameId}
                 section={section}
@@ -88,7 +90,7 @@ export default function RankingShowcase({
         </section>
       ) : null}
     </div>
-  )
+  );
 }
 
 //

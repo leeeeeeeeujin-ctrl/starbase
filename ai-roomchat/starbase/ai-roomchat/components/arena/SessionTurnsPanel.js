@@ -1,43 +1,43 @@
-import { useCallback, useEffect, useState } from 'react'
-import { ensureRpc } from '@/modules/arena/rpcClient'
-import { subscribeToSession } from '@/modules/arena/realtimeChannels'
-import styles from './SessionTurnsPanel.module.css'
+import { useCallback, useEffect, useState } from 'react';
+import { ensureRpc } from '@/modules/arena/rpcClient';
+import { subscribeToSession } from '@/modules/arena/realtimeChannels';
+import styles from './SessionTurnsPanel.module.css';
 
 export function SessionTurnsPanel({ sessionId, limit = 120 }) {
-  const [turns, setTurns] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
+  const [turns, setTurns] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   const fetchTurns = useCallback(async () => {
-    if (!sessionId) return
-    setLoading(true)
+    if (!sessionId) return;
+    setLoading(true);
     try {
       const data = await ensureRpc('fetch_rank_session_turns', {
         p_session_id: sessionId,
         p_limit: limit,
-      })
-      setTurns(Array.isArray(data) ? data : [])
-      setError(null)
+      });
+      setTurns(Array.isArray(data) ? data : []);
+      setError(null);
     } catch (fetchError) {
-      setError(fetchError)
+      setError(fetchError);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [sessionId, limit])
+  }, [sessionId, limit]);
 
   useEffect(() => {
-    fetchTurns()
-  }, [fetchTurns])
+    fetchTurns();
+  }, [fetchTurns]);
 
   useEffect(() => {
-    if (!sessionId) return undefined
-    const unsubscribe = subscribeToSession(sessionId, (event) => {
+    if (!sessionId) return undefined;
+    const unsubscribe = subscribeToSession(sessionId, event => {
       if (event.type === 'turn') {
-        fetchTurns()
+        fetchTurns();
       }
-    })
-    return unsubscribe
-  }, [sessionId, fetchTurns])
+    });
+    return unsubscribe;
+  }, [sessionId, fetchTurns]);
 
   return (
     <section className={styles.panel}>
@@ -50,10 +50,12 @@ export function SessionTurnsPanel({ sessionId, limit = 120 }) {
       </div>
       {error ? <p className={styles.error}>오류: {error.message || String(error)}</p> : null}
       <ol className={styles.turns}>
-        {turns.map((turn) => (
+        {turns.map(turn => (
           <li key={turn.id} className={turn.public ? styles.public : styles.private}>
             <div className={styles.meta}>
-              <span>#{turn.idx ?? '?'} · {turn.role}</span>
+              <span>
+                #{turn.idx ?? '?'} · {turn.role}
+              </span>
               <time>{turn.created_at ? new Date(turn.created_at).toLocaleTimeString() : ''}</time>
             </div>
             <p>{turn.content || '(내용 없음)'}</p>
@@ -63,5 +65,5 @@ export function SessionTurnsPanel({ sessionId, limit = 120 }) {
       </ol>
       {!turns.length && !loading ? <p className={styles.helper}>아직 턴 로그가 없습니다.</p> : null}
     </section>
-  )
+  );
 }

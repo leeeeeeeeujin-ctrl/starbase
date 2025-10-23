@@ -1,4 +1,4 @@
-'use client'
+'use client';
 
 export default function RegistrationCard({
   title,
@@ -36,14 +36,18 @@ export default function RegistrationCard({
               <p style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#f8fafc' }}>{title}</p>
             ) : null}
             {description ? (
-              <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: '#cbd5f5' }}>{description}</p>
+              <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: '#cbd5f5' }}>
+                {description}
+              </p>
             ) : null}
           </div>
-          {actions ? <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>{actions}</div> : null}
+          {actions ? (
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>{actions}</div>
+          ) : null}
         </div>
       )}
 
       <div style={{ display: 'grid', gap: contentGap }}>{children}</div>
     </section>
-  )
+  );
 }

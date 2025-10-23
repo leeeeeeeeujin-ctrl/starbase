@@ -1,4 +1,3 @@
-
 const styles = {
   container: {
     borderRadius: 28,
@@ -51,7 +50,7 @@ const styles = {
     borderRadius: 18,
     border: '1px dashed rgba(148, 163, 184, 0.35)',
   },
-}
+};
 
 export default function GameStatCarousel({
   hasParticipations,
@@ -70,8 +69,8 @@ export default function GameStatCarousel({
       </div>
       {hasParticipations ? (
         <div style={styles.scroll}>
-          {visibleStatSlides.map((slide) => {
-            const active = slide.key === selectedGameId
+          {visibleStatSlides.map(slide => {
+            const active = slide.key === selectedGameId;
             return (
               <button
                 key={slide.key}
@@ -79,9 +78,7 @@ export default function GameStatCarousel({
                 onClick={() => onSelectGame(slide.key)}
                 style={{
                   ...styles.card,
-                  border: active
-                    ? '1px solid rgba(56, 189, 248, 0.65)'
-                    : styles.card.border,
+                  border: active ? '1px solid rgba(56, 189, 248, 0.65)' : styles.card.border,
                   background: active
                     ? 'linear-gradient(180deg, rgba(14, 165, 233, 0.35) 0%, rgba(15, 23, 42, 0.95) 100%)'
                     : styles.card.background,
@@ -89,12 +86,10 @@ export default function GameStatCarousel({
               >
                 <div style={styles.heading}>
                   <strong style={styles.name}>{slide.name}</strong>
-                  <span style={styles.meta}>
-                    {slide.role ? `${slide.role} 역할` : '참여 게임'}
-                  </span>
+                  <span style={styles.meta}>{slide.role ? `${slide.role} 역할` : '참여 게임'}</span>
                 </div>
                 <div style={styles.statList}>
-                  {slide.stats.map((stat) => (
+                  {slide.stats.map(stat => (
                     <div key={stat.key} style={styles.statRow}>
                       <span style={styles.statLabel}>{stat.label}</span>
                       <strong style={styles.statValue}>{stat.value}</strong>
@@ -102,12 +97,12 @@ export default function GameStatCarousel({
                   ))}
                 </div>
               </button>
-            )
+            );
           })}
         </div>
       ) : (
         <div style={styles.emptyState}>아직 참가한 게임이 없습니다.</div>
       )}
     </div>
-  )
+  );
 }

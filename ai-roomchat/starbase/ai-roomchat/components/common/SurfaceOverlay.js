@@ -1,5 +1,4 @@
-'use client'
-
+'use client';
 
 export default function SurfaceOverlay({
   open,
@@ -15,11 +14,11 @@ export default function SurfaceOverlay({
   verticalAlign = 'center',
   viewportHeight = null,
 }) {
-  const handleBackdropClick = (event) => {
-    if (!open || !onClose) return
-    event.preventDefault()
-    onClose(event)
-  }
+  const handleBackdropClick = event => {
+    if (!open || !onClose) return;
+    event.preventDefault();
+    onClose(event);
+  };
 
   return (
     <div
@@ -45,9 +44,9 @@ export default function SurfaceOverlay({
         }}
         aria-hidden
         onClick={handleBackdropClick}
-        onMouseDown={(event) => {
+        onMouseDown={event => {
           // prevent focus from jumping when clicking on the backdrop
-          event.preventDefault()
+          event.preventDefault();
         }}
       />
       <div
@@ -119,5 +118,5 @@ export default function SurfaceOverlay({
         </div>
       </div>
     </div>
-  )
+  );
 }

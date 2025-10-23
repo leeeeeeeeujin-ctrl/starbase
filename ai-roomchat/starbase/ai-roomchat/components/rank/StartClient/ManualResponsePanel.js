@@ -9,11 +9,11 @@ export default function ManualResponsePanel({
   timeRemaining = null,
   turnTimerSeconds,
 }) {
-  const locked = disabled
+  const locked = disabled;
   const remainingText =
     typeof timeRemaining === 'number'
       ? `${timeRemaining.toString().padStart(2, '0')}초 남음`
-      : '대기 중'
+      : '대기 중';
 
   return (
     <section
@@ -34,7 +34,7 @@ export default function ManualResponsePanel({
       </div>
       <textarea
         value={manualResponse}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={event => onChange(event.target.value)}
         rows={5}
         disabled={locked}
         placeholder={
@@ -93,7 +93,7 @@ export default function ManualResponsePanel({
         </button>
       </div>
     </section>
-  )
+  );
 }
 
 //

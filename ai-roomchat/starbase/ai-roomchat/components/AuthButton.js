@@ -1,48 +1,48 @@
-"use client"
+'use client';
 
-import React, { useCallback, useState } from 'react'
+import React, { useCallback, useState } from 'react';
 
-import { startGoogleOAuth } from '../lib/auth'
-import { logError } from '../lib/utils/debugTool'
+import { startGoogleOAuth } from '../lib/auth';
+import { logError } from '../lib/utils/debugTool';
 
 export default function AuthButton() {
-  const [pending, setPending] = useState(false)
+  const [pending, setPending] = useState(false);
 
   async function signIn() {
-    if (pending) return
-    setPending(true)
+    if (pending) return;
+    setPending(true);
     try {
-      const origin = window.location.origin
-      const result = await startGoogleOAuth({ origin })
+      const origin = window.location.origin;
+      const result = await startGoogleOAuth({ origin });
 
       if (result.status === 'redirect') {
-        window.location.href = result.url
-        return
+        window.location.href = result.url;
+        return;
       }
 
-      alert(`로그인 실패: ${result.message}`)
+      alert(`로그인 실패: ${result.message}`);
     } catch (error) {
-      logError(error, 'AuthButton: signIn error')
-      alert('로그인 중 오류가 발생했습니다.')
+      logError(error, 'AuthButton: signIn error');
+      alert('로그인 중 오류가 발생했습니다.');
     } finally {
-      setPending(false)
+      setPending(false);
     }
   }
 
   const handleClick = useCallback(() => {
     if (!pending) {
-      signIn()
+      signIn();
     }
-  }, [pending])
+  }, [pending]);
 
   function handleMouseEnter(event) {
-    event.currentTarget.style.transform = 'translateY(-2px)'
-    event.currentTarget.style.boxShadow = '0 12px 32px rgba(0, 0, 0, 0.45)'
+    event.currentTarget.style.transform = 'translateY(-2px)';
+    event.currentTarget.style.boxShadow = '0 12px 32px rgba(0, 0, 0, 0.45)';
   }
 
   function handleMouseLeave(event) {
-    event.currentTarget.style.transform = 'translateY(0)'
-    event.currentTarget.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.35)'
+    event.currentTarget.style.transform = 'translateY(0)';
+    event.currentTarget.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.35)';
   }
 
   return (
@@ -70,5 +70,5 @@ export default function AuthButton() {
     >
       신경망 접속
     </button>
-  )
+  );
 }

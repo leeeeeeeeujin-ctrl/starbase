@@ -1,1 +1,1 @@
-export { default } from './solo-match'
+export { default } from './solo-match';

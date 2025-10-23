@@ -1,6 +1,11 @@
-import { VARIABLE_RULE_COMPARATORS, VARIABLE_RULE_OUTCOMES, VARIABLE_RULE_STATUS, VARIABLE_RULE_SUBJECTS } from '../../../../lib/variableRules'
-import { OUTCOME_LABEL, STATUS_LABEL, SUBJECT_LABEL } from './constants'
-import SuggestionChips from './SuggestionChips'
+import {
+  VARIABLE_RULE_COMPARATORS,
+  VARIABLE_RULE_OUTCOMES,
+  VARIABLE_RULE_STATUS,
+  VARIABLE_RULE_SUBJECTS,
+} from '../../../../lib/variableRules';
+import { OUTCOME_LABEL, STATUS_LABEL, SUBJECT_LABEL } from './constants';
+import SuggestionChips from './SuggestionChips';
 
 function AutoRuleList({ rules, datalistId, onAdd, onUpdate, onRemove, suggestions }) {
   return (
@@ -23,27 +28,35 @@ function AutoRuleList({ rules, datalistId, onAdd, onUpdate, onRemove, suggestion
           }}
         >
           <div style={{ display: 'grid', gap: 6 }}>
-            <label style={{ fontSize: 12, color: '#475569' }}>변수명 (AI가 마지막에서 두 번째 줄에 적어줄 이름)</label>
+            <label style={{ fontSize: 12, color: '#475569' }}>
+              변수명 (AI가 마지막에서 두 번째 줄에 적어줄 이름)
+            </label>
             <input
               value={rule.variable || ''}
-              onChange={(event) => onUpdate(index, { variable: event.target.value })}
+              onChange={event => onUpdate(index, { variable: event.target.value })}
               placeholder="예: guardian_protect"
               list={datalistId}
             />
             <SuggestionChips
               suggestions={suggestions}
-              onSelect={(token) => onUpdate(index, { variable: token })}
+              onSelect={token => onUpdate(index, { variable: token })}
               prefix={`auto-variable-${index}`}
             />
           </div>
-          <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))' }}>
+          <div
+            style={{
+              display: 'grid',
+              gap: 8,
+              gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+            }}
+          >
             <label style={{ display: 'grid', gap: 4 }}>
               <span style={{ fontSize: 12, color: '#475569' }}>승패 처리</span>
               <select
                 value={rule.outcome || 'win'}
-                onChange={(event) => onUpdate(index, { outcome: event.target.value })}
+                onChange={event => onUpdate(index, { outcome: event.target.value })}
               >
-                {VARIABLE_RULE_OUTCOMES.map((option) => (
+                {VARIABLE_RULE_OUTCOMES.map(option => (
                   <option key={option} value={option}>
                     {OUTCOME_LABEL[option]}
                   </option>
@@ -54,9 +67,9 @@ function AutoRuleList({ rules, datalistId, onAdd, onUpdate, onRemove, suggestion
               <span style={{ fontSize: 12, color: '#475569' }}>대상</span>
               <select
                 value={rule.subject || 'same'}
-                onChange={(event) => onUpdate(index, { subject: event.target.value })}
+                onChange={event => onUpdate(index, { subject: event.target.value })}
               >
-                {VARIABLE_RULE_SUBJECTS.map((option) => (
+                {VARIABLE_RULE_SUBJECTS.map(option => (
                   <option key={option} value={option}>
                     {SUBJECT_LABEL[option]}
                   </option>
@@ -67,9 +80,9 @@ function AutoRuleList({ rules, datalistId, onAdd, onUpdate, onRemove, suggestion
               <span style={{ fontSize: 12, color: '#475569' }}>비교</span>
               <select
                 value={rule.comparator || 'gte'}
-                onChange={(event) => onUpdate(index, { comparator: event.target.value })}
+                onChange={event => onUpdate(index, { comparator: event.target.value })}
               >
-                {VARIABLE_RULE_COMPARATORS.map((option) => (
+                {VARIABLE_RULE_COMPARATORS.map(option => (
                   <option key={option} value={option}>
                     {option === 'gte' ? '이상' : option === 'lte' ? '이하' : '정확히'}
                   </option>
@@ -82,7 +95,7 @@ function AutoRuleList({ rules, datalistId, onAdd, onUpdate, onRemove, suggestion
                 type="number"
                 min="0"
                 value={Number.isFinite(Number(rule.count)) ? rule.count : ''}
-                onChange={(event) => onUpdate(index, { count: Number(event.target.value) })}
+                onChange={event => onUpdate(index, { count: Number(event.target.value) })}
               />
             </label>
           </div>
@@ -91,7 +104,7 @@ function AutoRuleList({ rules, datalistId, onAdd, onUpdate, onRemove, suggestion
               <label style={{ fontSize: 12, color: '#475569' }}>역할 이름</label>
               <input
                 value={rule.role || ''}
-                onChange={(event) => onUpdate(index, { role: event.target.value })}
+                onChange={event => onUpdate(index, { role: event.target.value })}
                 placeholder="예: 힐러"
               />
             </div>
@@ -100,9 +113,9 @@ function AutoRuleList({ rules, datalistId, onAdd, onUpdate, onRemove, suggestion
             <label style={{ fontSize: 12, color: '#475569' }}>조건</label>
             <select
               value={rule.status || 'alive'}
-              onChange={(event) => onUpdate(index, { status: event.target.value })}
+              onChange={event => onUpdate(index, { status: event.target.value })}
             >
-              {VARIABLE_RULE_STATUS.map((option) => (
+              {VARIABLE_RULE_STATUS.map(option => (
                 <option key={option} value={option}>
                   {STATUS_LABEL[option]}
                 </option>
@@ -112,7 +125,13 @@ function AutoRuleList({ rules, datalistId, onAdd, onUpdate, onRemove, suggestion
           <button
             type="button"
             onClick={() => onRemove(index)}
-            style={{ alignSelf: 'start', padding: '6px 10px', borderRadius: 8, background: '#fee2e2', color: '#b91c1c' }}
+            style={{
+              alignSelf: 'start',
+              padding: '6px 10px',
+              borderRadius: 8,
+              background: '#fee2e2',
+              color: '#b91c1c',
+            }}
           >
             규칙 삭제
           </button>
@@ -121,14 +140,20 @@ function AutoRuleList({ rules, datalistId, onAdd, onUpdate, onRemove, suggestion
       <button
         type="button"
         onClick={onAdd}
-        style={{ padding: '8px 12px', borderRadius: 8, background: '#2563eb', color: '#fff', fontWeight: 600 }}
+        style={{
+          padding: '8px 12px',
+          borderRadius: 8,
+          background: '#2563eb',
+          color: '#fff',
+          fontWeight: 600,
+        }}
       >
         + 자동 변수 추가
       </button>
     </div>
-  )
+  );
 }
 
-export default AutoRuleList
+export default AutoRuleList;
 
 //

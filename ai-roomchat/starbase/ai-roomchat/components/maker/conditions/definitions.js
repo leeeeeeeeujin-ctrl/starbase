@@ -13,19 +13,19 @@ export const CONDITION_DEFINITIONS = [
         defaultValue: '0.3',
       },
     ],
-    toJSON: (values) => ({ type: 'random', p: Number(values.p ?? 0.3) }),
+    toJSON: values => ({ type: 'random', p: Number(values.p ?? 0.3) }),
   },
   {
     type: 'turn_gte',
     label: '특정 턴 이상',
     params: [{ key: 'value', label: '턴 ≥', type: 'number', defaultValue: '3' }],
-    toJSON: (values) => ({ type: 'turn_gte', value: Number(values.value ?? 1) }),
+    toJSON: values => ({ type: 'turn_gte', value: Number(values.value ?? 1) }),
   },
   {
     type: 'turn_lte',
     label: '특정 턴 이하',
     params: [{ key: 'value', label: '턴 ≤', type: 'number', defaultValue: '5' }],
-    toJSON: (values) => ({ type: 'turn_lte', value: Number(values.value ?? 1) }),
+    toJSON: values => ({ type: 'turn_lte', value: Number(values.value ?? 1) }),
   },
   {
     type: 'prev_ai_contains',
@@ -45,7 +45,7 @@ export const CONDITION_DEFINITIONS = [
         defaultValue: 'last2',
       },
     ],
-    toJSON: (values) => ({
+    toJSON: values => ({
       type: 'prev_ai_contains',
       value: String(values.value || ''),
       scope: values.scope || 'last2',
@@ -68,7 +68,7 @@ export const CONDITION_DEFINITIONS = [
         defaultValue: 'last1',
       },
     ],
-    toJSON: (values) => ({
+    toJSON: values => ({
       type: 'prev_prompt_contains',
       value: String(values.value || ''),
       scope: values.scope || 'last1',
@@ -92,7 +92,7 @@ export const CONDITION_DEFINITIONS = [
         defaultValue: 'last1',
       },
     ],
-    toJSON: (values) => ({
+    toJSON: values => ({
       type: 'prev_ai_regex',
       pattern: String(values.pattern || ''),
       flags: String(values.flags || ''),
@@ -103,7 +103,7 @@ export const CONDITION_DEFINITIONS = [
     type: 'visited_slot',
     label: '특정 프롬프트(슬롯) 경유',
     params: [{ key: 'slot_id', label: '슬롯 ID', type: 'text', placeholder: '예) 12' }],
-    toJSON: (values) => ({
+    toJSON: values => ({
       type: 'visited_slot',
       slot_id: values.slot_id ? String(values.slot_id) : null,
     }),
@@ -140,11 +140,11 @@ export const CONDITION_DEFINITIONS = [
         defaultValue: 'any',
       },
     ],
-    toJSON: (values) => ({
+    toJSON: values => ({
       type: 'var_on',
       names: String(values.names || '')
         .split(',')
-        .map((name) => name.trim())
+        .map(name => name.trim())
         .filter(Boolean),
       scope: values.scope || 'both',
       mode: values.mode || 'any',
@@ -192,7 +192,7 @@ export const CONDITION_DEFINITIONS = [
       },
       { key: 'value', label: '값', type: 'number', defaultValue: '2' },
     ],
-    toJSON: (values) => ({
+    toJSON: values => ({
       type: 'count',
       who: values.who || 'all',
       role: (values.role || '').trim(),
@@ -207,8 +207,8 @@ export const CONDITION_DEFINITIONS = [
     params: [],
     toJSON: () => ({ type: 'fallback' }),
   },
-]
+];
 
 export function findDefinitionByType(type) {
-  return CONDITION_DEFINITIONS.find((definition) => definition.type === type)
+  return CONDITION_DEFINITIONS.find(definition => definition.type === type);
 }

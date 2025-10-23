@@ -3,20 +3,22 @@
 다음 순서를 따르면 프론트엔드가 기대하는 슬롯 버전·세션 메타 저장소가 Supabase에 반영된다. 모든 SQL은 Supabase 콘솔의 **SQL Editor**나 `supabase db execute`에 그대로 붙여넣을 수 있도록 준비했다.
 
 ## 1. 해야 할 일 한눈에 보기
+
 1. `rank_sessions` 테이블에 슬롯 버전 컬럼을 추가하고, 세션 정보를 확인하는 `validate_session` RPC를 교체한다.
 2. 매치 방 스테이징에서 사용할 슬롯 캐시 테이블과 잠금 RPC(`claim_rank_room_slot`)를 생성한다.
 3. 제한시간 투표·난입 보너스 등 메타 정보를 저장하는 `rank_session_meta` 테이블과 `upsert_match_session_meta`·`refresh_match_session_async_fill` RPC를 만든다.
 4. 메인 게임 진입 전 준비 신호를 집계하는 `register_match_ready_signal` RPC와 `rank_session_ready_signals` 테이블을 배포해 15초 준비 창을 실시간으로 동기화한다.
-4. 드롭인 보너스/매칭 타임라인을 저장하고 방송할 `rank_session_timeline_events` 테이블과 관련 정책을 생성한다.
-5. 방 상세 페이지가 호출하는 `stage-room-match`용 `sync_rank_match_roster` RPC를 배포해 슬롯 버전 충돌을 서버에서 차단한다.
-6. 게임 등록을 서버에서 일괄 처리할 `register_rank_game` RPC를 적용해 역할·슬롯 저장을 RPC 경유로 전환한다. 이 스니펫은 `rank_game_slots`의 `(game_id, slot_index)` 유니크 제약도 함께 보강해 중복 슬롯 업서트 에러를 방지한다.
-7. 등록/매칭 API가 공통으로 호출할 `verify_rank_roles_and_slots` RPC를 배포해, 활성 슬롯과 역할 정의의 불일치를 서버에서 즉시 차단한다.
-8. (선택) 감사 로그·이미지 정책 보강도 함께 적용하려면 번들 전체를 실행한다.
-9. (선택) 클라이언트 TTL과 동일한 주기로 세션 메타/턴 이벤트를 정리하고 싶다면 `cleanup_expired_rank_session_snapshots` RPC와 `rank-session-ttl-cleanup` Edge Function을 배포해 Supabase Cron에 연결한다. 배포 및 스케줄링 절차는 `docs/rank-session-ttl-cleanup-cron.md`에 요약되어 있으며, Edge Function은 실행 결과를 `rank_game_logs`에 기록한다.
+5. 드롭인 보너스/매칭 타임라인을 저장하고 방송할 `rank_session_timeline_events` 테이블과 관련 정책을 생성한다.
+6. 방 상세 페이지가 호출하는 `stage-room-match`용 `sync_rank_match_roster` RPC를 배포해 슬롯 버전 충돌을 서버에서 차단한다.
+7. 게임 등록을 서버에서 일괄 처리할 `register_rank_game` RPC를 적용해 역할·슬롯 저장을 RPC 경유로 전환한다. 이 스니펫은 `rank_game_slots`의 `(game_id, slot_index)` 유니크 제약도 함께 보강해 중복 슬롯 업서트 에러를 방지한다.
+8. 등록/매칭 API가 공통으로 호출할 `verify_rank_roles_and_slots` RPC를 배포해, 활성 슬롯과 역할 정의의 불일치를 서버에서 즉시 차단한다.
+9. (선택) 감사 로그·이미지 정책 보강도 함께 적용하려면 번들 전체를 실행한다.
+10. (선택) 클라이언트 TTL과 동일한 주기로 세션 메타/턴 이벤트를 정리하고 싶다면 `cleanup_expired_rank_session_snapshots` RPC와 `rank-session-ttl-cleanup` Edge Function을 배포해 Supabase Cron에 연결한다. 배포 및 스케줄링 절차는 `docs/rank-session-ttl-cleanup-cron.md`에 요약되어 있으며, Edge Function은 실행 결과를 `rank_game_logs`에 기록한다.
 
 모든 스키마/함수 정의는 `docs/supabase-rank-backend-upgrades.sql`에 있다. 아래 요약된 스니펫을 순서대로 실행하면 핵심 1~6단계가 완료된다. `time_vote`·`turn_state`·`async_fill_snapshot` 저장만 빠르게 배포하려면 `docs/sql/upsert-match-session-meta.sql`과 `docs/sql/refresh-match-session-async-fill.sql`을, 드롭인 타임라인 테이블만 별도로 만들고 싶다면 `docs/sql/rank-session-timeline-events.sql`을, 턴 상태 실시간 브로드캐스트까지 즉시 구성하려면 `docs/sql/rank-turn-realtime-sync.sql`을, 브로드캐스트 누락분을 백필하려면 `docs/sql/fetch-rank-turn-state-events.sql`을, 활성 세션 조회를 RPC로 통일하려면 `docs/sql/fetch-latest-rank-session.sql`을, 슬롯 버전 잠금을 즉시 적용하려면 `docs/sql/sync-rank-match-roster.sql`을, 등록 RPC만 따로 배포하려면 `docs/sql/register-rank-game.sql`을, 역할/슬롯 검증을 개별 배포하려면 `docs/sql/verify-rank-roles-and-slots.sql`을, TTL 정리를 Edge Function과 함께 배포하려면 `docs/sql/cleanup-rank-session-snapshots.sql`과 `supabase/functions/rank-session-ttl-cleanup/index.ts`를 그대로 붙여넣으면 된다.
 
 ## 2. 필수 SQL 스니펫
+
 ```sql
 -- 1) rank_sessions 컬럼 & validate_session, bump 함수 교체
 alter table public.rank_sessions
@@ -564,6 +566,7 @@ $$;
 ```
 
 ## 3. 실행 권한 부여
+
 위 RPC를 호출할 주체에 따라 다음 `grant` 문도 함께 실행한다.
 
 ```sql
@@ -576,11 +579,13 @@ grant execute on function public.refresh_match_session_async_fill(uuid, uuid, in
 ```
 
 ## 4. 참고
+
 - 전체 번들을 실행하려면 `docs/supabase-rank-backend-upgrades.sql` 파일을 그대로 붙여넣으면 된다.
 - 프론트엔드는 `matchDataStore`에서 `validate_session` 응답의 `slot_schema_version`을 사용하고, `StartClient`는 `upsert_match_session_meta`로 저장된 제한시간/보너스를 재활용한다.
 - 실행 후에는 Supabase Table Editor에서 `rank_session_meta`가 채워지는지 확인하고, `validate_session` RPC 테스트 호출로 버전 필드가 노출되는지 검증하면 된다.
 
 ### 2.x 턴 상태 실시간 브로드캐스트 (`rank_turn_state_events`)
+
 ```sql
 -- rank_turn_state_events 테이블과 enqueue_rank_turn_state_event RPC
 \i docs/sql/rank-turn-realtime-sync.sql
@@ -592,6 +597,7 @@ grant execute on function public.refresh_match_session_async_fill(uuid, uuid, in
 - 서비스 롤 키가 누락된 환경에서도 `/api/rank/session-meta`가 정상 동작하도록 `enqueue_rank_turn_state_event`와 `upsert_match_session_meta` 모두 `authenticated` 롤에 실행 권한을 부여했다. 최신 SQL 스니펫(`docs/sql/upsert-match-session-meta.sql`, `docs/sql/rank-turn-realtime-sync.sql`)을 다시 적용해 권한을 갱신해 주세요.
 
 ### 2.y 턴 이벤트 백필 RPC (`fetch_rank_turn_state_events`)
+
 ```sql
 -- 누락된 턴 이벤트를 최근 순으로 가져오는 RPC
 \i docs/sql/fetch-rank-turn-state-events.sql

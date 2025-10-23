@@ -1,9 +1,9 @@
-'use client'
+'use client';
 
-import { useCallback } from 'react'
+import { useCallback } from 'react';
 
-import { markApiKeyCooldown } from '../../../../lib/rank/apiKeyCooldown'
-import { formatCooldownMessage } from '../engine/apiKeyUtils'
+import { markApiKeyCooldown } from '../../../../lib/rank/apiKeyCooldown';
+import { formatCooldownMessage } from '../engine/apiKeyUtils';
 
 /**
  * API 키 쿨다운 검사와 세션 무효화를 관리하는 훅입니다.
@@ -49,17 +49,17 @@ export function useStartCooldown({
   onSessionVoided = () => {},
 }) {
   const ensureApiKeyReady = useCallback(
-    (apiKey) => {
-      if (!apiKey) return true
-      const info = evaluateApiKeyCooldown(apiKey)
+    apiKey => {
+      if (!apiKey) return true;
+      const info = evaluateApiKeyCooldown(apiKey);
       if (info?.active) {
-        setStatusMessage(formatCooldownMessage(info))
-        return false
+        setStatusMessage(formatCooldownMessage(info));
+        return false;
       }
-      return true
+      return true;
     },
-    [evaluateApiKeyCooldown, setStatusMessage],
-  )
+    [evaluateApiKeyCooldown, setStatusMessage]
+  );
 
   const voidSession = useCallback(
     (message, options = {}) => {
@@ -71,29 +71,28 @@ export function useStartCooldown({
           gameId: options.gameId || gameId || game?.id || null,
           sessionId: options.sessionId || sessionInfo?.id || null,
           note: options.note || null,
-        })
+        });
         if (info) {
-          applyCooldownInfo(info)
+          applyCooldownInfo(info);
         }
       }
 
-      setGameVoided(true)
+      setGameVoided(true);
       setStatusMessage(
-        message ||
-          '사용 가능한 모든 API 키가 오류를 반환해 게임이 무효 처리되었습니다.',
-      )
-      setCurrentNodeId(null)
-      setTurnDeadline(null)
-      setTimeRemaining(null)
-      clearConsensusVotes()
-      updateHeroAssets([], null)
-      updateSessionRecord({ status: 'voided', actorNames: [] })
+        message || '사용 가능한 모든 API 키가 오류를 반환해 게임이 무효 처리되었습니다.'
+      );
+      setCurrentNodeId(null);
+      setTurnDeadline(null);
+      setTimeRemaining(null);
+      clearConsensusVotes();
+      updateHeroAssets([], null);
+      updateSessionRecord({ status: 'voided', actorNames: [] });
       try {
-        onSessionVoided({ message, options })
+        onSessionVoided({ message, options });
       } catch (error) {
-        console.warn('[useStartCooldown] onSessionVoided handler failed:', error)
+        console.warn('[useStartCooldown] onSessionVoided handler failed:', error);
       }
-      clearSessionRecord()
+      clearSessionRecord();
     },
     [
       applyCooldownInfo,
@@ -112,8 +111,8 @@ export function useStartCooldown({
       updateHeroAssets,
       updateSessionRecord,
       viewerId,
-    ],
-  )
+    ]
+  );
 
-  return { ensureApiKeyReady, voidSession }
+  return { ensureApiKeyReady, voidSession };
 }

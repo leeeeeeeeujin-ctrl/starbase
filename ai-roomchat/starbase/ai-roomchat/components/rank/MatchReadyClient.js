@@ -1,11 +1,11 @@
-'use client'
+'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import dynamic from 'next/dynamic'
-import { useRouter } from 'next/router'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
+import { useRouter } from 'next/router';
 
-import styles from './MatchReadyClient.module.css'
-import { createEmptyMatchFlowState, readMatchFlowState } from '../../lib/rank/matchFlow'
+import styles from './MatchReadyClient.module.css';
+import { createEmptyMatchFlowState, readMatchFlowState } from '../../lib/rank/matchFlow';
 import {
   setGameMatchParticipation,
   setGameMatchSlotTemplate,
@@ -13,19 +13,19 @@ import {
   setGameMatchSessionMeta,
   setGameMatchSessionHistory,
   subscribeGameMatchData,
-} from '../../modules/rank/matchDataStore'
+} from '../../modules/rank/matchDataStore';
 import {
   TURN_TIMER_OPTIONS,
   sanitizeSecondsOption,
   formatSecondsLabel,
   sanitizeTurnTimerVote,
   buildTurnTimerVotePatch,
-} from '../../lib/rank/turnTimerMeta'
-import { subscribeToBroadcastTopic } from '../../lib/realtime/broadcast'
-import { supabase } from '../../lib/supabase'
-import { loadMatchFlowSnapshot } from '../../modules/rank/matchRealtimeSync'
-import { requestMatchReadySignal } from '../../lib/rank/readyCheckClient'
-import { addDebugEvent } from '../../lib/debugCollector'
+} from '../../lib/rank/turnTimerMeta';
+import { subscribeToBroadcastTopic } from '../../lib/realtime/broadcast';
+import { supabase } from '../../lib/supabase';
+import { loadMatchFlowSnapshot } from '../../modules/rank/matchRealtimeSync';
+import { requestMatchReadySignal } from '../../lib/rank/readyCheckClient';
+import { addDebugEvent } from '../../lib/debugCollector';
 
 const StartClient = dynamic(() => import('./StartClient'), {
   ssr: false,
@@ -34,7 +34,7 @@ const StartClient = dynamic(() => import('./StartClient'), {
       <p className={styles.overlayLoadingText}>본게임 화면을 준비하고 있습니다…</p>
     </div>
   ),
-})
+});
 
 function createInitialDiagnostics() {
   return {
@@ -58,46 +58,41 @@ function createInitialDiagnostics() {
       lastEvent: null,
       lastError: null,
     },
-  }
+  };
 }
 
 function deriveRealtimeErrorHint(message = '') {
-  if (typeof message !== 'string') return null
+  if (typeof message !== 'string') return null;
   if (message.includes('Unable to subscribe to changes with given parameters')) {
     return [
       'Supabase Realtime이 해당 테이블을 전파하도록 설정되어 있는지 확인하세요.',
       '다음 SQL을 실행해 rank_match_roster, rank_sessions, rank_rooms, rank_session_meta를 supabase_realtime 게시에 추가한 뒤 대시보드에서 Realtime을 활성화해야 합니다.',
       'alter publication supabase_realtime add table public.rank_match_roster, public.rank_sessions, public.rank_rooms, public.rank_session_meta;',
-    ].join(' ')
+    ].join(' ');
   }
-  return null
+  return null;
 }
 
 function normalizeRealtimeError(error) {
   if (!error) {
-    return { message: 'unknown_error', hint: null }
+    return { message: 'unknown_error', hint: null };
   }
 
   if (typeof error === 'string') {
-    return { message: error, hint: deriveRealtimeErrorHint(error) }
+    return { message: error, hint: deriveRealtimeErrorHint(error) };
   }
 
   if (error instanceof Error) {
-    const message = error.message || 'unknown_error'
-    return { message, hint: deriveRealtimeErrorHint(message) }
+    const message = error.message || 'unknown_error';
+    return { message, hint: deriveRealtimeErrorHint(message) };
   }
 
   if (error?.payload) {
-    return normalizeRealtimeError(error.payload)
+    return normalizeRealtimeError(error.payload);
   }
 
   const message =
-    error?.message ||
-    error?.msg ||
-    error?.reason ||
-    error?.error ||
-    error?.code ||
-    'unknown_error'
+    error?.message || error?.msg || error?.reason || error?.error || error?.code || 'unknown_error';
 
   const combined = [
     error?.message,
@@ -108,17 +103,17 @@ function normalizeRealtimeError(error) {
     error?.status,
   ]
     .filter(Boolean)
-    .join(' ')
+    .join(' ');
 
-  return { message, hint: deriveRealtimeErrorHint(combined || message) }
+  return { message, hint: deriveRealtimeErrorHint(combined || message) };
 }
 
 function safeJsonParse(value) {
-  if (!value) return null
+  if (!value) return null;
   try {
-    return JSON.parse(value)
+    return JSON.parse(value);
   } catch (error) {
-    return null
+    return null;
   }
 }
 
@@ -127,16 +122,16 @@ function useMatchReadyState(gameId) {
     ...createEmptyMatchFlowState(),
     sessionId: null,
     roomId: null,
-  }))
-  const [diagnostics, setDiagnostics] = useState(() => createInitialDiagnostics())
-  const refreshPromiseRef = useRef(null)
+  }));
+  const [diagnostics, setDiagnostics] = useState(() => createInitialDiagnostics());
+  const refreshPromiseRef = useRef(null);
   const latestRef = useRef({
     slotTemplateVersion: null,
     slotTemplateUpdatedAt: null,
     sessionId: null,
     roomId: null,
-  })
-  const refreshTimeoutRef = useRef(null)
+  });
+  const refreshTimeoutRef = useRef(null);
 
   const applySnapshot = useCallback(() => {
     if (!gameId && gameId !== 0) {
@@ -144,43 +139,45 @@ function useMatchReadyState(gameId) {
         ...createEmptyMatchFlowState(),
         sessionId: null,
         roomId: null,
-      }
-      setState(empty)
-      setDiagnostics((prev) => ({
+      };
+      setState(empty);
+      setDiagnostics(prev => ({
         ...createInitialDiagnostics(),
         lastSnapshotAt: Date.now(),
         lastRefreshError: prev.lastRefreshError,
         lastRefreshHint: prev.lastRefreshHint,
-      }))
-      return empty
+      }));
+      return empty;
     }
-    const snapshot = readMatchFlowState(gameId)
-    const storedSessionId = snapshot?.sessionHistory?.sessionId || null
+    const snapshot = readMatchFlowState(gameId);
+    const storedSessionId = snapshot?.sessionHistory?.sessionId || null;
     if (storedSessionId && !latestRef.current.sessionId) {
-      const trimmed = String(storedSessionId).trim()
-      latestRef.current.sessionId = trimmed || latestRef.current.sessionId
+      const trimmed = String(storedSessionId).trim();
+      latestRef.current.sessionId = trimmed || latestRef.current.sessionId;
     }
     const effectiveSessionId =
-      latestRef.current.sessionId || (storedSessionId ? String(storedSessionId).trim() || null : null)
+      latestRef.current.sessionId ||
+      (storedSessionId ? String(storedSessionId).trim() || null : null);
     const effectiveRoomId =
-      latestRef.current.roomId || (snapshot?.room?.id ? String(snapshot.room.id).trim() || null : null)
+      latestRef.current.roomId ||
+      (snapshot?.room?.id ? String(snapshot.room.id).trim() || null : null);
     const augmented = {
       ...snapshot,
       sessionId: effectiveSessionId,
       roomId: effectiveRoomId,
-    }
-    setState(augmented)
-    setDiagnostics((prev) => {
-      const roster = Array.isArray(augmented?.roster) ? augmented.roster : []
-      const readyCount = roster.filter((entry) => entry?.ready).length
+    };
+    setState(augmented);
+    setDiagnostics(prev => {
+      const roster = Array.isArray(augmented?.roster) ? augmented.roster : [];
+      const readyCount = roster.filter(entry => entry?.ready).length;
       return {
         ...prev,
         sessionId: augmented?.sessionId ? String(augmented.sessionId).trim() : prev.sessionId,
         roomId: augmented?.room?.id
           ? String(augmented.room.id).trim()
           : effectiveRoomId
-          ? String(effectiveRoomId).trim()
-          : prev.roomId,
+            ? String(effectiveRoomId).trim()
+            : prev.roomId,
         rosterCount: roster.length,
         readyCount,
         hasActiveKey: !!augmented?.hasActiveKey,
@@ -193,10 +190,10 @@ function useMatchReadyState(gameId) {
             ? augmented.sessionMeta.turnState.version
             : prev.turnStateVersion,
         lastSnapshotAt: Date.now(),
-      }
-    })
-    return augmented
-  }, [gameId])
+      };
+    });
+    return augmented;
+  }, [gameId]);
 
   const syncFromRemote = useCallback(async () => {
     if (!gameId && gameId !== 0) {
@@ -205,26 +202,26 @@ function useMatchReadyState(gameId) {
         slotTemplateUpdatedAt: null,
         sessionId: null,
         roomId: null,
-      }
+      };
       const empty = {
         ...createEmptyMatchFlowState(),
         sessionId: null,
         roomId: null,
-      }
-      setState(empty)
-      setDiagnostics((prev) => ({
+      };
+      setState(empty);
+      setDiagnostics(prev => ({
         ...createInitialDiagnostics(),
         lastSnapshotAt: Date.now(),
         lastRefreshAt: Date.now(),
         lastRefreshSource: 'reset',
         lastRefreshError: null,
         lastRefreshHint: null,
-      }))
-      return empty
+      }));
+      return empty;
     }
 
     try {
-      const payload = await loadMatchFlowSnapshot(supabase, gameId)
+      const payload = await loadMatchFlowSnapshot(supabase, gameId);
       if (payload) {
         if (Array.isArray(payload.roster) && payload.roster.length) {
           setGameMatchParticipation(gameId, {
@@ -235,23 +232,23 @@ function useMatchReadyState(gameId) {
             realtimeMode: payload.realtimeMode,
             hostOwnerId: payload.hostOwnerId,
             hostRoleLimit: payload.hostRoleLimit,
-          })
+          });
         }
 
         if (payload.slotTemplate) {
-          setGameMatchSlotTemplate(gameId, payload.slotTemplate)
+          setGameMatchSlotTemplate(gameId, payload.slotTemplate);
         }
 
         if (payload.matchSnapshot) {
-          setGameMatchSnapshot(gameId, payload.matchSnapshot)
+          setGameMatchSnapshot(gameId, payload.matchSnapshot);
         }
 
         if (payload.sessionMeta) {
-          setGameMatchSessionMeta(gameId, payload.sessionMeta)
+          setGameMatchSessionMeta(gameId, payload.sessionMeta);
         }
 
         if (payload.sessionHistory !== undefined) {
-          setGameMatchSessionHistory(gameId, payload.sessionHistory)
+          setGameMatchSessionHistory(gameId, payload.sessionHistory);
         }
 
         latestRef.current = {
@@ -264,13 +261,14 @@ function useMatchReadyState(gameId) {
               ? payload.slotTemplateUpdatedAt
               : latestRef.current.slotTemplateUpdatedAt,
           sessionId:
-            payload.sessionId != null ? String(payload.sessionId).trim() : latestRef.current.sessionId,
+            payload.sessionId != null
+              ? String(payload.sessionId).trim()
+              : latestRef.current.sessionId,
           roomId: payload.roomId != null ? String(payload.roomId).trim() : latestRef.current.roomId,
-        }
-        setDiagnostics((prev) => ({
+        };
+        setDiagnostics(prev => ({
           ...prev,
-          sessionId:
-            payload.sessionId != null ? String(payload.sessionId).trim() : prev.sessionId,
+          sessionId: payload.sessionId != null ? String(payload.sessionId).trim() : prev.sessionId,
           roomId: payload.roomId != null ? String(payload.roomId).trim() : prev.roomId,
           sessionMetaUpdatedAt:
             payload.sessionMeta?.updatedAt != null
@@ -284,17 +282,17 @@ function useMatchReadyState(gameId) {
           lastRefreshSource: 'snapshot',
           lastRefreshError: null,
           lastRefreshHint: null,
-        }))
+        }));
       }
     } catch (error) {
-      console.warn('[MatchReadyClient] 실시간 매치 데이터를 불러오지 못했습니다:', error)
-      setDiagnostics((prev) => ({
+      console.warn('[MatchReadyClient] 실시간 매치 데이터를 불러오지 못했습니다:', error);
+      setDiagnostics(prev => ({
         ...prev,
         lastRefreshAt: Date.now(),
         lastRefreshSource: 'snapshot',
         lastRefreshError: error?.message || 'load_failed',
         lastRefreshHint: error?.hint || prev.lastRefreshHint,
-      }))
+      }));
       addDebugEvent({
         level: 'error',
         source: 'match-ready-sync',
@@ -303,47 +301,47 @@ function useMatchReadyState(gameId) {
           gameId,
           error: error?.message || 'unknown_error',
         },
-      })
+      });
     }
 
-    return applySnapshot()
-  }, [gameId, applySnapshot])
+    return applySnapshot();
+  }, [gameId, applySnapshot]);
 
   const refresh = useCallback(() => {
     if (refreshPromiseRef.current) {
-      return refreshPromiseRef.current
+      return refreshPromiseRef.current;
     }
-    setDiagnostics((prev) => ({
+    setDiagnostics(prev => ({
       ...prev,
       pendingRefresh: true,
       lastRefreshRequestedAt: Date.now(),
-    }))
+    }));
     const promise = syncFromRemote().finally(() => {
-      refreshPromiseRef.current = null
-      setDiagnostics((prev) => ({
+      refreshPromiseRef.current = null;
+      setDiagnostics(prev => ({
         ...prev,
         pendingRefresh: false,
-      }))
-    })
-    refreshPromiseRef.current = promise
-    return promise
-  }, [syncFromRemote])
+      }));
+    });
+    refreshPromiseRef.current = promise;
+    return promise;
+  }, [syncFromRemote]);
 
   useEffect(() => {
-    let storedSessionId = null
-    let storedRoomId = null
+    let storedSessionId = null;
+    let storedRoomId = null;
     if (gameId || gameId === 0) {
-      const storedState = readMatchFlowState(gameId)
+      const storedState = readMatchFlowState(gameId);
       if (storedState?.sessionHistory?.sessionId) {
-        const trimmed = String(storedState.sessionHistory.sessionId).trim()
+        const trimmed = String(storedState.sessionHistory.sessionId).trim();
         if (trimmed) {
-          storedSessionId = trimmed
+          storedSessionId = trimmed;
         }
       }
       if (storedState?.room?.id) {
-        const trimmedRoom = String(storedState.room.id).trim()
+        const trimmedRoom = String(storedState.room.id).trim();
         if (trimmedRoom) {
-          storedRoomId = trimmedRoom
+          storedRoomId = trimmedRoom;
         }
       }
     }
@@ -353,36 +351,36 @@ function useMatchReadyState(gameId) {
       slotTemplateUpdatedAt: null,
       sessionId: storedSessionId,
       roomId: storedRoomId,
-    }
-    refresh()
-  }, [gameId, refresh])
+    };
+    refresh();
+  }, [gameId, refresh]);
 
   useEffect(() => {
-    if (!gameId && gameId !== 0) return undefined
+    if (!gameId && gameId !== 0) return undefined;
     const unsubscribe = subscribeGameMatchData(gameId, () => {
-      applySnapshot()
-    })
+      applySnapshot();
+    });
     return () => {
       if (typeof unsubscribe === 'function') {
-        unsubscribe()
+        unsubscribe();
       }
-    }
-  }, [gameId, applySnapshot])
+    };
+  }, [gameId, applySnapshot]);
 
   useEffect(() => {
-    if (!gameId && gameId !== 0) return undefined
+    if (!gameId && gameId !== 0) return undefined;
 
-    let alive = true
+    let alive = true;
 
-    const scheduleRefresh = (payload) => {
-      if (!alive || refreshTimeoutRef.current) return
+    const scheduleRefresh = payload => {
+      if (!alive || refreshTimeoutRef.current) return;
 
-      const eventType = payload?.eventType || payload?.event || null
-      const tableName = payload?.table || null
-      const schemaName = payload?.schema || null
-      const commitTimestamp = payload?.commit_timestamp || null
+      const eventType = payload?.eventType || payload?.event || null;
+      const tableName = payload?.table || null;
+      const schemaName = payload?.schema || null;
+      const commitTimestamp = payload?.commit_timestamp || null;
 
-      setDiagnostics((prev) => ({
+      setDiagnostics(prev => ({
         ...prev,
         realtime: {
           ...prev.realtime,
@@ -397,16 +395,16 @@ function useMatchReadyState(gameId) {
             receivedAt: Date.now(),
           },
         },
-      }))
+      }));
 
       refreshTimeoutRef.current = setTimeout(() => {
-        refreshTimeoutRef.current = null
-        refresh()
-      }, 250)
-    }
+        refreshTimeoutRef.current = null;
+        refresh();
+      }, 250);
+    };
 
     const handleStatusUpdate = (status, context = {}) => {
-      if (!alive) return
+      if (!alive) return;
 
       const normalizedStatus =
         status === 'SUBSCRIBED'
@@ -415,26 +413,29 @@ function useMatchReadyState(gameId) {
             ? 'connecting'
             : status === 'CLOSED'
               ? 'closed'
-              : String(status || '').toLowerCase()
+              : String(status || '').toLowerCase();
 
-      const errorPayload = context?.error ? normalizeRealtimeError(context.error) : null
+      const errorPayload = context?.error ? normalizeRealtimeError(context.error) : null;
 
-      setDiagnostics((prev) => ({
+      setDiagnostics(prev => ({
         ...prev,
         realtime: {
           ...prev.realtime,
           status: normalizedStatus || prev.realtime.status,
           updatedAt: Date.now(),
-          lastError: status === 'CHANNEL_ERROR' ? errorPayload || { topic: context.topic || null } : prev.realtime.lastError,
+          lastError:
+            status === 'CHANNEL_ERROR'
+              ? errorPayload || { topic: context.topic || null }
+              : prev.realtime.lastError,
         },
-      }))
+      }));
 
       if (status === 'CHANNEL_ERROR') {
-        refresh().catch(() => {})
+        refresh().catch(() => {});
       }
-    }
+    };
 
-    setDiagnostics((prev) => ({
+    setDiagnostics(prev => ({
       ...prev,
       realtime: {
         ...prev.realtime,
@@ -442,152 +443,150 @@ function useMatchReadyState(gameId) {
         updatedAt: Date.now(),
         lastError: null,
       },
-    }))
+    }));
 
     const unsubscribers = [
       subscribeToBroadcastTopic(
         `rank_match_roster:game:${gameId}`,
-        (change) => {
-          if (!alive) return
-          scheduleRefresh(change)
+        change => {
+          if (!alive) return;
+          scheduleRefresh(change);
         },
-        { events: ['INSERT', 'UPDATE', 'DELETE'], onStatus: handleStatusUpdate },
+        { events: ['INSERT', 'UPDATE', 'DELETE'], onStatus: handleStatusUpdate }
       ),
       subscribeToBroadcastTopic(
         `rank_sessions:game:${gameId}`,
-        (change) => {
-          if (!alive) return
-          scheduleRefresh(change)
+        change => {
+          if (!alive) return;
+          scheduleRefresh(change);
         },
-        { events: ['INSERT', 'UPDATE', 'DELETE'], onStatus: handleStatusUpdate },
+        { events: ['INSERT', 'UPDATE', 'DELETE'], onStatus: handleStatusUpdate }
       ),
       subscribeToBroadcastTopic(
         `rank_rooms:game:${gameId}`,
-        (change) => {
-          if (!alive) return
-          scheduleRefresh(change)
+        change => {
+          if (!alive) return;
+          scheduleRefresh(change);
         },
-        { events: ['INSERT', 'UPDATE', 'DELETE'], onStatus: handleStatusUpdate },
+        { events: ['INSERT', 'UPDATE', 'DELETE'], onStatus: handleStatusUpdate }
       ),
       subscribeToBroadcastTopic(
         `rank_session_meta:game:${gameId}`,
-        (change) => {
-          if (!alive) return
-          const sessionId = latestRef.current.sessionId
-          if (!sessionId) return
-          const record = change?.new || null
-          if (!record || typeof record !== 'object') return
-          const incoming = record.session_id ?? record.sessionId ?? null
-          if (!incoming) return
-          if (String(incoming).trim() !== String(sessionId).trim()) return
-          scheduleRefresh(change)
+        change => {
+          if (!alive) return;
+          const sessionId = latestRef.current.sessionId;
+          if (!sessionId) return;
+          const record = change?.new || null;
+          if (!record || typeof record !== 'object') return;
+          const incoming = record.session_id ?? record.sessionId ?? null;
+          if (!incoming) return;
+          if (String(incoming).trim() !== String(sessionId).trim()) return;
+          scheduleRefresh(change);
         },
-        { events: ['INSERT', 'UPDATE', 'DELETE'], onStatus: handleStatusUpdate },
+        { events: ['INSERT', 'UPDATE', 'DELETE'], onStatus: handleStatusUpdate }
       ),
-    ]
+    ];
 
     return () => {
-      alive = false
+      alive = false;
       if (refreshTimeoutRef.current) {
-        clearTimeout(refreshTimeoutRef.current)
-        refreshTimeoutRef.current = null
+        clearTimeout(refreshTimeoutRef.current);
+        refreshTimeoutRef.current = null;
       }
-      unsubscribers.forEach((unsubscribe) => {
+      unsubscribers.forEach(unsubscribe => {
         if (typeof unsubscribe === 'function') {
-          unsubscribe()
+          unsubscribe();
         }
-      })
-    }
-  }, [gameId, refresh])
+      });
+    };
+  }, [gameId, refresh]);
 
   const allowStart = useMemo(
     () => Boolean(gameId && state?.snapshot && state?.hasActiveKey && state?.sessionId),
-    [gameId, state?.snapshot, state?.hasActiveKey, state?.sessionId],
-  )
+    [gameId, state?.snapshot, state?.hasActiveKey, state?.sessionId]
+  );
 
-  const missingKey = Boolean(state?.snapshot && !state?.hasActiveKey)
+  const missingKey = Boolean(state?.snapshot && !state?.hasActiveKey);
 
-  return { state, refresh, allowStart, missingKey, diagnostics }
+  return { state, refresh, allowStart, missingKey, diagnostics };
 }
 
 function getViewerIdentity(state) {
-  const ownerId = state?.viewer?.ownerId ? String(state.viewer.ownerId).trim() : ''
-  if (ownerId) return ownerId
-  const viewerId = state?.viewer?.viewerId ? String(state.viewer.viewerId).trim() : ''
-  if (viewerId) return viewerId
-  const authId = state?.authSnapshot?.userId
-  return authId ? String(authId).trim() : ''
+  const ownerId = state?.viewer?.ownerId ? String(state.viewer.ownerId).trim() : '';
+  if (ownerId) return ownerId;
+  const viewerId = state?.viewer?.viewerId ? String(state.viewer.viewerId).trim() : '';
+  if (viewerId) return viewerId;
+  const authId = state?.authSnapshot?.userId;
+  return authId ? String(authId).trim() : '';
 }
 
 function formatDiagnosticsTimestamp(value) {
-  if (!value) return '—'
-  const numeric = Number(value)
-  const date = Number.isFinite(numeric) ? new Date(numeric) : new Date(value)
+  if (!value) return '—';
+  const numeric = Number(value);
+  const date = Number.isFinite(numeric) ? new Date(numeric) : new Date(value);
   if (Number.isNaN(date.getTime())) {
-    return typeof value === 'string' ? value : String(value)
+    return typeof value === 'string' ? value : String(value);
   }
-  return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`
+  return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
 }
 
 function formatRealtimeStatus(realtime) {
-  if (!realtime) return 'idle'
-  return realtime.status || 'idle'
+  if (!realtime) return 'idle';
+  return realtime.status || 'idle';
 }
 
 function formatRealtimeEventSummary(event) {
-  if (!event) return '없음'
-  const schema = event.schema || 'public'
-  const table = event.table || '*'
-  const type = event.event || 'unknown'
-  return `${schema}.${table} · ${type}`
+  if (!event) return '없음';
+  const schema = event.schema || 'public';
+  const table = event.table || '*';
+  const type = event.event || 'unknown';
+  return `${schema}.${table} · ${type}`;
 }
 
 function buildMetaLines(state) {
-  const lines = []
-  if (!state?.snapshot) return lines
+  const lines = [];
+  if (!state?.snapshot) return lines;
 
-  const code = state.snapshot?.match?.matchCode
+  const code = state.snapshot?.match?.matchCode;
   if (code) {
-    lines.push(`방 코드 ${code}`)
+    lines.push(`방 코드 ${code}`);
   }
 
-  const windowSize = state.snapshot?.match?.maxWindow
+  const windowSize = state.snapshot?.match?.maxWindow;
   if (Number.isFinite(Number(windowSize)) && Number(windowSize) > 0) {
-    lines.push(`점수 범위 ±${Number(windowSize)}`)
+    lines.push(`점수 범위 ±${Number(windowSize)}`);
   }
 
-  const modeLabel = state.matchMode ? `모드 ${state.matchMode}` : ''
+  const modeLabel = state.matchMode ? `모드 ${state.matchMode}` : '';
   if (modeLabel) {
-    lines.push(modeLabel)
+    lines.push(modeLabel);
   }
 
   if (state.room?.realtimeMode === 'pulse') {
-    lines.push('Pulse 실시간 규칙 적용')
+    lines.push('Pulse 실시간 규칙 적용');
     if (Number.isFinite(Number(state.room?.hostRoleLimit))) {
-      lines.push(`호스트 역할군 제한 ${state.room.hostRoleLimit}명`)
+      lines.push(`호스트 역할군 제한 ${state.room.hostRoleLimit}명`);
     }
   } else if (state.room?.realtimeMode === 'standard') {
-    lines.push('실시간 매치 준비 완료')
+    lines.push('실시간 매치 준비 완료');
   }
 
   if (state.snapshot?.match?.matchType === 'drop_in') {
-    lines.push('난입 매치 진행 중')
+    lines.push('난입 매치 진행 중');
   }
 
-  const asyncFill = state?.sessionMeta?.asyncFill
+  const asyncFill = state?.sessionMeta?.asyncFill;
   if (asyncFill?.mode === 'off' && asyncFill?.seatLimit) {
-    const allowed = Number(asyncFill.seatLimit.allowed) || 0
-    const total = Number(asyncFill.seatLimit.total) || 0
-    const queueCount = Array.isArray(asyncFill.fillQueue) ? asyncFill.fillQueue.length : 0
-    const roleLabel = asyncFill.hostRole || '역할 미지정'
+    const allowed = Number(asyncFill.seatLimit.allowed) || 0;
+    const total = Number(asyncFill.seatLimit.total) || 0;
+    const queueCount = Array.isArray(asyncFill.fillQueue) ? asyncFill.fillQueue.length : 0;
+    const roleLabel = asyncFill.hostRole || '역할 미지정';
     if (total > 0) {
-      lines.push(
-        `비실시간 충원 · ${roleLabel} 좌석 ${allowed}/${total} · 대기열 ${queueCount}명`,
-      )
+      lines.push(`비실시간 충원 · ${roleLabel} 좌석 ${allowed}/${total} · 대기열 ${queueCount}명`);
     }
   }
 
-  return lines
+  return lines;
 }
 
 function buildRosterDisplay(roster, viewer, blindMode, asyncFill) {
@@ -598,220 +597,224 @@ function buildRosterDisplay(roster, viewer, blindMode, asyncFill) {
         label: '참가자 정보가 없습니다.',
         status: '',
       },
-    ]
+    ];
   }
 
-  const viewerOwnerId = viewer?.ownerId ? String(viewer.ownerId).trim() : ''
+  const viewerOwnerId = viewer?.ownerId ? String(viewer.ownerId).trim() : '';
   const seatIndexes = new Set(
     Array.isArray(asyncFill?.seatIndexes)
-      ? asyncFill.seatIndexes.map((value) => Number(value)).filter(Number.isFinite)
-      : [],
-  )
+      ? asyncFill.seatIndexes.map(value => Number(value)).filter(Number.isFinite)
+      : []
+  );
   const overflowIndexes = new Set(
     Array.isArray(asyncFill?.overflow)
       ? asyncFill.overflow
-          .map((entry) => Number(entry?.slotIndex))
-          .filter((value) => Number.isFinite(value))
-      : [],
-  )
+          .map(entry => Number(entry?.slotIndex))
+          .filter(value => Number.isFinite(value))
+      : []
+  );
   const pendingIndexes = new Set(
     Array.isArray(asyncFill?.pendingSeatIndexes)
       ? asyncFill.pendingSeatIndexes
-          .map((value) => Number(value))
-          .filter((value) => Number.isFinite(value))
-      : [],
-  )
-  const hasSeatLimit = seatIndexes.size > 0
+          .map(value => Number(value))
+          .filter(value => Number.isFinite(value))
+      : []
+  );
+  const hasSeatLimit = seatIndexes.size > 0;
 
   return roster.map((entry, index) => {
-    const isOccupied = entry.heroId && entry.ownerId
+    const isOccupied = entry.heroId && entry.ownerId;
     const hideIdentity =
-      blindMode &&
-      isOccupied &&
-      (!viewerOwnerId || String(entry.ownerId).trim() !== viewerOwnerId)
+      blindMode && isOccupied && (!viewerOwnerId || String(entry.ownerId).trim() !== viewerOwnerId);
     const heroLabel = hideIdentity
       ? '비공개 참가자'
-      : entry.heroName || (entry.heroId ? `캐릭터 #${entry.heroId}` : '빈 슬롯')
-    const roleLabel = entry.role || '역할 미지정'
-    const slotIndex = Number.isFinite(Number(entry.slotIndex))
-      ? Number(entry.slotIndex)
-      : index
-    let readyLabel = isOccupied ? '착석 완료' : '대기'
+      : entry.heroName || (entry.heroId ? `캐릭터 #${entry.heroId}` : '빈 슬롯');
+    const roleLabel = entry.role || '역할 미지정';
+    const slotIndex = Number.isFinite(Number(entry.slotIndex)) ? Number(entry.slotIndex) : index;
+    let readyLabel = isOccupied ? '착석 완료' : '대기';
 
     if (overflowIndexes.has(slotIndex)) {
-      readyLabel = isOccupied ? '대기열 (자동 충원 대기)' : '대기열 슬롯'
+      readyLabel = isOccupied ? '대기열 (자동 충원 대기)' : '대기열 슬롯';
     } else if (hasSeatLimit && !seatIndexes.has(slotIndex)) {
-      readyLabel = isOccupied ? '예비 슬롯' : '예비 슬롯'
+      readyLabel = isOccupied ? '예비 슬롯' : '예비 슬롯';
     } else if (!isOccupied && pendingIndexes.has(slotIndex)) {
-      readyLabel = '자동 충원 예정'
+      readyLabel = '자동 충원 예정';
     }
 
     return {
       key: `${entry.slotId || index}-${entry.heroId || index}`,
       label: `${roleLabel} · ${heroLabel}`,
       status: readyLabel,
-    }
-  })
+    };
+  });
 }
 
 export default function MatchReadyClient({ gameId }) {
-  const router = useRouter()
-  const { state, refresh, allowStart, missingKey, diagnostics } = useMatchReadyState(gameId)
-  const [showGame, setShowGame] = useState(false)
-  const [voteNotice, setVoteNotice] = useState('')
-  const [readyBusy, setReadyBusy] = useState(false)
-  const [readyError, setReadyError] = useState('')
-  const [readyCountdownMs, setReadyCountdownMs] = useState(null)
-  const [readyTimeoutBusy, setReadyTimeoutBusy] = useState(false)
-  const readySignalControllerRef = useRef(null)
-  const readyTimeoutTriggeredRef = useRef(false)
-  const autoOpenRef = useRef(false)
-  const [showDiagnostics, setShowDiagnostics] = useState(false)
+  const router = useRouter();
+  const { state, refresh, allowStart, missingKey, diagnostics } = useMatchReadyState(gameId);
+  const [showGame, setShowGame] = useState(false);
+  const [voteNotice, setVoteNotice] = useState('');
+  const [readyBusy, setReadyBusy] = useState(false);
+  const [readyError, setReadyError] = useState('');
+  const [readyCountdownMs, setReadyCountdownMs] = useState(null);
+  const [readyTimeoutBusy, setReadyTimeoutBusy] = useState(false);
+  const readySignalControllerRef = useRef(null);
+  const readyTimeoutTriggeredRef = useRef(false);
+  const autoOpenRef = useRef(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
 
-  const metaLines = useMemo(() => buildMetaLines(state), [state])
-  const asyncFillInfo = useMemo(() => state?.sessionMeta?.asyncFill || null, [state?.sessionMeta?.asyncFill])
+  const metaLines = useMemo(() => buildMetaLines(state), [state]);
+  const asyncFillInfo = useMemo(
+    () => state?.sessionMeta?.asyncFill || null,
+    [state?.sessionMeta?.asyncFill]
+  );
   const rosterDisplay = useMemo(
     () => buildRosterDisplay(state?.roster, state?.viewer, state?.room?.blindMode, asyncFillInfo),
-    [state?.roster, state?.viewer, state?.room?.blindMode, asyncFillInfo],
-  )
+    [state?.roster, state?.viewer, state?.room?.blindMode, asyncFillInfo]
+  );
   const asyncFillSummary = useMemo(() => {
-    if (!asyncFillInfo || asyncFillInfo.mode !== 'off') return null
-    const seatLimit = asyncFillInfo.seatLimit || {}
-    const allowed = Number(seatLimit.allowed) || 0
-    const total = Number(seatLimit.total) || 0
+    if (!asyncFillInfo || asyncFillInfo.mode !== 'off') return null;
+    const seatLimit = asyncFillInfo.seatLimit || {};
+    const allowed = Number(seatLimit.allowed) || 0;
+    const total = Number(seatLimit.total) || 0;
     const pendingCount = Array.isArray(asyncFillInfo.pendingSeatIndexes)
       ? asyncFillInfo.pendingSeatIndexes.length
-      : 0
-    const queue = Array.isArray(asyncFillInfo.fillQueue) ? asyncFillInfo.fillQueue : []
+      : 0;
+    const queue = Array.isArray(asyncFillInfo.fillQueue) ? asyncFillInfo.fillQueue : [];
     return {
       role: asyncFillInfo.hostRole || '역할 미지정',
       allowed,
       total,
       pendingCount,
       queue,
-    }
-  }, [asyncFillInfo])
+    };
+  }, [asyncFillInfo]);
 
-  const viewerIdentity = useMemo(() => getViewerIdentity(state), [state])
+  const viewerIdentity = useMemo(() => getViewerIdentity(state), [state]);
   const viewerOwnerId = useMemo(() => {
     if (state?.viewer?.ownerId !== null && state?.viewer?.ownerId !== undefined) {
-      const trimmed = String(state.viewer.ownerId).trim()
-      if (trimmed) return trimmed
+      const trimmed = String(state.viewer.ownerId).trim();
+      if (trimmed) return trimmed;
     }
-    return ''
-  }, [state?.viewer?.ownerId])
+    return '';
+  }, [state?.viewer?.ownerId]);
 
   const sessionId = useMemo(() => {
     if (state?.sessionId !== null && state?.sessionId !== undefined) {
-      const trimmed = String(state.sessionId).trim()
-      if (trimmed) return trimmed
+      const trimmed = String(state.sessionId).trim();
+      if (trimmed) return trimmed;
     }
     if (state?.sessionHistory?.sessionId) {
-      const trimmed = String(state.sessionHistory.sessionId).trim()
-      if (trimmed) return trimmed
+      const trimmed = String(state.sessionHistory.sessionId).trim();
+      if (trimmed) return trimmed;
     }
-    return ''
-  }, [state?.sessionId, state?.sessionHistory?.sessionId])
+    return '';
+  }, [state?.sessionId, state?.sessionHistory?.sessionId]);
 
   const matchInstanceId = useMemo(() => {
     if (state?.matchInstanceId !== null && state?.matchInstanceId !== undefined) {
-      const trimmed = String(state.matchInstanceId).trim()
-      if (trimmed) return trimmed
+      const trimmed = String(state.matchInstanceId).trim();
+      if (trimmed) return trimmed;
     }
     if (state?.snapshot?.match?.matchInstanceId) {
-      const trimmed = String(state.snapshot.match.matchInstanceId).trim()
-      if (trimmed) return trimmed
+      const trimmed = String(state.snapshot.match.matchInstanceId).trim();
+      if (trimmed) return trimmed;
     }
     if (state?.snapshot?.match?.match_instance_id) {
-      const trimmed = String(state.snapshot.match.match_instance_id).trim()
-      if (trimmed) return trimmed
+      const trimmed = String(state.snapshot.match.match_instance_id).trim();
+      if (trimmed) return trimmed;
     }
-    return ''
-  }, [state?.matchInstanceId, state?.snapshot?.match?.matchInstanceId, state?.snapshot?.match?.match_instance_id])
+    return '';
+  }, [
+    state?.matchInstanceId,
+    state?.snapshot?.match?.matchInstanceId,
+    state?.snapshot?.match?.match_instance_id,
+  ]);
 
-  const readyCheck = state?.sessionMeta?.extras?.readyCheck || null
-  const readyStatus = typeof readyCheck?.status === 'string' ? readyCheck.status : 'idle'
-  const readyWindowActive = readyStatus === 'pending' || readyStatus === 'ready'
-  const readyExpiresAtMsRaw = Number(readyCheck?.expiresAtMs)
-  const readyExpiresAtMs = Number.isFinite(readyExpiresAtMsRaw) ? readyExpiresAtMsRaw : null
+  const readyCheck = state?.sessionMeta?.extras?.readyCheck || null;
+  const readyStatus = typeof readyCheck?.status === 'string' ? readyCheck.status : 'idle';
+  const readyWindowActive = readyStatus === 'pending' || readyStatus === 'ready';
+  const readyExpiresAtMsRaw = Number(readyCheck?.expiresAtMs);
+  const readyExpiresAtMs = Number.isFinite(readyExpiresAtMsRaw) ? readyExpiresAtMsRaw : null;
   const readyReadyIds = Array.isArray(readyCheck?.readyOwnerIds)
-    ? readyCheck.readyOwnerIds.map((id) => String(id))
-    : []
+    ? readyCheck.readyOwnerIds.map(id => String(id))
+    : [];
   const readyMissingIds = Array.isArray(readyCheck?.missingOwnerIds)
-    ? readyCheck.missingOwnerIds.map((id) => String(id))
-    : []
-  const viewerReady = viewerOwnerId ? readyReadyIds.includes(viewerOwnerId) : false
+    ? readyCheck.missingOwnerIds.map(id => String(id))
+    : [];
+  const viewerReady = viewerOwnerId ? readyReadyIds.includes(viewerOwnerId) : false;
   const totalReady = Number.isFinite(Number(readyCheck?.readyCount))
     ? Number(readyCheck.readyCount)
-    : readyReadyIds.length
+    : readyReadyIds.length;
   const totalCount = Number.isFinite(Number(readyCheck?.totalCount))
     ? Number(readyCheck.totalCount)
-    : readyReadyIds.length + readyMissingIds.length
-  const readyProgressLabel = totalCount > 0 ? `${Math.min(totalReady, totalCount)}/${totalCount}` : ''
+    : readyReadyIds.length + readyMissingIds.length;
+  const readyProgressLabel =
+    totalCount > 0 ? `${Math.min(totalReady, totalCount)}/${totalCount}` : '';
   const readyCountdownSeconds =
-    readyCountdownMs != null ? Math.max(0, Math.ceil(readyCountdownMs / 1000)) : null
+    readyCountdownMs != null ? Math.max(0, Math.ceil(readyCountdownMs / 1000)) : null;
 
   const diagnosticsRosterLabel = useMemo(() => {
-    if (!diagnostics?.rosterCount) return '0'
+    if (!diagnostics?.rosterCount) return '0';
     if (!Number.isFinite(Number(diagnostics.readyCount))) {
-      return String(diagnostics.rosterCount)
+      return String(diagnostics.rosterCount);
     }
-    return `${diagnostics.readyCount}/${diagnostics.rosterCount}`
-  }, [diagnostics?.readyCount, diagnostics?.rosterCount])
+    return `${diagnostics.readyCount}/${diagnostics.rosterCount}`;
+  }, [diagnostics?.readyCount, diagnostics?.rosterCount]);
 
   const handleToggleDiagnostics = useCallback(() => {
-    setShowDiagnostics((prev) => !prev)
-  }, [])
+    setShowDiagnostics(prev => !prev);
+  }, []);
 
   const appliedTurnTimerSeconds = useMemo(() => {
-    const metaSeconds = Number(state?.sessionMeta?.turnTimer?.baseSeconds)
+    const metaSeconds = Number(state?.sessionMeta?.turnTimer?.baseSeconds);
     if (Number.isFinite(metaSeconds) && metaSeconds > 0) {
-      return Math.floor(metaSeconds)
+      return Math.floor(metaSeconds);
     }
-    return null
-  }, [state?.sessionMeta?.turnTimer?.baseSeconds])
+    return null;
+  }, [state?.sessionMeta?.turnTimer?.baseSeconds]);
 
   const voteSnapshot = useMemo(
     () => sanitizeTurnTimerVote(state?.sessionMeta?.vote?.turnTimer),
-    [state?.sessionMeta?.vote?.turnTimer],
-  )
+    [state?.sessionMeta?.vote?.turnTimer]
+  );
 
   const viewerSelection = useMemo(() => {
-    if (!viewerIdentity) return null
-    return sanitizeSecondsOption(voteSnapshot.voters?.[viewerIdentity])
-  }, [viewerIdentity, voteSnapshot.voters])
+    if (!viewerIdentity) return null;
+    return sanitizeSecondsOption(voteSnapshot.voters?.[viewerIdentity]);
+  }, [viewerIdentity, voteSnapshot.voters]);
 
   const handleRefresh = useCallback(() => {
-    refresh()
-  }, [refresh])
+    refresh();
+  }, [refresh]);
 
   const resolveAccessToken = useCallback(async () => {
     try {
-      const { data, error } = await supabase.auth.getSession()
+      const { data, error } = await supabase.auth.getSession();
       if (!error) {
-        const tokenValue = data?.session?.access_token
+        const tokenValue = data?.session?.access_token;
         if (tokenValue) {
-          return String(tokenValue).trim()
+          return String(tokenValue).trim();
         }
       }
     } catch (error) {
       // ignore session resolution failures
     }
-    return ''
-  }, [])
+    return '';
+  }, []);
 
   const handleReturnToRoom = useCallback(() => {
     if (state?.room?.id) {
-      router.push(`/rooms/${state.room.id}`).catch(() => {})
-      return
+      router.push(`/rooms/${state.room.id}`).catch(() => {});
+      return;
     }
-    router.push('/match').catch(() => {})
-  }, [router, state?.room?.id])
+    router.push('/match').catch(() => {});
+  }, [router, state?.room?.id]);
 
   const handleReadySignal = useCallback(async () => {
-    if (!allowStart || readyBusy) return
+    if (!allowStart || readyBusy) return;
     if (!sessionId) {
-      setReadyError('세션 정보가 준비되지 않았습니다. 잠시 후 다시 시도해 주세요.')
+      setReadyError('세션 정보가 준비되지 않았습니다. 잠시 후 다시 시도해 주세요.');
       addDebugEvent({
         level: 'warn',
         source: 'match-ready',
@@ -821,23 +824,23 @@ export default function MatchReadyClient({ gameId }) {
           matchInstanceId: matchInstanceId || null,
           viewerOwnerId,
         },
-      })
-      refresh().catch(() => {})
-      return
+      });
+      refresh().catch(() => {});
+      return;
     }
 
     if (readySignalControllerRef.current) {
       try {
-        readySignalControllerRef.current.abort()
+        readySignalControllerRef.current.abort();
       } catch (error) {
         // ignore abort failures
       }
     }
 
-    const controller = new AbortController()
-    readySignalControllerRef.current = controller
-    setReadyBusy(true)
-    setReadyError('')
+    const controller = new AbortController();
+    readySignalControllerRef.current = controller;
+    setReadyBusy(true);
+    setReadyError('');
 
     try {
       const response = await requestMatchReadySignal({
@@ -846,56 +849,58 @@ export default function MatchReadyClient({ gameId }) {
         matchInstanceId: matchInstanceId || null,
         windowSeconds: 15,
         signal: controller.signal,
-      })
+      });
 
       if (response?.readyCheck) {
         const currentExtras =
           state?.sessionMeta?.extras && typeof state.sessionMeta.extras === 'object'
             ? state.sessionMeta.extras
-            : {}
-        const mergedExtras = { ...currentExtras, readyCheck: response.readyCheck }
+            : {};
+        const mergedExtras = { ...currentExtras, readyCheck: response.readyCheck };
         setGameMatchSessionMeta(gameId, {
           extras: mergedExtras,
           source: 'match-ready-ready-check',
-        })
+        });
       }
     } catch (error) {
       if (!controller.signal.aborted) {
-        console.warn('[MatchReadyClient] 준비 신호 전송 실패:', error)
+        console.warn('[MatchReadyClient] 준비 신호 전송 실패:', error);
         const supabaseMessage =
           error?.payload?.supabaseError?.message ||
           error?.payload?.supabaseError?.details ||
           error?.payload?.error ||
-          error?.message
+          error?.message;
         const payloadError =
           error?.payload?.error ||
           error?.payload?.code ||
           error?.payload?.supabaseError?.code ||
           error?.payload?.supabaseError?.error ||
-          ''
-        const normalizedError = typeof payloadError === 'string' ? payloadError.trim() : ''
+          '';
+        const normalizedError = typeof payloadError === 'string' ? payloadError.trim() : '';
 
         if (normalizedError === 'missing_access_token' || normalizedError === 'unauthorized') {
-          setReadyError('세션 인증이 만료되었습니다. 페이지를 새로고침하거나 다시 로그인해 주세요.')
-          refresh().catch(() => {})
+          setReadyError(
+            '세션 인증이 만료되었습니다. 페이지를 새로고침하거나 다시 로그인해 주세요.'
+          );
+          refresh().catch(() => {});
         } else if (normalizedError === 'forbidden') {
-          setReadyError('이 매치에 참여할 권한이 없습니다. 매치 초대 상태를 확인해 주세요.')
+          setReadyError('이 매치에 참여할 권한이 없습니다. 매치 초대 상태를 확인해 주세요.');
         } else if (normalizedError === 'session_not_found') {
-          setReadyError('세션을 찾지 못했습니다. 새로고침 후 다시 시도해 주세요.')
-          refresh().catch(() => {})
+          setReadyError('세션을 찾지 못했습니다. 새로고침 후 다시 시도해 주세요.');
+          refresh().catch(() => {});
         } else {
           setReadyError(
             supabaseMessage
               ? `준비 신호 실패: ${supabaseMessage}`
-              : '준비 신호를 전송하지 못했습니다. 잠시 후 다시 시도해 주세요.',
-          )
+              : '준비 신호를 전송하지 못했습니다. 잠시 후 다시 시도해 주세요.'
+          );
         }
       }
     } finally {
       if (readySignalControllerRef.current === controller) {
-        readySignalControllerRef.current = null
+        readySignalControllerRef.current = null;
       }
-      setReadyBusy(false)
+      setReadyBusy(false);
     }
   }, [
     allowStart,
@@ -906,23 +911,23 @@ export default function MatchReadyClient({ gameId }) {
     state?.sessionMeta?.extras,
     refresh,
     viewerOwnerId,
-  ])
+  ]);
 
   const handleReadyTimeoutReplacement = useCallback(async () => {
-    if (readyTimeoutBusy) return
-    if (!allowStart) return
-    if (!matchInstanceId) return
-    if (!gameId) return
-    if (!readyMissingIds.length) return
+    if (readyTimeoutBusy) return;
+    if (!allowStart) return;
+    if (!matchInstanceId) return;
+    if (!gameId) return;
+    if (!readyMissingIds.length) return;
 
-    setReadyTimeoutBusy(true)
+    setReadyTimeoutBusy(true);
 
     try {
-      const token = await resolveAccessToken()
+      const token = await resolveAccessToken();
       if (!token) {
-        setReadyError('세션 인증이 만료되었습니다. 페이지를 새로고침한 뒤 다시 로그인해 주세요.')
-        readyTimeoutTriggeredRef.current = false
-        return
+        setReadyError('세션 인증이 만료되었습니다. 페이지를 새로고침한 뒤 다시 로그인해 주세요.');
+        readyTimeoutTriggeredRef.current = false;
+        return;
       }
 
       const response = await fetch('/api/rank/ready-timeout', {
@@ -937,14 +942,16 @@ export default function MatchReadyClient({ gameId }) {
           room_id: state?.room?.id || null,
           missing_owner_ids: readyMissingIds,
         }),
-      })
+      });
 
-      const text = await response.text().catch(() => '')
-      const data = safeJsonParse(text) || {}
+      const text = await response.text().catch(() => '');
+      const data = safeJsonParse(text) || {};
 
       if (!response.ok) {
-        const message = data?.error || 'ready_timeout_failed'
-        setReadyError('준비하지 않은 참가자를 대역으로 교체하지 못했습니다. 잠시 후 다시 시도해 주세요.')
+        const message = data?.error || 'ready_timeout_failed';
+        setReadyError(
+          '준비하지 않은 참가자를 대역으로 교체하지 못했습니다. 잠시 후 다시 시도해 주세요.'
+        );
         addDebugEvent({
           level: 'warn',
           source: 'ready-timeout',
@@ -954,15 +961,15 @@ export default function MatchReadyClient({ gameId }) {
             error: message,
             hint: data?.hint || null,
           },
-        })
-        readyTimeoutTriggeredRef.current = false
-        return
+        });
+        readyTimeoutTriggeredRef.current = false;
+        return;
       }
 
       const currentExtras =
         state?.sessionMeta?.extras && typeof state.sessionMeta.extras === 'object'
           ? state.sessionMeta.extras
-          : {}
+          : {};
 
       const mergedExtras = {
         ...currentExtras,
@@ -972,19 +979,19 @@ export default function MatchReadyClient({ gameId }) {
           placeholders: Number.isFinite(Number(data.placeholders)) ? Number(data.placeholders) : 0,
           diagnostics: data.diagnostics || null,
         },
-      }
+      };
 
       if (currentExtras.readyCheck) {
-        mergedExtras.readyCheck = currentExtras.readyCheck
+        mergedExtras.readyCheck = currentExtras.readyCheck;
       }
       if (readyCheck) {
-        mergedExtras.readyCheck = readyCheck
+        mergedExtras.readyCheck = readyCheck;
       }
 
       setGameMatchSessionMeta(gameId, {
         extras: mergedExtras,
         source: 'match-ready-timeout',
-      })
+      });
 
       addDebugEvent({
         level: 'info',
@@ -994,22 +1001,24 @@ export default function MatchReadyClient({ gameId }) {
           assignments: Array.isArray(data.assignments) ? data.assignments.length : 0,
           placeholders: Number.isFinite(Number(data.placeholders)) ? Number(data.placeholders) : 0,
         },
-      })
+      });
 
-      readyTimeoutTriggeredRef.current = false
-      refresh().catch(() => {})
+      readyTimeoutTriggeredRef.current = false;
+      refresh().catch(() => {});
     } catch (error) {
-      console.error('[MatchReadyClient] ready-timeout replacement failed:', error)
-      setReadyError('준비하지 않은 참가자를 대역으로 교체하지 못했습니다. 잠시 후 다시 시도해 주세요.')
+      console.error('[MatchReadyClient] ready-timeout replacement failed:', error);
+      setReadyError(
+        '준비하지 않은 참가자를 대역으로 교체하지 못했습니다. 잠시 후 다시 시도해 주세요.'
+      );
       addDebugEvent({
         level: 'error',
         source: 'ready-timeout',
         message: 'Ready timeout replacement threw',
         details: { message: error?.message || 'unknown_error' },
-      })
-      readyTimeoutTriggeredRef.current = false
+      });
+      readyTimeoutTriggeredRef.current = false;
     } finally {
-      setReadyTimeoutBusy(false)
+      setReadyTimeoutBusy(false);
     }
   }, [
     readyTimeoutBusy,
@@ -1022,77 +1031,77 @@ export default function MatchReadyClient({ gameId }) {
     state?.sessionMeta?.extras,
     readyCheck,
     refresh,
-  ])
+  ]);
 
   const handleStart = useCallback(() => {
-    if (!gameId) return
+    if (!gameId) return;
     if (readyStatus === 'ready' && viewerReady) {
-      setShowGame(true)
-      return
+      setShowGame(true);
+      return;
     }
-    handleReadySignal()
-  }, [gameId, readyStatus, viewerReady, handleReadySignal])
+    handleReadySignal();
+  }, [gameId, readyStatus, viewerReady, handleReadySignal]);
 
   useEffect(() => {
     if (showGame) {
-      const previous = document.body.style.overflow
-      document.body.style.overflow = 'hidden'
+      const previous = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
       return () => {
-        document.body.style.overflow = previous
-      }
+        document.body.style.overflow = previous;
+      };
     }
-    return undefined
-  }, [showGame])
+    return undefined;
+  }, [showGame]);
 
   useEffect(() => {
     if (!allowStart && showGame) {
-      setShowGame(false)
+      setShowGame(false);
     }
-  }, [allowStart, showGame])
+  }, [allowStart, showGame]);
 
   useEffect(() => {
-    if (!voteNotice) return undefined
+    if (!voteNotice) return undefined;
     const timer = setTimeout(() => {
-      setVoteNotice('')
-    }, 2800)
-    return () => clearTimeout(timer)
-  }, [voteNotice])
+      setVoteNotice('');
+    }, 2800);
+    return () => clearTimeout(timer);
+  }, [voteNotice]);
 
   useEffect(() => {
     if (!readyWindowActive || !readyExpiresAtMs) {
-      setReadyCountdownMs(null)
-      return undefined
+      setReadyCountdownMs(null);
+      return undefined;
     }
     const update = () => {
-      setReadyCountdownMs(Math.max(0, readyExpiresAtMs - Date.now()))
-    }
-    update()
-    const timer = setInterval(update, 250)
-    return () => clearInterval(timer)
-  }, [readyWindowActive, readyExpiresAtMs])
+      setReadyCountdownMs(Math.max(0, readyExpiresAtMs - Date.now()));
+    };
+    update();
+    const timer = setInterval(update, 250);
+    return () => clearInterval(timer);
+  }, [readyWindowActive, readyExpiresAtMs]);
 
   useEffect(() => {
     if (!readyWindowActive || readyStatus === 'ready') {
-      readyTimeoutTriggeredRef.current = false
-      return
+      readyTimeoutTriggeredRef.current = false;
+      return;
     }
 
     if (readyTimeoutBusy) {
-      return
+      return;
     }
 
     if (!readyMissingIds.length) {
-      readyTimeoutTriggeredRef.current = false
-      return
+      readyTimeoutTriggeredRef.current = false;
+      return;
     }
 
     if (readyCountdownSeconds != null && readyCountdownSeconds <= 0) {
       if (!readyTimeoutTriggeredRef.current) {
-        readyTimeoutTriggeredRef.current = true
-        handleReadyTimeoutReplacement()
+        readyTimeoutTriggeredRef.current = true;
+        handleReadyTimeoutReplacement();
       }
     } else {
-      readyTimeoutTriggeredRef.current = false
+      readyTimeoutTriggeredRef.current = false;
     }
   }, [
     readyWindowActive,
@@ -1101,47 +1110,50 @@ export default function MatchReadyClient({ gameId }) {
     readyMissingIds,
     handleReadyTimeoutReplacement,
     readyTimeoutBusy,
-  ])
+  ]);
 
   useEffect(() => {
     if (!allowStart) {
-      autoOpenRef.current = false
-      return
+      autoOpenRef.current = false;
+      return;
     }
     if (readyStatus === 'ready') {
       if (viewerReady && !autoOpenRef.current) {
-        autoOpenRef.current = true
-        setShowGame(true)
+        autoOpenRef.current = true;
+        setShowGame(true);
       }
     } else {
-      autoOpenRef.current = false
+      autoOpenRef.current = false;
     }
-  }, [allowStart, readyStatus, viewerReady])
+  }, [allowStart, readyStatus, viewerReady]);
 
   useEffect(() => {
     if (!readyWindowActive) {
-      setReadyError('')
-      setReadyCountdownMs(null)
+      setReadyError('');
+      setReadyCountdownMs(null);
     }
-  }, [readyWindowActive])
+  }, [readyWindowActive]);
 
-  useEffect(() => () => {
-    if (readySignalControllerRef.current) {
-      try {
-        readySignalControllerRef.current.abort()
-      } catch (error) {
-        // ignore abort failures
+  useEffect(
+    () => () => {
+      if (readySignalControllerRef.current) {
+        try {
+          readySignalControllerRef.current.abort();
+        } catch (error) {
+          // ignore abort failures
+        }
+        readySignalControllerRef.current = null;
       }
-      readySignalControllerRef.current = null
-    }
-  }, [])
+    },
+    []
+  );
 
   const handleVoteSelection = useCallback(
-    (seconds) => {
-      const normalized = sanitizeSecondsOption(seconds)
-      if (!normalized || !gameId) return
+    seconds => {
+      const normalized = sanitizeSecondsOption(seconds);
+      if (!normalized || !gameId) return;
 
-      const now = Date.now()
+      const now = Date.now();
       setGameMatchSessionMeta(gameId, {
         turnTimer: {
           baseSeconds: normalized,
@@ -1150,58 +1162,58 @@ export default function MatchReadyClient({ gameId }) {
         },
         vote: buildTurnTimerVotePatch(state?.sessionMeta?.vote, normalized, viewerIdentity),
         source: 'match-ready-client',
-      })
+      });
 
-      refresh()
-      setVoteNotice(`${formatSecondsLabel(normalized)} 제한시간이 적용되었습니다.`)
+      refresh();
+      setVoteNotice(`${formatSecondsLabel(normalized)} 제한시간이 적용되었습니다.`);
     },
-    [gameId, refresh, state?.sessionMeta?.vote, viewerIdentity],
-  )
+    [gameId, refresh, state?.sessionMeta?.vote, viewerIdentity]
+  );
 
   const voteCounts = useMemo(() => {
     const entries = Object.entries(voteSnapshot.selections || {})
       .map(([key, value]) => {
-        const option = sanitizeSecondsOption(key)
-        const count = Number(value)
-        if (!option || !Number.isFinite(count) || count <= 0) return null
-        return { option, count: Math.floor(count) }
+        const option = sanitizeSecondsOption(key);
+        const count = Number(value);
+        if (!option || !Number.isFinite(count) || count <= 0) return null;
+        return { option, count: Math.floor(count) };
       })
       .filter(Boolean)
-      .sort((a, b) => b.count - a.count || a.option - b.option)
-    return entries
-  }, [voteSnapshot.selections])
+      .sort((a, b) => b.count - a.count || a.option - b.option);
+    return entries;
+  }, [voteSnapshot.selections]);
 
   const readyHint = useMemo(() => {
-    if (readyError) return readyError
+    if (readyError) return readyError;
     if (readyStatus === 'ready') {
       if (viewerReady) {
         return readyProgressLabel
           ? `모든 참가자가 준비되었습니다 (${readyProgressLabel}). 본게임 화면을 여는 중입니다.`
-          : '모든 참가자가 준비되었습니다. 본게임 화면을 여는 중입니다.'
+          : '모든 참가자가 준비되었습니다. 본게임 화면을 여는 중입니다.';
       }
       return readyProgressLabel
         ? `모든 참가자가 준비되었습니다 (${readyProgressLabel}).`
-        : '모든 참가자가 준비되었습니다.'
+        : '모든 참가자가 준비되었습니다.';
     }
     if (readyWindowActive) {
       if (viewerReady) {
         if (readyCountdownSeconds != null) {
           return readyProgressLabel
             ? `다른 참가자를 기다리는 중… (${readyProgressLabel}) 남은 시간 ${readyCountdownSeconds}초`
-            : `다른 참가자를 기다리는 중… 남은 시간 ${readyCountdownSeconds}초`
+            : `다른 참가자를 기다리는 중… 남은 시간 ${readyCountdownSeconds}초`;
         }
         return readyProgressLabel
           ? `다른 참가자를 기다리는 중입니다. (${readyProgressLabel})`
-          : '다른 참가자를 기다리는 중입니다.'
+          : '다른 참가자를 기다리는 중입니다.';
       }
       if (readyCountdownSeconds != null) {
         return readyProgressLabel
           ? `준비 버튼을 눌러 주세요 (${readyProgressLabel}). 남은 시간 ${readyCountdownSeconds}초`
-          : `준비 버튼을 눌러 주세요. 남은 시간 ${readyCountdownSeconds}초`
+          : `준비 버튼을 눌러 주세요. 남은 시간 ${readyCountdownSeconds}초`;
       }
-      return '게임 화면을 열기 전에 준비 버튼을 눌러 주세요.'
+      return '게임 화면을 열기 전에 준비 버튼을 눌러 주세요.';
     }
-    return ''
+    return '';
   }, [
     readyError,
     readyStatus,
@@ -1209,31 +1221,31 @@ export default function MatchReadyClient({ gameId }) {
     viewerReady,
     readyCountdownSeconds,
     readyProgressLabel,
-  ])
+  ]);
 
   const readyHintClassName = useMemo(() => {
-    if (!readyHint) return ''
-    if (readyError) return styles.readyHintError
-    if (readyStatus === 'ready') return styles.readyHintSuccess
-    return styles.readyHint
-  }, [readyHint, readyError, readyStatus])
+    if (!readyHint) return '';
+    if (readyError) return styles.readyHintError;
+    if (readyStatus === 'ready') return styles.readyHintSuccess;
+    return styles.readyHint;
+  }, [readyHint, readyError, readyStatus]);
 
   const startButtonLabel = useMemo(() => {
-    if (readyTimeoutBusy) return '대역 교체 중…'
+    if (readyTimeoutBusy) return '대역 교체 중…';
 
     const countdownSuffix =
       readyWindowActive && readyCountdownSeconds != null
         ? ` (${Math.max(0, readyCountdownSeconds)}초)`
-        : ''
+        : '';
 
-    if (!allowStart) return `게임 화면 열기${countdownSuffix}`
-    if (readyStatus === 'ready') return '게임 화면 열기'
+    if (!allowStart) return `게임 화면 열기${countdownSuffix}`;
+    if (readyStatus === 'ready') return '게임 화면 열기';
     if (readyWindowActive) {
-      if (viewerReady) return `대기 중${countdownSuffix}`
-      const baseLabel = readyBusy ? '준비 중…' : '준비하기'
-      return `${baseLabel}${countdownSuffix}`
+      if (viewerReady) return `대기 중${countdownSuffix}`;
+      const baseLabel = readyBusy ? '준비 중…' : '준비하기';
+      return `${baseLabel}${countdownSuffix}`;
     }
-    return readyBusy ? '준비 중…' : '게임 화면 열기'
+    return readyBusy ? '준비 중…' : '게임 화면 열기';
   }, [
     allowStart,
     readyStatus,
@@ -1242,20 +1254,22 @@ export default function MatchReadyClient({ gameId }) {
     readyBusy,
     readyCountdownSeconds,
     readyTimeoutBusy,
-  ])
+  ]);
 
   const disableStartButton =
     !allowStart ||
     readyBusy ||
     readyTimeoutBusy ||
-    (readyWindowActive && viewerReady && readyStatus !== 'ready')
+    (readyWindowActive && viewerReady && readyStatus !== 'ready');
 
   return (
     <div className={styles.page}>
       <div className={styles.shell}>
         <header className={styles.header}>
           <div className={styles.headerText}>
-            <h1 className={styles.title}>{state?.room?.mode ? `${state.room.mode} 매치 준비` : '매치 준비'}</h1>
+            <h1 className={styles.title}>
+              {state?.room?.mode ? `${state.room.mode} 매치 준비` : '매치 준비'}
+            </h1>
             <p className={styles.subtitle}>
               {state?.room?.code
                 ? `코드 ${state.room.code} · 참가자 ${state.rosterReadyCount}/${state.totalSlots}`
@@ -1301,7 +1315,7 @@ export default function MatchReadyClient({ gameId }) {
 
         {metaLines.length > 0 && (
           <section className={styles.meta}>
-            {metaLines.map((line) => (
+            {metaLines.map(line => (
               <p key={line} className={styles.metaLine}>
                 {line}
               </p>
@@ -1348,7 +1362,9 @@ export default function MatchReadyClient({ gameId }) {
               <div className={styles.diagnosticsItem}>
                 <dt>턴 상태 버전</dt>
                 <dd>
-                  {diagnostics?.turnStateVersion != null ? diagnostics.turnStateVersion : '알 수 없음'}
+                  {diagnostics?.turnStateVersion != null
+                    ? diagnostics.turnStateVersion
+                    : '알 수 없음'}
                 </dd>
               </div>
               <div className={styles.diagnosticsItem}>
@@ -1357,15 +1373,16 @@ export default function MatchReadyClient({ gameId }) {
               </div>
             </dl>
             {diagnostics?.lastRefreshError && (
-              <p className={styles.diagnosticsError}>마지막 새로고침 오류: {diagnostics.lastRefreshError}</p>
+              <p className={styles.diagnosticsError}>
+                마지막 새로고침 오류: {diagnostics.lastRefreshError}
+              </p>
             )}
             {diagnostics?.lastRefreshHint && (
               <p className={styles.diagnosticsHint}>{diagnostics.lastRefreshHint}</p>
             )}
             {diagnostics?.realtime?.lastError && (
               <p className={styles.diagnosticsError}>
-                실시간 채널 오류:{' '}
-                {diagnostics.realtime.lastError?.message || 'unknown_error'}
+                실시간 채널 오류: {diagnostics.realtime.lastError?.message || 'unknown_error'}
               </p>
             )}
             {diagnostics?.realtime?.lastError?.hint && (
@@ -1378,8 +1395,8 @@ export default function MatchReadyClient({ gameId }) {
           <section className={styles.bannerInfo}>
             <p className={styles.bannerTitle}>블라인드 모드가 활성화된 매치입니다.</p>
             <p className={styles.bannerBody}>
-              전투가 시작되기 전까지는 다른 참가자의 캐릭터 정보가 공개되지 않습니다. 준비를 마친 뒤 메인
-              게임으로 이동하면 전체 로스터가 표시됩니다.
+              전투가 시작되기 전까지는 다른 참가자의 캐릭터 정보가 공개되지 않습니다. 준비를 마친 뒤
+              메인 게임으로 이동하면 전체 로스터가 표시됩니다.
             </p>
           </section>
         ) : null}
@@ -1401,12 +1418,12 @@ export default function MatchReadyClient({ gameId }) {
             </p>
           </div>
           <div className={styles.voteOptions}>
-            {TURN_TIMER_OPTIONS.map((option) => {
-              const seconds = sanitizeSecondsOption(option)
-              if (!seconds) return null
-              const isApplied = appliedTurnTimerSeconds === seconds
-              const isMine = viewerSelection === seconds
-              const summary = voteCounts.find((entry) => entry.option === seconds)
+            {TURN_TIMER_OPTIONS.map(option => {
+              const seconds = sanitizeSecondsOption(option);
+              if (!seconds) return null;
+              const isApplied = appliedTurnTimerSeconds === seconds;
+              const isMine = viewerSelection === seconds;
+              const summary = voteCounts.find(entry => entry.option === seconds);
               return (
                 <button
                   key={seconds}
@@ -1424,7 +1441,7 @@ export default function MatchReadyClient({ gameId }) {
                     <span className={styles.voteOptionBadge}>{summary.count}표</span>
                   ) : null}
                 </button>
-              )
+              );
             })}
           </div>
           <div className={styles.voteSummary}>
@@ -1436,7 +1453,7 @@ export default function MatchReadyClient({ gameId }) {
               <p className={styles.voteSummaryLine}>
                 선호도 순위:{' '}
                 {voteCounts
-                  .map((entry) => `${formatSecondsLabel(entry.option)} ${entry.count}표`)
+                  .map(entry => `${formatSecondsLabel(entry.option)} ${entry.count}표`)
                   .join(' · ')}
               </p>
             ) : (
@@ -1451,7 +1468,7 @@ export default function MatchReadyClient({ gameId }) {
         <section className={styles.rosterSection}>
           <h2 className={styles.sectionTitle}>참가자 구성</h2>
           <ul className={styles.rosterList}>
-            {rosterDisplay.map((entry) => (
+            {rosterDisplay.map(entry => (
               <li key={entry.key} className={styles.rosterItem}>
                 <span className={styles.rosterLabel}>{entry.label}</span>
                 <span className={styles.rosterStatus}>{entry.status}</span>
@@ -1469,7 +1486,7 @@ export default function MatchReadyClient({ gameId }) {
                   <span className={styles.asyncFillQueueLabel}>대기 후보:</span>
                   <span className={styles.asyncFillQueueNames}>
                     {asyncFillSummary.queue
-                      .map((candidate) => candidate.heroName || candidate.ownerId)
+                      .map(candidate => candidate.heroName || candidate.ownerId)
                       .join(', ')}
                   </span>
                 </div>
@@ -1510,5 +1527,5 @@ export default function MatchReadyClient({ gameId }) {
         </div>
       ) : null}
     </div>
-  )
+  );
 }

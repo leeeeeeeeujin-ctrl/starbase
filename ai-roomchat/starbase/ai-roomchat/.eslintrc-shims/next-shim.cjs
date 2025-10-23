@@ -7,7 +7,7 @@ module.exports = {
       meta: {
         type: 'suggestion',
         docs: {
-          description: 'Shim for @next/next/no-img-element (noop in this repo)'
+          description: 'Shim for @next/next/no-img-element (noop in this repo)',
         },
         schema: [],
       },

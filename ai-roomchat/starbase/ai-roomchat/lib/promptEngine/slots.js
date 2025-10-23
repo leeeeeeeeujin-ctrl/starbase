@@ -1,17 +1,17 @@
-import { safeStr } from './utils'
+import { safeStr } from './utils';
 
 export function buildSlotsFromParticipants(participants = []) {
-  const slots = []
-  const overflow = []
+  const slots = [];
+  const overflow = [];
 
   for (const participant of participants) {
-    if (!participant) continue
+    if (!participant) continue;
 
-    const hero = participant.hero || {}
+    const hero = participant.hero || {};
     const slotNoCandidate =
       participant.slot_no != null && Number.isFinite(Number(participant.slot_no))
         ? Number(participant.slot_no)
-        : null
+        : null;
 
     const row = {
       id: participant.hero_id || null,
@@ -21,26 +21,26 @@ export function buildSlotsFromParticipants(participants = []) {
       name: safeStr(hero.name),
       description: safeStr(hero.description),
       image_url: hero.image_url || null,
-    }
+    };
 
     for (let k = 1; k <= 12; k += 1) {
-      row[`ability${k}`] = safeStr(hero[`ability${k}`])
+      row[`ability${k}`] = safeStr(hero[`ability${k}`]);
     }
 
     if (slotNoCandidate != null && slotNoCandidate >= 0) {
-      const index = slotNoCandidate
+      const index = slotNoCandidate;
       if (slots[index] === undefined) {
-        slots[index] = row
-        continue
+        slots[index] = row;
+        continue;
       }
     }
 
-    overflow.push(row)
+    overflow.push(row);
   }
 
   if (overflow.length) {
-    slots.push(...overflow)
+    slots.push(...overflow);
   }
 
-  return slots
+  return slots;
 }

@@ -1,37 +1,34 @@
 // pages/rank/[id].js
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useRouter } from 'next/router'
-import LeaderboardDrawer from '../../components/rank/LeaderboardDrawer'
-import GameRoomView from '../../components/rank/GameRoomView'
-import { useGameRoom } from '../../hooks/useGameRoom'
-import {
-  normalizeHeroIdValue,
-  resolveParticipantHeroId,
-} from '../../lib/rank/participantUtils'
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/router';
+import LeaderboardDrawer from '../../components/rank/LeaderboardDrawer';
+import GameRoomView from '../../components/rank/GameRoomView';
+import { useGameRoom } from '../../hooks/useGameRoom';
+import { normalizeHeroIdValue, resolveParticipantHeroId } from '../../lib/rank/participantUtils';
 
 export default function GameRoomPage() {
-  const router = useRouter()
-  const { id } = router.query
+  const router = useRouter();
+  const { id } = router.query;
 
-  const [showLeaderboard, setShowLeaderboard] = useState(false)
-  const [pickRole, setPickRole] = useState('')
-  const [mode, setMode] = useState('rank_solo')
-  const [matchResult, setMatchResult] = useState(null)
-  const [dropInResult, setDropInResult] = useState(null)
-  const [opLoading, setOpLoading] = useState(false)
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [pickRole, setPickRole] = useState('');
+  const [mode, setMode] = useState('rank_solo');
+  const [matchResult, setMatchResult] = useState(null);
+  const [dropInResult, setDropInResult] = useState(null);
+  const [opLoading, setOpLoading] = useState(false);
 
   const handleRequireLogin = useCallback(() => {
-    router.replace('/')
-  }, [router])
+    router.replace('/');
+  }, [router]);
 
   const handleGameMissing = useCallback(() => {
-    alert('게임을 찾을 수 없습니다.')
-    router.replace('/rank')
-  }, [router])
+    alert('게임을 찾을 수 없습니다.');
+    router.replace('/rank');
+  }, [router]);
 
   const handleDeleted = useCallback(() => {
-    router.replace('/lobby')
-  }, [router])
+    router.replace('/lobby');
+  }, [router]);
 
   const {
     state: {
@@ -56,84 +53,77 @@ export default function GameRoomPage() {
       roleOccupancy,
       roleLeaderboards,
     },
-    actions: {
-      joinGame,
-      leaveGame,
-      deleteRoom,
-    },
+    actions: { joinGame, leaveGame, deleteRoom },
   } = useGameRoom(id, {
     onRequireLogin: handleRequireLogin,
     onGameMissing: handleGameMissing,
     onDeleted: handleDeleted,
-  })
+  });
 
   useEffect(() => {
     if (alreadyJoined && myEntry?.role) {
-      setPickRole(myEntry.role)
+      setPickRole(myEntry.role);
     }
-  }, [alreadyJoined, myEntry?.role])
+  }, [alreadyJoined, myEntry?.role]);
 
-  const ready = !!id
+  const ready = !!id;
   const resolvedMinimumParticipants = Number.isFinite(Number(minimumParticipants))
     ? Number(minimumParticipants)
-    : 0
-  const requiredParticipants = Math.max(1, resolvedMinimumParticipants)
-  const hasMinimumParticipants = activeParticipants.length >= requiredParticipants
+    : 0;
+  const requiredParticipants = Math.max(1, resolvedMinimumParticipants);
+  const hasMinimumParticipants = activeParticipants.length >= requiredParticipants;
 
-  const viewerId = user?.id || null
-  const viewerKey = viewerId != null ? String(viewerId) : null
+  const viewerId = user?.id || null;
+  const viewerKey = viewerId != null ? String(viewerId) : null;
   const participantConflicts = useMemo(() => {
-    if (!viewerKey) return []
-    const list = Array.isArray(participants) ? participants : []
-    const viewerRows = list.filter((participant) => {
-      if (!participant) return false
+    if (!viewerKey) return [];
+    const list = Array.isArray(participants) ? participants : [];
+    const viewerRows = list.filter(participant => {
+      if (!participant) return false;
       const ownerKey =
         participant.owner_id != null
           ? String(participant.owner_id)
           : participant.ownerId != null
             ? String(participant.ownerId)
-            : null
-      return ownerKey && ownerKey === viewerKey
-    })
+            : null;
+      return ownerKey && ownerKey === viewerKey;
+    });
 
     if (viewerRows.length <= 1) {
-      return []
+      return [];
     }
 
     const entryHeroId = normalizeHeroIdValue(
-      myEntry ? resolveParticipantHeroId(myEntry) : myHero?.id,
-    )
+      myEntry ? resolveParticipantHeroId(myEntry) : myHero?.id
+    );
 
-    return viewerRows.filter((participant) => {
-      if (!participant) return false
-      if (myEntry?.id && participant.id === myEntry.id) return false
+    return viewerRows.filter(participant => {
+      if (!participant) return false;
+      if (myEntry?.id && participant.id === myEntry.id) return false;
       if (entryHeroId) {
-        const heroId = normalizeHeroIdValue(resolveParticipantHeroId(participant))
+        const heroId = normalizeHeroIdValue(resolveParticipantHeroId(participant));
         if (heroId && heroId === entryHeroId) {
-          return false
+          return false;
         }
       }
-      return true
-    })
-  }, [myEntry, myHero?.id, participants, viewerKey])
+      return true;
+    });
+  }, [myEntry, myHero?.id, participants, viewerKey]);
 
-  const conflictingOthers = participantConflicts
+  const conflictingOthers = participantConflicts;
 
   const hasOwnerConflict =
-    conflictingOthers.length > 0 &&
-    game &&
-    game.owner_id &&
-    String(game.owner_id) !== viewerKey
+    conflictingOthers.length > 0 && game && game.owner_id && String(game.owner_id) !== viewerKey;
 
   const handleJoin = async () => {
-    await joinGame(pickRole)
-  }
+    await joinGame(pickRole);
+  };
 
   const matchDisabledNotice =
-    '이제 메인 룸에서는 매칭을 시작하지 않습니다. 캐릭터 페이지의 "방 검색" 버튼을 통해 공개 방을 찾아 주세요.'
+    '이제 메인 룸에서는 매칭을 시작하지 않습니다. 캐릭터 페이지의 "방 검색" 버튼을 통해 공개 방을 찾아 주세요.';
 
   if (!ready || loading) {
-    return <div style={{ padding: 20 }}>불러오는 중…</div>
+    return <div style={{ padding: 20 }}>불러오는 중…</div>;
   }
 
   if (hasOwnerConflict) {
@@ -142,10 +132,10 @@ export default function GameRoomPage() {
         (typeof row?.hero_name === 'string' && row.hero_name.trim()) ||
         (typeof row?.heroName === 'string' && row.heroName.trim()) ||
         (row?.hero && typeof row.hero.name === 'string' && row.hero.name.trim()) ||
-        (row?.hero_id ? `#${row.hero_id}` : '알 수 없음')
-      const roleName = (row?.role && row.role.trim()) || ''
-      return { key: `${row?.id || index}`, heroName, roleName }
-    })
+        (row?.hero_id ? `#${row.hero_id}` : '알 수 없음');
+      const roleName = (row?.role && row.role.trim()) || '';
+      return { key: `${row?.id || index}`, heroName, roleName };
+    });
 
     return (
       <div
@@ -174,8 +164,8 @@ export default function GameRoomPage() {
         >
           <div style={{ fontSize: 22, fontWeight: 700 }}>이미 동일 명의로 참가 중입니다</div>
           <div style={{ fontSize: 14, lineHeight: 1.6 }}>
-            이 게임에는 이미 동일 명의로 참가 중인 캐릭터가 있어 매칭 페이지를 이용할 수 없습니다. 아래
-            캐릭터 정보를 확인한 뒤 기존 참가를 해제하거나 다른 게임을 선택해 주세요.
+            이 게임에는 이미 동일 명의로 참가 중인 캐릭터가 있어 매칭 페이지를 이용할 수 없습니다.
+            아래 캐릭터 정보를 확인한 뒤 기존 참가를 해제하거나 다른 게임을 선택해 주세요.
           </div>
           <div style={{ display: 'grid', gap: 10 }}>
             {heroSummaries.map(({ key, heroName, roleName }) => (
@@ -194,7 +184,9 @@ export default function GameRoomPage() {
                 }}
               >
                 <span>{heroName}</span>
-                {roleName ? <span style={{ fontSize: 12, color: '#b91c1c' }}>{roleName}</span> : null}
+                {roleName ? (
+                  <span style={{ fontSize: 12, color: '#b91c1c' }}>{roleName}</span>
+                ) : null}
               </div>
             ))}
           </div>
@@ -216,7 +208,7 @@ export default function GameRoomPage() {
           </button>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -251,56 +243,74 @@ export default function GameRoomPage() {
       <div style={{ marginTop: 16, padding: 16, borderTop: '1px solid rgba(148,163,255,0.25)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
           <label style={{ fontSize: 14, opacity: 0.85 }}>Mode</label>
-          <select value={mode} onChange={(e) => setMode(e.target.value)} style={{ padding: '6px 10px', borderRadius: 8 }}>
+          <select
+            value={mode}
+            onChange={e => setMode(e.target.value)}
+            style={{ padding: '6px 10px', borderRadius: 8 }}
+          >
             <option value="rank_solo">Rank Solo</option>
             <option value="rank_duo">Rank Duo</option>
             <option value="casual_match">Casual Match</option>
           </select>
           <button
             onClick={async () => {
-              if (!id) return
-              setOpLoading(true)
-              setMatchResult(null)
+              if (!id) return;
+              setOpLoading(true);
+              setMatchResult(null);
               try {
                 const res = await fetch('/api/rank/match', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ gameId: id, mode }),
-                })
-                const data = await res.json().catch(() => ({}))
-                setMatchResult({ ok: res.ok, data })
+                });
+                const data = await res.json().catch(() => ({}));
+                setMatchResult({ ok: res.ok, data });
               } catch (e) {
-                setMatchResult({ ok: false, data: { error: e.message } })
+                setMatchResult({ ok: false, data: { error: e.message } });
               } finally {
-                setOpLoading(false)
+                setOpLoading(false);
               }
             }}
             disabled={opLoading}
-            style={{ padding: '8px 12px', borderRadius: 10, background: '#4f46e5', color: '#fff', border: 'none', cursor: 'pointer' }}
+            style={{
+              padding: '8px 12px',
+              borderRadius: 10,
+              background: '#4f46e5',
+              color: '#fff',
+              border: 'none',
+              cursor: 'pointer',
+            }}
           >
             {opLoading ? 'Matching…' : 'Quick Match'}
           </button>
           <button
             onClick={async () => {
-              if (!id) return
-              setOpLoading(true)
-              setDropInResult(null)
+              if (!id) return;
+              setOpLoading(true);
+              setDropInResult(null);
               try {
                 const res = await fetch('/api/rank/drop-in', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ gameId: id, mode }),
-                })
-                const data = await res.json().catch(() => ({}))
-                setDropInResult({ ok: res.ok, data })
+                });
+                const data = await res.json().catch(() => ({}));
+                setDropInResult({ ok: res.ok, data });
               } catch (e) {
-                setDropInResult({ ok: false, data: { error: e.message } })
+                setDropInResult({ ok: false, data: { error: e.message } });
               } finally {
-                setOpLoading(false)
+                setOpLoading(false);
               }
             }}
             disabled={opLoading}
-            style={{ padding: '8px 12px', borderRadius: 10, background: '#0ea5e9', color: '#083344', border: 'none', cursor: 'pointer' }}
+            style={{
+              padding: '8px 12px',
+              borderRadius: 10,
+              background: '#0ea5e9',
+              color: '#083344',
+              border: 'none',
+              cursor: 'pointer',
+            }}
           >
             {opLoading ? 'Applying…' : 'Drop-in Now'}
           </button>
@@ -309,7 +319,14 @@ export default function GameRoomPage() {
         {(matchResult || dropInResult) && (
           <div style={{ display: 'grid', gap: 8 }}>
             {matchResult && (
-              <div style={{ background: 'rgba(79,70,229,0.08)', border: '1px solid rgba(79,70,229,0.25)', borderRadius: 12, padding: 12 }}>
+              <div
+                style={{
+                  background: 'rgba(79,70,229,0.08)',
+                  border: '1px solid rgba(79,70,229,0.25)',
+                  borderRadius: 12,
+                  padding: 12,
+                }}
+              >
                 <strong>Match Result:</strong>
                 <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, margin: '6px 0 0' }}>
                   {JSON.stringify(matchResult.data, null, 2)}
@@ -317,7 +334,14 @@ export default function GameRoomPage() {
               </div>
             )}
             {dropInResult && (
-              <div style={{ background: 'rgba(14,165,233,0.08)', border: '1px solid rgba(14,165,233,0.25)', borderRadius: 12, padding: 12 }}>
+              <div
+                style={{
+                  background: 'rgba(14,165,233,0.08)',
+                  border: '1px solid rgba(14,165,233,0.25)',
+                  borderRadius: 12,
+                  padding: 12,
+                }}
+              >
                 <strong>Drop-in Result:</strong>
                 <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, margin: '6px 0 0' }}>
                   {JSON.stringify(dropInResult.data, null, 2)}
@@ -332,7 +356,7 @@ export default function GameRoomPage() {
         <LeaderboardDrawer gameId={id} onClose={() => setShowLeaderboard(false)} />
       )}
     </>
-  )
+  );
 }
 
-// 
+//

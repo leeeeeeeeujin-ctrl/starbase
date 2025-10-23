@@ -1,29 +1,29 @@
-import { useEffect, useState } from 'react'
-import styles from './MatchmakingLogMonitor.module.css'
+import { useEffect, useState } from 'react';
+import styles from './MatchmakingLogMonitor.module.css';
 
-const LIMIT = 80
+const LIMIT = 80;
 
 function formatRelativeTime(iso) {
-  if (!iso) return '—'
-  const timestamp = Date.parse(iso)
-  if (!Number.isFinite(timestamp)) return '—'
-  const diffMs = Date.now() - timestamp
-  const diffMinutes = Math.floor(diffMs / (60 * 1000))
-  if (diffMinutes < 1) return '방금 전'
-  if (diffMinutes < 60) return `${diffMinutes}분 전`
-  const diffHours = Math.floor(diffMinutes / 60)
-  if (diffHours < 24) return `${diffHours}시간 전`
-  const diffDays = Math.floor(diffHours / 24)
-  return `${diffDays}일 전`
+  if (!iso) return '—';
+  const timestamp = Date.parse(iso);
+  if (!Number.isFinite(timestamp)) return '—';
+  const diffMs = Date.now() - timestamp;
+  const diffMinutes = Math.floor(diffMs / (60 * 1000));
+  if (diffMinutes < 1) return '방금 전';
+  if (diffMinutes < 60) return `${diffMinutes}분 전`;
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}시간 전`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays}일 전`;
 }
 
 function formatTimestamp(iso) {
-  if (!iso) return '—'
+  if (!iso) return '—';
   try {
-    const date = new Date(iso)
-    return date.toLocaleString()
+    const date = new Date(iso);
+    return date.toLocaleString();
   } catch (error) {
-    return iso
+    return iso;
   }
 }
 
@@ -50,13 +50,13 @@ function StageStat({ stage }) {
       </dl>
       <p className={styles.stageFooter}>최근 기록: {formatRelativeTime(stage.lastSeen)}</p>
     </div>
-  )
+  );
 }
 
 function RecentRow({ entry }) {
-  const metadata = entry.metadata || {}
-  const multiSlot = metadata.claimedSlotIds?.length > 1
-  
+  const metadata = entry.metadata || {};
+  const multiSlot = metadata.claimedSlotIds?.length > 1;
+
   return (
     <li className={styles.recentRow}>
       <div className={styles.recentHeader}>
@@ -71,9 +71,7 @@ function RecentRow({ entry }) {
         <span>{entry.mode || '—'}</span>
         {entry.matchCode && <span>match: {entry.matchCode}</span>}
         {entry.requestId && <span className={styles.requestId}>req: {entry.requestId}</span>}
-        {typeof entry.scoreWindow === 'number' && (
-          <span>Δ {entry.scoreWindow}</span>
-        )}
+        {typeof entry.scoreWindow === 'number' && <span>Δ {entry.scoreWindow}</span>}
       </div>
       {multiSlot && metadata.claimedSlotIds && (
         <p className={styles.recentDetail}>
@@ -83,54 +81,54 @@ function RecentRow({ entry }) {
       {entry.reason && <p className={styles.recentReason}>{entry.reason}</p>}
       <p className={styles.recentTimestamp}>{formatTimestamp(entry.createdAt)}</p>
     </li>
-  )
+  );
 }
 
 export default function MatchmakingLogMonitor() {
-  const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
-  const [error, setError] = useState(null)
-  const [payload, setPayload] = useState(null)
-  const [requestIdFilter, setRequestIdFilter] = useState('')
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(null);
+  const [payload, setPayload] = useState(null);
+  const [requestIdFilter, setRequestIdFilter] = useState('');
 
   const fetchLogs = async (manual = false) => {
     if (manual) {
-      setRefreshing(true)
+      setRefreshing(true);
     } else {
-      setLoading(true)
+      setLoading(true);
     }
-    setError(null)
+    setError(null);
 
     try {
-      let url = `/api/admin/matchmaking-logs?limit=${LIMIT}`
+      let url = `/api/admin/matchmaking-logs?limit=${LIMIT}`;
       if (requestIdFilter.trim()) {
-        url += `&requestId=${encodeURIComponent(requestIdFilter.trim())}`
+        url += `&requestId=${encodeURIComponent(requestIdFilter.trim())}`;
       }
-      const response = await fetch(url)
+      const response = await fetch(url);
       if (!response.ok) {
-        const detail = await response.json().catch(() => ({}))
-        throw new Error(detail?.detail || '로그를 불러오지 못했습니다.')
+        const detail = await response.json().catch(() => ({}));
+        throw new Error(detail?.detail || '로그를 불러오지 못했습니다.');
       }
-      const data = await response.json()
-      setPayload(data)
+      const data = await response.json();
+      setPayload(data);
     } catch (err) {
-      setError(err.message)
+      setError(err.message);
     } finally {
-      setLoading(false)
-      setRefreshing(false)
+      setLoading(false);
+      setRefreshing(false);
     }
-  }
+  };
 
   useEffect(() => {
-    fetchLogs(false)
-  }, [])
-  
-  const handleSearch = (e) => {
-    e.preventDefault()
-    fetchLogs(true)
-  }
+    fetchLogs(false);
+  }, []);
 
-  const isUnavailable = payload && payload.available === false
+  const handleSearch = e => {
+    e.preventDefault();
+    fetchLogs(true);
+  };
+
+  const isUnavailable = payload && payload.available === false;
 
   return (
     <section className={styles.container}>
@@ -145,7 +143,7 @@ export default function MatchmakingLogMonitor() {
               type="text"
               placeholder="requestId로 검색..."
               value={requestIdFilter}
-              onChange={(e) => setRequestIdFilter(e.target.value)}
+              onChange={e => setRequestIdFilter(e.target.value)}
               className={styles.searchInput}
             />
             <button type="submit" className={styles.searchButton} disabled={loading || refreshing}>
@@ -170,7 +168,8 @@ export default function MatchmakingLogMonitor() {
         <div className={styles.missingCallout}>
           <h3>테이블이 아직 생성되지 않았습니다.</h3>
           <p>
-            Supabase에 <code>rank_matchmaking_logs</code> 테이블과 RLS 정책을 배포하면 여기에서 매칭 로그를 확인할 수 있습니다.
+            Supabase에 <code>rank_matchmaking_logs</code> 테이블과 RLS 정책을 배포하면 여기에서 매칭
+            로그를 확인할 수 있습니다.
           </p>
         </div>
       )}
@@ -190,7 +189,7 @@ export default function MatchmakingLogMonitor() {
 
           {payload.stageBuckets?.length ? (
             <div className={styles.stageGrid}>
-              {payload.stageBuckets.map((stage) => (
+              {payload.stageBuckets.map(stage => (
                 <StageStat key={stage.stage} stage={stage} />
               ))}
             </div>
@@ -202,7 +201,7 @@ export default function MatchmakingLogMonitor() {
             <div className={styles.recentBlock}>
               <h3 className={styles.blockTitle}>최근 이벤트</h3>
               <ul className={styles.recentList}>
-                {payload.recent.slice(0, 12).map((entry) => (
+                {payload.recent.slice(0, 12).map(entry => (
                   <RecentRow key={entry.id} entry={entry} />
                 ))}
               </ul>
@@ -213,5 +212,5 @@ export default function MatchmakingLogMonitor() {
         </div>
       )}
     </section>
-  )
+  );
 }

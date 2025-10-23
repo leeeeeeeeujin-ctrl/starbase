@@ -1,7 +1,7 @@
-import SearchControls from './SearchControls'
-import GameList from './GameList'
-import GameDetail from './GameDetail'
-import { styles } from './styles'
+import SearchControls from './SearchControls';
+import GameList from './GameList';
+import GameDetail from './GameDetail';
+import { styles } from './styles';
 
 export default function GameSearchPanel({
   query,
@@ -58,6 +58,6 @@ export default function GameSearchPanel({
         joinLoading={joinLoading}
       />
     </div>
-  )
+  );
 }
 //

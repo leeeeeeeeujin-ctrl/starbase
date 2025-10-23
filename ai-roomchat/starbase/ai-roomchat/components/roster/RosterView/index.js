@@ -1,38 +1,41 @@
-'use client'
+'use client';
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState } from 'react';
 
-import LogoutButton from '../../LogoutButton'
-import HeroList from './HeroList'
-import styles from './styles'
+import LogoutButton from '../../LogoutButton';
+import HeroList from './HeroList';
+import styles from './styles';
 
 function formatDate(value) {
-  if (!value) return null
-  const date = new Date(value)
+  if (!value) return null;
+  const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
-    return null
+    return null;
   }
   return date.toLocaleDateString('ko-KR', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  })
+  });
 }
 
 function summariseBody(body) {
-  if (typeof body !== 'string') return ''
-  const firstLine = body.split('\n').map((line) => line.trim()).find(Boolean)
-  if (!firstLine) return ''
-  if (firstLine.length <= 120) return firstLine
-  return `${firstLine.slice(0, 117)}…`
+  if (typeof body !== 'string') return '';
+  const firstLine = body
+    .split('\n')
+    .map(line => line.trim())
+    .find(Boolean);
+  if (!firstLine) return '';
+  if (firstLine.length <= 120) return firstLine;
+  return `${firstLine.slice(0, 117)}…`;
 }
 
 function extractParagraphs(body) {
-  if (typeof body !== 'string') return []
+  if (typeof body !== 'string') return [];
   return body
     .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
+    .map(line => line.trim())
+    .filter(Boolean);
 }
 
 export default function RosterView({
@@ -49,23 +52,23 @@ export default function RosterView({
   announcementsLoading = false,
   onRefreshAnnouncements,
 }) {
-  const [showAllNotices, setShowAllNotices] = useState(false)
+  const [showAllNotices, setShowAllNotices] = useState(false);
 
   const latestAnnouncement = useMemo(
     () => (Array.isArray(announcements) && announcements.length > 0 ? announcements[0] : null),
-    [announcements],
-  )
+    [announcements]
+  );
 
-  const latestSummary = summariseBody(latestAnnouncement?.body)
-  const latestDate = latestAnnouncement ? formatDate(latestAnnouncement.publishedAt) : null
+  const latestSummary = summariseBody(latestAnnouncement?.body);
+  const latestDate = latestAnnouncement ? formatDate(latestAnnouncement.publishedAt) : null;
 
   const refreshButtonStyle = announcementsLoading
     ? { ...styles.noticeRefresh, ...styles.noticeButtonDisabled }
-    : styles.noticeRefresh
-  const toggleDisabled = !latestAnnouncement && !announcementsLoading
+    : styles.noticeRefresh;
+  const toggleDisabled = !latestAnnouncement && !announcementsLoading;
   const toggleButtonStyle = toggleDisabled
     ? { ...styles.noticeToggle, ...styles.noticeButtonDisabled }
-    : styles.noticeToggle
+    : styles.noticeToggle;
 
   return (
     <div style={styles.page}>
@@ -96,7 +99,7 @@ export default function RosterView({
                 <button
                   type="button"
                   style={toggleButtonStyle}
-                  onClick={() => setShowAllNotices((value) => !value)}
+                  onClick={() => setShowAllNotices(value => !value)}
                   disabled={toggleDisabled}
                 >
                   {showAllNotices ? '접기' : '전체 보기'}
@@ -113,14 +116,16 @@ export default function RosterView({
                 {latestSummary && <p style={styles.noticeSummary}>{latestSummary}</p>}
               </div>
             ) : (
-              <p style={styles.noticeCopy}>등록된 공지가 없습니다. 관리자 패널에서 새 공지를 작성해 주세요.</p>
+              <p style={styles.noticeCopy}>
+                등록된 공지가 없습니다. 관리자 패널에서 새 공지를 작성해 주세요.
+              </p>
             )}
 
             {showAllNotices && !announcementsLoading && announcements.length > 0 && (
               <ul style={styles.noticeList}>
-                {announcements.map((item) => {
-                  const paragraphs = extractParagraphs(item.body)
-                  const date = formatDate(item.publishedAt)
+                {announcements.map(item => {
+                  const paragraphs = extractParagraphs(item.body);
+                  const date = formatDate(item.publishedAt);
                   return (
                     <li key={item.id} style={styles.noticeListItem}>
                       <div style={styles.noticeListHeader}>
@@ -129,7 +134,6 @@ export default function RosterView({
                       </div>
                       {paragraphs.map((paragraph, index) => (
                         <p
-                           
                           key={index}
                           style={
                             index === paragraphs.length - 1
@@ -141,7 +145,7 @@ export default function RosterView({
                         </p>
                       ))}
                     </li>
-                  )
+                  );
                 })}
               </ul>
             )}
@@ -149,7 +153,9 @@ export default function RosterView({
 
           <section style={styles.calloutCard}>
             <h1 style={styles.calloutTitle}>영웅을 생성하고 전설을 시작하세요</h1>
-            <p style={styles.calloutSubtitle}>아래에서 내 영웅을 선택하면 캐릭터 화면으로 이동합니다.</p>
+            <p style={styles.calloutSubtitle}>
+              아래에서 내 영웅을 선택하면 캐릭터 화면으로 이동합니다.
+            </p>
           </section>
         </header>
 
@@ -169,5 +175,5 @@ export default function RosterView({
         </section>
       </div>
     </div>
-  )
+  );
 }

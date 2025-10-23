@@ -1,11 +1,11 @@
-'use client'
+'use client';
 
 function formatDownloads(count) {
-  if (!Number.isFinite(count)) return '0회 다운로드'
+  if (!Number.isFinite(count)) return '0회 다운로드';
   if (count >= 1000) {
-    return `${(count / 1000).toFixed(1)}K회 다운로드`
+    return `${(count / 1000).toFixed(1)}K회 다운로드`;
   }
-  return `${count}회 다운로드`
+  return `${count}회 다운로드`;
 }
 
 export default function PromptLibraryList({
@@ -28,7 +28,9 @@ export default function PromptLibraryList({
         boxShadow: '0 28px 62px -48px rgba(15, 23, 42, 0.7)',
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+      <div
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}
+      >
         <div style={{ display: 'grid', gap: 4 }}>
           <strong style={{ fontSize: 18 }}>공유 프롬프트</strong>
           <span style={{ fontSize: 12, color: '#cbd5f5' }}>
@@ -92,8 +94,8 @@ export default function PromptLibraryList({
         </div>
       ) : (
         <div style={{ display: 'grid', gap: 12 }}>
-          {entries.map((entry) => {
-            const isImporting = importingId === entry.id
+          {entries.map(entry => {
+            const isImporting = importingId === entry.id;
             return (
               <article
                 key={entry.id}
@@ -108,9 +110,12 @@ export default function PromptLibraryList({
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
                   <div style={{ display: 'grid', gap: 6 }}>
-                    <strong style={{ fontSize: 17, color: '#f8fafc' }}>{entry.title || '이름 없는 세트'}</strong>
+                    <strong style={{ fontSize: 17, color: '#f8fafc' }}>
+                      {entry.title || '이름 없는 세트'}
+                    </strong>
                     <span style={{ fontSize: 12, color: '#94a3b8' }}>
-                      {formatDownloads(entry.download_count || 0)} · {entry.profiles?.username || '익명'}
+                      {formatDownloads(entry.download_count || 0)} ·{' '}
+                      {entry.profiles?.username || '익명'}
                     </span>
                   </div>
                   <button
@@ -133,16 +138,14 @@ export default function PromptLibraryList({
                 </div>
                 {entry.summary && (
                   <p style={{ margin: 0, fontSize: 13, color: '#cbd5f5', lineHeight: 1.6 }}>
-                    {entry.summary.length > 140
-                      ? `${entry.summary.slice(0, 140)}…`
-                      : entry.summary}
+                    {entry.summary.length > 140 ? `${entry.summary.slice(0, 140)}…` : entry.summary}
                   </p>
                 )}
               </article>
-            )
+            );
           })}
         </div>
       )}
     </section>
-  )
+  );
 }

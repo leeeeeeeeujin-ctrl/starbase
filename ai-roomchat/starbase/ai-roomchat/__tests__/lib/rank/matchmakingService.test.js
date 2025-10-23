@@ -11,147 +11,147 @@ import {
   postCheckMatchAssignments,
   sanitizeAssignments,
   sanitizeRooms,
-} from '@/lib/rank/matchmakingService'
-import { computeRoleReadiness } from '@/lib/rank/matchRoleSummary'
+} from '@/lib/rank/matchmakingService';
+import { computeRoleReadiness } from '@/lib/rank/matchRoleSummary';
 
 function createSupabaseStub(tableData = {}) {
   return {
     __tables: tableData,
     from(table) {
-      const rows = tableData[table] || []
-      return createQueryBuilder(rows, table, tableData)
+      const rows = tableData[table] || [];
+      return createQueryBuilder(rows, table, tableData);
     },
-  }
+  };
 }
 
 function createQueryBuilder(initialRows, tableName, tableData) {
-  const filters = []
-  let orderConfig = null
-  let action = 'select'
-  let insertPayload = null
-  let updatePayload = null
+  const filters = [];
+  let orderConfig = null;
+  let action = 'select';
+  let insertPayload = null;
+  let updatePayload = null;
 
   const builder = {
     select() {
-      action = 'select'
-      return builder
+      action = 'select';
+      return builder;
     },
     eq(column, value) {
-      filters.push((row) => normalizeValue(row[column]) === normalizeValue(value))
-      return builder
+      filters.push(row => normalizeValue(row[column]) === normalizeValue(value));
+      return builder;
     },
     in(column, values = []) {
-      const normalized = new Set(values.map(normalizeValue))
-      filters.push((row) => normalized.has(normalizeValue(row[column])))
-      return builder
+      const normalized = new Set(values.map(normalizeValue));
+      filters.push(row => normalized.has(normalizeValue(row[column])));
+      return builder;
     },
     order(column, options = {}) {
-      orderConfig = { column, ascending: options.ascending !== false }
-      return builder
+      orderConfig = { column, ascending: options.ascending !== false };
+      return builder;
     },
     maybeSingle() {
       try {
-        const data = runQuery()
-        const first = Array.isArray(data) ? data[0] ?? null : data
-        return Promise.resolve({ data: first, error: null })
+        const data = runQuery();
+        const first = Array.isArray(data) ? (data[0] ?? null) : data;
+        return Promise.resolve({ data: first, error: null });
       } catch (error) {
-        return Promise.resolve({ data: null, error })
+        return Promise.resolve({ data: null, error });
       }
     },
     delete() {
-      action = 'delete'
-      return builder
+      action = 'delete';
+      return builder;
     },
     insert(payload) {
-      action = 'insert'
-      insertPayload = Array.isArray(payload) ? payload : [payload]
-      return builder
+      action = 'insert';
+      insertPayload = Array.isArray(payload) ? payload : [payload];
+      return builder;
     },
     update(payload) {
-      action = 'update'
-      updatePayload = payload || {}
-      return builder
+      action = 'update';
+      updatePayload = payload || {};
+      return builder;
     },
     then(resolve, reject) {
       try {
-        const payload = performAction()
-        return Promise.resolve(payload).then(resolve, reject)
+        const payload = performAction();
+        return Promise.resolve(payload).then(resolve, reject);
       } catch (error) {
-        const payload = { data: null, error }
-        return Promise.resolve(payload).then(resolve, reject)
+        const payload = { data: null, error };
+        return Promise.resolve(payload).then(resolve, reject);
       }
     },
-  }
+  };
 
   function getRows() {
-    return Array.isArray(tableData[tableName]) ? [...tableData[tableName]] : [...initialRows]
+    return Array.isArray(tableData[tableName]) ? [...tableData[tableName]] : [...initialRows];
   }
 
   function performAction() {
     if (action === 'delete') {
-      const data = runQuery()
-      const remaining = getRows().filter((row) => !data.includes(row))
-      tableData[tableName] = remaining
-      action = 'select'
-      return { data, error: null }
+      const data = runQuery();
+      const remaining = getRows().filter(row => !data.includes(row));
+      tableData[tableName] = remaining;
+      action = 'select';
+      return { data, error: null };
     }
 
     if (action === 'insert') {
-      const current = getRows()
-      tableData[tableName] = [...current, ...insertPayload]
-      const data = insertPayload
-      action = 'select'
-      insertPayload = null
-      return { data, error: null }
+      const current = getRows();
+      tableData[tableName] = [...current, ...insertPayload];
+      const data = insertPayload;
+      action = 'select';
+      insertPayload = null;
+      return { data, error: null };
     }
 
     if (action === 'update') {
-      const rows = getRows()
-      const matched = []
-      const updated = rows.map((row) => {
-        if (filters.every((filter) => filter(row))) {
-          const nextRow = { ...row, ...updatePayload }
-          matched.push(nextRow)
-          return nextRow
+      const rows = getRows();
+      const matched = [];
+      const updated = rows.map(row => {
+        if (filters.every(filter => filter(row))) {
+          const nextRow = { ...row, ...updatePayload };
+          matched.push(nextRow);
+          return nextRow;
         }
-        return row
-      })
-      tableData[tableName] = updated
-      action = 'select'
-      updatePayload = null
-      return { data: matched, error: null }
+        return row;
+      });
+      tableData[tableName] = updated;
+      action = 'select';
+      updatePayload = null;
+      return { data: matched, error: null };
     }
 
-    const data = runQuery()
-    return { data, error: null }
+    const data = runQuery();
+    return { data, error: null };
   }
 
   function runQuery() {
-    let data = getRows()
+    let data = getRows();
     for (const filter of filters) {
-      data = data.filter(filter)
+      data = data.filter(filter);
     }
     if (orderConfig) {
-      const { column, ascending } = orderConfig
+      const { column, ascending } = orderConfig;
       data.sort((a, b) => {
-        const left = a?.[column] ?? 0
-        const right = b?.[column] ?? 0
-        if (left === right) return 0
-        return ascending ? (left < right ? -1 : 1) : left < right ? 1 : -1
-      })
+        const left = a?.[column] ?? 0;
+        const right = b?.[column] ?? 0;
+        if (left === right) return 0;
+        return ascending ? (left < right ? -1 : 1) : left < right ? 1 : -1;
+      });
     }
-    return data
+    return data;
   }
 
-  return builder
+  return builder;
 }
 
 function normalizeValue(value) {
-  if (value == null) return null
+  if (value == null) return null;
   if (typeof value === 'string') {
-    return value.trim()
+    return value.trim();
   }
-  return value
+  return value;
 }
 
 describe('loadActiveRoles', () => {
@@ -169,26 +169,24 @@ describe('loadActiveRoles', () => {
         { game_id: 'game-roles', slot_index: 0, role: 'support', active: true },
         { game_id: 'game-roles', slot_index: 1, role: 'support', active: false },
       ],
-    })
+    });
 
-    const roles = await loadActiveRoles(supabase, 'game-roles')
+    const roles = await loadActiveRoles(supabase, 'game-roles');
     expect(roles).toEqual([
       { name: 'attack', slot_count: 2, slotCount: 2 },
       { name: 'support', slot_count: 1, slotCount: 1 },
-    ])
-  })
+    ]);
+  });
 
   it('falls back to declared counts when no slot layout exists', async () => {
     const supabase = createSupabaseStub({
-      rank_game_roles: [
-        { game_id: 'game-empty', name: 'attack', slot_count: 2, active: true },
-      ],
+      rank_game_roles: [{ game_id: 'game-empty', name: 'attack', slot_count: 2, active: true }],
       rank_game_slots: [],
-    })
+    });
 
-    const roles = await loadActiveRoles(supabase, 'game-empty')
-    expect(roles).toEqual([{ name: 'attack', slot_count: 2, slotCount: 2 }])
-  })
+    const roles = await loadActiveRoles(supabase, 'game-empty');
+    expect(roles).toEqual([{ name: 'attack', slot_count: 2, slotCount: 2 }]);
+  });
 
   it('aggregates duplicate role rows for the same game', async () => {
     const supabase = createSupabaseStub({
@@ -198,14 +196,14 @@ describe('loadActiveRoles', () => {
         { game_id: 'game-duplicates', name: '지원', slot_count: 1, active: true },
       ],
       rank_game_slots: [],
-    })
+    });
 
-    const roles = await loadActiveRoles(supabase, 'game-duplicates')
+    const roles = await loadActiveRoles(supabase, 'game-duplicates');
     expect(roles).toEqual([
       { name: '공격', slot_count: 3, slotCount: 3 },
       { name: '지원', slot_count: 1, slotCount: 1 },
-    ])
-  })
+    ]);
+  });
 
   it('falls back to the rank_games.roles array only when tables are empty', async () => {
     const supabase = createSupabaseStub({
@@ -217,16 +215,16 @@ describe('loadActiveRoles', () => {
       ],
       rank_game_roles: [],
       rank_game_slots: [],
-    })
+    });
 
-    const roles = await loadActiveRoles(supabase, 'game-inline')
+    const roles = await loadActiveRoles(supabase, 'game-inline');
     expect(roles).toEqual([
       { name: '공격', slot_count: 3, slotCount: 3 },
       { name: '수비', slot_count: 1, slotCount: 1 },
       { name: '지원', slot_count: 1, slotCount: 1 },
-    ])
-  })
-})
+    ]);
+  });
+});
 
 describe('postCheckMatchAssignments', () => {
   it('removes duplicate hero entries that do not match their participant role', async () => {
@@ -240,7 +238,7 @@ describe('postCheckMatchAssignments', () => {
           updated_at: '2024-01-01T00:00:00Z',
         },
       ],
-    })
+    });
 
     const assignments = [
       {
@@ -251,7 +249,7 @@ describe('postCheckMatchAssignments', () => {
         role: '수비',
         members: [{ owner_id: 'owner-1', hero_id: 'hero-1', queue_id: 'q2' }],
       },
-    ]
+    ];
 
     const rooms = [
       {
@@ -261,12 +259,12 @@ describe('postCheckMatchAssignments', () => {
           { role: '수비', hero_id: 'hero-1' },
         ],
       },
-    ]
+    ];
 
     const slotLayout = [
       { slotIndex: 0, role: '공격' },
       { slotIndex: 1, role: '수비' },
-    ]
+    ];
 
     const result = await postCheckMatchAssignments(supabase, {
       gameId: 'game-dup',
@@ -274,18 +272,18 @@ describe('postCheckMatchAssignments', () => {
       rooms,
       roles: [],
       slotLayout,
-    })
+    });
 
-    expect(result.assignments[0].members).toHaveLength(1)
-    expect(result.assignments[1].members).toHaveLength(0)
+    expect(result.assignments[0].members).toHaveLength(1);
+    expect(result.assignments[1].members).toHaveLength(0);
     expect(result.rooms[0].slots).toEqual([
       expect.objectContaining({ role: '공격', hero_id: 'hero-1', occupied: true }),
       expect.objectContaining({ role: '수비', hero_id: null, occupied: false }),
-    ])
+    ]);
     expect(result.removedMembers).toEqual([
       { heroId: 'hero-1', ownerId: 'owner-1', role: '수비', reason: 'role_mismatch' },
-    ])
-  })
+    ]);
+  });
 
   it('enforces role capacity limits after removing duplicates', async () => {
     const supabase = createSupabaseStub({
@@ -305,7 +303,7 @@ describe('postCheckMatchAssignments', () => {
           updated_at: '2024-01-02T00:00:00Z',
         },
       ],
-    })
+    });
 
     const assignments = [
       {
@@ -315,7 +313,7 @@ describe('postCheckMatchAssignments', () => {
           { owner_id: 'owner-2', hero_id: 'hero-2', queue_id: 'q2' },
         ],
       },
-    ]
+    ];
 
     const rooms = [
       {
@@ -325,9 +323,9 @@ describe('postCheckMatchAssignments', () => {
           { role: '공격', hero_id: 'hero-2' },
         ],
       },
-    ]
+    ];
 
-    const slotLayout = [{ slotIndex: 0, role: '공격' }]
+    const slotLayout = [{ slotIndex: 0, role: '공격' }];
 
     const result = await postCheckMatchAssignments(supabase, {
       gameId: 'game-cap',
@@ -335,19 +333,19 @@ describe('postCheckMatchAssignments', () => {
       rooms,
       roles: [],
       slotLayout,
-    })
+    });
 
     expect(result.assignments[0].members).toEqual([
       expect.objectContaining({ owner_id: 'owner-1', hero_id: 'hero-1', queue_id: 'q1' }),
-    ])
+    ]);
     expect(result.rooms[0].slots).toEqual([
       expect.objectContaining({ role: '공격', hero_id: 'hero-1', occupied: true }),
       expect.objectContaining({ role: '공격', hero_id: null, occupied: false }),
-    ])
+    ]);
     expect(result.removedMembers).toEqual([
       { heroId: 'hero-2', ownerId: 'owner-2', role: '공격', reason: 'exceeds_capacity' },
-    ])
-  })
+    ]);
+  });
 
   it('realigns slot roles to declared roles when assignments use merged labels', async () => {
     const supabase = createSupabaseStub({
@@ -367,7 +365,7 @@ describe('postCheckMatchAssignments', () => {
           updated_at: '2024-02-01T00:00:00Z',
         },
       ],
-    })
+    });
 
     const assignments = [
       {
@@ -394,7 +392,7 @@ describe('postCheckMatchAssignments', () => {
           },
         ],
       },
-    ]
+    ];
 
     const rooms = [
       {
@@ -416,17 +414,17 @@ describe('postCheckMatchAssignments', () => {
           },
         ],
       },
-    ]
+    ];
 
     const roles = [
       { name: '공격', slot_count: 1, slotCount: 1 },
       { name: '수비', slot_count: 1, slotCount: 1 },
-    ]
+    ];
 
     const slotLayout = [
       { slotIndex: 0, role: '공격', heroId: null, heroOwnerId: null },
       { slotIndex: 1, role: '수비', heroId: null, heroOwnerId: null },
-    ]
+    ];
 
     const result = await postCheckMatchAssignments(supabase, {
       gameId: 'game-merged',
@@ -434,61 +432,59 @@ describe('postCheckMatchAssignments', () => {
       rooms,
       roles,
       slotLayout,
-    })
+    });
 
-    expect(result.assignments[0].roleSlots).toHaveLength(2)
+    expect(result.assignments[0].roleSlots).toHaveLength(2);
     expect(result.assignments[0].roleSlots).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ role: '공격', heroId: 'hero-1', hero_id: 'hero-1' }),
         expect.objectContaining({ role: '수비', heroId: 'hero-2', hero_id: 'hero-2' }),
-      ]),
-    )
-    expect(result.rooms[0].slots).toHaveLength(2)
+      ])
+    );
+    expect(result.rooms[0].slots).toHaveLength(2);
     expect(result.rooms[0].slots).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ role: '공격', hero_id: 'hero-1', occupied: true }),
         expect.objectContaining({ role: '수비', hero_id: 'hero-2', occupied: true }),
-      ]),
-    )
+      ])
+    );
 
     const readiness = computeRoleReadiness({
       roles,
       slotLayout,
       assignments: result.assignments,
       rooms: result.rooms,
-    })
+    });
 
-    expect(readiness.ready).toBe(true)
+    expect(readiness.ready).toBe(true);
     expect(readiness.buckets).toEqual([
       expect.objectContaining({ role: '공격', filled: 1, total: 1, ready: true }),
       expect.objectContaining({ role: '수비', filled: 1, total: 1, ready: true }),
-    ])
-  })
-})
+    ]);
+  });
+});
 
 describe('loadRoleLayout', () => {
   it('builds layout from slot rows when present', async () => {
     const supabase = createSupabaseStub({
-      rank_game_roles: [
-        { game_id: 'game-layout-slots', name: 'A', slot_count: 99, active: true },
-      ],
+      rank_game_roles: [{ game_id: 'game-layout-slots', name: 'A', slot_count: 99, active: true }],
       rank_game_slots: [
         { game_id: 'game-layout-slots', slot_index: 3, role: 'A', active: true },
         { game_id: 'game-layout-slots', slot_index: 1, role: 'B', active: true },
         { game_id: 'game-layout-slots', slot_index: 2, role: 'B', active: false },
       ],
-    })
+    });
 
-    const { slotLayout, roles } = await loadRoleLayout(supabase, 'game-layout-slots')
+    const { slotLayout, roles } = await loadRoleLayout(supabase, 'game-layout-slots');
     expect(roles).toEqual([
       { name: 'B', slot_count: 1, slotCount: 1 },
       { name: 'A', slot_count: 1, slotCount: 1 },
-    ])
+    ]);
     expect(slotLayout).toEqual([
       { slotIndex: 1, role: 'B', heroId: null, heroOwnerId: null },
       { slotIndex: 3, role: 'A', heroId: null, heroOwnerId: null },
-    ])
-  })
+    ]);
+  });
 
   it('falls back to role rows when slot layout roles mismatch', async () => {
     const supabase = createSupabaseStub({
@@ -506,19 +502,19 @@ describe('loadRoleLayout', () => {
           hero_owner_id: 'owner-1',
         },
       ],
-    })
+    });
 
-    const { slotLayout, roles } = await loadRoleLayout(supabase, 'game-layout-mismatch')
+    const { slotLayout, roles } = await loadRoleLayout(supabase, 'game-layout-mismatch');
     expect(roles).toEqual([
       { name: '공격', slot_count: 2, slotCount: 2 },
       { name: '수비', slot_count: 1, slotCount: 1 },
-    ])
+    ]);
     expect(slotLayout).toEqual([
       { slotIndex: 0, role: '공격', heroId: null, heroOwnerId: null },
       { slotIndex: 1, role: '공격', heroId: null, heroOwnerId: null },
       { slotIndex: 2, role: '수비', heroId: null, heroOwnerId: null },
-    ])
-  })
+    ]);
+  });
 
   it('creates layout from role counts when slots are missing', async () => {
     const supabase = createSupabaseStub({
@@ -527,19 +523,19 @@ describe('loadRoleLayout', () => {
         { game_id: 'game-layout-roles', name: 'B', slot_count: 1, active: true },
       ],
       rank_game_slots: [],
-    })
+    });
 
-    const { slotLayout, roles } = await loadRoleLayout(supabase, 'game-layout-roles')
+    const { slotLayout, roles } = await loadRoleLayout(supabase, 'game-layout-roles');
     expect(roles).toEqual([
       { name: 'A', slot_count: 2, slotCount: 2 },
       { name: 'B', slot_count: 1, slotCount: 1 },
-    ])
+    ]);
     expect(slotLayout).toEqual([
       { slotIndex: 0, role: 'A', heroId: null, heroOwnerId: null },
       { slotIndex: 1, role: 'A', heroId: null, heroOwnerId: null },
       { slotIndex: 2, role: 'B', heroId: null, heroOwnerId: null },
-    ])
-  })
+    ]);
+  });
 
   it('returns slot layout derived from inline roles array', async () => {
     const supabase = createSupabaseStub({
@@ -549,20 +545,20 @@ describe('loadRoleLayout', () => {
           roles: ['A', null, 'B', 'A'],
         },
       ],
-    })
+    });
 
-    const { slotLayout, roles } = await loadRoleLayout(supabase, 'game-layout-inline')
+    const { slotLayout, roles } = await loadRoleLayout(supabase, 'game-layout-inline');
     expect(roles).toEqual([
       { name: 'A', slot_count: 2, slotCount: 2 },
       { name: 'B', slot_count: 1, slotCount: 1 },
-    ])
+    ]);
     expect(slotLayout).toEqual([
       { slotIndex: 0, role: 'A', heroId: null, heroOwnerId: null },
       { slotIndex: 2, role: 'B', heroId: null, heroOwnerId: null },
       { slotIndex: 3, role: 'A', heroId: null, heroOwnerId: null },
-    ])
-  })
-})
+    ]);
+  });
+});
 
 describe('loadMatchSampleSource', () => {
   it('falls back to participant pool when realtime queue is empty', async () => {
@@ -580,21 +576,21 @@ describe('loadMatchSampleSource', () => {
           updated_at: '2024-01-01T00:00:00Z',
         },
       ],
-    })
+    });
 
     const result = await loadMatchSampleSource(supabase, {
       gameId: 'game-1',
       mode: 'rank_solo',
       realtimeEnabled: true,
-    })
+    });
 
-    expect(result.sampleType).toBe('realtime_queue_fallback_pool')
-    expect(result.entries).toHaveLength(1)
-    expect(result.participantPool).toHaveLength(1)
-    expect(result.entries[0].owner_id).toBe('creator')
-    expect(result.standinCount).toBe(0)
-    expect(result.queueWaitSeconds).toBeNull()
-  })
+    expect(result.sampleType).toBe('realtime_queue_fallback_pool');
+    expect(result.entries).toHaveLength(1);
+    expect(result.participantPool).toHaveLength(1);
+    expect(result.entries[0].owner_id).toBe('creator');
+    expect(result.standinCount).toBe(0);
+    expect(result.queueWaitSeconds).toBeNull();
+  });
 
   it('falls back to queue entries when participant pool is empty', async () => {
     const supabase = createSupabaseStub({
@@ -612,23 +608,23 @@ describe('loadMatchSampleSource', () => {
         },
       ],
       rank_participants: [],
-    })
+    });
 
     const result = await loadMatchSampleSource(supabase, {
       gameId: 'game-2',
       mode: 'rank_solo',
       realtimeEnabled: false,
-    })
+    });
 
-    expect(result.sampleType).toBe('participant_pool_fallback_queue')
-    expect(result.entries).toHaveLength(1)
-    expect(result.queue).toHaveLength(1)
-    expect(result.entries[0].owner_id).toBe('player')
-    expect(typeof result.queueWaitSeconds === 'number').toBe(true)
-  })
+    expect(result.sampleType).toBe('participant_pool_fallback_queue');
+    expect(result.entries).toHaveLength(1);
+    expect(result.queue).toHaveLength(1);
+    expect(result.entries[0].owner_id).toBe('player');
+    expect(typeof result.queueWaitSeconds === 'number').toBe(true);
+  });
 
   it('waits for realtime queue before injecting stand-ins when under threshold', async () => {
-    const now = Date.now()
+    const now = Date.now();
     const supabase = createSupabaseStub({
       rank_match_queue: [
         {
@@ -655,23 +651,23 @@ describe('loadMatchSampleSource', () => {
           updated_at: new Date(now - 60_000).toISOString(),
         },
       ],
-    })
+    });
 
     const result = await loadMatchSampleSource(supabase, {
       gameId: 'game-3',
       mode: 'rank_solo',
       realtimeEnabled: true,
-    })
+    });
 
-    expect(result.sampleType).toBe('realtime_queue_waiting')
-    expect(result.entries).toHaveLength(1)
-    expect(result.standinCount).toBe(0)
-    expect(result.queueWaitSeconds).toBeGreaterThanOrEqual(0)
-    expect(result.queueWaitSeconds).toBeLessThan(30)
-  })
+    expect(result.sampleType).toBe('realtime_queue_waiting');
+    expect(result.entries).toHaveLength(1);
+    expect(result.standinCount).toBe(0);
+    expect(result.queueWaitSeconds).toBeGreaterThanOrEqual(0);
+    expect(result.queueWaitSeconds).toBeLessThan(30);
+  });
 
   it('keeps realtime queues limited to actual entrants after the wait threshold', async () => {
-    const now = Date.now()
+    const now = Date.now();
     const supabase = createSupabaseStub({
       rank_match_queue: [
         {
@@ -698,22 +694,22 @@ describe('loadMatchSampleSource', () => {
           updated_at: new Date(now - 300_000).toISOString(),
         },
       ],
-    })
+    });
 
     const result = await loadMatchSampleSource(supabase, {
       gameId: 'game-4',
       mode: 'rank_solo',
       realtimeEnabled: true,
-    })
+    });
 
-    expect(result.sampleType).toBe('realtime_queue')
-    expect(result.entries).toHaveLength(1)
-    expect(result.standinCount).toBe(0)
-    expect(result.queueWaitSeconds).toBeGreaterThanOrEqual(30)
-    const standin = result.entries.find((entry) => entry.standin)
-    expect(standin).toBeUndefined()
-  })
-})
+    expect(result.sampleType).toBe('realtime_queue');
+    expect(result.entries).toHaveLength(1);
+    expect(result.standinCount).toBe(0);
+    expect(result.queueWaitSeconds).toBeGreaterThanOrEqual(30);
+    const standin = result.entries.find(entry => entry.standin);
+    expect(standin).toBeUndefined();
+  });
+});
 
 describe('enqueueParticipant', () => {
   it('prefers the participant record hero when queuing', async () => {
@@ -729,8 +725,8 @@ describe('enqueueParticipant', () => {
         },
       ],
       rank_match_queue: [],
-    }
-    const supabase = createSupabaseStub(tables)
+    };
+    const supabase = createSupabaseStub(tables);
 
     const response = await enqueueParticipant(supabase, {
       gameId: 'game-hero',
@@ -739,20 +735,20 @@ describe('enqueueParticipant', () => {
       heroId: 'hero-wrong',
       role: 'attack',
       score: 1200,
-    })
+    });
 
-    expect(response.ok).toBe(true)
-    expect(response.heroId).toBe('hero-correct')
-    expect(supabase.__tables.rank_match_queue).toHaveLength(1)
-    expect(supabase.__tables.rank_match_queue[0].hero_id).toBe('hero-correct')
-  })
+    expect(response.ok).toBe(true);
+    expect(response.heroId).toBe('hero-correct');
+    expect(supabase.__tables.rank_match_queue).toHaveLength(1);
+    expect(supabase.__tables.rank_match_queue[0].hero_id).toBe('hero-correct');
+  });
 
   it('falls back to explicit hero when participant entry is missing', async () => {
     const tables = {
       rank_participants: [],
       rank_match_queue: [],
-    }
-    const supabase = createSupabaseStub(tables)
+    };
+    const supabase = createSupabaseStub(tables);
 
     const response = await enqueueParticipant(supabase, {
       gameId: 'game-hero',
@@ -761,13 +757,13 @@ describe('enqueueParticipant', () => {
       heroId: 'hero-explicit',
       role: 'support',
       score: 1100,
-    })
+    });
 
-    expect(response.ok).toBe(true)
-    expect(response.heroId).toBe('hero-explicit')
-    expect(supabase.__tables.rank_match_queue).toHaveLength(1)
-    expect(supabase.__tables.rank_match_queue[0].hero_id).toBe('hero-explicit')
-  })
+    expect(response.ok).toBe(true);
+    expect(response.heroId).toBe('hero-explicit');
+    expect(supabase.__tables.rank_match_queue).toHaveLength(1);
+    expect(supabase.__tables.rank_match_queue[0].hero_id).toBe('hero-explicit');
+  });
 
   it('selects the hero that matches the requested role when multiple entries exist', async () => {
     const tables = {
@@ -788,8 +784,8 @@ describe('enqueueParticipant', () => {
         },
       ],
       rank_match_queue: [],
-    }
-    const supabase = createSupabaseStub(tables)
+    };
+    const supabase = createSupabaseStub(tables);
 
     const response = await enqueueParticipant(supabase, {
       gameId: 'game-hero',
@@ -798,12 +794,12 @@ describe('enqueueParticipant', () => {
       heroId: 'hero-manual',
       role: 'support',
       score: 1250,
-    })
+    });
 
-    expect(response.ok).toBe(true)
-    expect(response.heroId).toBe('hero-support')
-    expect(supabase.__tables.rank_match_queue[0].hero_id).toBe('hero-support')
-  })
+    expect(response.ok).toBe(true);
+    expect(response.heroId).toBe('hero-support');
+    expect(supabase.__tables.rank_match_queue[0].hero_id).toBe('hero-support');
+  });
 
   it('allows queuing when already waiting in another queue during the test override', async () => {
     const tables = {
@@ -821,9 +817,9 @@ describe('enqueueParticipant', () => {
           updated_at: '2024-01-01T00:00:00Z',
         },
       ],
-    }
+    };
 
-    const supabase = createSupabaseStub(tables)
+    const supabase = createSupabaseStub(tables);
 
     const response = await enqueueParticipant(supabase, {
       gameId: 'game-hero',
@@ -832,16 +828,16 @@ describe('enqueueParticipant', () => {
       heroId: 'hero-new',
       role: 'support',
       score: 1500,
-    })
+    });
 
-    expect(response.ok).toBe(true)
-    expect(response.heroId).toBe('hero-new')
-    expect(supabase.__tables.rank_match_queue).toHaveLength(2)
-    expect(supabase.__tables.rank_match_queue[0].status).toBe('abandoned')
-    expect(supabase.__tables.rank_match_queue[0].party_key).toBeNull()
-    expect(supabase.__tables.rank_match_queue[1].game_id).toBe('game-hero')
-    expect(supabase.__tables.rank_match_queue[1].status).toBe('waiting')
-  })
+    expect(response.ok).toBe(true);
+    expect(response.heroId).toBe('hero-new');
+    expect(supabase.__tables.rank_match_queue).toHaveLength(2);
+    expect(supabase.__tables.rank_match_queue[0].status).toBe('abandoned');
+    expect(supabase.__tables.rank_match_queue[0].party_key).toBeNull();
+    expect(supabase.__tables.rank_match_queue[1].game_id).toBe('game-hero');
+    expect(supabase.__tables.rank_match_queue[1].status).toBe('waiting');
+  });
 
   it('prevents queuing when already matched in the same queue', async () => {
     const tables = {
@@ -859,9 +855,9 @@ describe('enqueueParticipant', () => {
           updated_at: '2024-01-01T00:05:00Z',
         },
       ],
-    }
+    };
 
-    const supabase = createSupabaseStub(tables)
+    const supabase = createSupabaseStub(tables);
 
     const response = await enqueueParticipant(supabase, {
       gameId: 'game-hero',
@@ -870,12 +866,12 @@ describe('enqueueParticipant', () => {
       heroId: 'hero-new',
       role: 'support',
       score: 1500,
-    })
+    });
 
-    expect(response.ok).toBe(false)
-    expect(response.error).toMatch('이미 다른 대기열에 참여 중입니다')
-    expect(supabase.__tables.rank_match_queue).toHaveLength(1)
-  })
+    expect(response.ok).toBe(false);
+    expect(response.error).toMatch('이미 다른 대기열에 참여 중입니다');
+    expect(supabase.__tables.rank_match_queue).toHaveLength(1);
+  });
 
   it('replaces an existing waiting entry in the same queue', async () => {
     const tables = {
@@ -893,9 +889,9 @@ describe('enqueueParticipant', () => {
           updated_at: '2024-01-01T00:00:00Z',
         },
       ],
-    }
+    };
 
-    const supabase = createSupabaseStub(tables)
+    const supabase = createSupabaseStub(tables);
 
     const response = await enqueueParticipant(supabase, {
       gameId: 'game-hero',
@@ -904,14 +900,14 @@ describe('enqueueParticipant', () => {
       heroId: 'hero-new',
       role: 'attack',
       score: 1600,
-    })
+    });
 
-    expect(response.ok).toBe(true)
-    expect(response.heroId).toBe('hero-new')
-    expect(supabase.__tables.rank_match_queue).toHaveLength(1)
-    expect(supabase.__tables.rank_match_queue[0].hero_id).toBe('hero-new')
-  })
-})
+    expect(response.ok).toBe(true);
+    expect(response.heroId).toBe('hero-new');
+    expect(supabase.__tables.rank_match_queue).toHaveLength(1);
+    expect(supabase.__tables.rank_match_queue[0].hero_id).toBe('hero-new');
+  });
+});
 
 describe('loadOwnerParticipantRoster', () => {
   it('returns a roster map scoped to the provided owners', async () => {
@@ -931,18 +927,18 @@ describe('loadOwnerParticipantRoster', () => {
           role: 'support',
         },
       ],
-    }
-    const supabase = createSupabaseStub(tables)
+    };
+    const supabase = createSupabaseStub(tables);
 
     const roster = await loadOwnerParticipantRoster(supabase, {
       gameId: 'game-roster',
       ownerIds: ['owner-1'],
-    })
+    });
 
-    expect(roster.get('owner-1')).toHaveLength(1)
-    expect(roster.get('owner-1')?.[0]?.heroId).toBe('hero-a')
-    expect(roster.get('owner-2')).toBeUndefined()
-  })
+    expect(roster.get('owner-1')).toHaveLength(1);
+    expect(roster.get('owner-1')?.[0]?.heroId).toBe('hero-a');
+    expect(roster.get('owner-2')).toBeUndefined();
+  });
 
   it('preserves hero and role assignments for each participant entry', async () => {
     const tables = {
@@ -962,21 +958,21 @@ describe('loadOwnerParticipantRoster', () => {
           updated_at: '2024-01-03T00:00:00Z',
         },
       ],
-    }
+    };
 
-    const supabase = createSupabaseStub(tables)
+    const supabase = createSupabaseStub(tables);
 
     const roster = await loadOwnerParticipantRoster(supabase, {
       gameId: 'game-roster',
       ownerIds: ['owner-1'],
-    })
+    });
 
-    const ownerRoster = roster.get('owner-1') || []
-    expect(ownerRoster).toHaveLength(2)
-    expect(ownerRoster.map((entry) => entry.heroId)).toEqual(['hero-b', 'hero-a'])
-    expect(ownerRoster.map((entry) => entry.role)).toEqual(['수비', '공격'])
-  })
-})
+    const ownerRoster = roster.get('owner-1') || [];
+    expect(ownerRoster).toHaveLength(2);
+    expect(ownerRoster.map(entry => entry.heroId)).toEqual(['hero-b', 'hero-a']);
+    expect(ownerRoster.map(entry => entry.role)).toEqual(['수비', '공격']);
+  });
+});
 
 describe('runMatching', () => {
   it('groups solos and duos into a single room within the score window', () => {
@@ -1016,25 +1012,25 @@ describe('runMatching', () => {
           joined_at: '2024-01-01T00:00:06Z',
         },
       ],
-    })
+    });
 
-    expect(result.ready).toBe(true)
-    expect(result.assignments).toHaveLength(1)
-    expect(result.rooms).toHaveLength(1)
+    expect(result.ready).toBe(true);
+    expect(result.assignments).toHaveLength(1);
+    expect(result.rooms).toHaveLength(1);
 
-    const [assignment] = result.assignments
-    expect(assignment.role).toBe('attack x3')
-    expect(assignment.members).toHaveLength(3)
-    expect(assignment.filledSlots).toBe(3)
-    expect(assignment.groups).toHaveLength(2)
-    expect(assignment.roleSlots).toHaveLength(3)
-    expect(assignment.roleSlots.every((slot) => slot.role === 'attack')).toBe(true)
-    expect(new Set(assignment.members.map((member) => member.owner_id || member.ownerId))).toEqual(
-      new Set(['owner-1', 'owner-2', 'owner-3']),
-    )
-    expect(result.rooms[0].label).toBe('attack x3')
-    expect(result.rooms[0].missingSlots).toBe(0)
-  })
+    const [assignment] = result.assignments;
+    expect(assignment.role).toBe('attack x3');
+    expect(assignment.members).toHaveLength(3);
+    expect(assignment.filledSlots).toBe(3);
+    expect(assignment.groups).toHaveLength(2);
+    expect(assignment.roleSlots).toHaveLength(3);
+    expect(assignment.roleSlots.every(slot => slot.role === 'attack')).toBe(true);
+    expect(new Set(assignment.members.map(member => member.owner_id || member.ownerId))).toEqual(
+      new Set(['owner-1', 'owner-2', 'owner-3'])
+    );
+    expect(result.rooms[0].label).toBe('attack x3');
+    expect(result.rooms[0].missingSlots).toBe(0);
+  });
 
   it('returns a pending room when slots are missing', () => {
     const result = runMatching({
@@ -1055,19 +1051,19 @@ describe('runMatching', () => {
           joined_at: '2024-01-01T00:00:00Z',
         },
       ],
-    })
+    });
 
-    expect(result.ready).toBe(false)
-    expect(result.assignments).toHaveLength(1)
-    const [assignment] = result.assignments
-    expect(assignment.role).toBe('support x2')
-    expect(assignment.ready).toBe(false)
-    expect(assignment.missingSlots).toBe(1)
-    expect(assignment.roleSlots).toHaveLength(2)
-    expect(assignment.roleSlots[0].role).toBe('support')
-    expect(result.rooms[0].filledSlots).toBe(1)
-    expect(result.rooms[0].missingSlots).toBe(1)
-  })
+    expect(result.ready).toBe(false);
+    expect(result.assignments).toHaveLength(1);
+    const [assignment] = result.assignments;
+    expect(assignment.role).toBe('support x2');
+    expect(assignment.ready).toBe(false);
+    expect(assignment.missingSlots).toBe(1);
+    expect(assignment.roleSlots).toHaveLength(2);
+    expect(assignment.roleSlots[0].role).toBe('support');
+    expect(result.rooms[0].filledSlots).toBe(1);
+    expect(result.rooms[0].missingSlots).toBe(1);
+  });
 
   it('keeps duplicate heroes in separate waiting rooms', () => {
     const result = runMatching({
@@ -1096,13 +1092,13 @@ describe('runMatching', () => {
           joined_at: '2024-01-01T00:00:05Z',
         },
       ],
-    })
+    });
 
-    expect(result.ready).toBe(false)
-    expect(result.error).toBeNull()
-    expect(result.assignments).toHaveLength(2)
-    expect(result.assignments.every((assignment) => assignment.filledSlots === 1)).toBe(true)
-  })
+    expect(result.ready).toBe(false);
+    expect(result.error).toBeNull();
+    expect(result.assignments).toHaveLength(2);
+    expect(result.assignments.every(assignment => assignment.filledSlots === 1)).toBe(true);
+  });
 
   it('ignores participant-pool stand-ins when assembling realtime rooms', () => {
     const result = runMatching({
@@ -1134,13 +1130,13 @@ describe('runMatching', () => {
           match_source: 'participant_pool',
         },
       ],
-    })
+    });
 
-    expect(result.ready).toBe(false)
-    expect(result.assignments).toHaveLength(1)
-    expect(result.assignments[0].members).toHaveLength(1)
-    expect(result.assignments[0].missingSlots).toBe(1)
-  })
+    expect(result.ready).toBe(false);
+    expect(result.assignments).toHaveLength(1);
+    expect(result.assignments[0].members).toHaveLength(1);
+    expect(result.assignments[0].missingSlots).toBe(1);
+  });
 
   it('rejects parties that exceed the score window', () => {
     const result = runMatching({
@@ -1169,18 +1165,18 @@ describe('runMatching', () => {
           joined_at: '2024-01-01T00:00:05Z',
         },
       ],
-    })
+    });
 
-    expect(result.ready).toBe(false)
-    expect(result.assignments).toHaveLength(2)
-    expect(result.assignments.every((assignment) => assignment.filledSlots === 1)).toBe(true)
-    expect(result.rooms.every((room) => room.missingSlots === 1)).toBe(true)
-  })
-})
+    expect(result.ready).toBe(false);
+    expect(result.assignments).toHaveLength(2);
+    expect(result.assignments.every(assignment => assignment.filledSlots === 1)).toBe(true);
+    expect(result.rooms.every(room => room.missingSlots === 1)).toBe(true);
+  });
+});
 
 describe('filterStaleQueueEntries', () => {
   it('separates fresh and stale entries based on updated timestamp', () => {
-    const now = Date.now()
+    const now = Date.now();
     const entries = [
       {
         id: 'fresh',
@@ -1194,17 +1190,17 @@ describe('filterStaleQueueEntries', () => {
         updated_at: new Date(now - 60_000).toISOString(),
         joined_at: new Date(now - 120_000).toISOString(),
       },
-    ]
+    ];
 
     const { freshEntries, staleEntries } = filterStaleQueueEntries(entries, {
       staleThresholdMs: 30_000,
       nowMs: now,
-    })
+    });
 
-    expect(freshEntries.map((entry) => entry.id)).toEqual(['fresh'])
-    expect(staleEntries.map((entry) => entry.id)).toEqual(['stale'])
-  })
-})
+    expect(freshEntries.map(entry => entry.id)).toEqual(['fresh']);
+    expect(staleEntries.map(entry => entry.id)).toEqual(['stale']);
+  });
+});
 
 describe('heartbeatQueueEntry', () => {
   it('updates the queue entry timestamp when waiting', async () => {
@@ -1219,20 +1215,20 @@ describe('heartbeatQueueEntry', () => {
           updated_at: '2024-01-01T00:00:00Z',
         },
       ],
-    })
+    });
 
     const result = await heartbeatQueueEntry(supabase, {
       gameId: 'game-heartbeat',
       mode: 'rank_solo',
       ownerId: 'owner-heartbeat',
-    })
+    });
 
-    expect(result.ok).toBe(true)
-    const updated = supabase.__tables.rank_match_queue[0].updated_at
-    expect(updated).not.toBe('2024-01-01T00:00:00Z')
-    expect(Date.parse(updated)).toBeGreaterThan(Date.parse('2024-01-01T00:00:00Z'))
-  })
-})
+    expect(result.ok).toBe(true);
+    const updated = supabase.__tables.rank_match_queue[0].updated_at;
+    expect(updated).not.toBe('2024-01-01T00:00:00Z');
+    expect(Date.parse(updated)).toBeGreaterThan(Date.parse('2024-01-01T00:00:00Z'));
+  });
+});
 
 describe('extractViewerAssignment', () => {
   it('returns the assignment when the viewer owns a member', () => {
@@ -1248,11 +1244,11 @@ describe('extractViewerAssignment', () => {
         role: '수비',
         members: [{ owner_id: 'ally-3', hero_id: 'hero-c' }],
       },
-    ]
+    ];
 
-    const assignment = extractViewerAssignment({ assignments, viewerId: 'viewer-1' })
-    expect(assignment).toBe(assignments[0])
-  })
+    const assignment = extractViewerAssignment({ assignments, viewerId: 'viewer-1' });
+    expect(assignment).toBe(assignments[0]);
+  });
 
   it('falls back to hero ownership when owner information is missing', () => {
     const assignments = [
@@ -1263,16 +1259,16 @@ describe('extractViewerAssignment', () => {
           { owner_id: 'ally-11', hero_id: 'hero-target' },
         ],
       },
-    ]
+    ];
 
     const assignment = extractViewerAssignment({
       assignments,
       viewerId: 'viewer-x',
       heroId: 'hero-target',
-    })
+    });
 
-    expect(assignment).toBe(assignments[0])
-  })
+    expect(assignment).toBe(assignments[0]);
+  });
 
   it('returns null when no members match the viewer or hero', () => {
     const assignments = [
@@ -1280,25 +1276,25 @@ describe('extractViewerAssignment', () => {
         role: '공격',
         members: [{ owner_id: 'ally-1', hero_id: 'hero-1' }],
       },
-    ]
+    ];
 
     const assignment = extractViewerAssignment({
       assignments,
       viewerId: 'viewer-none',
       heroId: 'hero-missing',
-    })
+    });
 
-    expect(assignment).toBeNull()
-  })
-})
+    expect(assignment).toBeNull();
+  });
+});
 
 describe('sanitizeAssignments', () => {
   it('removes duplicate owners and heroes across slots while tracking removals', () => {
-    const host = { id: 'q1', owner_id: 'owner-1', hero_id: 'hero-1', status: 'host' }
-    const hostClone = { id: 'q1b', owner_id: 'owner-1', hero_id: 'hero-1', status: 'host' }
-    const standin = { id: 'q2', owner_id: 'owner-2', hero_id: 'hero-2', status: 'waiting' }
-    const standinClone = { id: 'q2b', owner_id: 'owner-2', hero_id: 'hero-2', status: 'waiting' }
-    const crossSlot = { id: 'q3', owner_id: 'owner-1', hero_id: 'hero-1', status: 'host' }
+    const host = { id: 'q1', owner_id: 'owner-1', hero_id: 'hero-1', status: 'host' };
+    const hostClone = { id: 'q1b', owner_id: 'owner-1', hero_id: 'hero-1', status: 'host' };
+    const standin = { id: 'q2', owner_id: 'owner-2', hero_id: 'hero-2', status: 'waiting' };
+    const standinClone = { id: 'q2b', owner_id: 'owner-2', hero_id: 'hero-2', status: 'waiting' };
+    const crossSlot = { id: 'q3', owner_id: 'owner-1', hero_id: 'hero-1', status: 'host' };
 
     const assignments = [
       {
@@ -1331,38 +1327,38 @@ describe('sanitizeAssignments', () => {
         filledSlots: 3,
         missingSlots: 0,
       },
-    ]
+    ];
 
-    const sanitized = sanitizeAssignments(assignments)
+    const sanitized = sanitizeAssignments(assignments);
 
-    expect(sanitized).toHaveLength(1)
-    const [assignment] = sanitized
+    expect(sanitized).toHaveLength(1);
+    const [assignment] = sanitized;
 
     expect(assignment.members).toEqual([
       expect.objectContaining({ owner_id: 'owner-1', hero_id: 'hero-1' }),
       expect.objectContaining({ owner_id: 'owner-2', hero_id: 'hero-2' }),
-    ])
+    ]);
 
-    expect(assignment.roleSlots[0].members).toHaveLength(1)
-    expect(assignment.roleSlots[1].members).toHaveLength(1)
-    expect(assignment.roleSlots[2].members).toHaveLength(0)
-    expect(assignment.roleSlots[2].occupied).toBe(false)
+    expect(assignment.roleSlots[0].members).toHaveLength(1);
+    expect(assignment.roleSlots[1].members).toHaveLength(1);
+    expect(assignment.roleSlots[2].members).toHaveLength(0);
+    expect(assignment.roleSlots[2].occupied).toBe(false);
 
-    expect(assignment.filledSlots).toBe(2)
-    expect(assignment.missingSlots).toBe(1)
+    expect(assignment.filledSlots).toBe(2);
+    expect(assignment.missingSlots).toBe(1);
 
     expect(assignment.removedMembers).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ ownerId: 'owner-1', reason: 'duplicate_slot_member' }),
         expect.objectContaining({ ownerId: 'owner-2', reason: 'duplicate_slot_member' }),
         expect.objectContaining({ ownerId: 'owner-1', reason: 'duplicate_owner' }),
-      ]),
-    )
-  })
+      ])
+    );
+  });
 
   it('returns a shallow copy when assignments are empty or already sanitized', () => {
-    const emptyResult = sanitizeAssignments(null)
-    expect(emptyResult).toEqual([])
+    const emptyResult = sanitizeAssignments(null);
+    expect(emptyResult).toEqual([]);
 
     const cleanAssignments = [
       {
@@ -1379,20 +1375,20 @@ describe('sanitizeAssignments', () => {
         filledSlots: 1,
         missingSlots: 0,
       },
-    ]
+    ];
 
-    const sanitized = sanitizeAssignments(cleanAssignments)
-    expect(sanitized).toHaveLength(1)
+    const sanitized = sanitizeAssignments(cleanAssignments);
+    expect(sanitized).toHaveLength(1);
     expect(sanitized[0]).toEqual(
       expect.objectContaining({
         filledSlots: 1,
         missingSlots: 0,
         members: [expect.objectContaining({ owner_id: 'o1', hero_id: 'h1' })],
         removedMembers: [],
-      }),
-    )
-  })
-})
+      })
+    );
+  });
+});
 
 describe('sanitizeRooms', () => {
   it('deduplicates slot occupants and accumulates removed members', () => {
@@ -1421,23 +1417,23 @@ describe('sanitizeRooms', () => {
           occupied: true,
         },
       ],
-    }
+    };
 
-    const [sanitized] = sanitizeRooms([room])
+    const [sanitized] = sanitizeRooms([room]);
 
-    expect(sanitized.slots[0].members).toHaveLength(1)
-    expect(sanitized.slots[1].members).toHaveLength(1)
+    expect(sanitized.slots[0].members).toHaveLength(1);
+    expect(sanitized.slots[1].members).toHaveLength(1);
     expect(sanitized.members).toEqual([
       expect.objectContaining({ owner_id: 'owner-1', hero_id: 'hero-1' }),
       expect.objectContaining({ owner_id: 'owner-2', hero_id: 'hero-2' }),
-    ])
+    ]);
     expect(sanitized.removedMembers).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ ownerId: 'owner-1', reason: 'duplicate_slot_member' }),
         expect.objectContaining({ ownerId: 'owner-2', reason: 'duplicate_slot_member' }),
-      ]),
-    )
-    expect(sanitized.filledSlots).toBe(2)
-    expect(sanitized.missingSlots).toBe(0)
-  })
-})
+      ])
+    );
+    expect(sanitized.filledSlots).toBe(2);
+    expect(sanitized.missingSlots).toBe(0);
+  });
+});

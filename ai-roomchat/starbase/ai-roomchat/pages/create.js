@@ -1,10 +1,10 @@
 // pages/create.js
-'use client'
+'use client';
 
-import CreateHeroScreen from '../components/create/CreateHeroScreen'
+import CreateHeroScreen from '../components/create/CreateHeroScreen';
 
 export default function Create() {
-  return <CreateHeroScreen />
+  return <CreateHeroScreen />;
 }
 
 //

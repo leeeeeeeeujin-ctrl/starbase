@@ -34,8 +34,8 @@ export default async function handler(req, res) {
     const { gameId, mode, heroIds, turnLimit, config } = req.body;
 
     if (!gameId || !mode || !Array.isArray(heroIds) || heroIds.length === 0) {
-      return res.status(400).json({ 
-        error: '게임 ID, 모드, 히어로 ID가 필요합니다.' 
+      return res.status(400).json({
+        error: '게임 ID, 모드, 히어로 ID가 필요합니다.',
       });
     }
 
@@ -51,8 +51,8 @@ export default async function handler(req, res) {
     return res.status(200).json(result);
   } catch (error) {
     console.error('테스트 시뮬레이션 생성 오류:', error);
-    return res.status(500).json({ 
-      error: error.message || '시뮬레이션 생성 실패' 
+    return res.status(500).json({
+      error: error.message || '시뮬레이션 생성 실패',
     });
   }
 }

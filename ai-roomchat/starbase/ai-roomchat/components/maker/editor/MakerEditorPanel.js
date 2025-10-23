@@ -1,6 +1,6 @@
-'use client'
+'use client';
 
-import SidePanel from '../SidePanel'
+import SidePanel from '../SidePanel';
 
 export default function MakerEditorPanel({
   tabs,
@@ -17,7 +17,7 @@ export default function MakerEditorPanel({
   setEdges,
   onRequestAdvancedTools = () => {},
 }) {
-  const nodeData = selectedNode?.data || null
+  const nodeData = selectedNode?.data || null;
 
   return (
     <section
@@ -41,8 +41,8 @@ export default function MakerEditorPanel({
         }}
       >
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {tabs.map((tab) => {
-            const active = tab.id === activeTab
+          {tabs.map(tab => {
+            const active = tab.id === activeTab;
             return (
               <button
                 key={tab.id}
@@ -59,7 +59,7 @@ export default function MakerEditorPanel({
               >
                 {tab.label}
               </button>
-            )
+            );
           })}
         </div>
         <button
@@ -115,8 +115,8 @@ export default function MakerEditorPanel({
               {selectedNode
                 ? '선택한 프롬프트를 편집 중입니다.'
                 : selectedEdge
-                ? '선택한 브릿지를 편집 중입니다.'
-                : '편집할 프롬프트 또는 브릿지를 선택하세요.'}
+                  ? '선택한 브릿지를 편집 중입니다.'
+                  : '편집할 프롬프트 또는 브릿지를 선택하세요.'}
             </span>
 
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -155,10 +155,12 @@ export default function MakerEditorPanel({
             {nodeData && (
               <div style={{ display: 'grid', gap: 12 }}>
                 <div style={{ display: 'grid', gap: 6 }}>
-                  <label style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>슬롯 타입</label>
+                  <label style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
+                    슬롯 타입
+                  </label>
                   <select
                     value={nodeData.slot_type || 'ai'}
-                    onChange={(event) => nodeData.onChange?.({ slot_type: event.target.value })}
+                    onChange={event => nodeData.onChange?.({ slot_type: event.target.value })}
                     style={{
                       borderRadius: 10,
                       border: '1px solid #cbd5f5',
@@ -175,11 +177,13 @@ export default function MakerEditorPanel({
                 </div>
 
                 <div style={{ display: 'grid', gap: 6 }}>
-                  <label style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>프롬프트 내용</label>
+                  <label style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
+                    프롬프트 내용
+                  </label>
                   <textarea
                     rows={7}
                     value={nodeData.template || ''}
-                    onChange={(event) => nodeData.onChange?.({ template: event.target.value })}
+                    onChange={event => nodeData.onChange?.({ template: event.target.value })}
                     style={{
                       width: '100%',
                       borderRadius: 12,
@@ -199,17 +203,26 @@ export default function MakerEditorPanel({
 
         {activeTab === 'guide' && (
           <div style={{ display: 'grid', gap: 8, color: '#475569', fontSize: 13, lineHeight: 1.6 }}>
-            <p style={{ margin: 0 }}>• 노드를 선택해 템플릿과 변수 규칙을 다듬고, 필요하면 Invisible 토글로 노출 범위를 조정하세요.</p>
-            <p style={{ margin: 0 }}>• 브릿지를 선택하면 조건 빌더에서 턴/변수 조건과 확률을 설정할 수 있습니다.</p>
-            <p style={{ margin: 0 }}>• 오른쪽 하단의 변수 버튼을 눌러 전역·로컬 변수 규칙을 언제든지 확인할 수 있습니다.</p>
+            <p style={{ margin: 0 }}>
+              • 노드를 선택해 템플릿과 변수 규칙을 다듬고, 필요하면 Invisible 토글로 노출 범위를
+              조정하세요.
+            </p>
+            <p style={{ margin: 0 }}>
+              • 브릿지를 선택하면 조건 빌더에서 턴/변수 조건과 확률을 설정할 수 있습니다.
+            </p>
+            <p style={{ margin: 0 }}>
+              • 오른쪽 하단의 변수 버튼을 눌러 전역·로컬 변수 규칙을 언제든지 확인할 수 있습니다.
+            </p>
           </div>
         )}
 
         {activeTab === 'history' && (
-          <div style={{ display: 'grid', gap: 12, fontSize: 13, lineHeight: 1.6, color: '#475569' }}>
+          <div
+            style={{ display: 'grid', gap: 12, fontSize: 13, lineHeight: 1.6, color: '#475569' }}
+          >
             <p style={{ margin: 0 }}>
-              자동 버전 업그레이드 히스토리는 이제 고급 도구 패널에서 확인하고 내보낼 수 있습니다. 아래 버튼을 눌러 고급
-              도구를 열어보세요.
+              자동 버전 업그레이드 히스토리는 이제 고급 도구 패널에서 확인하고 내보낼 수 있습니다.
+              아래 버튼을 눌러 고급 도구를 열어보세요.
             </p>
             <button
               type="button"
@@ -231,5 +244,5 @@ export default function MakerEditorPanel({
         )}
       </div>
     </section>
-  )
+  );
 }

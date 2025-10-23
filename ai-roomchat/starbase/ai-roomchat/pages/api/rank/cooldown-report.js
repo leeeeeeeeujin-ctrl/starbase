@@ -1,88 +1,88 @@
-import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import {
   getCooldownDocumentationUrl,
   mergeCooldownMetadata,
   runCooldownAutomation,
-} from '@/lib/rank/cooldownAutomation'
+} from '@/lib/rank/cooldownAutomation';
 import {
   RETRY_BACKOFF_SEQUENCE_MS,
   buildCooldownRetryPlan,
-} from '@/lib/rank/cooldownRetryScheduler'
-import { recordCooldownAuditEntry } from '@/lib/rank/cooldownAudit'
+} from '@/lib/rank/cooldownRetryScheduler';
+import { recordCooldownAuditEntry } from '@/lib/rank/cooldownAudit';
 
 function parseJsonBody(req) {
   if (req.body && typeof req.body === 'object') {
-    return req.body
+    return req.body;
   }
 
   if (typeof req.body === 'string') {
     try {
-      return JSON.parse(req.body)
+      return JSON.parse(req.body);
     } catch (error) {
-      return null
+      return null;
     }
   }
 
-  return null
+  return null;
 }
 
 function toStringValue(value) {
-  if (value === null || value === undefined) return ''
-  if (typeof value === 'string') return value
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value;
   if (typeof value === 'number' || typeof value === 'boolean') {
-    return String(value)
+    return String(value);
   }
-  return ''
+  return '';
 }
 
 function toIsoString(value, fallbackMs) {
-  const numeric = Number(value)
+  const numeric = Number(value);
   if (Number.isFinite(numeric) && numeric > 0) {
-    return new Date(numeric).toISOString()
+    return new Date(numeric).toISOString();
   }
   if (fallbackMs) {
-    return new Date(fallbackMs).toISOString()
+    return new Date(fallbackMs).toISOString();
   }
-  return new Date().toISOString()
+  return new Date().toISOString();
 }
 
 function sanitizeNote(value) {
-  const note = toStringValue(value)
-  if (!note) return null
-  return note.slice(0, 500)
+  const note = toStringValue(value);
+  if (!note) return null;
+  return note.slice(0, 500);
 }
 
 function toObject(value) {
-  if (!value) return {}
+  if (!value) return {};
   if (typeof value === 'string') {
     try {
-      const parsed = JSON.parse(value)
-      return parsed && typeof parsed === 'object' ? parsed : {}
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === 'object' ? parsed : {};
     } catch (error) {
-      return {}
+      return {};
     }
   }
   if (typeof value === 'object') {
-    return value
+    return value;
   }
-  return {}
+  return {};
 }
 
 async function computeRetryPlan(cooldownId, metadata) {
-  if (!cooldownId) return null
+  if (!cooldownId) return null;
   try {
     const { data: auditRows, error } = await supabaseAdmin
       .from('rank_api_key_audit')
       .select(
-        'id, status, retry_count, last_attempt_at, next_retry_eta, automation_payload, inserted_at, notes',
+        'id, status, retry_count, last_attempt_at, next_retry_eta, automation_payload, inserted_at, notes'
       )
       .eq('cooldown_id', cooldownId)
       .order('inserted_at', { ascending: false })
-      .limit(50)
+      .limit(50);
 
     if (error) {
-      console.error('cooldown-report retry plan lookup failed:', { cooldownId, error })
-      return null
+      console.error('cooldown-report retry plan lookup failed:', { cooldownId, error });
+      return null;
     }
 
     return buildCooldownRetryPlan(auditRows || [], {
@@ -90,33 +90,33 @@ async function computeRetryPlan(cooldownId, metadata) {
       now: new Date(),
       cooldownMetadata: metadata,
       includeAuditTrail: 10,
-    })
+    });
   } catch (error) {
-    console.error('cooldown-report retry plan unexpected failure:', { cooldownId, error })
-    return null
+    console.error('cooldown-report retry plan unexpected failure:', { cooldownId, error });
+    return null;
   }
 }
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
-    res.setHeader('Allow', ['POST'])
-    return res.status(405).json({ error: 'method_not_allowed' })
+    res.setHeader('Allow', ['POST']);
+    return res.status(405).json({ error: 'method_not_allowed' });
   }
 
-  const payload = parseJsonBody(req)
+  const payload = parseJsonBody(req);
 
   if (!payload) {
-    return res.status(400).json({ error: 'invalid_payload' })
+    return res.status(400).json({ error: 'invalid_payload' });
   }
 
-  const hashedKey = toStringValue(payload.hashedKey || payload.keyHash).trim()
+  const hashedKey = toStringValue(payload.hashedKey || payload.keyHash).trim();
   if (!hashedKey) {
-    return res.status(400).json({ error: 'missing_hashed_key' })
+    return res.status(400).json({ error: 'missing_hashed_key' });
   }
 
-  const now = Date.now()
-  const recordedAtIso = toIsoString(payload.recordedAt, now)
-  const expiresAtIso = toIsoString(payload.expiresAt, now)
+  const now = Date.now();
+  const recordedAtIso = toIsoString(payload.recordedAt, now);
+  const expiresAtIso = toIsoString(payload.expiresAt, now);
 
   const insertPayload = {
     key_hash: hashedKey,
@@ -132,28 +132,28 @@ export default async function handler(req, res) {
     notified_at: null,
     source: 'client_local',
     note: sanitizeNote(payload.note),
-  }
+  };
 
   try {
     const { data, error } = await supabaseAdmin
       .from('rank_api_key_cooldowns')
       .upsert([insertPayload], { onConflict: 'key_hash', ignoreDuplicates: false })
       .select(
-        'id, key_sample, reason, provider, viewer_id, game_id, session_id, recorded_at, expires_at, notified_at, metadata',
-      )
+        'id, key_sample, reason, provider, viewer_id, game_id, session_id, recorded_at, expires_at, notified_at, metadata'
+      );
 
     if (error) {
-      console.error('cooldown-report insert failed:', error)
-      return res.status(500).json({ error: 'cooldown_report_failed' })
+      console.error('cooldown-report insert failed:', error);
+      return res.status(500).json({ error: 'cooldown_report_failed' });
     }
 
-    const row = Array.isArray(data) ? data[0] : null
+    const row = Array.isArray(data) ? data[0] : null;
     if (!row) {
-      return res.status(202).json({ recorded: true, automation: null })
+      return res.status(202).json({ recorded: true, automation: null });
     }
 
-    const metadataObject = toObject(row.metadata)
-    const retryPlan = await computeRetryPlan(row.id, metadataObject)
+    const metadataObject = toObject(row.metadata);
+    const retryPlan = await computeRetryPlan(row.id, metadataObject);
 
     const eventForAutomation = {
       hashedKey,
@@ -171,24 +171,24 @@ export default async function handler(req, res) {
         retryPlan?.nextRetryEta ||
         metadataObject?.cooldownAutomation?.retryState?.nextRetryAt ||
         null,
-    }
+    };
 
-    const automationOptions = {}
-    const documentationUrl = getCooldownDocumentationUrl()
+    const automationOptions = {};
+    const documentationUrl = getCooldownDocumentationUrl();
     if (documentationUrl) {
-      automationOptions.docUrl = documentationUrl
+      automationOptions.docUrl = documentationUrl;
     }
     if (retryPlan) {
-      automationOptions.retryPlan = retryPlan
+      automationOptions.retryPlan = retryPlan;
     } else if (metadataObject?.cooldownAutomation?.retryState?.nextRetryAt) {
-      automationOptions.retryEta = metadataObject.cooldownAutomation.retryState.nextRetryAt
+      automationOptions.retryEta = metadataObject.cooldownAutomation.retryState.nextRetryAt;
     }
 
-    let automationSummary = null
+    let automationSummary = null;
     try {
-      automationSummary = await runCooldownAutomation(eventForAutomation, automationOptions)
+      automationSummary = await runCooldownAutomation(eventForAutomation, automationOptions);
     } catch (automationError) {
-      console.error('cooldown-report automation failed:', automationError)
+      console.error('cooldown-report automation failed:', automationError);
     }
 
     if (automationSummary) {
@@ -199,21 +199,21 @@ export default async function handler(req, res) {
         triggered: automationSummary.triggered,
         alertDocLinkAttached: automationSummary.alertDocLinkAttached,
         alertDocUrl: automationSummary.alertDocUrl || automationSummary.alert?.docUrl || null,
-      })
+      });
 
-      const metadata = mergeCooldownMetadata(row.metadata, automationSummary)
-      const updatePatch = { metadata }
+      const metadata = mergeCooldownMetadata(row.metadata, automationSummary);
+      const updatePatch = { metadata };
       if (automationSummary.triggered && automationSummary.notifiedAt) {
-        updatePatch.notified_at = automationSummary.notifiedAt
+        updatePatch.notified_at = automationSummary.notifiedAt;
       }
 
       const { error: updateError } = await supabaseAdmin
         .from('rank_api_key_cooldowns')
         .update(updatePatch)
-        .eq('id', row.id)
+        .eq('id', row.id);
 
       if (updateError) {
-        console.error('cooldown-report metadata update failed:', updateError)
+        console.error('cooldown-report metadata update failed:', updateError);
       }
 
       await recordCooldownAuditEntry({
@@ -231,17 +231,17 @@ export default async function handler(req, res) {
             metadataObject?.cooldownAutomation?.retryState?.nextRetryAt ||
             null,
         },
-      })
+      });
 
       return res.status(automationSummary.triggered ? 202 : 200).json({
         recorded: true,
         automation: automationSummary,
-      })
+      });
     }
 
-    return res.status(202).json({ recorded: true, automation: null })
+    return res.status(202).json({ recorded: true, automation: null });
   } catch (error) {
-    console.error('cooldown-report unexpected failure:', error)
-    return res.status(500).json({ error: 'cooldown_report_failed' })
+    console.error('cooldown-report unexpected failure:', error);
+    return res.status(500).json({ error: 'cooldown_report_failed' });
   }
 }

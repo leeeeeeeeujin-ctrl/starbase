@@ -1,43 +1,37 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react';
 
-import useHeroProfile from '../useHeroProfile'
-import { buildAbilityCards } from '../../../utils/characterStats'
+import useHeroProfile from '../useHeroProfile';
+import { buildAbilityCards } from '../../../utils/characterStats';
 
-export function useCharacterProfileSection({
-  heroId,
-  onRequireAuth,
-  onMissingHero,
-  onDeleted,
-}) {
+export function useCharacterProfileSection({ heroId, onRequireAuth, onMissingHero, onDeleted }) {
   const profile = useHeroProfile({
     heroId,
     onRequireAuth,
     onMissingHero,
     onDeleted,
-  })
+  });
 
-  const abilityCards = useMemo(() => buildAbilityCards(profile.edit), [profile.edit])
+  const abilityCards = useMemo(() => buildAbilityCards(profile.edit), [profile.edit]);
   const heroName = useMemo(
     () => profile.edit?.name || profile.hero?.name || '이름 없는 캐릭터',
-    [profile.edit?.name, profile.hero?.name],
-  )
+    [profile.edit?.name, profile.hero?.name]
+  );
 
-  const [audioPreviewUrl, setAudioPreviewUrl] = useState('')
+  const [audioPreviewUrl, setAudioPreviewUrl] = useState('');
 
   useEffect(() => {
     if (!profile.bgmBlob) {
-      setAudioPreviewUrl('')
-      return
+      setAudioPreviewUrl('');
+      return;
     }
-    const nextUrl = URL.createObjectURL(profile.bgmBlob)
-    setAudioPreviewUrl(nextUrl)
+    const nextUrl = URL.createObjectURL(profile.bgmBlob);
+    setAudioPreviewUrl(nextUrl);
     return () => {
-      URL.revokeObjectURL(nextUrl)
-    }
-  }, [profile.bgmBlob])
+      URL.revokeObjectURL(nextUrl);
+    };
+  }, [profile.bgmBlob]);
 
-  const audioSource =
-    audioPreviewUrl || profile.edit?.bgm_url || profile.hero?.bgm_url || ''
+  const audioSource = audioPreviewUrl || profile.edit?.bgm_url || profile.hero?.bgm_url || '';
 
   return {
     status: {
@@ -79,5 +73,5 @@ export function useCharacterProfileSection({
     },
     saving: profile.saving,
     reload: profile.reload,
-  }
+  };
 }

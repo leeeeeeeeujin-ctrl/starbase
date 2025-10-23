@@ -4,26 +4,27 @@
 
 ## 1. 테이블 정의
 
-| 컬럼 | 타입 | 설명 |
-| --- | --- | --- |
-| `id` | `uuid` | 기본 키. `gen_random_uuid()` 기본값. |
-| `session_id` | `uuid` | `rank_sessions.id` FK. 세션 삭제 시 cascade. |
-| `game_id` | `uuid` | `rank_games.id` FK. 세션과 동일 게임 식별자. |
-| `event_id` | `text` | 클라이언트/백엔드가 생성한 이벤트 고유 ID. 유니크 인덱스. |
-| `event_type` | `text` | 이벤트 종류 (`warning`, `proxy_escalated`, `drop_in_joined`, `api_key_pool_replaced`, `drop_in_matching_context`, `turn_timeout`, `consensus_reached` 등). |
-| `owner_id` | `text` | 이벤트 관련 참가자(플레이어/슬롯) 식별자. 문자열 형태 유지. |
-| `reason` | `text` | 이벤트 발생 사유 또는 상태 코드. |
-| `strike` | `integer` | 경고 누적 횟수. 없으면 `NULL`. |
-| `remaining` | `integer` | 남은 경고/기회 수. 없으면 `NULL`. |
-| `limit_remaining` | `integer` | 최대 허용 횟수. 없으면 `NULL`. |
-| `status` | `text` | 이벤트 처리 후 상태 (`active`, `proxy`, `spectating`, `defeated` 등). |
-| `turn` | `integer` | 이벤트가 발생한 턴 번호. 없으면 `NULL`. |
-| `event_timestamp` | `timestamptz` | 이벤트 발생 시각. 기본값 `now()`. 클라이언트는 ms 단위 타임스탬프를 ISO 문자열로 변환해 저장. |
-| `context` | `jsonb` | 역할/캐릭터/모드/세션 라벨 등 UI 메타데이터. |
-| `metadata` | `jsonb` | API 키 교체, 난입 매칭 메타데이터 등 추가 정보. |
-| `created_at` | `timestamptz` | 레코드 생성 시각. 기본값 `now()`. |
+| 컬럼              | 타입          | 설명                                                                                                                                                       |
+| ----------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`              | `uuid`        | 기본 키. `gen_random_uuid()` 기본값.                                                                                                                       |
+| `session_id`      | `uuid`        | `rank_sessions.id` FK. 세션 삭제 시 cascade.                                                                                                               |
+| `game_id`         | `uuid`        | `rank_games.id` FK. 세션과 동일 게임 식별자.                                                                                                               |
+| `event_id`        | `text`        | 클라이언트/백엔드가 생성한 이벤트 고유 ID. 유니크 인덱스.                                                                                                  |
+| `event_type`      | `text`        | 이벤트 종류 (`warning`, `proxy_escalated`, `drop_in_joined`, `api_key_pool_replaced`, `drop_in_matching_context`, `turn_timeout`, `consensus_reached` 등). |
+| `owner_id`        | `text`        | 이벤트 관련 참가자(플레이어/슬롯) 식별자. 문자열 형태 유지.                                                                                                |
+| `reason`          | `text`        | 이벤트 발생 사유 또는 상태 코드.                                                                                                                           |
+| `strike`          | `integer`     | 경고 누적 횟수. 없으면 `NULL`.                                                                                                                             |
+| `remaining`       | `integer`     | 남은 경고/기회 수. 없으면 `NULL`.                                                                                                                          |
+| `limit_remaining` | `integer`     | 최대 허용 횟수. 없으면 `NULL`.                                                                                                                             |
+| `status`          | `text`        | 이벤트 처리 후 상태 (`active`, `proxy`, `spectating`, `defeated` 등).                                                                                      |
+| `turn`            | `integer`     | 이벤트가 발생한 턴 번호. 없으면 `NULL`.                                                                                                                    |
+| `event_timestamp` | `timestamptz` | 이벤트 발생 시각. 기본값 `now()`. 클라이언트는 ms 단위 타임스탬프를 ISO 문자열로 변환해 저장.                                                              |
+| `context`         | `jsonb`       | 역할/캐릭터/모드/세션 라벨 등 UI 메타데이터.                                                                                                               |
+| `metadata`        | `jsonb`       | API 키 교체, 난입 매칭 메타데이터 등 추가 정보.                                                                                                            |
+| `created_at`      | `timestamptz` | 레코드 생성 시각. 기본값 `now()`.                                                                                                                          |
 
 ### 인덱스 & 정책
+
 - `event_id` 유니크 인덱스 (`rank_session_timeline_events_event_id_key`).
 - `(session_id, event_timestamp desc)` 보조 인덱스.
 - RLS: `select`는 전체 공개, `insert`는 `service_role` 전용.
@@ -48,4 +49,3 @@
 - 기존 데이터베이스에는 `rank_session_timeline_events`가 없으므로 `supabase.sql`에 정의된 스키마를 적용한 뒤 서비스 롤 API에 업서트 로직을 추가해야 합니다.
 - 백엔드 함수/Edge Functions가 기존에 Slack만 알리던 경고·난입 이벤트도 이제 동일한 `event_id`/`event_type` 포맷으로 테이블에 기록해야 합니다.
 - 대량 삽입 시 `event_timestamp`는 ms 단위 숫자 → ISO 문자열로 변환한 값을 사용하십시오.
-

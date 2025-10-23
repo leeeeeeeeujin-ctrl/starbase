@@ -1,49 +1,49 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react';
 
-import useHeroParticipations from '../useHeroParticipations'
+import useHeroParticipations from '../useHeroParticipations';
 
 export function useCharacterParticipationSection({ hero }) {
-  const participations = useHeroParticipations({ hero })
-  const { statSlides, selectedGameId, setSelectedGameId } = participations
+  const participations = useHeroParticipations({ hero });
+  const { statSlides, selectedGameId, setSelectedGameId } = participations;
 
   const statPages = useMemo(() => {
-    if (!statSlides?.length) return []
-    const pages = []
+    if (!statSlides?.length) return [];
+    const pages = [];
     for (let index = 0; index < statSlides.length; index += 6) {
-      pages.push(statSlides.slice(index, index + 6))
+      pages.push(statSlides.slice(index, index + 6));
     }
-    return pages
-  }, [statSlides])
+    return pages;
+  }, [statSlides]);
 
-  const [statPageIndex, setStatPageIndex] = useState(0)
+  const [statPageIndex, setStatPageIndex] = useState(0);
 
   useEffect(() => {
     if (!statPages.length) {
-      if (statPageIndex !== 0) setStatPageIndex(0)
-      return
+      if (statPageIndex !== 0) setStatPageIndex(0);
+      return;
     }
     if (statPageIndex >= statPages.length) {
-      setStatPageIndex(statPages.length - 1)
+      setStatPageIndex(statPages.length - 1);
     }
-  }, [statPageIndex, statPages])
+  }, [statPageIndex, statPages]);
 
   useEffect(() => {
-    if (!statSlides?.length) return
+    if (!statSlides?.length) return;
     if (!selectedGameId) {
-      setSelectedGameId(statSlides[0].key)
-      return
+      setSelectedGameId(statSlides[0].key);
+      return;
     }
-    const targetIndex = statPages.findIndex((page) =>
-      page.some((slide) => slide.key === selectedGameId),
-    )
+    const targetIndex = statPages.findIndex(page =>
+      page.some(slide => slide.key === selectedGameId)
+    );
     if (targetIndex >= 0 && targetIndex !== statPageIndex) {
-      setStatPageIndex(targetIndex)
+      setStatPageIndex(targetIndex);
     }
-  }, [statSlides, statPages, selectedGameId, statPageIndex, setSelectedGameId])
+  }, [statSlides, statPages, selectedGameId, statPageIndex, setSelectedGameId]);
 
   const visibleSlides = statPages.length
     ? statPages[Math.min(statPageIndex, statPages.length - 1)]
-    : statSlides
+    : statSlides;
 
   return {
     status: {
@@ -67,5 +67,5 @@ export function useCharacterParticipationSection({ hero }) {
       selectGame: setSelectedGameId,
       refresh: participations.refresh,
     },
-  }
+  };
 }

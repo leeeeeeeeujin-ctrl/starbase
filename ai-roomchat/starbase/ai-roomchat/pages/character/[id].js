@@ -1,11 +1,11 @@
-'use client'
+'use client';
 
-import { useEffect, useMemo } from 'react'
-import { useRouter } from 'next/router'
+import { useEffect, useMemo } from 'react';
+import { useRouter } from 'next/router';
 
-import CharacterBasicView from '@/components/character/CharacterBasicView'
-import { useCharacterDetail } from '@/hooks/character/useCharacterDetail'
-import { persistHeroSelection } from '@/lib/heroes/selectedHeroStorage'
+import CharacterBasicView from '@/components/character/CharacterBasicView';
+import { useCharacterDetail } from '@/hooks/character/useCharacterDetail';
+import { persistHeroSelection } from '@/lib/heroes/selectedHeroStorage';
 
 function FullScreenState({ title, message, actionLabel, onAction }) {
   return (
@@ -45,39 +45,39 @@ function FullScreenState({ title, message, actionLabel, onAction }) {
         </button>
       ) : null}
     </div>
-  )
+  );
 }
 
 export default function CharacterDetailPage() {
-  const router = useRouter()
-  const { id } = router.query
+  const router = useRouter();
+  const { id } = router.query;
   const heroId = useMemo(() => {
-    if (Array.isArray(id)) return id[0] || ''
-    return id || ''
-  }, [id])
+    if (Array.isArray(id)) return id[0] || '';
+    return id || '';
+  }, [id]);
 
-  const { loading, error, unauthorized, missingHero, hero, reload } = useCharacterDetail(heroId)
-
-  useEffect(() => {
-    if (!router.isReady) return
-    router.prefetch('/roster').catch(() => {})
-    router.prefetch('/rooms').catch(() => {})
-  }, [router])
+  const { loading, error, unauthorized, missingHero, hero, reload } = useCharacterDetail(heroId);
 
   useEffect(() => {
-    if (!hero?.id) return
+    if (!router.isReady) return;
+    router.prefetch('/roster').catch(() => {});
+    router.prefetch('/rooms').catch(() => {});
+  }, [router]);
+
+  useEffect(() => {
+    if (!hero?.id) return;
     try {
-      persistHeroSelection(hero)
+      persistHeroSelection(hero);
       if (typeof window !== 'undefined') {
-        window.dispatchEvent(new Event('hero-overlay:refresh'))
+        window.dispatchEvent(new Event('hero-overlay:refresh'));
       }
     } catch (storageError) {
-      console.error('Failed to persist selected hero metadata:', storageError)
+      console.error('Failed to persist selected hero metadata:', storageError);
     }
-  }, [hero?.id, hero?.owner_id])
+  }, [hero?.id, hero?.owner_id]);
 
   if (loading) {
-    return <FullScreenState title="캐릭터 정보를 불러오는 중" message="잠시만 기다려 주세요." />
+    return <FullScreenState title="캐릭터 정보를 불러오는 중" message="잠시만 기다려 주세요." />;
   }
 
   if (unauthorized) {
@@ -88,7 +88,7 @@ export default function CharacterDetailPage() {
         actionLabel="홈으로 이동"
         onAction={() => router.replace('/')}
       />
-    )
+    );
   }
 
   if (missingHero) {
@@ -99,7 +99,7 @@ export default function CharacterDetailPage() {
         actionLabel="로스터로 이동"
         onAction={() => router.replace('/roster')}
       />
-    )
+    );
   }
 
   if (error) {
@@ -110,7 +110,7 @@ export default function CharacterDetailPage() {
         actionLabel="다시 시도"
         onAction={reload}
       />
-    )
+    );
   }
 
   if (!hero) {
@@ -121,8 +121,8 @@ export default function CharacterDetailPage() {
         actionLabel="로스터로 이동"
         onAction={() => router.replace('/roster')}
       />
-    )
+    );
   }
 
-  return <CharacterBasicView hero={hero} />
+  return <CharacterBasicView hero={hero} />;
 }

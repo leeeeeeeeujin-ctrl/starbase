@@ -16,7 +16,7 @@ const styles = {
   table: { width: '100%', borderCollapse: 'collapse' },
   th: { textAlign: 'left', borderBottom: '1px solid #e5e7eb', padding: '6px 4px' },
   td: { borderBottom: '1px solid #f1f5f9', padding: '6px 4px' },
-}
+};
 
 export default function ParticipantLeaderboard({ participants, onRefresh }) {
   return (
@@ -54,5 +54,5 @@ export default function ParticipantLeaderboard({ participants, onRefresh }) {
         </table>
       )}
     </section>
-  )
+  );
 }

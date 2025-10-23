@@ -1,13 +1,17 @@
 // components/rank/GameRoomView.js
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
-import dynamic from 'next/dynamic'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 
-import styles from './GameRoomView.module.css'
-import { getHeroAudioManager } from '../../lib/audio/heroAudioManager'
-import { normalizeTimelineEvents } from '@/lib/rank/timelineEvents'
-import { supabase } from '../../lib/supabase'
-import { withTable } from '../../lib/supabaseTables'
-import { isRealtimeEnabled, normalizeRealtimeMode, REALTIME_MODES } from '../../lib/rank/realtimeModes'
+import styles from './GameRoomView.module.css';
+import { getHeroAudioManager } from '../../lib/audio/heroAudioManager';
+import { normalizeTimelineEvents } from '@/lib/rank/timelineEvents';
+import { supabase } from '../../lib/supabase';
+import { withTable } from '../../lib/supabaseTables';
+import {
+  isRealtimeEnabled,
+  normalizeRealtimeMode,
+  REALTIME_MODES,
+} from '../../lib/rank/realtimeModes';
 import {
   DEFAULT_COMPRESSOR_SETTINGS,
   DEFAULT_EQ_SETTINGS,
@@ -29,8 +33,13 @@ import {
   normalizeHeroAudioProfile,
   normalizeReverbSettings,
   reverbSettingsAreEqual,
-} from '@/lib/rank/gameRoomAudio'
-import { buildBattleLine, buildReplayEntries, ensureArray, formatDate } from '@/lib/rank/gameRoomHistory'
+} from '@/lib/rank/gameRoomAudio';
+import {
+  buildBattleLine,
+  buildReplayEntries,
+  ensureArray,
+  formatDate,
+} from '@/lib/rank/gameRoomHistory';
 
 const GameRoomHistoryPane = dynamic(() => import('./GameRoomHistoryPane'), {
   loading: () => (
@@ -41,7 +50,7 @@ const GameRoomHistoryPane = dynamic(() => import('./GameRoomHistoryPane'), {
       <div className={styles.loadingCard}>타임라인 데이터를 준비하고 있습니다…</div>
     </section>
   ),
-})
+});
 
 const RULE_OPTION_METADATA = {
   nerf_insight: {
@@ -66,142 +75,141 @@ const RULE_OPTION_METADATA = {
   },
   brawl_rule: {
     getEntry(value) {
-      if (!value) return null
+      if (!value) return null;
       if (value === 'allow-brawl') {
         return {
           label: '난입 허용',
           description:
             '전투 중 같은 역할군에서 탈락자가 발생하면 비슷한 점수대의 다른 유저가 즉시 합류해 흐름을 이어갑니다.',
-        }
+        };
       }
-      const hint = typeof value === 'string' ? value : JSON.stringify(value)
+      const hint = typeof value === 'string' ? value : JSON.stringify(value);
       return {
         label: '난입 규칙',
         description: hint,
-      }
+      };
     },
   },
   end_condition_variable: {
     label: '게임 종료 조건 변수',
     description(value) {
-      if (!value) return '게임 종료 조건이 아직 지정되지 않았습니다.'
-      return `조건: ${value}`
+      if (!value) return '게임 종료 조건이 아직 지정되지 않았습니다.';
+      return `조건: ${value}`;
     },
   },
-}
+};
 
 function compareParticipantsByScore(a, b) {
-  const scoreA = Number.isFinite(Number(a?.score)) ? Number(a.score) : -Infinity
-  const scoreB = Number.isFinite(Number(b?.score)) ? Number(b.score) : -Infinity
+  const scoreA = Number.isFinite(Number(a?.score)) ? Number(a.score) : -Infinity;
+  const scoreB = Number.isFinite(Number(b?.score)) ? Number(b.score) : -Infinity;
   if (scoreA === scoreB) {
-    return (a?.created_at || '').localeCompare(b?.created_at || '')
+    return (a?.created_at || '').localeCompare(b?.created_at || '');
   }
-  return scoreB - scoreA
+  return scoreB - scoreA;
 }
 
 const TABS = [
   { key: 'main', label: '메인 룸' },
   { key: 'hero', label: '캐릭터 정보' },
   { key: 'ranking', label: '랭킹' },
-]
+];
 
-const TIMELINE_EVENT_LIMIT = 80
-
+const TIMELINE_EVENT_LIMIT = 80;
 
 function joinClassNames(...values) {
-  return values.filter(Boolean).join(' ')
+  return values.filter(Boolean).join(' ');
 }
 
-
-
 function interpretRulesShape(value) {
-  if (!value) return { type: 'empty' }
+  if (!value) return { type: 'empty' };
 
   if (typeof value === 'string') {
-    const trimmed = value.trim()
-    if (!trimmed) return { type: 'empty' }
+    const trimmed = value.trim();
+    if (!trimmed) return { type: 'empty' };
     try {
-      const parsed = JSON.parse(trimmed)
+      const parsed = JSON.parse(trimmed);
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        return { type: 'object', value: parsed }
+        return { type: 'object', value: parsed };
       }
     } catch (error) {
       // not JSON, fall through to plain text rendering
     }
-    return { type: 'text', value: trimmed }
+    return { type: 'text', value: trimmed };
   }
 
   if (typeof value === 'object' && !Array.isArray(value)) {
-    return { type: 'object', value }
+    return { type: 'object', value };
   }
 
-  return { type: 'unknown', value }
+  return { type: 'unknown', value };
 }
 
 function buildRuleEntries(ruleObject) {
-  const entries = []
+  const entries = [];
 
   Object.entries(RULE_OPTION_METADATA).forEach(([key, meta]) => {
-    if (!ruleObject[key]) return
+    if (!ruleObject[key]) return;
     if (typeof meta.getEntry === 'function') {
-      const entry = meta.getEntry(ruleObject[key], ruleObject)
+      const entry = meta.getEntry(ruleObject[key], ruleObject);
       if (entry) {
-        entries.push({ key, ...entry })
+        entries.push({ key, ...entry });
       }
-      return
+      return;
     }
 
     const resolvedDescription =
-      typeof meta.description === 'function' ? meta.description(ruleObject[key], ruleObject) : meta.description
+      typeof meta.description === 'function'
+        ? meta.description(ruleObject[key], ruleObject)
+        : meta.description;
 
     entries.push({
       key,
       label: meta.label,
       description: resolvedDescription,
-    })
-  })
+    });
+  });
 
-  const limitValue = Number(ruleObject.char_limit)
-  const limit = Number.isFinite(limitValue) ? limitValue : 0
+  const limitValue = Number(ruleObject.char_limit);
+  const limit = Number.isFinite(limitValue) ? limitValue : 0;
   if (limit > 0) {
     entries.push({
       key: 'char_limit',
       label: '응답 길이 제한',
       description: `${limit.toLocaleString()}자 이내로 답변하도록 제한합니다.`,
-    })
+    });
   }
 
-  Object.keys(ruleObject).forEach((key) => {
-    if (key in RULE_OPTION_METADATA) return
-    if (key === 'char_limit') return
-    const raw = ruleObject[key]
-    if (!raw) return
-    const hint = typeof raw === 'string' ? raw : JSON.stringify(raw)
+  Object.keys(ruleObject).forEach(key => {
+    if (key in RULE_OPTION_METADATA) return;
+    if (key === 'char_limit') return;
+    const raw = ruleObject[key];
+    if (!raw) return;
+    const hint = typeof raw === 'string' ? raw : JSON.stringify(raw);
     entries.push({
       key,
       label: key,
       description: hint,
-    })
-  })
+    });
+  });
 
-  return entries
+  return entries;
 }
 
 function renderRules(rules) {
-  const interpreted = interpretRulesShape(rules)
+  const interpreted = interpretRulesShape(rules);
 
   if (interpreted.type === 'empty') {
-    return null
+    return null;
   }
 
   if (interpreted.type === 'object') {
-    const entries = buildRuleEntries(interpreted.value)
+    const entries = buildRuleEntries(interpreted.value);
     if (!entries.length) {
       try {
-        const pretty = JSON.stringify(interpreted.value, null, 2)
-        return <pre className={styles.rulesCode}>{pretty}</pre>
+        const pretty = JSON.stringify(interpreted.value, null, 2);
+        return <pre className={styles.rulesCode}>{pretty}</pre>;
       } catch (error) {
-        return null
+        return null;
       }
     }
 
@@ -214,14 +222,14 @@ function renderRules(rules) {
           </li>
         ))}
       </ul>
-    )
+    );
   }
 
   if (interpreted.type === 'text') {
     const lines = interpreted.value
       .split(/\n+/)
-      .map((line) => line.trim())
-      .filter(Boolean)
+      .map(line => line.trim())
+      .filter(Boolean);
     return (
       <div className={styles.rulesTextBlock}>
         {lines.map((line, index) => (
@@ -230,77 +238,65 @@ function renderRules(rules) {
           </p>
         ))}
       </div>
-    )
+    );
   }
 
   try {
-    const pretty = JSON.stringify(interpreted.value, null, 2)
-    if (!pretty) return null
-    return <pre className={styles.rulesCode}>{pretty}</pre>
+    const pretty = JSON.stringify(interpreted.value, null, 2);
+    if (!pretty) return null;
+    return <pre className={styles.rulesCode}>{pretty}</pre>;
   } catch (error) {
-    return null
+    return null;
   }
 }
 
-
-
-
-
-
-
-
-
 function formatNumber(value) {
-  if (value === null || value === undefined) return '0'
-  const numeric = Number(value)
-  if (!Number.isFinite(numeric)) return String(value)
-  return numeric.toLocaleString()
+  if (value === null || value === undefined) return '0';
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return String(value);
+  return numeric.toLocaleString();
 }
 
-
-
-
-
 function formatWinRate(value) {
-  if (value === null || value === undefined) return '기록 없음'
-  const numeric = Number(value)
-  if (!Number.isFinite(numeric)) return '기록 없음'
-  const ratio = numeric > 1 ? numeric : numeric * 100
-  const rounded = Math.round(ratio * 10) / 10
-  return `${rounded}%`
+  if (value === null || value === undefined) return '기록 없음';
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return '기록 없음';
+  const ratio = numeric > 1 ? numeric : numeric * 100;
+  const rounded = Math.round(ratio * 10) / 10;
+  return `${rounded}%`;
 }
 
 function describeSessionStatus(status) {
-  const raw = typeof status === 'string' ? status.trim().toLowerCase() : ''
+  const raw = typeof status === 'string' ? status.trim().toLowerCase() : '';
   if (!raw) {
-    return { label: '진행 중', tone: 'active' }
+    return { label: '진행 중', tone: 'active' };
   }
 
   if (['completed', 'done', 'finished', 'closed', 'victory', 'won'].includes(raw)) {
-    return { label: '종료', tone: 'completed' }
+    return { label: '종료', tone: 'completed' };
   }
 
   if (['failed', 'error', 'aborted', 'cancelled', 'canceled', 'defeat', 'lost'].includes(raw)) {
-    return { label: '중단', tone: 'failed' }
+    return { label: '중단', tone: 'failed' };
   }
 
   if (['active', 'running', 'pending', 'open', 'in_progress'].includes(raw)) {
-    return { label: '진행 중', tone: 'active' }
+    return { label: '진행 중', tone: 'active' };
   }
 
-  return { label: status || '진행 중', tone: 'active' }
+  return { label: status || '진행 중', tone: 'active' };
 }
 
 function groupByRole(participants = []) {
-  const map = new Map()
-  participants.forEach((participant) => {
-    const role = participant?.role || '역할 미정'
+  const map = new Map();
+  participants.forEach(participant => {
+    const role = participant?.role || '역할 미정';
     if (!map.has(role)) {
-      map.set(role, [])
+      map.set(role, []);
     }
-    map.get(role).push(participant)
-  })
-  return map
+    map.get(role).push(participant);
+  });
+  return map;
 }
 
 export default function GameRoomView({
@@ -332,178 +328,177 @@ export default function GameRoomView({
   sessionHistory = [],
   sharedSessionHistory = [],
 }) {
-  const [joinLoading, setJoinLoading] = useState(false)
-  const [leaveLoading, setLeaveLoading] = useState(false)
-  const [visibleHeroLogs, setVisibleHeroLogs] = useState(10)
-  const [activeTab, setActiveTab] = useState(TABS[0].key)
-  const [isCompactLayout, setIsCompactLayout] = useState(false)
-  const [compactInfoOpen, setCompactInfoOpen] = useState(false)
-  const [spectatorTimelineCollapsed, setSpectatorTimelineCollapsed] = useState(false)
-  const [personalTimelineCollapsed, setPersonalTimelineCollapsed] = useState(false)
+  const [joinLoading, setJoinLoading] = useState(false);
+  const [leaveLoading, setLeaveLoading] = useState(false);
+  const [visibleHeroLogs, setVisibleHeroLogs] = useState(10);
+  const [activeTab, setActiveTab] = useState(TABS[0].key);
+  const [isCompactLayout, setIsCompactLayout] = useState(false);
+  const [compactInfoOpen, setCompactInfoOpen] = useState(false);
+  const [spectatorTimelineCollapsed, setSpectatorTimelineCollapsed] = useState(false);
+  const [personalTimelineCollapsed, setPersonalTimelineCollapsed] = useState(false);
   const toggleSpectatorTimeline = useCallback(() => {
-    setSpectatorTimelineCollapsed((prev) => !prev)
-  }, [])
+    setSpectatorTimelineCollapsed(prev => !prev);
+  }, []);
   const togglePersonalTimeline = useCallback(() => {
-    setPersonalTimelineCollapsed((prev) => !prev)
-  }, [])
+    setPersonalTimelineCollapsed(prev => !prev);
+  }, []);
   const handleCompactInfoToggle = useCallback(() => {
-    setCompactInfoOpen((prev) => !prev)
-  }, [])
+    setCompactInfoOpen(prev => !prev);
+  }, []);
   const handleCompactInfoClose = useCallback(() => {
-    setCompactInfoOpen(false)
-  }, [])
-  const touchStartRef = useRef(null)
-  const profileCloseRef = useRef(null)
-  const profileTitleId = useId()
-  const profileDescriptionId = useId()
-  const summaryTitleId = useId()
-  const summaryDescriptionId = useId()
+    setCompactInfoOpen(false);
+  }, []);
+  const touchStartRef = useRef(null);
+  const profileCloseRef = useRef(null);
+  const profileTitleId = useId();
+  const profileDescriptionId = useId();
+  const summaryTitleId = useId();
+  const summaryDescriptionId = useId();
   const audioManager = useMemo(() => {
     if (typeof window === 'undefined') {
-      return null
+      return null;
     }
-    return getHeroAudioManager()
-  }, [])
-  const audioBaselineRef = useRef(null)
-  const currentAudioTrackRef = useRef({ url: null, heroId: null, trackId: null })
-  const heroAudioVolumeMemoryRef = useRef(audioManager?.getState()?.volume ?? 0.72)
+    return getHeroAudioManager();
+  }, []);
+  const audioBaselineRef = useRef(null);
+  const currentAudioTrackRef = useRef({ url: null, heroId: null, trackId: null });
+  const heroAudioVolumeMemoryRef = useRef(audioManager?.getState()?.volume ?? 0.72);
   const [heroAudioState, setHeroAudioState] = useState(() =>
-    audioManager ? audioManager.getState() : null,
-  )
-  const heroAudioVolumeInputId = useId()
-  const [selectedHeroAudioTrackId, setSelectedHeroAudioTrackId] = useState(null)
-  const [selectedHeroAudioPresetId, setSelectedHeroAudioPresetId] = useState(null)
-  const [heroAudioManualOverride, setHeroAudioManualOverride] = useState(false)
-  const [viewerId, setViewerId] = useState(null)
-  const [audioPreferenceLoadedKey, setAudioPreferenceLoadedKey] = useState(null)
-  const audioPreferenceSaveTimeoutRef = useRef(null)
-  const heroAudioPreferenceDirtyRef = useRef(false)
-  const lastPersistedSignatureRef = useRef(null)
-  const lastPersistedPayloadRef = useRef(null)
-  const previousAudioProfileKeyRef = useRef(null)
-  const audioBaselineEffectsRef = useRef(null)
-  const baselineEffectAppliedRef = useRef(false)
+    audioManager ? audioManager.getState() : null
+  );
+  const heroAudioVolumeInputId = useId();
+  const [selectedHeroAudioTrackId, setSelectedHeroAudioTrackId] = useState(null);
+  const [selectedHeroAudioPresetId, setSelectedHeroAudioPresetId] = useState(null);
+  const [heroAudioManualOverride, setHeroAudioManualOverride] = useState(false);
+  const [viewerId, setViewerId] = useState(null);
+  const [audioPreferenceLoadedKey, setAudioPreferenceLoadedKey] = useState(null);
+  const audioPreferenceSaveTimeoutRef = useRef(null);
+  const heroAudioPreferenceDirtyRef = useRef(false);
+  const lastPersistedSignatureRef = useRef(null);
+  const lastPersistedPayloadRef = useRef(null);
+  const previousAudioProfileKeyRef = useRef(null);
+  const audioBaselineEffectsRef = useRef(null);
+  const baselineEffectAppliedRef = useRef(false);
 
   const resolvedActiveIndex = useMemo(() => {
-    const index = TABS.findIndex((tab) => tab.key === activeTab)
-    return index >= 0 ? index : 0
-  }, [activeTab])
+    const index = TABS.findIndex(tab => tab.key === activeTab);
+    return index >= 0 ? index : 0;
+  }, [activeTab]);
 
   const realtimeMode = useMemo(
     () => normalizeRealtimeMode(game?.realtime_match),
-    [game?.realtime_match],
-  )
-  const realtimeEnabled = isRealtimeEnabled(realtimeMode)
-  const realtimeChipLabel =
-    realtimeMode === REALTIME_MODES.PULSE ? 'Pulse 실시간' : '실시간'
+    [game?.realtime_match]
+  );
+  const realtimeEnabled = isRealtimeEnabled(realtimeMode);
+  const realtimeChipLabel = realtimeMode === REALTIME_MODES.PULSE ? 'Pulse 실시간' : '실시간';
 
   useEffect(() => {
     if (typeof window === 'undefined') {
-      return undefined
+      return undefined;
     }
 
     const handleResize = () => {
-      setIsCompactLayout(window.innerWidth <= 720)
-    }
+      setIsCompactLayout(window.innerWidth <= 720);
+    };
 
-    handleResize()
-    window.addEventListener('resize', handleResize)
+    handleResize();
+    window.addEventListener('resize', handleResize);
 
     return () => {
-      window.removeEventListener('resize', handleResize)
-    }
-  }, [])
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
 
   useEffect(() => {
     if (!isCompactLayout) {
-      setCompactInfoOpen(false)
+      setCompactInfoOpen(false);
     }
-  }, [isCompactLayout])
+  }, [isCompactLayout]);
 
   useEffect(() => {
     if (!compactInfoOpen) {
-      return undefined
+      return undefined;
     }
 
-    const handleKeyDown = (event) => {
+    const handleKeyDown = event => {
       if (event.key === 'Escape') {
-        setCompactInfoOpen(false)
+        setCompactInfoOpen(false);
       }
-    }
+    };
 
-    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('keydown', handleKeyDown);
 
     return () => {
-      window.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [compactInfoOpen])
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [compactInfoOpen]);
 
-  const formatSessionTimestamp = useCallback((value) => {
-    if (!value) return ''
+  const formatSessionTimestamp = useCallback(value => {
+    if (!value) return '';
     try {
-      const date = new Date(value)
+      const date = new Date(value);
       if (Number.isNaN(date.getTime())) {
-        return ''
+        return '';
       }
-      return date.toLocaleString()
+      return date.toLocaleString();
     } catch (error) {
-      return ''
+      return '';
     }
-  }, [])
+  }, []);
 
   useEffect(() => {
-    const safeKey = TABS[resolvedActiveIndex]?.key ?? TABS[0].key
+    const safeKey = TABS[resolvedActiveIndex]?.key ?? TABS[0].key;
     if (activeTab !== safeKey) {
-      setActiveTab(safeKey)
+      setActiveTab(safeKey);
     }
-  }, [activeTab, resolvedActiveIndex])
+  }, [activeTab, resolvedActiveIndex]);
 
   useEffect(() => {
     if (!audioManager) {
-      return undefined
+      return undefined;
     }
 
-    const unsubscribe = audioManager.subscribe((snapshot) => {
-      setHeroAudioState(snapshot)
+    const unsubscribe = audioManager.subscribe(snapshot => {
+      setHeroAudioState(snapshot);
       if (snapshot && Number.isFinite(snapshot.volume) && snapshot.volume > 0) {
-        heroAudioVolumeMemoryRef.current = snapshot.volume
+        heroAudioVolumeMemoryRef.current = snapshot.volume;
       }
-    })
+    });
 
     return () => {
-      unsubscribe()
-    }
-  }, [audioManager])
+      unsubscribe();
+    };
+  }, [audioManager]);
 
   useEffect(() => {
     if (!audioManager) {
-      return undefined
+      return undefined;
     }
 
-    const baselineSnapshot = audioManager.getState()
-    audioBaselineRef.current = baselineSnapshot
-    audioBaselineEffectsRef.current = extractHeroAudioEffectSnapshot(baselineSnapshot)
-    baselineEffectAppliedRef.current = false
+    const baselineSnapshot = audioManager.getState();
+    audioBaselineRef.current = baselineSnapshot;
+    audioBaselineEffectsRef.current = extractHeroAudioEffectSnapshot(baselineSnapshot);
+    baselineEffectAppliedRef.current = false;
 
     return () => {
-      const baseline = audioBaselineRef.current
+      const baseline = audioBaselineRef.current;
       if (!baseline) {
-        audioManager.setEqEnabled(false)
-        audioManager.setReverbEnabled(false)
-        audioManager.setCompressorEnabled(false)
-        audioManager.setEnabled(false, { resume: false })
-        audioManager.stop()
-        return
+        audioManager.setEqEnabled(false);
+        audioManager.setReverbEnabled(false);
+        audioManager.setCompressorEnabled(false);
+        audioManager.setEnabled(false, { resume: false });
+        audioManager.stop();
+        return;
       }
 
-      audioManager.setLoop(baseline.loop)
-      audioManager.setVolume(baseline.volume)
-      audioManager.setEqEnabled(baseline.eqEnabled)
-      audioManager.setEqualizer(baseline.equalizer)
-      audioManager.setReverbEnabled(baseline.reverbEnabled)
-      audioManager.setReverbDetail(baseline.reverbDetail)
-      audioManager.setCompressorEnabled(baseline.compressorEnabled)
-      audioManager.setCompressorDetail(baseline.compressorDetail)
+      audioManager.setLoop(baseline.loop);
+      audioManager.setVolume(baseline.volume);
+      audioManager.setEqEnabled(baseline.eqEnabled);
+      audioManager.setEqualizer(baseline.equalizer);
+      audioManager.setReverbEnabled(baseline.reverbEnabled);
+      audioManager.setReverbDetail(baseline.reverbDetail);
+      audioManager.setCompressorEnabled(baseline.compressorEnabled);
+      audioManager.setCompressorDetail(baseline.compressorDetail);
       audioManager.loadHeroTrack({
         heroId: baseline.heroId,
         heroName: baseline.heroName,
@@ -511,67 +506,67 @@ export default function GameRoomView({
         duration: baseline.duration || 0,
         autoPlay: false,
         loop: baseline.loop,
-      })
+      });
       if (baseline.enabled) {
-        audioManager.setEnabled(true, { resume: false })
+        audioManager.setEnabled(true, { resume: false });
         if (baseline.isPlaying) {
-          audioManager.play().catch(() => {})
+          audioManager.play().catch(() => {});
         }
       } else {
-        audioManager.setEnabled(false, { resume: false })
-        audioManager.stop()
+        audioManager.setEnabled(false, { resume: false });
+        audioManager.stop();
       }
-    }
-  }, [audioManager])
+    };
+  }, [audioManager]);
 
   const normalizedRoles = useMemo(() => {
-    if (!Array.isArray(roles)) return []
-    const entries = new Map()
-    roles.forEach((role) => {
+    if (!Array.isArray(roles)) return [];
+    const entries = new Map();
+    roles.forEach(role => {
       if (typeof role === 'string') {
-        const trimmed = role.trim()
-        if (!trimmed) return
+        const trimmed = role.trim();
+        if (!trimmed) return;
         if (!entries.has(trimmed)) {
-          entries.set(trimmed, { name: trimmed, capacity: null })
+          entries.set(trimmed, { name: trimmed, capacity: null });
         }
-        return
+        return;
       }
-      if (!role || typeof role !== 'object') return
-      const name = typeof role.name === 'string' ? role.name.trim() : ''
-      if (!name) return
-      const rawCapacity = Number(role.slot_count ?? role.slotCount ?? role.capacity)
-      const capacity = Number.isFinite(rawCapacity) && rawCapacity >= 0 ? rawCapacity : null
+      if (!role || typeof role !== 'object') return;
+      const name = typeof role.name === 'string' ? role.name.trim() : '';
+      if (!name) return;
+      const rawCapacity = Number(role.slot_count ?? role.slotCount ?? role.capacity);
+      const capacity = Number.isFinite(rawCapacity) && rawCapacity >= 0 ? rawCapacity : null;
       if (entries.has(name)) {
         if (capacity != null) {
-          entries.get(name).capacity = capacity
+          entries.get(name).capacity = capacity;
         }
       } else {
-        entries.set(name, { name, capacity })
+        entries.set(name, { name, capacity });
       }
-    })
-    return Array.from(entries.values())
-  }, [roles])
+    });
+    return Array.from(entries.values());
+  }, [roles]);
 
   const roleOccupancyMap = useMemo(() => {
-    const map = new Map()
+    const map = new Map();
     if (!Array.isArray(roleOccupancy)) {
-      return map
+      return map;
     }
-    roleOccupancy.forEach((entry) => {
-      const name = typeof entry?.name === 'string' ? entry.name.trim() : ''
-      if (!name) return
-      map.set(name, entry)
-    })
-    return map
-  }, [roleOccupancy])
+    roleOccupancy.forEach(entry => {
+      const name = typeof entry?.name === 'string' ? entry.name.trim() : '';
+      if (!name) return;
+      map.set(name, entry);
+    });
+    return map;
+  }, [roleOccupancy]);
 
   const participantsByRole = useMemo(() => {
-    const base = new Map()
-    const order = []
+    const base = new Map();
+    const order = [];
 
     const ensure = (rawName, capacityHint = null) => {
-      const name = typeof rawName === 'string' ? rawName.trim() : ''
-      if (!name) return null
+      const name = typeof rawName === 'string' ? rawName.trim() : '';
+      if (!name) return null;
       if (!base.has(name)) {
         base.set(name, {
           name,
@@ -579,61 +574,62 @@ export default function GameRoomView({
           capacity: null,
           occupiedSlots: null,
           availableSlots: null,
-        })
-        order.push(name)
+        });
+        order.push(name);
       }
-      const entry = base.get(name)
+      const entry = base.get(name);
       if (Number.isFinite(Number(capacityHint)) && Number(capacityHint) >= 0) {
-        entry.capacity = Number(capacityHint)
+        entry.capacity = Number(capacityHint);
       }
-      return entry
-    }
+      return entry;
+    };
 
     normalizedRoles.forEach(({ name, capacity }) => {
-      ensure(name, capacity)
-    })
+      ensure(name, capacity);
+    });
 
     roleOccupancyMap.forEach((occupancy, name) => {
-      const entry = ensure(name, occupancy?.totalSlots ?? occupancy?.capacity)
-      if (!entry) return
+      const entry = ensure(name, occupancy?.totalSlots ?? occupancy?.capacity);
+      if (!entry) return;
       if (Number.isFinite(Number(occupancy?.totalSlots)) && Number(occupancy.totalSlots) >= 0) {
-        entry.capacity = Number(occupancy.totalSlots)
+        entry.capacity = Number(occupancy.totalSlots);
       }
       if (Number.isFinite(Number(occupancy?.occupiedSlots))) {
-        entry.occupiedSlots = Number(occupancy.occupiedSlots)
+        entry.occupiedSlots = Number(occupancy.occupiedSlots);
       }
-      if (Number.isFinite(Number(occupancy?.availableSlots)) && Number(occupancy.availableSlots) >= 0) {
-        entry.availableSlots = Number(occupancy.availableSlots)
+      if (
+        Number.isFinite(Number(occupancy?.availableSlots)) &&
+        Number(occupancy.availableSlots) >= 0
+      ) {
+        entry.availableSlots = Number(occupancy.availableSlots);
       }
-    })
+    });
 
-    participants.forEach((participant) => {
-      const entry = ensure(participant?.role)
-      if (!entry) return
-      entry.count += 1
-    })
+    participants.forEach(participant => {
+      const entry = ensure(participant?.role);
+      if (!entry) return;
+      entry.count += 1;
+    });
 
     return order
-      .map((name) => {
-        const entry = base.get(name)
-        if (!entry) return null
-        const occupancy = roleOccupancyMap.get(name)
+      .map(name => {
+        const entry = base.get(name);
+        if (!entry) return null;
+        const occupancy = roleOccupancyMap.get(name);
         const capacity =
           occupancy?.totalSlots != null
             ? Number(occupancy.totalSlots)
             : Number.isFinite(Number(entry.capacity)) && Number(entry.capacity) >= 0
-            ? Number(entry.capacity)
-            : null
+              ? Number(entry.capacity)
+              : null;
         const baselineReady =
           occupancy?.occupiedSlots != null
             ? Math.max(Number(occupancy.occupiedSlots), 0)
             : capacity != null
-            ? Math.min(entry.count, capacity)
-            : entry.count
-        const stillNeeded =
-          capacity != null ? Math.max(capacity - baselineReady, 0) : null
-        const overflowCount =
-          capacity != null ? Math.max(entry.count - baselineReady, 0) : 0
+              ? Math.min(entry.count, capacity)
+              : entry.count;
+        const stillNeeded = capacity != null ? Math.max(capacity - baselineReady, 0) : null;
+        const overflowCount = capacity != null ? Math.max(entry.count - baselineReady, 0) : 0;
 
         return {
           name,
@@ -642,356 +638,358 @@ export default function GameRoomView({
           baselineReady,
           overflowCount,
           neededForStart: stillNeeded,
-        }
+        };
       })
-      .filter(Boolean)
-  }, [normalizedRoles, participants, roleOccupancyMap])
+      .filter(Boolean);
+  }, [normalizedRoles, participants, roleOccupancyMap]);
 
-  const fallbackRole = normalizedRoles[0]?.name || (participantsByRole[0]?.name ?? '')
-  const currentRole = pickRole || fallbackRole
+  const fallbackRole = normalizedRoles[0]?.name || (participantsByRole[0]?.name ?? '');
+  const currentRole = pickRole || fallbackRole;
 
   useEffect(() => {
     if (!pickRole && fallbackRole) {
-      onChangeRole?.(fallbackRole)
+      onChangeRole?.(fallbackRole);
     }
-  }, [fallbackRole, onChangeRole, pickRole])
+  }, [fallbackRole, onChangeRole, pickRole]);
 
-  const roster = Array.isArray(participants) ? participants : []
-  const readyCount = roster.length
+  const roster = Array.isArray(participants) ? participants : [];
+  const readyCount = roster.length;
 
   const baselineSummary = useMemo(() => {
     if (!participantsByRole.length) {
-      return { totalMinimum: 0, shortfall: 0 }
+      return { totalMinimum: 0, shortfall: 0 };
     }
     return participantsByRole.reduce(
       (acc, entry) => {
         const minimumValue =
           Number.isFinite(Number(entry.minimumRequired)) && Number(entry.minimumRequired) >= 0
             ? Number(entry.minimumRequired)
-            : 0
+            : 0;
         const shortfallValue =
           Number.isFinite(Number(entry.neededForStart)) && Number(entry.neededForStart) >= 0
             ? Number(entry.neededForStart)
-            : 0
+            : 0;
         return {
           totalMinimum: acc.totalMinimum + minimumValue,
           shortfall: acc.shortfall + shortfallValue,
-        }
+        };
       },
-      { totalMinimum: 0, shortfall: 0 },
-    )
-  }, [participantsByRole])
+      { totalMinimum: 0, shortfall: 0 }
+    );
+  }, [participantsByRole]);
 
   const capacityCountLabel = useMemo(() => {
     if (minimumParticipants > 0) {
-      return `${readyCount}/${minimumParticipants}명 참여`
+      return `${readyCount}/${minimumParticipants}명 참여`;
     }
-    return `${readyCount}명 참여`
-  }, [minimumParticipants, readyCount])
+    return `${readyCount}명 참여`;
+  }, [minimumParticipants, readyCount]);
 
   const capacityStatusText = useMemo(() => {
-    if (canStart) return '기본 역할 최소 인원이 모두 충족되었습니다.'
+    if (canStart) return '기본 역할 최소 인원이 모두 충족되었습니다.';
     if (baselineSummary.shortfall > 0 && baselineSummary.totalMinimum > 0) {
-      return `시작까지 기본 슬롯 ${baselineSummary.shortfall}명 충원 필요`
+      return `시작까지 기본 슬롯 ${baselineSummary.shortfall}명 충원 필요`;
     }
     if (minimumParticipants > 0) {
-      return `${minimumParticipants}명 이상 모이면 시작할 수 있습니다.`
+      return `${minimumParticipants}명 이상 모이면 시작할 수 있습니다.`;
     }
-    return '함께할 참가자를 기다리는 중'
-  }, [baselineSummary.shortfall, baselineSummary.totalMinimum, canStart, minimumParticipants])
+    return '함께할 참가자를 기다리는 중';
+  }, [baselineSummary.shortfall, baselineSummary.totalMinimum, canStart, minimumParticipants]);
 
-  const entryBackdrop = myEntry?.hero?.background_url || null
+  const entryBackdrop = myEntry?.hero?.background_url || null;
 
   const heroBackdrop = useMemo(() => {
-    if (myHero?.background_url) return myHero.background_url
-    if (entryBackdrop) return entryBackdrop
-    const participantBackdrop = participants.find((participant) => participant?.hero?.background_url)
-    return participantBackdrop?.hero?.background_url || null
-  }, [entryBackdrop, myHero?.background_url, participants])
+    if (myHero?.background_url) return myHero.background_url;
+    if (entryBackdrop) return entryBackdrop;
+    const participantBackdrop = participants.find(participant => participant?.hero?.background_url);
+    return participantBackdrop?.hero?.background_url || null;
+  }, [entryBackdrop, myHero?.background_url, participants]);
 
-  const backgroundImage = heroBackdrop || game?.image_url || null
-  const coverImage = game?.image_url || null
+  const backgroundImage = heroBackdrop || game?.image_url || null;
+  const coverImage = game?.image_url || null;
 
   const heroAbilities = useMemo(() => {
-    if (!myHero) return []
-    return [myHero.ability1, myHero.ability2, myHero.ability3, myHero.ability4].filter(Boolean)
-  }, [myHero])
+    if (!myHero) return [];
+    return [myHero.ability1, myHero.ability2, myHero.ability3, myHero.ability4].filter(Boolean);
+  }, [myHero]);
 
-  const hasHeroEntry = Boolean(myEntry)
+  const hasHeroEntry = Boolean(myEntry);
 
-  const resolvedStartNotice = typeof startNotice === 'string' ? startNotice.trim() : ''
-  const resolvedStartError = typeof startError === 'string' ? startError.trim() : ''
+  const resolvedStartNotice = typeof startNotice === 'string' ? startNotice.trim() : '';
+  const resolvedStartError = typeof startError === 'string' ? startError.trim() : '';
 
   const heroInfoStages = useMemo(() => {
-    const stages = ['profile']
+    const stages = ['profile'];
     if (hasHeroEntry) {
-      stages.push('stats')
+      stages.push('stats');
     }
     if (heroAbilities.length > 0) {
-      stages.push('abilities')
+      stages.push('abilities');
     }
-    return stages
-  }, [hasHeroEntry, heroAbilities.length])
+    return stages;
+  }, [hasHeroEntry, heroAbilities.length]);
 
-  const [heroStageIndex, setHeroStageIndex] = useState(0)
-
-  useEffect(() => {
-    setHeroStageIndex(0)
-  }, [myHero?.id])
+  const [heroStageIndex, setHeroStageIndex] = useState(0);
 
   useEffect(() => {
-    if (!heroInfoStages.length) return
+    setHeroStageIndex(0);
+  }, [myHero?.id]);
+
+  useEffect(() => {
+    if (!heroInfoStages.length) return;
     if (heroStageIndex >= heroInfoStages.length) {
-      setHeroStageIndex(0)
+      setHeroStageIndex(0);
     }
-  }, [heroInfoStages, heroStageIndex])
+  }, [heroInfoStages, heroStageIndex]);
 
-  const currentHeroStage = heroInfoStages[heroStageIndex] || 'profile'
+  const currentHeroStage = heroInfoStages[heroStageIndex] || 'profile';
 
   const handleAdvanceHeroStage = useCallback(() => {
-    if (heroInfoStages.length <= 1) return
-    setHeroStageIndex((prev) => {
-      if (heroInfoStages.length === 0) return 0
-      return (prev + 1) % heroInfoStages.length
-    })
-  }, [heroInfoStages])
+    if (heroInfoStages.length <= 1) return;
+    setHeroStageIndex(prev => {
+      if (heroInfoStages.length === 0) return 0;
+      return (prev + 1) % heroInfoStages.length;
+    });
+  }, [heroInfoStages]);
 
   const handleHeroKeyDown = useCallback(
-    (event) => {
+    event => {
       if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault()
-        handleAdvanceHeroStage()
+        event.preventDefault();
+        handleAdvanceHeroStage();
       }
     },
-    [handleAdvanceHeroStage],
-  )
+    [handleAdvanceHeroStage]
+  );
 
-  const heroStageHasMultipleViews = heroInfoStages.length > 1
+  const heroStageHasMultipleViews = heroInfoStages.length > 1;
 
   const heroNameMap = useMemo(() => {
-    const map = new Map()
-    participants.forEach((participant) => {
+    const map = new Map();
+    participants.forEach(participant => {
       if (participant?.hero_id && participant?.hero?.name) {
-        map.set(participant.hero_id, participant.hero.name)
+        map.set(participant.hero_id, participant.hero.name);
       }
-    })
+    });
     if (myHero?.id && myHero?.name) {
-      map.set(myHero.id, myHero.name)
+      map.set(myHero.id, myHero.name);
     }
-    return map
-  }, [myHero, participants])
+    return map;
+  }, [myHero, participants]);
 
   const participantsByOwnerId = useMemo(() => {
-    const map = new Map()
-    participants.forEach((participant) => {
-      const ownerId = participant?.owner_id || participant?.ownerId
-      if (!ownerId) return
+    const map = new Map();
+    participants.forEach(participant => {
+      const ownerId = participant?.owner_id || participant?.ownerId;
+      if (!ownerId) return;
       if (!map.has(ownerId)) {
-        map.set(ownerId, participant)
+        map.set(ownerId, participant);
       }
-    })
-    return map
-  }, [participants])
+    });
+    return map;
+  }, [participants]);
 
   const participantCountLabel = useMemo(() => {
-    const count = Array.isArray(participants) ? participants.length : 0
-    return `${count.toLocaleString()}명 참여`
-  }, [participants])
+    const count = Array.isArray(participants) ? participants.length : 0;
+    return `${count.toLocaleString()}명 참여`;
+  }, [participants]);
 
   const baseHeroAudioProfile = useMemo(() => {
-    const viewerProfile = normalizeHeroAudioProfile(myHero)
+    const viewerProfile = normalizeHeroAudioProfile(myHero);
     if (viewerProfile) {
-      return { ...viewerProfile, source: 'viewer' }
+      return { ...viewerProfile, source: 'viewer' };
     }
 
-    const hostOwnerId = game?.owner_id || null
+    const hostOwnerId = game?.owner_id || null;
     if (hostOwnerId) {
       const hostParticipant = participants.find(
-        (participant) => participant?.owner_id === hostOwnerId && participant?.hero,
-      )
+        participant => participant?.owner_id === hostOwnerId && participant?.hero
+      );
       if (hostParticipant?.hero) {
         const hostProfile = normalizeHeroAudioProfile(hostParticipant.hero, {
           fallbackHeroId: hostParticipant.hero_id || null,
           fallbackHeroName: hostParticipant.hero?.name || '',
-        })
+        });
         if (hostProfile) {
-          return { ...hostProfile, source: 'host' }
+          return { ...hostProfile, source: 'host' };
         }
       }
     }
 
     const fallbackParticipant = participants.find(
-      (participant) => participant?.hero && (participant.hero.bgm_url || participant.hero.bgmUrl),
-    )
+      participant => participant?.hero && (participant.hero.bgm_url || participant.hero.bgmUrl)
+    );
     if (fallbackParticipant?.hero) {
       const fallbackProfile = normalizeHeroAudioProfile(fallbackParticipant.hero, {
         fallbackHeroId: fallbackParticipant.hero_id || null,
         fallbackHeroName: fallbackParticipant.hero?.name || '',
-      })
+      });
       if (fallbackProfile) {
-        return { ...fallbackProfile, source: 'participant' }
+        return { ...fallbackProfile, source: 'participant' };
       }
     }
 
-    return null
-  }, [game?.owner_id, myHero, participants])
+    return null;
+  }, [game?.owner_id, myHero, participants]);
 
   const rankingHeroAudioProfile = useMemo(() => {
     const candidates = Array.isArray(participants)
       ? participants
           .filter(
-            (participant) =>
-              participant?.hero && (participant.hero.bgm_url || participant.hero.bgmUrl),
+            participant =>
+              participant?.hero && (participant.hero.bgm_url || participant.hero.bgmUrl)
           )
           .slice()
           .sort(compareParticipantsByScore)
-      : []
+      : [];
 
-    const top = candidates[0] || null
+    const top = candidates[0] || null;
     if (!top?.hero) {
-      return null
+      return null;
     }
 
     const rankingProfile = normalizeHeroAudioProfile(top.hero, {
       fallbackHeroId: top.hero_id || null,
       fallbackHeroName: top.hero?.name || '',
-    })
+    });
 
     if (!rankingProfile) {
-      return null
+      return null;
     }
 
-    return { ...rankingProfile, source: 'ranking' }
-  }, [participants])
+    return { ...rankingProfile, source: 'ranking' };
+  }, [participants]);
 
   const heroAudioProfile = useMemo(() => {
     if (activeTab === 'ranking' && rankingHeroAudioProfile) {
-      return rankingHeroAudioProfile
+      return rankingHeroAudioProfile;
     }
 
     if (baseHeroAudioProfile) {
-      return baseHeroAudioProfile
+      return baseHeroAudioProfile;
     }
 
-    return null
-  }, [activeTab, baseHeroAudioProfile, rankingHeroAudioProfile])
+    return null;
+  }, [activeTab, baseHeroAudioProfile, rankingHeroAudioProfile]);
 
   const heroAudioProfileKey = useMemo(
     () => buildHeroAudioProfileKey(heroAudioProfile),
-    [heroAudioProfile?.heroId, heroAudioProfile?.heroName, heroAudioProfile?.source],
-  )
+    [heroAudioProfile?.heroId, heroAudioProfile?.heroName, heroAudioProfile?.source]
+  );
 
   useEffect(() => {
     if (previousAudioProfileKeyRef.current === heroAudioProfileKey) {
-      return
+      return;
     }
-    previousAudioProfileKeyRef.current = heroAudioProfileKey
+    previousAudioProfileKeyRef.current = heroAudioProfileKey;
     if (audioPreferenceSaveTimeoutRef.current) {
-      clearTimeout(audioPreferenceSaveTimeoutRef.current)
-      audioPreferenceSaveTimeoutRef.current = null
+      clearTimeout(audioPreferenceSaveTimeoutRef.current);
+      audioPreferenceSaveTimeoutRef.current = null;
     }
-    heroAudioPreferenceDirtyRef.current = false
-    lastPersistedSignatureRef.current = null
-    lastPersistedPayloadRef.current = null
-    setAudioPreferenceLoadedKey(null)
-    baselineEffectAppliedRef.current = false
-  }, [heroAudioProfileKey])
+    heroAudioPreferenceDirtyRef.current = false;
+    lastPersistedSignatureRef.current = null;
+    lastPersistedPayloadRef.current = null;
+    setAudioPreferenceLoadedKey(null);
+    baselineEffectAppliedRef.current = false;
+  }, [heroAudioProfileKey]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
-      return undefined
+      return undefined;
     }
-    let cancelled = false
+    let cancelled = false;
 
     supabase.auth
       .getUser()
       .then(({ data, error }) => {
-        if (cancelled) return
+        if (cancelled) return;
         if (error) {
-          console.error('Failed to resolve viewer for audio preferences', error)
-          setViewerId(null)
-          return
+          console.error('Failed to resolve viewer for audio preferences', error);
+          setViewerId(null);
+          return;
         }
-        setViewerId(data?.user?.id || null)
+        setViewerId(data?.user?.id || null);
       })
-      .catch((error) => {
+      .catch(error => {
         if (!cancelled) {
-          console.error('Failed to resolve viewer for audio preferences', error)
-          setViewerId(null)
+          console.error('Failed to resolve viewer for audio preferences', error);
+          setViewerId(null);
         }
-      })
+      });
 
     return () => {
-      cancelled = true
-    }
-  }, [])
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!heroAudioProfile) {
-      setSelectedHeroAudioTrackId(null)
-      setSelectedHeroAudioPresetId(null)
-      setHeroAudioManualOverride(false)
-      return
+      setSelectedHeroAudioTrackId(null);
+      setSelectedHeroAudioPresetId(null);
+      setHeroAudioManualOverride(false);
+      return;
     }
 
-    setSelectedHeroAudioTrackId((prev) => {
-      if (prev && heroAudioProfile.tracks?.some((track) => track.id === prev)) {
-        return prev
+    setSelectedHeroAudioTrackId(prev => {
+      if (prev && heroAudioProfile.tracks?.some(track => track.id === prev)) {
+        return prev;
       }
-      return heroAudioProfile.defaultTrackId || heroAudioProfile.tracks?.[0]?.id || null
-    })
+      return heroAudioProfile.defaultTrackId || heroAudioProfile.tracks?.[0]?.id || null;
+    });
 
-    setSelectedHeroAudioPresetId((prev) => {
-      if (prev && heroAudioProfile.presets?.some((preset) => preset.id === prev)) {
-        return prev
+    setSelectedHeroAudioPresetId(prev => {
+      if (prev && heroAudioProfile.presets?.some(preset => preset.id === prev)) {
+        return prev;
       }
-      return heroAudioProfile.defaultPresetId || heroAudioProfile.presets?.[0]?.id || null
-    })
+      return heroAudioProfile.defaultPresetId || heroAudioProfile.presets?.[0]?.id || null;
+    });
 
-  setHeroAudioManualOverride(false)
-  // NOTE: auto-suppressed by codemod. heroAudioProfile contains nested fields
-  // and length checks; adding all derived values to deps produced excessive
-  // re-renders. Please review before restoring the rule.
-  // NOTE: auto-suppressed by codemod. This suppression was added by automated
-  // tooling to reduce noise. Please review the surrounding effect body and
-  // either add the minimal safe dependencies or keep the suppression with
-  // an explanatory comment before removing this note.
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
+    setHeroAudioManualOverride(false);
+    // NOTE: auto-suppressed by codemod. heroAudioProfile contains nested fields
+    // and length checks; adding all derived values to deps produced excessive
+    // re-renders. Please review before restoring the rule.
+    // NOTE: auto-suppressed by codemod. This suppression was added by automated
+    // tooling to reduce noise. Please review the surrounding effect body and
+    // either add the minimal safe dependencies or keep the suppression with
+    // an explanatory comment before removing this note.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [
     heroAudioProfile?.heroId,
     heroAudioProfile?.defaultTrackId,
     heroAudioProfile?.defaultPresetId,
     heroAudioProfile?.tracks?.length,
     heroAudioProfile?.presets?.length,
-  ])
+  ]);
 
   const heroAudioSourceLabel = useMemo(() => {
     if (!heroAudioProfile) {
-      return ''
+      return '';
     }
 
     switch (heroAudioProfile.source) {
       case 'viewer':
-        return '현재 브금 · 내 캐릭터'
+        return '현재 브금 · 내 캐릭터';
       case 'host':
-        return '현재 브금 · 방장 기준'
+        return '현재 브금 · 방장 기준';
       case 'participant':
-        return '현재 브금 · 참가자 공유'
+        return '현재 브금 · 참가자 공유';
       case 'ranking':
-        return '현재 브금 · 랭킹 1위'
+        return '현재 브금 · 랭킹 1위';
       default:
-        return '현재 브금'
+        return '현재 브금';
     }
-  }, [heroAudioProfile])
+  }, [heroAudioProfile]);
 
   const heroAudioActiveTrack = useMemo(() => {
     if (!heroAudioProfile) {
-      return null
+      return null;
     }
 
     if (heroAudioProfile.tracks?.length) {
-      const selectedTrack = heroAudioProfile.tracks.find((track) => track.id === selectedHeroAudioTrackId)
-      return selectedTrack || heroAudioProfile.tracks[0]
+      const selectedTrack = heroAudioProfile.tracks.find(
+        track => track.id === selectedHeroAudioTrackId
+      );
+      return selectedTrack || heroAudioProfile.tracks[0];
     }
 
     if (heroAudioProfile.bgmUrl) {
@@ -1002,20 +1000,24 @@ export default function GameRoomView({
         duration: heroAudioProfile.bgmDuration || null,
         type: null,
         presetId: null,
-      }
+      };
     }
 
-    return null
-  }, [heroAudioProfile, selectedHeroAudioTrackId])
+    return null;
+  }, [heroAudioProfile, selectedHeroAudioTrackId]);
 
   const heroAudioDurationLabel = useMemo(
-    () => (Number.isFinite(heroAudioActiveTrack?.duration) ? formatDurationLabel(heroAudioActiveTrack.duration) : null),
-    [heroAudioActiveTrack?.duration],
-  )
+    () =>
+      Number.isFinite(heroAudioActiveTrack?.duration)
+        ? formatDurationLabel(heroAudioActiveTrack.duration)
+        : null,
+    [heroAudioActiveTrack?.duration]
+  );
 
-  const heroAudioTracks = heroAudioProfile?.tracks ?? []
-  const heroAudioPresets = heroAudioProfile?.presets ?? []
-  const heroAudioActivePreset = heroAudioPresets.find((preset) => preset.id === selectedHeroAudioPresetId) || null
+  const heroAudioTracks = heroAudioProfile?.tracks ?? [];
+  const heroAudioPresets = heroAudioProfile?.presets ?? [];
+  const heroAudioActivePreset =
+    heroAudioPresets.find(preset => preset.id === selectedHeroAudioPresetId) || null;
 
   const heroAudioEffectSnapshot = useMemo(
     () => extractHeroAudioEffectSnapshot(heroAudioState),
@@ -1031,11 +1033,11 @@ export default function GameRoomView({
       heroAudioState?.compressorDetail?.ratio,
       heroAudioState?.compressorDetail?.release,
       heroAudioState?.compressorDetail?.threshold,
-    ],
-  )
+    ]
+  );
 
   const currentHeroAudioPreference = useMemo(() => {
-    if (!heroAudioEffectSnapshot) return null
+    if (!heroAudioEffectSnapshot) return null;
     return {
       trackId: selectedHeroAudioTrackId || heroAudioActiveTrack?.id || null,
       presetId: heroAudioManualOverride ? null : selectedHeroAudioPresetId || null,
@@ -1043,54 +1045,58 @@ export default function GameRoomView({
       eq: { ...heroAudioEffectSnapshot.eq },
       reverb: { ...heroAudioEffectSnapshot.reverb },
       compressor: { ...heroAudioEffectSnapshot.compressor },
-    }
+    };
   }, [
     heroAudioActiveTrack?.id,
     heroAudioEffectSnapshot,
     heroAudioManualOverride,
     selectedHeroAudioPresetId,
     selectedHeroAudioTrackId,
-  ])
+  ]);
 
   const currentHeroAudioPreferenceSignature = useMemo(
     () => (currentHeroAudioPreference ? JSON.stringify(currentHeroAudioPreference) : null),
-    [currentHeroAudioPreference],
-  )
+    [currentHeroAudioPreference]
+  );
 
   const heroAudioEqSummary = useMemo(() => {
     if (!heroAudioState?.equalizer) {
-      return '저 0dB · 중 0dB · 고 0dB'
+      return '저 0dB · 중 0dB · 고 0dB';
     }
-    return `저 ${formatDbLabel(heroAudioState.equalizer.low)} · 중 ${formatDbLabel(heroAudioState.equalizer.mid)} · 고 ${formatDbLabel(heroAudioState.equalizer.high)}`
-  }, [heroAudioState?.equalizer?.high, heroAudioState?.equalizer?.low, heroAudioState?.equalizer?.mid])
+    return `저 ${formatDbLabel(heroAudioState.equalizer.low)} · 중 ${formatDbLabel(heroAudioState.equalizer.mid)} · 고 ${formatDbLabel(heroAudioState.equalizer.high)}`;
+  }, [
+    heroAudioState?.equalizer?.high,
+    heroAudioState?.equalizer?.low,
+    heroAudioState?.equalizer?.mid,
+  ]);
 
   const heroAudioReverbSummary = useMemo(() => {
     if (!heroAudioState?.reverbDetail) {
-      return '믹스 0% · 잔향 0.0s'
+      return '믹스 0% · 잔향 0.0s';
     }
-    return `믹스 ${formatPercentLabel(heroAudioState.reverbDetail.mix)} · 잔향 ${formatSecondsLabel(heroAudioState.reverbDetail.decay)}`
-  }, [heroAudioState?.reverbDetail?.decay, heroAudioState?.reverbDetail?.mix])
+    return `믹스 ${formatPercentLabel(heroAudioState.reverbDetail.mix)} · 잔향 ${formatSecondsLabel(heroAudioState.reverbDetail.decay)}`;
+  }, [heroAudioState?.reverbDetail?.decay, heroAudioState?.reverbDetail?.mix]);
 
   const heroAudioCompressorSummary = useMemo(() => {
     if (!heroAudioState?.compressorDetail) {
-      return '임계값 0dB · 비율 1.0:1 · 릴리즈 0ms'
+      return '임계값 0dB · 비율 1.0:1 · 릴리즈 0ms';
     }
-    return `임계값 ${formatDbLabel(heroAudioState.compressorDetail.threshold)} · 비율 ${formatRatioLabel(heroAudioState.compressorDetail.ratio)} · 릴리즈 ${formatMillisecondsLabel(heroAudioState.compressorDetail.release)}`
-  // NOTE: auto-suppressed by codemod. This suppression was added by automated
-  // tooling to reduce noise. Please review the surrounding effect body and
-  // either add the minimal safe dependencies or keep the suppression with
-  // an explanatory comment before removing this note.
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
+    return `임계값 ${formatDbLabel(heroAudioState.compressorDetail.threshold)} · 비율 ${formatRatioLabel(heroAudioState.compressorDetail.ratio)} · 릴리즈 ${formatMillisecondsLabel(heroAudioState.compressorDetail.release)}`;
+    // NOTE: auto-suppressed by codemod. This suppression was added by automated
+    // tooling to reduce noise. Please review the surrounding effect body and
+    // either add the minimal safe dependencies or keep the suppression with
+    // an explanatory comment before removing this note.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [
     heroAudioState?.compressorDetail?.ratio,
     heroAudioState?.compressorDetail?.release,
     heroAudioState?.compressorDetail?.threshold,
-  ])
+  ]);
 
   const applyLoadedHeroAudioPreference = useCallback(
-    (preference) => {
+    preference => {
       if (!heroAudioProfile || heroAudioProfile.source === 'ranking') {
-        return { hadAdjustments: false, normalized: null }
+        return { hadAdjustments: false, normalized: null };
       }
 
       const normalized = {
@@ -1100,171 +1106,171 @@ export default function GameRoomView({
         eq: normalizeEqSettings(preference?.eq),
         reverb: normalizeReverbSettings(preference?.reverb),
         compressor: normalizeCompressorSettings(preference?.compressor),
-      }
+      };
 
-      let hadAdjustments = false
+      let hadAdjustments = false;
 
       if (normalized.trackId) {
-        if (heroAudioTracks.some((track) => track.id === normalized.trackId)) {
-          setSelectedHeroAudioTrackId(normalized.trackId)
+        if (heroAudioTracks.some(track => track.id === normalized.trackId)) {
+          setSelectedHeroAudioTrackId(normalized.trackId);
         } else {
-          hadAdjustments = true
-          const fallbackTrackId = heroAudioProfile.defaultTrackId || heroAudioTracks[0]?.id || null
-          setSelectedHeroAudioTrackId(fallbackTrackId || null)
+          hadAdjustments = true;
+          const fallbackTrackId = heroAudioProfile.defaultTrackId || heroAudioTracks[0]?.id || null;
+          setSelectedHeroAudioTrackId(fallbackTrackId || null);
         }
       }
 
-      const manualOverride = Boolean(normalized.manualOverride)
-      setHeroAudioManualOverride(manualOverride)
+      const manualOverride = Boolean(normalized.manualOverride);
+      setHeroAudioManualOverride(manualOverride);
 
       if (!manualOverride) {
         if (normalized.presetId) {
-          if (heroAudioPresets.some((preset) => preset.id === normalized.presetId)) {
-            setSelectedHeroAudioPresetId(normalized.presetId)
+          if (heroAudioPresets.some(preset => preset.id === normalized.presetId)) {
+            setSelectedHeroAudioPresetId(normalized.presetId);
           } else {
-            hadAdjustments = true
+            hadAdjustments = true;
             if (
               heroAudioProfile.defaultPresetId &&
-              heroAudioPresets.some((preset) => preset.id === heroAudioProfile.defaultPresetId)
+              heroAudioPresets.some(preset => preset.id === heroAudioProfile.defaultPresetId)
             ) {
-              setSelectedHeroAudioPresetId(heroAudioProfile.defaultPresetId)
+              setSelectedHeroAudioPresetId(heroAudioProfile.defaultPresetId);
             } else if (heroAudioPresets.length) {
-              setSelectedHeroAudioPresetId(heroAudioPresets[0].id)
+              setSelectedHeroAudioPresetId(heroAudioPresets[0].id);
             } else {
-              setSelectedHeroAudioPresetId(null)
+              setSelectedHeroAudioPresetId(null);
             }
           }
         } else if (!heroAudioPresets.length) {
-          setSelectedHeroAudioPresetId(null)
+          setSelectedHeroAudioPresetId(null);
         }
       } else {
-        setSelectedHeroAudioPresetId(null)
+        setSelectedHeroAudioPresetId(null);
         if (audioManager) {
-          const eqSettings = normalizeEqSettings(normalized.eq)
-          audioManager.setEqEnabled(Boolean(eqSettings.enabled))
+          const eqSettings = normalizeEqSettings(normalized.eq);
+          audioManager.setEqEnabled(Boolean(eqSettings.enabled));
           audioManager.setEqualizer({
             low: eqSettings.low,
             mid: eqSettings.mid,
             high: eqSettings.high,
-          })
+          });
 
-          const reverbSettings = normalizeReverbSettings(normalized.reverb)
-          audioManager.setReverbEnabled(Boolean(reverbSettings.enabled))
+          const reverbSettings = normalizeReverbSettings(normalized.reverb);
+          audioManager.setReverbEnabled(Boolean(reverbSettings.enabled));
           audioManager.setReverbDetail({
             mix: reverbSettings.mix,
             decay: reverbSettings.decay,
-          })
+          });
 
-          const compressorSettings = normalizeCompressorSettings(normalized.compressor)
-          audioManager.setCompressorEnabled(Boolean(compressorSettings.enabled))
+          const compressorSettings = normalizeCompressorSettings(normalized.compressor);
+          audioManager.setCompressorEnabled(Boolean(compressorSettings.enabled));
           audioManager.setCompressorDetail({
             threshold: compressorSettings.threshold,
             ratio: compressorSettings.ratio,
             release: compressorSettings.release,
-          })
+          });
         }
       }
 
-      return { hadAdjustments, normalized }
+      return { hadAdjustments, normalized };
     },
-    [audioManager, heroAudioPresets, heroAudioProfile, heroAudioTracks],
-  )
+    [audioManager, heroAudioPresets, heroAudioProfile, heroAudioTracks]
+  );
 
   useEffect(() => {
     if (!viewerId || !heroAudioProfileKey || !heroAudioProfile) {
-      return undefined
+      return undefined;
     }
     if (heroAudioProfile.source === 'ranking') {
-      return undefined
+      return undefined;
     }
     if (audioPreferenceLoadedKey === heroAudioProfileKey) {
-      return undefined
+      return undefined;
     }
 
-    let cancelled = false
+    let cancelled = false;
 
     const loadPreference = async () => {
       try {
-        const { data, error } = await withTable(supabase, 'rank_audio_preferences', (table) =>
+        const { data, error } = await withTable(supabase, 'rank_audio_preferences', table =>
           supabase
             .from(table)
             .select(
-              'track_id, preset_id, manual_override, eq_settings, reverb_settings, compressor_settings',
+              'track_id, preset_id, manual_override, eq_settings, reverb_settings, compressor_settings'
             )
             .eq('owner_id', viewerId)
             .eq('profile_key', heroAudioProfileKey)
-            .maybeSingle(),
-        )
+            .maybeSingle()
+        );
 
         if (cancelled) {
-          return
+          return;
         }
 
         if (error && error.code !== 'PGRST116') {
-          console.error('Failed to load hero audio preference', error)
+          console.error('Failed to load hero audio preference', error);
         }
 
         if (data) {
-          const normalizedRecord = normalizeAudioPreferenceRecord(data)
-          const { hadAdjustments, normalized } = applyLoadedHeroAudioPreference(normalizedRecord)
-          lastPersistedPayloadRef.current = normalized
-          lastPersistedSignatureRef.current = normalized ? JSON.stringify(normalized) : null
-          heroAudioPreferenceDirtyRef.current = Boolean(hadAdjustments)
+          const normalizedRecord = normalizeAudioPreferenceRecord(data);
+          const { hadAdjustments, normalized } = applyLoadedHeroAudioPreference(normalizedRecord);
+          lastPersistedPayloadRef.current = normalized;
+          lastPersistedSignatureRef.current = normalized ? JSON.stringify(normalized) : null;
+          heroAudioPreferenceDirtyRef.current = Boolean(hadAdjustments);
         } else {
-          lastPersistedPayloadRef.current = null
-          lastPersistedSignatureRef.current = null
-          heroAudioPreferenceDirtyRef.current = false
+          lastPersistedPayloadRef.current = null;
+          lastPersistedSignatureRef.current = null;
+          heroAudioPreferenceDirtyRef.current = false;
         }
       } catch (error) {
         if (!cancelled) {
-          console.error('Failed to load hero audio preference', error)
+          console.error('Failed to load hero audio preference', error);
         }
       } finally {
         if (!cancelled) {
-          setAudioPreferenceLoadedKey(heroAudioProfileKey)
+          setAudioPreferenceLoadedKey(heroAudioProfileKey);
         }
       }
-    }
+    };
 
-    loadPreference()
+    loadPreference();
 
     return () => {
-      cancelled = true
-    }
+      cancelled = true;
+    };
   }, [
     applyLoadedHeroAudioPreference,
     audioPreferenceLoadedKey,
     heroAudioProfile,
     heroAudioProfileKey,
     viewerId,
-  ])
+  ]);
 
   useEffect(() => {
     if (!viewerId || !heroAudioProfileKey || !heroAudioProfile) {
-      return undefined
+      return undefined;
     }
     if (heroAudioProfile.source === 'ranking') {
-      return undefined
+      return undefined;
     }
     if (audioPreferenceLoadedKey !== heroAudioProfileKey) {
-      return undefined
+      return undefined;
     }
     if (!currentHeroAudioPreference || !currentHeroAudioPreferenceSignature) {
-      return undefined
+      return undefined;
     }
     if (!heroAudioPreferenceDirtyRef.current && !lastPersistedSignatureRef.current) {
-      return undefined
+      return undefined;
     }
     if (
       !heroAudioPreferenceDirtyRef.current &&
       lastPersistedSignatureRef.current === currentHeroAudioPreferenceSignature
     ) {
-      return undefined
+      return undefined;
     }
 
     if (audioPreferenceSaveTimeoutRef.current) {
-      clearTimeout(audioPreferenceSaveTimeoutRef.current)
-      audioPreferenceSaveTimeoutRef.current = null
+      clearTimeout(audioPreferenceSaveTimeoutRef.current);
+      audioPreferenceSaveTimeoutRef.current = null;
     }
 
     const payload = {
@@ -1274,13 +1280,13 @@ export default function GameRoomView({
       eq: { ...currentHeroAudioPreference.eq },
       reverb: { ...currentHeroAudioPreference.reverb },
       compressor: { ...currentHeroAudioPreference.compressor },
-    }
+    };
 
     audioPreferenceSaveTimeoutRef.current = setTimeout(() => {
-      audioPreferenceSaveTimeoutRef.current = null
-      ;(async () => {
+      audioPreferenceSaveTimeoutRef.current = null;
+      (async () => {
         try {
-          const { error } = await withTable(supabase, 'rank_audio_preferences', (table) =>
+          const { error } = await withTable(supabase, 'rank_audio_preferences', table =>
             supabase
               .from(table)
               .upsert(
@@ -1297,25 +1303,25 @@ export default function GameRoomView({
                   reverb_settings: payload.reverb,
                   compressor_settings: payload.compressor,
                 },
-                { onConflict: 'owner_id,profile_key' },
+                { onConflict: 'owner_id,profile_key' }
               )
               .select('id')
-              .maybeSingle(),
-          )
+              .maybeSingle()
+          );
 
           if (error) {
-            console.error('Failed to persist hero audio preference', error)
-            return
+            console.error('Failed to persist hero audio preference', error);
+            return;
           }
 
-          const previous = lastPersistedPayloadRef.current
-          const changedFields = diffAudioPreferenceChanges(previous, payload)
-          lastPersistedPayloadRef.current = payload
-          lastPersistedSignatureRef.current = currentHeroAudioPreferenceSignature
-          heroAudioPreferenceDirtyRef.current = false
+          const previous = lastPersistedPayloadRef.current;
+          const changedFields = diffAudioPreferenceChanges(previous, payload);
+          lastPersistedPayloadRef.current = payload;
+          lastPersistedSignatureRef.current = currentHeroAudioPreferenceSignature;
+          heroAudioPreferenceDirtyRef.current = false;
 
           if (changedFields.length) {
-            const eventResult = await withTable(supabase, 'rank_audio_events', (table) =>
+            const eventResult = await withTable(supabase, 'rank_audio_events', table =>
               supabase.from(table).insert({
                 owner_id: viewerId,
                 profile_key: heroAudioProfileKey,
@@ -1327,24 +1333,24 @@ export default function GameRoomView({
                   changedFields,
                   preference: payload,
                 },
-              }),
-            )
+              })
+            );
             if (eventResult?.error) {
-              console.error('Failed to record hero audio preference event', eventResult.error)
+              console.error('Failed to record hero audio preference event', eventResult.error);
             }
           }
         } catch (error) {
-          console.error('Failed to persist hero audio preference', error)
+          console.error('Failed to persist hero audio preference', error);
         }
-      })()
-    }, 360)
+      })();
+    }, 360);
 
     return () => {
       if (audioPreferenceSaveTimeoutRef.current) {
-        clearTimeout(audioPreferenceSaveTimeoutRef.current)
-        audioPreferenceSaveTimeoutRef.current = null
+        clearTimeout(audioPreferenceSaveTimeoutRef.current);
+        audioPreferenceSaveTimeoutRef.current = null;
       }
-    }
+    };
   }, [
     audioPreferenceLoadedKey,
     currentHeroAudioPreference,
@@ -1353,218 +1359,232 @@ export default function GameRoomView({
     heroAudioProfile,
     heroAudioProfileKey,
     viewerId,
-  ])
+  ]);
 
   const heroAudioPresetLabel = heroAudioManualOverride
     ? '커스텀'
-    : heroAudioActivePreset?.label || (heroAudioPresets.length ? '기본 프리셋' : '기본 설정')
+    : heroAudioActivePreset?.label || (heroAudioPresets.length ? '기본 프리셋' : '기본 설정');
 
   const heroAudioVolumePercent = useMemo(() => {
     const fromState = Number.isFinite(Number(heroAudioState?.volume))
       ? Number(heroAudioState.volume)
-      : null
+      : null;
     const baselineVolume = Number.isFinite(Number(audioBaselineRef.current?.volume))
       ? Number(audioBaselineRef.current.volume)
-      : null
-    const resolved = fromState ?? baselineVolume ?? 0.72
-    return Math.round(Math.min(Math.max(resolved, 0), 1) * 100)
-  }, [heroAudioState?.volume])
+      : null;
+    const resolved = fromState ?? baselineVolume ?? 0.72;
+    return Math.round(Math.min(Math.max(resolved, 0), 1) * 100);
+  }, [heroAudioState?.volume]);
 
-  const heroAudioIsMuted = heroAudioVolumePercent <= 0
+  const heroAudioIsMuted = heroAudioVolumePercent <= 0;
 
   const heroAudioProgressPercent = useMemo(() => {
-    if (!heroAudioState || !Number.isFinite(heroAudioState.duration) || heroAudioState.duration <= 0) {
-      return 0
+    if (
+      !heroAudioState ||
+      !Number.isFinite(heroAudioState.duration) ||
+      heroAudioState.duration <= 0
+    ) {
+      return 0;
     }
-    const ratio = heroAudioState.progress && Number.isFinite(heroAudioState.progress)
-      ? heroAudioState.progress / heroAudioState.duration
-      : 0
-    return Math.round(Math.min(Math.max(ratio, 0), 1) * 100)
-  }, [heroAudioState?.duration, heroAudioState?.progress])
+    const ratio =
+      heroAudioState.progress && Number.isFinite(heroAudioState.progress)
+        ? heroAudioState.progress / heroAudioState.duration
+        : 0;
+    return Math.round(Math.min(Math.max(ratio, 0), 1) * 100);
+  }, [heroAudioState?.duration, heroAudioState?.progress]);
 
   const heroAudioProgressLabel = useMemo(() => {
     if (!heroAudioState) {
-      return '0:00'
+      return '0:00';
     }
-    const formatted = formatDurationLabel(heroAudioState.progress)
-    return formatted ?? '0:00'
-  }, [heroAudioState?.progress])
+    const formatted = formatDurationLabel(heroAudioState.progress);
+    return formatted ?? '0:00';
+  }, [heroAudioState?.progress]);
 
   const heroAudioDurationDisplay = useMemo(() => {
-    const formatted = heroAudioDurationLabel
-      ?? (heroAudioState?.duration ? formatDurationLabel(heroAudioState.duration) : null)
-    return formatted ?? null
-  }, [heroAudioDurationLabel, heroAudioState?.duration])
+    const formatted =
+      heroAudioDurationLabel ??
+      (heroAudioState?.duration ? formatDurationLabel(heroAudioState.duration) : null);
+    return formatted ?? null;
+  }, [heroAudioDurationLabel, heroAudioState?.duration]);
 
   const handleToggleHeroAudioPlayback = useCallback(() => {
-    if (!audioManager) return
-    audioManager.toggle()
-  }, [audioManager])
+    if (!audioManager) return;
+    audioManager.toggle();
+  }, [audioManager]);
 
   const handleHeroAudioVolumeChange = useCallback(
-    (event) => {
-      if (!audioManager) return
-      const raw = Number(event?.target?.value)
-      if (!Number.isFinite(raw)) return
-      const normalized = Math.min(Math.max(raw / 100, 0), 1)
-      audioManager.setVolume(normalized)
+    event => {
+      if (!audioManager) return;
+      const raw = Number(event?.target?.value);
+      if (!Number.isFinite(raw)) return;
+      const normalized = Math.min(Math.max(raw / 100, 0), 1);
+      audioManager.setVolume(normalized);
       if (normalized > 0) {
-        heroAudioVolumeMemoryRef.current = normalized
+        heroAudioVolumeMemoryRef.current = normalized;
       }
     },
-    [audioManager],
-  )
+    [audioManager]
+  );
 
   const handleToggleHeroAudioMute = useCallback(() => {
-    if (!audioManager) return
-    const snapshot = audioManager.getState()
-    if (!snapshot) return
+    if (!audioManager) return;
+    const snapshot = audioManager.getState();
+    if (!snapshot) return;
     if (snapshot.volume <= 0.001) {
-      const restore = heroAudioVolumeMemoryRef.current
-      const fallback = Number.isFinite(restore) && restore > 0 ? restore : 0.72
-      audioManager.setVolume(fallback)
-      heroAudioVolumeMemoryRef.current = fallback
-      return
+      const restore = heroAudioVolumeMemoryRef.current;
+      const fallback = Number.isFinite(restore) && restore > 0 ? restore : 0.72;
+      audioManager.setVolume(fallback);
+      heroAudioVolumeMemoryRef.current = fallback;
+      return;
     }
     if (snapshot.volume > 0) {
-      heroAudioVolumeMemoryRef.current = snapshot.volume
+      heroAudioVolumeMemoryRef.current = snapshot.volume;
     }
-    audioManager.setVolume(0)
-  }, [audioManager])
+    audioManager.setVolume(0);
+  }, [audioManager]);
 
   const handleSelectHeroAudioTrack = useCallback(
-    (trackId) => {
-      if (!heroAudioProfile) return
-      const nextTrack = heroAudioTracks.find((track) => track.id === trackId) || null
-      if (!nextTrack) return
-      heroAudioPreferenceDirtyRef.current = true
-      setSelectedHeroAudioTrackId(nextTrack.id)
+    trackId => {
+      if (!heroAudioProfile) return;
+      const nextTrack = heroAudioTracks.find(track => track.id === trackId) || null;
+      if (!nextTrack) return;
+      heroAudioPreferenceDirtyRef.current = true;
+      setSelectedHeroAudioTrackId(nextTrack.id);
       if (!heroAudioManualOverride && nextTrack.presetId) {
-        const matchingPreset = heroAudioPresets.find((preset) => preset.id === nextTrack.presetId) || null
+        const matchingPreset =
+          heroAudioPresets.find(preset => preset.id === nextTrack.presetId) || null;
         if (matchingPreset) {
-          setSelectedHeroAudioPresetId(matchingPreset.id)
+          setSelectedHeroAudioPresetId(matchingPreset.id);
         }
       }
     },
-    [heroAudioManualOverride, heroAudioPresets, heroAudioProfile, heroAudioTracks],
-  )
+    [heroAudioManualOverride, heroAudioPresets, heroAudioProfile, heroAudioTracks]
+  );
 
   const handleSelectHeroAudioPreset = useCallback(
-    (presetId) => {
-      if (!heroAudioProfile) return
+    presetId => {
+      if (!heroAudioProfile) return;
       if (!presetId) {
-        heroAudioPreferenceDirtyRef.current = true
-        setHeroAudioManualOverride(false)
-        setSelectedHeroAudioPresetId(null)
-        return
+        heroAudioPreferenceDirtyRef.current = true;
+        setHeroAudioManualOverride(false);
+        setSelectedHeroAudioPresetId(null);
+        return;
       }
-      if (!heroAudioPresets.some((preset) => preset.id === presetId)) {
-        return
+      if (!heroAudioPresets.some(preset => preset.id === presetId)) {
+        return;
       }
-      heroAudioPreferenceDirtyRef.current = true
-      setHeroAudioManualOverride(false)
-      setSelectedHeroAudioPresetId(presetId)
+      heroAudioPreferenceDirtyRef.current = true;
+      setHeroAudioManualOverride(false);
+      setSelectedHeroAudioPresetId(presetId);
     },
-    [heroAudioPresets, heroAudioProfile],
-  )
+    [heroAudioPresets, heroAudioProfile]
+  );
 
   const handleResetHeroAudioPreset = useCallback(() => {
     if (!heroAudioProfile) {
-      setSelectedHeroAudioPresetId(null)
-      setHeroAudioManualOverride(false)
-      return
+      setSelectedHeroAudioPresetId(null);
+      setHeroAudioManualOverride(false);
+      return;
     }
-    heroAudioPreferenceDirtyRef.current = true
-    setHeroAudioManualOverride(false)
-    if (heroAudioProfile.defaultPresetId && heroAudioPresets.some((preset) => preset.id === heroAudioProfile.defaultPresetId)) {
-      setSelectedHeroAudioPresetId(heroAudioProfile.defaultPresetId)
-      return
+    heroAudioPreferenceDirtyRef.current = true;
+    setHeroAudioManualOverride(false);
+    if (
+      heroAudioProfile.defaultPresetId &&
+      heroAudioPresets.some(preset => preset.id === heroAudioProfile.defaultPresetId)
+    ) {
+      setSelectedHeroAudioPresetId(heroAudioProfile.defaultPresetId);
+      return;
     }
     if (heroAudioPresets.length) {
-      setSelectedHeroAudioPresetId(heroAudioPresets[0].id)
-      return
+      setSelectedHeroAudioPresetId(heroAudioPresets[0].id);
+      return;
     }
-    setSelectedHeroAudioPresetId(null)
-  }, [heroAudioPresets, heroAudioProfile])
+    setSelectedHeroAudioPresetId(null);
+  }, [heroAudioPresets, heroAudioProfile]);
 
   const handleToggleHeroEq = useCallback(() => {
-    if (!audioManager) return
-    setHeroAudioManualOverride(true)
-    setSelectedHeroAudioPresetId(null)
-    heroAudioPreferenceDirtyRef.current = true
-    const nextEnabled = !(heroAudioState?.eqEnabled ?? false)
-    audioManager.setEqEnabled(nextEnabled)
-  }, [audioManager, heroAudioState?.eqEnabled])
+    if (!audioManager) return;
+    setHeroAudioManualOverride(true);
+    setSelectedHeroAudioPresetId(null);
+    heroAudioPreferenceDirtyRef.current = true;
+    const nextEnabled = !(heroAudioState?.eqEnabled ?? false);
+    audioManager.setEqEnabled(nextEnabled);
+  }, [audioManager, heroAudioState?.eqEnabled]);
 
   const handleToggleHeroReverb = useCallback(() => {
-    if (!audioManager) return
-    setHeroAudioManualOverride(true)
-    setSelectedHeroAudioPresetId(null)
-    heroAudioPreferenceDirtyRef.current = true
-    const nextEnabled = !(heroAudioState?.reverbEnabled ?? false)
-    audioManager.setReverbEnabled(nextEnabled)
-  }, [audioManager, heroAudioState?.reverbEnabled])
+    if (!audioManager) return;
+    setHeroAudioManualOverride(true);
+    setSelectedHeroAudioPresetId(null);
+    heroAudioPreferenceDirtyRef.current = true;
+    const nextEnabled = !(heroAudioState?.reverbEnabled ?? false);
+    audioManager.setReverbEnabled(nextEnabled);
+  }, [audioManager, heroAudioState?.reverbEnabled]);
 
   const handleToggleHeroCompressor = useCallback(() => {
-    if (!audioManager) return
-    setHeroAudioManualOverride(true)
-    setSelectedHeroAudioPresetId(null)
-    heroAudioPreferenceDirtyRef.current = true
-    const nextEnabled = !(heroAudioState?.compressorEnabled ?? false)
-    audioManager.setCompressorEnabled(nextEnabled)
-  }, [audioManager, heroAudioState?.compressorEnabled])
+    if (!audioManager) return;
+    setHeroAudioManualOverride(true);
+    setSelectedHeroAudioPresetId(null);
+    heroAudioPreferenceDirtyRef.current = true;
+    const nextEnabled = !(heroAudioState?.compressorEnabled ?? false);
+    audioManager.setCompressorEnabled(nextEnabled);
+  }, [audioManager, heroAudioState?.compressorEnabled]);
 
   useEffect(() => {
     if (!audioManager) {
-      return
+      return;
     }
 
-    const nextUrl = heroAudioActiveTrack?.url || null
-    const nextHeroId = heroAudioProfile?.heroId || null
+    const nextUrl = heroAudioActiveTrack?.url || null;
+    const nextHeroId = heroAudioProfile?.heroId || null;
 
     if (!nextUrl) {
-      currentAudioTrackRef.current = { url: null, heroId: null, trackId: null }
-      audioManager.setEqEnabled(false)
-      audioManager.setReverbEnabled(false)
-      audioManager.setCompressorEnabled(false)
-      audioManager.setEnabled(false, { resume: false })
-      audioManager.stop()
-      return
+      currentAudioTrackRef.current = { url: null, heroId: null, trackId: null };
+      audioManager.setEqEnabled(false);
+      audioManager.setReverbEnabled(false);
+      audioManager.setCompressorEnabled(false);
+      audioManager.setEnabled(false, { resume: false });
+      audioManager.stop();
+      return;
     }
 
-    const current = currentAudioTrackRef.current
+    const current = currentAudioTrackRef.current;
     const shouldReload =
-      current.url !== nextUrl || current.heroId !== nextHeroId || current.trackId !== (heroAudioActiveTrack?.id || null)
+      current.url !== nextUrl ||
+      current.heroId !== nextHeroId ||
+      current.trackId !== (heroAudioActiveTrack?.id || null);
 
     if (shouldReload) {
       currentAudioTrackRef.current = {
         url: nextUrl,
         heroId: nextHeroId,
         trackId: heroAudioActiveTrack?.id || null,
-      }
-      const baselineVolume = audioBaselineRef.current?.volume
+      };
+      const baselineVolume = audioBaselineRef.current?.volume;
       if (Number.isFinite(baselineVolume)) {
-        audioManager.setVolume(baselineVolume)
+        audioManager.setVolume(baselineVolume);
       }
-      audioManager.setLoop(true)
+      audioManager.setLoop(true);
 
-      const eqPreset = heroAudioProfile?.eq || DEFAULT_EQ_SETTINGS
-      audioManager.setEqEnabled(Boolean(eqPreset.enabled))
+      const eqPreset = heroAudioProfile?.eq || DEFAULT_EQ_SETTINGS;
+      audioManager.setEqEnabled(Boolean(eqPreset.enabled));
       audioManager.setEqualizer({
         low: Number.isFinite(eqPreset.low) ? eqPreset.low : 0,
         mid: Number.isFinite(eqPreset.mid) ? eqPreset.mid : 0,
         high: Number.isFinite(eqPreset.high) ? eqPreset.high : 0,
-      })
+      });
 
-      const reverbPreset = heroAudioProfile?.reverb || DEFAULT_REVERB_SETTINGS
-      audioManager.setReverbEnabled(Boolean(reverbPreset.enabled))
+      const reverbPreset = heroAudioProfile?.reverb || DEFAULT_REVERB_SETTINGS;
+      audioManager.setReverbEnabled(Boolean(reverbPreset.enabled));
       audioManager.setReverbDetail({
         mix: Number.isFinite(reverbPreset.mix) ? reverbPreset.mix : DEFAULT_REVERB_SETTINGS.mix,
-        decay: Number.isFinite(reverbPreset.decay) ? reverbPreset.decay : DEFAULT_REVERB_SETTINGS.decay,
-      })
+        decay: Number.isFinite(reverbPreset.decay)
+          ? reverbPreset.decay
+          : DEFAULT_REVERB_SETTINGS.decay,
+      });
 
-      const compressorPreset = heroAudioProfile?.compressor || DEFAULT_COMPRESSOR_SETTINGS
-      audioManager.setCompressorEnabled(Boolean(compressorPreset.enabled))
+      const compressorPreset = heroAudioProfile?.compressor || DEFAULT_COMPRESSOR_SETTINGS;
+      audioManager.setCompressorEnabled(Boolean(compressorPreset.enabled));
       audioManager.setCompressorDetail({
         threshold: Number.isFinite(compressorPreset.threshold)
           ? compressorPreset.threshold
@@ -1575,9 +1595,9 @@ export default function GameRoomView({
         release: Number.isFinite(compressorPreset.release)
           ? compressorPreset.release
           : DEFAULT_COMPRESSOR_SETTINGS.release,
-      })
+      });
 
-      audioManager.setEnabled(true, { resume: false })
+      audioManager.setEnabled(true, { resume: false });
       audioManager
         .loadHeroTrack({
           heroId: nextHeroId,
@@ -1587,45 +1607,48 @@ export default function GameRoomView({
           autoPlay: true,
           loop: true,
         })
-        .catch(() => {})
-      return
+        .catch(() => {});
+      return;
     }
 
-    const snapshot = audioManager.getState()
+    const snapshot = audioManager.getState();
     if (!snapshot.enabled) {
-      audioManager.setEnabled(true, { resume: false })
+      audioManager.setEnabled(true, { resume: false });
     }
     if (!snapshot.isPlaying) {
-      audioManager.play().catch(() => {})
+      audioManager.play().catch(() => {});
     }
-  }, [audioManager, heroAudioActiveTrack, heroAudioProfile])
+  }, [audioManager, heroAudioActiveTrack, heroAudioProfile]);
 
   useEffect(() => {
     if (!audioManager || !heroAudioProfile || heroAudioManualOverride) {
-      return
+      return;
     }
 
     const preset = selectedHeroAudioPresetId
-      ? heroAudioProfile.presets?.find((entry) => entry.id === selectedHeroAudioPresetId) || null
-      : null
+      ? heroAudioProfile.presets?.find(entry => entry.id === selectedHeroAudioPresetId) || null
+      : null;
 
-    const eqPreset = preset?.eq || heroAudioProfile.eq || DEFAULT_EQ_SETTINGS
-    audioManager.setEqEnabled(Boolean(eqPreset.enabled))
+    const eqPreset = preset?.eq || heroAudioProfile.eq || DEFAULT_EQ_SETTINGS;
+    audioManager.setEqEnabled(Boolean(eqPreset.enabled));
     audioManager.setEqualizer({
       low: Number.isFinite(eqPreset.low) ? eqPreset.low : 0,
       mid: Number.isFinite(eqPreset.mid) ? eqPreset.mid : 0,
       high: Number.isFinite(eqPreset.high) ? eqPreset.high : 0,
-    })
+    });
 
-    const reverbPreset = preset?.reverb || heroAudioProfile.reverb || DEFAULT_REVERB_SETTINGS
-    audioManager.setReverbEnabled(Boolean(reverbPreset.enabled))
+    const reverbPreset = preset?.reverb || heroAudioProfile.reverb || DEFAULT_REVERB_SETTINGS;
+    audioManager.setReverbEnabled(Boolean(reverbPreset.enabled));
     audioManager.setReverbDetail({
       mix: Number.isFinite(reverbPreset.mix) ? reverbPreset.mix : DEFAULT_REVERB_SETTINGS.mix,
-      decay: Number.isFinite(reverbPreset.decay) ? reverbPreset.decay : DEFAULT_REVERB_SETTINGS.decay,
-    })
+      decay: Number.isFinite(reverbPreset.decay)
+        ? reverbPreset.decay
+        : DEFAULT_REVERB_SETTINGS.decay,
+    });
 
-    const compressorPreset = preset?.compressor || heroAudioProfile.compressor || DEFAULT_COMPRESSOR_SETTINGS
-    audioManager.setCompressorEnabled(Boolean(compressorPreset.enabled))
+    const compressorPreset =
+      preset?.compressor || heroAudioProfile.compressor || DEFAULT_COMPRESSOR_SETTINGS;
+    audioManager.setCompressorEnabled(Boolean(compressorPreset.enabled));
     audioManager.setCompressorDetail({
       threshold: Number.isFinite(compressorPreset.threshold)
         ? compressorPreset.threshold
@@ -1636,162 +1659,160 @@ export default function GameRoomView({
       release: Number.isFinite(compressorPreset.release)
         ? compressorPreset.release
         : DEFAULT_COMPRESSOR_SETTINGS.release,
-    })
-  }, [
-    audioManager,
-    heroAudioManualOverride,
-    heroAudioProfile,
-    selectedHeroAudioPresetId,
-  ])
+    });
+  }, [audioManager, heroAudioManualOverride, heroAudioProfile, selectedHeroAudioPresetId]);
 
   useEffect(() => {
     if (!audioManager || !heroAudioProfile) {
-      return
+      return;
     }
     if (heroAudioProfile.source === 'ranking') {
-      return
+      return;
     }
     if (heroAudioManualOverride) {
-      return
+      return;
     }
     if (baselineEffectAppliedRef.current) {
-      return
+      return;
     }
 
-    const baseline = audioBaselineRef.current
+    const baseline = audioBaselineRef.current;
     if (!baseline) {
-      return
+      return;
     }
 
-    const heroId = heroAudioProfile.heroId || null
-    const heroName = typeof heroAudioProfile.heroName === 'string'
-      ? heroAudioProfile.heroName.trim().toLowerCase()
-      : ''
-    const trackUrl = heroAudioProfile.bgmUrl || null
+    const heroId = heroAudioProfile.heroId || null;
+    const heroName =
+      typeof heroAudioProfile.heroName === 'string'
+        ? heroAudioProfile.heroName.trim().toLowerCase()
+        : '';
+    const trackUrl = heroAudioProfile.bgmUrl || null;
 
-    const baselineHeroId = baseline.heroId || null
-    const baselineHeroName = typeof baseline.heroName === 'string'
-      ? baseline.heroName.trim().toLowerCase()
-      : ''
-    const baselineTrackUrl = baseline.trackUrl || null
+    const baselineHeroId = baseline.heroId || null;
+    const baselineHeroName =
+      typeof baseline.heroName === 'string' ? baseline.heroName.trim().toLowerCase() : '';
+    const baselineTrackUrl = baseline.trackUrl || null;
 
     const matchesHero =
       (heroId && baselineHeroId && heroId === baselineHeroId) ||
       (trackUrl && baselineTrackUrl && trackUrl === baselineTrackUrl) ||
-      (heroName && baselineHeroName && heroName === baselineHeroName)
+      (heroName && baselineHeroName && heroName === baselineHeroName);
 
     if (!matchesHero) {
-      return
+      return;
     }
 
-    const baselineEffects = audioBaselineEffectsRef.current || extractHeroAudioEffectSnapshot(baseline)
+    const baselineEffects =
+      audioBaselineEffectsRef.current || extractHeroAudioEffectSnapshot(baseline);
     if (!baselineEffects) {
-      return
+      return;
     }
 
-    const preferenceLoadedForProfile = audioPreferenceLoadedKey === heroAudioProfileKey
-    const hasPersistedPayload = Boolean(lastPersistedPayloadRef.current)
+    const preferenceLoadedForProfile = audioPreferenceLoadedKey === heroAudioProfileKey;
+    const hasPersistedPayload = Boolean(lastPersistedPayloadRef.current);
     if (preferenceLoadedForProfile && hasPersistedPayload) {
-      baselineEffectAppliedRef.current = true
-      return
+      baselineEffectAppliedRef.current = true;
+      return;
     }
 
-    const profileEq = heroAudioProfile.eq || DEFAULT_EQ_SETTINGS
-    const profileReverb = heroAudioProfile.reverb || DEFAULT_REVERB_SETTINGS
-    const profileCompressor = heroAudioProfile.compressor || DEFAULT_COMPRESSOR_SETTINGS
+    const profileEq = heroAudioProfile.eq || DEFAULT_EQ_SETTINGS;
+    const profileReverb = heroAudioProfile.reverb || DEFAULT_REVERB_SETTINGS;
+    const profileCompressor = heroAudioProfile.compressor || DEFAULT_COMPRESSOR_SETTINGS;
 
-    const eqMatches = eqSettingsAreEqual(baselineEffects.eq, profileEq)
-    const reverbMatches = reverbSettingsAreEqual(baselineEffects.reverb, profileReverb)
+    const eqMatches = eqSettingsAreEqual(baselineEffects.eq, profileEq);
+    const reverbMatches = reverbSettingsAreEqual(baselineEffects.reverb, profileReverb);
     const compressorMatches = compressorSettingsAreEqual(
       baselineEffects.compressor,
-      profileCompressor,
-    )
+      profileCompressor
+    );
 
     if (eqMatches && reverbMatches && compressorMatches) {
-      baselineEffectAppliedRef.current = true
-      return
+      baselineEffectAppliedRef.current = true;
+      return;
     }
 
-    baselineEffectAppliedRef.current = true
-    heroAudioPreferenceDirtyRef.current = true
-    setHeroAudioManualOverride(true)
-    setSelectedHeroAudioPresetId(null)
+    baselineEffectAppliedRef.current = true;
+    heroAudioPreferenceDirtyRef.current = true;
+    setHeroAudioManualOverride(true);
+    setSelectedHeroAudioPresetId(null);
 
-    audioManager.setEqEnabled(Boolean(baselineEffects.eq.enabled))
+    audioManager.setEqEnabled(Boolean(baselineEffects.eq.enabled));
     audioManager.setEqualizer({
       low: baselineEffects.eq.low,
       mid: baselineEffects.eq.mid,
       high: baselineEffects.eq.high,
-    })
+    });
 
-    audioManager.setReverbEnabled(Boolean(baselineEffects.reverb.enabled))
+    audioManager.setReverbEnabled(Boolean(baselineEffects.reverb.enabled));
     audioManager.setReverbDetail({
       mix: baselineEffects.reverb.mix,
       decay: baselineEffects.reverb.decay,
-    })
+    });
 
-    audioManager.setCompressorEnabled(Boolean(baselineEffects.compressor.enabled))
+    audioManager.setCompressorEnabled(Boolean(baselineEffects.compressor.enabled));
     audioManager.setCompressorDetail({
       threshold: baselineEffects.compressor.threshold,
       ratio: baselineEffects.compressor.ratio,
       release: baselineEffects.compressor.release,
-    })
-  }, [audioManager, audioPreferenceLoadedKey, heroAudioManualOverride, heroAudioProfile, heroAudioProfileKey])
+    });
+  }, [
+    audioManager,
+    audioPreferenceLoadedKey,
+    heroAudioManualOverride,
+    heroAudioProfile,
+    heroAudioProfileKey,
+  ]);
 
   const heroStats = useMemo(() => {
-    const rankIndex = myEntry ? participants.findIndex((participant) => participant.id === myEntry.id) : -1
+    const rankIndex = myEntry
+      ? participants.findIndex(participant => participant.id === myEntry.id)
+      : -1;
     return [
       { label: '승률', value: formatWinRate(myEntry?.win_rate) },
       { label: '점수', value: formatNumber(myEntry?.score ?? myEntry?.rating ?? 0) },
       { label: '랭킹', value: rankIndex >= 0 ? `${rankIndex + 1}위` : '랭킹 없음' },
       { label: '게임 수', value: formatNumber(myEntry?.battles ?? 0) },
-    ]
-  }, [myEntry, participants])
+    ];
+  }, [myEntry, participants]);
 
   const heroBattleLogs = useMemo(() => {
-    const source = Array.isArray(recentBattles) ? recentBattles : []
-    const heroId = myEntry?.hero_id || myHero?.id || null
+    const source = Array.isArray(recentBattles) ? recentBattles : [];
+    const heroId = myEntry?.hero_id || myHero?.id || null;
     const filtered = heroId
-      ? source.filter((battle) => {
-          const attackers = ensureArray(battle.attacker_hero_ids)
-          const defenders = ensureArray(battle.defender_hero_ids)
-          return attackers.includes(heroId) || defenders.includes(heroId)
+      ? source.filter(battle => {
+          const attackers = ensureArray(battle.attacker_hero_ids);
+          const defenders = ensureArray(battle.defender_hero_ids);
+          return attackers.includes(heroId) || defenders.includes(heroId);
         })
-      : source
-    return filtered.map((battle) => buildBattleLine(battle, heroNameMap))
-  }, [heroNameMap, myEntry?.hero_id, myHero?.id, recentBattles])
+      : source;
+    return filtered.map(battle => buildBattleLine(battle, heroNameMap));
+  }, [heroNameMap, myEntry?.hero_id, myHero?.id, recentBattles]);
 
-  const myRoleName = typeof myEntry?.role === 'string' ? myEntry.role : ''
-  const myHeroDisplayName =
-    (myEntry?.hero && myEntry.hero.name) || myHero?.name || ''
+  const myRoleName = typeof myEntry?.role === 'string' ? myEntry.role : '';
+  const myHeroDisplayName = (myEntry?.hero && myEntry.hero.name) || myHero?.name || '';
 
   const displayedHeroLogs = useMemo(
     () => heroBattleLogs.slice(0, visibleHeroLogs),
     [heroBattleLogs, visibleHeroLogs]
-  )
+  );
 
-  const heroLogsExhausted = heroBattleLogs.length <= visibleHeroLogs
+  const heroLogsExhausted = heroBattleLogs.length <= visibleHeroLogs;
 
   useEffect(() => {
-    setVisibleHeroLogs(10)
-  }, [myEntry?.hero_id, myHero?.id, recentBattles])
+    setVisibleHeroLogs(10);
+  }, [myEntry?.hero_id, myHero?.id, recentBattles]);
 
   const spectatorTimeline = useMemo(() => {
-    const aggregated = []
+    const aggregated = [];
     sharedSessionHistory.forEach((session, index) => {
-      const events = Array.isArray(session?.timelineEvents) ? session.timelineEvents : []
-      if (!events.length) return
-      const baseLabel = session?.viewer_is_owner
-        ? '내 세션'
-        : `세션 ${index + 1}`
+      const events = Array.isArray(session?.timelineEvents) ? session.timelineEvents : [];
+      if (!events.length) return;
+      const baseLabel = session?.viewer_is_owner ? '내 세션' : `세션 ${index + 1}`;
       const createdLabel =
         formatSessionTimestamp(
-          session?.created_at ||
-            session?.sessionCreatedAt ||
-            session?.session_created_at ||
-            null,
-        ) || null
-      events.forEach((event) => {
+          session?.created_at || session?.sessionCreatedAt || session?.session_created_at || null
+        ) || null;
+      events.forEach(event => {
         aggregated.push({
           ...event,
           context: {
@@ -1799,20 +1820,22 @@ export default function GameRoomView({
             sessionLabel: baseLabel,
             sessionCreatedAt: createdLabel,
           },
-        })
-      })
-    })
-    const normalized = normalizeTimelineEvents(aggregated, { order: 'desc' })
-    return normalized.slice(0, TIMELINE_EVENT_LIMIT)
-  }, [formatSessionTimestamp, sharedSessionHistory])
+        });
+      });
+    });
+    const normalized = normalizeTimelineEvents(aggregated, { order: 'desc' });
+    return normalized.slice(0, TIMELINE_EVENT_LIMIT);
+  }, [formatSessionTimestamp, sharedSessionHistory]);
 
   const personalTimeline = useMemo(() => {
-    const aggregated = []
+    const aggregated = [];
     sessionHistory.forEach((session, index) => {
-      const events = Array.isArray(session?.timelineEvents) ? session.timelineEvents : []
-      if (!events.length) return
-      const createdLabel = formatSessionTimestamp(session?.sessionCreatedAt || session?.session_created_at || null) || null
-      events.forEach((event) => {
+      const events = Array.isArray(session?.timelineEvents) ? session.timelineEvents : [];
+      if (!events.length) return;
+      const createdLabel =
+        formatSessionTimestamp(session?.sessionCreatedAt || session?.session_created_at || null) ||
+        null;
+      events.forEach(event => {
         aggregated.push({
           ...event,
           context: {
@@ -1820,240 +1843,247 @@ export default function GameRoomView({
             sessionLabel: `내 세션 ${index + 1}`,
             sessionCreatedAt: createdLabel,
           },
-        })
-      })
-    })
-    const normalized = normalizeTimelineEvents(aggregated, { order: 'desc' })
-    return normalized.slice(0, TIMELINE_EVENT_LIMIT)
-  }, [formatSessionTimestamp, sessionHistory])
+        });
+      });
+    });
+    const normalized = normalizeTimelineEvents(aggregated, { order: 'desc' });
+    return normalized.slice(0, TIMELINE_EVENT_LIMIT);
+  }, [formatSessionTimestamp, sessionHistory]);
 
   const personalReplays = useMemo(
     () => buildReplayEntries(sessionHistory, { type: 'personal' }),
-    [sessionHistory],
-  )
+    [sessionHistory]
+  );
 
   const sharedReplays = useMemo(
     () => buildReplayEntries(sharedSessionHistory, { type: 'shared' }),
-    [sharedSessionHistory],
-  )
+    [sharedSessionHistory]
+  );
 
-  const handleDownloadReplay = useCallback((entry) => {
-    if (!entry || !entry.payload || typeof window === 'undefined') return
+  const handleDownloadReplay = useCallback(entry => {
+    if (!entry || !entry.payload || typeof window === 'undefined') return;
     try {
       const blob = new Blob([JSON.stringify(entry.payload, null, 2)], {
         type: 'application/json',
-      })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      const safeLabel = entry.label?.replace(/[^a-zA-Z0-9-_]+/g, '_') || 'battle-log'
-      link.download = `${safeLabel}.json`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      URL.revokeObjectURL(url)
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const safeLabel = entry.label?.replace(/[^a-zA-Z0-9-_]+/g, '_') || 'battle-log';
+      link.download = `${safeLabel}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
     } catch (error) {
-      console.warn('배틀 로그 다운로드 실패:', error)
+      console.warn('배틀 로그 다운로드 실패:', error);
     }
-  }, [])
+  }, []);
 
   const overallRanking = useMemo(() => {
-    return [...participants].sort(compareParticipantsByScore)
-  }, [participants])
+    return [...participants].sort(compareParticipantsByScore);
+  }, [participants]);
 
   const roleRankings = useMemo(() => {
-    const grouped = groupByRole(participants)
+    const grouped = groupByRole(participants);
     return Array.from(grouped.entries()).map(([role, members]) => ({
       role,
       members: [...members].sort(compareParticipantsByScore),
-    }))
-  }, [participants])
+    }));
+  }, [participants]);
 
-  const [rankingMode, setRankingMode] = useState('overall')
-  const [selectedRole, setSelectedRole] = useState('')
-  const [activeProfileEntry, setActiveProfileEntry] = useState(null)
+  const [rankingMode, setRankingMode] = useState('overall');
+  const [selectedRole, setSelectedRole] = useState('');
+  const [activeProfileEntry, setActiveProfileEntry] = useState(null);
 
   useEffect(() => {
     if (!roleRankings.length) {
-      setSelectedRole('')
+      setSelectedRole('');
       if (rankingMode === 'role') {
-        setRankingMode('overall')
+        setRankingMode('overall');
       }
-      return
+      return;
     }
 
-    setSelectedRole((current) => {
-      if (current) return current
-      return roleRankings[0]?.role || ''
-    })
-  }, [rankingMode, roleRankings])
+    setSelectedRole(current => {
+      if (current) return current;
+      return roleRankings[0]?.role || '';
+    });
+  }, [rankingMode, roleRankings]);
 
   const selectedRoleGroup = useMemo(() => {
-    if (!selectedRole) return null
-    return roleRankings.find((group) => group.role === selectedRole) || null
-  }, [roleRankings, selectedRole])
+    if (!selectedRole) return null;
+    return roleRankings.find(group => group.role === selectedRole) || null;
+  }, [roleRankings, selectedRole]);
 
-  const handleRankingModeChange = useCallback((mode) => {
-    setRankingMode(mode)
-  }, [])
+  const handleRankingModeChange = useCallback(mode => {
+    setRankingMode(mode);
+  }, []);
 
   const handleRoleModeClick = useCallback(() => {
-    if (!roleRankings.length) return
-    setRankingMode('role')
-    setSelectedRole((current) => current || roleRankings[0]?.role || '')
-  }, [roleRankings])
+    if (!roleRankings.length) return;
+    setRankingMode('role');
+    setSelectedRole(current => current || roleRankings[0]?.role || '');
+  }, [roleRankings]);
 
-  const handleRoleSelectChange = useCallback((event) => {
-    const value = event?.target?.value || ''
-    setSelectedRole(value)
+  const handleRoleSelectChange = useCallback(event => {
+    const value = event?.target?.value || '';
+    setSelectedRole(value);
     if (value) {
-      setRankingMode('role')
+      setRankingMode('role');
     }
-  }, [])
+  }, []);
 
   const handleOpenProfile = useCallback((entry, rankPosition) => {
-    if (!entry?.hero) return
-    setActiveProfileEntry({ entry, hero: entry.hero, rankPosition })
-  }, [])
+    if (!entry?.hero) return;
+    setActiveProfileEntry({ entry, hero: entry.hero, rankPosition });
+  }, []);
 
   const handleCloseProfile = useCallback(() => {
-    setActiveProfileEntry(null)
-  }, [])
+    setActiveProfileEntry(null);
+  }, []);
 
   useEffect(() => {
-    if (!activeProfileEntry) return
+    if (!activeProfileEntry) return;
 
     if (profileCloseRef.current) {
-      profileCloseRef.current.focus()
+      profileCloseRef.current.focus();
     }
 
-    const handleKeyDown = (event) => {
+    const handleKeyDown = event => {
       if (event.key === 'Escape') {
-        handleCloseProfile()
+        handleCloseProfile();
       }
-    }
+    };
 
-    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('keydown', handleKeyDown);
     return () => {
-      window.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [activeProfileEntry, handleCloseProfile])
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [activeProfileEntry, handleCloseProfile]);
 
-  const profileHero = activeProfileEntry?.hero || null
+  const profileHero = activeProfileEntry?.hero || null;
 
   const profileStats = useMemo(() => {
-    if (!activeProfileEntry) return []
-    const { entry, rankPosition } = activeProfileEntry
+    if (!activeProfileEntry) return [];
+    const { entry, rankPosition } = activeProfileEntry;
     const stats = [
       { label: '역할', value: entry.role || '미정' },
       { label: '점수', value: formatNumber(entry.score ?? entry.rating ?? 0) },
       { label: '랭킹', value: rankPosition ? `${rankPosition}위` : '순위 정보 없음' },
       { label: '게임 수', value: formatNumber(entry.battles ?? 0) },
       { label: '승률', value: formatWinRate(entry.win_rate) },
-    ]
-    return stats
-  }, [activeProfileEntry])
+    ];
+    return stats;
+  }, [activeProfileEntry]);
 
   const profileAbilities = useMemo(() => {
-    if (!profileHero) return []
-    return [profileHero.ability1, profileHero.ability2, profileHero.ability3, profileHero.ability4].filter(Boolean)
-  }, [profileHero])
+    if (!profileHero) return [];
+    return [
+      profileHero.ability1,
+      profileHero.ability2,
+      profileHero.ability3,
+      profileHero.ability4,
+    ].filter(Boolean);
+  }, [profileHero]);
 
   const handleProfileBackdropClick = useCallback(
-    (event) => {
+    event => {
       if (event.target === event.currentTarget) {
-        handleCloseProfile()
+        handleCloseProfile();
       }
     },
     [handleCloseProfile]
-  )
+  );
 
-  const profileDialogDescribedBy = profileHero?.description ? profileDescriptionId : undefined
+  const profileDialogDescribedBy = profileHero?.description ? profileDescriptionId : undefined;
 
   const rankingBattleLogs = useMemo(
     () =>
       (Array.isArray(recentBattles) ? recentBattles : [])
         .slice(0, 10)
-        .map((battle) => buildBattleLine(battle, heroNameMap)),
+        .map(battle => buildBattleLine(battle, heroNameMap)),
     [heroNameMap, recentBattles]
-  )
+  );
 
-  const topParticipant = overallRanking[0] || null
-  const rankingBackdrop = topParticipant?.hero?.background_url || backgroundImage
+  const topParticipant = overallRanking[0] || null;
+  const rankingBackdrop = topParticipant?.hero?.background_url || backgroundImage;
 
-  const createdAt = formatDate(game?.created_at)
-  const updatedAt = formatDate(game?.updated_at)
+  const createdAt = formatDate(game?.created_at);
+  const updatedAt = formatDate(game?.updated_at);
 
-  const goToTabIndex = (index) => {
-    const clamped = Math.max(0, Math.min(TABS.length - 1, index))
-    const key = TABS[clamped]?.key
+  const goToTabIndex = index => {
+    const clamped = Math.max(0, Math.min(TABS.length - 1, index));
+    const key = TABS[clamped]?.key;
     if (key) {
-      setActiveTab(key)
+      setActiveTab(key);
     }
-  }
+  };
 
-  const goNextTab = () => goToTabIndex(resolvedActiveIndex + 1)
-  const goPrevTab = () => goToTabIndex(resolvedActiveIndex - 1)
+  const goNextTab = () => goToTabIndex(resolvedActiveIndex + 1);
+  const goPrevTab = () => goToTabIndex(resolvedActiveIndex - 1);
 
-  const handleTouchStart = (event) => {
-    if (event.touches?.length !== 1) return
-    touchStartRef.current = event.touches[0].clientX
-  }
+  const handleTouchStart = event => {
+    if (event.touches?.length !== 1) return;
+    touchStartRef.current = event.touches[0].clientX;
+  };
 
-  const handleTouchMove = (event) => {
-    if (touchStartRef.current === null) return
-    if (event.touches?.length !== 1) return
-    const delta = event.touches[0].clientX - touchStartRef.current
-    if (Math.abs(delta) < 48) return
+  const handleTouchMove = event => {
+    if (touchStartRef.current === null) return;
+    if (event.touches?.length !== 1) return;
+    const delta = event.touches[0].clientX - touchStartRef.current;
+    if (Math.abs(delta) < 48) return;
     if (delta < 0) {
-      goNextTab()
+      goNextTab();
     } else {
-      goPrevTab()
+      goPrevTab();
     }
-    touchStartRef.current = null
-  }
+    touchStartRef.current = null;
+  };
 
   const handleTouchEnd = () => {
-    touchStartRef.current = null
-  }
+    touchStartRef.current = null;
+  };
 
   const handleJoinClick = useCallback(async () => {
-    if (!onJoin || alreadyJoined || joinLoading) return
-    setJoinLoading(true)
+    if (!onJoin || alreadyJoined || joinLoading) return;
+    setJoinLoading(true);
     try {
-      await onJoin()
+      await onJoin();
     } finally {
-      setJoinLoading(false)
+      setJoinLoading(false);
     }
-  }, [alreadyJoined, joinLoading, onJoin])
+  }, [alreadyJoined, joinLoading, onJoin]);
 
   const handleLeaveClick = useCallback(async () => {
-    if (!onLeave || leaveLoading) return
-    setLeaveLoading(true)
+    if (!onLeave || leaveLoading) return;
+    setLeaveLoading(true);
     try {
-      await onLeave()
+      await onLeave();
     } finally {
-      setLeaveLoading(false)
+      setLeaveLoading(false);
     }
-  }, [leaveLoading, onLeave])
+  }, [leaveLoading, onLeave]);
 
   const handleDeleteClick = useCallback(() => {
-    if (!onDelete || deleting) return
+    if (!onDelete || deleting) return;
     if (typeof window !== 'undefined') {
-      const confirmed = window.confirm('정말로 방을 삭제하시겠습니까? 삭제 후에는 되돌릴 수 없습니다.')
+      const confirmed = window.confirm(
+        '정말로 방을 삭제하시겠습니까? 삭제 후에는 되돌릴 수 없습니다.'
+      );
       if (!confirmed) {
-        return
+        return;
       }
     }
-    onDelete()
-  }, [deleting, onDelete])
+    onDelete();
+  }, [deleting, onDelete]);
 
   const handleShowMoreLogs = () => {
-    setVisibleHeroLogs((prev) => prev + 10)
-  }
+    setVisibleHeroLogs(prev => prev + 10);
+  };
 
-  const tabButtonId = (key) => `game-room-tab-${key}`
-  const tabPanelId = (key) => `game-room-panel-${key}`
+  const tabButtonId = key => `game-room-tab-${key}`;
+  const tabPanelId = key => `game-room-panel-${key}`;
 
   if (!game) {
     return (
@@ -2064,7 +2094,7 @@ export default function GameRoomView({
           <div className={styles.loadingCard}>게임 정보를 불러오는 중입니다…</div>
         </div>
       </div>
-    )
+    );
   }
 
   const mainPanelContent = (
@@ -2086,40 +2116,45 @@ export default function GameRoomView({
           <div className={styles.roleList}>
             {participantsByRole.map(
               ({ name, count, minimumRequired, overflowCount, neededForStart }) => {
-                const isPicked = currentRole === name
-                const isMine = myEntry?.role === name
-                const highlight = isPicked || isMine
+                const isPicked = currentRole === name;
+                const isMine = myEntry?.role === name;
+                const highlight = isPicked || isMine;
                 const minimumValue =
                   Number.isFinite(Number(minimumRequired)) && Number(minimumRequired) >= 0
                     ? Number(minimumRequired)
-                    : null
+                    : null;
                 const overflowValue =
                   Number.isFinite(Number(overflowCount)) && Number(overflowCount) > 0
                     ? Number(overflowCount)
-                    : 0
+                    : 0;
                 const shortfallValue =
                   Number.isFinite(Number(neededForStart)) && Number(neededForStart) >= 0
                     ? Number(neededForStart)
-                    : null
+                    : null;
                 const label =
                   minimumValue != null
                     ? `${count}명 참여 · 최소 ${minimumValue}명 필요`
-                    : `${count}명 참여 중`
-                const statusParts = []
+                    : `${count}명 참여 중`;
+                const statusParts = [];
                 if (minimumValue != null) {
-                  statusParts.push(shortfallValue && shortfallValue > 0 ? `시작까지 ${shortfallValue}명 필요` : '기본 슬롯 충족')
+                  statusParts.push(
+                    shortfallValue && shortfallValue > 0
+                      ? `시작까지 ${shortfallValue}명 필요`
+                      : '기본 슬롯 충족'
+                  );
                 }
                 if (overflowValue > 0) {
-                  statusParts.push(`추가 참가자 ${overflowValue}명`)
+                  statusParts.push(`추가 참가자 ${overflowValue}명`);
                 }
-                const statusText = statusParts.length > 0 ? statusParts.join(' · ') : '참여자 모집 중'
-                const classes = [styles.roleChip]
-                if (highlight) classes.push(styles.roleChipActive)
+                const statusText =
+                  statusParts.length > 0 ? statusParts.join(' · ') : '참여자 모집 중';
+                const classes = [styles.roleChip];
+                if (highlight) classes.push(styles.roleChipActive);
                 if (!isMine && minimumValue != null && shortfallValue === 0) {
-                  classes.push(styles.roleChipReady)
+                  classes.push(styles.roleChipReady);
                 }
-                if (alreadyJoined && !isMine) classes.push(styles.roleChipDisabled)
-                const disabled = alreadyJoined && !isMine
+                if (alreadyJoined && !isMine) classes.push(styles.roleChipDisabled);
+                const disabled = alreadyJoined && !isMine;
                 return (
                   <button
                     key={name}
@@ -2132,8 +2167,8 @@ export default function GameRoomView({
                     <span className={styles.roleCount}>{label}</span>
                     <span className={styles.roleAvailability}>{statusText}</span>
                   </button>
-                )
-              },
+                );
+              }
             )}
           </div>
         ) : (
@@ -2147,7 +2182,11 @@ export default function GameRoomView({
             onClick={handleJoinClick}
             disabled={alreadyJoined || joinLoading || !currentRole}
           >
-            {alreadyJoined ? '참여 완료됨' : joinLoading ? '참여 중…' : `${currentRole || '역할'}로 참여하기`}
+            {alreadyJoined
+              ? '참여 완료됨'
+              : joinLoading
+                ? '참여 중…'
+                : `${currentRole || '역할'}로 참여하기`}
           </button>
           {onOpenModeSettings ? (
             <button
@@ -2161,12 +2200,8 @@ export default function GameRoomView({
           ) : null}
         </div>
 
-        {resolvedStartNotice ? (
-          <p className={styles.startNotice}>{resolvedStartNotice}</p>
-        ) : null}
-        {resolvedStartError ? (
-          <p className={styles.startError}>{resolvedStartError}</p>
-        ) : null}
+        {resolvedStartNotice ? <p className={styles.startNotice}>{resolvedStartNotice}</p> : null}
+        {resolvedStartError ? <p className={styles.startError}>{resolvedStartError}</p> : null}
 
         {onOpenModeSettings ? (
           <>
@@ -2183,7 +2218,12 @@ export default function GameRoomView({
 
         {isOwner && (
           <div className={styles.ownerActions}>
-            <button type="button" className={styles.subtleButton} onClick={handleDeleteClick} disabled={deleting}>
+            <button
+              type="button"
+              className={styles.subtleButton}
+              onClick={handleDeleteClick}
+              disabled={deleting}
+            >
               {deleting ? '방 삭제 중…' : '방 삭제하기'}
             </button>
           </div>
@@ -2206,10 +2246,12 @@ export default function GameRoomView({
         <div className={styles.sectionHeader}>
           <h2 className={styles.sectionTitle}>게임 룰</h2>
         </div>
-        {renderRules(game.rules) || <div className={styles.emptyCard}>룰 정보가 준비 중입니다.</div>}
+        {renderRules(game.rules) || (
+          <div className={styles.emptyCard}>룰 정보가 준비 중입니다.</div>
+        )}
       </section>
     </div>
-  )
+  );
 
   const heroPanelContent = (
     <div className={styles.panelInner}>
@@ -2232,7 +2274,9 @@ export default function GameRoomView({
             <div className={styles.heroInfo} data-stage={currentHeroStage}>
               <div className={styles.heroInfoTop}>
                 <span className={styles.heroLabel}>내 캐릭터</span>
-                <h2 className={styles.heroName}>{myHero?.name || '캐릭터가 선택되지 않았습니다.'}</h2>
+                <h2 className={styles.heroName}>
+                  {myHero?.name || '캐릭터가 선택되지 않았습니다.'}
+                </h2>
                 {currentHeroStage === 'profile' && myHero?.description && (
                   <p className={styles.heroDescription}>{myHero.description}</p>
                 )}
@@ -2243,7 +2287,7 @@ export default function GameRoomView({
                   <div className={styles.heroStats}>
                     <h3 className={styles.heroSectionTitle}>전적</h3>
                     <ul className={styles.heroStatsList}>
-                      {heroStats.map((stat) => (
+                      {heroStats.map(stat => (
                         <li key={stat.label}>
                           <span className={styles.heroStatLabel}>{stat.label}</span>
                           <span className={styles.heroStatValue}>{stat.value}</span>
@@ -2265,7 +2309,6 @@ export default function GameRoomView({
                     </ul>
                   </div>
                 )}
-
               </div>
 
               {heroStageHasMultipleViews && (
@@ -2287,7 +2330,7 @@ export default function GameRoomView({
           <div className={styles.emptyCard}>아직 기록된 로그가 없습니다.</div>
         ) : (
           <ul className={styles.logList}>
-            {displayedHeroLogs.map((log) => (
+            {displayedHeroLogs.map(log => (
               <li key={`hero-${log.id}`} className={styles.logItem}>
                 <span className={styles.logText}>{log.text}</span>
                 {log.result && <span className={styles.logTag}>{log.result}</span>}
@@ -2302,13 +2345,17 @@ export default function GameRoomView({
         )}
       </section>
     </div>
-  )
+  );
 
   const rankingPanelContent = (
     <div className={styles.panelInner}>
       <div className={styles.rankingPanel}>
         {rankingBackdrop ? (
-          <div className={styles.rankingBackdrop} style={{ backgroundImage: `url(${rankingBackdrop})` }} aria-hidden />
+          <div
+            className={styles.rankingBackdrop}
+            style={{ backgroundImage: `url(${rankingBackdrop})` }}
+            aria-hidden
+          />
         ) : (
           <div className={styles.rankingBackdropFallback} />
         )}
@@ -2317,7 +2364,9 @@ export default function GameRoomView({
         <div className={styles.rankingContent}>
           <header className={styles.rankingHeader}>
             <span className={styles.rankingLabel}>랭킹 1위</span>
-            <h2 className={styles.rankingHeroName}>{topParticipant?.hero?.name || '랭킹 정보 없음'}</h2>
+            <h2 className={styles.rankingHeroName}>
+              {topParticipant?.hero?.name || '랭킹 정보 없음'}
+            </h2>
             {topParticipant?.hero?.image_url && (
               <div className={styles.rankingHeroVisual}>
                 <img
@@ -2329,8 +2378,8 @@ export default function GameRoomView({
             )}
             {topParticipant && (
               <p className={styles.rankingHeroMeta}>
-                역할 {topParticipant.role || '미정'} · 점수 {formatNumber(topParticipant.score ?? 0)} ·{' '}
-                {topParticipant.battles ?? 0}전
+                역할 {topParticipant.role || '미정'} · 점수{' '}
+                {formatNumber(topParticipant.score ?? 0)} · {topParticipant.battles ?? 0}전
               </p>
             )}
           </header>
@@ -2386,16 +2435,19 @@ export default function GameRoomView({
                 ? '종합 랭킹 상위 10명'
                 : `${selectedRole || '역할군'} 상위 10명`}
             </h3>
-            {rankingMode === 'overall' && (
-              overallRanking.length === 0 ? (
+            {rankingMode === 'overall' &&
+              (overallRanking.length === 0 ? (
                 <div className={styles.emptyCard}>참가자가 없습니다.</div>
               ) : (
                 <ol className={styles.rankingList}>
                   {overallRanking.slice(0, 10).map((entry, index) => {
-                    const rankPosition = index + 1
-                    const isClickable = Boolean(entry.hero)
+                    const rankPosition = index + 1;
+                    const isClickable = Boolean(entry.hero);
                     return (
-                      <li key={entry.id || `${entry.owner_id}-${index}`} className={styles.rankingRow}>
+                      <li
+                        key={entry.id || `${entry.owner_id}-${index}`}
+                        className={styles.rankingRow}
+                      >
                         <button
                           type="button"
                           className={`${styles.rankingRowButton} ${
@@ -2410,27 +2462,30 @@ export default function GameRoomView({
                               {entry.hero?.name || entry.owner_id?.slice(0, 8) || '알 수 없음'}
                             </strong>
                             <span className={styles.rankingRowMeta}>
-                              역할 {entry.role || '미정'} · 점수 {formatNumber(entry.score ?? 0)} · {entry.battles ?? 0}전
+                              역할 {entry.role || '미정'} · 점수 {formatNumber(entry.score ?? 0)} ·{' '}
+                              {entry.battles ?? 0}전
                             </span>
                           </div>
                         </button>
                       </li>
-                    )
+                    );
                   })}
                 </ol>
-              )
-            )}
+              ))}
 
-            {rankingMode === 'role' && (
-              !selectedRoleGroup || selectedRoleGroup.members.length === 0 ? (
+            {rankingMode === 'role' &&
+              (!selectedRoleGroup || selectedRoleGroup.members.length === 0 ? (
                 <div className={styles.emptyCard}>해당 역할군 참가자가 없습니다.</div>
               ) : (
                 <ol className={styles.rankingList}>
                   {selectedRoleGroup.members.slice(0, 10).map((entry, index) => {
-                    const rankPosition = index + 1
-                    const isClickable = Boolean(entry.hero)
+                    const rankPosition = index + 1;
+                    const isClickable = Boolean(entry.hero);
                     return (
-                      <li key={entry.id || `${entry.owner_id}-${index}`} className={styles.rankingRow}>
+                      <li
+                        key={entry.id || `${entry.owner_id}-${index}`}
+                        className={styles.rankingRow}
+                      >
                         <button
                           type="button"
                           className={`${styles.rankingRowButton} ${
@@ -2450,11 +2505,10 @@ export default function GameRoomView({
                           </div>
                         </button>
                       </li>
-                    )
+                    );
                   })}
                 </ol>
-              )
-            )}
+              ))}
           </section>
 
           <section className={styles.section}>
@@ -2463,7 +2517,7 @@ export default function GameRoomView({
               <div className={styles.emptyCard}>아직 게임 로그가 없습니다.</div>
             ) : (
               <ul className={styles.logList}>
-                {rankingBattleLogs.map((log) => (
+                {rankingBattleLogs.map(log => (
                   <li key={`ranking-${log.id}`} className={styles.logItem}>
                     <span className={styles.logText}>{log.text}</span>
                     {log.result && <span className={styles.logTag}>{log.result}</span>}
@@ -2475,19 +2529,19 @@ export default function GameRoomView({
         </div>
       </div>
     </div>
-  )
+  );
 
   const panelContentByKey = {
     main: mainPanelContent,
     hero: heroPanelContent,
     ranking: rankingPanelContent,
-  }
+  };
 
-  const roomClassName = joinClassNames(styles.room, isCompactLayout && styles.compactLayout)
+  const roomClassName = joinClassNames(styles.room, isCompactLayout && styles.compactLayout);
   const summaryCardClassName = joinClassNames(
     styles.summaryCard,
-    isCompactLayout && styles.summaryCardCompact,
-  )
+    isCompactLayout && styles.summaryCardCompact
+  );
 
   const summaryCard = (
     <section
@@ -2532,12 +2586,16 @@ export default function GameRoomView({
         </div>
       </div>
     </section>
-  )
+  );
 
   return (
     <div className={roomClassName}>
       {backgroundImage ? (
-        <div className={styles.backdrop} style={{ backgroundImage: `url(${backgroundImage})` }} aria-hidden />
+        <div
+          className={styles.backdrop}
+          style={{ backgroundImage: `url(${backgroundImage})` }}
+          aria-hidden
+        />
       ) : (
         <div className={styles.backdropFallback} />
       )}
@@ -2570,7 +2628,7 @@ export default function GameRoomView({
         {!isCompactLayout && (
           <div className={styles.tabBar} role="tablist" aria-label="랭크 게임 탭">
             {TABS.map((tab, index) => {
-              const selected = resolvedActiveIndex === index
+              const selected = resolvedActiveIndex === index;
               return (
                 <button
                   key={tab.key}
@@ -2584,7 +2642,7 @@ export default function GameRoomView({
                 >
                   {tab.label}
                 </button>
-              )
+              );
             })}
           </div>
         )}
@@ -2596,8 +2654,8 @@ export default function GameRoomView({
           onTouchEnd={handleTouchEnd}
         >
           {TABS.map((tab, index) => {
-            const selected = resolvedActiveIndex === index
-            const content = panelContentByKey[tab.key] || null
+            const selected = resolvedActiveIndex === index;
+            const content = panelContentByKey[tab.key] || null;
             return (
               <section
                 key={tab.key}
@@ -2609,7 +2667,7 @@ export default function GameRoomView({
               >
                 {content}
               </section>
-            )
+            );
           })}
         </div>
       </div>
@@ -2618,7 +2676,7 @@ export default function GameRoomView({
         <>
           <div className={styles.compactActionBar} role="tablist" aria-label="랭크 게임 패널">
             {TABS.map((tab, index) => {
-              const selected = resolvedActiveIndex === index
+              const selected = resolvedActiveIndex === index;
               return (
                 <button
                   key={`compact-${tab.key}`}
@@ -2629,13 +2687,13 @@ export default function GameRoomView({
                   aria-selected={selected}
                   className={joinClassNames(
                     styles.compactActionButton,
-                    selected && styles.compactActionButtonActive,
+                    selected && styles.compactActionButtonActive
                   )}
                   onClick={() => setActiveTab(tab.key)}
                 >
                   {tab.label}
                 </button>
-              )
+              );
             })}
           </div>
 
@@ -2649,7 +2707,7 @@ export default function GameRoomView({
             >
               <div
                 className={styles.compactInfoCardWrapper}
-                onClick={(event) => event.stopPropagation()}
+                onClick={event => event.stopPropagation()}
               >
                 {summaryCard}
               </div>
@@ -2705,7 +2763,7 @@ export default function GameRoomView({
               <div className={styles.profileStats}>
                 <h4 className={styles.profileSectionTitle}>전적</h4>
                 <ul className={styles.profileStatList}>
-                  {profileStats.map((stat) => (
+                  {profileStats.map(stat => (
                     <li key={stat.label} className={styles.profileStatItem}>
                       <span className={styles.profileStatLabel}>{stat.label}</span>
                       <span className={styles.profileStatValue}>{stat.value}</span>
@@ -2731,5 +2789,5 @@ export default function GameRoomView({
         </div>
       )}
     </div>
-  )
+  );
 }

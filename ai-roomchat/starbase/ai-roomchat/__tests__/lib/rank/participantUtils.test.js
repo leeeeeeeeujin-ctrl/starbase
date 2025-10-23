@@ -4,17 +4,17 @@ import {
   normalizeHeroIdValue,
   normalizeParticipantRecord,
   resolveParticipantHeroId,
-} from '@/lib/rank/participantUtils'
+} from '@/lib/rank/participantUtils';
 
 describe('normalizeHeroIdValue', () => {
   it('normalizes numeric ids to strings', () => {
-    expect(normalizeHeroIdValue(42)).toBe('42')
-  })
+    expect(normalizeHeroIdValue(42)).toBe('42');
+  });
 
   it('returns null for empty strings', () => {
-    expect(normalizeHeroIdValue('   ')).toBeNull()
-  })
-})
+    expect(normalizeHeroIdValue('   ')).toBeNull();
+  });
+});
 
 describe('resolveParticipantHeroId', () => {
   it('prefers direct hero_id when present', () => {
@@ -22,18 +22,18 @@ describe('resolveParticipantHeroId', () => {
       resolveParticipantHeroId({
         hero_id: 'hero-direct',
         hero_ids: ['hero-fallback'],
-      }),
-    ).toBe('hero-direct')
-  })
+      })
+    ).toBe('hero-direct');
+  });
 
   it('falls back to hero_ids array when direct id missing', () => {
-    expect(resolveParticipantHeroId({ hero_ids: [null, 'hero-alt'] })).toBe('hero-alt')
-  })
+    expect(resolveParticipantHeroId({ hero_ids: [null, 'hero-alt'] })).toBe('hero-alt');
+  });
 
   it('falls back to nested hero object id', () => {
-    expect(resolveParticipantHeroId({ hero: { id: 123 } })).toBe('123')
-  })
-})
+    expect(resolveParticipantHeroId({ hero: { id: 123 } })).toBe('123');
+  });
+});
 
 describe('normalizeParticipantRecord', () => {
   it('normalizes participant fields for roster indexing', () => {
@@ -44,7 +44,7 @@ describe('normalizeParticipantRecord', () => {
       score: 1500,
       slot_index: 1,
       updated_at: '2024-02-01T10:00:00Z',
-    })
+    });
 
     expect(record).toMatchObject({
       ownerId: 'owner-1',
@@ -52,10 +52,10 @@ describe('normalizeParticipantRecord', () => {
       role: 'attack',
       score: 1500,
       slotIndex: 1,
-    })
-    expect(record.updatedAt).toBeGreaterThan(0)
-  })
-})
+    });
+    expect(record.updatedAt).toBeGreaterThan(0);
+  });
+});
 
 describe('buildOwnerParticipantIndex', () => {
   it('groups participants by owner and sorts by recency', () => {
@@ -77,13 +77,13 @@ describe('buildOwnerParticipantIndex', () => {
         hero_id: 'hero-support',
         role: 'support',
       },
-    ])
+    ]);
 
-    expect(roster.get('owner-1')?.[0]?.heroId).toBe('hero-new')
-    expect(roster.get('owner-1')?.[1]?.heroId).toBe('hero-old')
-    expect(roster.get('owner-2')?.[0]?.heroId).toBe('hero-support')
-  })
-})
+    expect(roster.get('owner-1')?.[0]?.heroId).toBe('hero-new');
+    expect(roster.get('owner-1')?.[1]?.heroId).toBe('hero-old');
+    expect(roster.get('owner-2')?.[0]?.heroId).toBe('hero-support');
+  });
+});
 
 describe('guessOwnerParticipant', () => {
   it('prefers matching role entries when available', () => {
@@ -98,26 +98,26 @@ describe('guessOwnerParticipant', () => {
         hero_id: 'hero-support',
         role: 'support',
       },
-    ])
+    ]);
 
     const guess = guessOwnerParticipant({
       ownerId: 'owner-3',
       roster,
       rolePreference: 'support',
-    })
+    });
 
-    expect(guess.heroId).toBe('hero-support')
-    expect(guess.role).toBe('support')
-  })
+    expect(guess.heroId).toBe('hero-support');
+    expect(guess.role).toBe('support');
+  });
 
   it('falls back to explicit hero when roster missing', () => {
     const guess = guessOwnerParticipant({
       ownerId: 'owner-4',
       roster: new Map(),
       fallbackHeroId: 'hero-explicit',
-    })
+    });
 
-    expect(guess.heroId).toBe('hero-explicit')
-    expect(guess.source).toBe('explicit')
-  })
-})
+    expect(guess.heroId).toBe('hero-explicit');
+    expect(guess.source).toBe('explicit');
+  });
+});

@@ -1,31 +1,31 @@
-import { useCallback, useEffect, useState } from 'react'
-import { ensureRpc } from '@/modules/arena/rpcClient'
-import styles from './ScoreSummaryPanel.module.css'
+import { useCallback, useEffect, useState } from 'react';
+import { ensureRpc } from '@/modules/arena/rpcClient';
+import styles from './ScoreSummaryPanel.module.css';
 
 export function ScoreSummaryPanel({ sessionId }) {
-  const [settlement, setSettlement] = useState(null)
-  const [status, setStatus] = useState('idle')
-  const [error, setError] = useState(null)
+  const [settlement, setSettlement] = useState(null);
+  const [status, setStatus] = useState('idle');
+  const [error, setError] = useState(null);
 
   const fetchSettlement = useCallback(async () => {
-    if (!sessionId) return
-    setStatus('loading')
+    if (!sessionId) return;
+    setStatus('loading');
     try {
       const data = await ensureRpc('finalize_rank_session', {
         p_session_id: sessionId,
-      })
-      setSettlement(data)
-      setStatus('loaded')
-      setError(null)
+      });
+      setSettlement(data);
+      setStatus('loaded');
+      setError(null);
     } catch (fetchError) {
-      setError(fetchError)
-      setStatus('error')
+      setError(fetchError);
+      setStatus('error');
     }
-  }, [sessionId])
+  }, [sessionId]);
 
   useEffect(() => {
-    fetchSettlement()
-  }, [fetchSettlement])
+    fetchSettlement();
+  }, [fetchSettlement]);
 
   return (
     <section className={styles.panel}>
@@ -37,7 +37,7 @@ export function ScoreSummaryPanel({ sessionId }) {
       {error ? <p className={styles.error}>오류: {error.message || String(error)}</p> : null}
       {settlement ? (
         <div className={styles.grid}>
-          {settlement.participants?.map((entry) => (
+          {settlement.participants?.map(entry => (
             <article key={entry.owner_id} className={styles.participant}>
               <h4>{entry.hero_name || entry.owner_id}</h4>
               <p>획득 점수: {entry.score_delta ?? 0}</p>
@@ -49,5 +49,5 @@ export function ScoreSummaryPanel({ sessionId }) {
         <p>아직 정산 결과가 없습니다. 세션 종료 후 다시 확인하세요.</p>
       )}
     </section>
-  )
+  );
 }

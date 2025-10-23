@@ -3,20 +3,24 @@
 이 문서는 자동 대기열을 제거한 뒤 `/rank/[id]` 메인 룸과 `/rank/[id]/start` 본게임 화면 사이에서 매칭이 어떻게 이뤄지는지 정리합니다.
 
 ## 1. 메인 룸에서 직접 슬롯 채우기
+
 - 랭크 매칭을 선택하면 이제 `/rank/[id]/match` 대신 메인 룸(`/rank/[id]`)으로 곧바로 이동합니다. 해당 페이지에서 플레이어는 본인의 캐릭터를 선택하고 원하는 역할 슬롯을 직접 점유합니다.【F:pages/rank/[id]/match.js†L1-L61】【F:pages/rank/[id].js†L1-L360】
 - `joinGame` 액션이 역할 이름과 점수를 검증한 뒤 `rank_game_slots`/`rank_participants`에 즉시 기록하므로, 조건이 맞지 않으면 곧바로 거절되고 조건이 맞으면 슬롯이 확보됩니다.【F:hooks/useGameRoom.js†L792-L910】
 
 ## 2. 준비 인원 충족 및 시작
+
 - 메인 룸은 현재 참가자·역할 점유 현황을 실시간으로 보여 주며, 필요한 인원이 모두 채워졌을 때 `canStart`가 `true`가 됩니다.【F:pages/rank/[id].js†L96-L198】
 - 모드 선택 모달에서 랭크 모드를 확정하면 더 이상 대기열로 이동하지 않고, 준비 인원이 충족된 경우 곧바로 `/rank/[id]/start` 화면으로 이동해 경기를 시작합니다.【F:pages/rank/[id].js†L320-L382】
 
 ## 3. 예외 및 후속 처리
+
 - 준비 인원이 부족한 상태에서 경기를 시작하려고 하면 경고 메시지가 노출되고, 플레이어에게 직접 슬롯을 채우도록 안내합니다.【F:pages/rank/[id].js†L330-L343】
 - 자동 매칭 오버레이와 큐 상태 저장소는 더 이상 사용되지 않으며, 매칭 흐름은 메인 룸 ↔ 스타트 화면의 두 페이지로 단순화되었습니다.【F:pages/rank/[id]/match.js†L1-L61】
 
 대기열 페이지를 제거하면서 매칭 과정이 메인 룸 중심으로 정리되어, 플레이어는 역할과 점수 조건을 확인하며 직접 자리를 차지하고 바로 경기를 시작할 수 있습니다.
 
 ## 4. 캐릭터 화면 자동 매칭 & 역할별 충원 전략
+
 - 캐릭터 화면 하단의 `CharacterPlayPanel`이 모드에 따라 두 갈래로 동작합니다.
   - **실시간 매칭**: `join_rank_queue` → `fetch_rank_queue_ticket` → `stage_rank_match` 호출을 자동으로 이어가며,
     새로 추가된 `matchQueueFlow` 모듈이 Supabase Realtime 방송(`rank_queue_tickets:queue:*`)을 구독해 티켓 상태 변화를 즉시 반영합니다.【F:components/character/CharacterPlayPanel.js†L964-L1324】【F:modules/arena/matchQueueFlow.js†L1-L45】

@@ -1,29 +1,29 @@
-'use client'
+'use client';
 
-import { useEffect, useMemo, useState } from 'react'
-import { useRouter } from 'next/router'
+import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/router';
 
-import HeroAbilityFields from './HeroAbilityFields'
-import HeroBackgroundUploadCard from './HeroBackgroundUploadCard'
-import HeroBgmUploadCard from './HeroBgmUploadCard'
-import HeroImageUploadCard from './HeroImageUploadCard'
-import HeroInfoFields from './HeroInfoFields'
-import { useHeroCreator } from './useHeroCreator'
+import HeroAbilityFields from './HeroAbilityFields';
+import HeroBackgroundUploadCard from './HeroBackgroundUploadCard';
+import HeroBgmUploadCard from './HeroBgmUploadCard';
+import HeroImageUploadCard from './HeroImageUploadCard';
+import HeroInfoFields from './HeroInfoFields';
+import { useHeroCreator } from './useHeroCreator';
 
 export default function CreateHeroScreen() {
-  const router = useRouter()
-  const { state, actions } = useHeroCreator({ onSaved: () => router.replace('/roster') })
-  const [backgroundImage, setBackgroundImage] = useState('')
+  const router = useRouter();
+  const { state, actions } = useHeroCreator({ onSaved: () => router.replace('/roster') });
+  const [backgroundImage, setBackgroundImage] = useState('');
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
+    if (typeof window === 'undefined') return;
     try {
-      const stored = window.localStorage.getItem('selectedHeroBackgroundUrl') || ''
-      setBackgroundImage(stored)
+      const stored = window.localStorage.getItem('selectedHeroBackgroundUrl') || '';
+      setBackgroundImage(stored);
     } catch (error) {
-      console.error('Failed to hydrate creator background:', error)
+      console.error('Failed to hydrate creator background:', error);
     }
-  }, [])
+  }, []);
 
   const pageStyle = useMemo(() => {
     if (backgroundImage) {
@@ -34,15 +34,15 @@ export default function CreateHeroScreen() {
         backgroundPosition: 'center',
         backgroundAttachment: 'fixed',
         color: '#fff',
-      }
+      };
     }
     return {
       minHeight: '100vh',
       background: '#0f172a',
       backgroundImage: 'linear-gradient(180deg, #0f172a 0%, #1e293b 100%)',
       color: '#fff',
-    }
-  }, [backgroundImage])
+    };
+  }, [backgroundImage]);
 
   return (
     <div style={pageStyle}>
@@ -185,7 +185,7 @@ export default function CreateHeroScreen() {
         </section>
       </div>
     </div>
-  )
+  );
 }
 
 //

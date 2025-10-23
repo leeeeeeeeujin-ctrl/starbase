@@ -1,80 +1,80 @@
-import { useMemo } from 'react'
+import { useMemo } from 'react';
 
 function VisibilitySection({ visibility, onChange, onToggleInvisible, slotSuggestions = [] }) {
-  const resolved = visibility || { invisible: false, visible_slots: [] }
-  const isInvisible = !!resolved.invisible
+  const resolved = visibility || { invisible: false, visible_slots: [] };
+  const isInvisible = !!resolved.invisible;
 
   const visibleSet = useMemo(() => {
-    const values = Array.isArray(resolved.visible_slots) ? resolved.visible_slots : []
-    const set = new Set()
-    values.forEach((value) => {
-      const numeric = Number(value)
+    const values = Array.isArray(resolved.visible_slots) ? resolved.visible_slots : [];
+    const set = new Set();
+    values.forEach(value => {
+      const numeric = Number(value);
       if (Number.isFinite(numeric)) {
-        set.add(numeric)
+        set.add(numeric);
       }
-    })
-    return set
-  }, [resolved.visible_slots])
+    });
+    return set;
+  }, [resolved.visible_slots]);
 
   const slotLabelMap = useMemo(() => {
-    const map = new Map()
-    slotSuggestions.forEach((item) => {
-      if (!item?.token) return
-      const match = /^slot(\d+)$/i.exec(String(item.token))
-      if (!match) return
-      const numeric = Number(match[1])
-      if (!Number.isFinite(numeric)) return
-      map.set(numeric, item.label || `슬롯 ${numeric}`)
-    })
-    return map
-  }, [slotSuggestions])
+    const map = new Map();
+    slotSuggestions.forEach(item => {
+      if (!item?.token) return;
+      const match = /^slot(\d+)$/i.exec(String(item.token));
+      if (!match) return;
+      const numeric = Number(match[1]);
+      if (!Number.isFinite(numeric)) return;
+      map.set(numeric, item.label || `슬롯 ${numeric}`);
+    });
+    return map;
+  }, [slotSuggestions]);
 
   const availableSlots = useMemo(() => {
-    const set = new Set()
-    slotLabelMap.forEach((_, key) => set.add(key))
+    const set = new Set();
+    slotLabelMap.forEach((_, key) => set.add(key));
     for (let i = 1; i <= 12; i += 1) {
-      set.add(i)
+      set.add(i);
     }
     return Array.from(set)
-      .map((value) => Number(value))
-      .filter((value) => Number.isFinite(value))
-      .sort((a, b) => a - b)
-  }, [slotLabelMap])
+      .map(value => Number(value))
+      .filter(value => Number.isFinite(value))
+      .sort((a, b) => a - b);
+  }, [slotLabelMap]);
 
-  const toggleSlot = (slotNo) => {
-    if (typeof onChange !== 'function') return
-    onChange((current) => {
-      const baseList = Array.isArray(current?.visible_slots) ? current.visible_slots : []
+  const toggleSlot = slotNo => {
+    if (typeof onChange !== 'function') return;
+    onChange(current => {
+      const baseList = Array.isArray(current?.visible_slots) ? current.visible_slots : [];
       const nextSet = new Set(
-        baseList.map((value) => Number(value)).filter((value) => Number.isFinite(value)),
-      )
+        baseList.map(value => Number(value)).filter(value => Number.isFinite(value))
+      );
       if (nextSet.has(slotNo)) {
-        nextSet.delete(slotNo)
+        nextSet.delete(slotNo);
       } else {
-        nextSet.add(slotNo)
+        nextSet.add(slotNo);
       }
       return {
         invisible: current?.invisible ?? true,
         visible_slots: Array.from(nextSet).sort((a, b) => a - b),
-      }
-    })
-  }
+      };
+    });
+  };
 
   const selectAll = () => {
-    if (typeof onChange !== 'function') return
+    if (typeof onChange !== 'function') return;
     onChange(() => ({
       invisible: true,
       visible_slots: [...availableSlots],
-    }))
-  }
+    }));
+  };
 
   const clearAll = () => {
-    if (typeof onChange !== 'function') return
+    if (typeof onChange !== 'function') return;
     onChange(() => ({
       invisible: true,
       visible_slots: [],
-    }))
-  }
+    }));
+  };
 
   return (
     <div
@@ -87,7 +87,15 @@ function VisibilitySection({ visibility, onChange, onToggleInvisible, slotSugges
         background: '#f8fafc',
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 8,
+          flexWrap: 'wrap',
+        }}
+      >
         <span style={{ fontWeight: 700, color: '#0f172a' }}>가시성 설정</span>
         <button
           type="button"
@@ -115,22 +123,34 @@ function VisibilitySection({ visibility, onChange, onToggleInvisible, slotSugges
             <button
               type="button"
               onClick={selectAll}
-              style={{ padding: '6px 12px', borderRadius: 999, background: '#dbeafe', color: '#1d4ed8', fontWeight: 600 }}
+              style={{
+                padding: '6px 12px',
+                borderRadius: 999,
+                background: '#dbeafe',
+                color: '#1d4ed8',
+                fontWeight: 600,
+              }}
             >
               모두 허용
             </button>
             <button
               type="button"
               onClick={clearAll}
-              style={{ padding: '6px 12px', borderRadius: 999, background: '#fee2e2', color: '#b91c1c', fontWeight: 600 }}
+              style={{
+                padding: '6px 12px',
+                borderRadius: 999,
+                background: '#fee2e2',
+                color: '#b91c1c',
+                fontWeight: 600,
+              }}
             >
               모두 차단
             </button>
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {availableSlots.map((slotNo) => {
-              const active = visibleSet.has(slotNo)
-              const label = slotLabelMap.get(slotNo) || `슬롯 ${slotNo}`
+            {availableSlots.map(slotNo => {
+              const active = visibleSet.has(slotNo);
+              const label = slotLabelMap.get(slotNo) || `슬롯 ${slotNo}`;
               return (
                 <button
                   key={slotNo}
@@ -147,15 +167,15 @@ function VisibilitySection({ visibility, onChange, onToggleInvisible, slotSugges
                 >
                   {label}
                 </button>
-              )
+              );
             })}
           </div>
         </>
       )}
     </div>
-  )
+  );
 }
 
-export default VisibilitySection
+export default VisibilitySection;
 
 //

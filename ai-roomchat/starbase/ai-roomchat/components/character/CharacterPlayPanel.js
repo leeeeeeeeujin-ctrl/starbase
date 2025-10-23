@@ -1,12 +1,12 @@
-'use client'
+'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
-import { useRouter } from 'next/router'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useRouter } from 'next/router';
 
-import { supabase } from '@/lib/supabase'
-import { ensureRpc } from '@/modules/arena/rpcClient'
-import { createQueueRealtimeWatcher } from '@/modules/arena/matchQueueFlow'
+import { supabase } from '@/lib/supabase';
+import { ensureRpc } from '@/modules/arena/rpcClient';
+import { createQueueRealtimeWatcher } from '@/modules/arena/matchQueueFlow';
 import {
   hydrateGameMatchData,
   setGameMatchHeroSelection,
@@ -15,14 +15,17 @@ import {
   setGameMatchSessionMeta,
   setGameMatchSlotTemplate,
   setGameMatchSnapshot,
-} from '@/modules/rank/matchDataStore'
-import { loadMatchFlowSnapshot } from '@/modules/rank/matchRealtimeSync'
-import { readActiveSession, subscribeActiveSession } from '@/lib/rank/activeSessionStorage'
-import { normalizeRealtimeMode, isRealtimeEnabled } from '@/lib/rank/realtimeModes'
-import { formatPlayNumber } from '@/utils/characterPlayFormatting'
-import { MATCH_DEBUG_HOLD_ENABLED, buildDebugHoldSnapshot } from '@/components/rank/matchDebugUtils'
+} from '@/modules/rank/matchDataStore';
+import { loadMatchFlowSnapshot } from '@/modules/rank/matchRealtimeSync';
+import { readActiveSession, subscribeActiveSession } from '@/lib/rank/activeSessionStorage';
+import { normalizeRealtimeMode, isRealtimeEnabled } from '@/lib/rank/realtimeModes';
+import { formatPlayNumber } from '@/utils/characterPlayFormatting';
+import {
+  MATCH_DEBUG_HOLD_ENABLED,
+  buildDebugHoldSnapshot,
+} from '@/components/rank/matchDebugUtils';
 
-const ASYNC_MATCH_ENDPOINT = '/api/rank/match'
+const ASYNC_MATCH_ENDPOINT = '/api/rank/match';
 
 const panelStyles = {
   root: {
@@ -77,7 +80,7 @@ const panelStyles = {
     borderColor: 'rgba(56,189,248,0.7)',
     boxShadow: '0 20px 44px -24px rgba(56,189,248,0.7)',
   },
-  sliderBackground: (imageUrl) => ({
+  sliderBackground: imageUrl => ({
     position: 'absolute',
     inset: 0,
     borderRadius: 18,
@@ -265,7 +268,7 @@ const panelStyles = {
     color: '#e2e8f0',
     whiteSpace: 'pre-line',
   },
-}
+};
 
 const overlayStyles = {
   root: {
@@ -355,7 +358,7 @@ const overlayStyles = {
     background: 'rgba(148,163,184,0.35)',
     overflow: 'hidden',
   },
-  progressFill: (value) => ({
+  progressFill: value => ({
     width: `${Math.min(100, Math.max(0, value))}%`,
     height: '100%',
     background: 'linear-gradient(90deg, #38bdf8 0%, #818cf8 100%)',
@@ -532,7 +535,7 @@ const overlayStyles = {
     overflow: 'hidden',
     background: 'rgba(15,23,42,0.86)',
   },
-  countdownAvatarImage: (url) => ({
+  countdownAvatarImage: url => ({
     position: 'absolute',
     inset: 0,
     backgroundImage: url
@@ -585,44 +588,44 @@ const overlayStyles = {
     fontSize: 12,
     color: 'rgba(148,163,184,0.75)',
   },
-}
+};
 
 function toPlainObject(value) {
-  if (!value || typeof value !== 'object') return {}
+  if (!value || typeof value !== 'object') return {};
   if (value instanceof Map) {
-    const result = {}
+    const result = {};
     value.forEach((entry, key) => {
-      result[String(key)] = entry
-    })
-    return result
+      result[String(key)] = entry;
+    });
+    return result;
   }
-  return { ...value }
+  return { ...value };
 }
 
 function lookupHeroEntry(heroMap, heroId) {
-  if (heroId === null || heroId === undefined) return null
-  const directKey = heroId
-  const stringKey = String(heroId)
+  if (heroId === null || heroId === undefined) return null;
+  const directKey = heroId;
+  const stringKey = String(heroId);
   if (heroMap instanceof Map) {
-    return heroMap.get(directKey) || heroMap.get(stringKey) || null
+    return heroMap.get(directKey) || heroMap.get(stringKey) || null;
   }
   if (heroMap && typeof heroMap === 'object') {
-    return heroMap[directKey] || heroMap[stringKey] || null
+    return heroMap[directKey] || heroMap[stringKey] || null;
   }
-  return null
+  return null;
 }
 
 function buildCountdownParticipantsFromRoles(roles = [], heroMap = {}) {
-  if (!Array.isArray(roles) || !roles.length) return []
-  const participants = []
-  roles.forEach((roleEntry) => {
-    if (!roleEntry || typeof roleEntry !== 'object') return
-    const roleName = roleEntry.role || roleEntry.name || '참여자'
-    const members = Array.isArray(roleEntry.members) ? roleEntry.members : []
+  if (!Array.isArray(roles) || !roles.length) return [];
+  const participants = [];
+  roles.forEach(roleEntry => {
+    if (!roleEntry || typeof roleEntry !== 'object') return;
+    const roleName = roleEntry.role || roleEntry.name || '참여자';
+    const members = Array.isArray(roleEntry.members) ? roleEntry.members : [];
     members.forEach((member, index) => {
-      if (!member || typeof member !== 'object') return
-      const heroIdRaw = member.heroId ?? member.hero_id ?? null
-      const heroEntry = lookupHeroEntry(heroMap, heroIdRaw)
+      if (!member || typeof member !== 'object') return;
+      const heroIdRaw = member.heroId ?? member.hero_id ?? null;
+      const heroEntry = lookupHeroEntry(heroMap, heroIdRaw);
       const heroName =
         member.heroName ||
         member.hero_name ||
@@ -630,78 +633,79 @@ function buildCountdownParticipantsFromRoles(roles = [], heroMap = {}) {
         heroEntry?.name ||
         member.ownerName ||
         member.owner_name ||
-        '미확인 영웅'
+        '미확인 영웅';
       const portrait =
         heroEntry?.portrait_url ||
         heroEntry?.portraitUrl ||
         heroEntry?.images?.portrait ||
         heroEntry?.image_url ||
         heroEntry?.avatar_url ||
-        null
-      const simulated = member.standin === true || member.simulated === true
+        null;
+      const simulated = member.standin === true || member.simulated === true;
       participants.push({
         id: `${roleName}-${heroIdRaw ?? index}-${member.ownerId ?? member.owner_id ?? index}`,
         name: heroName,
         role: roleName,
         simulated,
         portrait,
-      })
-    })
-  })
-  return participants
+      });
+    });
+  });
+  return participants;
 }
 
 function buildCountdownParticipantsFromSnapshot(match) {
-  if (!match || typeof match !== 'object') return []
-  const heroMap = match.heroMap || {}
-  const baseRoles = Array.isArray(match.roles) && match.roles.length ? match.roles : match.assignments || []
-  return buildCountdownParticipantsFromRoles(baseRoles, heroMap)
+  if (!match || typeof match !== 'object') return [];
+  const heroMap = match.heroMap || {};
+  const baseRoles =
+    Array.isArray(match.roles) && match.roles.length ? match.roles : match.assignments || [];
+  return buildCountdownParticipantsFromRoles(baseRoles, heroMap);
 }
 
 function deriveRoleLayoutFromAssignments(assignments = [], heroMap = {}) {
-  const roleBuckets = new Map()
+  const roleBuckets = new Map();
 
-  assignments.forEach((assignment) => {
-    if (!assignment || typeof assignment !== 'object') return
-    const slotCandidates = []
+  assignments.forEach(assignment => {
+    if (!assignment || typeof assignment !== 'object') return;
+    const slotCandidates = [];
     if (Array.isArray(assignment.roleSlots) && assignment.roleSlots.length) {
-      slotCandidates.push(...assignment.roleSlots)
+      slotCandidates.push(...assignment.roleSlots);
     } else if (Array.isArray(assignment.slots) && assignment.slots.length) {
-      slotCandidates.push(...assignment.slots)
+      slotCandidates.push(...assignment.slots);
     }
 
     if (!slotCandidates.length && Array.isArray(assignment.members) && assignment.members.length) {
       slotCandidates.push({
         role: assignment.role || assignment.label || '참여자',
         members: assignment.members,
-      })
+      });
     }
 
-    slotCandidates.forEach((slotCandidate) => {
-      if (!slotCandidate || typeof slotCandidate !== 'object') return
-      const roleNameRaw = slotCandidate.role || assignment.role || assignment.label || '참여자'
-      const roleName = typeof roleNameRaw === 'string' && roleNameRaw.trim() ? roleNameRaw.trim() : '참여자'
-      const bucket =
-        roleBuckets.get(roleName) || {
-          role: roleName,
-          slotCount: 0,
-          members: [],
-          participants: [],
-        }
-      bucket.slotCount += 1
+    slotCandidates.forEach(slotCandidate => {
+      if (!slotCandidate || typeof slotCandidate !== 'object') return;
+      const roleNameRaw = slotCandidate.role || assignment.role || assignment.label || '참여자';
+      const roleName =
+        typeof roleNameRaw === 'string' && roleNameRaw.trim() ? roleNameRaw.trim() : '참여자';
+      const bucket = roleBuckets.get(roleName) || {
+        role: roleName,
+        slotCount: 0,
+        members: [],
+        participants: [],
+      };
+      bucket.slotCount += 1;
       const slotMembers = Array.isArray(slotCandidate.members)
         ? slotCandidate.members
         : slotCandidate.member
-        ? [slotCandidate.member]
-        : []
+          ? [slotCandidate.member]
+          : [];
 
-      slotMembers.forEach((member) => {
-        if (!member || typeof member !== 'object') return
-        const heroIdRaw = member.heroId ?? member.hero_id ?? null
-        const heroId = heroIdRaw != null ? String(heroIdRaw).trim() : ''
-        const ownerIdRaw = member.ownerId ?? member.owner_id ?? null
-        const ownerId = ownerIdRaw != null ? String(ownerIdRaw).trim() : ''
-        const heroEntry = lookupHeroEntry(heroMap, heroIdRaw)
+      slotMembers.forEach(member => {
+        if (!member || typeof member !== 'object') return;
+        const heroIdRaw = member.heroId ?? member.hero_id ?? null;
+        const heroId = heroIdRaw != null ? String(heroIdRaw).trim() : '';
+        const ownerIdRaw = member.ownerId ?? member.owner_id ?? null;
+        const ownerId = ownerIdRaw != null ? String(ownerIdRaw).trim() : '';
+        const heroEntry = lookupHeroEntry(heroMap, heroIdRaw);
         const heroName =
           member.heroName ||
           member.hero_name ||
@@ -709,19 +713,19 @@ function deriveRoleLayoutFromAssignments(assignments = [], heroMap = {}) {
           heroEntry?.name ||
           member.ownerName ||
           member.owner_name ||
-          '미확인 영웅'
-        const simulated = member.simulated === true || member.standin === true
-        const matchSourceRaw = member.match_source || member.matchSource || member.status || ''
-        const matchSource = typeof matchSourceRaw === 'string' ? matchSourceRaw.trim() : ''
-        const ready = member.ready !== false
-        const joinedAt = member.joinedAt || member.joined_at || null
+          '미확인 영웅';
+        const simulated = member.simulated === true || member.standin === true;
+        const matchSourceRaw = member.match_source || member.matchSource || member.status || '';
+        const matchSource = typeof matchSourceRaw === 'string' ? matchSourceRaw.trim() : '';
+        const ready = member.ready !== false;
+        const joinedAt = member.joinedAt || member.joined_at || null;
         const portrait =
           heroEntry?.portrait_url ||
           heroEntry?.portraitUrl ||
           heroEntry?.images?.portrait ||
           heroEntry?.image_url ||
           heroEntry?.avatar_url ||
-          null
+          null;
 
         const memberEntry = {
           ownerId,
@@ -732,28 +736,28 @@ function deriveRoleLayoutFromAssignments(assignments = [], heroMap = {}) {
           standin: simulated,
           matchSource,
           joinedAt,
-        }
+        };
 
-        bucket.members.push(memberEntry)
+        bucket.members.push(memberEntry);
         bucket.participants.push({
           id: `${roleName}-${heroId || bucket.members.length}-${ownerId || member.memberIndex || 0}`,
           name: heroName,
           role: roleName,
           simulated,
           portrait,
-        })
-      })
+        });
+      });
 
-      roleBuckets.set(roleName, bucket)
-    })
-  })
+      roleBuckets.set(roleName, bucket);
+    });
+  });
 
-  const roles = []
-  roleBuckets.forEach((bucket) => {
-    const slots = Math.max(bucket.slotCount, bucket.members.length || 0)
-    const members = []
+  const roles = [];
+  roleBuckets.forEach(bucket => {
+    const slots = Math.max(bucket.slotCount, bucket.members.length || 0);
+    const members = [];
     for (let idx = 0; idx < slots; idx += 1) {
-      const member = bucket.members[idx]
+      const member = bucket.members[idx];
       if (member) {
         members.push({
           ownerId: member.ownerId,
@@ -764,7 +768,7 @@ function deriveRoleLayoutFromAssignments(assignments = [], heroMap = {}) {
           standin: member.standin,
           matchSource: member.matchSource,
           joinedAt: member.joinedAt,
-        })
+        });
       } else {
         members.push({
           ownerId: '',
@@ -775,20 +779,20 @@ function deriveRoleLayoutFromAssignments(assignments = [], heroMap = {}) {
           standin: false,
           matchSource: '',
           joinedAt: null,
-        })
+        });
       }
     }
     roles.push({
       role: bucket.role,
       slots,
       members,
-    })
-  })
+    });
+  });
 
-  const roster = []
-  let globalIndex = 0
-  roles.forEach((role) => {
-    role.members.forEach((member) => {
+  const roster = [];
+  let globalIndex = 0;
+  roles.forEach(role => {
+    role.members.forEach(member => {
       roster.push({
         slotId: `${role.role}-${member.slotIndex}`,
         slotIndex: globalIndex,
@@ -800,19 +804,19 @@ function deriveRoleLayoutFromAssignments(assignments = [], heroMap = {}) {
         joinedAt: member.joinedAt || null,
         standin: member.standin,
         matchSource: member.matchSource,
-      })
-      globalIndex += 1
-    })
-  })
+      });
+      globalIndex += 1;
+    });
+  });
 
-  const participants = []
-  roleBuckets.forEach((bucket) => {
-    bucket.participants.forEach((participant) => {
-      participants.push(participant)
-    })
-  })
+  const participants = [];
+  roleBuckets.forEach(bucket => {
+    bucket.participants.forEach(participant => {
+      participants.push(participant);
+    });
+  });
 
-  return { roles, roster, participants }
+  return { roles, roster, participants };
 }
 
 function buildAsyncMatchStorePayload({
@@ -823,14 +827,17 @@ function buildAsyncMatchStorePayload({
   selectedEntry,
   selectedGame,
 }) {
-  const normalizedHeroMap = toPlainObject(result?.heroMap)
-  const assignments = Array.isArray(result?.assignments) ? result.assignments : []
-  const { roles, roster, participants } = deriveRoleLayoutFromAssignments(assignments, normalizedHeroMap)
-  const now = Date.now()
-  const slotEntries = []
-  roles.forEach((role) => {
+  const normalizedHeroMap = toPlainObject(result?.heroMap);
+  const assignments = Array.isArray(result?.assignments) ? result.assignments : [];
+  const { roles, roster, participants } = deriveRoleLayoutFromAssignments(
+    assignments,
+    normalizedHeroMap
+  );
+  const now = Date.now();
+  const slotEntries = [];
+  roles.forEach(role => {
     for (let idx = 0; idx < role.slots; idx += 1) {
-      const member = role.members[idx]
+      const member = role.members[idx];
       slotEntries.push({
         role: role.role,
         slotIndex: slotEntries.length,
@@ -838,16 +845,16 @@ function buildAsyncMatchStorePayload({
         heroId: member?.heroId || '',
         heroName: member?.heroName || '',
         ready: member?.ready || false,
-      })
+      });
     }
-  })
+  });
 
   const slotTemplate = {
     slots: slotEntries,
-    roles: roles.map((role) => ({
+    roles: roles.map(role => ({
       role: role.role,
       slots: role.slots,
-      members: role.members.map((member) => ({
+      members: role.members.map(member => ({
         ownerId: member.ownerId,
         heroId: member.heroId,
         heroName: member.heroName,
@@ -858,11 +865,11 @@ function buildAsyncMatchStorePayload({
     version: 1,
     updatedAt: now,
     source: 'character-panel',
-  }
+  };
 
-  const matchAssignments = slotTemplate.roles.map((role) => ({
+  const matchAssignments = slotTemplate.roles.map(role => ({
     role: role.role,
-    members: role.members.map((member) => ({
+    members: role.members.map(member => ({
       ownerId: member.ownerId,
       heroId: member.heroId,
       heroName: member.heroName,
@@ -870,9 +877,9 @@ function buildAsyncMatchStorePayload({
       slotIndex: member.slotIndex,
       standin: member.standin === true,
     })),
-  }))
+  }));
 
-  const hostOwnerId = heroOwnerId ? String(heroOwnerId).trim() : ''
+  const hostOwnerId = heroOwnerId ? String(heroOwnerId).trim() : '';
 
   const matchSnapshot = {
     match: {
@@ -900,9 +907,9 @@ function buildAsyncMatchStorePayload({
     heroId: hero?.id != null ? String(hero.id) : '',
     role: selectedEntry?.role || '',
     createdAt: now,
-  }
+  };
 
-  const heroOptions = Array.from(new Set(roster.map((entry) => entry.heroId).filter(Boolean)))
+  const heroOptions = Array.from(new Set(roster.map(entry => entry.heroId).filter(Boolean)));
 
   const sessionMeta = {
     asyncFill: {
@@ -912,7 +919,7 @@ function buildAsyncMatchStorePayload({
     },
     source: 'character-panel',
     updatedAt: now,
-  }
+  };
 
   return {
     storePayload: {
@@ -926,19 +933,19 @@ function buildAsyncMatchStorePayload({
       sessionMeta,
     },
     participants,
-  }
+  };
 }
 
 function buildFallbackParticipant({ heroName, role, heroImage }) {
-  const label = typeof role === 'string' && role.trim() ? role.trim() : '참여자'
-  const name = typeof heroName === 'string' && heroName.trim() ? heroName.trim() : '내 캐릭터'
+  const label = typeof role === 'string' && role.trim() ? role.trim() : '참여자';
+  const name = typeof heroName === 'string' && heroName.trim() ? heroName.trim() : '내 캐릭터';
   return {
     id: 'host-participant',
     name,
     role: label,
     simulated: false,
     portrait: heroImage || null,
-  }
+  };
 }
 
 const SESSION_ENDED_STATUSES = new Set([
@@ -952,7 +959,7 @@ const SESSION_ENDED_STATUSES = new Set([
   'canceled',
   'closed',
   'ended',
-])
+]);
 
 function MatchingOverlay({
   open,
@@ -977,50 +984,50 @@ function MatchingOverlay({
   onCancel,
   onProceed,
 }) {
-  if (!open) return null
+  if (!open) return null;
 
   const countdownActive =
-    countdown && typeof countdown.remaining === 'number' && Number.isFinite(countdown.remaining)
-  const countdownSeconds = countdownActive ? Math.max(0, Math.ceil(countdown.remaining)) : 0
-  const status = countdownActive ? 'countdown' : phase || 'queue'
-  const ready = status === 'ready' || countdownActive
-  const failed = status === 'error'
+    countdown && typeof countdown.remaining === 'number' && Number.isFinite(countdown.remaining);
+  const countdownSeconds = countdownActive ? Math.max(0, Math.ceil(countdown.remaining)) : 0;
+  const status = countdownActive ? 'countdown' : phase || 'queue';
+  const ready = status === 'ready' || countdownActive;
+  const failed = status === 'error';
   const inFlight =
     status === 'queue' ||
     status === 'awaiting-room' ||
     status === 'staging' ||
     status === 'sampling' ||
-    status === 'assembling'
+    status === 'assembling';
 
-  const debugHoldActive = Boolean(debugHold?.active)
-  const debugHoldAssignments = Array.isArray(debugHold?.assignments) ? debugHold.assignments : []
-  const debugHoldIssues = Array.isArray(debugHold?.issues) ? debugHold.issues : []
-  const debugHoldMetaItems = []
+  const debugHoldActive = Boolean(debugHold?.active);
+  const debugHoldAssignments = Array.isArray(debugHold?.assignments) ? debugHold.assignments : [];
+  const debugHoldIssues = Array.isArray(debugHold?.issues) ? debugHold.issues : [];
+  const debugHoldMetaItems = [];
   if (debugHold?.queueMode) {
-    debugHoldMetaItems.push(`모드: ${debugHold.queueMode}`)
+    debugHoldMetaItems.push(`모드: ${debugHold.queueMode}`);
   }
   if (debugHold?.sessionId) {
-    debugHoldMetaItems.push(`세션: ${debugHold.sessionId}`)
+    debugHoldMetaItems.push(`세션: ${debugHold.sessionId}`);
   }
   if (debugHold?.matchCode) {
-    debugHoldMetaItems.push(`매치: ${debugHold.matchCode}`)
+    debugHoldMetaItems.push(`매치: ${debugHold.matchCode}`);
   }
   if (Number.isFinite(debugHold?.reconciled)) {
-    debugHoldMetaItems.push(`큐 정렬 ${debugHold.reconciled}명`)
+    debugHoldMetaItems.push(`큐 정렬 ${debugHold.reconciled}명`);
   }
   if (Number.isFinite(debugHold?.inserted)) {
-    debugHoldMetaItems.push(`큐 재삽입 ${debugHold.inserted}명`)
+    debugHoldMetaItems.push(`큐 재삽입 ${debugHold.inserted}명`);
   }
   if (Number.isFinite(debugHold?.removed)) {
-    debugHoldMetaItems.push(`큐 삭제 ${debugHold.removed}명`)
+    debugHoldMetaItems.push(`큐 삭제 ${debugHold.removed}명`);
   }
   if (debugHold?.generatedAt) {
     try {
-      const stamp = new Date(debugHold.generatedAt)
+      const stamp = new Date(debugHold.generatedAt);
       if (!Number.isNaN(stamp.getTime())) {
         debugHoldMetaItems.push(
-          `기록: ${stamp.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`,
-        )
+          `기록: ${stamp.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
+        );
       }
     } catch (error) {
       // ignore malformed stamp
@@ -1028,64 +1035,66 @@ function MatchingOverlay({
   }
 
   const headline = (() => {
-    if (countdownActive) return '전투 준비 완료'
-    if (ready) return debugHoldActive ? '매칭이 완료되었습니다' : '매칭이 준비됐어요'
-    if (failed) return '매칭을 준비하지 못했습니다'
-    if (status === 'awaiting-room') return '방을 준비하는 중'
-    if (status === 'staging') return '매칭 구성 중'
-    if (status === 'sampling') return '상대 데이터를 탐색하는 중'
-    if (status === 'assembling') return '전투를 구성하는 중'
-    return '대기열에 참가하는 중'
-  })()
+    if (countdownActive) return '전투 준비 완료';
+    if (ready) return debugHoldActive ? '매칭이 완료되었습니다' : '매칭이 준비됐어요';
+    if (failed) return '매칭을 준비하지 못했습니다';
+    if (status === 'awaiting-room') return '방을 준비하는 중';
+    if (status === 'staging') return '매칭 구성 중';
+    if (status === 'sampling') return '상대 데이터를 탐색하는 중';
+    if (status === 'assembling') return '전투를 구성하는 중';
+    return '대기열에 참가하는 중';
+  })();
 
   const subline = (() => {
     if (failed) {
-      return `${heroName}의 매칭을 완료하지 못했습니다.`
+      return `${heroName}의 매칭을 완료하지 못했습니다.`;
     }
     if (countdownActive) {
-      if (message) return message
+      if (message) return message;
       if (countdownSeconds > 0) {
-        return `${countdownSeconds}초 후 ${gameName} 전투가 시작됩니다.`
+        return `${countdownSeconds}초 후 ${gameName} 전투가 시작됩니다.`;
       }
-      return `${gameName} 전투로 이동합니다…`
+      return `${gameName} 전투로 이동합니다…`;
     }
     if (ready) {
       if (debugHoldActive) {
         return (
           message ||
           `${gameName} 전투 자동 시작이 일시 중지되었습니다. 디버그 정보를 확인한 뒤 전투 화면을 여세요.`
-        )
+        );
       }
-      return message || `${heroName}이(가) ${gameName} 전투를 시작할 준비가 끝났습니다.`
+      return message || `${heroName}이(가) ${gameName} 전투를 시작할 준비가 끝났습니다.`;
     }
     if (status === 'staging') {
-      return message || `${gameName} 방을 준비하고 있어요.`
+      return message || `${gameName} 방을 준비하고 있어요.`;
     }
     if (status === 'awaiting-room') {
-      return message || `${gameName} 방을 확보하고 있어요. 잠시만 기다려 주세요.`
+      return message || `${gameName} 방을 확보하고 있어요. 잠시만 기다려 주세요.`;
     }
     if (status === 'sampling') {
-      return message || `${gameName}에 맞는 상대 데이터를 수집하고 있습니다.`
+      return message || `${gameName}에 맞는 상대 데이터를 수집하고 있습니다.`;
     }
     if (status === 'assembling') {
-      return message || `${gameName} 전투 구성을 정리하는 중입니다.`
+      return message || `${gameName} 전투 구성을 정리하는 중입니다.`;
     }
-    return message || `${heroName}이(가) ${gameName} 참가자를 찾는 중입니다.`
-  })()
+    return message || `${heroName}이(가) ${gameName} 참가자를 찾는 중입니다.`;
+  })();
 
-  const sessionMeta = []
+  const sessionMeta = [];
   if (ready && readyExpiresAt) {
     try {
-      const date = new Date(readyExpiresAt)
+      const date = new Date(readyExpiresAt);
       if (!Number.isNaN(date.getTime())) {
-        sessionMeta.push(`준비 만료: ${date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}`)
+        sessionMeta.push(
+          `준비 만료: ${date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}`
+        );
       }
     } catch (error) {
       // ignore malformed date
     }
   }
   if (ready && sessionId) {
-    sessionMeta.push(`세션 ID: ${sessionId}`)
+    sessionMeta.push(`세션 ID: ${sessionId}`);
   }
 
   const statusLines = [
@@ -1094,19 +1103,19 @@ function MatchingOverlay({
     ticketId ? `티켓 ID: ${ticketId}` : null,
     queueMode ? `매칭 모드: ${queueMode === 'realtime' ? '실시간' : '비실시간'}` : null,
     matchCode ? `매치 코드: ${matchCode}` : null,
-  ].filter(Boolean)
+  ].filter(Boolean);
 
-  const showProgress = inFlight && !countdownActive
-  const showCancel = inFlight && !countdownActive
+  const showProgress = inFlight && !countdownActive;
+  const showCancel = inFlight && !countdownActive;
   const primaryLabel = ready
     ? debugHoldActive
       ? '전투 화면 열기'
       : '확인'
     : failed
-    ? '닫기'
-    : '진행 중'
-  const primaryEnabled = ready || failed
-  const showActions = !countdownActive && (showCancel || ready || failed)
+      ? '닫기'
+      : '진행 중';
+  const primaryEnabled = ready || failed;
+  const showActions = !countdownActive && (showCancel || ready || failed);
 
   const content = (
     <aside style={overlayStyles.root}>
@@ -1116,7 +1125,7 @@ function MatchingOverlay({
           <p style={overlayStyles.subheader}>{subline}</p>
           {statusLines.length ? (
             <div style={overlayStyles.statusList}>
-              {statusLines.map((line) => (
+              {statusLines.map(line => (
                 <span key={line} style={overlayStyles.statusItem}>
                   {line}
                 </span>
@@ -1124,7 +1133,7 @@ function MatchingOverlay({
             </div>
           ) : null}
           {ready && sessionMeta.length
-            ? sessionMeta.map((entry) => (
+            ? sessionMeta.map(entry => (
                 <span key={entry} style={overlayStyles.statusItem}>
                   {entry}
                 </span>
@@ -1162,12 +1171,12 @@ function MatchingOverlay({
           </p>
           {Array.isArray(countdown?.participants) && countdown.participants.length ? (
             <div style={overlayStyles.countdownParticipants}>
-              {countdown.participants.map((participant) => {
-                const name = participant?.name || '참가자'
-                const role = participant?.role || '역할'
-                const key = participant?.id || `${role}-${name}`
-                const initials = name.trim().slice(0, 2)
-                const avatar = participant?.portrait || null
+              {countdown.participants.map(participant => {
+                const name = participant?.name || '참가자';
+                const role = participant?.role || '역할';
+                const key = participant?.id || `${role}-${name}`;
+                const initials = name.trim().slice(0, 2);
+                const avatar = participant?.portrait || null;
                 return (
                   <div key={key} style={overlayStyles.countdownParticipant}>
                     <div style={overlayStyles.countdownAvatar}>
@@ -1185,7 +1194,7 @@ function MatchingOverlay({
                       ) : null}
                     </div>
                   </div>
-                )
+                );
               })}
             </div>
           ) : (
@@ -1196,12 +1205,10 @@ function MatchingOverlay({
       {debugHoldActive ? (
         <div style={overlayStyles.debugHoldPanel}>
           <p style={overlayStyles.debugHoldTitle}>자동 시작이 비활성화되었습니다.</p>
-          {debugHold?.note ? (
-            <p style={overlayStyles.debugHoldMessage}>{debugHold.note}</p>
-          ) : null}
+          {debugHold?.note ? <p style={overlayStyles.debugHoldMessage}>{debugHold.note}</p> : null}
           {debugHoldMetaItems.length ? (
             <p style={overlayStyles.debugHoldMeta}>
-              {debugHoldMetaItems.map((item) => (
+              {debugHoldMetaItems.map(item => (
                 <span key={item} style={overlayStyles.debugHoldMetaItem}>
                   {item}
                 </span>
@@ -1223,11 +1230,18 @@ function MatchingOverlay({
                 <div key={`${assignment.role}-${index}`} style={overlayStyles.debugHoldColumn}>
                   <p style={overlayStyles.debugHoldRole}>{assignment.role}</p>
                   {assignment.members.length ? (
-                    assignment.members.map((member) => {
-                      const ownerLabel = member.ownerId ? `소유자 ${member.ownerId}` : '소유자 정보 없음'
-                      const heroLabel = member.heroId ? `히어로 ${member.heroId}` : '히어로 정보 없음'
+                    assignment.members.map(member => {
+                      const ownerLabel = member.ownerId
+                        ? `소유자 ${member.ownerId}`
+                        : '소유자 정보 없음';
+                      const heroLabel = member.heroId
+                        ? `히어로 ${member.heroId}`
+                        : '히어로 정보 없음';
                       return (
-                        <p key={`${assignment.role}-${member.index}`} style={overlayStyles.debugHoldMember}>
+                        <p
+                          key={`${assignment.role}-${member.index}`}
+                          style={overlayStyles.debugHoldMember}
+                        >
                           {member.heroName || '참가자'}
                           <span style={overlayStyles.debugHoldMemberMeta}>
                             {ownerLabel} · {heroLabel}
@@ -1236,7 +1250,7 @@ function MatchingOverlay({
                             {member.status ? ` · ${member.status}` : ''}
                           </span>
                         </p>
-                      )
+                      );
                     })
                   ) : (
                     <p style={overlayStyles.debugHoldMember}>배정된 인원이 없습니다.</p>
@@ -1278,7 +1292,7 @@ function MatchingOverlay({
         <div style={overlayStyles.debugPanel}>
           <div style={overlayStyles.debugScroll}>
             {debugEntries?.length ? (
-              debugEntries.map((entry) => (
+              debugEntries.map(entry => (
                 <p key={entry.key} style={overlayStyles.debugEntry}>
                   [{entry.time}] {entry.event}
                   {entry.payload ? `\n${JSON.stringify(entry.payload, null, 2)}` : ''}
@@ -1291,40 +1305,40 @@ function MatchingOverlay({
         </div>
       ) : null}
     </aside>
-  )
+  );
 
   if (typeof document !== 'undefined') {
-    return createPortal(content, document.body)
+    return createPortal(content, document.body);
   }
 
-  return content
+  return content;
 }
 
-const QUEUE_ID = 'rank-default'
-const QUEUE_POLL_INTERVAL_MS = 1500
-const QUEUE_POLL_LIMIT = 40
+const QUEUE_ID = 'rank-default';
+const QUEUE_POLL_INTERVAL_MS = 1500;
+const QUEUE_POLL_LIMIT = 40;
 
 function normalizeQueueTicket(row) {
-  if (!row || typeof row !== 'object') return null
+  if (!row || typeof row !== 'object') return null;
   const payload =
     row.payload && typeof row.payload === 'object' && !Array.isArray(row.payload)
       ? row.payload
       : row.payload_json && typeof row.payload_json === 'object'
-      ? row.payload_json
-      : null
+        ? row.payload_json
+        : null;
 
-  const seatMapRaw = row.seat_map ?? row.seatMap
-  let seatMap = null
+  const seatMapRaw = row.seat_map ?? row.seatMap;
+  let seatMap = null;
   if (Array.isArray(seatMapRaw)) {
-    seatMap = seatMapRaw
+    seatMap = seatMapRaw;
   } else if (typeof seatMapRaw === 'string') {
     try {
-      const parsed = JSON.parse(seatMapRaw)
+      const parsed = JSON.parse(seatMapRaw);
       if (Array.isArray(parsed)) {
-        seatMap = parsed
+        seatMap = parsed;
       }
     } catch (error) {
-      seatMap = null
+      seatMap = null;
     }
   }
 
@@ -1339,12 +1353,11 @@ function normalizeQueueTicket(row) {
     readyExpiresAt: row.ready_expires_at || row.readyExpiresAt || null,
     seatMap,
     payload,
-  }
+  };
 }
 
 export default function CharacterPlayPanel({ hero, playData }) {
-
-  const router = useRouter()
+  const router = useRouter();
 
   const {
     selectedEntry = null,
@@ -1357,30 +1370,30 @@ export default function CharacterPlayPanel({ hero, playData }) {
     battleError = '',
     showMoreBattles = () => {},
     refreshParticipations = () => {},
-  } = playData || {}
+  } = playData || {};
 
-  const [activeSession, setActiveSession] = useState(() => readActiveSession())
+  const [activeSession, setActiveSession] = useState(() => readActiveSession());
 
   useEffect(() => {
-    const unsubscribe = subscribeActiveSession((payload) => {
-      setActiveSession(payload)
-    })
-    setActiveSession(readActiveSession())
+    const unsubscribe = subscribeActiveSession(payload => {
+      setActiveSession(payload);
+    });
+    setActiveSession(readActiveSession());
     return () => {
-      unsubscribe?.()
-    }
-  }, [])
+      unsubscribe?.();
+    };
+  }, []);
 
   const activeSessionInfo = useMemo(() => {
     if (!activeSession || typeof activeSession !== 'object') {
-      return null
+      return null;
     }
     const statusRaw =
-      typeof activeSession.status === 'string' ? activeSession.status.trim().toLowerCase() : ''
-    const gameIdValue = activeSession.gameId || activeSession.game_id || null
-    const sessionIdValue = activeSession.sessionId || activeSession.session_id || null
-    const hrefValue = typeof activeSession.href === 'string' ? activeSession.href : null
-    const nameValue = typeof activeSession.gameName === 'string' ? activeSession.gameName : ''
+      typeof activeSession.status === 'string' ? activeSession.status.trim().toLowerCase() : '';
+    const gameIdValue = activeSession.gameId || activeSession.game_id || null;
+    const sessionIdValue = activeSession.sessionId || activeSession.session_id || null;
+    const hrefValue = typeof activeSession.href === 'string' ? activeSession.href : null;
+    const nameValue = typeof activeSession.gameName === 'string' ? activeSession.gameName : '';
     return {
       status: statusRaw,
       rawStatus: activeSession.status || '',
@@ -1388,32 +1401,32 @@ export default function CharacterPlayPanel({ hero, playData }) {
       sessionId: sessionIdValue ? String(sessionIdValue) : null,
       gameName: nameValue,
       href: hrefValue,
-    }
-  }, [activeSession])
+    };
+  }, [activeSession]);
 
   const hasBlockingActiveSession = useMemo(() => {
-    if (!activeSessionInfo) return false
-    if (!activeSessionInfo.status) return true
-    return !SESSION_ENDED_STATUSES.has(activeSessionInfo.status)
-  }, [activeSessionInfo])
+    if (!activeSessionInfo) return false;
+    if (!activeSessionInfo.status) return true;
+    return !SESSION_ENDED_STATUSES.has(activeSessionInfo.status);
+  }, [activeSessionInfo]);
 
   const activeSessionBlockMessage = useMemo(() => {
-    if (!hasBlockingActiveSession) return ''
+    if (!hasBlockingActiveSession) return '';
     const base = activeSessionInfo?.gameName
       ? `${activeSessionInfo.gameName} 전투가 진행 중입니다.`
-      : '진행 중인 전투가 있습니다.'
-    return `${base} 현재 전투를 마친 후 다시 시도해 주세요.`
-  }, [activeSessionInfo?.gameName, hasBlockingActiveSession])
+      : '진행 중인 전투가 있습니다.';
+    return `${base} 현재 전투를 마친 후 다시 시도해 주세요.`;
+  }, [activeSessionInfo?.gameName, hasBlockingActiveSession]);
 
   const handleResumeActiveSession = useCallback(() => {
     if (activeSessionInfo?.href) {
-      router.push(activeSessionInfo.href)
-      return
+      router.push(activeSessionInfo.href);
+      return;
     }
     if (activeSessionInfo?.gameId) {
-      router.push(`/rank/${activeSessionInfo.gameId}/start`)
+      router.push(`/rank/${activeSessionInfo.gameId}/start`);
     }
-  }, [activeSessionInfo, router])
+  }, [activeSessionInfo, router]);
 
   const [matchingState, setMatchingState] = useState({
     open: false,
@@ -1429,27 +1442,27 @@ export default function CharacterPlayPanel({ hero, playData }) {
     matchCode: null,
     countdown: null,
     debugHold: null,
-  })
-  const matchTaskRef = useRef(null)
-  const queuePollRef = useRef(null)
-  const queueRealtimeRef = useRef(null)
-  const queuePollAttemptsRef = useRef(0)
-  const stagingInProgressRef = useRef(false)
-  const autoLaunchRef = useRef(false)
-  const proceedInFlightRef = useRef(false)
-  const latestTicketRef = useRef(null)
-  const countdownTimerRef = useRef(null)
-  const countdownRemainingRef = useRef(0)
-  const pendingLaunchRef = useRef(null)
-  const startCountdownLaunchRef = useRef(null)
-  const beginRealtimeLaunchRef = useRef(null)
-  const debugEntriesRef = useRef([])
-  const debugIndexRef = useRef(0)
-  const [debugEntries, setDebugEntries] = useState([])
-  const [debugOpen, setDebugOpen] = useState(false)
+  });
+  const matchTaskRef = useRef(null);
+  const queuePollRef = useRef(null);
+  const queueRealtimeRef = useRef(null);
+  const queuePollAttemptsRef = useRef(0);
+  const stagingInProgressRef = useRef(false);
+  const autoLaunchRef = useRef(false);
+  const proceedInFlightRef = useRef(false);
+  const latestTicketRef = useRef(null);
+  const countdownTimerRef = useRef(null);
+  const countdownRemainingRef = useRef(0);
+  const pendingLaunchRef = useRef(null);
+  const startCountdownLaunchRef = useRef(null);
+  const beginRealtimeLaunchRef = useRef(null);
+  const debugEntriesRef = useRef([]);
+  const debugIndexRef = useRef(0);
+  const [debugEntries, setDebugEntries] = useState([]);
+  const [debugOpen, setDebugOpen] = useState(false);
 
   const appendDebug = useCallback((event, payload = null) => {
-    const timestamp = new Date()
+    const timestamp = new Date();
     const entry = {
       key: `${timestamp.getTime()}-${debugIndexRef.current}`,
       time: timestamp.toLocaleTimeString('ko-KR', {
@@ -1459,29 +1472,29 @@ export default function CharacterPlayPanel({ hero, playData }) {
       }),
       event,
       payload,
-    }
-    debugIndexRef.current += 1
-    const next = [...debugEntriesRef.current, entry].slice(-80)
-    debugEntriesRef.current = next
-    setDebugEntries(next)
-  }, [])
+    };
+    debugIndexRef.current += 1;
+    const next = [...debugEntriesRef.current, entry].slice(-80);
+    debugEntriesRef.current = next;
+    setDebugEntries(next);
+  }, []);
 
   const clearDebug = useCallback(() => {
-    debugEntriesRef.current = []
-    setDebugEntries([])
-  }, [])
+    debugEntriesRef.current = [];
+    setDebugEntries([]);
+  }, []);
 
   const clearCountdown = useCallback(() => {
     if (countdownTimerRef.current) {
-      clearInterval(countdownTimerRef.current)
-      countdownTimerRef.current = null
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
     }
-    countdownRemainingRef.current = 0
-  }, [])
+    countdownRemainingRef.current = 0;
+  }, []);
 
   const applyMatchSnapshot = useCallback((gameId, payload) => {
-    if (!gameId) return null
-    hydrateGameMatchData(gameId)
+    if (!gameId) return null;
+    hydrateGameMatchData(gameId);
     if (payload && typeof payload === 'object') {
       const {
         roster,
@@ -1495,7 +1508,7 @@ export default function CharacterPlayPanel({ hero, playData }) {
         matchSnapshot,
         sessionMeta,
         sessionHistory,
-      } = payload
+      } = payload;
 
       if (roster || participantPool || heroOptions || heroMap) {
         setGameMatchParticipation(gameId, {
@@ -1506,83 +1519,83 @@ export default function CharacterPlayPanel({ hero, playData }) {
           realtimeMode: realtimeMode ?? payload.mode ?? null,
           hostOwnerId: hostOwnerId ?? null,
           hostRoleLimit: hostRoleLimit ?? null,
-        })
+        });
       }
 
       if (slotTemplate) {
-        setGameMatchSlotTemplate(gameId, slotTemplate)
+        setGameMatchSlotTemplate(gameId, slotTemplate);
       }
 
       if (matchSnapshot) {
-        setGameMatchSnapshot(gameId, matchSnapshot)
+        setGameMatchSnapshot(gameId, matchSnapshot);
       }
 
       if (sessionMeta !== undefined) {
-        setGameMatchSessionMeta(gameId, sessionMeta || null)
+        setGameMatchSessionMeta(gameId, sessionMeta || null);
       }
 
       if (sessionHistory !== undefined) {
-        setGameMatchSessionHistory(gameId, sessionHistory || null)
+        setGameMatchSessionHistory(gameId, sessionHistory || null);
       }
     }
 
-    return payload || null
-  }, [])
+    return payload || null;
+  }, []);
 
   const fetchAndStoreMatchSnapshot = useCallback(
     async (gameId, { attempts = 3, delayMs = 500 } = {}) => {
       if (!gameId) {
-        throw new Error('게임 정보를 찾을 수 없습니다.')
+        throw new Error('게임 정보를 찾을 수 없습니다.');
       }
 
-      let snapshot = null
-      let lastError = null
+      let snapshot = null;
+      let lastError = null;
 
       for (let attempt = 0; attempt < attempts; attempt += 1) {
-        appendDebug('overlay:snapshot-attempt', { attempt: attempt + 1 })
+        appendDebug('overlay:snapshot-attempt', { attempt: attempt + 1 });
         try {
-          const payload = await loadMatchFlowSnapshot(supabase, gameId)
+          const payload = await loadMatchFlowSnapshot(supabase, gameId);
           if (payload) {
-            snapshot = payload
-            applyMatchSnapshot(gameId, payload)
+            snapshot = payload;
+            applyMatchSnapshot(gameId, payload);
             if (payload.sessionId || payload.session?.id) {
-              return payload
+              return payload;
             }
           } else {
-            applyMatchSnapshot(gameId, null)
+            applyMatchSnapshot(gameId, null);
           }
-          lastError = null
+          lastError = null;
         } catch (error) {
-          lastError = error
+          lastError = error;
           appendDebug('overlay:snapshot-error', {
             attempt: attempt + 1,
             error: error?.message || String(error),
-          })
+          });
         }
 
         if (attempt < attempts - 1) {
-          await new Promise((resolve) => setTimeout(resolve, delayMs))
+          await new Promise(resolve => setTimeout(resolve, delayMs));
         }
       }
 
       if (snapshot) {
-        return snapshot
+        return snapshot;
       }
 
       if (lastError) {
-        throw lastError
+        throw lastError;
       }
 
-      throw new Error('전투 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.')
+      throw new Error('전투 정보를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');
     },
-    [appendDebug, applyMatchSnapshot],
-  )
+    [appendDebug, applyMatchSnapshot]
+  );
 
   const heroName = useMemo(() => {
-    const raw = hero?.name
-    if (typeof raw === 'string' && raw.trim()) return raw.trim()
-    return '이름 없는 영웅'
-  }, [hero?.name])
+    const raw = hero?.name;
+    if (typeof raw === 'string' && raw.trim()) return raw.trim();
+    return '이름 없는 영웅';
+  }, [hero?.name]);
 
   const heroOwnerId = useMemo(() => {
     const candidates = [
@@ -1592,43 +1605,50 @@ export default function CharacterPlayPanel({ hero, playData }) {
       hero?.userId,
       hero?.profile_id,
       hero?.profileId,
-    ]
+    ];
     for (const candidate of candidates) {
-      if (candidate === null || candidate === undefined) continue
-      const trimmed = String(candidate).trim()
+      if (candidate === null || candidate === undefined) continue;
+      const trimmed = String(candidate).trim();
       if (trimmed) {
-        return trimmed
+        return trimmed;
       }
     }
-    return ''
-  }, [hero?.ownerId, hero?.owner_id, hero?.profileId, hero?.profile_id, hero?.userId, hero?.user_id])
+    return '';
+  }, [
+    hero?.ownerId,
+    hero?.owner_id,
+    hero?.profileId,
+    hero?.profile_id,
+    hero?.userId,
+    hero?.user_id,
+  ]);
 
-  const currentRole = selectedEntry?.role ? selectedEntry.role : null
+  const currentRole = selectedEntry?.role ? selectedEntry.role : null;
 
   const gameDescription = useMemo(() => {
-    const raw = selectedGame?.description
-    if (typeof raw === 'string' && raw.trim()) return raw.trim()
-    return '아직 등록된 설명이 없습니다.'
-  }, [selectedGame?.description])
+    const raw = selectedGame?.description;
+    if (typeof raw === 'string' && raw.trim()) return raw.trim();
+    return '아직 등록된 설명이 없습니다.';
+  }, [selectedGame?.description]);
 
   useEffect(() => {
-    if (!selectedGameId) return
-    const heroId = hero?.id != null ? String(hero.id).trim() : ''
-    if (!heroId) return
-    const role = selectedEntry?.role != null ? String(selectedEntry.role).trim() : ''
-    const heroImage = hero?.image_url || hero?.avatar_url || hero?.portrait_url || null
+    if (!selectedGameId) return;
+    const heroId = hero?.id != null ? String(hero.id).trim() : '';
+    if (!heroId) return;
+    const role = selectedEntry?.role != null ? String(selectedEntry.role).trim() : '';
+    const heroImage = hero?.image_url || hero?.avatar_url || hero?.portrait_url || null;
     const heroMeta = {
       id: heroId,
       name: heroName,
       image_url: heroImage || null,
-    }
+    };
     setGameMatchHeroSelection(selectedGameId, {
       heroId,
       ownerId: heroOwnerId,
       viewerId: heroOwnerId || undefined,
       role,
       heroMeta,
-    })
+    });
   }, [
     hero?.avatar_url,
     hero?.id,
@@ -1638,83 +1658,82 @@ export default function CharacterPlayPanel({ hero, playData }) {
     heroOwnerId,
     selectedEntry?.role,
     selectedGameId,
-  ])
+  ]);
 
   useEffect(() => {
-    if (!matchingState.open) return undefined
-    if (!['queue', 'awaiting-room', 'staging'].includes(matchingState.phase)) return undefined
+    if (!matchingState.open) return undefined;
+    if (!['queue', 'awaiting-room', 'staging'].includes(matchingState.phase)) return undefined;
 
-    let cancelled = false
+    let cancelled = false;
     const timer = setInterval(() => {
-      setMatchingState((prev) => {
-        if (!prev.open || cancelled) return prev
-        if (!['queue', 'awaiting-room', 'staging'].includes(prev.phase)) return prev
-        const ceiling =
-          prev.phase === 'staging' ? 96 : prev.phase === 'awaiting-room' ? 90 : 82
-        const increment = prev.phase === 'staging' ? 6 : prev.phase === 'awaiting-room' ? 5 : 4
-        const nextProgress = Math.min(ceiling, Math.max(0, prev.progress) + increment)
-        if (nextProgress === prev.progress) return prev
-        return { ...prev, progress: nextProgress }
-      })
-    }, 280)
+      setMatchingState(prev => {
+        if (!prev.open || cancelled) return prev;
+        if (!['queue', 'awaiting-room', 'staging'].includes(prev.phase)) return prev;
+        const ceiling = prev.phase === 'staging' ? 96 : prev.phase === 'awaiting-room' ? 90 : 82;
+        const increment = prev.phase === 'staging' ? 6 : prev.phase === 'awaiting-room' ? 5 : 4;
+        const nextProgress = Math.min(ceiling, Math.max(0, prev.progress) + increment);
+        if (nextProgress === prev.progress) return prev;
+        return { ...prev, progress: nextProgress };
+      });
+    }, 280);
 
     return () => {
-      cancelled = true
-      clearInterval(timer)
-    }
-  }, [matchingState.open, matchingState.phase])
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [matchingState.open, matchingState.phase]);
 
   const clearQueueWatch = useCallback(() => {
     if (queuePollRef.current) {
-      clearInterval(queuePollRef.current)
-      queuePollRef.current = null
+      clearInterval(queuePollRef.current);
+      queuePollRef.current = null;
     }
     if (queueRealtimeRef.current) {
-      queueRealtimeRef.current.stop?.()
-      queueRealtimeRef.current = null
+      queueRealtimeRef.current.stop?.();
+      queueRealtimeRef.current = null;
     }
-    queuePollAttemptsRef.current = 0
-    stagingInProgressRef.current = false
-    appendDebug('queue:watch-reset')
-  }, [appendDebug])
+    queuePollAttemptsRef.current = 0;
+    stagingInProgressRef.current = false;
+    appendDebug('queue:watch-reset');
+  }, [appendDebug]);
 
   const stageTicket = useCallback(
-    async (ticket) => {
-      if (!ticket?.id) return
+    async ticket => {
+      if (!ticket?.id) return;
       if (!matchingState.open) {
-        stagingInProgressRef.current = false
-        return
+        stagingInProgressRef.current = false;
+        return;
       }
 
-      setMatchingState((prev) => ({
+      setMatchingState(prev => ({
         ...prev,
         phase: 'staging',
         progress: Math.max(prev.progress, 62),
         message: '매칭을 준비하는 중…',
         ticketId: ticket.id,
         countdown: null,
-      }))
+      }));
 
       appendDebug('stage:attempt', {
         ticketId: ticket.id,
         roomId: ticket.roomId || null,
         status: ticket.status || null,
-      })
+      });
 
       try {
-        const stageResult = await ensureRpc('stage_rank_match', { queue_ticket_id: ticket.id })
+        const stageResult = await ensureRpc('stage_rank_match', { queue_ticket_id: ticket.id });
 
         appendDebug('rpc:stage_rank_match', {
           ticketId: ticket.id,
           roomId: ticket.roomId || null,
-        })
+        });
 
         if (!matchingState.open) {
-          stagingInProgressRef.current = false
-          return
+          stagingInProgressRef.current = false;
+          return;
         }
 
-        setMatchingState((prev) => ({
+        setMatchingState(prev => ({
           ...prev,
           phase: 'ready',
           progress: 100,
@@ -1724,57 +1743,60 @@ export default function CharacterPlayPanel({ hero, playData }) {
           sessionId: stageResult?.session_id || null,
           readyExpiresAt: stageResult?.ready_expires_at || null,
           countdown: null,
-        }))
+        }));
 
         appendDebug('stage:ready', {
           ticketId: ticket.id,
           sessionId: stageResult?.session_id || null,
           readyExpiresAt: stageResult?.ready_expires_at || null,
-        })
+        });
 
         if (typeof refreshParticipations === 'function') {
           try {
-            await refreshParticipations()
+            await refreshParticipations();
           } catch (refreshError) {
-            console.warn('[CharacterPlayPanel] 매칭 후 참가 정보를 새로고침하지 못했습니다:', refreshError)
+            console.warn(
+              '[CharacterPlayPanel] 매칭 후 참가 정보를 새로고침하지 못했습니다:',
+              refreshError
+            );
           }
         }
 
-        clearQueueWatch()
+        clearQueueWatch();
         if (beginRealtimeLaunchRef.current) {
           beginRealtimeLaunchRef.current({
             sessionId: stageResult?.session_id || null,
             readyExpiresAt: stageResult?.ready_expires_at || null,
-          })
+          });
         }
       } catch (error) {
-        const detail = error?.message || error?.details || ''
-        const normalized = typeof detail === 'string' ? detail.toLowerCase() : ''
+        const detail = error?.message || error?.details || '';
+        const normalized = typeof detail === 'string' ? detail.toLowerCase() : '';
         if (normalized.includes('missing_room_id')) {
-          stagingInProgressRef.current = false
-          setMatchingState((prev) => ({
+          stagingInProgressRef.current = false;
+          setMatchingState(prev => ({
             ...prev,
             phase: 'awaiting-room',
             message: '방 정보를 기다리는 중입니다…',
             error: '',
             countdown: null,
-          }))
+          }));
           appendDebug('stage:awaiting-room', {
             ticketId: ticket.id,
             detail,
-          })
-          return
+          });
+          return;
         }
 
         const friendly =
           detail ||
           (typeof error === 'string'
             ? error
-            : '매칭을 준비하는 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.')
+            : '매칭을 준비하는 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.');
 
-        appendDebug('stage:error', { ticketId: ticket.id, error: friendly })
+        appendDebug('stage:error', { ticketId: ticket.id, error: friendly });
 
-        setMatchingState((prev) => ({
+        setMatchingState(prev => ({
           ...prev,
           open: true,
           phase: 'error',
@@ -1786,111 +1808,111 @@ export default function CharacterPlayPanel({ hero, playData }) {
           sessionId: null,
           readyExpiresAt: null,
           countdown: null,
-        }))
+        }));
 
-        clearQueueWatch()
+        clearQueueWatch();
       } finally {
-        stagingInProgressRef.current = false
+        stagingInProgressRef.current = false;
       }
     },
-    [appendDebug, clearQueueWatch, matchingState.open, refreshParticipations],
-  )
+    [appendDebug, clearQueueWatch, matchingState.open, refreshParticipations]
+  );
 
   const processTicketUpdate = useCallback(
-    (ticket) => {
-      if (!ticket) return
-      latestTicketRef.current = ticket
+    ticket => {
+      if (!ticket) return;
+      latestTicketRef.current = ticket;
 
       appendDebug('queue:update', {
         ticketId: ticket.id || null,
         status: ticket.status || null,
         roomId: ticket.roomId || null,
-      })
+      });
 
-      setMatchingState((prev) => {
-        const nextState = { ...prev }
-        let changed = false
+      setMatchingState(prev => {
+        const nextState = { ...prev };
+        let changed = false;
 
-        const nextStatus = ticket.status || prev.ticketStatus || null
+        const nextStatus = ticket.status || prev.ticketStatus || null;
         if (nextStatus !== prev.ticketStatus) {
-          nextState.ticketStatus = nextStatus
-          changed = true
+          nextState.ticketStatus = nextStatus;
+          changed = true;
         }
 
         if (!ticket.roomId && nextStatus === 'staging' && prev.phase !== 'awaiting-room') {
-          nextState.phase = 'awaiting-room'
-          nextState.message = '방을 구성 중입니다…'
-          changed = true
+          nextState.phase = 'awaiting-room';
+          nextState.message = '방을 구성 중입니다…';
+          changed = true;
         }
 
-        return changed ? nextState : prev
-      })
+        return changed ? nextState : prev;
+      });
 
       if (ticket.roomId && ticket.id && !stagingInProgressRef.current) {
-        stagingInProgressRef.current = true
-        stageTicket(ticket)
+        stagingInProgressRef.current = true;
+        stageTicket(ticket);
       }
     },
-    [appendDebug, stageTicket],
-  )
+    [appendDebug, stageTicket]
+  );
 
   const startQueueRealtime = useCallback(
     (queueId, ticketId) => {
-      if (!queueId || !ticketId) return
+      if (!queueId || !ticketId) return;
 
       if (queueRealtimeRef.current) {
-        queueRealtimeRef.current.stop?.()
-        queueRealtimeRef.current = null
+        queueRealtimeRef.current.stop?.();
+        queueRealtimeRef.current = null;
       }
 
-      appendDebug('queue:watch-start', { queueId, ticketId })
+      appendDebug('queue:watch-start', { queueId, ticketId });
 
       const watcher = createQueueRealtimeWatcher({
         queueId,
         ticketId,
-        onTicket: (row) => {
-          const ticket = normalizeQueueTicket(row)
+        onTicket: row => {
+          const ticket = normalizeQueueTicket(row);
           if (ticket) {
-            processTicketUpdate(ticket)
+            processTicketUpdate(ticket);
           }
         },
-      })
+      });
 
-      watcher.start?.()
-      queueRealtimeRef.current = watcher
+      watcher.start?.();
+      queueRealtimeRef.current = watcher;
     },
-    [appendDebug, processTicketUpdate],
-  )
+    [appendDebug, processTicketUpdate]
+  );
 
   useEffect(() => {
-    if (!matchingState.open) return undefined
-    if (!matchingState.ticketId) return undefined
-    if (['ready', 'error'].includes(matchingState.phase)) return undefined
+    if (!matchingState.open) return undefined;
+    if (!matchingState.ticketId) return undefined;
+    if (['ready', 'error'].includes(matchingState.phase)) return undefined;
 
-    let cancelled = false
-    queuePollAttemptsRef.current = 0
+    let cancelled = false;
+    queuePollAttemptsRef.current = 0;
 
     const poll = async () => {
-      if (cancelled) return
-      queuePollAttemptsRef.current += 1
+      if (cancelled) return;
+      queuePollAttemptsRef.current += 1;
 
       appendDebug('queue:poll', {
         attempt: queuePollAttemptsRef.current,
         ticketId: matchingState.ticketId,
-      })
+      });
 
-      let data
+      let data;
       try {
         data = await ensureRpc('fetch_rank_queue_ticket', {
           queue_ticket_id: matchingState.ticketId,
-        })
+        });
       } catch (error) {
-        if (cancelled) return
-        const code = error?.code || error?.message || error?.details || ''
-        const normalized = typeof code === 'string' ? code.toLowerCase() : ''
-        appendDebug('queue:poll-error', { attempt: queuePollAttemptsRef.current, code })
+        if (cancelled) return;
+        const code = error?.code || error?.message || error?.details || '';
+        const normalized = typeof code === 'string' ? code.toLowerCase() : '';
+        appendDebug('queue:poll-error', { attempt: queuePollAttemptsRef.current, code });
         if (normalized.includes('queue_ticket_not_found')) {
-          setMatchingState((prev) => ({
+          setMatchingState(prev => ({
             ...prev,
             open: true,
             phase: 'error',
@@ -1902,23 +1924,23 @@ export default function CharacterPlayPanel({ hero, playData }) {
             sessionId: null,
             readyExpiresAt: null,
             countdown: null,
-          }))
-          clearQueueWatch()
-          cancelled = true
+          }));
+          clearQueueWatch();
+          cancelled = true;
         }
-        return
+        return;
       }
 
-      if (cancelled) return
+      if (cancelled) return;
 
-      const ticket = normalizeQueueTicket(data)
-      if (!ticket) return
+      const ticket = normalizeQueueTicket(data);
+      if (!ticket) return;
 
-      processTicketUpdate(ticket)
+      processTicketUpdate(ticket);
 
       if (!ticket.roomId && queuePollAttemptsRef.current >= QUEUE_POLL_LIMIT) {
-        appendDebug('queue:poll-timeout', { attempts: queuePollAttemptsRef.current })
-        setMatchingState((prev) => ({
+        appendDebug('queue:poll-timeout', { attempts: queuePollAttemptsRef.current });
+        setMatchingState(prev => ({
           ...prev,
           open: true,
           phase: 'error',
@@ -1931,24 +1953,24 @@ export default function CharacterPlayPanel({ hero, playData }) {
           readyExpiresAt: null,
           matchCode: null,
           countdown: null,
-        }))
+        }));
 
-        clearQueueWatch()
-        cancelled = true
+        clearQueueWatch();
+        cancelled = true;
       }
-    }
+    };
 
-    const interval = setInterval(poll, QUEUE_POLL_INTERVAL_MS)
-    queuePollRef.current = interval
-    poll()
+    const interval = setInterval(poll, QUEUE_POLL_INTERVAL_MS);
+    queuePollRef.current = interval;
+    poll();
 
     return () => {
-      cancelled = true
+      cancelled = true;
       if (queuePollRef.current) {
-        clearInterval(queuePollRef.current)
-        queuePollRef.current = null
+        clearInterval(queuePollRef.current);
+        queuePollRef.current = null;
       }
-    }
+    };
   }, [
     appendDebug,
     matchingState.open,
@@ -1956,15 +1978,15 @@ export default function CharacterPlayPanel({ hero, playData }) {
     matchingState.phase,
     processTicketUpdate,
     clearQueueWatch,
-  ])
+  ]);
 
   const resetMatchingState = useCallback(() => {
-    clearQueueWatch()
-    clearCountdown()
-    latestTicketRef.current = null
-    pendingLaunchRef.current = null
-    autoLaunchRef.current = false
-    proceedInFlightRef.current = false
+    clearQueueWatch();
+    clearCountdown();
+    latestTicketRef.current = null;
+    pendingLaunchRef.current = null;
+    autoLaunchRef.current = false;
+    proceedInFlightRef.current = false;
     setMatchingState({
       open: false,
       phase: 'idle',
@@ -1979,36 +2001,36 @@ export default function CharacterPlayPanel({ hero, playData }) {
       matchCode: null,
       countdown: null,
       debugHold: null,
-    })
-    appendDebug('overlay:reset')
-  }, [appendDebug, clearCountdown, clearQueueWatch])
+    });
+    appendDebug('overlay:reset');
+  }, [appendDebug, clearCountdown, clearQueueWatch]);
 
   const triggerNavigation = useCallback(() => {
-    const payload = pendingLaunchRef.current
-    if (!payload || !payload.gameId) return
+    const payload = pendingLaunchRef.current;
+    if (!payload || !payload.gameId) return;
 
-    const { gameId, queueMode, sessionId, matchCode } = payload
+    const { gameId, queueMode, sessionId, matchCode } = payload;
     appendDebug('overlay:launch-route', {
       gameId,
       queueMode,
       sessionId,
       matchCode,
-    })
+    });
 
-    pendingLaunchRef.current = null
-    resetMatchingState()
+    pendingLaunchRef.current = null;
+    resetMatchingState();
 
-    let query = ''
+    let query = '';
     if (queueMode === 'realtime') {
       if (sessionId) {
-        query = `?session=${encodeURIComponent(sessionId)}`
+        query = `?session=${encodeURIComponent(sessionId)}`;
       }
     } else if (matchCode) {
-      query = `?match=${encodeURIComponent(matchCode)}`
+      query = `?match=${encodeURIComponent(matchCode)}`;
     }
 
-    router.push(`/rank/${gameId}/start${query}`)
-  }, [appendDebug, resetMatchingState, router])
+    router.push(`/rank/${gameId}/start${query}`);
+  }, [appendDebug, resetMatchingState, router]);
 
   const startCountdownLaunch = useCallback(
     ({
@@ -2024,17 +2046,15 @@ export default function CharacterPlayPanel({ hero, playData }) {
       inserted = null,
       removed = null,
     }) => {
-      if (!gameId || typeof window === 'undefined') return
+      if (!gameId || typeof window === 'undefined') return;
 
-      const seconds = Number.isFinite(initialSeconds)
-        ? Math.max(0, Math.floor(initialSeconds))
-        : 0
+      const seconds = Number.isFinite(initialSeconds) ? Math.max(0, Math.floor(initialSeconds)) : 0;
       const finalParticipants =
         Array.isArray(participants) && participants.length
           ? participants
           : fallbackParticipant
-          ? [fallbackParticipant]
-          : []
+            ? [fallbackParticipant]
+            : [];
 
       const holdSnapshot = MATCH_DEBUG_HOLD_ENABLED
         ? buildDebugHoldSnapshot({
@@ -2051,17 +2071,17 @@ export default function CharacterPlayPanel({ hero, playData }) {
                 ? '실시간 매치 자동 시작이 일시 중단되었습니다. 디버그 정보를 확인한 뒤 전투 화면을 여세요.'
                 : '비실시간 매치 자동 시작이 일시 중단되었습니다. 구성 결과를 확인한 뒤 전투 화면을 여세요.',
           })
-        : null
+        : null;
 
       if (MATCH_DEBUG_HOLD_ENABLED) {
-        autoLaunchRef.current = false
+        autoLaunchRef.current = false;
         pendingLaunchRef.current = {
           gameId,
           queueMode,
           sessionId,
           matchCode,
-        }
-        countdownRemainingRef.current = seconds
+        };
+        countdownRemainingRef.current = seconds;
 
         appendDebug('overlay:launch-hold', {
           gameId,
@@ -2070,9 +2090,9 @@ export default function CharacterPlayPanel({ hero, playData }) {
           matchCode,
           assignments: holdSnapshot?.assignments || [],
           issues: holdSnapshot?.issues || [],
-        })
+        });
 
-        setMatchingState((prev) => ({
+        setMatchingState(prev => ({
           ...prev,
           open: true,
           phase: 'ready',
@@ -2087,23 +2107,23 @@ export default function CharacterPlayPanel({ hero, playData }) {
           matchCode: matchCode ?? prev.matchCode ?? null,
           countdown: null,
           debugHold: holdSnapshot,
-        }))
+        }));
 
         if (countdownTimerRef.current) {
-          clearInterval(countdownTimerRef.current)
-          countdownTimerRef.current = null
+          clearInterval(countdownTimerRef.current);
+          countdownTimerRef.current = null;
         }
-        return
+        return;
       }
 
-      autoLaunchRef.current = true
+      autoLaunchRef.current = true;
       pendingLaunchRef.current = {
         gameId,
         queueMode,
         sessionId,
         matchCode,
-      }
-      countdownRemainingRef.current = seconds
+      };
+      countdownRemainingRef.current = seconds;
 
       appendDebug('overlay:countdown-start', {
         gameId,
@@ -2112,17 +2132,15 @@ export default function CharacterPlayPanel({ hero, playData }) {
         matchCode,
         seconds,
         participantCount: finalParticipants.length,
-      })
+      });
 
-      setMatchingState((prev) => ({
+      setMatchingState(prev => ({
         ...prev,
         open: true,
         phase: 'countdown',
         progress: 100,
         message:
-          queueMode === 'realtime'
-            ? '전투 준비가 완료되었습니다.'
-            : '전투 구성이 완료되었습니다.',
+          queueMode === 'realtime' ? '전투 준비가 완료되었습니다.' : '전투 구성이 완료되었습니다.',
         error: '',
         queueMode,
         sessionId: sessionId ?? prev.sessionId ?? null,
@@ -2132,65 +2150,65 @@ export default function CharacterPlayPanel({ hero, playData }) {
           participants: finalParticipants,
         },
         debugHold: null,
-      }))
+      }));
 
       if (countdownTimerRef.current) {
-        clearInterval(countdownTimerRef.current)
-        countdownTimerRef.current = null
+        clearInterval(countdownTimerRef.current);
+        countdownTimerRef.current = null;
       }
 
       if (seconds <= 0) {
-        triggerNavigation()
-        return
+        triggerNavigation();
+        return;
       }
 
       countdownTimerRef.current = window.setInterval(() => {
-        countdownRemainingRef.current -= 1
-        const nextValue = countdownRemainingRef.current
-        appendDebug('overlay:countdown-tick', { remaining: nextValue })
+        countdownRemainingRef.current -= 1;
+        const nextValue = countdownRemainingRef.current;
+        appendDebug('overlay:countdown-tick', { remaining: nextValue });
 
         if (nextValue <= 0) {
-          clearInterval(countdownTimerRef.current)
-          countdownTimerRef.current = null
-          setMatchingState((prev) => {
-            if (!prev.open || !prev.countdown) return prev
+          clearInterval(countdownTimerRef.current);
+          countdownTimerRef.current = null;
+          setMatchingState(prev => {
+            if (!prev.open || !prev.countdown) return prev;
             return {
               ...prev,
               countdown: { ...prev.countdown, remaining: 0 },
-            }
-          })
-          triggerNavigation()
+            };
+          });
+          triggerNavigation();
         } else {
-          setMatchingState((prev) => {
-            if (!prev.open || !prev.countdown) return prev
+          setMatchingState(prev => {
+            if (!prev.open || !prev.countdown) return prev;
             return {
               ...prev,
               countdown: { ...prev.countdown, remaining: nextValue },
-            }
-          })
+            };
+          });
         }
-      }, 1000)
+      }, 1000);
     },
-    [appendDebug, triggerNavigation],
-  )
+    [appendDebug, triggerNavigation]
+  );
 
   const beginRealtimeLaunch = useCallback(
     async ({ sessionId: stagedSessionId = null, readyExpiresAt = null } = {}) => {
-      if (!selectedGameId) return
+      if (!selectedGameId) return;
 
-      let participants = []
-      let finalSessionId = stagedSessionId || null
-      let matchCode = null
+      let participants = [];
+      let finalSessionId = stagedSessionId || null;
+      let matchCode = null;
 
       try {
         const snapshot = await fetchAndStoreMatchSnapshot(selectedGameId, {
           attempts: 5,
           delayMs: 600,
-        })
-        const matchData = snapshot?.matchSnapshot?.match || null
+        });
+        const matchData = snapshot?.matchSnapshot?.match || null;
         if (matchData) {
-          participants = buildCountdownParticipantsFromSnapshot(matchData)
-          matchCode = matchData.matchCode || null
+          participants = buildCountdownParticipantsFromSnapshot(matchData);
+          matchCode = matchData.matchCode || null;
         }
         finalSessionId =
           finalSessionId ||
@@ -2199,23 +2217,23 @@ export default function CharacterPlayPanel({ hero, playData }) {
           (matchData?.rooms &&
             matchData.rooms[0] &&
             (matchData.rooms[0].sessionId || matchData.rooms[0].session_id)) ||
-          null
+          null;
         appendDebug('overlay:snapshot-success', {
           sessionId: finalSessionId,
           matchCode,
           readyExpiresAt: readyExpiresAt || snapshot?.readyExpiresAt || null,
-        })
+        });
       } catch (error) {
         appendDebug('overlay:snapshot-error-final', {
           error: error?.message || String(error),
-        })
+        });
       }
 
       const fallbackParticipant = buildFallbackParticipant({
         heroName,
         role: currentRole || '참여자',
         heroImage: hero?.image_url || hero?.portrait_url || hero?.avatar_url || null,
-      })
+      });
 
       startCountdownLaunch({
         gameId: selectedGameId,
@@ -2226,7 +2244,7 @@ export default function CharacterPlayPanel({ hero, playData }) {
         fallbackParticipant,
         initialSeconds: 5,
         assignments: matchData?.assignments || [],
-      })
+      });
     },
     [
       appendDebug,
@@ -2238,54 +2256,57 @@ export default function CharacterPlayPanel({ hero, playData }) {
       heroName,
       selectedGameId,
       startCountdownLaunch,
-    ],
-  )
+    ]
+  );
 
   useEffect(() => {
-    startCountdownLaunchRef.current = startCountdownLaunch
-  }, [startCountdownLaunch])
+    startCountdownLaunchRef.current = startCountdownLaunch;
+  }, [startCountdownLaunch]);
 
   useEffect(() => {
-    beginRealtimeLaunchRef.current = beginRealtimeLaunch
-  }, [beginRealtimeLaunch])
+    beginRealtimeLaunchRef.current = beginRealtimeLaunch;
+  }, [beginRealtimeLaunch]);
 
   const handleCancelMatching = useCallback(async () => {
     if (matchTaskRef.current) {
-      matchTaskRef.current.cancelled = true
-      matchTaskRef.current = null
+      matchTaskRef.current.cancelled = true;
+      matchTaskRef.current = null;
     }
 
-    const activeTicketId = matchingState.ticketId || latestTicketRef.current?.id || null
+    const activeTicketId = matchingState.ticketId || latestTicketRef.current?.id || null;
     if (activeTicketId) {
       try {
-        await ensureRpc('cancel_rank_queue_ticket', { queue_ticket_id: activeTicketId })
-        appendDebug('queue:cancel', { ticketId: activeTicketId })
+        await ensureRpc('cancel_rank_queue_ticket', { queue_ticket_id: activeTicketId });
+        appendDebug('queue:cancel', { ticketId: activeTicketId });
       } catch (error) {
-        console.warn('[CharacterPlayPanel] 매칭 취소 RPC 실패:', error)
-        appendDebug('queue:cancel-error', { ticketId: activeTicketId, error: error?.message || String(error) })
+        console.warn('[CharacterPlayPanel] 매칭 취소 RPC 실패:', error);
+        appendDebug('queue:cancel-error', {
+          ticketId: activeTicketId,
+          error: error?.message || String(error),
+        });
       }
     }
 
-    resetMatchingState()
-  }, [appendDebug, matchingState.ticketId, resetMatchingState])
+    resetMatchingState();
+  }, [appendDebug, matchingState.ticketId, resetMatchingState]);
 
-  useEffect(() => () => clearQueueWatch(), [clearQueueWatch])
+  useEffect(() => () => clearQueueWatch(), [clearQueueWatch]);
 
   const handleProceedMatching = useCallback(async () => {
-    appendDebug('overlay:confirm', { phase: matchingState.phase })
+    appendDebug('overlay:confirm', { phase: matchingState.phase });
 
     if (matchingState.phase !== 'ready') {
-      resetMatchingState()
-      return
+      resetMatchingState();
+      return;
     }
 
     if (matchingState.queueMode !== 'realtime') {
-      resetMatchingState()
-      return
+      resetMatchingState();
+      return;
     }
 
     if (!selectedGameId) {
-      setMatchingState((prev) => ({
+      setMatchingState(prev => ({
         ...prev,
         open: true,
         phase: 'error',
@@ -2293,43 +2314,43 @@ export default function CharacterPlayPanel({ hero, playData }) {
         message: '',
         error: '게임 정보를 찾을 수 없습니다. 다시 시도해 주세요.',
         countdown: null,
-      }))
-      return
+      }));
+      return;
     }
 
     if (proceedInFlightRef.current) {
-      appendDebug('overlay:launch-skipped', { reason: 'in-flight' })
-      return
+      appendDebug('overlay:launch-skipped', { reason: 'in-flight' });
+      return;
     }
 
-    proceedInFlightRef.current = true
+    proceedInFlightRef.current = true;
 
-    setMatchingState((prev) => ({
+    setMatchingState(prev => ({
       ...prev,
       message: '전투 화면으로 이동 중…',
       error: '',
       countdown: null,
-    }))
+    }));
 
     try {
-      const snapshot = await fetchAndStoreMatchSnapshot(selectedGameId)
+      const snapshot = await fetchAndStoreMatchSnapshot(selectedGameId);
       const sessionId =
-        matchingState.sessionId || snapshot?.sessionId || snapshot?.session?.id || null
+        matchingState.sessionId || snapshot?.sessionId || snapshot?.session?.id || null;
 
       appendDebug('overlay:launch-success', {
         gameId: selectedGameId,
         sessionId,
-      })
+      });
 
-      resetMatchingState()
+      resetMatchingState();
 
-      const query = sessionId ? `?session=${encodeURIComponent(sessionId)}` : ''
-      router.push(`/rank/${selectedGameId}/start${query}`)
+      const query = sessionId ? `?session=${encodeURIComponent(sessionId)}` : '';
+      router.push(`/rank/${selectedGameId}/start${query}`);
     } catch (error) {
       const friendly =
-        error?.message || '전투 화면을 여는 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.'
-      appendDebug('overlay:launch-error', { error: friendly })
-      setMatchingState((prev) => ({
+        error?.message || '전투 화면을 여는 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.';
+      appendDebug('overlay:launch-error', { error: friendly });
+      setMatchingState(prev => ({
         ...prev,
         open: true,
         phase: 'error',
@@ -2337,9 +2358,9 @@ export default function CharacterPlayPanel({ hero, playData }) {
         message: '',
         error: friendly,
         countdown: null,
-      }))
+      }));
     } finally {
-      proceedInFlightRef.current = false
+      proceedInFlightRef.current = false;
     }
   }, [
     appendDebug,
@@ -2350,79 +2371,89 @@ export default function CharacterPlayPanel({ hero, playData }) {
     resetMatchingState,
     router,
     selectedGameId,
-  ])
+  ]);
 
   useEffect(() => {
     if (!matchingState.open) {
-      autoLaunchRef.current = false
-      return
+      autoLaunchRef.current = false;
+      return;
     }
-    if (MATCH_DEBUG_HOLD_ENABLED) return
-    if (matchingState.phase !== 'ready') return
-    if (matchingState.queueMode !== 'realtime') return
-    if (proceedInFlightRef.current) return
-    if (autoLaunchRef.current) return
+    if (MATCH_DEBUG_HOLD_ENABLED) return;
+    if (matchingState.phase !== 'ready') return;
+    if (matchingState.queueMode !== 'realtime') return;
+    if (proceedInFlightRef.current) return;
+    if (autoLaunchRef.current) return;
 
-    autoLaunchRef.current = true
+    autoLaunchRef.current = true;
 
     const timer = setTimeout(() => {
-      handleProceedMatching()
-    }, 900)
+      handleProceedMatching();
+    }, 900);
 
     return () => {
-      clearTimeout(timer)
-    }
-  }, [handleProceedMatching, matchingState.open, matchingState.phase, matchingState.queueMode])
+      clearTimeout(timer);
+    };
+  }, [handleProceedMatching, matchingState.open, matchingState.phase, matchingState.queueMode]);
 
-  const runAsyncMatchFlow = useCallback(async (hostPayload = null) => {
-    if (!selectedGameId) {
-      throw new Error('게임 정보를 찾을 수 없습니다.')
-    }
+  const runAsyncMatchFlow = useCallback(
+    async (hostPayload = null) => {
+      if (!selectedGameId) {
+        throw new Error('게임 정보를 찾을 수 없습니다.');
+      }
 
-    appendDebug('async:request', { gameId: selectedGameId, host: hostPayload ? { role: hostPayload.role, heroId: hostPayload.heroId } : null })
+      appendDebug('async:request', {
+        gameId: selectedGameId,
+        host: hostPayload ? { role: hostPayload.role, heroId: hostPayload.heroId } : null,
+      });
 
-    let response
-    try {
-      response = await fetch(ASYNC_MATCH_ENDPOINT, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gameId: selectedGameId, mode: 'rank', host: hostPayload || undefined }),
-      })
-    } catch (error) {
-      appendDebug('async:network-error', { error: error?.message || String(error) })
-      throw new Error('매칭 요청을 보낼 수 없습니다. 네트워크 상태를 확인해 주세요.')
-    }
+      let response;
+      try {
+        response = await fetch(ASYNC_MATCH_ENDPOINT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            gameId: selectedGameId,
+            mode: 'rank',
+            host: hostPayload || undefined,
+          }),
+        });
+      } catch (error) {
+        appendDebug('async:network-error', { error: error?.message || String(error) });
+        throw new Error('매칭 요청을 보낼 수 없습니다. 네트워크 상태를 확인해 주세요.');
+      }
 
-    let payload = null
-    try {
-      payload = await response.json()
-    } catch (error) {
-      appendDebug('async:parse-error', { error: error?.message || String(error) })
-    }
+      let payload = null;
+      try {
+        payload = await response.json();
+      } catch (error) {
+        appendDebug('async:parse-error', { error: error?.message || String(error) });
+      }
 
-    appendDebug('async:response', {
-      status: response.status,
-      ok: response.ok,
-      payload,
-    })
+      appendDebug('async:response', {
+        status: response.status,
+        ok: response.ok,
+        payload,
+      });
 
-    if (!response.ok) {
-      const detail =
-        (payload && (payload.detail || payload.error || payload.message)) ||
-        '매칭 요청에 실패했습니다. 잠시 후 다시 시도해 주세요.'
-      throw new Error(detail)
-    }
+      if (!response.ok) {
+        const detail =
+          (payload && (payload.detail || payload.error || payload.message)) ||
+          '매칭 요청에 실패했습니다. 잠시 후 다시 시도해 주세요.';
+        throw new Error(detail);
+      }
 
-    return payload || {}
-  }, [appendDebug, selectedGameId])
+      return payload || {};
+    },
+    [appendDebug, selectedGameId]
+  );
 
   const runAutoMatch = useCallback(async () => {
     if (hasBlockingActiveSession) {
       appendDebug('queue:block-active-session', {
         status: activeSessionInfo?.rawStatus || null,
         gameId: activeSessionInfo?.gameId || null,
-      })
-      setMatchingState((prev) => ({
+      });
+      setMatchingState(prev => ({
         ...prev,
         open: true,
         phase: 'error',
@@ -2436,45 +2467,45 @@ export default function CharacterPlayPanel({ hero, playData }) {
         sessionId: null,
         readyExpiresAt: null,
         matchCode: null,
-      }))
-      return
+      }));
+      return;
     }
 
     if (!selectedGameId) {
       if (typeof window !== 'undefined') {
-        window.alert('먼저 게임을 선택하세요.')
+        window.alert('먼저 게임을 선택하세요.');
       }
-      return
+      return;
     }
     if (!hero?.id) {
       if (typeof window !== 'undefined') {
-        window.alert('캐릭터 정보를 찾을 수 없습니다.')
+        window.alert('캐릭터 정보를 찾을 수 없습니다.');
       }
-      return
+      return;
     }
-    const ownerId = hero?.owner_id || null
+    const ownerId = hero?.owner_id || null;
     const roleLabel =
       typeof selectedEntry?.role === 'string' && selectedEntry.role.trim()
         ? selectedEntry.role.trim()
-        : 'flex'
+        : 'flex';
 
-    const realtimeMode = normalizeRealtimeMode(selectedGame?.realtime_match)
-    const realtimeEnabled = isRealtimeEnabled(realtimeMode)
+    const realtimeMode = normalizeRealtimeMode(selectedGame?.realtime_match);
+    const realtimeEnabled = isRealtimeEnabled(realtimeMode);
     const queueMessage = realtimeEnabled
       ? '실시간 매칭 대기열에 참가했습니다.'
-      : '비실시간 매칭 준비를 시작했어요.'
+      : '비실시간 매칭 준비를 시작했어요.';
 
-    const initialPhase = realtimeEnabled ? 'queue' : 'sampling'
-    const initialProgress = realtimeEnabled ? 8 : 12
+    const initialPhase = realtimeEnabled ? 'queue' : 'sampling';
+    const initialProgress = realtimeEnabled ? 8 : 12;
 
     appendDebug('queue:start', {
       heroId: hero.id,
       gameId: selectedGameId,
       role: roleLabel,
       realtime: realtimeEnabled,
-    })
+    });
 
-    clearQueueWatch()
+    clearQueueWatch();
     setMatchingState({
       open: true,
       phase: initialPhase,
@@ -2488,48 +2519,48 @@ export default function CharacterPlayPanel({ hero, playData }) {
       queueMode: realtimeEnabled ? 'realtime' : 'async',
       matchCode: null,
       countdown: null,
-    })
+    });
 
-    matchTaskRef.current = { cancelled: false }
+    matchTaskRef.current = { cancelled: false };
 
     if (!realtimeEnabled) {
       const hostPayload = {
         heroId: hero.id,
         ownerId,
         role: roleLabel,
-      }
+      };
       if (Number.isFinite(Number(selectedEntry?.score))) {
-        hostPayload.score = Number(selectedEntry.score)
+        hostPayload.score = Number(selectedEntry.score);
       }
       if (Number.isFinite(Number(selectedEntry?.rating))) {
-        hostPayload.rating = Number(selectedEntry.rating)
+        hostPayload.rating = Number(selectedEntry.rating);
       }
       if (Number.isFinite(Number(selectedEntry?.win_rate))) {
-        hostPayload.winRate = Number(selectedEntry.win_rate)
+        hostPayload.winRate = Number(selectedEntry.win_rate);
       }
       if (Number.isFinite(Number(selectedEntry?.sessionCount))) {
-        hostPayload.sessions = Number(selectedEntry.sessionCount)
+        hostPayload.sessions = Number(selectedEntry.sessionCount);
       }
       try {
-        setMatchingState((prev) => ({
+        setMatchingState(prev => ({
           ...prev,
           phase: 'assembling',
           progress: Math.max(prev.progress, 42),
           message: '전투 구성을 계산하는 중입니다…',
           error: '',
           countdown: null,
-        }))
+        }));
 
-        const result = await runAsyncMatchFlow(hostPayload)
+        const result = await runAsyncMatchFlow(hostPayload);
 
         if (!result?.ready) {
           const friendly =
             result?.error ||
             (result?.sampleMeta?.message
               ? result.sampleMeta.message
-              : '매칭을 완성하지 못했습니다. 잠시 후 다시 시도해 주세요.')
+              : '매칭을 완성하지 못했습니다. 잠시 후 다시 시도해 주세요.');
 
-          setMatchingState((prev) => ({
+          setMatchingState(prev => ({
             ...prev,
             phase: 'error',
             progress: 0,
@@ -2541,15 +2572,15 @@ export default function CharacterPlayPanel({ hero, playData }) {
             readyExpiresAt: null,
             matchCode: null,
             countdown: null,
-          }))
-          appendDebug('async:not-ready', { friendly, meta: result?.sampleMeta || null })
+          }));
+          appendDebug('async:not-ready', { friendly, meta: result?.sampleMeta || null });
         } else {
-          const matchCode = result.matchCode || null
+          const matchCode = result.matchCode || null;
           const readyMessage = matchCode
             ? `매치 코드 ${matchCode}가 준비됐습니다. 곧 전투가 시작됩니다.`
-            : '전투가 준비되었습니다. 곧 시작될 거예요.'
+            : '전투가 준비되었습니다. 곧 시작될 거예요.';
 
-          setMatchingState((prev) => ({
+          setMatchingState(prev => ({
             ...prev,
             phase: 'ready',
             progress: 100,
@@ -2561,13 +2592,13 @@ export default function CharacterPlayPanel({ hero, playData }) {
             readyExpiresAt: null,
             matchCode,
             countdown: null,
-          }))
+          }));
 
           appendDebug('async:ready', {
             matchCode,
             assignments: result?.assignments || null,
             sampleMeta: result?.sampleMeta || null,
-          })
+          });
 
           try {
             const payload = buildAsyncMatchStorePayload({
@@ -2577,14 +2608,14 @@ export default function CharacterPlayPanel({ hero, playData }) {
               heroName,
               selectedEntry,
               selectedGame,
-            })
-            applyMatchSnapshot(selectedGameId, payload.storePayload)
+            });
+            applyMatchSnapshot(selectedGameId, payload.storePayload);
 
             const fallbackParticipant = buildFallbackParticipant({
               heroName,
               role: roleLabel,
               heroImage: hero?.image_url || hero?.portrait_url || hero?.avatar_url || null,
-            })
+            });
 
             if (startCountdownLaunchRef.current) {
               startCountdownLaunchRef.current({
@@ -2596,27 +2627,30 @@ export default function CharacterPlayPanel({ hero, playData }) {
                 fallbackParticipant,
                 initialSeconds: 5,
                 assignments: result?.assignments || [],
-              })
+              });
             }
           } catch (setupError) {
             appendDebug('async:store-error', {
               error: setupError?.message || String(setupError),
-            })
+            });
           }
 
           if (typeof refreshParticipations === 'function') {
             try {
-              await refreshParticipations()
+              await refreshParticipations();
             } catch (refreshError) {
-              console.warn('[CharacterPlayPanel] 비실시간 매칭 후 참가 정보를 새로고침하지 못했습니다:', refreshError)
+              console.warn(
+                '[CharacterPlayPanel] 비실시간 매칭 후 참가 정보를 새로고침하지 못했습니다:',
+                refreshError
+              );
             }
           }
         }
       } catch (error) {
         const friendly =
-          error?.message || '매칭 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.'
-        appendDebug('async:error', { error: friendly })
-        setMatchingState((prev) => ({
+          error?.message || '매칭 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.';
+        appendDebug('async:error', { error: friendly });
+        setMatchingState(prev => ({
           ...prev,
           phase: 'error',
           progress: 0,
@@ -2628,11 +2662,11 @@ export default function CharacterPlayPanel({ hero, playData }) {
           readyExpiresAt: null,
           matchCode: null,
           countdown: null,
-        }))
+        }));
       } finally {
-        matchTaskRef.current = null
+        matchTaskRef.current = null;
       }
-      return
+      return;
     }
 
     try {
@@ -2662,32 +2696,32 @@ export default function CharacterPlayPanel({ hero, playData }) {
           realtime_mode: realtimeMode,
           mode: realtimeEnabled ? 'realtime' : 'async',
         },
-      }
+      };
 
-      const properties = {}
+      const properties = {};
       if (Number.isFinite(Number(selectedEntry?.sessionCount))) {
-        properties.sessions_played = Number(selectedEntry.sessionCount)
+        properties.sessions_played = Number(selectedEntry.sessionCount);
       }
       if (selectedEntry?.primaryMode) {
-        properties.favourite_mode = selectedEntry.primaryMode
+        properties.favourite_mode = selectedEntry.primaryMode;
       }
       if (Number.isFinite(Number(selectedEntry?.slot_no))) {
-        properties.hero_slot_no = Number(selectedEntry.slot_no)
+        properties.hero_slot_no = Number(selectedEntry.slot_no);
       }
       if (Number.isFinite(Number(selectedEntry?.score))) {
-        properties.hero_score = Number(selectedEntry.score)
+        properties.hero_score = Number(selectedEntry.score);
       }
       if (Number.isFinite(Number(selectedEntry?.rating))) {
-        properties.hero_rating = Number(selectedEntry.rating)
+        properties.hero_rating = Number(selectedEntry.rating);
       }
       if (Number.isFinite(Number(selectedEntry?.win_rate))) {
-        properties.hero_win_rate = Number(selectedEntry.win_rate)
+        properties.hero_win_rate = Number(selectedEntry.win_rate);
       }
       if (selectedGame?.realtime_match != null) {
-        properties.selected_game_realtime_mode = realtimeMode
+        properties.selected_game_realtime_mode = realtimeMode;
       }
       if (Object.keys(properties).length) {
-        payload.properties = properties
+        payload.properties = properties;
       }
 
       appendDebug('rpc:join_rank_queue', {
@@ -2697,20 +2731,20 @@ export default function CharacterPlayPanel({ hero, playData }) {
         role: roleLabel,
         realtimeMode,
         queueMode: realtimeEnabled ? 'realtime' : 'async',
-      })
-      const ticket = await ensureRpc('join_rank_queue', { queue_id: QUEUE_ID, payload })
-      const normalizedTicket = normalizeQueueTicket(ticket)
+      });
+      const ticket = await ensureRpc('join_rank_queue', { queue_id: QUEUE_ID, payload });
+      const normalizedTicket = normalizeQueueTicket(ticket);
       if (!normalizedTicket?.id) {
-        throw new Error('큐 티켓을 확보하지 못했습니다.')
+        throw new Error('큐 티켓을 확보하지 못했습니다.');
       }
 
-      latestTicketRef.current = normalizedTicket
+      latestTicketRef.current = normalizedTicket;
       appendDebug('queue:ticket-acquired', {
         ticketId: normalizedTicket.id,
         status: normalizedTicket.status || null,
         roomId: normalizedTicket.roomId || null,
-      })
-      setMatchingState((prev) => ({
+      });
+      setMatchingState(prev => ({
         ...prev,
         phase:
           normalizedTicket.status === 'staging' && !normalizedTicket.roomId
@@ -2720,15 +2754,17 @@ export default function CharacterPlayPanel({ hero, playData }) {
         message: prev.message || queueMessage,
         ticketId: normalizedTicket.id,
         ticketStatus: normalizedTicket.status || null,
-      }))
+      }));
 
-      startQueueRealtime(normalizedTicket.queueId || QUEUE_ID, normalizedTicket.id)
-      processTicketUpdate(normalizedTicket)
+      startQueueRealtime(normalizedTicket.queueId || QUEUE_ID, normalizedTicket.id);
+      processTicketUpdate(normalizedTicket);
     } catch (error) {
       const friendlyError =
-        error?.message || error?.details || (typeof error === 'string' ? error : '매칭 중 오류가 발생했습니다.')
-      appendDebug('queue:error', { stage: 'join', error: friendlyError })
-      setMatchingState((prev) => ({
+        error?.message ||
+        error?.details ||
+        (typeof error === 'string' ? error : '매칭 중 오류가 발생했습니다.');
+      appendDebug('queue:error', { stage: 'join', error: friendlyError });
+      setMatchingState(prev => ({
         ...prev,
         open: true,
         phase: 'error',
@@ -2741,15 +2777,15 @@ export default function CharacterPlayPanel({ hero, playData }) {
         readyExpiresAt: null,
         matchCode: null,
         countdown: null,
-      }))
+      }));
     } finally {
-      matchTaskRef.current = null
+      matchTaskRef.current = null;
     }
-  // NOTE: auto-suppressed by codemod. This suppression was added by automated
-  // tooling to reduce noise. Please review the surrounding effect body and
-  // either add the minimal safe dependencies or keep the suppression with
-  // an explanatory comment before removing this note.
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
+    // NOTE: auto-suppressed by codemod. This suppression was added by automated
+    // tooling to reduce noise. Please review the surrounding effect body and
+    // either add the minimal safe dependencies or keep the suppression with
+    // an explanatory comment before removing this note.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [
     appendDebug,
     clearQueueWatch,
@@ -2766,18 +2802,18 @@ export default function CharacterPlayPanel({ hero, playData }) {
     hasBlockingActiveSession,
     activeSessionInfo,
     activeSessionBlockMessage,
-  ])
+  ]);
 
   const visibleBattleRows = useMemo(
     () => battleDetails.slice(0, visibleBattles || battleDetails.length),
-    [battleDetails, visibleBattles],
-  )
+    [battleDetails, visibleBattles]
+  );
 
   const isMatchingBusy =
     matchingState.open &&
-    ['queue', 'awaiting-room', 'staging', 'sampling', 'assembling'].includes(matchingState.phase)
+    ['queue', 'awaiting-room', 'staging', 'sampling', 'assembling'].includes(matchingState.phase);
 
-  const startButtonDisabled = !selectedGameId || isMatchingBusy || hasBlockingActiveSession
+  const startButtonDisabled = !selectedGameId || isMatchingBusy || hasBlockingActiveSession;
 
   const startButton = (
     <section style={panelStyles.section}>
@@ -2785,7 +2821,9 @@ export default function CharacterPlayPanel({ hero, playData }) {
         <h3 style={panelStyles.title}>선택한 게임</h3>
         {currentRole ? <p style={panelStyles.subtitle}>{currentRole}</p> : null}
       </div>
-      <p style={panelStyles.subtitle}>{selectedGame ? selectedGame.name : '게임을 선택해주세요.'}</p>
+      <p style={panelStyles.subtitle}>
+        {selectedGame ? selectedGame.name : '게임을 선택해주세요.'}
+      </p>
       <button
         type="button"
         style={{
@@ -2804,14 +2842,18 @@ export default function CharacterPlayPanel({ hero, playData }) {
             <p style={panelStyles.lockedGame}>현재 전투: {activeSessionInfo.gameName}</p>
           ) : null}
           <div style={panelStyles.lockedActions}>
-            <button type="button" style={panelStyles.lockedButton} onClick={handleResumeActiveSession}>
+            <button
+              type="button"
+              style={panelStyles.lockedButton}
+              onClick={handleResumeActiveSession}
+            >
               전투로 이동
             </button>
           </div>
         </div>
       ) : null}
     </section>
-  )
+  );
 
   const descriptionSection = (
     <section>
@@ -2820,7 +2862,7 @@ export default function CharacterPlayPanel({ hero, playData }) {
         <p style={panelStyles.descriptionText}>{gameDescription}</p>
       </div>
     </section>
-  )
+  );
 
   const battleSection = (
     <section style={panelStyles.section}>
@@ -2838,20 +2880,24 @@ export default function CharacterPlayPanel({ hero, playData }) {
         </div>
       ) : visibleBattleRows.length ? (
         <div style={panelStyles.logList}>
-          {visibleBattleRows.map((battle) => (
+          {visibleBattleRows.map(battle => (
             <article key={battle.id} style={panelStyles.logCard}>
               <div style={panelStyles.logHeader}>
                 <p style={panelStyles.logDate}>
-                  {battle.created_at ? new Date(battle.created_at).toLocaleString('ko-KR') : '시간 정보 없음'}
+                  {battle.created_at
+                    ? new Date(battle.created_at).toLocaleString('ko-KR')
+                    : '시간 정보 없음'}
                 </p>
-                <p style={panelStyles.logResult}>{battle.result ? battle.result.toUpperCase() : 'PENDING'}</p>
+                <p style={panelStyles.logResult}>
+                  {battle.result ? battle.result.toUpperCase() : 'PENDING'}
+                </p>
               </div>
               <p style={panelStyles.logMeta}>
                 점수 변화: {battle.score_delta != null ? formatPlayNumber(battle.score_delta) : '—'}
               </p>
               {battle.logs?.length ? (
                 <div>
-                  {battle.logs.map((log) => (
+                  {battle.logs.map(log => (
                     <p key={`${battle.id}-${log.turn_no}`} style={panelStyles.logText}>
                       {log.prompt ? `${log.turn_no ?? 0}턴 - ${log.prompt}` : '로그 없음'}
                     </p>
@@ -2870,7 +2916,7 @@ export default function CharacterPlayPanel({ hero, playData }) {
         <div style={panelStyles.emptyState}>아직 기록된 베틀 로그가 없습니다.</div>
       )}
     </section>
-  )
+  );
 
   return (
     <div style={panelStyles.root}>
@@ -2895,11 +2941,11 @@ export default function CharacterPlayPanel({ hero, playData }) {
         debugHold={matchingState.debugHold}
         debugEntries={debugEntries}
         debugOpen={debugOpen}
-        onToggleDebug={() => setDebugOpen((prev) => !prev)}
+        onToggleDebug={() => setDebugOpen(prev => !prev)}
         onClearDebug={clearDebug}
         onCancel={handleCancelMatching}
         onProceed={handleProceedMatching}
       />
     </div>
-  )
+  );
 }

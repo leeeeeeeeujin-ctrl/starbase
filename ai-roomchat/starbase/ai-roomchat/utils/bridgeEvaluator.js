@@ -13,7 +13,9 @@ function scopeText(aiText, scope) {
   return m ? getLastLines(aiText, Number(m[1])) : getLastLines(aiText, 1);
 }
 
-function normalize(s) { return (s || '').toLowerCase(); }
+function normalize(s) {
+  return (s || '').toLowerCase();
+}
 
 function evalOne(cond, ctx, external) {
   const last = ctx.turns[ctx.turns.length - 1] || { prompt: '', ai: '' };
@@ -30,7 +32,9 @@ function evalOne(cond, ctx, external) {
       try {
         const re = new RegExp(cond.pattern, cond.flags || '');
         return re.test(scopeText(last.ai, cond.scope));
-      } catch { return false; }
+      } catch {
+        return false;
+      }
     }
     case 'prev_ai_any_of': {
       const hay = normalize(scopeText(last.ai, cond.scope));
@@ -50,9 +54,12 @@ function evalOne(cond, ctx, external) {
       const matches = hay.match(new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || [];
       return matches.length >= countNeed;
     }
-    case 'turn_gte': return (ctx.turn >= Number(cond.value || 0));
-    case 'turn_lte': return (ctx.turn <= Number(cond.value || 0));
-    case 'random': return Math.random() < Number(cond.p || 0);
+    case 'turn_gte':
+      return ctx.turn >= Number(cond.value || 0);
+    case 'turn_lte':
+      return ctx.turn <= Number(cond.value || 0);
+    case 'random':
+      return Math.random() < Number(cond.p || 0);
     case 'once':
       return !external.triggered?.has(ctx.bridgeId);
     case 'cooldown':
@@ -74,7 +81,7 @@ export function evaluateBridgeCandidates(bridges, ctx, external = {}) {
   candidates.sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
 
   for (const b of candidates) {
-    const p = (b.probability == null) ? 1.0 : Number(b.probability);
+    const p = b.probability == null ? 1.0 : Number(b.probability);
     if (Math.random() <= p) return b;
   }
 

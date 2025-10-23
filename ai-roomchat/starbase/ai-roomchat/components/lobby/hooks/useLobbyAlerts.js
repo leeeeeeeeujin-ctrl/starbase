@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo } from 'react';
 
 export default function useLobbyAlerts() {
   return useMemo(
@@ -16,7 +16,7 @@ export default function useLobbyAlerts() {
         created_at: new Date(Date.now() - 3600 * 1000).toLocaleString(),
       },
     ],
-    [],
-  )
+    []
+  );
 }
 //

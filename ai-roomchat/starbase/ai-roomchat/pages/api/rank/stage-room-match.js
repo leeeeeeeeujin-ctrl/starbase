@@ -1,8 +1,5 @@
-import { applySanitizedRoster } from '@/services/rank/matchRoster'
-import {
-  extractBearerToken,
-  parseStageRequestBody,
-} from '@/services/rank/matchStageRequest'
+import { applySanitizedRoster } from '@/services/rank/matchRoster';
+import { extractBearerToken, parseStageRequestBody } from '@/services/rank/matchStageRequest';
 import {
   callPrepareMatchSession,
   fetchHeroSummaries,
@@ -11,73 +8,71 @@ import {
   fetchUserByToken,
   mergeRosterMetadata,
   verifyRolesAndSlots,
-} from '@/services/rank/matchSupabase'
+} from '@/services/rank/matchSupabase';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
-    res.setHeader('Allow', ['POST'])
-    return res.status(405).json({ error: 'method_not_allowed' })
+    res.setHeader('Allow', ['POST']);
+    return res.status(405).json({ error: 'method_not_allowed' });
   }
 
-  const token = extractBearerToken(req)
+  const token = extractBearerToken(req);
   if (!token) {
-    return res.status(401).json({ error: 'unauthorized' })
+    return res.status(401).json({ error: 'unauthorized' });
   }
 
-  const userResult = await fetchUserByToken(token)
+  const userResult = await fetchUserByToken(token);
   if (!userResult.ok) {
-    return res.status(401).json({ error: 'unauthorized' })
+    return res.status(401).json({ error: 'unauthorized' });
   }
 
-  const parseResult = parseStageRequestBody(req.body)
+  const parseResult = parseStageRequestBody(req.body);
   if (!parseResult.ok) {
-    return res.status(400).json({ error: parseResult.error })
+    return res.status(400).json({ error: parseResult.error });
   }
 
-  const payload = parseResult.value
+  const payload = parseResult.value;
 
-  const roomResult = await fetchRoomContext(payload.roomId)
+  const roomResult = await fetchRoomContext(payload.roomId);
   if (!roomResult.ok) {
-    return res.status(roomResult.status).json(roomResult.body)
+    return res.status(roomResult.status).json(roomResult.body);
   }
 
-  const roomOwnerId = roomResult.ownerId
+  const roomOwnerId = roomResult.ownerId;
   if (!roomOwnerId || roomOwnerId !== userResult.user.id) {
-    return res.status(403).json({ error: 'forbidden' })
+    return res.status(403).json({ error: 'forbidden' });
   }
 
-  const matchMode = payload.matchMode || roomResult.mode || null
+  const matchMode = payload.matchMode || roomResult.mode || null;
   const slotTemplate = {
-    version:
-      payload.slotTemplate.version ?? roomResult.slotTemplate.version ?? null,
+    version: payload.slotTemplate.version ?? roomResult.slotTemplate.version ?? null,
     source: payload.slotTemplate.source ?? roomResult.slotTemplate.source ?? null,
-    updatedAt:
-      payload.slotTemplate.updatedAt ?? roomResult.slotTemplate.updatedAt ?? null,
-  }
+    updatedAt: payload.slotTemplate.updatedAt ?? roomResult.slotTemplate.updatedAt ?? null,
+  };
 
   const verification = await verifyRolesAndSlots(
     payload.verificationRoles,
-    payload.verificationSlots,
-  )
+    payload.verificationSlots
+  );
   if (!verification.ok) {
-    return res.status(verification.status).json(verification.body)
+    return res.status(verification.status).json(verification.body);
   }
 
-  const participantResult = await fetchParticipantStats(payload.gameId, payload.roster)
+  const participantResult = await fetchParticipantStats(payload.gameId, payload.roster);
   if (!participantResult.ok) {
-    return res.status(participantResult.status).json(participantResult.body)
+    return res.status(participantResult.status).json(participantResult.body);
   }
 
-  const heroResult = await fetchHeroSummaries(payload.roster, payload.heroMap)
+  const heroResult = await fetchHeroSummaries(payload.roster, payload.heroMap);
   if (!heroResult.ok) {
-    return res.status(heroResult.status).json(heroResult.body)
+    return res.status(heroResult.status).json(heroResult.body);
   }
 
   const hydratedRoster = mergeRosterMetadata({
     roster: payload.roster,
     participantMap: participantResult.map,
     heroSummaryResult: heroResult,
-  })
+  });
 
   const rpcResult = await callPrepareMatchSession({
     roomId: payload.roomId,
@@ -90,16 +85,13 @@ export default async function handler(req, res) {
     mode: matchMode,
     slotTemplate,
     allowPartial: payload.allowPartial,
-  })
+  });
 
   if (!rpcResult.ok) {
-    return res.status(rpcResult.status).json(rpcResult.body)
+    return res.status(rpcResult.status).json(rpcResult.body);
   }
 
-  const reconciledRoster = applySanitizedRoster(
-    hydratedRoster,
-    rpcResult.data.sanitizedRoster,
-  )
+  const reconciledRoster = applySanitizedRoster(hydratedRoster, rpcResult.data.sanitizedRoster);
 
   return res.status(200).json({
     session_id: rpcResult.data.sessionId,
@@ -111,5 +103,5 @@ export default async function handler(req, res) {
       removed: rpcResult.data.queueRemoved,
     },
     roster: reconciledRoster,
-  })
+  });
 }

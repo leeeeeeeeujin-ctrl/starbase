@@ -1,5 +1,5 @@
-import { buildBattleLogDraft } from '@/components/rank/StartClient/engine/battleLogBuilder'
-import { createDropInQueueService } from '@/components/rank/StartClient/services/dropInQueueService'
+import { buildBattleLogDraft } from '@/components/rank/StartClient/engine/battleLogBuilder';
+import { createDropInQueueService } from '@/components/rank/StartClient/services/dropInQueueService';
 
 describe('buildBattleLogDraft', () => {
   it('normalizes logs, history, participants, and timeline metadata', () => {
@@ -20,7 +20,7 @@ describe('buildBattleLogDraft', () => {
         score: 900,
         hero: { id: 'h2', name: '조력자' },
       },
-    ]
+    ];
 
     const draft = buildBattleLogDraft({
       gameId: 'game-1',
@@ -102,21 +102,21 @@ describe('buildBattleLogDraft', () => {
           },
         ],
       },
-    })
+    });
 
-    expect(draft.meta.gameId).toBe('game-1')
-    expect(draft.meta.result).toBe('win')
-    expect(draft.turns).toHaveLength(1)
-    expect(draft.turns[0].prompt.audience).toEqual({ type: 'slots', slots: [0, 1] })
-    expect(draft.turns[0].actor).toMatchObject({ heroName: '주역', role: 'leader' })
-    expect(draft.history).toHaveLength(2)
-    expect(draft.timeline[0].type).toBe('drop_in_joined')
-    expect(draft.participants[1].presence?.proxiedAtTurn).toBe(2)
-    expect(draft.participants[1].status).toBe('proxy')
-  })
+    expect(draft.meta.gameId).toBe('game-1');
+    expect(draft.meta.result).toBe('win');
+    expect(draft.turns).toHaveLength(1);
+    expect(draft.turns[0].prompt.audience).toEqual({ type: 'slots', slots: [0, 1] });
+    expect(draft.turns[0].actor).toMatchObject({ heroName: '주역', role: 'leader' });
+    expect(draft.history).toHaveLength(2);
+    expect(draft.timeline[0].type).toBe('drop_in_joined');
+    expect(draft.participants[1].presence?.proxiedAtTurn).toBe(2);
+    expect(draft.participants[1].status).toBe('proxy');
+  });
 
   it('annotates drop-in replacements from queue snapshot', () => {
-    const queue = createDropInQueueService()
+    const queue = createDropInQueueService();
     const initial = [
       {
         id: 'p-initial',
@@ -125,8 +125,8 @@ describe('buildBattleLogDraft', () => {
         status: 'active',
         hero: { id: 'hero-alpha', name: '선봉대' },
       },
-    ]
-    queue.syncParticipants(initial, { turnNumber: 1, mode: 'realtime' })
+    ];
+    queue.syncParticipants(initial, { turnNumber: 1, mode: 'realtime' });
 
     const replaced = [
       {
@@ -136,8 +136,8 @@ describe('buildBattleLogDraft', () => {
         status: 'active',
         hero: { id: 'hero-beta', name: '난입자' },
       },
-    ]
-    const queueResult = queue.syncParticipants(replaced, { turnNumber: 2, mode: 'realtime' })
+    ];
+    const queueResult = queue.syncParticipants(replaced, { turnNumber: 2, mode: 'realtime' });
 
     const draft = buildBattleLogDraft({
       participants: replaced,
@@ -145,9 +145,9 @@ describe('buildBattleLogDraft', () => {
       historyEntries: [],
       timelineEvents: [],
       dropInSnapshot: queueResult.snapshot,
-    })
+    });
 
-    expect(draft.meta.dropIn?.roles?.[0]?.replacements).toBe(1)
-    expect(draft.participants[0].dropIn).toMatchObject({ replacements: 1, role: 'vanguard' })
-  })
-})
+    expect(draft.meta.dropIn?.roles?.[0]?.replacements).toBe(1);
+    expect(draft.participants[0].dropIn).toMatchObject({ replacements: 1, role: 'vanguard' });
+  });
+});

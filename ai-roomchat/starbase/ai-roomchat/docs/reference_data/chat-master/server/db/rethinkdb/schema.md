@@ -3,35 +3,39 @@
 ## Database `tinode`
 
 ### Table `users`
+
 Stores user accounts
 
 Fields:
-* `Id` user id, primary key
-* `CreatedAt` timestamp when the user was created
-* `UpdatedAt` timestamp when user metadata was updated
-* `State` account state: normal (ok), suspended, soft-deleted
-* `StateAt` timestamp when the state was last updated or NULL
-* `Access` user's default access level for peer-to-peer topics
- * `Auth`, `Anon` default permissions for authenticated and anonymous users
-* `Public` application-defined data
-* `State` state of the user: normal, disabled, deleted
-* `StateAt` timestamp when the state was last updated or NULL
-* `LastSeen` timestamp when the user was last online
-* `UserAgent` client User-Agent used when last online
-* `Tags` unique strings for user discovery
-* `Devices` client devices for push notifications
- * `DeviceId` device registration ID
- * `Platform` device platform string (iOS, Android, Web)
- * `LastSeen` last logged in
- * `Lang` device language, ISO code
+
+- `Id` user id, primary key
+- `CreatedAt` timestamp when the user was created
+- `UpdatedAt` timestamp when user metadata was updated
+- `State` account state: normal (ok), suspended, soft-deleted
+- `StateAt` timestamp when the state was last updated or NULL
+- `Access` user's default access level for peer-to-peer topics
+- `Auth`, `Anon` default permissions for authenticated and anonymous users
+- `Public` application-defined data
+- `State` state of the user: normal, disabled, deleted
+- `StateAt` timestamp when the state was last updated or NULL
+- `LastSeen` timestamp when the user was last online
+- `UserAgent` client User-Agent used when last online
+- `Tags` unique strings for user discovery
+- `Devices` client devices for push notifications
+- `DeviceId` device registration ID
+- `Platform` device platform string (iOS, Android, Web)
+- `LastSeen` last logged in
+- `Lang` device language, ISO code
 
 Indexes:
- * `Id` primary key
- * `Tags` multi-index (indexed array)
- * `DeletedAt` index
- * `DeviceIds` multi-index of push notification tokens
+
+- `Id` primary key
+- `Tags` multi-index (indexed array)
+- `DeletedAt` index
+- `DeviceIds` multi-index of push notification tokens
 
 Sample:
+
 ```js
 {
   "Access": {
@@ -62,21 +66,24 @@ Sample:
 ```
 
 ### Table `auth`
+
 Stores authentication secrets
 
 Fields:
-* `userid` ID of the user who owns the record
-* `unique` unique string which identifies this record, primary key; defined as "_authentication scheme_':'_some unique value per scheme_"
-* `secret` shared secret, for instance bcrypt of password
-* `authLvl` authentication level
-* `expires` timestamp when the records expires
 
+- `userid` ID of the user who owns the record
+- `unique` unique string which identifies this record, primary key; defined as "_authentication scheme_':'_some unique value per scheme_"
+- `secret` shared secret, for instance bcrypt of password
+- `authLvl` authentication level
+- `expires` timestamp when the records expires
 
 Indexes:
- * `unique` primary key
- * `userid` index
+
+- `unique` primary key
+- `userid` index
 
 Sample:
+
 ```js
 {
    "authLvl": 20 ,
@@ -88,28 +95,32 @@ Sample:
 ```
 
 ### Table `topics`
+
 The table stores topics.
 
 Fields:
- * `Id` name of the topic, primary key
- * `CreatedAt` topic creation time
- * `UpdatedAt` timestamp of the last change to topic metadata
- * `State` topic state: normal (ok), suspended, soft-deleted
- * `StateAt` timestamp when the state was last updated or NULL
- * `Access` stores topic's default access permissions
-  * `Auth`, `Anon` permissions for authenticated and anonymous users respectively
- * `Owner` ID of the user who owns the topic
- * `Public` application-defined data
- * `State` state of the topic: normal, disabled, deleted
- * `SeqId` sequential ID of the last message
- * `DelId` topic-sequential ID of the deletion operation
- * `UseBt` indicator that channel functionality is enabled in the topic
+
+- `Id` name of the topic, primary key
+- `CreatedAt` topic creation time
+- `UpdatedAt` timestamp of the last change to topic metadata
+- `State` topic state: normal (ok), suspended, soft-deleted
+- `StateAt` timestamp when the state was last updated or NULL
+- `Access` stores topic's default access permissions
+- `Auth`, `Anon` permissions for authenticated and anonymous users respectively
+- `Owner` ID of the user who owns the topic
+- `Public` application-defined data
+- `State` state of the topic: normal, disabled, deleted
+- `SeqId` sequential ID of the last message
+- `DelId` topic-sequential ID of the deletion operation
+- `UseBt` indicator that channel functionality is enabled in the topic
 
 Indexes:
-* `Id` primary key
-* `Owner` index
+
+- `Id` primary key
+- `Owner` index
 
 Sample:
+
 ```js
 {
  "Access": {
@@ -138,28 +149,32 @@ Sample:
 ```
 
 ### Table `subscriptions`
+
 The table stores relationships between users and topics.
 
 Fields:
- * `Id` used for object retrieval
- * `CreatedAt` timestamp when the subscription was created
- * `UpdatedAt` timestamp when the subscription was updated
- * `DeletedAt` timestamp when the subscription was deleted
- * `ReadSeqId` id of the message last read by the user
- * `RecvSeqId` id of the message last received by any user device
- * `DelId` topic-sequential ID of the soft-deletion operation
- * `Topic` name of the topic subscribed to
- * `User` subscriber's user ID
- * `ModeWant` access mode that user wants when accessing the topic
- * `ModeGiven` access mode granted to user by the topic
- * `Private` application-defined data, accessible by the user only
+
+- `Id` used for object retrieval
+- `CreatedAt` timestamp when the subscription was created
+- `UpdatedAt` timestamp when the subscription was updated
+- `DeletedAt` timestamp when the subscription was deleted
+- `ReadSeqId` id of the message last read by the user
+- `RecvSeqId` id of the message last received by any user device
+- `DelId` topic-sequential ID of the soft-deletion operation
+- `Topic` name of the topic subscribed to
+- `User` subscriber's user ID
+- `ModeWant` access mode that user wants when accessing the topic
+- `ModeGiven` access mode granted to user by the topic
+- `Private` application-defined data, accessible by the user only
 
 Indexes:
- * `Id` primary key composed as "_topic name_':'_user ID_"
- * `User` index
- * `Topic` index
+
+- `Id` primary key composed as "_topic name_':'_user ID_"
+- `User` index
+- `Topic` index
 
 Sample:
+
 ```js
 {
   "ClearId": 0 ,
@@ -179,29 +194,33 @@ Sample:
 ```
 
 ### Table `messages`
+
 The table stores `{data}` messages
 
 Fields:
-* `Id` currently unused, primary key
-* `CreatedAt` timestamp when the message was created
-* `UpdatedAt` initially equal to CreatedAt, for deleted messages equal to DeletedAt
-* `DeletedFor` array of user IDs which soft-deleted the message
- * `DelId` topic-sequential ID of the soft-deletion operation
- * `User` ID of the user who soft-deleted the message
-* `From` ID of the user who generated this message
-* `Topic` which received this message
-* `SeqId` messages ID - sequential number of the message in the topic
-* `Head` message headers
-* `Attachments` denormalized IDs of files attached to the message
-* `Content` application-defined message payload
+
+- `Id` currently unused, primary key
+- `CreatedAt` timestamp when the message was created
+- `UpdatedAt` initially equal to CreatedAt, for deleted messages equal to DeletedAt
+- `DeletedFor` array of user IDs which soft-deleted the message
+- `DelId` topic-sequential ID of the soft-deletion operation
+- `User` ID of the user who soft-deleted the message
+- `From` ID of the user who generated this message
+- `Topic` which received this message
+- `SeqId` messages ID - sequential number of the message in the topic
+- `Head` message headers
+- `Attachments` denormalized IDs of files attached to the message
+- `Content` application-defined message payload
 
 Indexes:
- * `Id` primary key
- * `Topic_SeqId` compound index `["Topic", "SeqId"]`
- * `Topic_DelId` compound index `["Topic", "DelId"]`
- * `Topic_DeletedFor` compound multi-index `["Topic", "DeletedFor"("User"), "DeletedFor"("DelId")]`
+
+- `Id` primary key
+- `Topic_SeqId` compound index `["Topic", "SeqId"]`
+- `Topic_DelId` compound index `["Topic", "DelId"]`
+- `Topic_DeletedFor` compound multi-index `["Topic", "DeletedFor"("User"), "DeletedFor"("DelId")]`
 
 Sample:
+
 ```js
 {
   "Content": {
@@ -232,22 +251,26 @@ Sample:
 ```
 
 ### Table `dellog`
+
 The table stores records of message deletions
 
 Fields:
-* `Id` currently unused, primary key
-* `CreatedAt` timestamp when the record was created
-* `UpdatedAt` timestamp equal to CreatedAt
-* `DelId` topic-sequential ID of the deletion operation.
-* `DeletedFor` ID of the user for soft-deletions, blank string for hard-deletions
-* `Topic` affected topic
-* `SeqIdRanges` array of ranges of deleted message IDs (see `messages.SeqId`)
+
+- `Id` currently unused, primary key
+- `CreatedAt` timestamp when the record was created
+- `UpdatedAt` timestamp equal to CreatedAt
+- `DelId` topic-sequential ID of the deletion operation.
+- `DeletedFor` ID of the user for soft-deletions, blank string for hard-deletions
+- `Topic` affected topic
+- `SeqIdRanges` array of ranges of deleted message IDs (see `messages.SeqId`)
 
 Indexes:
- * `Id` primary key
-* `Topic_DelId` compound index `["Topic", "DelId"]`
+
+- `Id` primary key
+- `Topic_DelId` compound index `["Topic", "DelId"]`
 
 Sample:
+
 ```js
 {
   "Id":  "9LfrjW349Rc",
@@ -267,24 +290,27 @@ Sample:
 ```
 
 ### Table `credentials`
+
 The tables stores user credentials used for validation.
 
-* `Id` credential, primary key
-* `CreatedAt` timestamp when the record was created
-* `UpdatedAt` timestamp when the last validation attempt was performed (successful or not).
-* `Method` validation method
-* `Done` indicator if the credential is validated
-* `Resp` expected validation response
-* `Retries` number of failed attempts at validation
-* `User` id of the user who owns this credential
-* `Value` value of the credential
-* `Closed` unvalidated credential is no longer being validated. Only one credential is not Closed for each user/method.
+- `Id` credential, primary key
+- `CreatedAt` timestamp when the record was created
+- `UpdatedAt` timestamp when the last validation attempt was performed (successful or not).
+- `Method` validation method
+- `Done` indicator if the credential is validated
+- `Resp` expected validation response
+- `Retries` number of failed attempts at validation
+- `User` id of the user who owns this credential
+- `Value` value of the credential
+- `Closed` unvalidated credential is no longer being validated. Only one credential is not Closed for each user/method.
 
 Indexes:
-* `Id` Primary key composed either as `User`:`Method`:`Value` for unconfirmed credentials or as `Method`:`Value` for confirmed.
-* `User` Index
+
+- `Id` Primary key composed either as `User`:`Method`:`Value` for unconfirmed credentials or as `Method`:`Value` for confirmed.
+- `User` Index
 
 Sample:
+
 ```js
 {
   "Id": "tel:+17025550001",
@@ -300,22 +326,26 @@ Sample:
 ```
 
 ### Table `fileuploads`
+
 The table stores records of uploaded files. The files themselves are stored outside of the database.
-* `Id` unique user-visible file name, primary key
-* `CreatedAt` timestamp when the record was created
-* `UpdatedAt` timestamp of when th upload has cmpleted or failed
-* `User` id of the user who uploaded this file.
-* `Location` actual location of the file on the server.
-* `MimeType` file content type as a [Mime](https://en.wikipedia.org/wiki/MIME) string.
-* `Size` size of the file in bytes. Could be 0 if upload has not completed yet.
-* `UseCount` count of messages referencing this file.
-* `Status` upload status: 0 pending, 1 completed, -1 failed.
+
+- `Id` unique user-visible file name, primary key
+- `CreatedAt` timestamp when the record was created
+- `UpdatedAt` timestamp of when th upload has cmpleted or failed
+- `User` id of the user who uploaded this file.
+- `Location` actual location of the file on the server.
+- `MimeType` file content type as a [Mime](https://en.wikipedia.org/wiki/MIME) string.
+- `Size` size of the file in bytes. Could be 0 if upload has not completed yet.
+- `UseCount` count of messages referencing this file.
+- `Status` upload status: 0 pending, 1 completed, -1 failed.
 
 Indexes:
- * `Id` primary key
- * `UseCount` index
+
+- `Id` primary key
+- `UseCount` index
 
 Sample:
+
 ```js
 {
   "CreatedAt": Sun Jun 10 2018 16:38:45 GMT+00:00 ,

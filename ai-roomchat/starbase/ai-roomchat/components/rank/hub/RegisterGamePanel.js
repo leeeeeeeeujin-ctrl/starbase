@@ -36,7 +36,7 @@ const panelStyles = {
   },
   actionRow: { marginTop: 12 },
   total: { color: '#64748b' },
-}
+};
 
 export default function RegisterGamePanel({ form, onSubmit }) {
   const {
@@ -51,48 +51,58 @@ export default function RegisterGamePanel({ form, onSubmit }) {
     roles,
     setRoles,
     totalSlots,
-  } = form
+  } = form;
   const handleRoleChange = (index, field, value) => {
-    setRoles((current) => {
-      const next = [...current]
-      next[index] = { ...next[index], [field]: value }
-      return next
-    })
-  }
+    setRoles(current => {
+      const next = [...current];
+      next[index] = { ...next[index], [field]: value };
+      return next;
+    });
+  };
 
-  const handleRemoveRole = (index) => {
-    setRoles((current) => {
-      const next = [...current]
-      next.splice(index, 1)
-      return next
-    })
-  }
+  const handleRemoveRole = index => {
+    setRoles(current => {
+      const next = [...current];
+      next.splice(index, 1);
+      return next;
+    });
+  };
 
   const handleAddRole = () => {
-    setRoles((current) => [...current, { name: '새 역할', slot_count: 1 }])
-  }
+    setRoles(current => [...current, { name: '새 역할', slot_count: 1 }]);
+  };
 
   return (
     <section style={panelStyles.root}>
       <div style={panelStyles.header}>
         <h3 style={{ margin: '4px 0' }}>게임 등록</h3>
-        <div style={panelStyles.total}>슬롯 합계: <b>{totalSlots}</b></div>
+        <div style={panelStyles.total}>
+          슬롯 합계: <b>{totalSlots}</b>
+        </div>
       </div>
 
       <div style={panelStyles.formGrid}>
         <label style={panelStyles.label}>
           이름
-          <input value={gName} onChange={(event) => setGName(event.target.value)} style={panelStyles.input} />
+          <input
+            value={gName}
+            onChange={event => setGName(event.target.value)}
+            style={panelStyles.input}
+          />
         </label>
         <label style={panelStyles.label}>
           이미지 URL
-          <input value={gImage} onChange={(event) => setGImage(event.target.value)} style={panelStyles.input} />
+          <input
+            value={gImage}
+            onChange={event => setGImage(event.target.value)}
+            style={panelStyles.input}
+          />
         </label>
         <label style={{ ...panelStyles.label, gridColumn: '1 / span 2' }}>
           설명
           <textarea
             value={gDesc}
-            onChange={(event) => setGDesc(event.target.value)}
+            onChange={event => setGDesc(event.target.value)}
             rows={2}
             style={panelStyles.textArea}
           />
@@ -101,7 +111,7 @@ export default function RegisterGamePanel({ form, onSubmit }) {
           프롬프트 세트 ID
           <input
             value={gPromptSetId}
-            onChange={(event) => setGPromptSetId(event.target.value)}
+            onChange={event => setGPromptSetId(event.target.value)}
             style={panelStyles.input}
           />
         </label>
@@ -114,7 +124,7 @@ export default function RegisterGamePanel({ form, onSubmit }) {
             <div key={index} style={panelStyles.roleRow}>
               <input
                 value={role.name}
-                onChange={(event) => handleRoleChange(index, 'name', event.target.value)}
+                onChange={event => handleRoleChange(index, 'name', event.target.value)}
                 placeholder="역할명"
               />
               <input
@@ -122,7 +132,7 @@ export default function RegisterGamePanel({ form, onSubmit }) {
                 min="1"
                 max="12"
                 value={role.slot_count}
-                onChange={(event) => handleRoleChange(index, 'slot_count', event.target.value)}
+                onChange={event => handleRoleChange(index, 'slot_count', event.target.value)}
               />
               <button type="button" onClick={() => handleRemoveRole(index)}>
                 삭제
@@ -141,5 +151,5 @@ export default function RegisterGamePanel({ form, onSubmit }) {
         </button>
       </div>
     </section>
-  )
+  );
 }

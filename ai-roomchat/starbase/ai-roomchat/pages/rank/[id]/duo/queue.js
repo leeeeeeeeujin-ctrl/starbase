@@ -1,1 +1,1 @@
-export { default } from '../duo-match'
+export { default } from '../duo-match';

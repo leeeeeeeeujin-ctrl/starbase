@@ -1,4 +1,4 @@
-import { parseOutcome } from '@/lib/promptEngine/outcome'
+import { parseOutcome } from '@/lib/promptEngine/outcome';
 
 describe('promptEngine/parseOutcome', () => {
   it('ignores trailing empty lines when reading outcome metadata', () => {
@@ -15,14 +15,14 @@ describe('promptEngine/parseOutcome', () => {
       '케릭 승리',
       '',
       '',
-    ].join('\n')
+    ].join('\n');
 
-    const result = parseOutcome(assistantText)
+    const result = parseOutcome(assistantText);
 
-    expect(result.lastLine).toBe('케릭 승리')
-    expect(result.variables).toEqual(['VAR_ONE', 'VAR_TWO'])
-    expect(result.actors).toEqual(['하이라이트', '케릭'])
-  })
+    expect(result.lastLine).toBe('케릭 승리');
+    expect(result.variables).toEqual(['VAR_ONE', 'VAR_TWO']);
+    expect(result.actors).toEqual(['하이라이트', '케릭']);
+  });
 
   it('keeps blank actor or variable lines intact', () => {
     const assistantText = [
@@ -45,14 +45,14 @@ describe('promptEngine/parseOutcome', () => {
       '',
       '무',
       '',
-    ].join('\n')
+    ].join('\n');
 
-    const result = parseOutcome(assistantText)
+    const result = parseOutcome(assistantText);
 
-    expect(result.lastLine).toBe('무')
-    expect(result.variables).toEqual([])
-    expect(result.actors).toEqual([])
-  })
+    expect(result.lastLine).toBe('무');
+    expect(result.variables).toEqual([]);
+    expect(result.actors).toEqual([]);
+  });
 
   it('parses variable tokens separated by punctuation and deduplicates them', () => {
     const assistantText = [
@@ -69,12 +69,12 @@ describe('promptEngine/parseOutcome', () => {
       '하이라이트 없음',
       'alpha, beta / gamma · Alpha',
       '케릭 승리',
-    ].join('\n')
+    ].join('\n');
 
-    const result = parseOutcome(assistantText)
+    const result = parseOutcome(assistantText);
 
-    expect(result.variables).toEqual(['alpha', 'beta', 'gamma'])
-  })
+    expect(result.variables).toEqual(['alpha', 'beta', 'gamma']);
+  });
 
   it('cleans actor names with comma-separated values and removes duplicates', () => {
     const assistantText = [
@@ -91,10 +91,10 @@ describe('promptEngine/parseOutcome', () => {
       '주역: 철수, 영희 / 철수',
       '무',
       '철수 승리',
-    ].join('\n')
+    ].join('\n');
 
-    const result = parseOutcome(assistantText)
+    const result = parseOutcome(assistantText);
 
-    expect(result.actors).toEqual(['철수', '영희'])
-  })
-})
+    expect(result.actors).toEqual(['철수', '영희']);
+  });
+});

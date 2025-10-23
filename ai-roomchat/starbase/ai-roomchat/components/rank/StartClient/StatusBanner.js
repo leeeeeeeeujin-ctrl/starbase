@@ -1,5 +1,5 @@
 export default function StatusBanner({ message }) {
-  if (!message) return null
+  if (!message) return null;
 
   return (
     <div
@@ -13,7 +13,7 @@ export default function StatusBanner({ message }) {
     >
       {message}
     </div>
-  )
+  );
 }
 
 //

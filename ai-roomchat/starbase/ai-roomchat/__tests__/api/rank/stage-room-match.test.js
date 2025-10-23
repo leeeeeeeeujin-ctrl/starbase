@@ -1,8 +1,5 @@
-import handler from '@/pages/api/rank/stage-room-match'
-import {
-  extractBearerToken,
-  parseStageRequestBody,
-} from '@/services/rank/matchStageRequest'
+import handler from '@/pages/api/rank/stage-room-match';
+import { extractBearerToken, parseStageRequestBody } from '@/services/rank/matchStageRequest';
 import {
   callPrepareMatchSession,
   fetchHeroSummaries,
@@ -11,12 +8,12 @@ import {
   fetchUserByToken,
   mergeRosterMetadata,
   verifyRolesAndSlots,
-} from '@/services/rank/matchSupabase'
+} from '@/services/rank/matchSupabase';
 
 jest.mock('@/services/rank/matchStageRequest', () => ({
   extractBearerToken: jest.fn(),
   parseStageRequestBody: jest.fn(),
-}))
+}));
 
 jest.mock('@/services/rank/matchSupabase', () => ({
   callPrepareMatchSession: jest.fn(),
@@ -26,10 +23,10 @@ jest.mock('@/services/rank/matchSupabase', () => ({
   fetchUserByToken: jest.fn(),
   mergeRosterMetadata: jest.fn(),
   verifyRolesAndSlots: jest.fn(),
-}))
+}));
 
 function createReq({ method = 'POST', headers = {}, body = {} } = {}) {
-  return { method, headers, body }
+  return { method, headers, body };
 }
 
 function createRes() {
@@ -38,77 +35,77 @@ function createRes() {
     headers: {},
     body: null,
     setHeader(name, value) {
-      this.headers[name] = value
+      this.headers[name] = value;
     },
     status(code) {
-      this.statusCode = code
-      return this
+      this.statusCode = code;
+      return this;
     },
     json(payload) {
-      this.body = payload
-      return this
+      this.body = payload;
+      return this;
     },
-  }
+  };
 }
 
 beforeEach(() => {
-  jest.resetAllMocks()
-})
+  jest.resetAllMocks();
+});
 
 describe('POST /api/rank/stage-room-match', () => {
   test('rejects non-POST methods', async () => {
-    const req = createReq({ method: 'GET' })
-    const res = createRes()
+    const req = createReq({ method: 'GET' });
+    const res = createRes();
 
-    await handler(req, res)
+    await handler(req, res);
 
-    expect(res.statusCode).toBe(405)
-    expect(res.headers.Allow).toEqual(['POST'])
-    expect(res.body).toEqual({ error: 'method_not_allowed' })
-  })
+    expect(res.statusCode).toBe(405);
+    expect(res.headers.Allow).toEqual(['POST']);
+    expect(res.body).toEqual({ error: 'method_not_allowed' });
+  });
 
   test('requires bearer token', async () => {
-    extractBearerToken.mockReturnValue(null)
-    const req = createReq()
-    const res = createRes()
+    extractBearerToken.mockReturnValue(null);
+    const req = createReq();
+    const res = createRes();
 
-    await handler(req, res)
+    await handler(req, res);
 
-    expect(res.statusCode).toBe(401)
-    expect(res.body).toEqual({ error: 'unauthorized' })
-    expect(fetchUserByToken).not.toHaveBeenCalled()
-  })
+    expect(res.statusCode).toBe(401);
+    expect(res.body).toEqual({ error: 'unauthorized' });
+    expect(fetchUserByToken).not.toHaveBeenCalled();
+  });
 
   test('returns 401 when user lookup fails', async () => {
-    extractBearerToken.mockReturnValue('token-1')
-    fetchUserByToken.mockResolvedValue({ ok: false })
-    const req = createReq()
-    const res = createRes()
+    extractBearerToken.mockReturnValue('token-1');
+    fetchUserByToken.mockResolvedValue({ ok: false });
+    const req = createReq();
+    const res = createRes();
 
-    await handler(req, res)
+    await handler(req, res);
 
-    expect(fetchUserByToken).toHaveBeenCalledWith('token-1')
-    expect(res.statusCode).toBe(401)
-    expect(res.body).toEqual({ error: 'unauthorized' })
-  })
+    expect(fetchUserByToken).toHaveBeenCalledWith('token-1');
+    expect(res.statusCode).toBe(401);
+    expect(res.body).toEqual({ error: 'unauthorized' });
+  });
 
   test('returns parse error when request invalid', async () => {
-    extractBearerToken.mockReturnValue('token-1')
-    fetchUserByToken.mockResolvedValue({ ok: true, user: { id: 'owner-1' } })
-    parseStageRequestBody.mockReturnValue({ ok: false, error: 'missing_room_id' })
+    extractBearerToken.mockReturnValue('token-1');
+    fetchUserByToken.mockResolvedValue({ ok: true, user: { id: 'owner-1' } });
+    parseStageRequestBody.mockReturnValue({ ok: false, error: 'missing_room_id' });
 
-    const req = createReq({ body: {} })
-    const res = createRes()
+    const req = createReq({ body: {} });
+    const res = createRes();
 
-    await handler(req, res)
+    await handler(req, res);
 
-    expect(res.statusCode).toBe(400)
-    expect(res.body).toEqual({ error: 'missing_room_id' })
-  })
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({ error: 'missing_room_id' });
+  });
 
   test('rejects callers who are not the room owner', async () => {
-    extractBearerToken.mockReturnValue('token-1')
-    fetchUserByToken.mockResolvedValue({ ok: true, user: { id: 'owner-1' } })
+    extractBearerToken.mockReturnValue('token-1');
+    fetchUserByToken.mockResolvedValue({ ok: true, user: { id: 'owner-1' } });
     parseStageRequestBody.mockReturnValue({
       ok: true,
       value: {
@@ -124,26 +121,26 @@ describe('POST /api/rank/stage-room-match', () => {
         verificationRoles: [],
         verificationSlots: [],
       },
-    })
+    });
     fetchRoomContext.mockResolvedValue({
       ok: true,
       ownerId: 'owner-2',
       mode: 'solo',
       slotTemplate: { version: 1, source: 'room', updatedAt: '2023-01-01T00:00:00.000Z' },
-    })
+    });
 
-    const req = createReq({ body: {} })
-    const res = createRes()
+    const req = createReq({ body: {} });
+    const res = createRes();
 
-    await handler(req, res)
+    await handler(req, res);
 
-    expect(res.statusCode).toBe(403)
-    expect(res.body).toEqual({ error: 'forbidden' })
-  })
+    expect(res.statusCode).toBe(403);
+    expect(res.body).toEqual({ error: 'forbidden' });
+  });
 
   test('propagates role verification failure', async () => {
-    extractBearerToken.mockReturnValue('token-1')
-    fetchUserByToken.mockResolvedValue({ ok: true, user: { id: 'owner-1' } })
+    extractBearerToken.mockReturnValue('token-1');
+    fetchUserByToken.mockResolvedValue({ ok: true, user: { id: 'owner-1' } });
     parseStageRequestBody.mockReturnValue({
       ok: true,
       value: {
@@ -159,31 +156,31 @@ describe('POST /api/rank/stage-room-match', () => {
         verificationRoles: ['tank'],
         verificationSlots: [{ id: 'slot-1' }],
       },
-    })
+    });
     fetchRoomContext.mockResolvedValue({
       ok: true,
       ownerId: 'owner-1',
       mode: 'solo',
       slotTemplate: { version: 1, source: 'room', updatedAt: '2023-01-01T00:00:00.000Z' },
-    })
+    });
     verifyRolesAndSlots.mockResolvedValue({
       ok: false,
       status: 400,
       body: { error: 'roles_slots_invalid' },
-    })
+    });
 
-    const res = createRes()
+    const res = createRes();
 
-    await handler(createReq({ body: {} }), res)
+    await handler(createReq({ body: {} }), res);
 
-    expect(verifyRolesAndSlots).toHaveBeenCalledWith(['tank'], [{ id: 'slot-1' }])
-    expect(res.statusCode).toBe(400)
-    expect(res.body).toEqual({ error: 'roles_slots_invalid' })
-  })
+    expect(verifyRolesAndSlots).toHaveBeenCalledWith(['tank'], [{ id: 'slot-1' }]);
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({ error: 'roles_slots_invalid' });
+  });
 
   test('propagates participant lookup errors', async () => {
-    extractBearerToken.mockReturnValue('token-1')
-    fetchUserByToken.mockResolvedValue({ ok: true, user: { id: 'owner-1' } })
+    extractBearerToken.mockReturnValue('token-1');
+    fetchUserByToken.mockResolvedValue({ ok: true, user: { id: 'owner-1' } });
     parseStageRequestBody.mockReturnValue({
       ok: true,
       value: {
@@ -199,30 +196,30 @@ describe('POST /api/rank/stage-room-match', () => {
         verificationRoles: [],
         verificationSlots: [],
       },
-    })
+    });
     fetchRoomContext.mockResolvedValue({
       ok: true,
       ownerId: 'owner-1',
       mode: 'solo',
       slotTemplate: { version: 1, source: 'room', updatedAt: '2023-01-01T00:00:00.000Z' },
-    })
-    verifyRolesAndSlots.mockResolvedValue({ ok: true })
+    });
+    verifyRolesAndSlots.mockResolvedValue({ ok: true });
     fetchParticipantStats.mockResolvedValue({
       ok: false,
       status: 400,
       body: { error: 'participant_lookup_failed' },
-    })
+    });
 
-    const res = createRes()
-    await handler(createReq({ body: {} }), res)
+    const res = createRes();
+    await handler(createReq({ body: {} }), res);
 
-    expect(res.statusCode).toBe(400)
-    expect(res.body).toEqual({ error: 'participant_lookup_failed' })
-  })
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({ error: 'participant_lookup_failed' });
+  });
 
   test('propagates hero lookup errors', async () => {
-    extractBearerToken.mockReturnValue('token-1')
-    fetchUserByToken.mockResolvedValue({ ok: true, user: { id: 'owner-1' } })
+    extractBearerToken.mockReturnValue('token-1');
+    fetchUserByToken.mockResolvedValue({ ok: true, user: { id: 'owner-1' } });
     parseStageRequestBody.mockReturnValue({
       ok: true,
       value: {
@@ -238,32 +235,32 @@ describe('POST /api/rank/stage-room-match', () => {
         verificationRoles: [],
         verificationSlots: [],
       },
-    })
+    });
     fetchRoomContext.mockResolvedValue({
       ok: true,
       ownerId: 'owner-1',
       mode: 'solo',
       slotTemplate: { version: 1, source: 'room', updatedAt: '2023-01-01T00:00:00.000Z' },
-    })
-    verifyRolesAndSlots.mockResolvedValue({ ok: true })
-    fetchParticipantStats.mockResolvedValue({ ok: true, map: new Map() })
+    });
+    verifyRolesAndSlots.mockResolvedValue({ ok: true });
+    fetchParticipantStats.mockResolvedValue({ ok: true, map: new Map() });
     fetchHeroSummaries.mockResolvedValue({
       ok: false,
       status: 400,
       body: { error: 'hero_lookup_failed' },
-    })
+    });
 
-    const res = createRes()
-    await handler(createReq({ body: {} }), res)
+    const res = createRes();
+    await handler(createReq({ body: {} }), res);
 
-    expect(res.statusCode).toBe(400)
-    expect(res.body).toEqual({ error: 'hero_lookup_failed' })
-  })
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({ error: 'hero_lookup_failed' });
+  });
 
   test('propagates prepare session errors', async () => {
-    extractBearerToken.mockReturnValue('token-1')
-    fetchUserByToken.mockResolvedValue({ ok: true, user: { id: 'owner-1' } })
-    const normalizedRoster = [{ owner_id: 'owner-1', slot_index: 0 }]
+    extractBearerToken.mockReturnValue('token-1');
+    fetchUserByToken.mockResolvedValue({ ok: true, user: { id: 'owner-1' } });
+    const normalizedRoster = [{ owner_id: 'owner-1', slot_index: 0 }];
     parseStageRequestBody.mockReturnValue({
       ok: true,
       value: {
@@ -279,36 +276,36 @@ describe('POST /api/rank/stage-room-match', () => {
         verificationRoles: [],
         verificationSlots: [],
       },
-    })
+    });
     fetchRoomContext.mockResolvedValue({
       ok: true,
       ownerId: 'owner-1',
       mode: 'solo',
       slotTemplate: { version: 1, source: 'room', updatedAt: '2023-01-01T00:00:00.000Z' },
-    })
-    verifyRolesAndSlots.mockResolvedValue({ ok: true })
-    fetchParticipantStats.mockResolvedValue({ ok: true, map: new Map() })
-    fetchHeroSummaries.mockResolvedValue({ ok: true, map: new Map(), heroMapFromRequest: {} })
-    mergeRosterMetadata.mockReturnValue(normalizedRoster)
+    });
+    verifyRolesAndSlots.mockResolvedValue({ ok: true });
+    fetchParticipantStats.mockResolvedValue({ ok: true, map: new Map() });
+    fetchHeroSummaries.mockResolvedValue({ ok: true, map: new Map(), heroMapFromRequest: {} });
+    mergeRosterMetadata.mockReturnValue(normalizedRoster);
     callPrepareMatchSession.mockResolvedValue({
       ok: false,
       status: 500,
       body: { error: 'missing_prepare_rank_match_session' },
-    })
+    });
 
-    const res = createRes()
-    await handler(createReq({ body: {} }), res)
+    const res = createRes();
+    await handler(createReq({ body: {} }), res);
 
-    expect(res.statusCode).toBe(500)
-    expect(res.body).toEqual({ error: 'missing_prepare_rank_match_session' })
-  })
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({ error: 'missing_prepare_rank_match_session' });
+  });
 
   test('returns session details on success', async () => {
-    extractBearerToken.mockReturnValue('token-1')
-    fetchUserByToken.mockResolvedValue({ ok: true, user: { id: 'owner-1' } })
+    extractBearerToken.mockReturnValue('token-1');
+    fetchUserByToken.mockResolvedValue({ ok: true, user: { id: 'owner-1' } });
     const normalizedRoster = [
       { owner_id: 'owner-1', slot_index: 0, hero_name: 'Alice', hero_id: 'hero-x' },
-    ]
+    ];
     parseStageRequestBody.mockReturnValue({
       ok: true,
       value: {
@@ -325,17 +322,17 @@ describe('POST /api/rank/stage-room-match', () => {
         verificationRoles: [],
         verificationSlots: [],
       },
-    })
+    });
     fetchRoomContext.mockResolvedValue({
       ok: true,
       ownerId: 'owner-1',
       mode: 'solo',
       slotTemplate: { version: 1, source: 'room', updatedAt: '2023-01-01T00:00:00.000Z' },
-    })
-    verifyRolesAndSlots.mockResolvedValue({ ok: true })
-    fetchParticipantStats.mockResolvedValue({ ok: true, map: new Map() })
-    fetchHeroSummaries.mockResolvedValue({ ok: true, map: new Map(), heroMapFromRequest: {} })
-    mergeRosterMetadata.mockReturnValue(normalizedRoster)
+    });
+    verifyRolesAndSlots.mockResolvedValue({ ok: true });
+    fetchParticipantStats.mockResolvedValue({ ok: true, map: new Map() });
+    fetchHeroSummaries.mockResolvedValue({ ok: true, map: new Map(), heroMapFromRequest: {} });
+    mergeRosterMetadata.mockReturnValue(normalizedRoster);
     callPrepareMatchSession.mockResolvedValue({
       ok: true,
       data: {
@@ -355,10 +352,10 @@ describe('POST /api/rank/stage-room-match', () => {
           },
         ],
       },
-    })
+    });
 
-    const res = createRes()
-    await handler(createReq({ body: {} }), res)
+    const res = createRes();
+    await handler(createReq({ body: {} }), res);
 
     expect(callPrepareMatchSession).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -369,9 +366,9 @@ describe('POST /api/rank/stage-room-match', () => {
         readyVote: { confirm: true },
         asyncFillMeta: { enabled: true },
         allowPartial: false,
-      }),
-    )
-    expect(res.statusCode).toBe(200)
+      })
+    );
+    expect(res.statusCode).toBe(200);
     expect(res.body).toEqual({
       session_id: 'session-1',
       slot_template_version: 10,
@@ -385,17 +382,17 @@ describe('POST /api/rank/stage-room-match', () => {
           role: '딜러',
         }),
       ],
-    })
-  })
+    });
+  });
 
   test('applies sanitized roster when duplicates removed', async () => {
-    extractBearerToken.mockReturnValue('token-1')
-    fetchUserByToken.mockResolvedValue({ ok: true, user: { id: 'owner-1' } })
+    extractBearerToken.mockReturnValue('token-1');
+    fetchUserByToken.mockResolvedValue({ ok: true, user: { id: 'owner-1' } });
     const normalizedRoster = [
       { owner_id: 'owner-1', slot_index: 0, hero_id: 'hero-a', role: '탱커' },
       { owner_id: 'owner-1', slot_index: 1, hero_id: 'hero-b', role: '딜러' },
       { owner_id: 'owner-2', slot_index: 2, hero_id: 'hero-c', role: '힐러' },
-    ]
+    ];
     parseStageRequestBody.mockReturnValue({
       ok: true,
       value: {
@@ -412,17 +409,17 @@ describe('POST /api/rank/stage-room-match', () => {
         verificationRoles: [],
         verificationSlots: [],
       },
-    })
+    });
     fetchRoomContext.mockResolvedValue({
       ok: true,
       ownerId: 'owner-1',
       mode: 'solo',
       slotTemplate: { version: 1, source: 'room', updatedAt: '2023-01-01T00:00:00.000Z' },
-    })
-    verifyRolesAndSlots.mockResolvedValue({ ok: true })
-    fetchParticipantStats.mockResolvedValue({ ok: true, map: new Map() })
-    fetchHeroSummaries.mockResolvedValue({ ok: true, map: new Map(), heroMapFromRequest: {} })
-    mergeRosterMetadata.mockReturnValue(normalizedRoster)
+    });
+    verifyRolesAndSlots.mockResolvedValue({ ok: true });
+    fetchParticipantStats.mockResolvedValue({ ok: true, map: new Map() });
+    fetchHeroSummaries.mockResolvedValue({ ok: true, map: new Map(), heroMapFromRequest: {} });
+    mergeRosterMetadata.mockReturnValue(normalizedRoster);
     callPrepareMatchSession.mockResolvedValue({
       ok: true,
       data: {
@@ -449,26 +446,23 @@ describe('POST /api/rank/stage-room-match', () => {
           },
         ],
       },
-    })
+    });
 
-    const res = createRes()
-    await handler(createReq({ body: {} }), res)
+    const res = createRes();
+    await handler(createReq({ body: {} }), res);
 
     expect(callPrepareMatchSession).toHaveBeenCalledWith(
-      expect.objectContaining({ allowPartial: true }),
-    )
-    expect(res.statusCode).toBe(200)
-    expect(res.body.queue).toEqual({ reconciled: 2, inserted: 1, removed: 1 })
-    expect(res.body.roster).toHaveLength(2)
-    expect(res.body.roster.map((entry) => entry.owner_id)).toEqual([
-      'owner-1',
-      'owner-2',
-    ])
-  })
+      expect.objectContaining({ allowPartial: true })
+    );
+    expect(res.statusCode).toBe(200);
+    expect(res.body.queue).toEqual({ reconciled: 2, inserted: 1, removed: 1 });
+    expect(res.body.roster).toHaveLength(2);
+    expect(res.body.roster.map(entry => entry.owner_id)).toEqual(['owner-1', 'owner-2']);
+  });
 
   test('filters sanitized roster duplicates targeting the same slot', async () => {
-    extractBearerToken.mockReturnValue('token-1')
-    fetchUserByToken.mockResolvedValue({ ok: true, user: { id: 'owner-1' } })
+    extractBearerToken.mockReturnValue('token-1');
+    fetchUserByToken.mockResolvedValue({ ok: true, user: { id: 'owner-1' } });
     const normalizedRoster = [
       {
         owner_id: 'owner-1',
@@ -484,7 +478,7 @@ describe('POST /api/rank/stage-room-match', () => {
         hero_id: 'hero-b',
         role: '딜러',
       },
-    ]
+    ];
     parseStageRequestBody.mockReturnValue({
       ok: true,
       value: {
@@ -501,17 +495,17 @@ describe('POST /api/rank/stage-room-match', () => {
         verificationRoles: [],
         verificationSlots: [],
       },
-    })
+    });
     fetchRoomContext.mockResolvedValue({
       ok: true,
       ownerId: 'owner-1',
       mode: 'solo',
       slotTemplate: { version: 1, source: 'room', updatedAt: '2023-01-01T00:00:00.000Z' },
-    })
-    verifyRolesAndSlots.mockResolvedValue({ ok: true })
-    fetchParticipantStats.mockResolvedValue({ ok: true, map: new Map() })
-    fetchHeroSummaries.mockResolvedValue({ ok: true, map: new Map(), heroMapFromRequest: {} })
-    mergeRosterMetadata.mockReturnValue(normalizedRoster)
+    });
+    verifyRolesAndSlots.mockResolvedValue({ ok: true });
+    fetchParticipantStats.mockResolvedValue({ ok: true, map: new Map() });
+    fetchHeroSummaries.mockResolvedValue({ ok: true, map: new Map(), heroMapFromRequest: {} });
+    mergeRosterMetadata.mockReturnValue(normalizedRoster);
     callPrepareMatchSession.mockResolvedValue({
       ok: true,
       data: {
@@ -545,23 +539,21 @@ describe('POST /api/rank/stage-room-match', () => {
           },
         ],
       },
-    })
+    });
 
-    const res = createRes()
-    await handler(createReq({ body: {} }), res)
+    const res = createRes();
+    await handler(createReq({ body: {} }), res);
 
-    expect(res.statusCode).toBe(200)
-    expect(res.body.roster).toHaveLength(2)
+    expect(res.statusCode).toBe(200);
+    expect(res.body.roster).toHaveLength(2);
     expect(res.body.roster).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ owner_id: 'owner-1', slot_id: 'slot-a', slot_index: 0 }),
         expect.objectContaining({ owner_id: 'owner-2', slot_id: 'slot-b', slot_index: 1 }),
-      ]),
-    )
+      ])
+    );
     expect(res.body.roster).toEqual(
-      expect.not.arrayContaining([
-        expect.objectContaining({ owner_id: 'owner-3' }),
-      ]),
-    )
-  })
-})
+      expect.not.arrayContaining([expect.objectContaining({ owner_id: 'owner-3' })])
+    );
+  });
+});

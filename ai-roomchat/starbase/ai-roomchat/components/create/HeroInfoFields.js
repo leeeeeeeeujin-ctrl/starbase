@@ -1,4 +1,4 @@
-'use client'
+'use client';
 
 export default function HeroInfoFields({ name, description, onChangeName, onChangeDescription }) {
   return (
@@ -7,7 +7,7 @@ export default function HeroInfoFields({ name, description, onChangeName, onChan
         <span style={{ fontWeight: 600, fontSize: 14 }}>이름</span>
         <input
           value={name}
-          onChange={(event) => onChangeName(event.target.value)}
+          onChange={event => onChangeName(event.target.value)}
           placeholder="캐릭터 이름을 입력하세요"
           style={{
             padding: '12px 14px',
@@ -23,7 +23,7 @@ export default function HeroInfoFields({ name, description, onChangeName, onChan
         <span style={{ fontWeight: 600, fontSize: 14 }}>설명</span>
         <textarea
           value={description}
-          onChange={(event) => onChangeDescription(event.target.value)}
+          onChange={event => onChangeDescription(event.target.value)}
           placeholder="캐릭터의 배경이나 특징을 적어 주세요"
           rows={4}
           style={{
@@ -37,7 +37,7 @@ export default function HeroInfoFields({ name, description, onChangeName, onChan
         />
       </label>
     </div>
-  )
+  );
 }
 
 //

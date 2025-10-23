@@ -1,10 +1,10 @@
-export const NAV_LINKS = []
+export const NAV_LINKS = [];
 
 export const LOBBY_TABS = [
   { key: 'games', label: '게임 검색' },
   { key: 'my-games', label: '내 게임' },
   { key: 'stats', label: '캐릭터 통계' },
-]
+];
 
 export const SORT_OPTIONS = [
   { key: 'latest', label: '최신순', orders: [{ column: 'created_at', asc: false }] },
@@ -24,15 +24,15 @@ export const SORT_OPTIONS = [
       { column: 'created_at', asc: false },
     ],
   },
-]
+];
 
-export const DEFAULT_SORT_KEY = 'latest'
-export const METRIC_SORT_KEYS = new Set(['likes', 'plays'])
+export const DEFAULT_SORT_KEY = 'latest';
+export const METRIC_SORT_KEYS = new Set(['likes', 'plays']);
 
 export function getSortOptions({ includeMetrics = true } = {}) {
-  if (includeMetrics) return SORT_OPTIONS
-  return SORT_OPTIONS.filter((option) => !METRIC_SORT_KEYS.has(option.key))
+  if (includeMetrics) return SORT_OPTIONS;
+  return SORT_OPTIONS.filter(option => !METRIC_SORT_KEYS.has(option.key));
 }
 
-export const MAX_GAME_ROWS = 40
+export const MAX_GAME_ROWS = 40;
 //

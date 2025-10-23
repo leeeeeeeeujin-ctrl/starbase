@@ -1,10 +1,10 @@
-import { MODE_LABEL } from './constants'
-import { VARIABLE_RULE_MODES } from '../../../../lib/variableRules'
+import { MODE_LABEL } from './constants';
+import { VARIABLE_RULE_MODES } from '../../../../lib/variableRules';
 
 function ModeSelector({ activeMode, onSelect }) {
   return (
     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-      {VARIABLE_RULE_MODES.map((mode) => (
+      {VARIABLE_RULE_MODES.map(mode => (
         <button
           key={mode}
           type="button"
@@ -22,9 +22,9 @@ function ModeSelector({ activeMode, onSelect }) {
         </button>
       ))}
     </div>
-  )
+  );
 }
 
-export default ModeSelector
+export default ModeSelector;
 
 //

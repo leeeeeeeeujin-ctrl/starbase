@@ -3,6 +3,7 @@
 The goal of this prompt is to brief a follow-up AI so it can reproduce the Starbase chat overlay, realtime flows, and media handling end-to-end without reviewing the full repository history. Treat this document as a contract: every feature below must be delivered and wired into Supabase so the dashboard chat works across web and native shells.
 
 ## 1. Platform & Environment
+
 - **Framework**: Next.js / React running in `ai-roomchat` with ESLint + Jest configs already bootstrapped.
 - **Design system**: Local components (e.g., `SurfaceOverlay`, `ChatOverlay`, `OverlayTabs`) and Tailwind-style utility classes defined in `styles/`.
 - **State & realtime**: Supabase `postgres_changes` listeners for message feeds, Supabase Broadcast for lightweight fan-out, and local React state machines to manage UI transitions.
@@ -10,6 +11,7 @@ The goal of this prompt is to brief a follow-up AI so it can reproduce the Starb
 - **Native bridge**: Optional RN/Capacitor bridge exposed through `lib/native/mediaLibrary.js` to list local media via PhotoKit (iOS) or MediaStore (Android). If the bridge is missing, fall back to the browser file picker.
 
 ## 2. Supabase Schema & Policies
+
 1. **Core tables**
    - `messages` with columns for `chat_room_id`, `room_id`, `scope`, `thread_scope`, `attachments` JSON, `visible_owner_ids`, etc. Ensure indices exist on `(chat_room_id, created_at DESC)` and `(room_id, created_at DESC)`.
    - `chat_room_members` includes denormalized `room_owner_id`, `room_visibility`, `is_moderator`, and triggers (`populate_chat_room_member_room_metadata`, `refresh_chat_room_members_room_metadata`, `sync_chat_room_moderators`).
@@ -24,6 +26,7 @@ The goal of this prompt is to brief a follow-up AI so it can reproduce the Starb
    - `insert_message(...)` is proxied by `send_rank_chat_message` to permit attachment-only sends.
    - `fetch_rank_chat_threads(...)` gating global scope unless explicitly requested.
 4. **Storage bucket**
+
    ```sql
    insert into storage.buckets (id, name, public)
    values ('chat-attachments', 'chat-attachments', false)
@@ -47,11 +50,13 @@ The goal of this prompt is to brief a follow-up AI so it can reproduce the Starb
    ```
 
 ## 3. Realtime Bootstrap
+
 - Use the SQL bootstrap in `supabase/chat_realtime_backend.sql` to register policies, triggers, and publications. Confirm `chat_room_moderators` is part of the `supabase_realtime` publication.
 - Frontend subscribes to `postgres_changes` on `messages` filtered by `chat_room_id`, `room_id`, and `match_instance_id`, plus Broadcast channels for presence pings.
 - Realtime updates hydrate the Redux-like store in `ChatOverlay` through `subscribeToMessages` (see `lib/chat/messages.js`).
 
 ## 4. Chat Overlay UX Spec
+
 1. **Overlay shell**
    - Built on `SurfaceOverlay` with `hideHeader` enabled. Custom frame adds generous top/bottom padding, zero side gutters, and uses a vertical layout.
    - The overlay toggles via a floating launcher that is hidden on title and roster routes.
@@ -69,6 +74,7 @@ The goal of this prompt is to brief a follow-up AI so it can reproduce the Starb
    - Includes friends list with online indicator, friend request/accept buttons, and block controls (hook into backend RPC stubs if not live yet).
 
 ## 5. Conversation View
+
 - When a room is selected, the tab bar collapses and the conversation occupies the overlay.
 - Layout components:
   - **Header**: room avatar + name, presence indicator, quick actions (leave, invite, mute).
@@ -83,6 +89,7 @@ The goal of this prompt is to brief a follow-up AI so it can reproduce the Starb
   - Messages >240 chars show truncated text with a “전체보기” button opening a modal to read the full content.
 
 ## 6. Attachments & AI Assistance
+
 1. **Attachment prep**
    - Supported types: images, videos, generic files.
    - Each selected file is compressed client-side (webp for images, gzip for others), preview thumbnails generated (<=360px), and metadata stored with layout hints (grid vs. single column).
@@ -99,15 +106,18 @@ The goal of this prompt is to brief a follow-up AI so it can reproduce the Starb
    - Pending assistant replies render as loading red bubbles; once fulfilled, update the message stack with the AI response.
 
 ## 7. Profile & Social Interactions
+
 - Clicking an avatar in the transcript opens a profile sheet that shows the character portrait, bio, action buttons: `친구 신청`, `1:1 채팅`, `차단`.
 - Actions dispatch to Supabase RPC endpoints (stub `sendFriendRequest`, `blockUser`, etc.). Responses should optimistically update the friends list and membership UI.
 
 ## 8. Open Chat Discovery
+
 - Search panel filters rooms by keyword, tag, or population using `fetch_chat_rooms` RPC.
 - Include a CTA to `createChatRoom` with form validation (name, description, visibility, invite code).
 - Show recommended rooms based on membership overlap and trending metrics from the dashboard payload.
 
 ## 9. Testing & QA Checklist
+
 - Unit test message formatting (grouping, timestamp trimming, date dividers).
 - Cypress/Playwright coverage for sending text, photo, video, file, and AI messages.
 - Manual QA for media uploads on:
@@ -120,6 +130,7 @@ The goal of this prompt is to brief a follow-up AI so it can reproduce the Starb
   - Non-member (should be blocked)
 
 ## 10. Deployment Notes
+
 - Supabase SQL changes belong in `supabase/chat_realtime_backend.sql` and mirrored in `supabase.sql`.
 - Use `scripts/sync-supabase.js` (if available) to apply schema diffs.
 - Environment variables required: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_REALTIME_URL`.
@@ -127,6 +138,7 @@ The goal of this prompt is to brief a follow-up AI so it can reproduce the Starb
 - Document any manual Supabase console actions in `docs/chat-realtime-backend.md`.
 
 ## 11. Delivery Expectations for the Follow-up AI
+
 - Ship production-ready React components with accessibility (keyboard navigation, ARIA for tabs and modals).
 - Maintain responsive layouts for desktop, tablet, and narrow overlays.
 - Keep bundle size reasonable: lazy-load heavy pickers and media previews.

@@ -1,17 +1,17 @@
-import Head from 'next/head'
-import { useRouter } from 'next/router'
-import { useEffect } from 'react'
-import { ArcadeLayout } from '@/components/arena/ArcadeLayout'
-import { ScoreSummaryPanel } from '@/components/arena/ScoreSummaryPanel'
+import Head from 'next/head';
+import { useRouter } from 'next/router';
+import { useEffect } from 'react';
+import { ArcadeLayout } from '@/components/arena/ArcadeLayout';
+import { ScoreSummaryPanel } from '@/components/arena/ScoreSummaryPanel';
 
 export default function SessionScorePage() {
-  const router = useRouter()
-  const sessionId = router.query.sessionId
+  const router = useRouter();
+  const sessionId = router.query.sessionId;
 
   useEffect(() => {
-    if (!router.isReady || sessionId) return
-    router.replace('/arena/queue')
-  }, [router, sessionId])
+    if (!router.isReady || sessionId) return;
+    router.replace('/arena/queue');
+  }, [router, sessionId]);
 
   return (
     <>
@@ -22,5 +22,5 @@ export default function SessionScorePage() {
         <ScoreSummaryPanel sessionId={sessionId} />
       </ArcadeLayout>
     </>
-  )
+  );
 }

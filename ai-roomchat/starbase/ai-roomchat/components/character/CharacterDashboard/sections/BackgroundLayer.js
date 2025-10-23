@@ -1,6 +1,5 @@
-
 export default function BackgroundLayer({ backgroundUrl }) {
-  if (!backgroundUrl) return null
+  if (!backgroundUrl) return null;
   return (
     <div
       style={{
@@ -16,7 +15,7 @@ export default function BackgroundLayer({ backgroundUrl }) {
         transform: 'scale(1.05)',
       }}
     />
-  )
+  );
 }
 
 //

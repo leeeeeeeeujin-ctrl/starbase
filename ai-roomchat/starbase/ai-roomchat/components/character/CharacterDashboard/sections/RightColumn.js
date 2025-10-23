@@ -1,10 +1,9 @@
+import { useCharacterDashboardContext } from '../context';
+import InstantBattleSection from './right/InstantBattleSection';
+import RankingSection from './right/RankingSection';
+import BattleLogSection from './right/BattleLogSection';
 
-import { useCharacterDashboardContext } from '../context'
-import InstantBattleSection from './right/InstantBattleSection'
-import RankingSection from './right/RankingSection'
-import BattleLogSection from './right/BattleLogSection'
-
-const columnStyle = { display: 'grid', gap: 24 }
+const columnStyle = { display: 'grid', gap: 24 };
 
 export default function RightColumn() {
   const {
@@ -20,7 +19,7 @@ export default function RightColumn() {
     onShowMoreBattles,
     battleLoading,
     battleError,
-  } = useCharacterDashboardContext()
+  } = useCharacterDashboardContext();
 
   return (
     <main style={columnStyle}>
@@ -44,5 +43,5 @@ export default function RightColumn() {
         battleError={battleError}
       />
     </main>
-  )
+  );
 }

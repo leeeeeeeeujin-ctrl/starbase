@@ -81,7 +81,9 @@
   border-radius: 999px;
   padding: 10px 20px;
   cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .primaryButton:hover {
@@ -152,7 +154,9 @@
   align-items: flex-start;
   gap: 8px;
   cursor: pointer;
-  transition: border 0.2s ease, background 0.2s ease;
+  transition:
+    border 0.2s ease,
+    background 0.2s ease;
 }
 
 .roleButtonActive {
@@ -185,7 +189,9 @@
   padding: 10px 16px;
   font-size: 14px;
   cursor: pointer;
-  transition: background 0.2s ease, border 0.2s ease;
+  transition:
+    background 0.2s ease,
+    border 0.2s ease;
 }
 
 .switchButtonActive {
@@ -346,7 +352,10 @@
   padding: 10px 20px;
   font-weight: 600;
   cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
   border: none;
 }
 
@@ -418,4 +427,3 @@
     align-items: center;
   }
 }
-

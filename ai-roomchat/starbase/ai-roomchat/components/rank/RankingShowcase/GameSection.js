@@ -22,7 +22,11 @@ export function GameSection({ section, onInvite, onWhisper, onProfile }) {
           }}
         >
           {section.game?.image_url ? (
-            <img src={section.game.image_url} alt={section.game?.name || ''} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            <img
+              src={section.game.image_url}
+              alt={section.game?.name || ''}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            />
           ) : (
             <div
               style={{
@@ -79,7 +83,11 @@ export function GameSection({ section, onInvite, onWhisper, onProfile }) {
               }}
             >
               {entry.hero?.image_url ? (
-                <img src={entry.hero.image_url} alt={entry.hero?.name || ''} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <img
+                  src={entry.hero.image_url}
+                  alt={entry.hero?.name || ''}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
               ) : (
                 <div
                   style={{
@@ -108,7 +116,13 @@ export function GameSection({ section, onInvite, onWhisper, onProfile }) {
                 {onInvite ? (
                   <button
                     type="button"
-                    onClick={() => onInvite({ heroId: entry.heroId, heroName: entry.hero?.name, gameId: entry.game_id })}
+                    onClick={() =>
+                      onInvite({
+                        heroId: entry.heroId,
+                        heroName: entry.hero?.name,
+                        gameId: entry.game_id,
+                      })
+                    }
                     style={{
                       padding: '4px 8px',
                       borderRadius: 999,
@@ -124,7 +138,13 @@ export function GameSection({ section, onInvite, onWhisper, onProfile }) {
                 {onWhisper ? (
                   <button
                     type="button"
-                    onClick={() => onWhisper({ heroId: entry.heroId, heroName: entry.hero?.name, gameId: entry.game_id })}
+                    onClick={() =>
+                      onWhisper({
+                        heroId: entry.heroId,
+                        heroName: entry.hero?.name,
+                        gameId: entry.game_id,
+                      })
+                    }
                     style={{
                       padding: '4px 8px',
                       borderRadius: 999,
@@ -143,7 +163,7 @@ export function GameSection({ section, onInvite, onWhisper, onProfile }) {
         ))}
       </ul>
     </li>
-  )
+  );
 }
 
 //

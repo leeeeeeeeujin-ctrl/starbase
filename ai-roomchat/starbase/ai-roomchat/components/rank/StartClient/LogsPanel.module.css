@@ -98,7 +98,9 @@
   padding: 10px 16px;
   font-size: 13px;
   color: rgba(226, 232, 240, 0.9);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .searchInput::placeholder {
@@ -180,7 +182,10 @@
   color: rgba(226, 232, 240, 0.85);
   background: rgba(15, 23, 42, 0.52);
   cursor: pointer;
-  transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    color 0.2s ease;
 }
 
 .filterChip:hover,
@@ -216,7 +221,10 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
   cursor: pointer;
-  transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    color 0.2s ease;
   display: inline-flex;
   align-items: center;
   gap: 6px;

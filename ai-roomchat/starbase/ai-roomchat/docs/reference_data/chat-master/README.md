@@ -4,7 +4,7 @@
 
 This is beta-quality software: feature-complete and stable but probably with a few bugs or missing features. Follow [instructions](INSTALL.md) to install and run or use one of the cloud services below. Read [API documentation](docs/API.md).
 
-Tinode is *not* XMPP/Jabber. It is *not* compatible with XMPP. It's meant as a replacement for XMPP. On the surface, it's a lot like open source WhatsApp or Telegram.
+Tinode is _not_ XMPP/Jabber. It is _not_ compatible with XMPP. It's meant as a replacement for XMPP. On the surface, it's a lot like open source WhatsApp or Telegram.
 
 <a href="https://apps.apple.com/us/app/tinode/id1483763538"><img src="docs/app-store.svg" height=36></a> <a href="https://play.google.com/store/apps/details?id=co.tinode.tindroidx"><img src="docs/play-store.svg" height=36></a> <a href="https://web.tinode.co/"><img src="docs/web-app.svg" height=36></a>
 
@@ -22,20 +22,20 @@ See [general instructions](./INSTALL.md) or [docker-specific instructions](./doc
 
 ## Getting support
 
-* Read [API documentation](docs/API.md) and [FAQ](docs/faq.md). Read configuration instructions contained in the [`tinode.conf`](./server/tinode.conf) file.
-* For support, general questions, discussions post to [https://groups.google.com/d/forum/tinode](https://groups.google.com/d/forum/tinode).
-* For bugs and feature requests [open an issue](https://github.com/tinode/chat/issues/new/choose).
-* Use https://tinode.co/contact for commercial inquiries.
+- Read [API documentation](docs/API.md) and [FAQ](docs/faq.md). Read configuration instructions contained in the [`tinode.conf`](./server/tinode.conf) file.
+- For support, general questions, discussions post to [https://groups.google.com/d/forum/tinode](https://groups.google.com/d/forum/tinode).
+- For bugs and feature requests [open an issue](https://github.com/tinode/chat/issues/new/choose).
+- Use https://tinode.co/contact for commercial inquiries.
 
 ## Helping out
 
-* If you appreciate our work, please help spread the word! Sharing on Reddit, HN, and other communities helps more than you think.
-* Consider buying paid support: https://tinode.co/support.html
-* If you are a software developer, send us your pull requests with bug fixes and new features.
-* If you use the app and discover bugs or missing features, let us know by filing bug reports and feature requests. Vote for existing [feature requests](https://github.com/tinode/chat/issues?q=is%3Aissue+is%3Aopen+sort%3Areactions-%2B1-desc+label%3A%22feature+request%22) you find most valuable.
-* If you speak a language other than English, [translate](docs/translations.md) the apps into your language. You may also review and improve existing translations.
-* If you are a UI/UX expert, help us polish the app UI.
-* Use it: install it for your colleagues or friends at work or at home.
+- If you appreciate our work, please help spread the word! Sharing on Reddit, HN, and other communities helps more than you think.
+- Consider buying paid support: https://tinode.co/support.html
+- If you are a software developer, send us your pull requests with bug fixes and new features.
+- If you use the app and discover bugs or missing features, let us know by filing bug reports and feature requests. Vote for existing [feature requests](https://github.com/tinode/chat/issues?q=is%3Aissue+is%3Aopen+sort%3Areactions-%2B1-desc+label%3A%22feature+request%22) you find most valuable.
+- If you speak a language other than English, [translate](docs/translations.md) the apps into your language. You may also review and improve existing translations.
+- If you are a UI/UX expert, help us polish the app UI.
+- Use it: install it for your colleagues or friends at work or at home.
 
 ## Public service
 
@@ -53,7 +53,6 @@ TinodeWeb, a single page web app, is available at https://web.tinode.co/ ([sourc
 
 [Tinode for iOS](https://apps.apple.com/us/app/tinode/id1483763538) a.k.a. Tinodios is stable and functional ([source](https://github.com/tinode/ios)). See the screenshots below.
 
-
 ## Demo/Sandbox
 
 A sandboxed demo service is available at https://sandbox.tinode.co/.
@@ -64,99 +63,99 @@ When you register a new account you are asked for an email address to send valid
 
 ### Sandbox Notes
 
-* The sandbox server is reset (all data wiped) every night at 3:15am Pacific time. An error message `User not found or offline` means the server was reset while you were connected. If you see it on the web, reload and relogin. On Android log out and re-login. If the database was changed, delete the app then reinstall.
-* Sandbox user `Tino` is a [basic chatbot](./chatbot) which responds with a [random quote](http://fortunes.cat-v.org/) to any message.
-* As generally accepted, when you register a new account you are asked for an email address. The server will send an email with a verification code to that address and you can use it to validate the account. To make things easier for testing, the server will also accept `123456` as a verification code. Remove line `"debug_response": "123456"` from `tinode.conf` to disable this option.
-* The sandbox server is configured to use [ACME](https://letsencrypt.org/) TLS [implementation](https://godoc.org/golang.org/x/crypto/acme) with hard-coded requirement for [SNI](https://en.wikipedia.org/wiki/Server_Name_Indication). If you are unable to connect then the most likely reason is your TLS client's missing support for SNI. Use a different client.
-* The default web app loads a single minified javascript bundle and minified CSS. The un-minified version is also available at https://sandbox.tinode.co/index-dev.html
-* [Docker images](https://hub.docker.com/u/tinode/) with the same demo are available.
-* You are welcome to test your client software against the sandbox, hack it, etc. No DDoS-ing though please.
+- The sandbox server is reset (all data wiped) every night at 3:15am Pacific time. An error message `User not found or offline` means the server was reset while you were connected. If you see it on the web, reload and relogin. On Android log out and re-login. If the database was changed, delete the app then reinstall.
+- Sandbox user `Tino` is a [basic chatbot](./chatbot) which responds with a [random quote](http://fortunes.cat-v.org/) to any message.
+- As generally accepted, when you register a new account you are asked for an email address. The server will send an email with a verification code to that address and you can use it to validate the account. To make things easier for testing, the server will also accept `123456` as a verification code. Remove line `"debug_response": "123456"` from `tinode.conf` to disable this option.
+- The sandbox server is configured to use [ACME](https://letsencrypt.org/) TLS [implementation](https://godoc.org/golang.org/x/crypto/acme) with hard-coded requirement for [SNI](https://en.wikipedia.org/wiki/Server_Name_Indication). If you are unable to connect then the most likely reason is your TLS client's missing support for SNI. Use a different client.
+- The default web app loads a single minified javascript bundle and minified CSS. The un-minified version is also available at https://sandbox.tinode.co/index-dev.html
+- [Docker images](https://hub.docker.com/u/tinode/) with the same demo are available.
+- You are welcome to test your client software against the sandbox, hack it, etc. No DDoS-ing though please.
 
 ## Features
 
 ### Supported
 
-* Multiple native platforms:
-  * [Android](https://github.com/tinode/tindroid/) (Java)
-  * [iOS](https://github.com/tinode/ios) (Swift)
-  * [Web](https://github.com/tinode/webapp/) (React.js)
-  * Scriptable [command line](tn-cli/) (Python)
-* User features:
-  * One-on-one and group messaging.
-  * Video and voice calls. Voice messages.
-  * Channels with unlimited number of read-only subscribers.
-  * All chats are synchronized across all devices.
-  * Granular access control with permissions for various actions.
-  * User search/discovery.
-  * Rich formatting of messages markdown-style: \*style\* &rarr; **style**, with inline images, videos, file attachments.
-  * Forms and templated responses suitable for chatbots.
-  * Verified/staff/untrusted account markers.
-  * Leave notes to self, bookmark (save) messages.
-  * Message status notifications: message delivery to server; received and read notifications; typing notifications.
-  * Most recent message preview in contact list.
-  * Server-generated presence notifications for people, group chats.
-  * Forwarding and replying to messages.
-  * Editing sent messages.
-  * Pinned messages.
-* Administration:
-  * Granular access control with permissions for various actions.
-  * Support for custom authentication backends.
-  * Ability to block unwanted communication server-side.
-  * Anonymous users (important for use cases related to tech support over chat).
-  * Plugins to extend functionality, for example, to support moderation or chatbots.
-  * Scriptable [command-line tool](tn-cli/) for server administration.
-* Performance, reliability and development:
-  * Sharded clustering with failover.
-  * Storage and out of band transfer of large objects like images or document files using local file system or Amazon S3 (other storage systems can be supported with [media handlers](https://github.com/tinode/chat/blob/master/server/media/media.go#L21)).
-  * JSON or [protobuf version 3](https://developers.google.com/protocol-buffers/) wire protocols.
-  * Bindings for various programming languages:
-    * Javascript with no external dependencies.
-    * Java with dependencies on [Jackson](https://github.com/FasterXML/jackson), [Java-Websocket](https://github.com/TooTallNate/Java-WebSocket), [ICU4J](https://github.com/unicode-org/icu). Suitable for Android but with no Android SDK dependencies.
-    * Swift with no external dependencies.
-    * C/C++, C#, Go, Python, PHP, Ruby and many other languages using [gRPC](https://grpc.io/docs/languages/).
-  * Choice of a database backend. Other databases can be added by writing [adapters](server/db/adapter.go).
-    * MySQL (and MariaDB, Percona as long as they remain SQL and wire protocol compatible)
-    * PostgreSQL
-    * MongoDB
-    * [RethinkDB](http://rethinkdb.com/). Support is deprecated and will be dropped in 2027 because RethinkDB is no longer being developed (unless its development resumes).
+- Multiple native platforms:
+  - [Android](https://github.com/tinode/tindroid/) (Java)
+  - [iOS](https://github.com/tinode/ios) (Swift)
+  - [Web](https://github.com/tinode/webapp/) (React.js)
+  - Scriptable [command line](tn-cli/) (Python)
+- User features:
+  - One-on-one and group messaging.
+  - Video and voice calls. Voice messages.
+  - Channels with unlimited number of read-only subscribers.
+  - All chats are synchronized across all devices.
+  - Granular access control with permissions for various actions.
+  - User search/discovery.
+  - Rich formatting of messages markdown-style: \*style\* &rarr; **style**, with inline images, videos, file attachments.
+  - Forms and templated responses suitable for chatbots.
+  - Verified/staff/untrusted account markers.
+  - Leave notes to self, bookmark (save) messages.
+  - Message status notifications: message delivery to server; received and read notifications; typing notifications.
+  - Most recent message preview in contact list.
+  - Server-generated presence notifications for people, group chats.
+  - Forwarding and replying to messages.
+  - Editing sent messages.
+  - Pinned messages.
+- Administration:
+  - Granular access control with permissions for various actions.
+  - Support for custom authentication backends.
+  - Ability to block unwanted communication server-side.
+  - Anonymous users (important for use cases related to tech support over chat).
+  - Plugins to extend functionality, for example, to support moderation or chatbots.
+  - Scriptable [command-line tool](tn-cli/) for server administration.
+- Performance, reliability and development:
+  - Sharded clustering with failover.
+  - Storage and out of band transfer of large objects like images or document files using local file system or Amazon S3 (other storage systems can be supported with [media handlers](https://github.com/tinode/chat/blob/master/server/media/media.go#L21)).
+  - JSON or [protobuf version 3](https://developers.google.com/protocol-buffers/) wire protocols.
+  - Bindings for various programming languages:
+    - Javascript with no external dependencies.
+    - Java with dependencies on [Jackson](https://github.com/FasterXML/jackson), [Java-Websocket](https://github.com/TooTallNate/Java-WebSocket), [ICU4J](https://github.com/unicode-org/icu). Suitable for Android but with no Android SDK dependencies.
+    - Swift with no external dependencies.
+    - C/C++, C#, Go, Python, PHP, Ruby and many other languages using [gRPC](https://grpc.io/docs/languages/).
+  - Choice of a database backend. Other databases can be added by writing [adapters](server/db/adapter.go).
+    - MySQL (and MariaDB, Percona as long as they remain SQL and wire protocol compatible)
+    - PostgreSQL
+    - MongoDB
+    - [RethinkDB](http://rethinkdb.com/). Support is deprecated and will be dropped in 2027 because RethinkDB is no longer being developed (unless its development resumes).
 
 ### Planned
 
-* [Federation](https://en.wikipedia.org/wiki/Federation_(information_technology)).
-* Location and contacts sharing.
-* Previews of attached documents, links.
-* Recording video messages.
-* Video/audio broadcasting.
-* Group video/audio calls.
-* Attaching music/audio other than voice messages.
-* Better emoji support.
-* Different levels of message persistence (from strict persistence to "store until delivered" to purely ephemeral messaging).
-* Message encryption at rest.
-* End to end encryption with [OTR](https://en.wikipedia.org/wiki/Off-the-Record_Messaging) for one-on-one messaging and undecided method for group messaging.
-* Full text search in messages.
+- [Federation](<https://en.wikipedia.org/wiki/Federation_(information_technology)>).
+- Location and contacts sharing.
+- Previews of attached documents, links.
+- Recording video messages.
+- Video/audio broadcasting.
+- Group video/audio calls.
+- Attaching music/audio other than voice messages.
+- Better emoji support.
+- Different levels of message persistence (from strict persistence to "store until delivered" to purely ephemeral messaging).
+- Message encryption at rest.
+- End to end encryption with [OTR](https://en.wikipedia.org/wiki/Off-the-Record_Messaging) for one-on-one messaging and undecided method for group messaging.
+- Full text search in messages.
 
 ### Translations
 
 All client software has support for [internationalization](docs/translations.md). The following translations are provided:
 
-| Language | Server | Webapp | Android | iOS |
-| --- | :---: | :---: | :---: | :---: |
-| English | &check; | &check; | &check; | &check; |
-| Arabic |   | &check; |   |   |
-| Chinese simplified | &check; | &check; | &check; | &check; |
+| Language            | Server  | Webapp  | Android |   iOS   |
+| ------------------- | :-----: | :-----: | :-----: | :-----: |
+| English             | &check; | &check; | &check; | &check; |
+| Arabic              |         | &check; |         |         |
+| Chinese simplified  | &check; | &check; | &check; | &check; |
 | Chinese traditional | &check; | &check; | &check; | &check; |
-| French | &check; | &check; | &check; |   |
-| German |   | &check; | &check; |   |
-| Hindi |   |   | &check; |   |
-| Italian |   | &check; | &check; | &check; |
-| Korean |   | &check; | &check; |   |
-| Portuguese | &check; |   | &check; |   |
-| Romanian |   | &check; | &check; |   |
-| Russian | &check; | &check; | &check; | &check; |
-| Spanish | &check; | &check; | &check; | &check; |
-| Thai |   | &check; |   |   |
-| Ukrainian | &check; | &check; | &check; | &check; |
-| Vietnamese | &check; |   |   |   |
+| French              | &check; | &check; | &check; |         |
+| German              |         | &check; | &check; |         |
+| Hindi               |         |         | &check; |         |
+| Italian             |         | &check; | &check; | &check; |
+| Korean              |         | &check; | &check; |         |
+| Portuguese          | &check; |         | &check; |         |
+| Romanian            |         | &check; | &check; |         |
+| Russian             | &check; | &check; | &check; | &check; |
+| Spanish             | &check; | &check; | &check; | &check; |
+| Thai                |         | &check; |         |         |
+| Ukrainian           | &check; | &check; | &check; | &check; |
+| Vietnamese          | &check; |         |         |         |
 
 More translations are [welcome](docs/translations.md). In addition to languages listed above, particularly interested in Bengali, Indonesian, Urdu, Japanese, Turkish, Persian.
 
@@ -164,14 +163,14 @@ More translations are [welcome](docs/translations.md). In addition to languages 
 
 ### Projects
 
-* [Arango DB adapter](https://github.com/gfxlabs/chat/tree/master/server/db/arango) (outdated)
-* [DynamoDB adapter](https://github.com/riandyrn/chat/tree/master/server/db/dynamodb) (outdated)
+- [Arango DB adapter](https://github.com/gfxlabs/chat/tree/master/server/db/arango) (outdated)
+- [DynamoDB adapter](https://github.com/riandyrn/chat/tree/master/server/db/dynamodb) (outdated)
 
 ### Licenses
 
-* Demo avatars and some other graphics are from https://www.pexels.com/ under [CC0 license](https://www.pexels.com/photo-license/) and https://pixabay.com/ under their [license](https://pixabay.com/service/license/).
-* Web and Android background patterns are from http://subtlepatterns.com/ under [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/) license.
-* Android icons are from https://material.io/tools/icons/ under [Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0.html) license.
+- Demo avatars and some other graphics are from https://www.pexels.com/ under [CC0 license](https://www.pexels.com/photo-license/) and https://pixabay.com/ under their [license](https://pixabay.com/service/license/).
+- Web and Android background patterns are from http://subtlepatterns.com/ under [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/) license.
+- Android icons are from https://material.io/tools/icons/ under [Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0.html) license.
 
 ## Screenshots
 
@@ -201,23 +200,22 @@ More translations are [welcome](docs/translations.md). In addition to languages 
   <img src="docs/web-mob-contacts.png" alt="Mobile web: contacts" width=250 /> <img src="docs/web-mob-chat.png" alt="Mobile web: chat" width=250 /> <img src="docs/web-mob-video-call.png" alt="Mobile web: topic info" width=250 />
 </p>
 
-
 #### SEO Strings
 
 Words 'chat' and 'instant messaging' in Chinese, Russian, Persian and a few other languages.
 
-* 聊天室 即時通訊
-* чат мессенджер
-* インスタントメッセージ
-* 인스턴트 메신저
-* پیام رسان فوری
-* تراسل فوري
-* فوری پیغام رسانی
-* Nhắn tin tức thời
-* anlık mesajlaşma sohbet
-* mensageiro instantâneo
-* pesan instan
-* mensajería instantánea
-* চ্যাট ইন্সট্যান্ট মেসেজিং
-* चैट त्वरित संदेश
-* তাৎক্ষণিক বার্তা আদান প্রদান
+- 聊天室 即時通訊
+- чат мессенджер
+- インスタントメッセージ
+- 인스턴트 메신저
+- پیام رسان فوری
+- تراسل فوري
+- فوری پیغام رسانی
+- Nhắn tin tức thời
+- anlık mesajlaşma sohbet
+- mensageiro instantâneo
+- pesan instan
+- mensajería instantánea
+- চ্যাট ইন্সট্যান্ট মেসেজিং
+- चैट त्वरित संदेश
+- তাৎক্ষণিক বার্তা আদান প্রদান

@@ -1,6 +1,7 @@
 # Hero BGM Reference
 
 ## hero_bgms 테이블 개요
+
 - **테이블 이름**: `public.hero_bgms`
 - **생성 위치**: `supabase.sql`에 포함되어 있어 별도 수작업으로 만들 필요가 없습니다. `supabase db push` 또는 `psql -f supabase.sql`로 적용하면 자동 생성됩니다.
 - **컬럼**
@@ -20,10 +21,12 @@
 - **인덱스**: `(hero_id, sort_order, created_at)` 복합 인덱스로 영웅별 정렬 조회가 최적화됩니다.
 
 ## 서비스 레이어 연동
+
 - `services/heroes.js`에는 다중 트랙 로드를 위한 `fetchHeroBgms`, 저장을 위한 `syncHeroBgms` 등이 이미 구현되어 있습니다. `normaliseHero`가 첫 트랙을 `hero.bgm_url`로 되돌려 UI와 호환되도록 처리합니다.
 - 에디터에서 업로드한 오디오는 `supabase.storage.from('heroes')` 버킷에 저장되며, 저장 직후 `syncHeroBgms` 호출로 테이블이 최신 상태로 유지됩니다.
 
 ## 브금 플레이어
+
 - 캐릭터 화면 하단 오버레이는 **설정 탭에서 브금 제어를 켜둔 경우**에만 상단에 BGM 컨트롤러를 표시합니다.
 - 플레이어 기능
   - 재생/일시정지, 정지, 처음으로 이동, 다음 곡(트랙이 여러 개일 때), 현재 곡 반복 토글.

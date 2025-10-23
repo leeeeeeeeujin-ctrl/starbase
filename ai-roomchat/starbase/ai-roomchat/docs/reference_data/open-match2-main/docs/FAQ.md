@@ -10,8 +10,8 @@ Here are answers to common questions regarding the tuning, configuration, and be
 
 A: You should monitor the `om_core.cache.incoming.updates` and `om_core.cache.incoming.timeouts.full` metrics.
 
-* `om_core.cache.incoming.updates`: This metric shows how many updates an instance processes in each polling cycle. It's normal for this number to occasionally spike to the maximum configured value (`OM_CACHE_IN_MAX_UPDATES_PER_POLL`). However, if this metric is *consistently* at the maximum, it's a sign that the instance may not be processing updates from Redis as fast as they are arriving.  
-* `om_core.cache.incoming.timeouts.full`: This counter increments when an instance cannot process all pending updates within its internal time limit. Occasional increments are fine, but if this counter is increasing rapidly, it's a clear indicator that the instance is falling behind on replication.
+- `om_core.cache.incoming.updates`: This metric shows how many updates an instance processes in each polling cycle. It's normal for this number to occasionally spike to the maximum configured value (`OM_CACHE_IN_MAX_UPDATES_PER_POLL`). However, if this metric is _consistently_ at the maximum, it's a sign that the instance may not be processing updates from Redis as fast as they are arriving.
+- `om_core.cache.incoming.timeouts.full`: This counter increments when an instance cannot process all pending updates within its internal time limit. Occasional increments are fine, but if this counter is increasing rapidly, it's a clear indicator that the instance is falling behind on replication.
 
 If you see these signs, you can try lowering the `OM_CACHE_IN_SLEEP_BETWEEN_APPLYING_UPDATES_MS` value. Be aware that every millisecond you remove from this sleep time is a millisecond that the core process cannot spend on handling API calls, so there is a trade-off.
 
@@ -19,8 +19,8 @@ If you see these signs, you can try lowering the `OM_CACHE_IN_SLEEP_BETWEEN_APPL
 
 A: This setting controls a trade-off between speed and consistency.
 
-* **`true` (Default & Recommended)**: Open Match will wait to confirm that all tickets in a match have been marked as `inactive` in its local cache before returning the match to your Director. This is safer and significantly reduces the chance that the same ticket will be proposed in another match by a different MMF.  
-* **`false`**: Open Match returns the match immediately and *then* attempts to deactivate the tickets. This is faster but less safe. It's possible that before the deactivation is replicated, another matchmaking cycle could begin and propose the same tickets in a new match.
+- **`true` (Default & Recommended)**: Open Match will wait to confirm that all tickets in a match have been marked as `inactive` in its local cache before returning the match to your Director. This is safer and significantly reduces the chance that the same ticket will be proposed in another match by a different MMF.
+- **`false`**: Open Match returns the match immediately and _then_ attempts to deactivate the tickets. This is faster but less safe. It's possible that before the deactivation is replicated, another matchmaking cycle could begin and propose the same tickets in a new match.
 
 **Q: What happens if my matchmaker cancels the context during `InvokeMatchmakingFunctions`?**
 
@@ -38,8 +38,8 @@ A: While Redis persistence (like AOF or RDB) is an option, you should carefully 
 
 A: Yes and no.
 
-* **Read Replicas (Yes)**: Open Match has built-in support for using Redis read replicas. You can configure a separate host for read operations (`OM_REDIS_READ_HOST`) and another for write operations (`OM_REDIS_WRITE_HOST`). This is a common and effective way to scale read-heavy workloads.  
-* **Sharding (No)**: Open Match does not support Redis sharding. It assumes that the single write instance can accept writes for any key, and that all read instances can see all the data that was written.
+- **Read Replicas (Yes)**: Open Match has built-in support for using Redis read replicas. You can configure a separate host for read operations (`OM_REDIS_READ_HOST`) and another for write operations (`OM_REDIS_WRITE_HOST`). This is a common and effective way to scale read-heavy workloads.
+- **Sharding (No)**: Open Match does not support Redis sharding. It assumes that the single write instance can accept writes for any key, and that all read instances can see all the data that was written.
 
 ---
 
@@ -51,7 +51,7 @@ A: The default configuration assumes Open Match core and the OpenTelemetry colle
 
 **Q: How should I handle "backfill" profiles versus regular profiles?**
 
-A: If you have profiles designed to fill partially-empty, running game servers, you should generally invoke the MMFs for these profiles *before* you invoke the MMFs for creating brand-new matches. This is because regular profiles can drain the pool of available players very quickly. It is your Director's responsibility to decide the order of MMF invocations to best serve your game's logic.
+A: If you have profiles designed to fill partially-empty, running game servers, you should generally invoke the MMFs for these profiles _before_ you invoke the MMFs for creating brand-new matches. This is because regular profiles can drain the pool of available players very quickly. It is your Director's responsibility to decide the order of MMF invocations to best serve your game's logic.
 
 **Q: My ticket expired immediately after I created it. What happened?**
 
@@ -107,7 +107,6 @@ For more examples of failure states your matchmaker is expected to handle, see t
 
 A: Your matchmaker must be resilient to the realities of a distributed system. The eventual consistency model of Open Match means your code already needs to be robust against a number of scenarios. Key failure states you must handle include:
 
-* **The Disappearing Player**: A player may disconnect or cancel matchmaking at any time. Your system needs a way to detect this and call `DeactivateTickets` to remove them from the pool.  
-* **The Disappearing Server**: A game server that was available may become unhealthy or have a networking failure. What is the solution when a server allocation fails, or the allocation succeeds but players are never able to connect?  
-* **Competing Match Proposals**: As discussed in the advanced MMF patterns, your Director will receive competing match proposals for the same tickets and must have logic to de-collide them and re-activate the tickets from discarded matches.
-
+- **The Disappearing Player**: A player may disconnect or cancel matchmaking at any time. Your system needs a way to detect this and call `DeactivateTickets` to remove them from the pool.
+- **The Disappearing Server**: A game server that was available may become unhealthy or have a networking failure. What is the solution when a server allocation fails, or the allocation succeeds but players are never able to connect?
+- **Competing Match Proposals**: As discussed in the advanced MMF patterns, your Director will receive competing match proposals for the same tickets and must have logic to de-collide them and re-activate the tickets from discarded matches.

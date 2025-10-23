@@ -2,29 +2,29 @@
  * @jest-environment jsdom
  */
 
-import { act, create } from 'react-test-renderer'
+import { act, create } from 'react-test-renderer';
 
-const mockStoreActiveSessionRecord = jest.fn()
-const mockUpdateActiveSessionRecord = jest.fn()
-const mockClearActiveSessionRecord = jest.fn()
-const mockMarkActiveSessionDefeated = jest.fn()
+const mockStoreActiveSessionRecord = jest.fn();
+const mockUpdateActiveSessionRecord = jest.fn();
+const mockClearActiveSessionRecord = jest.fn();
+const mockMarkActiveSessionDefeated = jest.fn();
 
-const mockPurgeExpiredCooldowns = jest.fn()
-const mockGetApiKeyCooldown = jest.fn()
-const mockMarkApiKeyCooldown = jest.fn()
+const mockPurgeExpiredCooldowns = jest.fn();
+const mockGetApiKeyCooldown = jest.fn();
+const mockMarkApiKeyCooldown = jest.fn();
 
 jest.mock('../../../../../lib/rank/activeSessionStorage', () => ({
   storeActiveSessionRecord: (...args) => mockStoreActiveSessionRecord(...args),
   updateActiveSessionRecord: (...args) => mockUpdateActiveSessionRecord(...args),
   clearActiveSessionRecord: (...args) => mockClearActiveSessionRecord(...args),
   markActiveSessionDefeated: (...args) => mockMarkActiveSessionDefeated(...args),
-}))
+}));
 
 jest.mock('../../../../../lib/rank/apiKeyCooldown', () => ({
   purgeExpiredCooldowns: (...args) => mockPurgeExpiredCooldowns(...args),
   getApiKeyCooldown: (...args) => mockGetApiKeyCooldown(...args),
   markApiKeyCooldown: (...args) => mockMarkApiKeyCooldown(...args),
-}))
+}));
 
 jest.mock('../../../../../lib/supabase', () => ({
   supabase: {
@@ -32,9 +32,9 @@ jest.mock('../../../../../lib/supabase', () => ({
       getSession: jest.fn(() => Promise.resolve({ data: { session: null }, error: null })),
     },
   },
-}))
+}));
 
-const mockReloadGeminiModels = jest.fn()
+const mockReloadGeminiModels = jest.fn();
 
 jest.mock('../../../../../components/rank/hooks/useGeminiModelCatalog', () => ({
   __esModule: true,
@@ -44,83 +44,83 @@ jest.mock('../../../../../components/rank/hooks/useGeminiModelCatalog', () => ({
     error: null,
     reload: mockReloadGeminiModels,
   }),
-}))
+}));
 
-import { useHistoryBuffer } from '../../../../../components/rank/StartClient/hooks/useHistoryBuffer'
-import { useStartManualResponse } from '../../../../../components/rank/StartClient/hooks/useStartManualResponse'
-import { useStartCooldown } from '../../../../../components/rank/StartClient/hooks/useStartCooldown'
-import { useStartSessionLifecycle } from '../../../../../components/rank/StartClient/hooks/useStartSessionLifecycle'
-import { useStartApiKeyManager } from '../../../../../components/rank/StartClient/hooks/useStartApiKeyManager'
-import { useStartSessionWatchdog } from '../../../../../components/rank/StartClient/hooks/useStartSessionWatchdog'
+import { useHistoryBuffer } from '../../../../../components/rank/StartClient/hooks/useHistoryBuffer';
+import { useStartManualResponse } from '../../../../../components/rank/StartClient/hooks/useStartManualResponse';
+import { useStartCooldown } from '../../../../../components/rank/StartClient/hooks/useStartCooldown';
+import { useStartSessionLifecycle } from '../../../../../components/rank/StartClient/hooks/useStartSessionLifecycle';
+import { useStartApiKeyManager } from '../../../../../components/rank/StartClient/hooks/useStartApiKeyManager';
+import { useStartSessionWatchdog } from '../../../../../components/rank/StartClient/hooks/useStartSessionWatchdog';
 
 function renderHook(callback, props) {
-  let result
-  const Test = (hookProps) => {
-    result = callback(hookProps)
-    return null
-  }
-  const renderer = create(<Test {...props} />)
+  let result;
+  const Test = hookProps => {
+    result = callback(hookProps);
+    return null;
+  };
+  const renderer = create(<Test {...props} />);
   return {
     get result() {
-      return result
+      return result;
     },
-    rerender: (nextProps) => {
+    rerender: nextProps => {
       act(() => {
-        renderer.update(<Test {...nextProps} />)
-      })
+        renderer.update(<Test {...nextProps} />);
+      });
     },
     unmount: () => {
-      renderer.unmount()
+      renderer.unmount();
     },
-  }
+  };
 }
 
 describe('StartClient hooks', () => {
   beforeEach(() => {
-    mockStoreActiveSessionRecord.mockClear()
-    mockUpdateActiveSessionRecord.mockClear()
-    mockClearActiveSessionRecord.mockClear()
-    mockMarkActiveSessionDefeated.mockClear()
-    mockPurgeExpiredCooldowns.mockClear()
-    mockGetApiKeyCooldown.mockClear()
-    mockMarkApiKeyCooldown.mockClear()
-    mockReloadGeminiModels.mockClear()
-    if (window.sessionStorage) window.sessionStorage.clear()
-    if (window.localStorage) window.localStorage.clear()
+    mockStoreActiveSessionRecord.mockClear();
+    mockUpdateActiveSessionRecord.mockClear();
+    mockClearActiveSessionRecord.mockClear();
+    mockMarkActiveSessionDefeated.mockClear();
+    mockPurgeExpiredCooldowns.mockClear();
+    mockGetApiKeyCooldown.mockClear();
+    mockMarkApiKeyCooldown.mockClear();
+    mockReloadGeminiModels.mockClear();
+    if (window.sessionStorage) window.sessionStorage.clear();
+    if (window.localStorage) window.localStorage.clear();
     global.fetch = jest.fn(() =>
       Promise.resolve({
         ok: true,
         json: () => Promise.resolve({}),
-      }),
-    )
-  })
+      })
+    );
+  });
 
   afterEach(() => {
-    jest.useRealTimers()
-  })
+    jest.useRealTimers();
+  });
 
   it('increments history version when bumping', () => {
-    const hook = renderHook(() => useHistoryBuffer())
-    expect(hook.result.historyVersion).toBe(0)
+    const hook = renderHook(() => useHistoryBuffer());
+    expect(hook.result.historyVersion).toBe(0);
     act(() => {
-      hook.result.bumpHistoryVersion()
-    })
-    expect(hook.result.historyVersion).toBe(1)
-    expect(typeof hook.result.history.push).toBe('function')
-  })
+      hook.result.bumpHistoryVersion();
+    });
+    expect(hook.result.historyVersion).toBe(1);
+    expect(typeof hook.result.history.push).toBe('function');
+  });
 
   it('enforces manual response requirement with custom alert', () => {
-    const alertMock = jest.fn()
-    const hook = renderHook(() => useStartManualResponse({ onAlert: alertMock }))
+    const alertMock = jest.fn();
+    const hook = renderHook(() => useStartManualResponse({ onAlert: alertMock }));
 
-    expect(hook.result.requireManualResponse()).toBeNull()
-    expect(alertMock).toHaveBeenCalledWith('수동 응답을 입력하세요.')
+    expect(hook.result.requireManualResponse()).toBeNull();
+    expect(alertMock).toHaveBeenCalledWith('수동 응답을 입력하세요.');
 
     act(() => {
-      hook.result.setManualResponse('  수동 입력  ')
-    })
-    expect(hook.result.requireManualResponse()).toBe('수동 입력')
-  })
+      hook.result.setManualResponse('  수동 입력  ');
+    });
+    expect(hook.result.requireManualResponse()).toBe('수동 입력');
+  });
 
   it('checks cooldowns and voids session via useStartCooldown', () => {
     const evaluate = jest.fn(() => ({
@@ -128,17 +128,17 @@ describe('StartClient hooks', () => {
       remainingMs: 1500,
       keySample: 'abc',
       reason: 'quota_exhausted',
-    }))
-    const applyCooldownInfo = jest.fn()
-    const setStatusMessage = jest.fn()
-    const setGameVoided = jest.fn()
-    const setCurrentNodeId = jest.fn()
-    const setTurnDeadline = jest.fn()
-    const setTimeRemaining = jest.fn()
-    const clearConsensusVotes = jest.fn()
-    const updateHeroAssets = jest.fn()
-    const updateSessionRecord = jest.fn()
-    const clearSessionRecord = jest.fn()
+    }));
+    const applyCooldownInfo = jest.fn();
+    const setStatusMessage = jest.fn();
+    const setGameVoided = jest.fn();
+    const setCurrentNodeId = jest.fn();
+    const setTurnDeadline = jest.fn();
+    const setTimeRemaining = jest.fn();
+    const clearConsensusVotes = jest.fn();
+    const updateHeroAssets = jest.fn();
+    const updateSessionRecord = jest.fn();
+    const clearSessionRecord = jest.fn();
 
     const hook = renderHook(() =>
       useStartCooldown({
@@ -158,43 +158,41 @@ describe('StartClient hooks', () => {
         gameId: 'game-1',
         game: { id: 'game-1' },
         sessionInfo: { id: 'session-1' },
-      }),
-    )
+      })
+    );
 
-    expect(hook.result.ensureApiKeyReady('test-key')).toBe(false)
-    expect(setStatusMessage).toHaveBeenCalledWith(
-      expect.stringContaining('최근 사용한 API 키'),
-    )
+    expect(hook.result.ensureApiKeyReady('test-key')).toBe(false);
+    expect(setStatusMessage).toHaveBeenCalledWith(expect.stringContaining('최근 사용한 API 키'));
 
     mockMarkApiKeyCooldown.mockReturnValue({
       active: true,
       remainingMs: 1800,
       keySample: 'abc',
       reason: 'quota_exhausted',
-    })
+    });
 
-    hook.result.voidSession(null, { apiKey: 'test-key', reason: 'quota_exhausted' })
+    hook.result.voidSession(null, { apiKey: 'test-key', reason: 'quota_exhausted' });
 
     expect(mockMarkApiKeyCooldown).toHaveBeenCalledWith(
       'test-key',
-      expect.objectContaining({ reason: 'quota_exhausted', provider: 'openai' }),
-    )
-    expect(applyCooldownInfo).toHaveBeenCalled()
-    expect(setGameVoided).toHaveBeenCalledWith(true)
-    expect(updateHeroAssets).toHaveBeenCalledWith([], null)
-    expect(updateSessionRecord).toHaveBeenCalledWith({ status: 'voided', actorNames: [] })
-    expect(clearConsensusVotes).toHaveBeenCalled()
-    expect(clearSessionRecord).toHaveBeenCalled()
-  })
+      expect.objectContaining({ reason: 'quota_exhausted', provider: 'openai' })
+    );
+    expect(applyCooldownInfo).toHaveBeenCalled();
+    expect(setGameVoided).toHaveBeenCalledWith(true);
+    expect(updateHeroAssets).toHaveBeenCalledWith([], null);
+    expect(updateSessionRecord).toHaveBeenCalledWith({ status: 'voided', actorNames: [] });
+    expect(clearConsensusVotes).toHaveBeenCalled();
+    expect(clearSessionRecord).toHaveBeenCalled();
+  });
 
   it('persists active session lifecycle records', () => {
-    const realtimeReset = jest.fn(() => ({ presence: [] }))
-    const dropInReset = jest.fn()
-    const asyncReset = jest.fn()
-    const applyRealtimeSnapshot = jest.fn()
-    const setSessionInfo = jest.fn()
-    const setTurnDeadline = jest.fn()
-    const setTimeRemaining = jest.fn()
+    const realtimeReset = jest.fn(() => ({ presence: [] }));
+    const dropInReset = jest.fn();
+    const asyncReset = jest.fn();
+    const applyRealtimeSnapshot = jest.fn();
+    const setSessionInfo = jest.fn();
+    const setTurnDeadline = jest.fn();
+    const setTimeRemaining = jest.fn();
 
     const hook = renderHook(() =>
       useStartSessionLifecycle({
@@ -209,51 +207,51 @@ describe('StartClient hooks', () => {
         applyRealtimeSnapshot,
         setTurnDeadline,
         setTimeRemaining,
-      }),
-    )
+      })
+    );
 
     act(() => {
-      hook.result.rememberActiveSession({ turn: 3 })
-    })
+      hook.result.rememberActiveSession({ turn: 3 });
+    });
     expect(mockStoreActiveSessionRecord).toHaveBeenCalledWith(
       'game-1',
-      expect.objectContaining({ turn: 3 }),
-    )
+      expect.objectContaining({ turn: 3 })
+    );
 
     act(() => {
-      hook.result.updateSessionRecord({ actorNames: ['Another'] })
-    })
+      hook.result.updateSessionRecord({ actorNames: ['Another'] });
+    });
     expect(mockUpdateActiveSessionRecord).toHaveBeenCalledWith(
       'game-1',
-      expect.objectContaining({ actorNames: ['Another'] }),
-    )
+      expect.objectContaining({ actorNames: ['Another'] })
+    );
 
     act(() => {
-      hook.result.clearSessionRecord()
-    })
-    expect(mockClearActiveSessionRecord).toHaveBeenCalledWith('game-1')
-    expect(realtimeReset).toHaveBeenCalled()
-    expect(dropInReset).toHaveBeenCalled()
-    expect(asyncReset).toHaveBeenCalled()
-    expect(applyRealtimeSnapshot).toHaveBeenCalledWith({ presence: [] })
-    expect(setSessionInfo).toHaveBeenCalledWith(null)
-    expect(setTurnDeadline).toHaveBeenCalledWith(null)
-    expect(setTimeRemaining).toHaveBeenCalledWith(null)
+      hook.result.clearSessionRecord();
+    });
+    expect(mockClearActiveSessionRecord).toHaveBeenCalledWith('game-1');
+    expect(realtimeReset).toHaveBeenCalled();
+    expect(dropInReset).toHaveBeenCalled();
+    expect(asyncReset).toHaveBeenCalled();
+    expect(applyRealtimeSnapshot).toHaveBeenCalledWith({ presence: [] });
+    expect(setSessionInfo).toHaveBeenCalledWith(null);
+    expect(setTurnDeadline).toHaveBeenCalledWith(null);
+    expect(setTimeRemaining).toHaveBeenCalledWith(null);
 
     act(() => {
-      hook.result.markSessionDefeated()
-    })
-    expect(mockMarkActiveSessionDefeated).toHaveBeenCalledWith('game-1')
-  })
+      hook.result.markSessionDefeated();
+    });
+    expect(mockMarkActiveSessionDefeated).toHaveBeenCalledWith('game-1');
+  });
 
   it('voids stalled sessions after exceeding watchdog threshold', async () => {
-    jest.useFakeTimers({ now: new Date('2024-01-01T00:00:00Z') })
+    jest.useFakeTimers({ now: new Date('2024-01-01T00:00:00Z') });
 
-    const voidSessionCalls = []
+    const voidSessionCalls = [];
     const voidSession = (...args) => {
-      voidSessionCalls.push(args)
-    }
-    const recordTimelineEvents = jest.fn()
+      voidSessionCalls.push(args);
+    };
+    const recordTimelineEvents = jest.fn();
 
     const baseProps = {
       enabled: true,
@@ -270,13 +268,13 @@ describe('StartClient hooks', () => {
       recordTimelineEvents,
       sessionInfo: { id: 'session-1' },
       gameId: 'game-1',
-    }
+    };
 
-    const hook = renderHook((props) => useStartSessionWatchdog(props), baseProps)
+    const hook = renderHook(props => useStartSessionWatchdog(props), baseProps);
 
     await act(async () => {
-      await jest.advanceTimersByTimeAsync(260_000)
-    })
+      await jest.advanceTimersByTimeAsync(260_000);
+    });
 
     const stalledVoidDetected = voidSessionCalls.some(([message, payload]) => {
       return (
@@ -284,20 +282,20 @@ describe('StartClient hooks', () => {
         payload?.reason === 'stalled_session' &&
         payload?.gameId === 'game-1' &&
         payload?.sessionId === 'session-1'
-      )
-    })
+      );
+    });
 
-    expect(stalledVoidDetected).toBe(true)
-    expect(recordTimelineEvents).toHaveBeenCalled()
+    expect(stalledVoidDetected).toBe(true);
+    expect(recordTimelineEvents).toHaveBeenCalled();
 
-    hook.unmount()
-  })
+    hook.unmount();
+  });
 
   it('resets watchdog timer when new progress is detected', () => {
-    jest.useFakeTimers({ now: new Date('2024-01-01T00:00:00Z') })
+    jest.useFakeTimers({ now: new Date('2024-01-01T00:00:00Z') });
 
-    const voidSession = jest.fn()
-    const recordTimelineEvents = jest.fn()
+    const voidSession = jest.fn();
+    const recordTimelineEvents = jest.fn();
 
     const baseProps = {
       enabled: true,
@@ -314,35 +312,35 @@ describe('StartClient hooks', () => {
       recordTimelineEvents,
       sessionInfo: { id: 'session-1' },
       gameId: 'game-1',
-    }
+    };
 
-    const hook = renderHook((props) => useStartSessionWatchdog(props), baseProps)
+    const hook = renderHook(props => useStartSessionWatchdog(props), baseProps);
 
     act(() => {
-      jest.advanceTimersByTime(120_000)
-    })
+      jest.advanceTimersByTime(120_000);
+    });
 
-    expect(voidSession).not.toHaveBeenCalled()
+    expect(voidSession).not.toHaveBeenCalled();
 
     hook.rerender({
       ...baseProps,
       historyVersion: 1,
       turnDeadline: Date.now() + 60_000,
-    })
+    });
 
     act(() => {
-      jest.advanceTimersByTime(260_000)
-    })
+      jest.advanceTimersByTime(260_000);
+    });
 
-    expect(voidSession).toHaveBeenCalledTimes(1)
-    hook.unmount()
-  })
+    expect(voidSession).toHaveBeenCalledTimes(1);
+    hook.unmount();
+  });
 
   it('tracks API key changes and emits timeline events', async () => {
-    mockPurgeExpiredCooldowns.mockReturnValue(new Map())
-    mockGetApiKeyCooldown.mockReturnValue(null)
+    mockPurgeExpiredCooldowns.mockReturnValue(new Map());
+    mockGetApiKeyCooldown.mockReturnValue(null);
 
-    const recordTimelineEvents = jest.fn()
+    const recordTimelineEvents = jest.fn();
     const hook = renderHook(() =>
       useStartApiKeyManager({
         initialApiKey: '',
@@ -350,31 +348,31 @@ describe('StartClient hooks', () => {
         viewerId: 'viewer-1',
         turn: 4,
         recordTimelineEvents,
-      }),
-    )
+      })
+    );
 
     await act(async () => {
       hook.result.setApiKey('  sample-key  ', {
         source: 'pool',
         reason: 'rotation',
         poolId: 'pool-1',
-      })
-    })
+      });
+    });
 
     await act(async () => {
-      await Promise.resolve()
-    })
+      await Promise.resolve();
+    });
 
-    expect(window.sessionStorage.getItem('rank.start.apiKey')).toBe('sample-key')
-    expect(recordTimelineEvents).toHaveBeenCalled()
+    expect(window.sessionStorage.getItem('rank.start.apiKey')).toBe('sample-key');
+    expect(recordTimelineEvents).toHaveBeenCalled();
     const call = recordTimelineEvents.mock.calls.find(
-      (entry) => Array.isArray(entry[0]) && entry[0][0]?.type === 'api_key_pool_replaced',
-    )
-    expect(call).toBeTruthy()
+      entry => Array.isArray(entry[0]) && entry[0][0]?.type === 'api_key_pool_replaced'
+    );
+    expect(call).toBeTruthy();
     expect(call[0][0].metadata.apiKeyPool).toMatchObject({
       source: 'pool',
       reason: 'rotation',
       poolId: 'pool-1',
-    })
-  })
-})
+    });
+  });
+});

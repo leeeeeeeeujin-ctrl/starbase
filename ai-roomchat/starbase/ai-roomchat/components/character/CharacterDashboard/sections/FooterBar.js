@@ -1,4 +1,3 @@
-
 export default function FooterBar({ onBack, onGoLobby }) {
   return (
     <footer style={styles.footer}>
@@ -9,7 +8,7 @@ export default function FooterBar({ onBack, onGoLobby }) {
         로비로 이동
       </button>
     </footer>
-  )
+  );
 }
 
 const styles = {
@@ -41,6 +40,6 @@ const styles = {
     color: '#020617',
     fontWeight: 800,
   },
-}
+};
 
 //

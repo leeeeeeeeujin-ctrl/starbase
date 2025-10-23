@@ -1,8 +1,8 @@
-# Contributing 
+# Contributing
 
-* We aim to keep this application scope as small as possible.
-* Please don't send a PR without creating a discussion/issue about it first.
-* If proposed change does not have a clear benefit to the majority of users, it will probably not be accepted.
+- We aim to keep this application scope as small as possible.
+- Please don't send a PR without creating a discussion/issue about it first.
+- If proposed change does not have a clear benefit to the majority of users, it will probably not be accepted.
 
 ## Contributor License Agreement
 
