@@ -23,6 +23,16 @@
     "test:samples": "node scripts/run-matching-samples.js",
     "ci:test:fuzzer": "node scripts/check-fuzzer-ci.js 300"
   },
+  "prepare": "husky install",
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx}": [
+      "prettier --write",
+      "eslint --fix"
+    ],
+    "*.{css,scss,md,mdx,json}": [
+      "prettier --write"
+    ]
+  },
   "dependencies": {
     "@supabase/ssr": "0.7.0",
     "@supabase/supabase-js": "2.76.1",
@@ -57,6 +67,8 @@
     "jest-junit": "^16.0.0",
     "prettier": "^3.6.2",
     "react-test-renderer": "18.2.0",
-    "start-server-and-test": "^1.15.4"
+  "start-server-and-test": "^2.1.2",
+    "husky": "^8.0.3",
+    "lint-staged": "^16.2.6"
   }
 }

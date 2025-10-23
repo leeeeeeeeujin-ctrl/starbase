@@ -11,3 +11,7 @@ public/*
 *.jpg
 *.jpeg
 *.gif
+*.tmp
+*.ps1
+*.map
+.next/**/server/**
