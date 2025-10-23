@@ -9,8 +9,16 @@ export function logError(error, context = '') {
 export function visualizeState(state, label = 'STATE') {
   try {
     const output = debugState(state, { label, log: false })
-    if (console && typeof console.log === 'function') {
-      console.log(`[debugTool] ${label}:\n${output}`)
+    // In test environments suppress noisy console output to keep test logs clean.
+    // Override by setting DEBUG_TOOL_VERBOSE=1 in the environment.
+    const isTestEnv =
+      typeof process !== 'undefined' &&
+      ((process.env && process.env.NODE_ENV === 'test') || (process.env && process.env.JEST_WORKER_ID))
+    const forceVerbose = typeof process !== 'undefined' && process.env && process.env.DEBUG_TOOL_VERBOSE === '1'
+    if (!isTestEnv || forceVerbose) {
+      if (console && typeof console.log === 'function') {
+        console.log(`[debugTool] ${label}:\n${output}`)
+      }
     }
   } catch (e) {
     logError(e, 'visualizeState')
