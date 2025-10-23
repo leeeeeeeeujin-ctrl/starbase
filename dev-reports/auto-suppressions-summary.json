@@ -1,0 +1,95 @@
+{
+  "generatedAt": "2025-10-24T00:00:00.000Z",
+  "summary": {
+    "totalFiles": 6,
+    "notes": "This report lists locations of 'auto-suppressed' codemod insertions and nearby NOTE comments from the last repository scan. Use this to prioritize manual triage."
+  },
+  "matches": [
+    {
+      "file": "dev-reports/agent-history/AGENT_HISTORY.md",
+      "occurrences": [
+        {
+          "line": 37,
+          "text": "- `suppress-exhaustive-deps.js` — 보수적으로 `// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod` 주석을 삽입."
+        },
+        {
+          "line": 43,
+          "text": "- `mark-reviewed-suppressions.js` — auto-suppressed 위치 위에 설명 NOTE를 삽입(심사 용이)."
+        },
+        {
+          "line": 52,
+          "text": "- `mark-reviewed-suppressions.js` 실행: 자동 억제 위치 위에 설명 NOTE 코멘트 추가 (예: \"auto-suppressed by codemod... Please review manually...\")."
+        }
+      ]
+    },
+    {
+      "file": "ai-roomchat/starbase/ai-roomchat/scripts/suppress-exhaustive-deps.js",
+      "occurrences": [
+        {
+          "line": 43,
+          "text": "const comment = \"// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod\""
+        }
+      ]
+    },
+    {
+      "file": "ai-roomchat/starbase/ai-roomchat/scripts/mark-reviewed-suppressions.js",
+      "occurrences": [
+        {
+          "line": 6,
+          "text": "const MATCH = \"// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod\""
+        },
+        {
+          "line": 8,
+          "text": "  '  // NOTE: auto-suppressed by codemod. This suppression was added by automated'"
+        },
+        {
+          "line": 43,
+          "text": "if (prev >= 0 && lines[prev].includes('NOTE: auto-suppressed')) {"
+        }
+      ]
+    },
+    {
+      "file": "ai-roomchat/starbase/ai-roomchat/scripts/dedupe-suppressions.js",
+      "occurrences": [
+        {
+          "line": 7,
+          "text": "const MATCH = '// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod'"
+        }
+      ]
+    },
+    {
+      "file": "ai-roomchat/starbase/ai-roomchat/scripts/cleanup-unneeded-suppressions.js",
+      "occurrences": [
+        {
+          "line": 8,
+          "text": "const MATCH = '// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod'"
+        }
+      ]
+    },
+    {
+      "file": "ai-roomchat/starbase/ai-roomchat/reports/eslint-report-clean.json",
+      "occurrences": [
+        {
+          "line": 1219,
+          "text": "// NOTE: auto-suppressed by codemod. Compressor detail fields are nested objects that change frequently; adding them to deps caused noisy re-renders in profiling. Please review before re-enabling the rule."
+        },
+        {
+          "line": 1219,
+          "text": "// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod"
+        },
+        {
+          "line": 2009,
+          "text": "\"justification\": \"auto-suppressed by codemod\""
+        },
+        {
+          "line": 2019,
+          "text": "// NOTE: auto-suppressed by codemod. This suppression was added by automated tooling to reduce noise. Please review the surrounding effect body and either add the minimal safe dependencies or keep the suppression with an explanatory comment before removing this note."
+        },
+        {
+          "line": 2874,
+          "text": "// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod"
+        }
+      ]
+    }
+  ]
+}

@@ -90,6 +90,8 @@ import {
   subscribeConnectionRegistry,
 } from '@/lib/rank/startConnectionRegistry'
 
+import { buildParticipantsFromRoster } from './utils'
+
 function toInt(value, { min = null } = {}) {
   const numeric = Number(value)
   if (!Number.isFinite(numeric)) return null
@@ -271,13 +273,6 @@ function buildDropInMetaPayload({
 
   return meta
 }
-import {
-  isRealtimeEnabled,
-  normalizeRealtimeMode,
-  REALTIME_MODES,
-} from '@/lib/rank/realtimeModes'
-import { fetchTurnStateEvents } from '@/lib/rank/sessionMetaClient'
-
 function toTrimmedString(value) {
   if (value === null || value === undefined) return null
   const stringValue = String(value).trim()
@@ -675,66 +670,6 @@ function hydrateParticipantsWithRoster(participants = [], roster = []) {
   return decorated.map((entry) => entry.participant)
 }
 
-function buildParticipantsFromRoster(roster = []) {
-  return roster
-    .map((entry, index) => {
-      if (!entry) return null
-      const slotIndex = parseSlotIndex(entry.slotIndex, index)
-      const ownerId = toTrimmedString(entry.ownerId)
-      const heroId = toTrimmedString(entry.heroId)
-      const heroName = normalizeHeroName(entry.heroName || '')
-      const ready = Boolean(entry.ready)
-
-      if (!ownerId || !heroId) {
-        return null
-      }
-
-      return {
-        id: `roster-${slotIndex != null ? slotIndex : index}-${ownerId}`,
-        owner_id: ownerId,
-        ownerId,
-        role: entry.role || '',
-        status: ready ? 'ready' : 'alive',
-        slot_no: slotIndex,
-        slotIndex,
-        slot_index: slotIndex,
-        score: 0,
-        rating: 0,
-        battles: 0,
-        win_rate: null,
-        hero_id: heroId,
-        match_source: 'room_roster',
-        standin: false,
-        occupant_ready: ready,
-        occupant_joined_at: entry.joinedAt || null,
-        hero: {
-          id: heroId,
-          name: heroName || (heroId ? `캐릭터 #${heroId}` : '알 수 없는 영웅'),
-          description: '',
-          image_url: '',
-          background_url: '',
-          bgm_url: '',
-          bgm_duration_seconds: null,
-          ability1: '',
-          ability2: '',
-          ability3: '',
-          ability4: '',
-        },
-      }
-    })
-    .filter(Boolean)
-    .sort((a, b) => {
-      const slotA = parseSlotIndex(a.slot_no, 0)
-      const slotB = parseSlotIndex(b.slot_no, 0)
-      if (slotA != null && slotB != null) {
-        if (slotA === slotB) return 0
-        return slotA - slotB
-      }
-      if (slotA != null) return -1
-      if (slotB != null) return 1
-      return 0
-    })
-}
 
 export function useStartClientEngine(gameId, options = {}) {
   const hostOwnerIdOption = options?.hostOwnerId ?? ''

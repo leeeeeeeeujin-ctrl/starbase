@@ -39,107 +39,19 @@ import { fetchLatestSessionRow } from '@/modules/rank/matchRealtimeSync'
 import { START_SESSION_KEYS, readStartSessionValue, readStartSessionValues } from '@/lib/rank/startSessionChannel'
 import { getConnectionEntriesForGame, subscribeConnectionRegistry } from '@/lib/rank/startConnectionRegistry'
 
-function toInt(value, { min = null } = {}) {
-  const numeric = Number(value)
-  if (!Number.isFinite(numeric)) return null
-  const rounded = Math.floor(numeric)
-  if (min !== null && rounded < min) return null
-  return rounded
-}
+import {
+  toInt,
+  toTrimmed,
+  toTrimmedString,
+  sanitizeDropInArrivals,
+  stripOutcomeFooter,
+  parseSlotIndex,
+  normalizeSlotLayoutEntries,
+  mergeSlotLayoutSeed,
+  buildParticipantsFromRoster,
+} from './utils'
 
-function toTrimmed(value) {
-  if (value === null || value === undefined) return null
-  const trimmed = String(value).trim()
-  return trimmed || null
-}
 
-function sanitizeDropInArrivals(arrivals) {
-  if (!Array.isArray(arrivals) || arrivals.length === 0) return []
-  return arrivals
-    .slice(0, 8)
-    .map((arrival) => {
-      if (!arrival || typeof arrival !== 'object') return null
-      const normalized = {}
-      const ownerId =
-        arrival.ownerId ??
-        arrival.owner_id ??
-        arrival.ownerID ??
-        arrival?.owner?.id ??
-        null
-      const role = toTrimmed(arrival.role)
-      const heroName =
-        arrival.heroName ??
-        arrival.hero_name ??
-        arrival.display_name ??
-        arrival.name ??
-        null
-      const slotIndex = toInt(arrival.slotIndex, { min: 0 })
-      const timestamp = toInt(arrival.timestamp, { min: 0 })
-      const queueDepth = toInt(arrival?.stats?.queueDepth, { min: 0 })
-      const replacements = toInt(arrival?.stats?.replacements, { min: 0 })
-      const arrivalOrder = toInt(arrival?.stats?.arrivalOrder, { min: 0 })
-      const replacedOwner =
-        arrival?.replaced?.ownerId ??
-        arrival?.replaced?.owner_id ??
-        arrival?.replacedOwnerId ??
-        null
-      const replacedHero =
-        arrival?.replaced?.heroName ??
-        arrival?.replaced?.hero_name ??
-        arrival?.replacedHeroName ??
-        null
-      const status = toTrimmed(arrival.status)
-
-      if (toTrimmed(ownerId)) normalized.ownerId = toTrimmed(ownerId)
-      if (role) normalized.role = role
-      if (toTrimmed(heroName)) normalized.heroName = toTrimmed(heroName)
-      if (slotIndex !== null) normalized.slotIndex = slotIndex
-      if (timestamp !== null) normalized.timestamp = timestamp
-      if (queueDepth !== null) normalized.queueDepth = queueDepth
-      if (replacements !== null) normalized.replacements = replacements
-      if (arrivalOrder !== null) normalized.arrivalOrder = arrivalOrder
-      if (toTrimmed(replacedOwner)) normalized.replacedOwnerId = toTrimmed(replacedOwner)
-      if (toTrimmed(replacedHero)) normalized.replacedHeroName = toTrimmed(replacedHero)
-      if (status) normalized.status = status
-
-      if (Object.keys(normalized).length === 0) return null
-      return normalized
-    })
-    .filter(Boolean)
-}
-
-function stripOutcomeFooter(text = '') {
-  if (!text) return { body: '', footer: [] }
-  const working = String(text).split(/\r?\n/)
-  const footer = []
-  let captured = 0
-  let index = working.length - 1
-
-  while (index >= 0 && captured < 3) {
-    const candidate = working[index]
-    if (!candidate.trim()) {
-      working.splice(index, 1)
-      index -= 1
-      continue
-    }
-    footer.unshift(candidate)
-    working.splice(index, 1)
-    captured += 1
-
-    while (index - 1 >= 0 && !working[index - 1].trim()) {
-      working.splice(index - 1, 1)
-      index -= 1
-    }
-
-    index = working.length - 1
-  }
-
-  while (working.length && !working[working.length - 1].trim()) {
-    working.pop()
-  }
-
-  return { body: working.join('\n'), footer }
-}
 
 function buildOutcomeStatusMessage(snapshot) {
   if (!snapshot) {
@@ -233,64 +145,9 @@ function deepClone(value) {
   if (value === null || value === undefined) return value
   try {
     return JSON.parse(JSON.stringify(value))
-  } catch (error) {
+  } catch {
     return null
   }
-}
-
-function parseSlotIndex(value, fallback = null) {
-  const numeric = Number(value)
-  if (!Number.isFinite(numeric)) return fallback
-  if (numeric < 0) return fallback
-  return numeric
-}
-
-function normalizeRosterEntries(roster = []) {
-  if (!Array.isArray(roster) || roster.length === 0) return []
-
-  return roster
-    .map((entry, index) => {
-      if (!entry) return null
-
-      const slotIndex = parseSlotIndex(
-        entry.slotIndex ?? entry.slot_index ?? entry.slotNo ?? entry.slot_no,
-        index,
-      )
-      const roleValue =
-        typeof entry.role === 'string'
-          ? entry.role.trim()
-          : typeof entry.roleName === 'string'
-          ? entry.roleName.trim()
-          : ''
-      const ownerId = toTrimmedString(
-        entry.ownerId ?? entry.owner_id ?? entry.occupantOwnerId ?? entry.ownerID,
-      )
-      const heroId = toTrimmedString(
-        entry.heroId ?? entry.hero_id ?? entry.occupantHeroId ?? entry.heroID,
-      )
-      const slotId = toTrimmedString(entry.slotId ?? entry.slot_id ?? entry.id)
-      const joinedAt = entry.joinedAt ?? entry.joined_at ?? null
-      const ready = Boolean(entry.ready ?? entry.isReady ?? entry.occupantReady)
-      const heroNameValue =
-        typeof entry.heroName === 'string'
-          ? entry.heroName
-          : typeof entry.hero_name === 'string'
-          ? entry.hero_name
-          : ''
-
-      return {
-        slotId,
-        slotIndex,
-        role: roleValue || null,
-        ownerId,
-        heroId,
-        heroName: heroNameValue,
-        ready,
-        joinedAt,
-      }
-    })
-    .filter(Boolean)
-    .sort((a, b) => a.slotIndex - b.slotIndex)
 }
 
 function buildRosterEntriesFromAssignments(assignments = []) {
@@ -384,129 +241,7 @@ function buildSlotLayoutFromRosterSnapshot(roster = []) {
   })
 }
 
-function normalizeSlotLayoutEntries(list = []) {
-  if (!Array.isArray(list) || list.length === 0) return []
 
-  return list
-    .map((entry, index) => {
-      if (!entry) return null
-      const slotIndex = parseSlotIndex(
-        entry.slot_index ?? entry.slotIndex ?? entry.slotNo ?? entry.slot_no,
-        index,
-      )
-      if (slotIndex == null) return null
-      const roleValue =
-        typeof entry.role === 'string'
-          ? entry.role.trim()
-          : typeof entry.role_name === 'string'
-          ? entry.role_name.trim()
-          : ''
-      const ownerId = toTrimmedString(
-        entry.hero_owner_id ?? entry.heroOwnerId ?? entry.ownerId ?? entry.occupantOwnerId,
-      )
-      const heroId = toTrimmedString(
-        entry.hero_id ?? entry.heroId ?? entry.occupantHeroId ?? entry.heroID,
-      )
-      const occupantOwner = toTrimmedString(
-        entry.occupant_owner_id ?? entry.occupantOwnerId ?? ownerId,
-      )
-      const occupantHero = toTrimmedString(
-        entry.occupant_hero_id ?? entry.occupantHeroId ?? heroId,
-      )
-
-      return {
-        id: entry.id ?? entry.slotId ?? null,
-        slot_index: slotIndex,
-        slotIndex,
-        role: roleValue || null,
-        active: entry.active !== false,
-        hero_id: heroId,
-        hero_owner_id: ownerId,
-        occupant_owner_id: occupantOwner,
-        occupant_hero_id: occupantHero,
-        occupant_ready:
-          entry.occupant_ready ?? entry.ready ?? entry.isReady ?? false,
-        occupant_joined_at: entry.occupant_joined_at ?? entry.joinedAt ?? null,
-      }
-    })
-    .filter(Boolean)
-    .sort((a, b) => a.slot_index - b.slot_index)
-}
-
-function mergeSlotLayoutSeed(primary = [], fallback = []) {
-  const primaryList = Array.isArray(primary)
-    ? primary.map((entry) => ({ ...entry }))
-    : []
-  const fallbackList = Array.isArray(fallback)
-    ? fallback.map((entry) => ({ ...entry }))
-    : []
-
-  if (primaryList.length === 0) {
-    return fallbackList
-  }
-
-  const fallbackMap = new Map()
-  fallbackList.forEach((entry) => {
-    const slotIndex = parseSlotIndex(entry.slot_index ?? entry.slotIndex)
-    if (slotIndex == null) return
-    if (!fallbackMap.has(slotIndex)) {
-      fallbackMap.set(slotIndex, {
-        ...entry,
-        slot_index: slotIndex,
-        slotIndex,
-      })
-    }
-  })
-
-  const merged = primaryList
-    .map((entry) => {
-      const slotIndex = parseSlotIndex(entry.slot_index ?? entry.slotIndex)
-      if (slotIndex == null) return null
-      const fallbackEntry = fallbackMap.get(slotIndex)
-      if (fallbackEntry) {
-        fallbackMap.delete(slotIndex)
-        const roleValue =
-          typeof entry.role === 'string' && entry.role.trim()
-            ? entry.role.trim()
-            : fallbackEntry.role || null
-        return {
-          ...fallbackEntry,
-          ...entry,
-          id: fallbackEntry.id ?? entry.id ?? null,
-          slot_index: slotIndex,
-          slotIndex,
-          role: roleValue,
-          hero_id: entry.hero_id ?? fallbackEntry.hero_id ?? null,
-          hero_owner_id:
-            entry.hero_owner_id ?? fallbackEntry.hero_owner_id ?? null,
-          active:
-            entry.active !== undefined ? entry.active : fallbackEntry.active,
-          occupant_owner_id:
-            entry.occupant_owner_id ?? fallbackEntry.occupant_owner_id ?? null,
-          occupant_hero_id:
-            entry.occupant_hero_id ?? fallbackEntry.occupant_hero_id ?? null,
-          occupant_ready:
-            entry.occupant_ready ?? fallbackEntry.occupant_ready ?? false,
-          occupant_joined_at:
-            entry.occupant_joined_at ?? fallbackEntry.occupant_joined_at ?? null,
-        }
-      }
-      return {
-        ...entry,
-        slot_index: slotIndex,
-        slotIndex,
-        id: entry.id ?? null,
-        active: entry.active !== false,
-      }
-    })
-    .filter(Boolean)
-
-  fallbackMap.forEach((entry) => {
-    merged.push(entry)
-  })
-
-  return merged.sort((a, b) => a.slot_index - b.slot_index)
-}
 
 function hydrateParticipantsWithRoster(participants = [], roster = []) {
   const participantList = Array.isArray(participants) ? participants : []
@@ -620,66 +355,6 @@ function hydrateParticipantsWithRoster(participants = [], roster = []) {
   return decorated.map((entry) => entry.participant)
 }
 
-function buildParticipantsFromRoster(roster = []) {
-  return roster
-    .map((entry, index) => {
-      if (!entry) return null
-      const slotIndex = parseSlotIndex(entry.slotIndex, index)
-      const ownerId = toTrimmedString(entry.ownerId)
-      const heroId = toTrimmedString(entry.heroId)
-      const heroName = normalizeHeroName(entry.heroName || '')
-      const ready = Boolean(entry.ready)
-
-      if (!ownerId || !heroId) {
-        return null
-      }
-
-      return {
-        id: `roster-${slotIndex != null ? slotIndex : index}-${ownerId}`,
-        owner_id: ownerId,
-        ownerId,
-        role: entry.role || '',
-        status: ready ? 'ready' : 'alive',
-        slot_no: slotIndex,
-        slotIndex,
-        slot_index: slotIndex,
-        score: 0,
-        rating: 0,
-        battles: 0,
-        win_rate: null,
-        hero_id: heroId,
-        match_source: 'room_roster',
-        standin: false,
-        occupant_ready: ready,
-        occupant_joined_at: entry.joinedAt || null,
-        hero: {
-          id: heroId,
-          name: heroName || (heroId ? `캐릭터 #${heroId}` : '알 수 없는 영웅'),
-          description: '',
-          image_url: '',
-          background_url: '',
-          bgm_url: '',
-          bgm_duration_seconds: null,
-          ability1: '',
-          ability2: '',
-          ability3: '',
-          ability4: '',
-        },
-      }
-    })
-    .filter(Boolean)
-    .sort((a, b) => {
-      const slotA = parseSlotIndex(a.slot_no, 0)
-      const slotB = parseSlotIndex(b.slot_no, 0)
-      if (slotA != null && slotB != null) {
-        if (slotA === slotB) return 0
-        return slotA - slotB
-      }
-      if (slotA != null) return -1
-      if (slotB != null) return 1
-      return 0
-    })
-}
 
 export function useStartClientEngine(gameId, options = {}) {
   const hostOwnerIdOption = options?.hostOwnerId ?? ''
@@ -1045,13 +720,12 @@ export function useStartClientEngine(gameId, options = {}) {
       }
     },
     [
-      sessionInfo?.id,
-      gameId,
-      setGameMatchSessionMeta,
-      setTurnCallbackRef,
-      setTurnDeadlineCallbackRef,
-      setTimeRemainingCallbackRef,
-      setLastDropInTurnCallbackRef,
+        sessionInfo?.id,
+        gameId,
+        setTurnCallbackRef,
+        setTurnDeadlineCallbackRef,
+        setTimeRemainingCallbackRef,
+        setLastDropInTurnCallbackRef,
     ],
   )
   const backfillTurnEvents = useCallback(async () => {
@@ -1085,7 +759,7 @@ export function useStartClientEngine(gameId, options = {}) {
         turnEventBackfillAbortRef.current = null
       }
     }
-  }, [sessionInfo?.id, applyTurnStateChange])
+  }, [sessionInfo?.id, applyTurnStateChange, fetchTurnStateEvents])
   const patchEngineState = useCallback(
     (payload) => {
       dispatchEngine(patchMainGameState(payload))
@@ -2053,7 +1727,6 @@ export function useStartClientEngine(gameId, options = {}) {
   // tooling to reduce noise. Please review the surrounding effect body and
   // either add the minimal safe dependencies or keep the suppression with
   // an explanatory comment before removing this note.
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   const managedOwnerIds = useMemo(() => {
     const owners = collectUniqueOwnerIds(participants)
     const viewerKey = viewerId ? String(viewerId).trim() : ''
@@ -2360,7 +2033,7 @@ export function useStartClientEngine(gameId, options = {}) {
   // tooling to reduce noise. Please review the surrounding effect body and
   // either add the minimal safe dependencies or keep the suppression with
   // an explanatory comment before removing this note.
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
+          String(participant?.id ?? participant?.hero_id ?? index),
           String(participant?.id ?? participant?.hero_id ?? index),
         ),
       )
@@ -2658,8 +2331,8 @@ export function useStartClientEngine(gameId, options = {}) {
   // tooling to reduce noise. Please review the surrounding effect body and
   // either add the minimal safe dependencies or keep the suppression with
   // an explanatory comment before removing this note.
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
       sessionInfo?.id,
+  sessionInfo?.id,
       game?.name,
       participants,
       realtimePresence,
@@ -2945,8 +2618,6 @@ export function useStartClientEngine(gameId, options = {}) {
   // tooling to reduce noise. Please review the surrounding effect body and
   // either add the minimal safe dependencies or keep the suppression with
   // an explanatory comment before removing this note.
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
-
   const viewerParticipant = useMemo(() => {
     if (!viewerId) return null
     return (
@@ -2965,8 +2636,6 @@ export function useStartClientEngine(gameId, options = {}) {
   // tooling to reduce noise. Please review the surrounding effect body and
   // either add the minimal safe dependencies or keep the suppression with
   // an explanatory comment before removing this note.
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
-
   const bootLocalSession = useCallback(
     (overrides = null) => {
       if (graph.nodes.length === 0) {
@@ -3125,8 +2794,8 @@ export function useStartClientEngine(gameId, options = {}) {
   // tooling to reduce noise. Please review the surrounding effect body and
   // either add the minimal safe dependencies or keep the suppression with
   // an explanatory comment before removing this note.
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
     setStartingSession(true)
+  setStartingSession(true)
     setStatusMessage('세션을 준비하는 중입니다…')
 
     let sessionReady = false
@@ -3279,11 +2948,10 @@ export function useStartClientEngine(gameId, options = {}) {
         return
       }
 
-  // NOTE: auto-suppressed by codemod. This suppression was added by automated
-  // tooling to reduce noise. Please review the surrounding effect body and
-  // either add the minimal safe dependencies or keep the suppression with
-  // an explanatory comment before removing this note.
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
+      // NOTE: auto-suppressed by codemod. This suppression was added by automated
+      // tooling to reduce noise. Please review the surrounding effect body and
+      // either add the minimal safe dependencies or keep the suppression with
+      // an explanatory comment before removing this note.
       const advanceReason =
         typeof options?.reason === 'string' && options.reason.trim()
           ? options.reason.trim()
@@ -4291,6 +3959,10 @@ export function useStartClientEngine(gameId, options = {}) {
       ? Math.floor(Number(lastDropInTurn))
       : 0
 
+    // NOTE: auto-suppressed by codemod. This suppression was added by automated
+    // tooling to reduce noise. Please review the surrounding effect body and
+    // either add the minimal safe dependencies or keep the suppression with
+    // an explanatory comment before removing this note.
     const service = turnTimerServiceRef.current
     if (!service) {
       return {
@@ -4301,11 +3973,6 @@ export function useStartClientEngine(gameId, options = {}) {
         pendingDropInBonus: false,
         lastTurnNumber: fallbackTurn,
         lastDropInAppliedTurn: fallbackDropInTurn,
-  // NOTE: auto-suppressed by codemod. This suppression was added by automated
-  // tooling to reduce noise. Please review the surrounding effect body and
-  // either add the minimal safe dependencies or keep the suppression with
-  // an explanatory comment before removing this note.
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
       }
     }
 
@@ -4331,7 +3998,7 @@ export function useStartClientEngine(gameId, options = {}) {
         ? Math.floor(Number(snapshot.lastDropInAppliedTurn))
         : fallbackDropInTurn,
     }
-  }, [turnTimerSeconds, turn, lastDropInTurn, timeRemaining, turnDeadline])
+  }, [turnTimerSeconds, turn, lastDropInTurn])
 
   return {
     loading,
@@ -4376,7 +4043,7 @@ export function useStartClientEngine(gameId, options = {}) {
   // tooling to reduce noise. Please review the surrounding effect body and
   // either add the minimal safe dependencies or keep the suppression with
   // an explanatory comment before removing this note.
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
+    timeRemaining,
     timeRemaining,
     turnDeadline,
     currentActor: currentActorInfo,
