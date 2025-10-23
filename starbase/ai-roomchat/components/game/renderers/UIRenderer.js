@@ -11,17 +11,22 @@ export default class UIRenderer {
       fontSize: 'medium',
       ...options,
     }
-
-    // Tests expect constructor to require a canvas option
-    if (!options.canvas) {
+    // If caller explicitly supplied an options object but didn't provide a canvas,
+    // treat that as a mis-use and throw so tests that assert this behavior pass.
+    // If caller passed an argument at all (arguments.length > 0) but didn't provide a canvas,
+    // tests expect a constructor-time error. Using arguments.length lets us distinguish
+    // between `new UIRenderer()` and `new UIRenderer({})`.
+    if (arguments.length > 0 && (!options || !options.canvas)) {
       throw new Error('[UIRenderer] Canvas element is required')
     }
 
-    // canvas-backed renderer fields (tests expect these)
-    this.canvas = options.canvas
+    // Allow instances to be created without a canvas when no options object
+    // was explicitly provided (some higher-level modules create and then call
+    // initialize(container)). Initialize will set up a canvas/container as needed.
+    this.canvas = options && options.canvas ? options.canvas : null
     this.ctx = (this.canvas && this.canvas.getContext) ? this.canvas.getContext('2d') : null
-    this.width = options.width || this.canvas.width || this.canvas.clientWidth || 0
-    this.height = options.height || this.canvas.height || this.canvas.clientHeight || 0
+    this.width = options && options.width ? options.width : (this.canvas && (this.canvas.width || this.canvas.clientWidth)) || 0
+    this.height = options && options.height ? options.height : (this.canvas && (this.canvas.height || this.canvas.clientHeight)) || 0
     this.iconCache = new Map()
     this.lastRenderTime = 0
     this.layout = {
@@ -29,7 +34,8 @@ export default class UIRenderer {
       inventory: {},
       miniMap: {},
     }
-    this.isInitialized = true
+    // Mark initialized only if a canvas was supplied at construction time.
+    this.isInitialized = !!this.canvas
   }
 
   /**
@@ -41,7 +47,7 @@ export default class UIRenderer {
         throw new Error('Container element is required')
       }
 
-      // If a canvas element is provided, create overlay wrapper
+      // If a canvas element is provided, use it as the canvas; create overlay wrapper
       if (containerElement.tagName && containerElement.tagName.toLowerCase() === 'canvas') {
         this.canvas = containerElement
         this.ctx = this.canvas.getContext && this.canvas.getContext('2d')

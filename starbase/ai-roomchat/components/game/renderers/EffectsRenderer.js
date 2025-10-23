@@ -4,18 +4,19 @@
  */
 export default class EffectsRenderer {
   constructor(options = {}) {
-    // If constructed without a canvas option, tests expect an error
-    if (!options || !options.canvas) {
+    // Allow instantiation without a canvas; initialize() will accept a container
+    // If caller supplied options but didn't provide a canvas, tests expect an error
+    if (arguments.length > 0 && (!options || !options.canvas)) {
       throw new Error('[EffectsRenderer] Canvas element is required')
     }
 
-    this.canvas = options.canvas
-    this.ctx = this.canvas.getContext && this.canvas.getContext('2d')
-    this.width = options.width || this.canvas.width || 800
-    this.height = options.height || this.canvas.height || 600
+    this.canvas = options.canvas || null
+    this.ctx = this.canvas && this.canvas.getContext ? this.canvas.getContext('2d') : null
+    this.width = options.width || (this.canvas && (this.canvas.width || 800)) || 800
+    this.height = options.height || (this.canvas && (this.canvas.height || 600)) || 600
 
     // style sizing for tests which check style.width/height
-    if (this.canvas.style) {
+    if (this.canvas && this.canvas.style) {
       this.canvas.style.width = `${this.width}px`
       this.canvas.style.height = `${this.height}px`
     }
@@ -29,6 +30,8 @@ export default class EffectsRenderer {
     // particle pool and active list
     this.particles = new Array(this.options.maxParticles).fill(null).map(() => new PoolParticle())
     this.activeParticles = []
+  // backward-compatible effects list used by some tests/modules
+  this.effects = []
 
     // screen effects state
     this.screenEffects = {
@@ -37,7 +40,8 @@ export default class EffectsRenderer {
       flash: { active: false, color: '#fff', duration: 0, elapsed: 0 },
     }
 
-    this.isInitialized = true
+    // mark initialized only if a canvas was supplied synchronously
+    this.isInitialized = !!this.canvas
     this.isAnimating = false
     this.animationFrameId = null
   }
@@ -114,15 +118,20 @@ export default class EffectsRenderer {
    */
   addEffect(type, options = {}) {
     // compatibility helper: add old-style effects
+    // maintain backward-compatible 'effects' array for older modules/tests
+    this.effects = this.effects || []
     switch (type) {
       case 'particle':
         this.emitExplosion(options.x || 0, options.y || 0, { count: 1, ...options })
+        this.effects.push({ type: 'particle', options })
         break
       case 'flash':
         this.flashScreen(options.color || '#fff', options.duration || 0.2)
+        this.effects.push({ type: 'flash', options })
         break
       case 'shake':
         this.shakeScreen(options.intensity || 10, options.duration || 0.3)
+        this.effects.push({ type: 'shake', options })
         break
       default:
         console.warn(`[EffectsRenderer] 알 수 없는 효과 타입: ${type}`)
@@ -173,6 +182,8 @@ export default class EffectsRenderer {
   clearAllEffects() {
     // reset active particles and pool
     this.activeParticles = []
+    // clear legacy effects list
+    if (Array.isArray(this.effects)) this.effects.length = 0
     // reset screen effects
     this.screenEffects.shake = { active: false, intensity: 0, duration: 0, elapsed: 0 }
     this.screenEffects.fade = { active: false, target: 0, duration: 0, elapsed: 0 }

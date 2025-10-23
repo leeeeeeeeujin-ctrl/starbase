@@ -153,11 +153,19 @@ describe('MobileOptimizationManager', () => {
 
   describe('터치 이벤트 처리', () => {
     beforeEach(async () => {
+      // Use fake timers for touch/timing tests so jest.advanceTimersByTime works
+      // and long-press timeouts fire deterministically.
+      jest.useFakeTimers();
       mockMobileEnvironment('ios12Safari');
       await manager.initialize({
         element: mockElement,
         enableTouchOptimization: true
       });
+    });
+
+    afterEach(() => {
+      // Restore real timers to avoid leaking fake timers into other tests
+      jest.useRealTimers();
     });
 
     test('터치 시작 이벤트 처리', () => {

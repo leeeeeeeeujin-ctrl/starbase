@@ -16,8 +16,8 @@ export default function LobbyHeader({ onBack, navLinks = [] }) {
       {navLinks.length ? (
         <nav style={styles.nav}>
           {navLinks.map((item) => (
-            <Link key={item.href} href={item.href}>
-              <a style={styles.navLink}>{item.label}</a>
+            <Link key={item.href} href={item.href} style={styles.navLink}>
+              {item.label}
             </Link>
           ))}
         </nav>

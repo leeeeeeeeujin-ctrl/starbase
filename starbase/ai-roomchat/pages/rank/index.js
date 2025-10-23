@@ -25,8 +25,8 @@ export default function RankHub() {
             게임을 고르거나, 새 게임을 등록하세요 · 총 {count}개
           </span>
         </div>
-        <Link href="/rank/new">
-          <a style={{ padding:'8px 12px', borderRadius:8, background:'#111827', color:'#fff', fontWeight:700 }}>+ 게임 등록</a>
+        <Link href="/rank/new" style={{ padding:'8px 12px', borderRadius:8, background:'#111827', color:'#fff', fontWeight:700, display:'inline-block', textDecoration:'none' }}>
+          + 게임 등록
         </Link>
       </div>
 

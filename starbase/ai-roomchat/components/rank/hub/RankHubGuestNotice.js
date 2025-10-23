@@ -17,9 +17,7 @@ export default function RankHubGuestNotice() {
     <div style={styles.root}>
       <h2>랭킹 허브</h2>
       <p>랭킹 기능을 사용하려면 로그인하세요.</p>
-      <Link href="/">
-        <a style={styles.button}>홈으로</a>
-      </Link>
+      <Link href="/" style={styles.button}>홈으로</Link>
     </div>
   )
 }

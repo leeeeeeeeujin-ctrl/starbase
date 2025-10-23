@@ -23,15 +23,9 @@ export default function RankHubHeader() {
     <header style={styles.root}>
       <h2 style={styles.title}>랭킹 허브</h2>
       <div style={styles.links}>
-        <Link href="/roster">
-          <a style={styles.linkButton}>로스터</a>
-        </Link>
-        <Link href="/maker">
-          <a style={styles.linkButton}>게임 제작</a>
-        </Link>
-        <Link href="/rank/new">
-          <a style={styles.linkButton}>게임 등록</a>
-        </Link>
+        <Link href="/roster" style={styles.linkButton}>로스터</Link>
+        <Link href="/maker" style={styles.linkButton}>게임 제작</Link>
+        <Link href="/rank/new" style={styles.linkButton}>게임 등록</Link>
       </div>
     </header>
   )
