@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 
-import { UIRenderer } from '@/components/game/renderers/UIRenderer'
+import UIRenderer from '@/components/game/renderers/UIRenderer'
 
 // Mock canvas context
 const mockContext = {

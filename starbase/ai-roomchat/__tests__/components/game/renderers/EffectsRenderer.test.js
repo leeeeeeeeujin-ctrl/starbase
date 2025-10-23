@@ -2,7 +2,7 @@
  * @jest-environment jsdom
  */
 
-import { EffectsRenderer } from '@/components/game/renderers/EffectsRenderer'
+import EffectsRenderer from '@/components/game/renderers/EffectsRenderer'
 
 // Mock canvas context
 const mockContext = {
