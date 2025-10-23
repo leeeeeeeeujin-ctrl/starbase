@@ -20,81 +20,80 @@ const FALLBACK_TABLES = {
   rank_match_queue: ['rank_match_queue'],
   rank_audio_preferences: ['rank_audio_preferences'],
   rank_audio_events: ['rank_audio_events'],
-}
+};
 
-const resolvedTableCache = {}
+const resolvedTableCache = {};
 
 function normaliseCandidates(logical) {
-  const preset = FALLBACK_TABLES[logical] || [logical]
-  const cached = resolvedTableCache[logical]
-  if (!cached) return preset
-  const unique = new Set([cached, ...preset])
-  return Array.from(unique)
+  const preset = FALLBACK_TABLES[logical] || [logical];
+  const cached = resolvedTableCache[logical];
+  if (!cached) return preset;
+  const unique = new Set([cached, ...preset]);
+  return Array.from(unique);
 }
 
 function isMissingTableError(error, tableName) {
-  if (!error) return false
-  if (error.code === '42P01') return true
+  if (!error) return false;
+  if (error.code === '42P01') return true;
 
-  const merged = `${error.message || ''} ${error.details || ''}`.toLowerCase()
-  if (!merged.trim()) return false
+  const merged = `${error.message || ''} ${error.details || ''}`.toLowerCase();
+  if (!merged.trim()) return false;
 
-  const mentionsColumn = merged.includes('column') || merged.includes('attribute')
-  if (mentionsColumn) return false
+  const mentionsColumn = merged.includes('column') || merged.includes('attribute');
+  if (mentionsColumn) return false;
 
   const mentionsRelation =
     merged.includes('relation') ||
     merged.includes('table') ||
-    merged.includes('missing from-clause entry for table')
+    merged.includes('missing from-clause entry for table');
 
-  if (merged.includes(`relation "${tableName.toLowerCase()}"`)) return true
-  if (merged.includes(`table "${tableName.toLowerCase()}"`)) return true
+  if (merged.includes(`relation "${tableName.toLowerCase()}"`)) return true;
+  if (merged.includes(`table "${tableName.toLowerCase()}"`)) return true;
 
-  if (mentionsRelation && merged.includes('does not exist')) return true
-  if (mentionsRelation && merged.includes('not exist')) return true
-  if (merged.includes('undefined table')) return true
+  if (mentionsRelation && merged.includes('does not exist')) return true;
+  if (mentionsRelation && merged.includes('not exist')) return true;
+  if (merged.includes('undefined table')) return true;
 
-  return false
+  return false;
 }
 
 function wrapResult(result, tableName, logical) {
-  if (!result) return { data: null, error: null, table: tableName }
-  const { error } = result
+  if (!result) return { data: null, error: null, table: tableName };
+  const { error } = result;
   if (!error) {
-    resolvedTableCache[logical] = tableName
-    return { ...result, table: tableName }
+    resolvedTableCache[logical] = tableName;
+    return { ...result, table: tableName };
   }
-  return { ...result, table: tableName }
+  return { ...result, table: tableName };
 }
 
 export async function withTable(supabaseClient, logicalName, executor) {
-  const candidates = normaliseCandidates(logicalName)
-  let lastMissing = null
+  const candidates = normaliseCandidates(logicalName);
+  let lastMissing = null;
   for (const tableName of candidates) {
-    const result = await executor(tableName)
-    const wrapped = wrapResult(result, tableName, logicalName)
-    if (!wrapped.error) return wrapped
+    const result = await executor(tableName);
+    const wrapped = wrapResult(result, tableName, logicalName);
+    if (!wrapped.error) return wrapped;
     if (isMissingTableError(wrapped.error, tableName)) {
       if (resolvedTableCache[logicalName] === tableName) {
-        delete resolvedTableCache[logicalName]
+        delete resolvedTableCache[logicalName];
       }
-      lastMissing = wrapped
-      continue
+      lastMissing = wrapped;
+      continue;
     }
-    return wrapped
+    return wrapped;
   }
-  return lastMissing || { data: null, error: new Error(`No accessible table for ${logicalName}`) }
+  return lastMissing || { data: null, error: new Error(`No accessible table for ${logicalName}`) };
 }
 
 export function getResolvedTable(logicalName) {
-  return resolvedTableCache[logicalName] || null
+  return resolvedTableCache[logicalName] || null;
 }
 
 export async function withTableQuery(supabaseClient, logicalName, handler) {
-  return withTable(supabaseClient, logicalName, (tableName) =>
-    handler(supabaseClient.from(tableName), tableName),
-  )
+  return withTable(supabaseClient, logicalName, tableName =>
+    handler(supabaseClient.from(tableName), tableName)
+  );
 }
 
-// 
-
+//

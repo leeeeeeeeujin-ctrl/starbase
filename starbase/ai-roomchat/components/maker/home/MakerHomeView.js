@@ -1,8 +1,8 @@
-'use client'
+'use client';
 
-import MakerHomeHeader from './MakerHomeHeader'
-import PromptSetCard from './PromptSetCard'
-import QuickActionsSheet from './QuickActionsSheet'
+import MakerHomeHeader from './MakerHomeHeader';
+import PromptSetCard from './PromptSetCard';
+import QuickActionsSheet from './QuickActionsSheet';
 
 export default function MakerHomeView({
   backgroundImage,
@@ -43,12 +43,10 @@ export default function MakerHomeView({
         background: 'linear-gradient(180deg, #0f172a 0%, #1f2937 28%, #0f172a 100%)',
         display: 'flex',
         flexDirection: 'column',
-      }
+      };
 
   return (
-    <div
-      style={pageBackground}
-    >
+    <div style={pageBackground}>
       <div
         style={{
           flex: '1 1 auto',
@@ -102,7 +100,8 @@ export default function MakerHomeView({
               <div style={{ display: 'grid', gap: 6 }}>
                 <p style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>내 프롬프트 세트</p>
                 <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: '#cbd5f5' }}>
-                  캐릭터 화면과 동일한 배경 위에서 세트를 정리할 수 있도록 레이아웃을 간결하게 정리했습니다. 아래 목록에서 편집할 세트를 골라보세요.
+                  캐릭터 화면과 동일한 배경 위에서 세트를 정리할 수 있도록 레이아웃을 간결하게
+                  정리했습니다. 아래 목록에서 편집할 세트를 골라보세요.
                 </p>
               </div>
               <button
@@ -160,7 +159,7 @@ export default function MakerHomeView({
               )}
 
               {!loading &&
-                rows.map((row) => (
+                rows.map(row => (
                   <PromptSetCard
                     key={row.id}
                     row={row}
@@ -213,5 +212,5 @@ export default function MakerHomeView({
         onExportSet={onExportSet}
       />
     </div>
-  )
+  );
 }

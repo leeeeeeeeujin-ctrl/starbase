@@ -29,13 +29,13 @@ if (!validTypes.includes(type)) {
 try {
   console.log('📁 Staging changes...');
   execSync('git add .', { stdio: 'inherit' });
-  
+
   console.log('💾 Committing...');
   execSync(`git commit -m "${type}: ${message}"`, { stdio: 'inherit' });
-  
+
   console.log('\n✅ Committed successfully!');
   console.log(`   ${type}: ${message}`);
-  
+
   // Show what's next
   console.log('\n📤 Next steps:');
   console.log('   git push origin main');

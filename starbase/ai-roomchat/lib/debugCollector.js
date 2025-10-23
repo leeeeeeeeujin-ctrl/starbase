@@ -1,32 +1,30 @@
-const MAX_EVENTS = 200
+const MAX_EVENTS = 200;
 
-const events = []
-const listeners = new Set()
+const events = [];
+const listeners = new Set();
 
 function cloneEvents() {
-  return events.map((event) => ({ ...event }))
+  return events.map(event => ({ ...event }));
 }
 
 function notify() {
-  const snapshot = cloneEvents()
-  listeners.forEach((listener) => {
+  const snapshot = cloneEvents();
+  listeners.forEach(listener => {
     try {
-      listener(snapshot)
+      listener(snapshot);
     } catch (error) {
       // Swallow listener errors to keep the collector resilient
       if (typeof console !== 'undefined' && typeof console.error === 'function') {
-        console.error('[DebugCollector] listener error', error)
+        console.error('[DebugCollector] listener error', error);
       }
     }
-  })
+  });
 }
 
 export function addDebugEvent(entry = {}) {
-  const timestamp = entry.timestamp || new Date().toISOString()
+  const timestamp = entry.timestamp || new Date().toISOString();
   const event = {
-    id:
-      entry.id ||
-      `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
+    id: entry.id || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
     level: entry.level || entry.severity || 'info',
     source: entry.source || 'unknown',
     message: entry.message || '',
@@ -34,43 +32,43 @@ export function addDebugEvent(entry = {}) {
     payload: entry.payload || null,
     timestamp,
     meta: entry.meta || null,
-  }
+  };
 
-  events.push(event)
+  events.push(event);
   if (events.length > MAX_EVENTS) {
-    events.splice(0, events.length - MAX_EVENTS)
+    events.splice(0, events.length - MAX_EVENTS);
   }
 
-  notify()
-  return event
+  notify();
+  return event;
 }
 
 export function clearDebugEvents() {
-  events.splice(0, events.length)
-  notify()
+  events.splice(0, events.length);
+  notify();
 }
 
 export function getDebugEvents() {
-  return cloneEvents()
+  return cloneEvents();
 }
 
 export function subscribeDebugEvents(listener) {
   if (typeof listener !== 'function') {
-    return () => {}
+    return () => {};
   }
-  listeners.add(listener)
+  listeners.add(listener);
   try {
-    listener(cloneEvents())
+    listener(cloneEvents());
   } catch (error) {
     // Ignore initial delivery errors
   }
   return () => {
-    listeners.delete(listener)
-  }
+    listeners.delete(listener);
+  };
 }
 
 export function addSupabaseDebugEvent(context) {
-  if (!context) return null
+  if (!context) return null;
   const {
     error,
     source = 'supabase',
@@ -81,14 +79,10 @@ export function addSupabaseDebugEvent(context) {
     hint,
     status,
     payload,
-  } = context
+  } = context;
 
   const baseMessage =
-    message ||
-    error?.message ||
-    error?.code ||
-    error?.hint ||
-    'Supabase operation failed'
+    message || error?.message || error?.code || error?.hint || 'Supabase operation failed';
 
   return addDebugEvent({
     level,
@@ -106,7 +100,7 @@ export function addSupabaseDebugEvent(context) {
       operation,
       source,
     },
-  })
+  });
 }
 
 export function addClientErrorDebugEvent(message, context = {}) {
@@ -117,5 +111,5 @@ export function addClientErrorDebugEvent(message, context = {}) {
     details: context.details || null,
     payload: context.payload || null,
     meta: context.meta || null,
-  })
+  });
 }

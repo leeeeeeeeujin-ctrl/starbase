@@ -1,40 +1,38 @@
-import { normalizeTimelineStatus } from '@/lib/rank/timelineEvents'
-import { createDropInQueueService } from './dropInQueueService'
+import { normalizeTimelineStatus } from '@/lib/rank/timelineEvents';
+import { createDropInQueueService } from './dropInQueueService';
 
 function determineArrivalReason(arrival, fallbackMode = 'async') {
   if (!arrival) {
-    return fallbackMode === 'realtime' ? 'realtime_joined' : 'async_queue_entry'
+    return fallbackMode === 'realtime' ? 'realtime_joined' : 'async_queue_entry';
   }
   if (arrival.stats?.lastDepartureCause) {
-    return arrival.stats.lastDepartureCause
+    return arrival.stats.lastDepartureCause;
   }
   if (!arrival.replaced) {
-    return fallbackMode === 'realtime' ? 'realtime_joined' : 'async_queue_entry'
+    return fallbackMode === 'realtime' ? 'realtime_joined' : 'async_queue_entry';
   }
-  const replacedStatus = normalizeTimelineStatus(arrival.replaced.status)
+  const replacedStatus = normalizeTimelineStatus(arrival.replaced.status);
   if (replacedStatus === 'defeated') {
-    return 'role_defeated'
+    return 'role_defeated';
   }
   if (replacedStatus === 'spectating') {
-    return 'role_spectating'
+    return 'role_spectating';
   }
   if (replacedStatus === 'proxy') {
-    return fallbackMode === 'realtime' ? 'realtime_proxy' : 'async_proxy_rotation'
+    return fallbackMode === 'realtime' ? 'realtime_proxy' : 'async_proxy_rotation';
   }
   if (replacedStatus === 'pending') {
-    return 'async_pending'
+    return 'async_pending';
   }
-  return fallbackMode === 'realtime' ? 'realtime_drop_in' : 'async_substitution'
+  return fallbackMode === 'realtime' ? 'realtime_drop_in' : 'async_substitution';
 }
 
 function buildTimelineEvent(arrival, { mode = 'async' } = {}) {
-  if (!arrival) return null
+  if (!arrival) return null;
   const status =
-    normalizeTimelineStatus(arrival.status) || (mode === 'realtime' ? 'active' : 'proxy')
-  const cause = determineArrivalReason(arrival, mode)
-  const normalizedTurn = Number.isFinite(Number(arrival.turn))
-    ? Number(arrival.turn)
-    : null
+    normalizeTimelineStatus(arrival.status) || (mode === 'realtime' ? 'active' : 'proxy');
+  const cause = determineArrivalReason(arrival, mode);
+  const normalizedTurn = Number.isFinite(Number(arrival.turn)) ? Number(arrival.turn) : null;
 
   return {
     type: 'drop_in_joined',
@@ -60,51 +58,49 @@ function buildTimelineEvent(arrival, { mode = 'async' } = {}) {
         lastDepartureCause: arrival.stats?.lastDepartureCause || null,
       },
     },
-  }
+  };
 }
 
 export function createAsyncSessionManager({ dropInQueue = null } = {}) {
-  const queue = dropInQueue || createDropInQueueService()
-  let lastSnapshot = queue?.getSnapshot ? queue.getSnapshot() : { roles: [] }
+  const queue = dropInQueue || createDropInQueueService();
+  let lastSnapshot = queue?.getSnapshot ? queue.getSnapshot() : { roles: [] };
 
   function handleQueueResult(queueResult = {}, { mode = 'async' } = {}) {
     if (queueResult?.snapshot) {
-      lastSnapshot = queueResult.snapshot
+      lastSnapshot = queueResult.snapshot;
     }
-    const arrivals = Array.isArray(queueResult?.arrivals) ? queueResult.arrivals : []
+    const arrivals = Array.isArray(queueResult?.arrivals) ? queueResult.arrivals : [];
     if (!arrivals.length) {
-      return { events: [], snapshot: lastSnapshot }
+      return { events: [], snapshot: lastSnapshot };
     }
-    const events = arrivals
-      .map((arrival) => buildTimelineEvent(arrival, { mode }))
-      .filter(Boolean)
-    return { events, snapshot: lastSnapshot }
+    const events = arrivals.map(arrival => buildTimelineEvent(arrival, { mode })).filter(Boolean);
+    return { events, snapshot: lastSnapshot };
   }
 
   return {
     syncParticipants(participants = [], options = {}) {
-      const mode = options?.mode || 'async'
+      const mode = options?.mode || 'async';
       const queueResult = queue.syncParticipants(participants, {
         turnNumber: options?.turnNumber ?? null,
         mode,
-      })
-      return handleQueueResult(queueResult, { mode })
+      });
+      return handleQueueResult(queueResult, { mode });
     },
     processQueueResult(queueResult = {}, options = {}) {
-      const mode = options?.mode || 'async'
-      return handleQueueResult(queueResult, { mode })
+      const mode = options?.mode || 'async';
+      return handleQueueResult(queueResult, { mode });
     },
     getSnapshot() {
-      return lastSnapshot
+      return lastSnapshot;
     },
     reset() {
       if (queue && typeof queue.reset === 'function') {
-        queue.reset()
+        queue.reset();
       }
-      lastSnapshot = queue?.getSnapshot ? queue.getSnapshot() : { roles: [] }
-      return lastSnapshot
+      lastSnapshot = queue?.getSnapshot ? queue.getSnapshot() : { roles: [] };
+      return lastSnapshot;
     },
-  }
+  };
 }
 
-export default createAsyncSessionManager
+export default createAsyncSessionManager;

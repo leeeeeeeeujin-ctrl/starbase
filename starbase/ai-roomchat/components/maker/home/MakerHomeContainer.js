@@ -1,21 +1,21 @@
-'use client'
+'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useRouter } from 'next/router'
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/router';
 
-import { useMakerHome } from '../../../hooks/maker/useMakerHome'
-import MakerHomeView from './MakerHomeView'
-import { readHeroSelection } from '../../../lib/heroes/selectedHeroStorage'
-import { useSharedPromptSetStorage } from '../../../hooks/shared/useSharedPromptSetStorage'
+import { useMakerHome } from '../../../hooks/maker/useMakerHome';
+import MakerHomeView from './MakerHomeView';
+import { readHeroSelection } from '../../../lib/heroes/selectedHeroStorage';
+import { useSharedPromptSetStorage } from '../../../hooks/shared/useSharedPromptSetStorage';
 
 export default function MakerHomeContainer() {
-  const router = useRouter()
-  const [returnHeroId, setReturnHeroId] = useState('')
-  const { backgroundUrl, setPromptSetId } = useSharedPromptSetStorage()
+  const router = useRouter();
+  const [returnHeroId, setReturnHeroId] = useState('');
+  const { backgroundUrl, setPromptSetId } = useSharedPromptSetStorage();
 
   const handleUnauthorized = useCallback(() => {
-    router.replace('/')
-  }, [router])
+    router.replace('/');
+  }, [router]);
 
   const {
     hydrated,
@@ -31,131 +31,131 @@ export default function MakerHomeContainer() {
     importFromFile,
     setErrorMessage,
     setNoticeMessage,
-  } = useMakerHome({ onUnauthorized: handleUnauthorized })
+  } = useMakerHome({ onUnauthorized: handleUnauthorized });
 
-  const [editingId, setEditingId] = useState(null)
-  const [editingName, setEditingName] = useState('')
-  const [savingRename, setSavingRename] = useState(false)
-  const [actionSheetOpen, setActionSheetOpen] = useState(false)
+  const [editingId, setEditingId] = useState(null);
+  const [editingName, setEditingName] = useState('');
+  const [savingRename, setSavingRename] = useState(false);
+  const [actionSheetOpen, setActionSheetOpen] = useState(false);
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    const selection = readHeroSelection()
-    setReturnHeroId(selection?.heroId || '')
-  }, [])
+    if (typeof window === 'undefined') return;
+    const selection = readHeroSelection();
+    setReturnHeroId(selection?.heroId || '');
+  }, []);
 
   const listHeader = useMemo(() => {
-    if (loading) return '세트를 불러오는 중입니다.'
-    if (rows.length === 0) return '아직 등록된 프롬프트 세트가 없습니다.'
-    return `총 ${rows.length}개 세트`
-  }, [loading, rows])
+    if (loading) return '세트를 불러오는 중입니다.';
+    if (rows.length === 0) return '아직 등록된 프롬프트 세트가 없습니다.';
+    return `총 ${rows.length}개 세트`;
+  }, [loading, rows]);
 
-  const handleBeginRename = useCallback((row) => {
-    setEditingId(row.id)
-    setEditingName(row.name ?? '')
-  }, [])
+  const handleBeginRename = useCallback(row => {
+    setEditingId(row.id);
+    setEditingName(row.name ?? '');
+  }, []);
 
   const handleCancelRename = useCallback(() => {
-    setEditingId(null)
-    setEditingName('')
-    setSavingRename(false)
-  }, [])
+    setEditingId(null);
+    setEditingName('');
+    setSavingRename(false);
+  }, []);
 
   const handleSubmitRename = useCallback(
-    async (event) => {
-      event.preventDefault()
-      if (!editingId) return
+    async event => {
+      event.preventDefault();
+      if (!editingId) return;
 
       try {
-        setSavingRename(true)
-        await renameSet(editingId, editingName)
-        handleCancelRename()
+        setSavingRename(true);
+        await renameSet(editingId, editingName);
+        handleCancelRename();
       } catch (err) {
-        console.error(err)
-        alert(err instanceof Error ? err.message : '세트 이름을 변경하지 못했습니다.')
+        console.error(err);
+        alert(err instanceof Error ? err.message : '세트 이름을 변경하지 못했습니다.');
       } finally {
-        setSavingRename(false)
+        setSavingRename(false);
       }
     },
-    [editingId, editingName, handleCancelRename, renameSet],
-  )
+    [editingId, editingName, handleCancelRename, renameSet]
+  );
 
   const handleDeleteSet = useCallback(
-    async (id) => {
+    async id => {
       if (!confirm('세트를 삭제할까요? (프롬프트/브릿지 포함)')) {
-        return
+        return;
       }
 
       try {
-        await deleteSet(id)
+        await deleteSet(id);
       } catch (err) {
-        console.error(err)
-        alert(err instanceof Error ? err.message : '세트를 삭제하지 못했습니다.')
+        console.error(err);
+        alert(err instanceof Error ? err.message : '세트를 삭제하지 못했습니다.');
       }
     },
-    [deleteSet],
-  )
+    [deleteSet]
+  );
 
   const handleCreateSet = useCallback(async () => {
     try {
-      const inserted = await createSet()
-      setActionSheetOpen(false)
+      const inserted = await createSet();
+      setActionSheetOpen(false);
       if (inserted?.id) {
-        setPromptSetId(inserted.id)
-        router.push(`/maker/${inserted.id}`)
+        setPromptSetId(inserted.id);
+        router.push(`/maker/${inserted.id}`);
       }
     } catch (err) {
-      console.error(err)
-      alert(err instanceof Error ? err.message : '세트를 생성하지 못했습니다.')
+      console.error(err);
+      alert(err instanceof Error ? err.message : '세트를 생성하지 못했습니다.');
     }
-  }, [createSet, router, setPromptSetId])
+  }, [createSet, router, setPromptSetId]);
 
   const handleImportFile = useCallback(
-    async (file) => {
-      if (!file) return
+    async file => {
+      if (!file) return;
       try {
-        const inserted = await importFromFile(file)
-        setActionSheetOpen(false)
+        const inserted = await importFromFile(file);
+        setActionSheetOpen(false);
         if (inserted?.id) {
-          setPromptSetId(inserted.id)
-          router.push(`/maker/${inserted.id}`)
+          setPromptSetId(inserted.id);
+          router.push(`/maker/${inserted.id}`);
         }
       } catch (err) {
-        console.error(err)
-        alert(err instanceof Error ? err.message : 'JSON을 불러오지 못했습니다.')
+        console.error(err);
+        alert(err instanceof Error ? err.message : 'JSON을 불러오지 못했습니다.');
       }
     },
-    [importFromFile, router, setPromptSetId],
-  )
+    [importFromFile, router, setPromptSetId]
+  );
 
   const handleExportSet = useCallback(
-    async (id) => {
+    async id => {
       try {
-        setActionSheetOpen(false)
-        await exportSet(id)
+        setActionSheetOpen(false);
+        await exportSet(id);
       } catch (err) {
-        console.error(err)
-        alert(err instanceof Error ? err.message : '세트를 내보내지 못했습니다.')
+        console.error(err);
+        alert(err instanceof Error ? err.message : '세트를 내보내지 못했습니다.');
       }
     },
-    [exportSet, setActionSheetOpen],
-  )
+    [exportSet, setActionSheetOpen]
+  );
 
   const handleRefresh = useCallback(() => {
-    setErrorMessage('')
-    setNoticeMessage('')
-    refresh()
-  }, [refresh, setErrorMessage, setNoticeMessage])
+    setErrorMessage('');
+    setNoticeMessage('');
+    refresh();
+  }, [refresh, setErrorMessage, setNoticeMessage]);
 
   const handleGoBack = useCallback(() => {
     if (returnHeroId) {
-      router.push(`/character/${returnHeroId}`)
+      router.push(`/character/${returnHeroId}`);
     } else {
-      router.push('/roster')
+      router.push('/roster');
     }
-  }, [returnHeroId, router])
+  }, [returnHeroId, router]);
 
   if (!hydrated) {
-    return null
+    return null;
   }
 
   return (
@@ -175,9 +175,9 @@ export default function MakerHomeContainer() {
       onSubmitRename={handleSubmitRename}
       onCancelRename={handleCancelRename}
       onDeleteSet={handleDeleteSet}
-      onOpenSet={(id) => {
-        setPromptSetId(id)
-        router.push(`/maker/${id}`)
+      onOpenSet={id => {
+        setPromptSetId(id);
+        router.push(`/maker/${id}`);
       }}
       onExportSet={handleExportSet}
       onImportFile={handleImportFile}
@@ -186,7 +186,7 @@ export default function MakerHomeContainer() {
       onToggleActionSheet={setActionSheetOpen}
       onGoBack={handleGoBack}
     />
-  )
+  );
 }
 
 //

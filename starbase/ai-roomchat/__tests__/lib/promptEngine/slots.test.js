@@ -1,4 +1,4 @@
-import { buildSlotsFromParticipants } from '@/lib/promptEngine/slots'
+import { buildSlotsFromParticipants } from '@/lib/promptEngine/slots';
 
 describe('buildSlotsFromParticipants', () => {
   it('places heroes into their zero-based slot positions', () => {
@@ -17,14 +17,14 @@ describe('buildSlotsFromParticipants', () => {
         status: 'alive',
         hero: { name: '알파' },
       },
-    ])
+    ]);
 
-    expect(slots).toHaveLength(2)
-    expect(slots[0]?.id).toBe('alpha')
-    expect(slots[0]?.slot_no).toBe(0)
-    expect(slots[1]?.id).toBe('beta')
-    expect(slots[1]?.slot_no).toBe(1)
-  })
+    expect(slots).toHaveLength(2);
+    expect(slots[0]?.id).toBe('alpha');
+    expect(slots[0]?.slot_no).toBe(0);
+    expect(slots[1]?.id).toBe('beta');
+    expect(slots[1]?.slot_no).toBe(1);
+  });
 
   it('keeps empty slots empty when indices are missing', () => {
     const slots = buildSlotsFromParticipants([
@@ -35,13 +35,13 @@ describe('buildSlotsFromParticipants', () => {
         status: 'alive',
         hero: { name: '감마' },
       },
-    ])
+    ]);
 
-    expect(slots.length).toBeGreaterThanOrEqual(3)
-    expect(slots[0]).toBeUndefined()
-    expect(slots[1]).toBeUndefined()
-    expect(slots[2]?.slot_no).toBe(2)
-  })
+    expect(slots.length).toBeGreaterThanOrEqual(3);
+    expect(slots[0]).toBeUndefined();
+    expect(slots[1]).toBeUndefined();
+    expect(slots[2]?.slot_no).toBe(2);
+  });
 
   it('appends overflow entries without slot numbers at the end', () => {
     const slots = buildSlotsFromParticipants([
@@ -54,11 +54,10 @@ describe('buildSlotsFromParticipants', () => {
         hero_id: 'omega',
         hero: { name: '오메가' },
       },
-    ])
+    ]);
 
-    expect(slots[0]?.id).toBe('alpha')
-    expect(slots[1]?.id).toBe('omega')
-    expect(slots[1]?.slot_no).toBeNull()
-  })
-})
-
+    expect(slots[0]?.id).toBe('alpha');
+    expect(slots[1]?.id).toBe('omega');
+    expect(slots[1]?.slot_no).toBeNull();
+  });
+});

@@ -5,7 +5,7 @@
 # Depending on how your project is set up, you may need to add the required Cloud Run role
 # (https://cloud.google.com/run/docs/reference/iam/roles) to the cloud build
 # service account using a gcloud command like this:
-#   gcloud projects add-iam-policy-binding $(gcloud config get project) \ 
+#   gcloud projects add-iam-policy-binding $(gcloud config get project) \
 #     --member=serviceAccount:$(gcloud projects list --filter=$(gcloud config get project) --format="value(PROJECT_NUMBER)")-compute@developer.gserviceaccount.com \
 #     --role=roles/run.developer
 # You probably also need to allow Cloud Build to deploy using this application's custom Cloud Run _SERVICE_ACCOUNT:
@@ -22,14 +22,14 @@ substitutions:
   _RUN_REGION: us-central1
 
   # Application environment vars
-  _OM_LOGGING_LEVEL: info 
+  _OM_LOGGING_LEVEL: info
   _OM_REDIS_WRITE_HOST: $PRIMARY_ENDPOINT
   _OM_REDIS_READ_HOST: $READ_ENDPOINT
 steps:
   # Deploy existing container image to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    id: "Deploy:ingress all, all egress vpc"
-    waitFor: ["-"]
+    id: 'Deploy:ingress all, all egress vpc'
+    waitFor: ['-']
     entrypoint: gcloud
     args:
       - run
@@ -38,7 +38,7 @@ steps:
       - ${_JOB_NAME}
       - --no-allow-unauthenticated
       - --concurrency
-      - "1000"
+      - '1000'
       - --service-account
       - ${_SERVICE_ACCOUNT}
       - --region
@@ -50,7 +50,7 @@ steps:
       - --subnet
       - default
       - --vpc-egress
-      - all-traffic 
+      - all-traffic
 
       # ingress config
       - --ingress
@@ -58,24 +58,24 @@ steps:
 
       # sidecar 'otel-collector' config
       - --container
-      - "opentelemetry-collector"
+      - 'opentelemetry-collector'
       - --image
       - us-docker.pkg.dev/open-match-public-images/open-match2/otel-collector-sidecar
 
       # 'core' config
       - --container
-      - "core"
+      - 'core'
       - --image
       - '${_ARTIFACT_REGISTRY_URI}/${_JOB_NAME}:${COMMIT_SHA}'
       - --port
-      - "8080"
+      - '8080'
       - --memory
       - 1024Mi
 
       # env vars for 'core'
       - --update-env-vars
-      - "OM_LOGGING_LEVEL=${_OM_LOGGING_LEVEL}"
+      - 'OM_LOGGING_LEVEL=${_OM_LOGGING_LEVEL}'
       - --update-env-vars
-      - "OM_REDIS_WRITE_HOST=${_OM_REDIS_WRITE_HOST}"
+      - 'OM_REDIS_WRITE_HOST=${_OM_REDIS_WRITE_HOST}'
       - --update-env-vars
-      - "OM_REDIS_READ_HOST=${_OM_REDIS_READ_HOST}"
+      - 'OM_REDIS_READ_HOST=${_OM_REDIS_READ_HOST}'

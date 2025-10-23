@@ -16,19 +16,23 @@ const styles = {
     color: '#fff',
     border: 'none',
   },
-}
+};
 
 export default function JoinGamePanel({ games, form, onSubmit }) {
-  const { selGameId, setSelGameId, heroIdsCSV, setHeroIdsCSV } = form
+  const { selGameId, setSelGameId, heroIdsCSV, setHeroIdsCSV } = form;
   return (
     <section style={styles.root}>
       <h3 style={{ margin: '4px 0' }}>참가 등록(내 캐릭터 팩)</h3>
       <div style={{ display: 'grid', gap: 8 }}>
         <label style={styles.label}>
           게임
-          <select value={selGameId} onChange={(event) => setSelGameId(event.target.value)} style={styles.select}>
+          <select
+            value={selGameId}
+            onChange={event => setSelGameId(event.target.value)}
+            style={styles.select}
+          >
             <option value="">선택</option>
-            {games.map((game) => (
+            {games.map(game => (
               <option key={game.id} value={game.id}>
                 {game.name}
               </option>
@@ -39,7 +43,7 @@ export default function JoinGamePanel({ games, form, onSubmit }) {
           Hero IDs (쉼표 구분, 슬롯 합계만큼)
           <input
             value={heroIdsCSV}
-            onChange={(event) => setHeroIdsCSV(event.target.value)}
+            onChange={event => setHeroIdsCSV(event.target.value)}
             placeholder="uuid1, uuid2, ..."
             style={styles.input}
           />
@@ -49,5 +53,5 @@ export default function JoinGamePanel({ games, form, onSubmit }) {
         </button>
       </div>
     </section>
-  )
+  );
 }

@@ -1,14 +1,14 @@
-import { modalStyles } from './styles'
+import { modalStyles } from './styles';
 
 function extractFileName(url) {
-  if (!url) return ''
+  if (!url) return '';
   try {
-    const parsed = new URL(url)
-    const parts = parsed.pathname.split('/')
-    return parts[parts.length - 1] || url
+    const parsed = new URL(url);
+    const parts = parsed.pathname.split('/');
+    return parts[parts.length - 1] || url;
   } catch (error) {
-    const pieces = String(url).split('/')
-    return pieces[pieces.length - 1] || url
+    const pieces = String(url).split('/');
+    return pieces[pieces.length - 1] || url;
   }
 }
 
@@ -21,7 +21,8 @@ export default function HeroBgmSection({
   inputRef,
   error,
 }) {
-  const displayLabel = label || (fallbackUrl ? extractFileName(fallbackUrl) : '등록된 BGM이 없습니다.')
+  const displayLabel =
+    label || (fallbackUrl ? extractFileName(fallbackUrl) : '등록된 BGM이 없습니다.');
 
   return (
     <div style={modalStyles.sectionBox}>
@@ -33,7 +34,11 @@ export default function HeroBgmSection({
           </div>
         </div>
         <div style={modalStyles.sectionActions}>
-          <button type="button" onClick={() => inputRef.current?.click()} style={modalStyles.musicButton}>
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            style={modalStyles.musicButton}
+          >
             음악 업로드
           </button>
           <button type="button" onClick={onClear} style={modalStyles.clearButton}>
@@ -43,16 +48,18 @@ export default function HeroBgmSection({
       </div>
       <div style={modalStyles.musicInfo}>
         <div style={modalStyles.musicLabel}>{displayLabel}</div>
-        {duration != null ? <div style={modalStyles.musicDuration}>재생 시간: {duration}초</div> : null}
+        {duration != null ? (
+          <div style={modalStyles.musicDuration}>재생 시간: {duration}초</div>
+        ) : null}
       </div>
       <input
         ref={inputRef}
         type="file"
         accept="audio/*"
-        onChange={(event) => onUpload(event.target.files?.[0] || null)}
+        onChange={event => onUpload(event.target.files?.[0] || null)}
         style={{ display: 'none' }}
       />
       {error ? <div style={modalStyles.errorText}>{error}</div> : null}
     </div>
-  )
+  );
 }

@@ -1,31 +1,28 @@
 // pages/api/rank/play.js
-import { supabase } from '@/lib/rank/db'
-import { getActiveRoles, totalSlots } from '@/lib/rank/roles'
-import { getOpponentCandidates, pickOpponentsPerSlots } from '@/lib/rank/participants'
-import { loadHeroesMap, buildSlotsMap } from '@/lib/rank/heroes'
-import { compileTemplate } from '@/lib/rank/prompt'
-import { callChat } from '@/lib/rank/ai'
-import { judgeOutcome } from '@/lib/rank/judge'
-import { recordBattle } from '@/lib/rank/persist'
-import { fetchUserApiKey, upsertUserApiKey } from '@/lib/rank/userApiKeys'
-import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { supabase } from '@/lib/rank/db';
+import { getActiveRoles, totalSlots } from '@/lib/rank/roles';
+import { getOpponentCandidates, pickOpponentsPerSlots } from '@/lib/rank/participants';
+import { loadHeroesMap, buildSlotsMap } from '@/lib/rank/heroes';
+import { compileTemplate } from '@/lib/rank/prompt';
+import { callChat } from '@/lib/rank/ai';
+import { judgeOutcome } from '@/lib/rank/judge';
+import { recordBattle } from '@/lib/rank/persist';
+import { fetchUserApiKey, upsertUserApiKey } from '@/lib/rank/userApiKeys';
+import { supabaseAdmin } from '@/lib/supabaseAdmin';
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' })
+  if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
   try {
-    const authHeader = req.headers.authorization || ''
-    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
     if (!token) {
-      return res.status(401).json({ error: 'unauthorized' })
+      return res.status(401).json({ error: 'unauthorized' });
     }
 
-    const {
-      data: userData,
-      error: userError,
-    } = await supabaseAdmin.auth.getUser(token)
-    const user = userData?.user || null
+    const { data: userData, error: userError } = await supabaseAdmin.auth.getUser(token);
+    const user = userData?.user || null;
     if (userError || !user) {
-      return res.status(401).json({ error: 'unauthorized' })
+      return res.status(401).json({ error: 'unauthorized' });
     }
 
     const {
@@ -35,11 +32,11 @@ export default async function handler(req, res) {
       apiVersion = 'gemini',
       geminiMode,
       geminiModel,
-    } = req.body || {}
+    } = req.body || {};
 
-    const trimmedApiKey = typeof userApiKey === 'string' ? userApiKey.trim() : ''
-    const providedGeminiMode = typeof geminiMode === 'string' ? geminiMode.trim() : ''
-    const providedGeminiModel = typeof geminiModel === 'string' ? geminiModel.trim() : ''
+    const trimmedApiKey = typeof userApiKey === 'string' ? userApiKey.trim() : '';
+    const providedGeminiMode = typeof geminiMode === 'string' ? geminiMode.trim() : '';
+    const providedGeminiModel = typeof geminiModel === 'string' ? geminiModel.trim() : '';
 
     if (trimmedApiKey) {
       try {
@@ -49,60 +46,65 @@ export default async function handler(req, res) {
           apiVersion,
           geminiMode: providedGeminiMode,
           geminiModel: providedGeminiModel,
-        })
+        });
       } catch (error) {
-        console.warn('[play] Failed to persist API key:', error)
+        console.warn('[play] Failed to persist API key:', error);
       }
     }
 
-    let effectiveApiKey = trimmedApiKey
-    let effectiveApiVersion = apiVersion
-    let effectiveGeminiMode = providedGeminiMode
-    let effectiveGeminiModel = providedGeminiModel
+    let effectiveApiKey = trimmedApiKey;
+    let effectiveApiVersion = apiVersion;
+    let effectiveGeminiMode = providedGeminiMode;
+    let effectiveGeminiModel = providedGeminiModel;
 
     if (!effectiveApiKey) {
       try {
-        const stored = await fetchUserApiKey(user.id)
+        const stored = await fetchUserApiKey(user.id);
         if (stored?.apiKey) {
-          effectiveApiKey = stored.apiKey
+          effectiveApiKey = stored.apiKey;
           if (!effectiveApiVersion && stored.apiVersion) {
-            effectiveApiVersion = stored.apiVersion
+            effectiveApiVersion = stored.apiVersion;
           }
           if (!effectiveGeminiMode && stored.geminiMode) {
-            effectiveGeminiMode = stored.geminiMode
+            effectiveGeminiMode = stored.geminiMode;
           }
           if (!effectiveGeminiModel && stored.geminiModel) {
-            effectiveGeminiModel = stored.geminiModel
+            effectiveGeminiModel = stored.geminiModel;
           }
         }
       } catch (error) {
-        console.warn('[play] Failed to load stored API key:', error)
+        console.warn('[play] Failed to load stored API key:', error);
       }
     }
 
     if (!effectiveApiKey) {
-      return res.status(400).json({ error: 'missing_user_api_key' })
+      return res.status(400).json({ error: 'missing_user_api_key' });
     }
 
     // 게임 메타
-    const { data: game, error: gerr } = await supabase.from('rank_games').select('*').eq('id', gameId).single()
-    if (gerr || !game) return res.status(404).json({ error: 'game_not_found' })
+    const { data: game, error: gerr } = await supabase
+      .from('rank_games')
+      .select('*')
+      .eq('id', gameId)
+      .single();
+    if (gerr || !game) return res.status(404).json({ error: 'game_not_found' });
 
     // 역할/슬롯 수
-    const roles = await getActiveRoles(gameId)
-    const needCount = totalSlots(roles)
-    if (needCount === 0) return res.status(400).json({ error: 'no_active_roles' })
-    if (heroIds.length !== needCount) return res.status(400).json({ error: 'hero_slot_mismatch', need: needCount })
+    const roles = await getActiveRoles(gameId);
+    const needCount = totalSlots(roles);
+    if (needCount === 0) return res.status(400).json({ error: 'no_active_roles' });
+    if (heroIds.length !== needCount)
+      return res.status(400).json({ error: 'hero_slot_mismatch', need: needCount });
 
     // 상대 후보 조회 & 슬롯별로 “다른 참가자들”에서 픽
-    const candidates = await getOpponentCandidates(gameId, user.id, 100)
-    const oppPicks = pickOpponentsPerSlots({ roles, candidates, myHeroIds: heroIds })
-    const oppHeroIds = oppPicks.map(p => p.hero_id).filter(Boolean)
-    const oppOwnerIds = Array.from(new Set(oppPicks.map(p => p.from_owner).filter(Boolean)))
+    const candidates = await getOpponentCandidates(gameId, user.id, 100);
+    const oppPicks = pickOpponentsPerSlots({ roles, candidates, myHeroIds: heroIds });
+    const oppHeroIds = oppPicks.map(p => p.hero_id).filter(Boolean);
+    const oppOwnerIds = Array.from(new Set(oppPicks.map(p => p.from_owner).filter(Boolean)));
 
     // 히어로 상세 로딩
-    const heroesMap = await loadHeroesMap([...heroIds, ...oppHeroIds])
-    const slotsMap = buildSlotsMap({ roles, myHeroIds: heroIds, oppPicks, heroesMap })
+    const heroesMap = await loadHeroesMap([...heroIds, ...oppHeroIds]);
+    const slotsMap = buildSlotsMap({ roles, myHeroIds: heroIds, oppPicks, heroesMap });
 
     // 시작 템플릿(세트의 slot_no=1 가정, 필요시 “시작 슬롯” 컬럼으로 확장)
     const { data: startSlot } = await supabase
@@ -110,10 +112,11 @@ export default async function handler(req, res) {
       .select('template')
       .eq('set_id', game.prompt_set_id)
       .order('slot_no', { ascending: true })
-      .limit(1).maybeSingle()
+      .limit(1)
+      .maybeSingle();
 
-    const tpl = startSlot?.template || '상대와 전투를 시뮬레이션하라.'
-    const { text: prompt } = compileTemplate({ template: tpl, slotsMap, historyText: '' })
+    const tpl = startSlot?.template || '상대와 전투를 시뮬레이션하라.';
+    const { text: prompt } = compileTemplate({ template: tpl, slotsMap, historyText: '' });
 
     // AI 호출(유저 키)
     const ai = await callChat({
@@ -125,17 +128,16 @@ export default async function handler(req, res) {
         (effectiveApiVersion || 'gemini') === 'gemini'
           ? { geminiMode: effectiveGeminiMode, geminiModel: effectiveGeminiModel }
           : {},
-    })
+    });
     if (ai.error) {
       // 쿼터/에러 → 저장하지 않고 종료, 재시도 가능
-      return res.status(200).json(ai)
+      return res.status(200).json(ai);
     }
 
     // 판정
-    const { outcome } = judgeOutcome(ai.text)
-    const delta = outcome === 'win' ? game.score_win
-                : outcome === 'lose' ? game.score_loss
-                : game.score_draw
+    const { outcome } = judgeOutcome(ai.text);
+    const delta =
+      outcome === 'win' ? game.score_win : outcome === 'lose' ? game.score_loss : game.score_draw;
 
     // 기록 및 점수 반영
     const record = await recordBattle({
@@ -156,7 +158,7 @@ export default async function handler(req, res) {
           meta: { outcome, mode: 'auto' },
         },
       ],
-    })
+    });
 
     return res.status(200).json({
       ok: true,
@@ -169,8 +171,8 @@ export default async function handler(req, res) {
         defender: record.defenderStatus,
         defenderOwners: record.defenderOwners,
       },
-    })
+    });
   } catch (e) {
-    return res.status(500).json({ error: 'server_error', detail: String(e).slice(0, 300) })
+    return res.status(500).json({ error: 'server_error', detail: String(e).slice(0, 300) });
   }
 }

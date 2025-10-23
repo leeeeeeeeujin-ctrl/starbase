@@ -1,6 +1,6 @@
 /**
  * InputManager Test Suite
- * 
+ *
  * Tests for input management logic within UnifiedGameSystem
  * Focuses on:
  * - User input handling
@@ -85,7 +85,7 @@ describe('InputManager - Basic Input Handling', () => {
 
   test('should handle component mount with input capabilities', async () => {
     const { container } = render(<UnifiedGameSystem />);
-    
+
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });
@@ -105,20 +105,26 @@ describe('InputManager - Basic Input Handling', () => {
       },
     };
 
-    const CompatibilityManagerMock = require('../../../../utils/compatibilityManager').CompatibilityManager;
-    CompatibilityManagerMock.getCompatibilityInfo = jest.fn().mockReturnValue(mockCompatibilityInfo);
+    const CompatibilityManagerMock =
+      require('../../../../utils/compatibilityManager').CompatibilityManager;
+    CompatibilityManagerMock.getCompatibilityInfo = jest
+      .fn()
+      .mockReturnValue(mockCompatibilityInfo);
 
     const { container } = render(<UnifiedGameSystem />);
-    
-    await waitFor(() => {
-      // Component initializes with touch optimization support
-      expect(container).toBeInTheDocument();
-    }, { timeout: 2000 });
+
+    await waitFor(
+      () => {
+        // Component initializes with touch optimization support
+        expect(container).toBeInTheDocument();
+      },
+      { timeout: 2000 }
+    );
   });
 
   test('should handle keyboard navigation when enabled', async () => {
     const { container } = render(<UnifiedGameSystem />);
-    
+
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });
@@ -147,11 +153,14 @@ describe('InputManager - Touch Event Handling', () => {
       },
     };
 
-    const CompatibilityManagerMock = require('../../../../utils/compatibilityManager').CompatibilityManager;
-    CompatibilityManagerMock.getCompatibilityInfo = jest.fn().mockReturnValue(mockCompatibilityInfo);
+    const CompatibilityManagerMock =
+      require('../../../../utils/compatibilityManager').CompatibilityManager;
+    CompatibilityManagerMock.getCompatibilityInfo = jest
+      .fn()
+      .mockReturnValue(mockCompatibilityInfo);
 
     const { container } = render(<UnifiedGameSystem />);
-    
+
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });
@@ -160,11 +169,11 @@ describe('InputManager - Touch Event Handling', () => {
     fireEvent.touchStart(container, {
       touches: [{ clientX: 100, clientY: 100 }],
     });
-    
+
     fireEvent.touchMove(container, {
       touches: [{ clientX: 150, clientY: 150 }],
     });
-    
+
     fireEvent.touchEnd(container);
 
     expect(container).toBeInTheDocument();
@@ -184,11 +193,14 @@ describe('InputManager - Touch Event Handling', () => {
       },
     };
 
-    const CompatibilityManagerMock = require('../../../../utils/compatibilityManager').CompatibilityManager;
-    CompatibilityManagerMock.getCompatibilityInfo = jest.fn().mockReturnValue(mockCompatibilityInfo);
+    const CompatibilityManagerMock =
+      require('../../../../utils/compatibilityManager').CompatibilityManager;
+    CompatibilityManagerMock.getCompatibilityInfo = jest
+      .fn()
+      .mockReturnValue(mockCompatibilityInfo);
 
     const { container } = render(<UnifiedGameSystem />);
-    
+
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });
@@ -220,11 +232,14 @@ describe('InputManager - Mobile Optimization', () => {
       },
     };
 
-    const CompatibilityManagerMock = require('../../../../utils/compatibilityManager').CompatibilityManager;
-    CompatibilityManagerMock.getCompatibilityInfo = jest.fn().mockReturnValue(mockCompatibilityInfo);
+    const CompatibilityManagerMock =
+      require('../../../../utils/compatibilityManager').CompatibilityManager;
+    CompatibilityManagerMock.getCompatibilityInfo = jest
+      .fn()
+      .mockReturnValue(mockCompatibilityInfo);
 
     const { container } = render(<UnifiedGameSystem />);
-    
+
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });
@@ -246,11 +261,14 @@ describe('InputManager - Mobile Optimization', () => {
       },
     };
 
-    const CompatibilityManagerMock = require('../../../../utils/compatibilityManager').CompatibilityManager;
-    CompatibilityManagerMock.getCompatibilityInfo = jest.fn().mockReturnValue(mockCompatibilityInfo);
+    const CompatibilityManagerMock =
+      require('../../../../utils/compatibilityManager').CompatibilityManager;
+    CompatibilityManagerMock.getCompatibilityInfo = jest
+      .fn()
+      .mockReturnValue(mockCompatibilityInfo);
 
     const { container } = render(<UnifiedGameSystem />);
-    
+
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });
@@ -272,11 +290,14 @@ describe('InputManager - Mobile Optimization', () => {
       },
     };
 
-    const CompatibilityManagerMock = require('../../../../utils/compatibilityManager').CompatibilityManager;
-    CompatibilityManagerMock.getCompatibilityInfo = jest.fn().mockReturnValue(mockCompatibilityInfo);
+    const CompatibilityManagerMock =
+      require('../../../../utils/compatibilityManager').CompatibilityManager;
+    CompatibilityManagerMock.getCompatibilityInfo = jest
+      .fn()
+      .mockReturnValue(mockCompatibilityInfo);
 
     const { container } = render(<UnifiedGameSystem />);
-    
+
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });
@@ -302,11 +323,14 @@ describe('InputManager - Cross-Browser Compatibility', () => {
       },
     };
 
-    const CompatibilityManagerMock = require('../../../../utils/compatibilityManager').CompatibilityManager;
-    CompatibilityManagerMock.getCompatibilityInfo = jest.fn().mockReturnValue(mockCompatibilityInfo);
+    const CompatibilityManagerMock =
+      require('../../../../utils/compatibilityManager').CompatibilityManager;
+    CompatibilityManagerMock.getCompatibilityInfo = jest
+      .fn()
+      .mockReturnValue(mockCompatibilityInfo);
 
     const { container } = render(<UnifiedGameSystem />);
-    
+
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });
@@ -330,11 +354,14 @@ describe('InputManager - Cross-Browser Compatibility', () => {
       },
     };
 
-    const CompatibilityManagerMock = require('../../../../utils/compatibilityManager').CompatibilityManager;
-    CompatibilityManagerMock.getCompatibilityInfo = jest.fn().mockReturnValue(mockCompatibilityInfo);
+    const CompatibilityManagerMock =
+      require('../../../../utils/compatibilityManager').CompatibilityManager;
+    CompatibilityManagerMock.getCompatibilityInfo = jest
+      .fn()
+      .mockReturnValue(mockCompatibilityInfo);
 
     const { container } = render(<UnifiedGameSystem />);
-    
+
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });
@@ -344,7 +371,7 @@ describe('InputManager - Cross-Browser Compatibility', () => {
 describe('InputManager - Input Validation', () => {
   test('should validate user input before processing', async () => {
     const { container } = render(<UnifiedGameSystem />);
-    
+
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });
@@ -360,7 +387,7 @@ describe('InputManager - Input Validation', () => {
     };
 
     const { container } = render(<UnifiedGameSystem initialCharacter={mockCharacter} />);
-    
+
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });
@@ -375,7 +402,7 @@ describe('InputManager - Input Validation', () => {
     };
 
     const { container } = render(<UnifiedGameSystem initialCharacter={mockCharacter} />);
-    
+
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });
@@ -385,7 +412,7 @@ describe('InputManager - Input Validation', () => {
 describe('InputManager - Performance', () => {
   test('should handle rapid input events without lag', async () => {
     const { container } = render(<UnifiedGameSystem />);
-    
+
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });
@@ -406,7 +433,7 @@ describe('InputManager - Performance', () => {
 
   test('should debounce expensive input operations', async () => {
     const { container } = render(<UnifiedGameSystem />);
-    
+
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });
@@ -425,17 +452,17 @@ describe('InputManager - Performance', () => {
 describe('InputManager - Accessibility', () => {
   test('should support keyboard-only navigation', async () => {
     const { container } = render(<UnifiedGameSystem />);
-    
+
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });
 
     // Tab navigation
     fireEvent.keyDown(container, { key: 'Tab' });
-    
+
     // Enter key activation
     fireEvent.keyDown(container, { key: 'Enter' });
-    
+
     // Arrow key navigation
     fireEvent.keyDown(container, { key: 'ArrowDown' });
     fireEvent.keyDown(container, { key: 'ArrowUp' });
@@ -445,7 +472,7 @@ describe('InputManager - Accessibility', () => {
 
   test('should provide proper focus management', async () => {
     const { container } = render(<UnifiedGameSystem />);
-    
+
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });

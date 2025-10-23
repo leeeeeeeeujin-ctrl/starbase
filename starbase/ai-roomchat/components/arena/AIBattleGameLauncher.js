@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react';
 
 /**
  * 캐릭터 사전 설정 시스템과 연동된 AI 배틀 게임 런처
- * 
+ *
  * 특징:
  * - 게임 시작 전 미리 정의된 캐릭터 데이터 활용
  * - 캐릭터별 능력치, 이미지, 배경, BGM 자동 적용
@@ -14,38 +14,38 @@ export default function AIBattleGameLauncher({
   onGameStart,
   onCancel,
 }) {
-  const [selectedCharacters, setSelectedCharacters] = useState([])
-  const [gameMode, setGameMode] = useState('1v1') // 1v1, 2v2, battle_royale
+  const [selectedCharacters, setSelectedCharacters] = useState([]);
+  const [gameMode, setGameMode] = useState('1v1'); // 1v1, 2v2, battle_royale
   const [battleSettings, setBattleSettings] = useState({
     turnLimit: 10,
     theme: gameSettings.theme || 'fantasy',
     environment: gameSettings.environment || 'arena',
-  })
+  });
 
   // 캐릭터 선택 처리
-  const handleCharacterToggle = (character) => {
+  const handleCharacterToggle = character => {
     setSelectedCharacters(prev => {
-      const isSelected = prev.find(c => c.id === character.id)
-      
+      const isSelected = prev.find(c => c.id === character.id);
+
       if (isSelected) {
-        return prev.filter(c => c.id !== character.id)
+        return prev.filter(c => c.id !== character.id);
       } else {
         // 게임 모드에 따른 최대 캐릭터 수 제한
-        const maxChars = gameMode === '1v1' ? 2 : gameMode === '2v2' ? 4 : 6
+        const maxChars = gameMode === '1v1' ? 2 : gameMode === '2v2' ? 4 : 6;
         if (prev.length >= maxChars) {
-          alert(`${gameMode} 모드에서는 최대 ${maxChars}명까지만 선택할 수 있습니다.`)
-          return prev
+          alert(`${gameMode} 모드에서는 최대 ${maxChars}명까지만 선택할 수 있습니다.`);
+          return prev;
         }
-        return [...prev, character]
+        return [...prev, character];
       }
-    })
-  }
+    });
+  };
 
   // 게임 시작 처리
   const handleStartGame = () => {
     if (selectedCharacters.length < 2) {
-      alert('최소 2명의 캐릭터를 선택해야 합니다.')
-      return
+      alert('최소 2명의 캐릭터를 선택해야 합니다.');
+      return;
     }
 
     // 캐릭터 데이터를 게임용 형태로 변환
@@ -56,30 +56,25 @@ export default function AIBattleGameLauncher({
       image: char.image_url,
       background: char.background_url,
       bgm: char.bgm_url,
-      abilities: [
-        char.ability1,
-        char.ability2,
-        char.ability3,
-        char.ability4,
-      ].filter(Boolean), // 빈 능력 제거
-      
+      abilities: [char.ability1, char.ability2, char.ability3, char.ability4].filter(Boolean), // 빈 능력 제거
+
       // 게임용 추가 속성
       hp: 100,
       energy: 100,
       confidence: 50,
-      
+
       // 능력치 파싱 (description에서 추출하거나 기본값 사용)
       stats: parseCharacterStats(char),
-    }))
+    }));
 
     if (onGameStart) {
       onGameStart({
         characters: gameCharacters,
         gameMode,
         battleSettings,
-      })
+      });
     }
-  }
+  };
 
   const styles = {
     launcher: {
@@ -255,21 +250,19 @@ export default function AIBattleGameLauncher({
       color: 'white',
       fontSize: '14px',
     },
-  }
+  };
 
   const gameModes = [
     { id: '1v1', name: '1 vs 1', description: '클래식 듀얼' },
     { id: '2v2', name: '2 vs 2', description: '팀 배틀' },
     { id: 'battle_royale', name: '배틀로얄', description: '다인전' },
-  ]
+  ];
 
   return (
     <div style={styles.launcher}>
       <div style={styles.header}>
         <h1 style={styles.title}>AI 배틀 아레나</h1>
-        <p style={styles.subtitle}>
-          캐릭터를 선택하고 AI가 심판하는 흥미진진한 배틀을 시작하세요
-        </p>
+        <p style={styles.subtitle}>캐릭터를 선택하고 AI가 심판하는 흥미진진한 배틀을 시작하세요</p>
       </div>
 
       <div style={styles.content}>
@@ -287,9 +280,7 @@ export default function AIBattleGameLauncher({
                 onClick={() => setGameMode(mode.id)}
               >
                 <div>{mode.name}</div>
-                <div style={{ fontSize: '12px', opacity: 0.8 }}>
-                  {mode.description}
-                </div>
+                <div style={{ fontSize: '12px', opacity: 0.8 }}>{mode.description}</div>
               </button>
             ))}
           </div>
@@ -304,10 +295,12 @@ export default function AIBattleGameLauncher({
               <input
                 type="number"
                 value={battleSettings.turnLimit}
-                onChange={e => setBattleSettings(prev => ({ 
-                  ...prev, 
-                  turnLimit: parseInt(e.target.value) || 10 
-                }))}
+                onChange={e =>
+                  setBattleSettings(prev => ({
+                    ...prev,
+                    turnLimit: parseInt(e.target.value) || 10,
+                  }))
+                }
                 style={styles.settingInput}
                 min="5"
                 max="50"
@@ -317,10 +310,12 @@ export default function AIBattleGameLauncher({
               <label style={styles.settingLabel}>테마</label>
               <select
                 value={battleSettings.theme}
-                onChange={e => setBattleSettings(prev => ({ 
-                  ...prev, 
-                  theme: e.target.value 
-                }))}
+                onChange={e =>
+                  setBattleSettings(prev => ({
+                    ...prev,
+                    theme: e.target.value,
+                  }))
+                }
                 style={styles.settingInput}
               >
                 <option value="fantasy">판타지</option>
@@ -333,10 +328,12 @@ export default function AIBattleGameLauncher({
               <label style={styles.settingLabel}>환경</label>
               <select
                 value={battleSettings.environment}
-                onChange={e => setBattleSettings(prev => ({ 
-                  ...prev, 
-                  environment: e.target.value 
-                }))}
+                onChange={e =>
+                  setBattleSettings(prev => ({
+                    ...prev,
+                    environment: e.target.value,
+                  }))
+                }
                 style={styles.settingInput}
               >
                 <option value="arena">아레나</option>
@@ -350,18 +347,16 @@ export default function AIBattleGameLauncher({
 
         {/* 캐릭터 선택 */}
         <div style={styles.section}>
-          <h2 style={styles.sectionTitle}>
-            캐릭터 선택 ({selectedCharacters.length}명 선택됨)
-          </h2>
+          <h2 style={styles.sectionTitle}>캐릭터 선택 ({selectedCharacters.length}명 선택됨)</h2>
           <div style={styles.characterGrid}>
             {availableCharacters.map(character => {
-              const isSelected = selectedCharacters.find(c => c.id === character.id)
+              const isSelected = selectedCharacters.find(c => c.id === character.id);
               const abilities = [
                 character.ability1,
                 character.ability2,
                 character.ability3,
                 character.ability4,
-              ].filter(Boolean)
+              ].filter(Boolean);
 
               return (
                 <div
@@ -372,22 +367,20 @@ export default function AIBattleGameLauncher({
                   }}
                   onClick={() => handleCharacterToggle(character)}
                 >
-                  {isSelected && (
-                    <div style={styles.selectedBadge}>선택됨</div>
-                  )}
-                  
+                  {isSelected && <div style={styles.selectedBadge}>선택됨</div>}
+
                   <img
                     src={character.image_url || '/default-character.png'}
                     alt={character.name}
                     style={styles.characterImage}
                   />
-                  
+
                   <div style={styles.characterName}>{character.name}</div>
-                  
+
                   <div style={styles.characterDescription}>
                     {character.description || '설명이 없습니다'}
                   </div>
-                  
+
                   {abilities.length > 0 && (
                     <div style={styles.abilityChips}>
                       {abilities.map((ability, index) => (
@@ -398,17 +391,14 @@ export default function AIBattleGameLauncher({
                     </div>
                   )}
                 </div>
-              )
+              );
             })}
           </div>
         </div>
       </div>
 
       <div style={styles.footer}>
-        <button
-          style={{...styles.button, ...styles.cancelButton}}
-          onClick={onCancel}
-        >
+        <button style={{ ...styles.button, ...styles.cancelButton }} onClick={onCancel}>
           취소
         </button>
         <button
@@ -424,7 +414,7 @@ export default function AIBattleGameLauncher({
         </button>
       </div>
     </div>
-  )
+  );
 }
 
 // 캐릭터 능력치 파싱 헬퍼 함수
@@ -435,33 +425,31 @@ function parseCharacterStats(character) {
     agility: 50,
     intelligence: 50,
     charisma: 50,
-  }
+  };
 
   // description에서 능력치 키워드 찾기
-  const description = (character.description || '').toLowerCase()
-  
-  if (description.includes('강함') || description.includes('힘')) stats.strength += 20
-  if (description.includes('빠름') || description.includes('민첩')) stats.agility += 20
-  if (description.includes('똑똑') || description.includes('지능')) stats.intelligence += 20
-  if (description.includes('매력') || description.includes('카리스마')) stats.charisma += 20
+  const description = (character.description || '').toLowerCase();
+
+  if (description.includes('강함') || description.includes('힘')) stats.strength += 20;
+  if (description.includes('빠름') || description.includes('민첩')) stats.agility += 20;
+  if (description.includes('똑똑') || description.includes('지능')) stats.intelligence += 20;
+  if (description.includes('매력') || description.includes('카리스마')) stats.charisma += 20;
 
   // abilities에서도 능력치 힌트 찾기
-  const abilities = [
-    character.ability1,
-    character.ability2, 
-    character.ability3,
-    character.ability4,
-  ].filter(Boolean).join(' ').toLowerCase()
+  const abilities = [character.ability1, character.ability2, character.ability3, character.ability4]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
 
-  if (abilities.includes('공격') || abilities.includes('전투')) stats.strength += 10
-  if (abilities.includes('회피') || abilities.includes('속도')) stats.agility += 10
-  if (abilities.includes('마법') || abilities.includes('전략')) stats.intelligence += 10
-  if (abilities.includes('설득') || abilities.includes('치유')) stats.charisma += 10
+  if (abilities.includes('공격') || abilities.includes('전투')) stats.strength += 10;
+  if (abilities.includes('회피') || abilities.includes('속도')) stats.agility += 10;
+  if (abilities.includes('마법') || abilities.includes('전략')) stats.intelligence += 10;
+  if (abilities.includes('설득') || abilities.includes('치유')) stats.charisma += 10;
 
   // 최대값 제한
   Object.keys(stats).forEach(key => {
-    stats[key] = Math.min(stats[key], 100)
-  })
+    stats[key] = Math.min(stats[key], 100);
+  });
 
-  return stats
+  return stats;
 }

@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
  * AI Worker Pool - Parallel AI task execution
- * 
- * Concept: 
+ *
+ * Concept:
  * - Manager AI (me) delegates tasks to multiple worker AIs
  * - Each worker processes a subtask independently
  * - Results are collected and reviewed
- * 
+ *
  * Implementation options:
  * 1. VS Code Extension API (requires extension development)
  * 2. GitHub Copilot CLI (if available)
@@ -37,10 +37,8 @@ class AIWorkerPool {
    */
   async executeAll() {
     console.log(`🚀 Starting ${this.workers.length} AI workers...`);
-    
-    const promises = this.workers.map((task, index) => 
-      this.executeTask(task, index)
-    );
+
+    const promises = this.workers.map((task, index) => this.executeTask(task, index));
 
     this.results = await Promise.all(promises);
     return this.results;
@@ -51,7 +49,7 @@ class AIWorkerPool {
    */
   async executeTask(task, index) {
     console.log(`\n🤖 Worker ${index + 1}: ${task.description}`);
-    
+
     switch (this.mode) {
       case 'openai':
         return this.executeWithOpenAI(task);
@@ -78,7 +76,7 @@ class AIWorkerPool {
     return {
       task: task.description,
       result: 'Would call OpenAI API here',
-      mode: 'openai'
+      mode: 'openai',
     };
   }
 
@@ -92,7 +90,7 @@ class AIWorkerPool {
     return {
       task: task.description,
       result: 'Would call VS Code Copilot extension here',
-      mode: 'vscode'
+      mode: 'vscode',
     };
   }
 
@@ -103,13 +101,13 @@ class AIWorkerPool {
     try {
       // Check if Ollama is installed
       execSync('ollama --version', { stdio: 'pipe' });
-      
+
       // Call Ollama API (example)
       const result = execSync(
         `curl -s http://localhost:11434/api/generate -d '${JSON.stringify({
           model: 'codellama',
           prompt: task.prompt,
-          stream: false
+          stream: false,
         })}'`,
         { encoding: 'utf8' }
       );
@@ -117,13 +115,13 @@ class AIWorkerPool {
       return {
         task: task.description,
         result: JSON.parse(result).response,
-        mode: 'ollama'
+        mode: 'ollama',
       };
     } catch (error) {
       return {
         task: task.description,
         error: 'Ollama not available',
-        mode: 'ollama'
+        mode: 'ollama',
       };
     }
   }
@@ -135,7 +133,7 @@ class AIWorkerPool {
     console.log('\n' + '='.repeat(60));
     console.log('📊 AI Worker Pool - Execution Report');
     console.log('='.repeat(60));
-    
+
     this.results.forEach((result, index) => {
       console.log(`\n🤖 Worker ${index + 1}:`);
       console.log(`   Task: ${result.task}`);
@@ -146,7 +144,7 @@ class AIWorkerPool {
         console.log(`   Result: ${result.result.substring(0, 100)}...`);
       }
     });
-    
+
     console.log('\n' + '='.repeat(60));
   }
 }
@@ -154,24 +152,24 @@ class AIWorkerPool {
 // Example usage
 async function main() {
   const pool = new AIWorkerPool('openai');
-  
+
   // Example: Manager AI delegates 3 tasks
   pool.addTask({
     description: 'Implement matching.js unit tests',
     prompt: 'Write Jest tests for lib/rank/matching.js focusing on edge cases',
-    files: ['lib/rank/matching.js']
+    files: ['lib/rank/matching.js'],
   });
 
   pool.addTask({
     description: 'Review API security',
     prompt: 'Review pages/api/rank/match.js for security vulnerabilities',
-    files: ['pages/api/rank/match.js']
+    files: ['pages/api/rank/match.js'],
   });
 
   pool.addTask({
     description: 'Optimize queue algorithm',
     prompt: 'Analyze lib/rank/queue.js and suggest performance optimizations',
-    files: ['lib/rank/queue.js']
+    files: ['lib/rank/queue.js'],
   });
 
   await pool.executeAll();

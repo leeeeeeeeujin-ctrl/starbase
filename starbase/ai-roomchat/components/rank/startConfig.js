@@ -3,146 +3,140 @@ import {
   DEFAULT_GEMINI_MODEL,
   normalizeGeminiMode,
   normalizeGeminiModelId,
-} from '@/lib/rank/geminiConfig'
+} from '@/lib/rank/geminiConfig';
 import {
   START_SESSION_KEYS,
   readStartSessionValue,
   writeStartSessionValue,
   removeStartSessionValue,
-} from '@/lib/rank/startSessionChannel'
+} from '@/lib/rank/startSessionChannel';
 
-const MATCH_META_KEY = START_SESSION_KEYS.MATCH_META
+const MATCH_META_KEY = START_SESSION_KEYS.MATCH_META;
 
 function safeClone(value) {
-  if (value === null || value === undefined) return null
-  if (typeof value !== 'object') return value
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'object') return value;
   if (value instanceof Map) {
     try {
-      return JSON.parse(JSON.stringify(Object.fromEntries(value.entries())))
+      return JSON.parse(JSON.stringify(Object.fromEntries(value.entries())));
     } catch (error) {
-      console.warn('매치 메타데이터 Map 직렬화 실패:', error)
-      return null
+      console.warn('매치 메타데이터 Map 직렬화 실패:', error);
+      return null;
     }
   }
   try {
-    return JSON.parse(JSON.stringify(value))
+    return JSON.parse(JSON.stringify(value));
   } catch (error) {
-    console.warn('매치 메타데이터를 직렬화하지 못했습니다:', error)
-    return null
+    console.warn('매치 메타데이터를 직렬화하지 못했습니다:', error);
+    return null;
   }
 }
 
 function normalizeAssignmentMember(member, index) {
   if (!member || typeof member !== 'object') {
-    return { index }
+    return { index };
   }
 
-  const clone = { ...member }
+  const clone = { ...member };
   const heroId =
     member.hero_id ??
     member.heroId ??
     member.heroID ??
     (member.hero && (member.hero.id ?? member.heroId)) ??
-    null
-  const ownerId = member.owner_id ?? member.ownerId ?? member.ownerID ?? null
+    null;
+  const ownerId = member.owner_id ?? member.ownerId ?? member.ownerID ?? null;
   const slotCandidate =
-    member.slot_no ??
-    member.slotNo ??
-    member.slot_index ??
-    member.slotIndex ??
-    null
+    member.slot_no ?? member.slotNo ?? member.slot_index ?? member.slotIndex ?? null;
   const slotNo =
-    slotCandidate != null && Number.isFinite(Number(slotCandidate))
-      ? Number(slotCandidate)
-      : null
+    slotCandidate != null && Number.isFinite(Number(slotCandidate)) ? Number(slotCandidate) : null;
 
-  const normalizedHeroId = heroId != null ? String(heroId).trim() : null
+  const normalizedHeroId = heroId != null ? String(heroId).trim() : null;
   if (normalizedHeroId) {
-    clone.hero_id = normalizedHeroId
-    clone.heroId = normalizedHeroId
+    clone.hero_id = normalizedHeroId;
+    clone.heroId = normalizedHeroId;
   }
-  const normalizedOwnerId = ownerId != null ? String(ownerId).trim() : null
+  const normalizedOwnerId = ownerId != null ? String(ownerId).trim() : null;
   if (normalizedOwnerId) {
-    clone.owner_id = normalizedOwnerId
-    clone.ownerId = normalizedOwnerId
+    clone.owner_id = normalizedOwnerId;
+    clone.ownerId = normalizedOwnerId;
   }
   if (slotNo != null) {
-    clone.slot_no = slotNo
-    clone.slotNo = slotNo
+    clone.slot_no = slotNo;
+    clone.slotNo = slotNo;
   }
 
-  const queueId = member.queue_id ?? member.queueId ?? member.queueID ?? null
-  const normalizedQueueId = queueId != null ? String(queueId).trim() : null
+  const queueId = member.queue_id ?? member.queueId ?? member.queueID ?? null;
+  const normalizedQueueId = queueId != null ? String(queueId).trim() : null;
   if (normalizedQueueId) {
-    clone.queue_id = normalizedQueueId
-    clone.queueId = normalizedQueueId
+    clone.queue_id = normalizedQueueId;
+    clone.queueId = normalizedQueueId;
   }
 
-  const partyKey = member.party_key ?? member.partyKey ?? null
-  const normalizedPartyKey = partyKey != null ? String(partyKey).trim() : null
+  const partyKey = member.party_key ?? member.partyKey ?? null;
+  const normalizedPartyKey = partyKey != null ? String(partyKey).trim() : null;
   if (normalizedPartyKey) {
-    clone.party_key = normalizedPartyKey
-    clone.partyKey = normalizedPartyKey
+    clone.party_key = normalizedPartyKey;
+    clone.partyKey = normalizedPartyKey;
   }
 
   const partyMemberIndex =
-    member.party_member_index ?? member.partyMemberIndex ?? member.memberIndex
+    member.party_member_index ?? member.partyMemberIndex ?? member.memberIndex;
   if (partyMemberIndex != null && Number.isFinite(Number(partyMemberIndex))) {
-    clone.party_member_index = Number(partyMemberIndex)
-    clone.partyMemberIndex = Number(partyMemberIndex)
+    clone.party_member_index = Number(partyMemberIndex);
+    clone.partyMemberIndex = Number(partyMemberIndex);
   }
 
-  const joinedAt = member.joined_at ?? member.joinedAt ?? null
+  const joinedAt = member.joined_at ?? member.joinedAt ?? null;
   if (joinedAt) {
-    clone.joined_at = joinedAt
-    clone.joinedAt = joinedAt
+    clone.joined_at = joinedAt;
+    clone.joinedAt = joinedAt;
   }
 
-  const rating = member.rating ?? member.score ?? null
+  const rating = member.rating ?? member.score ?? null;
   if (rating != null && Number.isFinite(Number(rating))) {
-    clone.rating = Number(rating)
+    clone.rating = Number(rating);
   }
 
-  return clone
+  return clone;
 }
 
 function normalizeAssignment(assignment) {
-  if (!assignment || typeof assignment !== 'object') return null
+  if (!assignment || typeof assignment !== 'object') return null;
 
-  const role = typeof assignment.role === 'string' ? assignment.role.trim() : ''
+  const role = typeof assignment.role === 'string' ? assignment.role.trim() : '';
   const slots =
     assignment.slots != null && Number.isFinite(Number(assignment.slots))
       ? Number(assignment.slots)
-      : null
+      : null;
   const roleSlotsRaw = Array.isArray(assignment.roleSlots)
     ? assignment.roleSlots
     : Array.isArray(assignment.role_slots)
-    ? assignment.role_slots
-    : []
+      ? assignment.role_slots
+      : [];
   const roleSlots = roleSlotsRaw
-    .map((slot) => {
+    .map(slot => {
       if (typeof slot === 'number') {
-        return Number(slot)
+        return Number(slot);
       }
       if (typeof slot === 'object' && slot !== null) {
-        const value = slot.slotIndex ?? slot.slot_index ?? slot.index
+        const value = slot.slotIndex ?? slot.slot_index ?? slot.index;
         if (Number.isFinite(Number(value))) {
-          return Number(value)
+          return Number(value);
         }
       }
-      return Number.NaN
+      return Number.NaN;
     })
-    .filter((slot) => Number.isFinite(slot))
+    .filter(slot => Number.isFinite(slot));
   const heroIds = Array.isArray(assignment.heroIds)
     ? assignment.heroIds
-        .map((id) => (id != null ? String(id).trim() : ''))
-        .filter((id) => id.length > 0)
-    : []
+        .map(id => (id != null ? String(id).trim() : ''))
+        .filter(id => id.length > 0)
+    : [];
   const members = Array.isArray(assignment.members)
     ? assignment.members
         .map((member, index) => normalizeAssignmentMember(member, index))
-        .map((member) => safeClone(member) ?? member)
-    : []
+        .map(member => safeClone(member) ?? member)
+    : [];
 
   const payload = {
     role,
@@ -150,94 +144,92 @@ function normalizeAssignment(assignment) {
     roleSlots,
     heroIds,
     members,
-  }
+  };
 
   if (assignment.groupKey) {
-    payload.groupKey = assignment.groupKey
+    payload.groupKey = assignment.groupKey;
   }
   if (assignment.partyKey) {
-    payload.partyKey = assignment.partyKey
+    payload.partyKey = assignment.partyKey;
   }
   if (assignment.anchorScore != null) {
-    payload.anchorScore = assignment.anchorScore
+    payload.anchorScore = assignment.anchorScore;
   }
 
-  return payload
+  return payload;
 }
 
 function normalizeRolesForMeta(roles = []) {
-  if (!Array.isArray(roles)) return []
+  if (!Array.isArray(roles)) return [];
   return roles
-    .map((role) => {
-      if (!role) return null
+    .map(role => {
+      if (!role) return null;
       if (typeof role === 'string') {
-        const trimmed = role.trim()
-        return trimmed ? { name: trimmed } : null
+        const trimmed = role.trim();
+        return trimmed ? { name: trimmed } : null;
       }
       const name =
         typeof role.name === 'string'
           ? role.name.trim()
           : typeof role.role === 'string'
-          ? role.role.trim()
-          : ''
-      if (!name) return null
-      const slotCount = Number(role.slot_count ?? role.slotCount ?? role.slots)
-      const normalized = { name }
+            ? role.role.trim()
+            : '';
+      if (!name) return null;
+      const slotCount = Number(role.slot_count ?? role.slotCount ?? role.slots);
+      const normalized = { name };
       if (Number.isFinite(slotCount)) {
-        normalized.slotCount = slotCount
+        normalized.slotCount = slotCount;
       }
-      return normalized
+      return normalized;
     })
-    .filter(Boolean)
+    .filter(Boolean);
 }
 
 function normalizeSlotLayoutForMeta(layout = []) {
-  if (!Array.isArray(layout)) return []
+  if (!Array.isArray(layout)) return [];
   return layout
     .map((slot, index) => {
-      if (!slot) return null
+      if (!slot) return null;
       const roleName =
         typeof slot.role === 'string'
           ? slot.role.trim()
           : typeof slot.name === 'string'
-          ? slot.name.trim()
-          : ''
-      if (!roleName) return null
+            ? slot.name.trim()
+            : '';
+      if (!roleName) return null;
       const rawIndex = Number(
-        slot.slotIndex ?? slot.slot_index ?? slot.index ?? slot.slot ?? index,
-      )
-      if (!Number.isFinite(rawIndex) || rawIndex < 0) return null
-      const payload = { slotIndex: rawIndex, role: roleName }
-      const heroId = slot.heroId ?? slot.hero_id
+        slot.slotIndex ?? slot.slot_index ?? slot.index ?? slot.slot ?? index
+      );
+      if (!Number.isFinite(rawIndex) || rawIndex < 0) return null;
+      const payload = { slotIndex: rawIndex, role: roleName };
+      const heroId = slot.heroId ?? slot.hero_id;
       if (heroId != null && heroId !== '') {
-        payload.heroId = heroId
+        payload.heroId = heroId;
       }
-      const heroOwnerId = slot.heroOwnerId ?? slot.hero_owner_id
+      const heroOwnerId = slot.heroOwnerId ?? slot.hero_owner_id;
       if (heroOwnerId != null && heroOwnerId !== '') {
-        payload.heroOwnerId = heroOwnerId
+        payload.heroOwnerId = heroOwnerId;
       }
-      return payload
+      return payload;
     })
     .filter(Boolean)
-    .sort((a, b) => a.slotIndex - b.slotIndex)
+    .sort((a, b) => a.slotIndex - b.slotIndex);
 }
 
 export function buildMatchMetaPayload(match, extras = {}) {
-  if (!match || typeof match !== 'object') return null
+  if (!match || typeof match !== 'object') return null;
 
   const normalizedAssignments = Array.isArray(match.assignments)
-    ? match.assignments
-        .map((assignment) => normalizeAssignment(assignment))
-        .filter(Boolean)
-    : []
+    ? match.assignments.map(assignment => normalizeAssignment(assignment)).filter(Boolean)
+    : [];
 
   const heroMapClone =
-    match.heroMap instanceof Map ? safeClone(match.heroMap) : safeClone(match.heroMap || null)
+    match.heroMap instanceof Map ? safeClone(match.heroMap) : safeClone(match.heroMap || null);
 
-  const { slotLayout: extraSlotLayout, ...extraRest } = extras || {}
+  const { slotLayout: extraSlotLayout, ...extraRest } = extras || {};
   const normalizedSlotLayout = normalizeSlotLayoutForMeta(
-    extraSlotLayout ?? match.slotLayout ?? match.roleStatus?.slotLayout ?? [],
-  )
+    extraSlotLayout ?? match.slotLayout ?? match.roleStatus?.slotLayout ?? []
+  );
 
   const payload = {
     storedAt: Date.now(),
@@ -256,46 +248,46 @@ export function buildMatchMetaPayload(match, extras = {}) {
         : null,
     heroMap: heroMapClone,
     ...extraRest,
-  }
+  };
 
   if (match.source) {
-    payload.source = match.source
+    payload.source = match.source;
   }
 
-  return safeClone(payload)
+  return safeClone(payload);
 }
 
 export function storeStartMatchMeta(meta) {
-  if (typeof window === 'undefined') return
+  if (typeof window === 'undefined') return;
   if (!meta) {
-    removeStartSessionValue(MATCH_META_KEY, { source: 'start-config' })
-    return
+    removeStartSessionValue(MATCH_META_KEY, { source: 'start-config' });
+    return;
   }
-  const sanitized = safeClone(meta)
+  const sanitized = safeClone(meta);
   if (!sanitized) {
-    removeStartSessionValue(MATCH_META_KEY, { source: 'start-config' })
-    return
+    removeStartSessionValue(MATCH_META_KEY, { source: 'start-config' });
+    return;
   }
   try {
     writeStartSessionValue(MATCH_META_KEY, JSON.stringify(sanitized), {
       source: 'start-config',
-    })
+    });
   } catch (error) {
-    console.warn('매치 메타데이터를 저장하지 못했습니다:', error)
+    console.warn('매치 메타데이터를 저장하지 못했습니다:', error);
   }
 }
 
 export function consumeStartMatchMeta() {
-  if (typeof window === 'undefined') return null
+  if (typeof window === 'undefined') return null;
   try {
-    const raw = readStartSessionValue(MATCH_META_KEY)
-    if (!raw) return null
-    removeStartSessionValue(MATCH_META_KEY, { source: 'start-config' })
-    const parsed = JSON.parse(raw)
-    return safeClone(parsed)
+    const raw = readStartSessionValue(MATCH_META_KEY);
+    if (!raw) return null;
+    removeStartSessionValue(MATCH_META_KEY, { source: 'start-config' });
+    const parsed = JSON.parse(raw);
+    return safeClone(parsed);
   } catch (error) {
-    console.warn('매치 메타데이터를 불러오지 못했습니다:', error)
-    return null
+    console.warn('매치 메타데이터를 불러오지 못했습니다:', error);
+    return null;
   }
 }
 
@@ -306,26 +298,26 @@ export function readStoredStartConfig() {
       apiVersion: 'gemini',
       geminiMode: DEFAULT_GEMINI_MODE,
       geminiModel: DEFAULT_GEMINI_MODEL,
-    }
+    };
   }
-  let apiKey = ''
-  let apiVersion = 'gemini'
-  let geminiMode = DEFAULT_GEMINI_MODE
-  let geminiModel = DEFAULT_GEMINI_MODEL
+  let apiKey = '';
+  let apiVersion = 'gemini';
+  let geminiMode = DEFAULT_GEMINI_MODE;
+  let geminiModel = DEFAULT_GEMINI_MODEL;
   try {
-    apiKey = (readStartSessionValue(START_SESSION_KEYS.API_KEY) || '').trim()
-    apiVersion = readStartSessionValue(START_SESSION_KEYS.API_VERSION) || 'gemini'
+    apiKey = (readStartSessionValue(START_SESSION_KEYS.API_KEY) || '').trim();
+    apiVersion = readStartSessionValue(START_SESSION_KEYS.API_VERSION) || 'gemini';
     geminiMode = normalizeGeminiMode(
-      readStartSessionValue(START_SESSION_KEYS.GEMINI_MODE) || DEFAULT_GEMINI_MODE,
-    )
+      readStartSessionValue(START_SESSION_KEYS.GEMINI_MODE) || DEFAULT_GEMINI_MODE
+    );
     geminiModel = normalizeGeminiModelId(
-      readStartSessionValue(START_SESSION_KEYS.GEMINI_MODEL) || DEFAULT_GEMINI_MODEL,
-    )
+      readStartSessionValue(START_SESSION_KEYS.GEMINI_MODEL) || DEFAULT_GEMINI_MODEL
+    );
     if (!geminiModel) {
-      geminiModel = DEFAULT_GEMINI_MODEL
+      geminiModel = DEFAULT_GEMINI_MODEL;
     }
   } catch (error) {
-    console.warn('시작 설정을 불러오지 못했습니다:', error)
+    console.warn('시작 설정을 불러오지 못했습니다:', error);
   }
-  return { apiKey, apiVersion, geminiMode, geminiModel }
+  return { apiKey, apiVersion, geminiMode, geminiModel };
 }

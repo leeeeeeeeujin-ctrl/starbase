@@ -14,12 +14,12 @@
   --color-primary: #3b82f6;
   --color-primary-light: #60a5fa;
   --color-primary-dark: #1d4ed8;
-  
+
   --color-secondary: #6366f1;
   --color-accent: #10b981;
   --color-warning: #f59e0b;
   --color-error: #ef4444;
-  
+
   /* 그레이스케일 */
   --color-white: #ffffff;
   --color-gray-50: #f9fafb;
@@ -33,42 +33,43 @@
   --color-gray-800: #1f2937;
   --color-gray-900: #111827;
   --color-black: #000000;
-  
+
   /* 타이포그래피 */
-  --font-family-base: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-family-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-  
-  --font-size-xs: 0.75rem;     /* 12px */
-  --font-size-sm: 0.875rem;    /* 14px */
-  --font-size-base: 1rem;      /* 16px */
-  --font-size-lg: 1.125rem;    /* 18px */
-  --font-size-xl: 1.25rem;     /* 20px */
-  --font-size-2xl: 1.5rem;     /* 24px */
-  --font-size-3xl: 1.875rem;   /* 30px */
-  
+  --font-family-base:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-family-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+
+  --font-size-xs: 0.75rem; /* 12px */
+  --font-size-sm: 0.875rem; /* 14px */
+  --font-size-base: 1rem; /* 16px */
+  --font-size-lg: 1.125rem; /* 18px */
+  --font-size-xl: 1.25rem; /* 20px */
+  --font-size-2xl: 1.5rem; /* 24px */
+  --font-size-3xl: 1.875rem; /* 30px */
+
   /* 스페이싱 */
-  --spacing-1: 0.25rem;   /* 4px */
-  --spacing-2: 0.5rem;    /* 8px */
-  --spacing-3: 0.75rem;   /* 12px */
-  --spacing-4: 1rem;      /* 16px */
-  --spacing-5: 1.25rem;   /* 20px */
-  --spacing-6: 1.5rem;    /* 24px */
-  --spacing-8: 2rem;      /* 32px */
-  --spacing-10: 2.5rem;   /* 40px */
-  --spacing-12: 3rem;     /* 48px */
-  --spacing-16: 4rem;     /* 64px */
-  
+  --spacing-1: 0.25rem; /* 4px */
+  --spacing-2: 0.5rem; /* 8px */
+  --spacing-3: 0.75rem; /* 12px */
+  --spacing-4: 1rem; /* 16px */
+  --spacing-5: 1.25rem; /* 20px */
+  --spacing-6: 1.5rem; /* 24px */
+  --spacing-8: 2rem; /* 32px */
+  --spacing-10: 2.5rem; /* 40px */
+  --spacing-12: 3rem; /* 48px */
+  --spacing-16: 4rem; /* 64px */
+
   /* 브레이크포인트 */
   --breakpoint-sm: 640px;
   --breakpoint-md: 768px;
   --breakpoint-lg: 1024px;
   --breakpoint-xl: 1280px;
-  
+
   /* 애니메이션 */
   --duration-fast: 0.15s;
   --duration-normal: 0.3s;
   --duration-slow: 0.5s;
-  
+
   /* Z-index */
   --z-dropdown: 1000;
   --z-modal: 1050;
@@ -81,11 +82,11 @@
   /* 컬러 */
   color: #3b82f6; /* var(--color-primary) 대신 */
   background-color: #ffffff; /* var(--color-white) 대신 */
-  
+
   /* 폰트 */
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
   font-size: 16px; /* var(--font-size-base) 대신 */
-  
+
   /* 스페이싱 */
   padding: 16px; /* var(--spacing-4) 대신 */
   margin: 16px; /* var(--spacing-4) 대신 */
@@ -96,10 +97,10 @@
    ================================ */
 
 .flex {
-  display: -webkit-box;      /* iOS 6-, Safari 3.1-6 */
-  display: -webkit-flex;     /* Safari 6.1+, iOS 7.1+ */
-  display: -ms-flexbox;      /* IE 10 */
-  display: flex;             /* 표준 */
+  display: -webkit-box; /* iOS 6-, Safari 3.1-6 */
+  display: -webkit-flex; /* Safari 6.1+, iOS 7.1+ */
+  display: -ms-flexbox; /* IE 10 */
+  display: flex; /* 표준 */
 }
 
 .flex-col {
@@ -157,8 +158,8 @@
    ================================ */
 
 .grid {
-  display: -ms-grid;  /* IE 10-11 */
-  display: grid;      /* 표준 */
+  display: -ms-grid; /* IE 10-11 */
+  display: grid; /* 표준 */
 }
 
 /* IE에서는 grid 대신 flexbox 사용 */
@@ -172,11 +173,27 @@
     -ms-flex-wrap: wrap;
     flex-wrap: wrap;
   }
-  
-  .grid-cols-1 > * { -webkit-flex: 0 0 100%; -ms-flex: 0 0 100%; flex: 0 0 100%; }
-  .grid-cols-2 > * { -webkit-flex: 0 0 50%; -ms-flex: 0 0 50%; flex: 0 0 50%; }
-  .grid-cols-3 > * { -webkit-flex: 0 0 33.333333%; -ms-flex: 0 0 33.333333%; flex: 0 0 33.333333%; }
-  .grid-cols-4 > * { -webkit-flex: 0 0 25%; -ms-flex: 0 0 25%; flex: 0 0 25%; }
+
+  .grid-cols-1 > * {
+    -webkit-flex: 0 0 100%;
+    -ms-flex: 0 0 100%;
+    flex: 0 0 100%;
+  }
+  .grid-cols-2 > * {
+    -webkit-flex: 0 0 50%;
+    -ms-flex: 0 0 50%;
+    flex: 0 0 50%;
+  }
+  .grid-cols-3 > * {
+    -webkit-flex: 0 0 33.333333%;
+    -ms-flex: 0 0 33.333333%;
+    flex: 0 0 33.333333%;
+  }
+  .grid-cols-4 > * {
+    -webkit-flex: 0 0 25%;
+    -ms-flex: 0 0 25%;
+    flex: 0 0 25%;
+  }
 }
 
 .grid-cols-1 {
@@ -195,8 +212,8 @@
 }
 
 .gap-4 {
-  grid-gap: 1rem;        /* IE 10-11 */
-  gap: 1rem;             /* 표준 */
+  grid-gap: 1rem; /* IE 10-11 */
+  gap: 1rem; /* 표준 */
 }
 
 .gap-2 {
@@ -243,15 +260,26 @@
 }
 
 .transition-colors {
-  -webkit-transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
-  -o-transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
-  transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+  -webkit-transition:
+    color 0.15s ease,
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+  -o-transition:
+    color 0.15s ease,
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .transition-transform {
   -webkit-transition: -webkit-transform 0.15s ease;
   -o-transition: transform 0.15s ease;
-  transition: transform 0.15s ease, -webkit-transform 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    -webkit-transform 0.15s ease;
 }
 
 /* ================================
@@ -259,13 +287,21 @@
    ================================ */
 
 .shadow {
-  -webkit-box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  -webkit-box-shadow:
+    0 1px 3px 0 rgba(0, 0, 0, 0.1),
+    0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  box-shadow:
+    0 1px 3px 0 rgba(0, 0, 0, 0.1),
+    0 1px 2px 0 rgba(0, 0, 0, 0.06);
 }
 
 .shadow-lg {
-  -webkit-box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  -webkit-box-shadow:
+    0 10px 15px -3px rgba(0, 0, 0, 0.1),
+    0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  box-shadow:
+    0 10px 15px -3px rgba(0, 0, 0, 0.1),
+    0 4px 6px -2px rgba(0, 0, 0, 0.05);
 }
 
 .shadow-none {
@@ -311,8 +347,8 @@
 .touch-target,
 button,
 .btn,
-a[role="button"] {
-  min-height: 44px;  /* Apple 권장 최소 터치 크기 */
+a[role='button'] {
+  min-height: 44px; /* Apple 권장 최소 터치 크기 */
   min-width: 44px;
 }
 
@@ -333,12 +369,12 @@ select {
     -ms-flex: 1 1 auto;
     flex: 1 1 auto;
   }
-  
+
   /* IE에서 min-height 버그 수정 */
   .min-h-screen {
     height: 100vh;
   }
-  
+
   /* IE에서 object-fit 대체 */
   .object-cover {
     background-size: cover;
@@ -418,16 +454,16 @@ select {
   .no-print {
     display: none !important;
   }
-  
+
   .print-only {
     display: block !important;
   }
-  
+
   /* 링크 URL 표시 */
   a[href]:after {
-    content: " (" attr(href) ")";
+    content: ' (' attr(href) ')';
   }
-  
+
   /* 색상을 흑백으로 */
   * {
     -webkit-print-color-adjust: exact;

@@ -3,6 +3,7 @@
 ## Current State Analysis
 
 ### API Routes (159+ endpoints)
+
 - `/api/rank/*` - 게임 코어 로직 (40+ endpoints)
 - `/api/admin/*` - 관리자 기능
 - `/api/maker/*` - 프롬프트 제작
@@ -13,6 +14,7 @@
 - `/api/arena/*` - 아레나 기능
 
 ### Pages
+
 - Rank game UI
 - Maker (prompt creation)
 - Lobby/Roster
@@ -22,6 +24,7 @@
 - Chat
 
 ### Shared Libraries (`lib/`)
+
 - `rank/` - Rank game utilities
 - `maker/` - Maker tools
 - `promptEngine/` - Prompt processing
@@ -30,6 +33,7 @@
 - `utils/` - Common utilities
 
 ### Module Layer (`modules/`)
+
 - `rank/` - Rank business logic
 - `arena/` - Arena logic
 - `character/` - Character management
@@ -75,6 +79,7 @@ starbase/
 ## 📦 Refactor Steps
 
 ### Phase 1: Core Extraction (Week 1)
+
 - [ ] `@starbase/core` 패키지 생성
   - supabase clients
   - auth helpers
@@ -82,17 +87,20 @@ starbase/
   - type definitions
 
 ### Phase 2: Feature Modules (Week 2-3)
+
 - [ ] `@starbase/feature-rank` 독립 모듈화
 - [ ] `@starbase/feature-maker` 독립 모듈화
 - [ ] `@starbase/feature-admin` 독립 모듈화
 - [ ] `@starbase/feature-arena` 독립 모듈화
 
 ### Phase 3: Plugin System (Week 4)
+
 - [ ] Feature registry 구현
 - [ ] Dynamic route loading
 - [ ] Config-based activation
 
 ### Phase 4: Installation Flow (Week 5)
+
 - [ ] Interactive setup CLI
 - [ ] Docker Compose 지원
 - [ ] One-click deploy scripts
@@ -102,6 +110,7 @@ starbase/
 ## 🔧 Immediate Improvements
 
 ### 1. Config-Driven Features
+
 ```javascript
 // config/features.js
 export const FEATURES = {
@@ -110,32 +119,34 @@ export const FEATURES = {
   admin: process.env.FEATURE_ADMIN !== 'false',
   arena: process.env.FEATURE_ARENA !== 'false',
   chat: process.env.FEATURE_CHAT !== 'false',
-}
+};
 ```
 
 ### 2. Modular API Routes
+
 ```javascript
 // pages/api/[...proxy].js
-import { FEATURES } from '@/config/features'
-import { createRouter } from '@/lib/router'
+import { FEATURES } from '@/config/features';
+import { createRouter } from '@/lib/router';
 
-const router = createRouter()
+const router = createRouter();
 
-if (FEATURES.rank) router.use('/rank', rankRoutes)
-if (FEATURES.maker) router.use('/maker', makerRoutes)
+if (FEATURES.rank) router.use('/rank', rankRoutes);
+if (FEATURES.maker) router.use('/maker', makerRoutes);
 // ...
 ```
 
 ### 3. Dynamic Pages
+
 ```javascript
 // pages/rank/index.js
-import { FEATURES } from '@/config/features'
+import { FEATURES } from '@/config/features';
 
 export async function getStaticProps() {
   if (!FEATURES.rank) {
-    return { notFound: true }
+    return { notFound: true };
   }
-  return { props: {} }
+  return { props: {} };
 }
 ```
 

@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react'
-import { MobileOptimizationManager } from '../../services/MobileOptimizationManager'
-import { GameResourceManager } from '../../services/GameResourceManager'
+import React, { useState, useEffect, useRef } from 'react';
+import { MobileOptimizationManager } from '../../services/MobileOptimizationManager';
+import { GameResourceManager } from '../../services/GameResourceManager';
 
 /**
  * 핵심 AI 배틀 아레나 - 단순화된 모바일 친화적 AI 배틀 시스템
- * 
+ *
  * 특징:
  * - 사전 설정된 캐릭터 기반 AI 판정 시스템
  * - 모바일 최적화된 간편 액션 입력
@@ -26,81 +26,82 @@ export default function AIBattleArena({
     battleLog: [],
     winner: null,
     isProcessing: false,
-  })
-  
+  });
+
   const [visualState, setVisualState] = useState({
     backgroundImage: gameSettings.background || '/default-battle-bg.jpg',
     characterPositions: {},
     effects: [],
     displayMode: 'cards', // cards, portraits, minimal
-  })
-  
+  });
+
   const [actionInput, setActionInput] = useState({
     selectedAction: null,
     customPrompt: '',
     showActionPanel: false,
-  })
+  });
 
-  const mobileManager = useRef(new MobileOptimizationManager())
-  const resourceManager = useRef(new GameResourceManager())
+  const mobileManager = useRef(new MobileOptimizationManager());
+  const resourceManager = useRef(new GameResourceManager());
 
   useEffect(() => {
     // 모바일 최적화 초기화
-    mobileManager.current.initializeOptimizations()
-    
+    mobileManager.current.initializeOptimizations();
+
     // 캐릭터 배치 초기화
-    initializeCharacterPositions()
-    
+    initializeCharacterPositions();
+
     // 캐릭터별 배경/BGM 설정 적용
-    applyCharacterThemes()
-  }, [])
+    applyCharacterThemes();
+  }, []);
 
   const applyCharacterThemes = () => {
     // 첫 번째 캐릭터의 배경과 BGM을 적용하거나 게임 설정 사용
-    const primaryChar = characters[0]
+    const primaryChar = characters[0];
     if (primaryChar) {
       setVisualState(prev => ({
         ...prev,
-        backgroundImage: primaryChar.background || battleSettings.background || '/default-battle-bg.jpg',
-      }))
-      
+        backgroundImage:
+          primaryChar.background || battleSettings.background || '/default-battle-bg.jpg',
+      }));
+
       // BGM 적용 (있다면)
       if (primaryChar.bgm) {
-        playBackgroundMusic(primaryChar.bgm)
+        playBackgroundMusic(primaryChar.bgm);
       }
     }
-  }
+  };
 
-  const playBackgroundMusic = (bgmUrl) => {
+  const playBackgroundMusic = bgmUrl => {
     try {
-      const audio = new Audio(bgmUrl)
-      audio.loop = true
-      audio.volume = 0.3
+      const audio = new Audio(bgmUrl);
+      audio.loop = true;
+      audio.volume = 0.3;
       audio.play().catch(err => {
-        console.log('BGM 자동 재생이 차단되었습니다:', err)
-      })
+        console.log('BGM 자동 재생이 차단되었습니다:', err);
+      });
     } catch (error) {
-      console.error('BGM 재생 오류:', error)
+      console.error('BGM 재생 오류:', error);
     }
-  }
+  };
 
   const initializeCharacterPositions = () => {
-    const positions = {}
+    const positions = {};
     characters.forEach((character, index) => {
       positions[character.id] = {
         x: index % 2 === 0 ? '20%' : '80%',
-        y: 50 + (index * 10) + '%',
+        y: 50 + index * 10 + '%',
         scale: 1,
         opacity: 1,
-      }
-    })
-    setVisualState(prev => ({ ...prev, characterPositions: positions }))
-  }
+      };
+    });
+    setVisualState(prev => ({ ...prev, characterPositions: positions }));
+  };
 
   // AI 판정 시스템
   const processAIBattle = async (playerAction, character) => {
-    setBattleState(prev => ({ ...prev, isProcessing: true }))
-    
+    setBattleState(prev => ({ ...prev, isProcessing: true }));
+
     try {
       // 캐릭터 정보와 액션을 AI에게 전달
       const battleContext = {
@@ -109,10 +110,10 @@ export default function AIBattleArena({
         turn: battleState.currentTurn,
         gameSettings: gameSettings,
         previousTurns: battleState.battleLog.slice(-3), // 최근 3턴만 참조
-      }
+      };
 
-      const aiResponse = await submitBattleAction(battleContext)
-      
+      const aiResponse = await submitBattleAction(battleContext);
+
       // 배틀 로그 업데이트
       const newLogEntry = {
         turn: battleState.currentTurn,
@@ -121,56 +122,55 @@ export default function AIBattleArena({
         aiResponse: aiResponse.narrative,
         result: aiResponse.result,
         timestamp: new Date().toISOString(),
-      }
+      };
 
       setBattleState(prev => ({
         ...prev,
         battleLog: [...prev.battleLog, newLogEntry],
         currentTurn: prev.currentTurn + 1,
         isProcessing: false,
-      }))
+      }));
 
       // 비주얼 효과 적용
-      applyBattleEffects(aiResponse)
-      
+      applyBattleEffects(aiResponse);
+
       // 승부 판정
       if (aiResponse.battleEnd) {
-        endBattle(aiResponse.winner)
+        endBattle(aiResponse.winner);
       }
-      
     } catch (error) {
-      console.error('AI 배틀 처리 중 오류:', error)
-      setBattleState(prev => ({ ...prev, isProcessing: false }))
+      console.error('AI 배틀 처리 중 오류:', error);
+      setBattleState(prev => ({ ...prev, isProcessing: false }));
     }
-  }
+  };
 
-  const submitBattleAction = async (context) => {
+  const submitBattleAction = async context => {
     // 실제 AI API 호출 로직
     const response = await fetch('/api/ai-battle-judge', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(context),
-    })
-    
-    if (!response.ok) throw new Error('AI 판정 실패')
-    return response.json()
-  }
+    });
 
-  const applyBattleEffects = (aiResponse) => {
+    if (!response.ok) throw new Error('AI 판정 실패');
+    return response.json();
+  };
+
+  const applyBattleEffects = aiResponse => {
     // 캐릭터 위치/스케일 변경
     if (aiResponse.effects?.characterEffects) {
-      const newPositions = { ...visualState.characterPositions }
-      
+      const newPositions = { ...visualState.characterPositions };
+
       aiResponse.effects.characterEffects.forEach(effect => {
         if (newPositions[effect.characterId]) {
           newPositions[effect.characterId] = {
             ...newPositions[effect.characterId],
             ...effect.changes,
-          }
+          };
         }
-      })
-      
-      setVisualState(prev => ({ ...prev, characterPositions: newPositions }))
+      });
+
+      setVisualState(prev => ({ ...prev, characterPositions: newPositions }));
     }
 
     // 일시적 시각 효과
@@ -178,35 +178,35 @@ export default function AIBattleArena({
       setVisualState(prev => ({
         ...prev,
         effects: [...prev.effects, ...aiResponse.effects.visualEffects],
-      }))
-      
+      }));
+
       // 3초 후 효과 제거
       setTimeout(() => {
         setVisualState(prev => ({
           ...prev,
-          effects: prev.effects.filter(effect => 
-            !aiResponse.effects.visualEffects.includes(effect)
+          effects: prev.effects.filter(
+            effect => !aiResponse.effects.visualEffects.includes(effect)
           ),
-        }))
-      }, 3000)
+        }));
+      }, 3000);
     }
-  }
+  };
 
-  const endBattle = (winner) => {
+  const endBattle = winner => {
     setBattleState(prev => ({
       ...prev,
       phase: 'result',
       winner: winner,
-    }))
-    
+    }));
+
     if (onBattleEnd) {
       onBattleEnd({
         winner,
         battleLog: battleState.battleLog,
         turns: battleState.currentTurn,
-      })
+      });
     }
-  }
+  };
 
   const styles = {
     arena: {
@@ -322,47 +322,47 @@ export default function AIBattleArena({
       fontSize: '18px',
       fontWeight: 'bold',
     },
-  }
+  };
 
   // 캐릭터별 동적 액션 생성
-  const generateQuickActions = (character) => {
-    if (!character) return []
-    
+  const generateQuickActions = character => {
+    if (!character) return [];
+
     const baseActions = [
       { type: 'attack', text: '⚔️ 공격', prompt: '상대를 공격합니다' },
       { type: 'defend', text: '🛡️ 방어', prompt: '방어 태세를 취합니다' },
-    ]
-    
+    ];
+
     // 캐릭터의 abilities를 기반으로 특별 액션 추가
     const abilityActions = character.abilities.slice(0, 2).map((ability, index) => ({
       type: `ability${index + 1}`,
       text: `✨ ${ability.substring(0, 6)}`,
       prompt: `${ability}를 사용합니다`,
       ability: ability,
-    }))
-    
-    return [...baseActions, ...abilityActions]
-  }
+    }));
 
-  const handleActionSelect = (action) => {
-    if (battleState.isProcessing) return
-    
-    const activeChar = characters.find(c => c.id === battleState.activeCharacter)
-    if (!activeChar) return
-    
-    processAIBattle(action, activeChar)
-  }
+    return [...baseActions, ...abilityActions];
+  };
+
+  const handleActionSelect = action => {
+    if (battleState.isProcessing) return;
+
+    const activeChar = characters.find(c => c.id === battleState.activeCharacter);
+    if (!activeChar) return;
+
+    processAIBattle(action, activeChar);
+  };
 
   // 현재 활성 캐릭터의 액션들
   const currentQuickActions = () => {
-    const activeChar = characters.find(c => c.id === battleState.activeCharacter)
-    return generateQuickActions(activeChar)
-  }
+    const activeChar = characters.find(c => c.id === battleState.activeCharacter);
+    return generateQuickActions(activeChar);
+  };
 
   const renderCharacters = () => {
-    return characters.map((character) => {
-      const position = visualState.characterPositions[character.id] || {}
-      
+    return characters.map(character => {
+      const position = visualState.characterPositions[character.id] || {};
+
       return (
         <div
           key={character.id}
@@ -373,30 +373,28 @@ export default function AIBattleArena({
             transform: `scale(${position.scale || 1})`,
             opacity: position.opacity || 1,
           }}
-          onClick={() => setBattleState(prev => ({ 
-            ...prev, 
-            activeCharacter: character.id 
-          }))}
+          onClick={() =>
+            setBattleState(prev => ({
+              ...prev,
+              activeCharacter: character.id,
+            }))
+          }
         >
           {character.image ? (
-            <img
-              src={character.image}
-              alt={character.name}
-              style={styles.characterImage}
-            />
+            <img src={character.image} alt={character.name} style={styles.characterImage} />
           ) : (
             <div style={styles.characterImage} />
           )}
           <div style={styles.characterName}>{character.name}</div>
           <div style={styles.characterHp}>HP: {character.hp || 100}</div>
         </div>
-      )
-    })
-  }
+      );
+    });
+  };
 
   const renderNarrative = () => {
-    const lastEntry = battleState.battleLog[battleState.battleLog.length - 1]
-    if (!lastEntry) return null
+    const lastEntry = battleState.battleLog[battleState.battleLog.length - 1];
+    if (!lastEntry) return null;
 
     return (
       <div style={styles.narrativePanel}>
@@ -405,30 +403,34 @@ export default function AIBattleArena({
         </div>
         <div>{lastEntry.aiResponse}</div>
       </div>
-    )
-  }
+    );
+  };
 
   if (battleState.phase === 'preparation') {
     return (
       <div style={styles.arena}>
         <div style={styles.battleField}>
           {renderCharacters()}
-          <div style={{
-            position: 'absolute',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            textAlign: 'center',
-            color: 'white',
-          }}>
+          <div
+            style={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              textAlign: 'center',
+              color: 'white',
+            }}
+          >
             <h2>배틀 준비</h2>
             <p>캐릭터를 선택하고 배틀을 시작하세요</p>
             <button
-              onClick={() => setBattleState(prev => ({ 
-                ...prev, 
-                phase: 'battle',
-                activeCharacter: characters[0]?.id 
-              }))}
+              onClick={() =>
+                setBattleState(prev => ({
+                  ...prev,
+                  phase: 'battle',
+                  activeCharacter: characters[0]?.id,
+                }))
+              }
               style={{
                 ...styles.actionButton,
                 marginTop: '20px',
@@ -440,7 +442,7 @@ export default function AIBattleArena({
           </div>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -448,7 +450,7 @@ export default function AIBattleArena({
       <div style={styles.battleField}>
         {renderCharacters()}
         {renderNarrative()}
-        
+
         {/* 시각 효과들 */}
         {visualState.effects.map((effect, index) => (
           <div
@@ -468,20 +470,20 @@ export default function AIBattleArena({
       {/* 액션 패널 */}
       {battleState.phase === 'battle' && (
         <div style={styles.actionPanel}>
-          <div style={styles.turnInfo}>
-            턴 {battleState.currentTurn} - AI가 판정을 내립니다
-          </div>
+          <div style={styles.turnInfo}>턴 {battleState.currentTurn} - AI가 판정을 내립니다</div>
           <div style={styles.actionGrid}>
-            {currentQuickActions().map((action) => (
+            {currentQuickActions().map(action => (
               <button
                 key={action.type}
                 style={{
                   ...styles.actionButton,
                   opacity: battleState.isProcessing ? 0.5 : 1,
-                  ...(action.ability ? { 
-                    background: 'rgba(168, 85, 247, 0.2)',
-                    borderColor: 'rgba(168, 85, 247, 0.5)',
-                  } : {}),
+                  ...(action.ability
+                    ? {
+                        background: 'rgba(168, 85, 247, 0.2)',
+                        borderColor: 'rgba(168, 85, 247, 0.5)',
+                      }
+                    : {}),
                 }}
                 onClick={() => handleActionSelect(action)}
                 disabled={battleState.isProcessing}
@@ -499,12 +501,10 @@ export default function AIBattleArena({
         <div style={styles.processingOverlay}>
           <div>
             <div>AI가 판정 중입니다...</div>
-            <div style={{ fontSize: '14px', marginTop: '8px' }}>
-              잠시만 기다려주세요
-            </div>
+            <div style={{ fontSize: '14px', marginTop: '8px' }}>잠시만 기다려주세요</div>
           </div>
         </div>
       )}
     </div>
-  )
+  );
 }

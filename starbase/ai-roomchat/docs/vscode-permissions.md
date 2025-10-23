@@ -28,6 +28,7 @@ powershell -ExecutionPolicy Bypass -File scripts/vscode-auto-permit.ps1 -Insider
 ```
 
 What it does:
+
 - Trust all workspaces: `security.workspace.trust.enabled = false`
 - Disable startup trust prompt
 - Auto-update extensions
@@ -38,6 +39,7 @@ What it does:
 - Add our extension to `argv.json`'s `enable-proposed-api`
 
 Backups:
+
 - Creates timestamped backups of `settings.json` and `argv.json`
 
 Restart VS Code to apply argv.json changes.
@@ -51,6 +53,7 @@ Path: `scripts/auto-allow.ahk` (AutoHotkey v1)
 - Use at your own risk; may click unintended prompts.
 
 Steps:
+
 1. Install AutoHotkey (v1)
 2. Run `scripts\auto-allow.ahk`
 3. Customize button captions/window titles as needed
@@ -67,6 +70,7 @@ Steps:
 ## Revert changes
 
 Use created backups:
+
 - `%APPDATA%/Code/User/settings.json.bak.TIMESTAMP`
 - `%APPDATA%/Code/User/argv.json.bak.TIMESTAMP`
 

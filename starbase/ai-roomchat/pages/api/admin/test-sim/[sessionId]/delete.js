@@ -37,12 +37,12 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: '세션 ID가 필요합니다.' });
     }
 
-  await deleteTestSimulation(supabaseAdmin, sessionId);
+    await deleteTestSimulation(supabaseAdmin, sessionId);
     return res.status(200).json({ success: true });
   } catch (error) {
     console.error('시뮬레이션 삭제 오류:', error);
-    return res.status(500).json({ 
-      error: error.message || '삭제 실패' 
+    return res.status(500).json({
+      error: error.message || '삭제 실패',
     });
   }
 }

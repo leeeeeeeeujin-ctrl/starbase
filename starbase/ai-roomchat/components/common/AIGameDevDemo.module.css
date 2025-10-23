@@ -24,7 +24,10 @@
   margin-bottom: 30px;
 }
 
-.configPanel, .controlPanel, .statusPanel, .logPanel {
+.configPanel,
+.controlPanel,
+.statusPanel,
+.logPanel {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(79, 195, 247, 0.2);
   border-radius: 8px;
@@ -32,7 +35,10 @@
   margin-bottom: 20px;
 }
 
-.configPanel h3, .controlPanel h3, .statusPanel h3, .logPanel h3 {
+.configPanel h3,
+.controlPanel h3,
+.statusPanel h3,
+.logPanel h3 {
   color: #81c784;
   margin-top: 0;
   margin-bottom: 15px;
@@ -51,7 +57,8 @@
   color: #cfd8dc;
 }
 
-.configRow select, .configRow input {
+.configRow select,
+.configRow input {
   flex: 1;
   padding: 8px 12px;
   border: 1px solid rgba(79, 195, 247, 0.3);
@@ -61,7 +68,8 @@
   font-family: inherit;
 }
 
-.configRow select:focus, .configRow input:focus {
+.configRow select:focus,
+.configRow input:focus {
   outline: none;
   border-color: #4fc3f7;
   box-shadow: 0 0 8px rgba(79, 195, 247, 0.3);
@@ -258,25 +266,25 @@
   .container {
     padding: 15px;
   }
-  
+
   .configRow {
     flex-direction: column;
     align-items: stretch;
     gap: 8px;
   }
-  
+
   .configRow label {
     min-width: auto;
   }
-  
+
   .buttonGroup {
     flex-direction: column;
   }
-  
+
   .buttonGroup button {
     min-width: auto;
   }
-  
+
   .stats {
     grid-template-columns: 1fr;
   }

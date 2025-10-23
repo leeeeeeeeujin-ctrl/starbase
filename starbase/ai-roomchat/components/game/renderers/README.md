@@ -5,9 +5,11 @@
 ## 📦 모듈 구성
 
 ### GameRenderer
+
 메인 게임 캔버스 렌더링을 담당합니다.
 
 **주요 기능:**
+
 - Canvas 2D / WebGL 렌더링 (자동 폴백)
 - 배경 및 엔티티 렌더링
 - 이미지 로딩 및 캐싱
@@ -15,9 +17,11 @@
 - 디바이스 픽셀 비율 대응
 
 ### UIRenderer
+
 UI 오버레이 렌더링을 담당합니다.
 
 **주요 기능:**
+
 - 플레이어 스탯 바 (HP, MP, EXP)
 - 인벤토리 UI
 - 미니맵
@@ -25,9 +29,11 @@ UI 오버레이 렌더링을 담당합니다.
 - 반응형 레이아웃
 
 ### EffectsRenderer
+
 파티클 및 화면 효과를 렌더링합니다.
 
 **주요 기능:**
+
 - 파티클 시스템 (폭발, 스트림)
 - 화면 효과 (흔들림, 페이드, 플래시)
 - 파티클 풀링 (메모리 최적화)
@@ -38,7 +44,7 @@ UI 오버레이 렌더링을 담당합니다.
 ### 설치 및 Import
 
 ```javascript
-import { GameRenderer, UIRenderer, EffectsRenderer } from '@/components/game/renderers'
+import { GameRenderer, UIRenderer, EffectsRenderer } from '@/components/game/renderers';
 ```
 
 ### 기본 사용법
@@ -47,7 +53,7 @@ import { GameRenderer, UIRenderer, EffectsRenderer } from '@/components/game/ren
 
 ```javascript
 // Canvas 요소 생성
-const gameCanvas = document.getElementById('game-canvas')
+const gameCanvas = document.getElementById('game-canvas');
 
 // 렌더러 초기화
 const gameRenderer = new GameRenderer({
@@ -55,17 +61,17 @@ const gameRenderer = new GameRenderer({
   width: 800,
   height: 600,
   enableWebGL: false, // true로 설정 시 WebGL 사용 시도
-  autoResize: true
-})
+  autoResize: true,
+});
 
 // 배경 렌더링
-gameRenderer.renderBackground(null, '#1a1a2e')
+gameRenderer.renderBackground(null, '#1a1a2e');
 
 // 텍스트 렌더링
 gameRenderer.renderText('Hello World', 100, 100, {
   font: 'bold 24px sans-serif',
-  color: '#ffffff'
-})
+  color: '#ffffff',
+});
 
 // 엔티티 렌더링
 const entity = {
@@ -73,30 +79,30 @@ const entity = {
   y: 200,
   width: 50,
   height: 50,
-  imageUrl: '/path/to/image.png'
-}
-gameRenderer.renderEntity(entity)
+  imageUrl: '/path/to/image.png',
+};
+gameRenderer.renderEntity(entity);
 
 // 렌더링 루프 시작
 gameRenderer.startRenderLoop((timestamp, renderer) => {
-  renderer.clear('#1a1a2e')
+  renderer.clear('#1a1a2e');
   // 프레임마다 렌더링할 내용
-})
+});
 
 // 정리
-gameRenderer.cleanup()
+gameRenderer.cleanup();
 ```
 
 #### 2. UIRenderer 사용
 
 ```javascript
-const uiCanvas = document.getElementById('ui-canvas')
+const uiCanvas = document.getElementById('ui-canvas');
 
 const uiRenderer = new UIRenderer({
   canvas: uiCanvas,
   width: 800,
-  height: 600
-})
+  height: 600,
+});
 
 // UI 데이터 정의
 const uiData = {
@@ -108,71 +114,71 @@ const uiData = {
     maxMp: 50,
     level: 5,
     exp: 150,
-    maxExp: 200
+    maxExp: 200,
   },
   inventory: [
     { id: '1', name: 'Sword', iconUrl: '/sword.png', count: 1 },
-    { id: '2', name: 'Potion', iconUrl: '/potion.png', count: 5 }
+    { id: '2', name: 'Potion', iconUrl: '/potion.png', count: 5 },
   ],
   mapData: {},
   playerPos: { x: 100, y: 100 },
   message: 'Welcome!',
-  messageOptions: { type: 'info' }
-}
+  messageOptions: { type: 'info' },
+};
 
 // UI 렌더링
-uiRenderer.render(uiData)
+uiRenderer.render(uiData);
 
 // 개별 요소 렌더링
-uiRenderer.renderStatsBar(uiData.stats)
-uiRenderer.renderInventory(uiData.inventory, 12)
-uiRenderer.renderMiniMap(uiData.mapData, uiData.playerPos)
-uiRenderer.renderMessage('Level Up!', { type: 'success' })
+uiRenderer.renderStatsBar(uiData.stats);
+uiRenderer.renderInventory(uiData.inventory, 12);
+uiRenderer.renderMiniMap(uiData.mapData, uiData.playerPos);
+uiRenderer.renderMessage('Level Up!', { type: 'success' });
 
 // 정리
-uiRenderer.cleanup()
+uiRenderer.cleanup();
 ```
 
 #### 3. EffectsRenderer 사용
 
 ```javascript
-const effectsCanvas = document.getElementById('effects-canvas')
+const effectsCanvas = document.getElementById('effects-canvas');
 
 const effectsRenderer = new EffectsRenderer({
   canvas: effectsCanvas,
   width: 800,
   height: 600,
-  maxParticles: 500
-})
+  maxParticles: 500,
+});
 
 // 애니메이션 시작 (필수)
-effectsRenderer.startAnimation()
+effectsRenderer.startAnimation();
 
 // 폭발 효과
 effectsRenderer.emitExplosion(400, 300, {
   count: 30,
   color: '#ff6b35',
   speed: 8,
-  life: 1
-})
+  life: 1,
+});
 
 // 스트림 효과
 effectsRenderer.emitStream(100, 100, Math.PI / 4, {
   color: '#4ade80',
   speed: 3,
-  spread: 0.5
-})
+  spread: 0.5,
+});
 
 // 화면 효과
-effectsRenderer.shakeScreen(10, 0.5)
-effectsRenderer.fadeScreen(0.5, 1)
-effectsRenderer.flashScreen('#ffffff', 0.3)
+effectsRenderer.shakeScreen(10, 0.5);
+effectsRenderer.fadeScreen(0.5, 1);
+effectsRenderer.flashScreen('#ffffff', 0.3);
 
 // 모든 효과 제거
-effectsRenderer.clearAllEffects()
+effectsRenderer.clearAllEffects();
 
 // 정리
-effectsRenderer.cleanup()
+effectsRenderer.cleanup();
 ```
 
 ## 🎨 고급 사용법
@@ -185,72 +191,78 @@ effectsRenderer.cleanup()
 <div style="position: relative; width: 800px; height: 600px;">
   <!-- 게임 레이어 (배경) -->
   <canvas id="game-canvas" style="position: absolute; top: 0; left: 0;"></canvas>
-  
+
   <!-- UI 레이어 (중간) -->
-  <canvas id="ui-canvas" style="position: absolute; top: 0; left: 0; pointer-events: none;"></canvas>
-  
+  <canvas
+    id="ui-canvas"
+    style="position: absolute; top: 0; left: 0; pointer-events: none;"
+  ></canvas>
+
   <!-- 이펙트 레이어 (전경) -->
-  <canvas id="effects-canvas" style="position: absolute; top: 0; left: 0; pointer-events: none;"></canvas>
+  <canvas
+    id="effects-canvas"
+    style="position: absolute; top: 0; left: 0; pointer-events: none;"
+  ></canvas>
 </div>
 ```
 
 ### React 컴포넌트에서 사용
 
 ```javascript
-import React, { useRef, useEffect } from 'react'
-import { GameRenderer, UIRenderer, EffectsRenderer } from '@/components/game/renderers'
+import React, { useRef, useEffect } from 'react';
+import { GameRenderer, UIRenderer, EffectsRenderer } from '@/components/game/renderers';
 
 function GameComponent() {
-  const gameCanvasRef = useRef(null)
-  const uiCanvasRef = useRef(null)
-  const effectsCanvasRef = useRef(null)
-  
-  const gameRenderer = useRef(null)
-  const uiRenderer = useRef(null)
-  const effectsRenderer = useRef(null)
-  
+  const gameCanvasRef = useRef(null);
+  const uiCanvasRef = useRef(null);
+  const effectsCanvasRef = useRef(null);
+
+  const gameRenderer = useRef(null);
+  const uiRenderer = useRef(null);
+  const effectsRenderer = useRef(null);
+
   useEffect(() => {
     // 렌더러 초기화
     if (gameCanvasRef.current && !gameRenderer.current) {
       gameRenderer.current = new GameRenderer({
         canvas: gameCanvasRef.current,
         width: 800,
-        height: 600
-      })
+        height: 600,
+      });
     }
-    
+
     if (uiCanvasRef.current && !uiRenderer.current) {
       uiRenderer.current = new UIRenderer({
         canvas: uiCanvasRef.current,
         width: 800,
-        height: 600
-      })
+        height: 600,
+      });
     }
-    
+
     if (effectsCanvasRef.current && !effectsRenderer.current) {
       effectsRenderer.current = new EffectsRenderer({
         canvas: effectsCanvasRef.current,
         width: 800,
-        height: 600
-      })
-      effectsRenderer.current.startAnimation()
+        height: 600,
+      });
+      effectsRenderer.current.startAnimation();
     }
-    
+
     // 정리
     return () => {
-      gameRenderer.current?.cleanup()
-      uiRenderer.current?.cleanup()
-      effectsRenderer.current?.cleanup()
-    }
-  }, [])
-  
+      gameRenderer.current?.cleanup();
+      uiRenderer.current?.cleanup();
+      effectsRenderer.current?.cleanup();
+    };
+  }, []);
+
   return (
     <div style={{ position: 'relative', width: '800px', height: '600px' }}>
       <canvas ref={gameCanvasRef} />
       <canvas ref={uiCanvasRef} style={{ position: 'absolute', top: 0, left: 0 }} />
       <canvas ref={effectsCanvasRef} style={{ position: 'absolute', top: 0, left: 0 }} />
     </div>
-  )
+  );
 }
 ```
 
@@ -261,13 +273,13 @@ const gameRenderer = new GameRenderer({
   canvas: gameCanvas,
   width: window.innerWidth,
   height: window.innerHeight,
-  autoResize: true // 자동 리사이즈 활성화
-})
+  autoResize: true, // 자동 리사이즈 활성화
+});
 
 // 수동 리사이즈
 window.addEventListener('resize', () => {
-  gameRenderer.resize(window.innerWidth, window.innerHeight)
-})
+  gameRenderer.resize(window.innerWidth, window.innerHeight);
+});
 ```
 
 ## 🔧 API 레퍼런스
@@ -275,11 +287,13 @@ window.addEventListener('resize', () => {
 ### GameRenderer
 
 #### 생성자
+
 ```javascript
-new GameRenderer(config)
+new GameRenderer(config);
 ```
 
 **config 파라미터:**
+
 - `canvas` (HTMLCanvasElement, 필수) - 렌더링할 캔버스
 - `width` (number, 기본값: 800) - 캔버스 너비
 - `height` (number, 기본값: 600) - 캔버스 높이
@@ -302,11 +316,13 @@ new GameRenderer(config)
 ### UIRenderer
 
 #### 생성자
+
 ```javascript
-new UIRenderer(config)
+new UIRenderer(config);
 ```
 
 **config 파라미터:**
+
 - `canvas` (HTMLCanvasElement, 필수)
 - `width` (number, 기본값: 800)
 - `height` (number, 기본값: 600)
@@ -326,11 +342,13 @@ new UIRenderer(config)
 ### EffectsRenderer
 
 #### 생성자
+
 ```javascript
-new EffectsRenderer(config)
+new EffectsRenderer(config);
 ```
 
 **config 파라미터:**
+
 - `canvas` (HTMLCanvasElement, 필수)
 - `width` (number, 기본값: 800)
 - `height` (number, 기본값: 600)
@@ -353,6 +371,7 @@ new EffectsRenderer(config)
 ## 🌐 브라우저 호환성
 
 ### 지원 브라우저
+
 - ✅ Internet Explorer 11+
 - ✅ Safari 12+
 - ✅ Chrome 70+
@@ -362,6 +381,7 @@ new EffectsRenderer(config)
 - ✅ Android Chrome 70+
 
 ### 호환성 기능
+
 - Canvas 2D API 사용 (IE11 완벽 지원)
 - WebGL 폴백 지원
 - requestAnimationFrame 폴리필
@@ -371,12 +391,15 @@ new EffectsRenderer(config)
 ## 📱 모바일 최적화
 
 ### 고해상도 디스플레이
+
 자동으로 `devicePixelRatio`를 감지하여 고해상도 디스플레이에 최적화된 렌더링을 제공합니다.
 
 ### 반응형 레이아웃
+
 UIRenderer는 600px 이하의 작은 화면에서 자동으로 레이아웃을 조정합니다.
 
 ### 메모리 최적화
+
 - 파티클 풀링으로 객체 생성/소멸 최소화
 - 이미지 캐싱으로 중복 로드 방지
 - cleanup 함수로 메모리 누수 방지
@@ -390,6 +413,7 @@ npm test -- __tests__/components/game/renderers
 ```
 
 ### 테스트 커버리지
+
 - GameRenderer: 13개 테스트
 - UIRenderer: 21개 테스트
 - EffectsRenderer: 18개 테스트
@@ -403,15 +427,15 @@ npm test -- __tests__/components/game/renderers
 // canvas.getContext('2d')가 null을 반환하는 경우
 // 캔버스가 DOM에 추가되었는지 확인
 if (!canvas.parentNode) {
-  document.body.appendChild(canvas)
+  document.body.appendChild(canvas);
 }
 
 // 또는 React에서 ref가 준비될 때까지 대기
 useEffect(() => {
   if (canvasRef.current) {
-    const renderer = new GameRenderer({ canvas: canvasRef.current })
+    const renderer = new GameRenderer({ canvas: canvasRef.current });
   }
-}, [canvasRef.current])
+}, [canvasRef.current]);
 ```
 
 ### 성능 이슈
@@ -420,16 +444,16 @@ useEffect(() => {
 // 파티클 수 줄이기
 const effectsRenderer = new EffectsRenderer({
   canvas: effectsCanvas,
-  maxParticles: 100 // 기본값 1000에서 감소
-})
+  maxParticles: 100, // 기본값 1000에서 감소
+});
 
 // 렌더링 빈도 줄이기
-let lastRender = 0
-gameRenderer.startRenderLoop((timestamp) => {
-  if (timestamp - lastRender < 16.67) return // ~60fps
-  lastRender = timestamp
+let lastRender = 0;
+gameRenderer.startRenderLoop(timestamp => {
+  if (timestamp - lastRender < 16.67) return; // ~60fps
+  lastRender = timestamp;
   // 렌더링 로직
-})
+});
 ```
 
 ### 메모리 누수
@@ -437,12 +461,12 @@ gameRenderer.startRenderLoop((timestamp) => {
 ```javascript
 // 컴포넌트 언마운트 시 반드시 cleanup 호출
 useEffect(() => {
-  const renderer = new GameRenderer({ canvas: canvasRef.current })
-  
+  const renderer = new GameRenderer({ canvas: canvasRef.current });
+
   return () => {
-    renderer.cleanup() // 필수!
-  }
-}, [])
+    renderer.cleanup(); // 필수!
+  };
+}, []);
 ```
 
 ## 📄 라이선스

@@ -12,12 +12,12 @@ Create a global object or message handler that satisfies one of the following fo
 
 All methods receive JSON serialisable payloads and must resolve within 20 seconds. Expected methods:
 
-| Method | Payload | Response |
-| ------ | ------- | -------- |
-| `requestPermission` | `{ kind: 'read' }` | `{ status: 'granted' | 'limited' | 'denied' }` |
-| `fetchTimeline` | `{ mediaType: 'image' | 'video', cursor, limit }` | `{ entries: [...], cursor, hasMore }` |
-| `fetchAsset` | `{ id, mediaType, quality }` | `{ base64 | url | blob, mimeType, name, width, height, duration, size }` |
-| `openSettings` | `{}` | `void` |
+| Method              | Payload                      | Response                  |
+| ------------------- | ---------------------------- | ------------------------- | ------------------------------------- | ------------------------------------------------------ |
+| `requestPermission` | `{ kind: 'read' }`           | `{ status: 'granted'      | 'limited'                             | 'denied' }`                                            |
+| `fetchTimeline`     | `{ mediaType: 'image'        | 'video', cursor, limit }` | `{ entries: [...], cursor, hasMore }` |
+| `fetchAsset`        | `{ id, mediaType, quality }` | `{ base64                 | url                                   | blob, mimeType, name, width, height, duration, size }` |
+| `openSettings`      | `{}`                         | `void`                    |
 
 ### Timeline entries
 

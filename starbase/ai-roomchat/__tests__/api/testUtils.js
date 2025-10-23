@@ -1,7 +1,7 @@
-const path = require('path')
+const path = require('path');
 
-let mockSupabaseFromImplementation
-let mockSupabaseRpcImplementation
+let mockSupabaseFromImplementation;
+let mockSupabaseRpcImplementation;
 
 jest.mock('@/lib/supabaseAdmin', () => ({
   __esModule: true,
@@ -15,18 +15,18 @@ jest.mock('@/lib/supabaseAdmin', () => ({
   supabaseAdmin: {
     from: (...args) => {
       if (typeof mockSupabaseFromImplementation !== 'function') {
-        throw new Error('Supabase admin mock not registered')
+        throw new Error('Supabase admin mock not registered');
       }
-      return mockSupabaseFromImplementation(...args)
+      return mockSupabaseFromImplementation(...args);
     },
     rpc: (...args) => {
       if (typeof mockSupabaseRpcImplementation !== 'function') {
-        throw new Error('Supabase admin RPC mock not registered')
+        throw new Error('Supabase admin RPC mock not registered');
       }
-      return mockSupabaseRpcImplementation(...args)
+      return mockSupabaseRpcImplementation(...args);
     },
   },
-}))
+}));
 
 function createMockResponse() {
   const response = {
@@ -34,31 +34,25 @@ function createMockResponse() {
     headers: {},
     body: null,
     status(code) {
-      this.statusCode = code
-      return this
+      this.statusCode = code;
+      return this;
     },
     setHeader(name, value) {
-      this.headers[name] = value
+      this.headers[name] = value;
     },
     json(payload) {
-      this.body = payload
-      return this
+      this.body = payload;
+      return this;
     },
     send(payload) {
-      this.body = payload
-      return this
+      this.body = payload;
+      return this;
     },
-  }
-  return response
+  };
+  return response;
 }
 
-function createApiRequest({
-  method = 'GET',
-  headers = {},
-  body,
-  query = {},
-  ip,
-} = {}) {
+function createApiRequest({ method = 'GET', headers = {}, body, query = {}, ip } = {}) {
   const request = {
     method,
     headers,
@@ -66,42 +60,42 @@ function createApiRequest({
     socket: {
       remoteAddress: ip || headers['x-forwarded-for'] || '127.0.0.1',
     },
-  }
+  };
 
   if (typeof body !== 'undefined') {
-    request.body = body
+    request.body = body;
   }
 
-  return request
+  return request;
 }
 
 function loadApiRoute(...segments) {
-  const modulePath = path.join(__dirname, '..', '..', 'pages', 'api', ...segments)
-  let module
+  const modulePath = path.join(__dirname, '..', '..', 'pages', 'api', ...segments);
+  let module;
   jest.isolateModules(() => {
     // eslint-disable-next-line import/no-dynamic-require, global-require
-    module = require(modulePath)
-  })
-  return module.default
+    module = require(modulePath);
+  });
+  return module.default;
 }
 
 function registerSupabaseAdminMock(fromImplementation, rpcImplementation) {
-  mockSupabaseFromImplementation = fromImplementation
-  mockSupabaseRpcImplementation = rpcImplementation
+  mockSupabaseFromImplementation = fromImplementation;
+  mockSupabaseRpcImplementation = rpcImplementation;
 }
 
 function registerSupabaseAdminRpcMock(rpcImplementation) {
-  mockSupabaseRpcImplementation = rpcImplementation
+  mockSupabaseRpcImplementation = rpcImplementation;
 }
 
 function createSupabaseSelectChain(result) {
-  const limitMock = jest.fn().mockResolvedValue(result)
-  const orderMock = jest.fn(() => queryApi)
-  const eqMock = jest.fn(() => queryApi)
-  const gteMock = jest.fn(() => queryApi)
-  const lteMock = jest.fn(() => queryApi)
-  const inMock = jest.fn(() => queryApi)
-  const ilikeMock = jest.fn(() => queryApi)
+  const limitMock = jest.fn().mockResolvedValue(result);
+  const orderMock = jest.fn(() => queryApi);
+  const eqMock = jest.fn(() => queryApi);
+  const gteMock = jest.fn(() => queryApi);
+  const lteMock = jest.fn(() => queryApi);
+  const inMock = jest.fn(() => queryApi);
+  const ilikeMock = jest.fn(() => queryApi);
 
   const queryApi = {
     order: orderMock,
@@ -111,17 +105,27 @@ function createSupabaseSelectChain(result) {
     lte: lteMock,
     in: inMock,
     ilike: ilikeMock,
-  }
+  };
 
-  const selectMock = jest.fn(() => queryApi)
-  const fromMock = jest.fn(() => ({ select: selectMock }))
-  return { fromMock, selectMock, orderMock, limitMock, eqMock, gteMock, lteMock, inMock, ilikeMock }
+  const selectMock = jest.fn(() => queryApi);
+  const fromMock = jest.fn(() => ({ select: selectMock }));
+  return {
+    fromMock,
+    selectMock,
+    orderMock,
+    limitMock,
+    eqMock,
+    gteMock,
+    lteMock,
+    inMock,
+    ilikeMock,
+  };
 }
 
 function createSupabaseInsertChain(insertImplementation = () => Promise.resolve({ error: null })) {
-  const insertMock = jest.fn(insertImplementation)
-  const fromMock = jest.fn(() => ({ insert: insertMock }))
-  return { fromMock, insertMock }
+  const insertMock = jest.fn(insertImplementation);
+  const fromMock = jest.fn(() => ({ insert: insertMock }));
+  return { fromMock, insertMock };
 }
 
 module.exports = {
@@ -132,4 +136,4 @@ module.exports = {
   registerSupabaseAdminRpcMock,
   createSupabaseSelectChain,
   createSupabaseInsertChain,
-}
+};

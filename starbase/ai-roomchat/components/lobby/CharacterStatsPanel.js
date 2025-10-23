@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react';
 
 const styles = {
   root: {
@@ -112,7 +112,7 @@ const styles = {
     display: 'grid',
     gap: 10,
   },
-  gameButton: (active) => ({
+  gameButton: active => ({
     padding: 14,
     borderRadius: 16,
     border: active ? '2px solid #2563eb' : '1px solid #e2e8f0',
@@ -193,30 +193,29 @@ const styles = {
     fontSize: 13,
     color: '#475569',
   },
-  battleOutcome: (outcome) => ({
+  battleOutcome: outcome => ({
     fontWeight: 700,
-    color:
-      outcome === '승리' ? '#15803d' : outcome === '패배' ? '#b91c1c' : '#0f172a',
+    color: outcome === '승리' ? '#15803d' : outcome === '패배' ? '#b91c1c' : '#0f172a',
   }),
-}
+};
 
 function formatNumber(value) {
-  if (value === null || value === undefined) return '-'
-  return new Intl.NumberFormat('ko-KR').format(value)
+  if (value === null || value === undefined) return '-';
+  return new Intl.NumberFormat('ko-KR').format(value);
 }
 
 function formatWinRate(value) {
-  if (value === null || value === undefined) return '-'
-  const ratio = value > 1 ? value : value * 100
-  return `${Math.round(ratio * 10) / 10}%`
+  if (value === null || value === undefined) return '-';
+  const ratio = value > 1 ? value : value * 100;
+  return `${Math.round(ratio * 10) / 10}%`;
 }
 
 function formatDate(value) {
-  if (!value) return '-'
+  if (!value) return '-';
   try {
-    return new Date(value).toLocaleString('ko-KR')
+    return new Date(value).toLocaleString('ko-KR');
   } catch (error) {
-    return value
+    return value;
   }
 }
 
@@ -230,47 +229,47 @@ export default function CharacterStatsPanel({
   onLeaveGame,
   onRefresh,
 }) {
-  const [selectedGameId, setSelectedGameId] = useState(null)
+  const [selectedGameId, setSelectedGameId] = useState(null);
 
   useEffect(() => {
     if (!games?.length) {
-      setSelectedGameId(null)
-      return
+      setSelectedGameId(null);
+      return;
     }
-    if (selectedGameId && games.some((item) => item.gameId === selectedGameId)) {
-      return
+    if (selectedGameId && games.some(item => item.gameId === selectedGameId)) {
+      return;
     }
-    setSelectedGameId(games[0].gameId)
-  }, [games, selectedGameId])
+    setSelectedGameId(games[0].gameId);
+  }, [games, selectedGameId]);
 
   const selectedGame = useMemo(
-    () => games.find((item) => item.gameId === selectedGameId) || null,
-    [games, selectedGameId],
-  )
+    () => games.find(item => item.gameId === selectedGameId) || null,
+    [games, selectedGameId]
+  );
 
   const selectedSeasons = useMemo(() => {
-    if (!selectedGameId) return []
-    return seasons[selectedGameId] || []
-  }, [seasons, selectedGameId])
+    if (!selectedGameId) return [];
+    return seasons[selectedGameId] || [];
+  }, [seasons, selectedGameId]);
 
   const selectedBattles = useMemo(() => {
-    if (!selectedGameId) return []
-    return (battles[selectedGameId] || []).slice(0, 40)
-  }, [battles, selectedGameId])
+    if (!selectedGameId) return [];
+    return (battles[selectedGameId] || []).slice(0, 40);
+  }, [battles, selectedGameId]);
 
-  const favouriteTags = summary?.favouriteTags || []
+  const favouriteTags = summary?.favouriteTags || [];
 
-  const handleLeave = async (game) => {
-    if (!game?.id || typeof onLeaveGame !== 'function') return
+  const handleLeave = async game => {
+    if (!game?.id || typeof onLeaveGame !== 'function') return;
     const confirmed = window.confirm(
-      `${game.gameName} 참여 기록을 초기화할까요? 점수와 역할 정보가 삭제됩니다.`,
-    )
-    if (!confirmed) return
-    const result = await onLeaveGame(game.id)
+      `${game.gameName} 참여 기록을 초기화할까요? 점수와 역할 정보가 삭제됩니다.`
+    );
+    if (!confirmed) return;
+    const result = await onLeaveGame(game.id);
     if (result?.error) {
-      alert(result.error)
+      alert(result.error);
     }
-  }
+  };
 
   return (
     <div style={styles.root}>
@@ -322,7 +321,7 @@ export default function CharacterStatsPanel({
               <span style={styles.metricLabel}>선호 태그</span>
               {favouriteTags.length ? (
                 <div style={styles.tagRow}>
-                  {favouriteTags.map((item) => (
+                  {favouriteTags.map(item => (
                     <span key={item.tag} style={styles.tagChip}>
                       {item.tag} · {item.count}
                     </span>
@@ -341,8 +340,8 @@ export default function CharacterStatsPanel({
               {games.length === 0 ? (
                 <div style={styles.emptyState}>참여 중인 랭킹 게임이 없습니다.</div>
               ) : (
-                games.map((game) => {
-                  const active = game.gameId === selectedGameId
+                games.map(game => {
+                  const active = game.gameId === selectedGameId;
                   return (
                     <button
                       key={game.id}
@@ -361,16 +360,16 @@ export default function CharacterStatsPanel({
                         <button
                           type="button"
                           style={styles.leaveButton}
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            handleLeave(game)
+                          onClick={event => {
+                            event.stopPropagation();
+                            handleLeave(game);
                           }}
                         >
                           참여 해제
                         </button>
                       ) : null}
                     </button>
-                  )
+                  );
                 })
               )}
             </div>
@@ -384,7 +383,7 @@ export default function CharacterStatsPanel({
                 {selectedSeasons.length === 0 ? (
                   <div style={styles.emptyState}>저장된 시즌 기록이 없습니다.</div>
                 ) : (
-                  selectedSeasons.map((season) => (
+                  selectedSeasons.map(season => (
                     <div key={season.id} style={styles.seasonCard}>
                       <strong>{season.name}</strong>
                       <div style={styles.seasonMeta}>
@@ -393,7 +392,9 @@ export default function CharacterStatsPanel({
                         <span>전투 {formatNumber(season.matches)}</span>
                         <span>승률 {formatWinRate(season.winRate)}</span>
                         {season.rank ? <span>순위 {formatNumber(season.rank)}</span> : null}
-                        {season.bestRank ? <span>최고 순위 {formatNumber(season.bestRank)}</span> : null}
+                        {season.bestRank ? (
+                          <span>최고 순위 {formatNumber(season.bestRank)}</span>
+                        ) : null}
                       </div>
                       <div style={styles.seasonMeta}>
                         <span>시작 {formatDate(season.startedAt)}</span>
@@ -409,7 +410,7 @@ export default function CharacterStatsPanel({
                 {selectedBattles.length === 0 ? (
                   <div style={styles.emptyState}>아직 전투 기록이 없습니다.</div>
                 ) : (
-                  selectedBattles.map((entry) => (
+                  selectedBattles.map(entry => (
                     <div key={entry.id} style={styles.battleCard}>
                       <div style={styles.battleHeader}>
                         <span>{formatDate(entry.createdAt)}</span>
@@ -422,8 +423,8 @@ export default function CharacterStatsPanel({
                           {entry.scoreDelta === null || entry.scoreDelta === undefined
                             ? '-'
                             : entry.scoreDelta > 0
-                            ? `+${formatNumber(entry.scoreDelta)}`
-                            : formatNumber(entry.scoreDelta)}
+                              ? `+${formatNumber(entry.scoreDelta)}`
+                              : formatNumber(entry.scoreDelta)}
                         </span>
                       </div>
                     </div>
@@ -435,5 +436,5 @@ export default function CharacterStatsPanel({
         </>
       ) : null}
     </div>
-  )
+  );
 }

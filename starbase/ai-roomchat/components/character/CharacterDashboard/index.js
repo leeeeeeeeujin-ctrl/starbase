@@ -1,31 +1,24 @@
-'use client'
+'use client';
 
-import React, {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
-import Link from 'next/link'
-import { useRouter } from 'next/router'
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/router';
 
-import useGameBrowser from '@/components/lobby/hooks/useGameBrowser'
+import useGameBrowser from '@/components/lobby/hooks/useGameBrowser';
 
-import EditHeroModal from './sections/EditHeroModal'
-import { CharacterDashboardProvider, useCharacterDashboardContext } from './context'
-import AIBattleGameController from '../arena/AIBattleGameController'
-import UnifiedGameSystem from '../game/UnifiedGameSystem'
+import EditHeroModal from './sections/EditHeroModal';
+import { CharacterDashboardProvider, useCharacterDashboardContext } from './context';
+import AIBattleGameController from '../arena/AIBattleGameController';
+import UnifiedGameSystem from '../game/UnifiedGameSystem';
 
 const NAV_ITEMS = [
   { id: 'game', label: '게임 찾기' },
   { id: 'character', label: '캐릭터' },
   { id: 'ranking', label: '랭킹' },
-]
+];
 
-const PANEL_COUNT = NAV_ITEMS.length
-const RELEASE_DELAY = 280
+const PANEL_COUNT = NAV_ITEMS.length;
+const RELEASE_DELAY = 280;
 
 export default function CharacterDashboard({
   dashboard,
@@ -34,36 +27,39 @@ export default function CharacterDashboard({
   onStartBattle,
   onBack,
 }) {
-  const router = useRouter()
-  const { profile, participation, battles, heroName: fallbackName } = dashboard
+  const router = useRouter();
+  const { profile, participation, battles, heroName: fallbackName } = dashboard;
 
-  const [panelIndex, setPanelIndex] = useState(1)
-  const [editOpen, setEditOpen] = useState(false)
-  const [overviewOpen, setOverviewOpen] = useState(false)
-  const [gameSearchEnabled, setGameSearchEnabled] = useState(false)
-  const [unifiedGameOpen, setUnifiedGameOpen] = useState(false)
-  const swipeViewportRef = useRef(null)
-  const animatingRef = useRef(false)
-  const animationTimeoutRef = useRef(null)
-  const settleTimeoutRef = useRef(null)
-  const settleFrameRef = useRef(null)
-  const panelIndexRef = useRef(panelIndex)
-  const isProgrammaticRef = useRef(false)
-  const pinchStateRef = useRef(null)
+  const [panelIndex, setPanelIndex] = useState(1);
+  const [editOpen, setEditOpen] = useState(false);
+  const [overviewOpen, setOverviewOpen] = useState(false);
+  const [gameSearchEnabled, setGameSearchEnabled] = useState(false);
+  const [unifiedGameOpen, setUnifiedGameOpen] = useState(false);
+  const swipeViewportRef = useRef(null);
+  const animatingRef = useRef(false);
+  const animationTimeoutRef = useRef(null);
+  const settleTimeoutRef = useRef(null);
+  const settleFrameRef = useRef(null);
+  const panelIndexRef = useRef(panelIndex);
+  const isProgrammaticRef = useRef(false);
+  const pinchStateRef = useRef(null);
 
   useEffect(() => {
-    panelIndexRef.current = panelIndex
-  }, [panelIndex])
+    panelIndexRef.current = panelIndex;
+  }, [panelIndex]);
 
-  const displayName = heroName || fallbackName || profile.hero?.name || '이름 없는 캐릭터'
-  const heroImage = profile.edit?.image_url || profile.hero?.image_url || ''
+  const displayName = heroName || fallbackName || profile.hero?.name || '이름 없는 캐릭터';
+  const heroImage = profile.edit?.image_url || profile.hero?.image_url || '';
   const backgroundImage =
-    profile.background?.preview || profile.hero?.background_url || profile.edit?.background_url || ''
-  const audioSource = profile.audio?.source || ''
+    profile.background?.preview ||
+    profile.hero?.background_url ||
+    profile.edit?.background_url ||
+    '';
+  const audioSource = profile.audio?.source || '';
 
   const backgroundStyle = backgroundImage
     ? { ...styles.backgroundLayer, backgroundImage: `url(${backgroundImage})` }
-    : styles.backgroundFallback
+    : styles.backgroundFallback;
 
   const contextValue = useMemo(
     () => ({
@@ -139,248 +135,248 @@ export default function CharacterDashboard({
       onStartBattle,
       displayName,
       heroImage,
-    ],
-  )
+    ]
+  );
 
-  const gameBrowser = useGameBrowser({ enabled: gameSearchEnabled })
-  const snapToPanel = useCallback(
-    (targetIndex, behavior = 'smooth') => {
-      const node = swipeViewportRef.current
-      if (!node) return
+  const gameBrowser = useGameBrowser({ enabled: gameSearchEnabled });
+  const snapToPanel = useCallback((targetIndex, behavior = 'smooth') => {
+    const node = swipeViewportRef.current;
+    if (!node) return;
 
-      const clampedIndex = Math.max(0, Math.min(PANEL_COUNT - 1, targetIndex))
-      const width = node.clientWidth || 1
+    const clampedIndex = Math.max(0, Math.min(PANEL_COUNT - 1, targetIndex));
+    const width = node.clientWidth || 1;
 
-      animatingRef.current = true
-      isProgrammaticRef.current = true
-      node.scrollTo({ left: clampedIndex * width, behavior })
+    animatingRef.current = true;
+    isProgrammaticRef.current = true;
+    node.scrollTo({ left: clampedIndex * width, behavior });
 
-      clearTimeout(animationTimeoutRef.current)
-      animationTimeoutRef.current = setTimeout(() => {
-        animatingRef.current = false
-        isProgrammaticRef.current = false
-      }, behavior === 'auto' ? 0 : RELEASE_DELAY)
+    clearTimeout(animationTimeoutRef.current);
+    animationTimeoutRef.current = setTimeout(
+      () => {
+        animatingRef.current = false;
+        isProgrammaticRef.current = false;
+      },
+      behavior === 'auto' ? 0 : RELEASE_DELAY
+    );
 
-      if (panelIndexRef.current !== clampedIndex) {
-        setPanelIndex(clampedIndex)
-      }
-    },
-    [],
-  )
+    if (panelIndexRef.current !== clampedIndex) {
+      setPanelIndex(clampedIndex);
+    }
+  }, []);
 
   const openOverview = useCallback(() => {
-    setOverviewOpen((current) => (current ? current : true))
-  }, [])
+    setOverviewOpen(current => (current ? current : true));
+  }, []);
 
   const closeOverview = useCallback(() => {
-    setOverviewOpen(false)
-  }, [])
+    setOverviewOpen(false);
+  }, []);
 
   useEffect(() => {
-    const node = swipeViewportRef.current
-    if (!node) return undefined
+    const node = swipeViewportRef.current;
+    if (!node) return undefined;
 
     const handleScroll = () => {
-      const width = node.clientWidth || 1
+      const width = node.clientWidth || 1;
       if (settleFrameRef.current) {
-        cancelAnimationFrame(settleFrameRef.current)
+        cancelAnimationFrame(settleFrameRef.current);
       }
 
       settleFrameRef.current = requestAnimationFrame(() => {
-        const ratio = node.scrollLeft / width
-        const nearestIndex = Math.max(0, Math.min(PANEL_COUNT - 1, Math.round(ratio)))
+        const ratio = node.scrollLeft / width;
+        const nearestIndex = Math.max(0, Math.min(PANEL_COUNT - 1, Math.round(ratio)));
 
         if (!isProgrammaticRef.current && panelIndexRef.current !== nearestIndex) {
-          setPanelIndex(nearestIndex)
+          setPanelIndex(nearestIndex);
         }
-      })
+      });
 
-      clearTimeout(settleTimeoutRef.current)
+      clearTimeout(settleTimeoutRef.current);
       settleTimeoutRef.current = setTimeout(() => {
-        if (animatingRef.current || isProgrammaticRef.current) return
+        if (animatingRef.current || isProgrammaticRef.current) return;
 
-        const ratio = node.scrollLeft / width
-        const nearestIndex = Math.max(0, Math.min(PANEL_COUNT - 1, Math.round(ratio)))
+        const ratio = node.scrollLeft / width;
+        const nearestIndex = Math.max(0, Math.min(PANEL_COUNT - 1, Math.round(ratio)));
         if (Math.abs(ratio - nearestIndex) > 0.08) {
-          snapToPanel(nearestIndex)
-          return
+          snapToPanel(nearestIndex);
+          return;
         }
 
         if (panelIndexRef.current !== nearestIndex) {
-          setPanelIndex(nearestIndex)
+          setPanelIndex(nearestIndex);
         }
-      }, 140)
-    }
+      }, 140);
+    };
 
-    node.addEventListener('scroll', handleScroll, { passive: true })
+    node.addEventListener('scroll', handleScroll, { passive: true });
 
     return () => {
-      node.removeEventListener('scroll', handleScroll)
-      clearTimeout(settleTimeoutRef.current)
+      node.removeEventListener('scroll', handleScroll);
+      clearTimeout(settleTimeoutRef.current);
       if (settleFrameRef.current) {
-        cancelAnimationFrame(settleFrameRef.current)
-        settleFrameRef.current = null
+        cancelAnimationFrame(settleFrameRef.current);
+        settleFrameRef.current = null;
       }
-    }
-  }, [snapToPanel])
+    };
+  }, [snapToPanel]);
 
   useEffect(() => {
     return () => {
-      clearTimeout(animationTimeoutRef.current)
-      clearTimeout(settleTimeoutRef.current)
+      clearTimeout(animationTimeoutRef.current);
+      clearTimeout(settleTimeoutRef.current);
       if (settleFrameRef.current) {
-        cancelAnimationFrame(settleFrameRef.current)
-        settleFrameRef.current = null
+        cancelAnimationFrame(settleFrameRef.current);
+        settleFrameRef.current = null;
       }
-    }
-  }, [])
+    };
+  }, []);
 
-  const previousPanelRef = useRef(panelIndex)
+  const previousPanelRef = useRef(panelIndex);
   useEffect(() => {
-    const previous = previousPanelRef.current
+    const previous = previousPanelRef.current;
     if (previous !== panelIndex) {
-      previousPanelRef.current = panelIndex
+      previousPanelRef.current = panelIndex;
       requestAnimationFrame(() => {
-        window.scrollTo({ top: 0, behavior: 'smooth' })
-      })
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
     }
-  }, [panelIndex])
+  }, [panelIndex]);
 
   useEffect(() => {
-    const node = swipeViewportRef.current
-    if (!node) return undefined
+    const node = swipeViewportRef.current;
+    if (!node) return undefined;
 
-    const getDistance = (touches) => {
-      if (touches.length < 2) return 0
-      const [first, second] = touches
-      const dx = first.clientX - second.clientX
-      const dy = first.clientY - second.clientY
-      return Math.sqrt(dx * dx + dy * dy)
-    }
+    const getDistance = touches => {
+      if (touches.length < 2) return 0;
+      const [first, second] = touches;
+      const dx = first.clientX - second.clientX;
+      const dy = first.clientY - second.clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    };
 
-    const handleTouchStart = (event) => {
+    const handleTouchStart = event => {
       if (event.touches.length === 2) {
         pinchStateRef.current = {
           startDistance: getDistance(event.touches),
           triggered: false,
-        }
+        };
       }
-    }
+    };
 
-    const handleTouchMove = (event) => {
-      const state = pinchStateRef.current
-      if (!state || event.touches.length !== 2) return
+    const handleTouchMove = event => {
+      const state = pinchStateRef.current;
+      if (!state || event.touches.length !== 2) return;
 
-      const distance = getDistance(event.touches)
-      if (!distance || !state.startDistance) return
+      const distance = getDistance(event.touches);
+      if (!distance || !state.startDistance) return;
 
-      const ratio = distance / state.startDistance
+      const ratio = distance / state.startDistance;
       if (!state.triggered && ratio < 0.9) {
-        state.triggered = true
-        openOverview()
+        state.triggered = true;
+        openOverview();
       }
-    }
+    };
 
     const clearPinch = () => {
-      pinchStateRef.current = null
-    }
+      pinchStateRef.current = null;
+    };
 
-    const handleWheel = (event) => {
-      if (!event.ctrlKey) return
-      if (event.deltaY <= 0) return
-      openOverview()
-    }
+    const handleWheel = event => {
+      if (!event.ctrlKey) return;
+      if (event.deltaY <= 0) return;
+      openOverview();
+    };
 
-    node.addEventListener('touchstart', handleTouchStart, { passive: true })
-    node.addEventListener('touchmove', handleTouchMove, { passive: true })
-    node.addEventListener('touchend', clearPinch)
-    node.addEventListener('touchcancel', clearPinch)
-    node.addEventListener('wheel', handleWheel, { passive: true })
+    node.addEventListener('touchstart', handleTouchStart, { passive: true });
+    node.addEventListener('touchmove', handleTouchMove, { passive: true });
+    node.addEventListener('touchend', clearPinch);
+    node.addEventListener('touchcancel', clearPinch);
+    node.addEventListener('wheel', handleWheel, { passive: true });
 
     return () => {
-      node.removeEventListener('touchstart', handleTouchStart)
-      node.removeEventListener('touchmove', handleTouchMove)
-      node.removeEventListener('touchend', clearPinch)
-      node.removeEventListener('touchcancel', clearPinch)
-      node.removeEventListener('wheel', handleWheel)
-    }
-  }, [openOverview])
+      node.removeEventListener('touchstart', handleTouchStart);
+      node.removeEventListener('touchmove', handleTouchMove);
+      node.removeEventListener('touchend', clearPinch);
+      node.removeEventListener('touchcancel', clearPinch);
+      node.removeEventListener('wheel', handleWheel);
+    };
+  }, [openOverview]);
 
   useEffect(() => {
-    const handleKeyDown = (event) => {
+    const handleKeyDown = event => {
       if (event.key === 'Escape') {
-        closeOverview()
+        closeOverview();
       }
-    }
+    };
 
-    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('keydown', handleKeyDown);
     return () => {
-      window.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [closeOverview])
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [closeOverview]);
 
   useEffect(() => {
-    if (!overviewOpen) return undefined
+    if (!overviewOpen) return undefined;
 
-    const routerEvents = router.events
-    if (!routerEvents) return undefined
+    const routerEvents = router.events;
+    if (!routerEvents) return undefined;
 
     const handleRouteStart = () => {
-      setOverviewOpen(false)
-    }
+      setOverviewOpen(false);
+    };
 
-    routerEvents.on('routeChangeStart', handleRouteStart)
+    routerEvents.on('routeChangeStart', handleRouteStart);
 
     return () => {
-      routerEvents.off('routeChangeStart', handleRouteStart)
-    }
-  }, [overviewOpen, router])
+      routerEvents.off('routeChangeStart', handleRouteStart);
+    };
+  }, [overviewOpen, router]);
 
   useEffect(() => {
-    if (!overviewOpen) return
-    router.prefetch('/maker').catch(() => {})
-    router.prefetch('/rank/new').catch(() => {})
-  }, [overviewOpen, router])
+    if (!overviewOpen) return;
+    router.prefetch('/maker').catch(() => {});
+    router.prefetch('/rank/new').catch(() => {});
+  }, [overviewOpen, router]);
 
   useEffect(() => {
-    router.prefetch('/roster').catch(() => {})
-  }, [router])
+    router.prefetch('/roster').catch(() => {});
+  }, [router]);
 
   useLayoutEffect(() => {
-    const node = swipeViewportRef.current
-    if (!node) return undefined
+    const node = swipeViewportRef.current;
+    if (!node) return undefined;
 
-    const width = node.clientWidth || 1
-    const initialIndex = panelIndexRef.current
-    node.scrollTo({ left: width * initialIndex, behavior: 'auto' })
+    const width = node.clientWidth || 1;
+    const initialIndex = panelIndexRef.current;
+    node.scrollTo({ left: width * initialIndex, behavior: 'auto' });
 
     const handleResize = () => {
-      const nextWidth = node.clientWidth || 1
-      node.scrollLeft = nextWidth * panelIndexRef.current
-    }
+      const nextWidth = node.clientWidth || 1;
+      node.scrollLeft = nextWidth * panelIndexRef.current;
+    };
 
-    window.addEventListener('resize', handleResize)
+    window.addEventListener('resize', handleResize);
 
     return () => {
-      window.removeEventListener('resize', handleResize)
-    }
-  }, [])
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
 
   useEffect(() => {
     if (panelIndex === 0 && !gameSearchEnabled) {
-      setGameSearchEnabled(true)
+      setGameSearchEnabled(true);
     }
-  }, [panelIndex, gameSearchEnabled])
+  }, [panelIndex, gameSearchEnabled]);
 
   const handleEnterGame = useCallback(
     (game, role) => {
-      if (!game) return
-      const base = `/rank/${game.id}`
-      const target = role ? `${base}?role=${encodeURIComponent(role)}` : base
-      router.push(target)
+      if (!game) return;
+      const base = `/rank/${game.id}`;
+      const target = role ? `${base}?role=${encodeURIComponent(role)}` : base;
+      router.push(target);
     },
-    [router],
-  )
+    [router]
+  );
 
   const panels = useMemo(
     () => [
@@ -400,16 +396,19 @@ export default function CharacterDashboard({
         render: () => <RankingPanel />,
       },
     ],
-    [gameBrowser, handleEnterGame],
-  )
+    [gameBrowser, handleEnterGame]
+  );
 
-  const handleNavClick = useCallback((targetId) => {
-    const targetIndex = NAV_ITEMS.findIndex((item) => item.id === targetId)
-    if (targetIndex >= 0) {
-      snapToPanel(targetIndex)
-      closeOverview()
-    }
-  }, [closeOverview, snapToPanel])
+  const handleNavClick = useCallback(
+    targetId => {
+      const targetIndex = NAV_ITEMS.findIndex(item => item.id === targetId);
+      if (targetIndex >= 0) {
+        snapToPanel(targetIndex);
+        closeOverview();
+      }
+    },
+    [closeOverview, snapToPanel]
+  );
 
   return (
     <CharacterDashboardProvider value={contextValue}>
@@ -418,12 +417,9 @@ export default function CharacterDashboard({
         <div style={styles.backgroundTint} aria-hidden />
 
         <div style={styles.content}>
-          <div
-            ref={swipeViewportRef}
-            style={styles.swipeViewport}
-          >
+          <div ref={swipeViewportRef} style={styles.swipeViewport}>
             <div style={styles.swipeTrack}>
-              {panels.map((panel) => (
+              {panels.map(panel => (
                 <div key={panel.id} style={styles.swipePanel}>
                   {panel.render()}
                 </div>
@@ -443,8 +439,8 @@ export default function CharacterDashboard({
                 ...(panelIndex === index ? styles.navButtonActive : null),
               }}
             >
-            {item.label}
-          </button>
+              {item.label}
+            </button>
           ))}
         </nav>
       </div>
@@ -454,23 +450,25 @@ export default function CharacterDashboard({
         </button>
       ) : null}
       <EditHeroModal open={editOpen} onClose={() => setEditOpen(false)} />
-      
+
       {/* 통합 게임 시스템 */}
       {unifiedGameOpen && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          zIndex: 1000,
-          background: '#0f172a',
-        }}>
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 1000,
+            background: '#0f172a',
+          }}
+        >
           <UnifiedGameSystem
             initialCharacter={profile.hero}
-            onGameEnd={(result) => {
-              console.log('게임 종료:', result)
-              setUnifiedGameOpen(false)
+            onGameEnd={result => {
+              console.log('게임 종료:', result);
+              setUnifiedGameOpen(false);
             }}
           />
           <button
@@ -492,7 +490,7 @@ export default function CharacterDashboard({
           </button>
         </div>
       )}
-      
+
       <OverviewSheet
         open={overviewOpen}
         onClose={closeOverview}
@@ -506,8 +504,8 @@ export default function CharacterDashboard({
         onSelectGame={participation.actions.selectGame}
         onOpenGame={handleEnterGame}
       />
-      </CharacterDashboardProvider>
-  )
+    </CharacterDashboardProvider>
+  );
 }
 
 function SectionCard({ title, children }) {
@@ -516,7 +514,7 @@ function SectionCard({ title, children }) {
       <h2 style={styles.sectionTitle}>{title}</h2>
       <div>{children}</div>
     </section>
-  )
+  );
 }
 
 function CharacterPanel() {
@@ -530,62 +528,62 @@ function CharacterPanel() {
     selectedGameId,
     openEditPanel,
     openUnifiedGame,
-  } = useCharacterDashboardContext()
+  } = useCharacterDashboardContext();
 
-  const description = (edit?.description || hero?.description || '').trim()
+  const description = (edit?.description || hero?.description || '').trim();
   const abilityTexts = useMemo(
-    () => abilityCards.map((card) => (card.value || '').trim()).filter(Boolean),
-    [abilityCards],
-  )
+    () => abilityCards.map(card => (card.value || '').trim()).filter(Boolean),
+    [abilityCards]
+  );
 
   const statSlide = useMemo(() => {
-    if (!statSlides.length) return null
+    if (!statSlides.length) return null;
     if (selectedGameId) {
-      const match = statSlides.find((slide) => slide.key === selectedGameId)
-      if (match) return match
+      const match = statSlides.find(slide => slide.key === selectedGameId);
+      if (match) return match;
     }
-    return statSlides[0]
-  }, [statSlides, selectedGameId])
+    return statSlides[0];
+  }, [statSlides, selectedGameId]);
 
   const statLines = useMemo(() => {
-    if (!statSlide?.stats?.length) return []
+    if (!statSlide?.stats?.length) return [];
     return statSlide.stats
-      .filter((entry) => entry?.label && entry?.value)
-      .map((entry) => ({ label: entry.label, value: entry.value }))
-  }, [statSlide])
+      .filter(entry => entry?.label && entry?.value)
+      .map(entry => ({ label: entry.label, value: entry.value }));
+  }, [statSlide]);
 
   const overlaySteps = useMemo(() => {
-    const steps = ['name']
-    if (description) steps.push('description')
-    if (abilityTexts.length) steps.push('abilities')
-    if (statLines.length) steps.push('stats')
-    return steps
-  }, [description, abilityTexts.length, statLines.length])
+    const steps = ['name'];
+    if (description) steps.push('description');
+    if (abilityTexts.length) steps.push('abilities');
+    if (statLines.length) steps.push('stats');
+    return steps;
+  }, [description, abilityTexts.length, statLines.length]);
 
-  const [overlayIndex, setOverlayIndex] = useState(0)
+  const [overlayIndex, setOverlayIndex] = useState(0);
 
   useEffect(() => {
-    if (!overlaySteps.length) return
+    if (!overlaySteps.length) return;
     if (overlayIndex >= overlaySteps.length) {
-      setOverlayIndex(0)
+      setOverlayIndex(0);
     }
-  }, [overlayIndex, overlaySteps])
+  }, [overlayIndex, overlaySteps]);
 
-  const currentOverlay = overlaySteps[overlayIndex] || 'name'
-  const isOverlayActive = currentOverlay !== 'name'
+  const currentOverlay = overlaySteps[overlayIndex] || 'name';
+  const isOverlayActive = currentOverlay !== 'name';
 
   const handleHeroTap = useCallback(() => {
-    if (!overlaySteps.length) return
-    setOverlayIndex((prev) => ((prev + 1) % overlaySteps.length))
-  }, [overlaySteps])
+    if (!overlaySteps.length) return;
+    setOverlayIndex(prev => (prev + 1) % overlaySteps.length);
+  }, [overlaySteps]);
 
-  let overlayTitle = ''
-  let overlayBody = null
+  let overlayTitle = '';
+  let overlayBody = null;
   if (currentOverlay === 'description') {
-    overlayTitle = '설명'
-    overlayBody = <p style={styles.heroOverlayText}>{description}</p>
+    overlayTitle = '설명';
+    overlayBody = <p style={styles.heroOverlayText}>{description}</p>;
   } else if (currentOverlay === 'abilities') {
-    overlayTitle = '능력'
+    overlayTitle = '능력';
     overlayBody = (
       <ul style={styles.heroOverlayList}>
         {abilityTexts.map((text, index) => (
@@ -594,19 +592,19 @@ function CharacterPanel() {
           </li>
         ))}
       </ul>
-    )
+    );
   } else if (currentOverlay === 'stats') {
-    overlayTitle = statSlide?.name ? `${statSlide.name} 기록` : '통계'
+    overlayTitle = statSlide?.name ? `${statSlide.name} 기록` : '통계';
     overlayBody = (
       <ul style={styles.heroOverlayList}>
-        {statLines.map((entry) => (
+        {statLines.map(entry => (
           <li key={entry.label} style={styles.heroOverlayStat}>
             <span>{entry.label}</span>
             <strong>{entry.value}</strong>
           </li>
         ))}
       </ul>
-    )
+    );
   }
 
   return (
@@ -617,10 +615,10 @@ function CharacterPanel() {
           role="button"
           tabIndex={0}
           onClick={handleHeroTap}
-          onKeyDown={(event) => {
+          onKeyDown={event => {
             if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault()
-              handleHeroTap()
+              event.preventDefault();
+              handleHeroTap();
             }
           }}
           style={{
@@ -648,9 +646,9 @@ function CharacterPanel() {
         </div>
         <button
           type="button"
-          onClick={(event) => {
-            event.stopPropagation()
-            openEditPanel()
+          onClick={event => {
+            event.stopPropagation();
+            openEditPanel();
           }}
           style={styles.heroEditButton}
           aria-label="프로필 편집"
@@ -662,40 +660,41 @@ function CharacterPanel() {
           </span>
         </button>
       </div>
-      
+
       {/* 통합 게임 시스템 실행 버튼 */}
       <div style={styles.gameSystemSection}>
-        <button
-          type="button"
-          onClick={openUnifiedGame}
-          style={styles.unifiedGameButton}
-        >
+        <button type="button" onClick={openUnifiedGame} style={styles.unifiedGameButton}>
           🎮 AI 배틀 게임 제작 & 실행
         </button>
         <p style={styles.gameSystemDesc}>
           캐릭터 정보를 활용한 프롬프트 기반 게임을 제작하고 실행하세요
         </p>
       </div>
-      
+
       <div style={styles.panelStack}>
         <InstantBattleSection />
         <BattleLogSection />
       </div>
     </div>
-  )
+  );
 }
 
 function GamePanel({ browser, onEnterGame }) {
-  return <GameSearchSwipePanel browser={browser} onEnterGame={onEnterGame} />
+  return <GameSearchSwipePanel browser={browser} onEnterGame={onEnterGame} />;
 }
 
 function RankingPanel() {
-  return <RankingSection />
+  return <RankingSection />;
 }
 
 function InstantBattleSection() {
-  const { statSlides = [], selectedGameId, onSelectGame, selectedGame, onStartBattle } =
-    useCharacterDashboardContext()
+  const {
+    statSlides = [],
+    selectedGameId,
+    onSelectGame,
+    selectedGame,
+    onStartBattle,
+  } = useCharacterDashboardContext();
 
   return (
     <section style={styles.sectionCard}>
@@ -703,7 +702,7 @@ function InstantBattleSection() {
         <h2 style={styles.sectionTitle}>전투</h2>
         {statSlides.length ? (
           <div style={styles.gameChipRow}>
-            {statSlides.map((slide) => (
+            {statSlides.map(slide => (
               <button
                 key={slide.key}
                 type="button"
@@ -742,11 +741,11 @@ function InstantBattleSection() {
         <p style={styles.bodyText}>전투를 시작할 게임을 위에서 선택해 주세요.</p>
       ) : null}
     </section>
-  )
+  );
 }
 
 function RankingSection() {
-  const { selectedScoreboard = [], heroLookup = {}, hero } = useCharacterDashboardContext()
+  const { selectedScoreboard = [], heroLookup = {}, hero } = useCharacterDashboardContext();
 
   return (
     <div style={styles.panelContent}>
@@ -764,9 +763,9 @@ function RankingSection() {
               </thead>
               <tbody>
                 {selectedScoreboard.map((row, index) => {
-                  const lookup = (row.hero_id && heroLookup[row.hero_id]) || null
-                  const name = lookup?.name || row.role || `참가자 ${index + 1}`
-                  const isHero = hero?.id && row.hero_id === hero.id
+                  const lookup = (row.hero_id && heroLookup[row.hero_id]) || null;
+                  const name = lookup?.name || row.role || `참가자 ${index + 1}`;
+                  const isHero = hero?.id && row.hero_id === hero.id;
                   return (
                     <tr
                       key={row.id || `${row.hero_id}-${row.slot_no ?? index}`}
@@ -777,7 +776,7 @@ function RankingSection() {
                       <td>{row.rating ?? row.score ?? '—'}</td>
                       <td>{row.battles ?? '—'}</td>
                     </tr>
-                  )
+                  );
                 })}
               </tbody>
             </table>
@@ -787,7 +786,7 @@ function RankingSection() {
         )}
       </SectionCard>
     </div>
-  )
+  );
 }
 
 function BattleLogSection() {
@@ -799,10 +798,10 @@ function BattleLogSection() {
     battleError,
     selectedGame,
     statSlides = [],
-  } = useCharacterDashboardContext()
+  } = useCharacterDashboardContext();
 
-  const hasSelection = Boolean(selectedGame)
-  const hasParticipations = statSlides.length > 0
+  const hasSelection = Boolean(selectedGame);
+  const hasParticipations = statSlides.length > 0;
 
   return (
     <section style={styles.sectionCard}>
@@ -820,31 +819,29 @@ function BattleLogSection() {
         <p style={styles.bodyText}>표시할 전투 기록이 없습니다.</p>
       ) : (
         <div style={styles.battleList}>
-          {battleDetails
-            .slice(0, visibleBattles || battleDetails.length)
-            .map((battle) => (
-              <article key={battle.id} style={styles.battleCard}>
-                <header style={styles.battleHeader}>
-                  <strong>{new Date(battle.created_at || 0).toLocaleString()}</strong>
-                  <span>{battle.result ? battle.result.toUpperCase() : '결과 미정'}</span>
-                </header>
-                <p style={styles.bodyText}>점수 변화: {battle.score_delta ?? 0}</p>
-                {battle.logs?.length ? (
-                  <details style={styles.logDetails}>
-                    <summary>턴 로그 보기</summary>
-                    <ul style={styles.logList}>
-                      {battle.logs.map((log) => (
-                        <li key={`${battle.id}-${log.turn_no}`}>
-                          <strong>턴 {log.turn_no}</strong>
-                          <div>프롬프트: {log.prompt}</div>
-                          <div>응답: {log.ai_response}</div>
-                        </li>
-                      ))}
-                    </ul>
-                  </details>
-                ) : null}
-              </article>
-            ))}
+          {battleDetails.slice(0, visibleBattles || battleDetails.length).map(battle => (
+            <article key={battle.id} style={styles.battleCard}>
+              <header style={styles.battleHeader}>
+                <strong>{new Date(battle.created_at || 0).toLocaleString()}</strong>
+                <span>{battle.result ? battle.result.toUpperCase() : '결과 미정'}</span>
+              </header>
+              <p style={styles.bodyText}>점수 변화: {battle.score_delta ?? 0}</p>
+              {battle.logs?.length ? (
+                <details style={styles.logDetails}>
+                  <summary>턴 로그 보기</summary>
+                  <ul style={styles.logList}>
+                    {battle.logs.map(log => (
+                      <li key={`${battle.id}-${log.turn_no}`}>
+                        <strong>턴 {log.turn_no}</strong>
+                        <div>프롬프트: {log.prompt}</div>
+                        <div>응답: {log.ai_response}</div>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ) : null}
+            </article>
+          ))}
           {visibleBattles && visibleBattles < battleDetails.length ? (
             <button type="button" onClick={onShowMoreBattles} style={styles.secondaryButton}>
               더 보기
@@ -853,7 +850,7 @@ function BattleLogSection() {
         </div>
       )}
     </section>
-  )
+  );
 }
 
 function GameSearchSwipePanel({ browser, onEnterGame }) {
@@ -873,23 +870,23 @@ function GameSearchSwipePanel({ browser, onEnterGame }) {
     setRoleChoice,
     roleSlots,
     sortOptions,
-  } = browser
+  } = browser;
 
   const handleSelectRole = useCallback(
-    (role) => {
+    role => {
       if (!role) {
-        setRoleChoice('')
-        return
+        setRoleChoice('');
+        return;
       }
-      setRoleChoice(role)
+      setRoleChoice(role);
     },
-    [setRoleChoice],
-  )
+    [setRoleChoice]
+  );
 
   const handleSubmit = useCallback(() => {
-    if (!selectedGame) return
-    onEnterGame(selectedGame, roleChoice)
-  }, [onEnterGame, roleChoice, selectedGame])
+    if (!selectedGame) return;
+    onEnterGame(selectedGame, roleChoice);
+  }, [onEnterGame, roleChoice, selectedGame]);
 
   return (
     <div style={styles.panelContent}>
@@ -901,15 +898,15 @@ function GameSearchSwipePanel({ browser, onEnterGame }) {
                 type="search"
                 placeholder="게임 제목이나 설명을 검색"
                 value={gameQuery}
-                onChange={(event) => setGameQuery(event.target.value)}
+                onChange={event => setGameQuery(event.target.value)}
                 style={styles.gameSearchInput}
               />
               <select
                 value={gameSort}
-                onChange={(event) => setGameSort(event.target.value)}
+                onChange={event => setGameSort(event.target.value)}
                 style={styles.gameSortSelect}
               >
-                {sortOptions.map((option) => (
+                {sortOptions.map(option => (
                   <option key={option.key} value={option.key}>
                     {option.label}
                   </option>
@@ -922,8 +919,8 @@ function GameSearchSwipePanel({ browser, onEnterGame }) {
               ) : !gameRows.length ? (
                 <p style={styles.emptyState}>검색 결과가 없습니다.</p>
               ) : (
-                gameRows.map((row) => {
-                  const isActive = selectedGame?.id === row.id
+                gameRows.map(row => {
+                  const isActive = selectedGame?.id === row.id;
                   return (
                     <button
                       key={row.id}
@@ -945,7 +942,7 @@ function GameSearchSwipePanel({ browser, onEnterGame }) {
                         <span>🎮 {row.play_count ?? 0}</span>
                       </div>
                     </button>
-                  )
+                  );
                 })
               )}
             </div>
@@ -973,15 +970,15 @@ function GameSearchSwipePanel({ browser, onEnterGame }) {
                   <h4 style={styles.sectionSubTitle}>역할 선택</h4>
                   <div style={styles.roleGrid}>
                     {gameRoles.length ? (
-                      gameRoles.map((role) => {
-                        const slot = roleSlots.get(role.name) || { capacity: 1, occupied: 0 }
+                      gameRoles.map(role => {
+                        const slot = roleSlots.get(role.name) || { capacity: 1, occupied: 0 };
                         const capacity = Number.isFinite(Number(slot.capacity))
                           ? Math.max(Number(slot.capacity), 0)
-                          : null
+                          : null;
                         const occupied = Number.isFinite(Number(slot.occupied))
                           ? Math.max(Number(slot.occupied), 0)
-                          : 0
-                        const isActive = roleChoice === role.name
+                          : 0;
+                        const isActive = roleChoice === role.name;
                         return (
                           <button
                             key={role.id || role.name}
@@ -999,7 +996,7 @@ function GameSearchSwipePanel({ browser, onEnterGame }) {
                                 : `${occupied}명 참여 중`}
                             </span>
                           </button>
-                        )
+                        );
                       })
                     ) : (
                       <p style={styles.emptyState}>등록된 역할이 없습니다.</p>
@@ -1011,12 +1008,14 @@ function GameSearchSwipePanel({ browser, onEnterGame }) {
                   <h4 style={styles.sectionSubTitle}>현재 참가자</h4>
                   <div style={styles.participantList}>
                     {participants.length ? (
-                      participants.map((participant) => (
+                      participants.map(participant => (
                         <div key={participant.id} style={styles.participantRow}>
                           <span style={styles.participantName}>
                             {participant.hero_name || participant.hero_id || '알 수 없음'}
                           </span>
-                          <span style={styles.participantRole}>{participant.role || '역할 미정'}</span>
+                          <span style={styles.participantRole}>
+                            {participant.role || '역할 미정'}
+                          </span>
                         </div>
                       ))
                     ) : (
@@ -1042,15 +1041,15 @@ function GameSearchSwipePanel({ browser, onEnterGame }) {
         </div>
       </SectionCard>
     </div>
-  )
+  );
 }
 
 function formatDate(value) {
-  if (!value) return '날짜 미상'
+  if (!value) return '날짜 미상';
   try {
-    return new Date(value).toLocaleDateString()
+    return new Date(value).toLocaleDateString();
   } catch (error) {
-    return '날짜 미상'
+    return '날짜 미상';
   }
 }
 
@@ -1231,7 +1230,8 @@ const styles = {
   heroShade: {
     position: 'absolute',
     inset: 0,
-    background: 'linear-gradient(180deg, rgba(2,6,23,0.6) 0%, rgba(2,6,23,0.28) 45%, rgba(2,6,23,0.7) 100%)',
+    background:
+      'linear-gradient(180deg, rgba(2,6,23,0.6) 0%, rgba(2,6,23,0.28) 45%, rgba(2,6,23,0.7) 100%)',
     pointerEvents: 'none',
   },
   heroOverlay: {
@@ -1990,7 +1990,7 @@ const styles = {
     color: '#94a3b8',
     lineHeight: 1.5,
   },
-}
+};
 
 function OverviewSheet({
   open,
@@ -2005,10 +2005,10 @@ function OverviewSheet({
   onSelectGame,
   onOpenGame,
 }) {
-  if (!open) return null
+  if (!open) return null;
 
-  const navigateToGame = onOpenGame || (() => {})
-  const selectGame = onSelectGame || (() => {})
+  const navigateToGame = onOpenGame || (() => {});
+  const selectGame = onSelectGame || (() => {});
 
   return (
     <div style={styles.overviewBackdrop} role="dialog" aria-modal="true">
@@ -2028,19 +2028,19 @@ function OverviewSheet({
           <h3 style={styles.overviewSectionTitle}>참여한 게임</h3>
           {participations?.length ? (
             <div style={styles.overviewGameCarousel}>
-              {participations.map((entry) => {
-                const isActive = selectedGameId === entry.game_id
-                const game = entry.game || {}
-                const label = game.name || '이름 없는 게임'
-                const image = game.image_url || game.cover_path
+              {participations.map(entry => {
+                const isActive = selectedGameId === entry.game_id;
+                const game = entry.game || {};
+                const label = game.name || '이름 없는 게임';
+                const image = game.image_url || game.cover_path;
                 return (
                   <button
                     key={`${entry.game_id}:${entry.slot_no ?? 'slot'}`}
                     type="button"
                     onClick={() => {
-                      selectGame(entry.game_id)
-                      navigateToGame(game, entry.role)
-                      onClose()
+                      selectGame(entry.game_id);
+                      navigateToGame(game, entry.role);
+                      onClose();
                     }}
                     style={{
                       ...styles.overviewGameCard,
@@ -2054,7 +2054,7 @@ function OverviewSheet({
                     )}
                     <div style={styles.overviewGameName}>{label}</div>
                   </button>
-                )
+                );
               })}
             </div>
           ) : (
@@ -2098,5 +2098,5 @@ function OverviewSheet({
         </button>
       </div>
     </div>
-  )
+  );
 }

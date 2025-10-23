@@ -1,4 +1,4 @@
-import { modalStyles } from './styles'
+import { modalStyles } from './styles';
 
 export default function HeroAbilitiesSection({
   abilityCards,
@@ -15,14 +15,18 @@ export default function HeroAbilitiesSection({
             <div style={modalStyles.abilityHeader}>
               <span style={modalStyles.abilityTitle}>능력 {index + 1}</span>
               {ability.value ? (
-                <button type="button" onClick={() => onClearAbility(ability.key)} style={modalStyles.removeAbility}>
+                <button
+                  type="button"
+                  onClick={() => onClearAbility(ability.key)}
+                  style={modalStyles.removeAbility}
+                >
                   삭제
                 </button>
               ) : null}
             </div>
             <textarea
               value={ability.value}
-              onChange={(event) => onChangeEdit(ability.key, event.target.value)}
+              onChange={event => onChangeEdit(ability.key, event.target.value)}
               rows={4}
               style={{ ...modalStyles.textInput, resize: 'vertical', minHeight: 140 }}
               placeholder="능력 설명을 입력하세요."
@@ -39,5 +43,5 @@ export default function HeroAbilitiesSection({
         </button>
       </div>
     </>
-  )
+  );
 }

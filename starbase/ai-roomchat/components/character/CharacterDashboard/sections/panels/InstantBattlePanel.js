@@ -1,11 +1,11 @@
-import React from 'react'
+import React from 'react';
 
-import { useCharacterDashboardContext } from '../../context'
-import InstantBattleSection from '../right/InstantBattleSection'
+import { useCharacterDashboardContext } from '../../context';
+import InstantBattleSection from '../right/InstantBattleSection';
 
 export default function InstantBattlePanel() {
   const { selectedGameId, selectedEntry, battleSummary, onStartBattle } =
-    useCharacterDashboardContext()
+    useCharacterDashboardContext();
 
   return (
     <InstantBattleSection
@@ -14,5 +14,5 @@ export default function InstantBattlePanel() {
       battleSummary={battleSummary}
       onStartBattle={onStartBattle}
     />
-  )
+  );
 }

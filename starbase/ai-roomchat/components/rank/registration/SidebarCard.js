@@ -1,4 +1,4 @@
-'use client'
+'use client';
 
 export default function SidebarCard({ title, children }) {
   return (
@@ -18,5 +18,5 @@ export default function SidebarCard({ title, children }) {
       ) : null}
       <div style={{ display: 'grid', gap: 8, fontSize: 13, lineHeight: 1.6 }}>{children}</div>
     </div>
-  )
+  );
 }

@@ -1,52 +1,52 @@
-const { describe, it, expect, beforeEach, afterEach } = require('@jest/globals')
+const { describe, it, expect, beforeEach, afterEach } = require('@jest/globals');
 
 const {
   createApiRequest,
   createMockResponse,
   loadApiRoute,
   registerSupabaseAdminMock,
-} = require('../testUtils')
+} = require('../testUtils');
 
-let mockCreateClientImplementation
-let mockWithTableQuery
-let roomQueryResponse
-let rosterQueryResponse
+let mockCreateClientImplementation;
+let mockWithTableQuery;
+let roomQueryResponse;
+let rosterQueryResponse;
 
 jest.mock('@supabase/supabase-js', () => ({
   createClient: (...args) => mockCreateClientImplementation(...args),
-}))
+}));
 
 jest.mock('@/lib/supabaseTables', () => ({
   withTableQuery: (...args) => mockWithTableQuery(...args),
-}))
+}));
 
 function loadHandler() {
-  return loadApiRoute('rank', 'ready-timeout')
+  return loadApiRoute('rank', 'ready-timeout');
 }
 
 describe('POST /api/rank/ready-timeout', () => {
-  let getUserMock
-  let rpcMock
+  let getUserMock;
+  let rpcMock;
 
   beforeEach(() => {
-    jest.resetModules()
-    jest.clearAllMocks()
+    jest.resetModules();
+    jest.clearAllMocks();
 
-    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co'
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'anon-key'
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'anon-key';
 
-    getUserMock = jest.fn().mockResolvedValue({ data: { user: { id: 'host-1' } }, error: null })
+    getUserMock = jest.fn().mockResolvedValue({ data: { user: { id: 'host-1' } }, error: null });
     mockCreateClientImplementation = jest.fn((urlArg, keyArg, options = {}) => {
-      const authHeader = options?.global?.headers?.Authorization
+      const authHeader = options?.global?.headers?.Authorization;
       if (authHeader === `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`) {
         return {
           auth: { getUser: getUserMock },
-        }
+        };
       }
-      throw new Error(`Unexpected Authorization header: ${authHeader}`)
-    })
+      throw new Error(`Unexpected Authorization header: ${authHeader}`);
+    });
 
-    rpcMock = jest.fn(async (fnName) => {
+    rpcMock = jest.fn(async fnName => {
       if (fnName === 'fetch_rank_async_standin_pool') {
         return {
           data: [
@@ -66,15 +66,15 @@ describe('POST /api/rank/ready-timeout', () => {
             },
           ],
           error: null,
-        }
+        };
       }
       if (fnName === 'sync_rank_match_roster') {
-        return { data: [], error: null }
+        return { data: [], error: null };
       }
-      throw new Error(`Unexpected RPC call: ${fnName}`)
-    })
+      throw new Error(`Unexpected RPC call: ${fnName}`);
+    });
 
-    registerSupabaseAdminMock(jest.fn(), rpcMock)
+    registerSupabaseAdminMock(jest.fn(), rpcMock);
 
     const rosterRows = [
       {
@@ -127,41 +127,41 @@ describe('POST /api/rank/ready-timeout', () => {
         slot_template_source: 'room-stage',
         slot_template_updated_at: '2025-01-01T00:00:00Z',
       },
-    ]
+    ];
 
-    roomQueryResponse = { data: { owner_id: 'host-1' }, error: null }
-    rosterQueryResponse = { data: rosterRows, error: null }
+    roomQueryResponse = { data: { owner_id: 'host-1' }, error: null };
+    rosterQueryResponse = { data: rosterRows, error: null };
 
     mockWithTableQuery = jest.fn(async (_client, logicalName) => {
       if (logicalName === 'rank_rooms') {
-        return roomQueryResponse
+        return roomQueryResponse;
       }
       if (logicalName === 'rank_match_roster') {
-        return rosterQueryResponse
+        return rosterQueryResponse;
       }
-      return { data: null, error: null }
-    })
-  })
+      return { data: null, error: null };
+    });
+  });
 
   afterEach(() => {
-    delete process.env.NEXT_PUBLIC_SUPABASE_URL
-    delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  })
+    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    delete process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  });
 
   it('requires authorization', async () => {
-    const handler = loadHandler()
-    const req = createApiRequest({ method: 'POST' })
-    const res = createMockResponse()
+    const handler = loadHandler();
+    const req = createApiRequest({ method: 'POST' });
+    const res = createMockResponse();
 
-    await handler(req, res)
+    await handler(req, res);
 
-    expect(res.statusCode).toBe(401)
-    expect(res.body).toEqual({ error: 'unauthorized' })
-    expect(getUserMock).not.toHaveBeenCalled()
-  })
+    expect(res.statusCode).toBe(401);
+    expect(res.body).toEqual({ error: 'unauthorized' });
+    expect(getUserMock).not.toHaveBeenCalled();
+  });
 
   it('skips updates when no owners are missing', async () => {
-    const handler = loadHandler()
+    const handler = loadHandler();
     const req = createApiRequest({
       method: 'POST',
       headers: { authorization: 'Bearer session-token' },
@@ -171,18 +171,22 @@ describe('POST /api/rank/ready-timeout', () => {
         room_id: 'room-1',
         missing_owner_ids: [],
       },
-    })
-    const res = createMockResponse()
+    });
+    const res = createMockResponse();
 
-    await handler(req, res)
+    await handler(req, res);
 
-    expect(res.statusCode).toBe(200)
-    expect(res.body).toMatchObject({ updated: false, assignments: [], message: 'no_missing_owners' })
-    expect(rpcMock).not.toHaveBeenCalled()
-  })
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatchObject({
+      updated: false,
+      assignments: [],
+      message: 'no_missing_owners',
+    });
+    expect(rpcMock).not.toHaveBeenCalled();
+  });
 
   it('replaces unready owners with stand-in candidates', async () => {
-    const handler = loadHandler()
+    const handler = loadHandler();
     const req = createApiRequest({
       method: 'POST',
       headers: { authorization: 'Bearer session-token' },
@@ -192,30 +196,30 @@ describe('POST /api/rank/ready-timeout', () => {
         room_id: 'room-1',
         missing_owner_ids: ['player-2'],
       },
-    })
-    const res = createMockResponse()
+    });
+    const res = createMockResponse();
 
-    await handler(req, res)
+    await handler(req, res);
 
-    expect(res.statusCode).toBe(200)
+    expect(res.statusCode).toBe(200);
     expect(res.body).toMatchObject({
       updated: true,
       assignments: [{ slotIndex: 1, ownerId: 'candidate-1' }],
-    })
+    });
 
-  expect(rpcMock).toHaveBeenCalledWith(
-    'fetch_rank_async_standin_pool',
-    expect.objectContaining({ p_game_id: 'game-1' }),
-  )
+    expect(rpcMock).toHaveBeenCalledWith(
+      'fetch_rank_async_standin_pool',
+      expect.objectContaining({ p_game_id: 'game-1' })
+    );
     expect(rpcMock).toHaveBeenCalledWith(
       'sync_rank_match_roster',
-      expect.objectContaining({ p_match_instance_id: 'match-1', p_request_owner_id: 'host-1' }),
-    )
-  })
+      expect.objectContaining({ p_match_instance_id: 'match-1', p_request_owner_id: 'host-1' })
+    );
+  });
 
   it('returns 404 when the room owner cannot be resolved', async () => {
-    const handler = loadHandler()
-    roomQueryResponse = { data: null, error: null }
+    const handler = loadHandler();
+    roomQueryResponse = { data: null, error: null };
 
     const req = createApiRequest({
       method: 'POST',
@@ -226,13 +230,13 @@ describe('POST /api/rank/ready-timeout', () => {
         room_id: 'room-1',
         missing_owner_ids: ['player-2'],
       },
-    })
-    const res = createMockResponse()
+    });
+    const res = createMockResponse();
 
-    await handler(req, res)
+    await handler(req, res);
 
-    expect(res.statusCode).toBe(404)
-    expect(res.body).toEqual({ error: 'room_not_found' })
-    expect(rpcMock).not.toHaveBeenCalledWith('sync_rank_match_roster', expect.anything())
-  })
-})
+    expect(res.statusCode).toBe(404);
+    expect(res.body).toEqual({ error: 'room_not_found' });
+    expect(rpcMock).not.toHaveBeenCalledWith('sync_rank_match_roster', expect.anything());
+  });
+});

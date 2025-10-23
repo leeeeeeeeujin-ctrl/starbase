@@ -1,5 +1,5 @@
-const baseBackground = 'linear-gradient(180deg, #020614 0%, #071227 50%, #010615 100%)'
-const cardShadow = '0 32px 80px -64px rgba(12, 18, 38, 0.9)'
+const baseBackground = 'linear-gradient(180deg, #020614 0%, #071227 50%, #010615 100%)';
+const cardShadow = '0 32px 80px -64px rgba(12, 18, 38, 0.9)';
 
 const styles = {
   page: {
@@ -352,6 +352,6 @@ const styles = {
     WebkitTapHighlightColor: 'transparent',
     touchAction: 'manipulation',
   },
-}
+};
 
-export default styles
+export default styles;

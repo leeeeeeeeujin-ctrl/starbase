@@ -1,4 +1,4 @@
-'use client'
+'use client';
 
 export default function MakerHomeHeader({ listHeader, errorMessage, noticeMessage, onGoBack }) {
   return (
@@ -31,7 +31,8 @@ export default function MakerHomeHeader({ listHeader, errorMessage, noticeMessag
         <div style={{ display: 'grid', gap: 4 }}>
           <h1 style={{ margin: 0, fontSize: 24 }}>프롬프트 메이커</h1>
           <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5, color: '#cbd5f5' }}>
-            터치 기반 워크플로우에 맞게 세트 목록을 중앙에 배치했어요. 빠른 작업은 우측 하단 버튼을 눌러 열 수 있습니다.
+            터치 기반 워크플로우에 맞게 세트 목록을 중앙에 배치했어요. 빠른 작업은 우측 하단 버튼을
+            눌러 열 수 있습니다.
           </p>
         </div>
       </div>
@@ -47,11 +48,17 @@ export default function MakerHomeHeader({ listHeader, errorMessage, noticeMessag
         <span style={{ fontSize: 13, color: '#94a3b8' }}>{listHeader}</span>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
           {noticeMessage && (
-            <span style={{ fontSize: 12, color: '#bfdbfe', textAlign: 'right' }}>{noticeMessage}</span>
+            <span style={{ fontSize: 12, color: '#bfdbfe', textAlign: 'right' }}>
+              {noticeMessage}
+            </span>
           )}
-          {errorMessage && <span style={{ fontSize: 12, color: '#fca5a5', textAlign: 'right' }}>{errorMessage}</span>}
+          {errorMessage && (
+            <span style={{ fontSize: 12, color: '#fca5a5', textAlign: 'right' }}>
+              {errorMessage}
+            </span>
+          )}
         </div>
       </div>
     </header>
-  )
+  );
 }

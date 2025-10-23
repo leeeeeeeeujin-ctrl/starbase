@@ -10,9 +10,9 @@ const path = require('path');
 
 function run(command, silent = false) {
   try {
-    return execSync(command, { 
+    return execSync(command, {
       encoding: 'utf8',
-      stdio: silent ? 'pipe' : 'inherit'
+      stdio: silent ? 'pipe' : 'inherit',
     });
   } catch (error) {
     return null;

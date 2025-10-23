@@ -1,84 +1,84 @@
-import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { supabaseAdmin } from '@/lib/supabaseAdmin';
 
-const TABLE_NAME = 'rank_cooldown_timeline_uploads'
+const TABLE_NAME = 'rank_cooldown_timeline_uploads';
 
 function toJson(value) {
-  if (!value) return {}
+  if (!value) return {};
   if (typeof value === 'object') {
     try {
-      return JSON.parse(JSON.stringify(value))
+      return JSON.parse(JSON.stringify(value));
     } catch (error) {
-      return {}
+      return {};
     }
   }
   if (typeof value === 'string') {
     try {
-      const parsed = JSON.parse(value)
-      return parsed && typeof parsed === 'object' ? parsed : {}
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === 'object' ? parsed : {};
     } catch (error) {
-      return {}
+      return {};
     }
   }
-  return {}
+  return {};
 }
 
 function toIso(value) {
-  if (!value) return null
+  if (!value) return null;
   try {
-    const date = value instanceof Date ? value : new Date(value)
+    const date = value instanceof Date ? value : new Date(value);
     if (Number.isNaN(date.getTime())) {
-      return null
+      return null;
     }
-    return date.toISOString()
+    return date.toISOString();
   } catch (error) {
-    return null
+    return null;
   }
 }
 
 function sanitizeText(value, fallback = null) {
   if (typeof value === 'string' && value.trim()) {
-    return value.trim()
+    return value.trim();
   }
-  return fallback
+  return fallback;
 }
 
 function normalizeStatus(value) {
-  const normalized = sanitizeText(value)
-  if (!normalized) return 'unknown'
+  const normalized = sanitizeText(value);
+  if (!normalized) return 'unknown';
   switch (normalized) {
     case 'uploaded':
     case 'skipped':
     case 'failed':
-      return normalized
+      return normalized;
     default:
-      return 'unknown'
+      return 'unknown';
   }
 }
 
 function normalizeFormat(value) {
-  const normalized = sanitizeText(value)
-  if (!normalized) return null
-  return normalized.toLowerCase()
+  const normalized = sanitizeText(value);
+  if (!normalized) return null;
+  return normalized.toLowerCase();
 }
 
 function normalizeSection(value) {
-  return sanitizeText(value, 'unknown')
+  return sanitizeText(value, 'unknown');
 }
 
 function normalizeMode(value) {
-  const normalized = sanitizeText(value)
-  return normalized || null
+  const normalized = sanitizeText(value);
+  return normalized || null;
 }
 
 function getOccurrenceTimestamp(row) {
-  return toIso(row.uploadedAt || row.insertedAt)
+  return toIso(row.uploadedAt || row.insertedAt);
 }
 
 function buildSummary(entries, { now = new Date() } = {}) {
-  const nowMs = now instanceof Date ? now.getTime() : new Date(now).getTime()
-  const oneDayMs = 24 * 60 * 60 * 1000
-  const sevenDaysMs = 7 * oneDayMs
-  const thirtyDaysMs = 30 * oneDayMs
+  const nowMs = now instanceof Date ? now.getTime() : new Date(now).getTime();
+  const oneDayMs = 24 * 60 * 60 * 1000;
+  const sevenDaysMs = 7 * oneDayMs;
+  const thirtyDaysMs = 30 * oneDayMs;
 
   const summary = {
     overall: {
@@ -93,12 +93,12 @@ function buildSummary(entries, { now = new Date() } = {}) {
       skipped7d: 0,
     },
     groups: [],
-  }
+  };
 
-  const groupMap = new Map()
+  const groupMap = new Map();
 
   for (const entry of entries) {
-    const groupKey = `${entry.section || 'unknown'}::${entry.mode || 'default'}`
+    const groupKey = `${entry.section || 'unknown'}::${entry.mode || 'default'}`;
     if (!groupMap.has(groupKey)) {
       groupMap.set(groupKey, {
         key: groupKey,
@@ -114,14 +114,18 @@ function buildSummary(entries, { now = new Date() } = {}) {
         skipped24h: 0,
         skipped7d: 0,
         formats: new Map(),
-      })
+      });
     }
 
-    const group = groupMap.get(groupKey)
-    const occurredAtIso = getOccurrenceTimestamp(entry)
-    const occurredMs = occurredAtIso ? Date.parse(occurredAtIso) : null
+    const group = groupMap.get(groupKey);
+    const occurredAtIso = getOccurrenceTimestamp(entry);
+    const occurredMs = occurredAtIso ? Date.parse(occurredAtIso) : null;
 
-    if (!group.lastEvent || (occurredMs !== null && occurredMs > Date.parse(group.lastEvent.insertedAt || group.lastEvent.uploadedAt || 0))) {
+    if (
+      !group.lastEvent ||
+      (occurredMs !== null &&
+        occurredMs > Date.parse(group.lastEvent.insertedAt || group.lastEvent.uploadedAt || 0))
+    ) {
       group.lastEvent = {
         status: entry.status,
         insertedAt: entry.insertedAt || null,
@@ -130,10 +134,10 @@ function buildSummary(entries, { now = new Date() } = {}) {
         strategy: entry.strategy || null,
         filename: entry.filename || null,
         errorMessage: entry.errorMessage || null,
-      }
+      };
     }
 
-    const formatKey = entry.format || 'unknown'
+    const formatKey = entry.format || 'unknown';
     if (!group.formats.has(formatKey)) {
       group.formats.set(formatKey, {
         format: entry.format || null,
@@ -146,12 +150,17 @@ function buildSummary(entries, { now = new Date() } = {}) {
         failures7d: 0,
         skipped24h: 0,
         skipped7d: 0,
-      })
+      });
     }
 
-    const formatSummary = group.formats.get(formatKey)
+    const formatSummary = group.formats.get(formatKey);
 
-    if (!formatSummary.lastEvent || (occurredMs !== null && occurredMs > Date.parse(formatSummary.lastEvent.insertedAt || formatSummary.lastEvent.uploadedAt || 0))) {
+    if (
+      !formatSummary.lastEvent ||
+      (occurredMs !== null &&
+        occurredMs >
+          Date.parse(formatSummary.lastEvent.insertedAt || formatSummary.lastEvent.uploadedAt || 0))
+    ) {
       formatSummary.lastEvent = {
         status: entry.status,
         insertedAt: entry.insertedAt || null,
@@ -159,67 +168,76 @@ function buildSummary(entries, { now = new Date() } = {}) {
         strategy: entry.strategy || null,
         filename: entry.filename || null,
         errorMessage: entry.errorMessage || null,
-      }
+      };
     }
 
     if (entry.status === 'uploaded') {
-      if (!group.lastSuccess || (occurredMs !== null && occurredMs > Date.parse(group.lastSuccess))) {
-        group.lastSuccess = occurredAtIso
+      if (
+        !group.lastSuccess ||
+        (occurredMs !== null && occurredMs > Date.parse(group.lastSuccess))
+      ) {
+        group.lastSuccess = occurredAtIso;
       }
-      if (!formatSummary.lastSuccessAt || (occurredMs !== null && occurredMs > Date.parse(formatSummary.lastSuccessAt))) {
-        formatSummary.lastSuccessAt = occurredAtIso
+      if (
+        !formatSummary.lastSuccessAt ||
+        (occurredMs !== null && occurredMs > Date.parse(formatSummary.lastSuccessAt))
+      ) {
+        formatSummary.lastSuccessAt = occurredAtIso;
       }
       if (occurredMs !== null) {
         if (nowMs - occurredMs <= oneDayMs) {
-          group.success24h += 1
-          formatSummary.success24h += 1
-          summary.overall.success24h += 1
+          group.success24h += 1;
+          formatSummary.success24h += 1;
+          summary.overall.success24h += 1;
         }
         if (nowMs - occurredMs <= sevenDaysMs) {
-          group.success7d += 1
-          formatSummary.success7d += 1
-          summary.overall.success7d += 1
+          group.success7d += 1;
+          formatSummary.success7d += 1;
+          summary.overall.success7d += 1;
         }
         if (nowMs - occurredMs <= thirtyDaysMs) {
-          group.success30d += 1
-          formatSummary.success30d += 1
-          summary.overall.success30d += 1
+          group.success30d += 1;
+          formatSummary.success30d += 1;
+          summary.overall.success30d += 1;
         }
-        if (!summary.overall.lastSuccessAt || occurredMs > Date.parse(summary.overall.lastSuccessAt)) {
-          summary.overall.lastSuccessAt = occurredAtIso
-          summary.overall.lastSuccessSection = groupKey
+        if (
+          !summary.overall.lastSuccessAt ||
+          occurredMs > Date.parse(summary.overall.lastSuccessAt)
+        ) {
+          summary.overall.lastSuccessAt = occurredAtIso;
+          summary.overall.lastSuccessSection = groupKey;
         }
       }
     } else if (entry.status === 'failed') {
       if (occurredMs !== null) {
         if (nowMs - occurredMs <= oneDayMs) {
-          group.failures24h += 1
-          formatSummary.failures24h += 1
-          summary.overall.failures24h += 1
+          group.failures24h += 1;
+          formatSummary.failures24h += 1;
+          summary.overall.failures24h += 1;
         }
         if (nowMs - occurredMs <= sevenDaysMs) {
-          group.failures7d += 1
-          formatSummary.failures7d += 1
-          summary.overall.failures7d += 1
+          group.failures7d += 1;
+          formatSummary.failures7d += 1;
+          summary.overall.failures7d += 1;
         }
       }
     } else if (entry.status === 'skipped') {
       if (occurredMs !== null) {
         if (nowMs - occurredMs <= oneDayMs) {
-          group.skipped24h += 1
-          formatSummary.skipped24h += 1
-          summary.overall.skipped24h += 1
+          group.skipped24h += 1;
+          formatSummary.skipped24h += 1;
+          summary.overall.skipped24h += 1;
         }
         if (nowMs - occurredMs <= sevenDaysMs) {
-          group.skipped7d += 1
-          formatSummary.skipped7d += 1
-          summary.overall.skipped7d += 1
+          group.skipped7d += 1;
+          formatSummary.skipped7d += 1;
+          summary.overall.skipped7d += 1;
         }
       }
     }
   }
 
-  summary.groups = Array.from(groupMap.values()).map((group) => ({
+  summary.groups = Array.from(groupMap.values()).map(group => ({
     key: group.key,
     section: group.section,
     mode: group.mode,
@@ -233,15 +251,15 @@ function buildSummary(entries, { now = new Date() } = {}) {
     skipped24h: group.skipped24h,
     skipped7d: group.skipped7d,
     formats: Array.from(group.formats.values()),
-  }))
+  }));
 
   summary.groups.sort((a, b) => {
-    const aTime = a.lastEvent?.insertedAt ? Date.parse(a.lastEvent.insertedAt) : 0
-    const bTime = b.lastEvent?.insertedAt ? Date.parse(b.lastEvent.insertedAt) : 0
-    return bTime - aTime
-  })
+    const aTime = a.lastEvent?.insertedAt ? Date.parse(a.lastEvent.insertedAt) : 0;
+    const bTime = b.lastEvent?.insertedAt ? Date.parse(b.lastEvent.insertedAt) : 0;
+    return bTime - aTime;
+  });
 
-  return summary
+  return summary;
 }
 
 function normalizeRow(row = {}) {
@@ -257,7 +275,7 @@ function normalizeRow(row = {}) {
     insertedAt: toIso(row.inserted_at),
     metadata: toJson(row.metadata),
     errorMessage: sanitizeText(row.error_message),
-  }
+  };
 }
 
 export async function recordTimelineUploadEvent({
@@ -282,18 +300,18 @@ export async function recordTimelineUploadEvent({
       uploaded_at: toIso(uploadedAt) || new Date().toISOString(),
       metadata: toJson(metadata),
       error_message: sanitizeText(errorMessage),
-    }
+    };
 
-    const { error } = await supabaseAdmin.from(TABLE_NAME).insert([payload])
+    const { error } = await supabaseAdmin.from(TABLE_NAME).insert([payload]);
     if (error) {
-      console.error('[cooldown-timeline-uploads] insert failed', error)
-      return { inserted: false, error }
+      console.error('[cooldown-timeline-uploads] insert failed', error);
+      return { inserted: false, error };
     }
 
-    return { inserted: true }
+    return { inserted: true };
   } catch (error) {
-    console.error('[cooldown-timeline-uploads] unexpected failure', error)
-    return { inserted: false, error }
+    console.error('[cooldown-timeline-uploads] unexpected failure', error);
+    return { inserted: false, error };
   }
 }
 
@@ -302,24 +320,24 @@ export async function fetchTimelineUploadSummary({ limit = 30, now = new Date() 
     const { data, error } = await supabaseAdmin
       .from(TABLE_NAME)
       .select(
-        'id, section, mode, format, status, strategy, filename, uploaded_at, inserted_at, metadata, error_message',
+        'id, section, mode, format, status, strategy, filename, uploaded_at, inserted_at, metadata, error_message'
       )
       .order('inserted_at', { ascending: false })
-      .limit(Math.max(1, Math.min(limit, 200)))
+      .limit(Math.max(1, Math.min(limit, 200)));
 
     if (error) {
-      console.error('[cooldown-timeline-uploads] select failed', error)
-      return { recent: [], summary: buildSummary([], { now }), error }
+      console.error('[cooldown-timeline-uploads] select failed', error);
+      return { recent: [], summary: buildSummary([], { now }), error };
     }
 
-    const rows = Array.isArray(data) ? data.map((row) => normalizeRow(row)) : []
-    const summary = buildSummary(rows, { now })
+    const rows = Array.isArray(data) ? data.map(row => normalizeRow(row)) : [];
+    const summary = buildSummary(rows, { now });
 
-    return { recent: rows, summary }
+    return { recent: rows, summary };
   } catch (error) {
-    console.error('[cooldown-timeline-uploads] unexpected failure', error)
-    return { recent: [], summary: buildSummary([], { now }) }
+    console.error('[cooldown-timeline-uploads] unexpected failure', error);
+    return { recent: [], summary: buildSummary([], { now }) };
   }
 }
 
-export { buildSummary as summarizeTimelineUploadRows }
+export { buildSummary as summarizeTimelineUploadRows };

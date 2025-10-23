@@ -1,6 +1,7 @@
 # VS Code AI Worker Extension Spec
 
 ## 목적
+
 Manager AI가 여러 Worker AI를 병렬로 실행할 수 있도록 하는 VS Code Extension
 
 ## 아키텍처
@@ -20,24 +21,24 @@ Manager AI에게 리포트 반환
 ## 구현 방법
 
 ### Extension Command
+
 ```javascript
 // extension.js
-vscode.commands.registerCommand('ai-worker-pool.execute', async (tasks) => {
-  const [model] = await vscode.lm.selectChatModels({ 
-    vendor: 'copilot', 
-    family: 'gpt-4o' 
+vscode.commands.registerCommand('ai-worker-pool.execute', async tasks => {
+  const [model] = await vscode.lm.selectChatModels({
+    vendor: 'copilot',
+    family: 'gpt-4o',
   });
 
   // 병렬 실행
-  const results = await Promise.all(
-    tasks.map(task => executeWorker(model, task))
-  );
+  const results = await Promise.all(tasks.map(task => executeWorker(model, task)));
 
   return results;
 });
 ```
 
 ### Manager AI가 사용하는 방법
+
 ```
 /executeWorkers [
   { "task": "Write tests for matching.js" },
@@ -47,11 +48,13 @@ vscode.commands.registerCommand('ai-worker-pool.execute', async (tasks) => {
 ```
 
 ## 장점
+
 1. **병렬 처리**: 3개 작업을 동시에 실행
 2. **VS Code 네이티브**: Copilot API 직접 사용
 3. **Manager AI 통합**: 챗에서 바로 호출 가능
 
 ## 필요한 작업
+
 1. VS Code Extension 프로젝트 생성
 2. `vscode.lm` API 사용 권한 설정
 3. Worker pool 로직 구현
@@ -61,7 +64,8 @@ vscode.commands.registerCommand('ai-worker-pool.execute', async (tasks) => {
 
 **사용자**: "matching.js에 테스트 추가하고, security review하고, 최적화 제안해줘"
 
-**Manager AI (나)**: 
+**Manager AI (나)**:
+
 ```
 작업을 3개로 분할했습니다:
 1. 테스트 작성
@@ -72,11 +76,13 @@ vscode.commands.registerCommand('ai-worker-pool.execute', async (tasks) => {
 ```
 
 **3개 Worker AI**: (동시 실행)
+
 - Worker 1: 테스트 코드 생성 ✅
 - Worker 2: 보안 이슈 발견 ✅
 - Worker 3: 최적화 제안 ✅
 
-**Manager AI**: 
+**Manager AI**:
+
 ```
 결과를 검토했습니다:
 - 테스트: 5개 추가, coverage 95%
@@ -87,6 +93,7 @@ vscode.commands.registerCommand('ai-worker-pool.execute', async (tasks) => {
 ```
 
 ## 구현 우선순위
+
 1. ✅ AI Worker Pool 스크립트 (완료)
 2. 🔲 VS Code Extension 기본 구조
 3. 🔲 vscode.lm API 통합

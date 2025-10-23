@@ -1,63 +1,63 @@
-import { supabaseAdmin } from '@/lib/supabaseAdmin'
+import { supabaseAdmin } from '@/lib/supabaseAdmin';
 
 function safeIso(value) {
-  if (!value) return null
+  if (!value) return null;
   try {
-    const date = new Date(value)
+    const date = new Date(value);
     if (Number.isNaN(date.getTime())) {
-      return null
+      return null;
     }
-    return date.toISOString()
+    return date.toISOString();
   } catch (error) {
-    return null
+    return null;
   }
 }
 
 function safeJson(value) {
-  if (!value) return {}
+  if (!value) return {};
   try {
-    return JSON.parse(JSON.stringify(value))
+    return JSON.parse(JSON.stringify(value));
   } catch (error) {
-    return {}
+    return {};
   }
 }
 
 function toFiniteNumber(value) {
-  const numeric = Number(value)
-  return Number.isFinite(numeric) ? numeric : undefined
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : undefined;
 }
 
 function determineStatus(summary, context = {}) {
   if (context.overrideStatus) {
-    return context.overrideStatus
+    return context.overrideStatus;
   }
 
   if (!summary) {
-    return 'pending'
+    return 'pending';
   }
 
   if (summary.triggered) {
-    return 'succeeded'
+    return 'succeeded';
   }
 
-  const alert = summary.alert || {}
-  const rotation = summary.rotation || {}
-  const attempted = Boolean(alert.attempted || rotation.attempted)
+  const alert = summary.alert || {};
+  const rotation = summary.rotation || {};
+  const attempted = Boolean(alert.attempted || rotation.attempted);
 
   if (!attempted) {
-    return 'pending'
+    return 'pending';
   }
 
-  const delivered = Boolean(alert.delivered || rotation.triggered)
+  const delivered = Boolean(alert.delivered || rotation.triggered);
   if (delivered) {
-    return 'succeeded'
+    return 'succeeded';
   }
 
   if (context.isManualOverride) {
-    return 'manual_override'
+    return 'manual_override';
   }
 
-  return 'retrying'
+  return 'retrying';
 }
 
 export async function recordCooldownAuditEntry({
@@ -67,20 +67,20 @@ export async function recordCooldownAuditEntry({
   context = {},
 }) {
   if (!cooldownId) {
-    return { skipped: true, reason: 'missing_cooldown_id' }
+    return { skipped: true, reason: 'missing_cooldown_id' };
   }
 
-  const attemptCount = toFiniteNumber(metadata?.cooldownAutomation?.attemptCount)
-  const retryState = metadata?.cooldownAutomation?.retryState || {}
-  const retryCountFromState = toFiniteNumber(retryState?.attempt)
+  const attemptCount = toFiniteNumber(metadata?.cooldownAutomation?.attemptCount);
+  const retryState = metadata?.cooldownAutomation?.retryState || {};
+  const retryCountFromState = toFiniteNumber(retryState?.attempt);
   const computedRetryCount =
     retryCountFromState !== undefined
       ? Math.max(retryCountFromState, 0)
       : attemptCount !== undefined
         ? Math.max(attemptCount - 1, 0)
-        : 0
+        : 0;
 
-  const status = determineStatus(automationSummary, context)
+  const status = determineStatus(automationSummary, context);
 
   const insertPayload = {
     cooldown_id: cooldownId,
@@ -91,7 +91,7 @@ export async function recordCooldownAuditEntry({
     doc_link_attached: Boolean(
       automationSummary?.alertDocLinkAttached ||
         automationSummary?.alertDocUrl ||
-        automationSummary?.alert?.docUrl,
+        automationSummary?.alert?.docUrl
     ),
     automation_payload: safeJson({
       ...automationSummary,
@@ -105,32 +105,32 @@ export async function recordCooldownAuditEntry({
               limit: context.limit,
               method: context.method,
             }
-          : null),
+          : null)
     ),
     notes: context.notes || retryState?.notes || null,
-  }
+  };
 
   try {
     const { data, error } = await supabaseAdmin
       .from('rank_api_key_audit')
       .insert([insertPayload])
-      .select('id')
+      .select('id');
 
     if (error) {
       console.error('[cooldown-audit] insert failed', {
         cooldownId,
         error,
-      })
-      return { inserted: false, error }
+      });
+      return { inserted: false, error };
     }
 
-    const row = Array.isArray(data) ? data[0] : null
-    return { inserted: true, id: row?.id || null }
+    const row = Array.isArray(data) ? data[0] : null;
+    return { inserted: true, id: row?.id || null };
   } catch (error) {
     console.error('[cooldown-audit] unexpected failure', {
       cooldownId,
       error,
-    })
-    return { inserted: false, error }
+    });
+    return { inserted: false, error };
   }
 }

@@ -1,13 +1,13 @@
 /**
  * 🌐 Universal Environment Adapter
  * Node.js와 브라우저 환경에서 모두 작동하는 유니버설 어댑터
- * 
+ *
  * 🔧 호환성 지원:
  * - Node.js 16+ (서버사이드 렌더링)
  * - 브라우저 환경 (클라이언트사이드)
  * - 조건부 import 및 polyfill
  * - 환경별 최적화
- * 
+ *
  * @version 2.0.0
  * @compatibility Node.js 16+, IE11+, Safari 12+, Chrome 70+, Firefox 65+
  */
@@ -109,18 +109,17 @@ export class UniversalEnvironmentAdapter {
         globals.fs = require('fs');
         globals.path = require('path');
         globals.crypto = require('crypto');
-        
+
         // fetch polyfill for Node.js < 18
         if (!this.features.fetch) {
           globals.fetch = require('node-fetch');
         } else {
           globals.fetch = fetch;
         }
-        
+
         // localStorage polyfill
         globals.localStorage = this.createNodeLocalStorage();
         globals.sessionStorage = this.createNodeSessionStorage();
-        
       } catch (error) {
         console.warn('[UniversalEnvironmentAdapter] Node.js 모듈 로드 실패:', error.message);
       }
@@ -142,17 +141,19 @@ export class UniversalEnvironmentAdapter {
     if (!isNode) return null;
 
     const storage = new Map();
-    
+
     return {
-      getItem: (key) => storage.get(key) || null,
+      getItem: key => storage.get(key) || null,
       setItem: (key, value) => storage.set(key, String(value)),
-      removeItem: (key) => storage.delete(key),
+      removeItem: key => storage.delete(key),
       clear: () => storage.clear(),
-      get length() { return storage.size; },
-      key: (index) => {
+      get length() {
+        return storage.size;
+      },
+      key: index => {
         const keys = Array.from(storage.keys());
         return keys[index] || null;
-      }
+      },
     };
   }
 
@@ -174,21 +175,21 @@ export class UniversalEnvironmentAdapter {
       return new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         const method = options.method || 'GET';
-        
+
         xhr.open(method, url);
-        
+
         // 헤더 설정
         if (options.headers) {
           Object.keys(options.headers).forEach(key => {
             xhr.setRequestHeader(key, options.headers[key]);
           });
         }
-        
+
         // 타임아웃 설정
         if (options.timeout) {
           xhr.timeout = options.timeout;
         }
-        
+
         xhr.onload = () => {
           const response = {
             ok: xhr.status >= 200 && xhr.status < 300,
@@ -197,9 +198,9 @@ export class UniversalEnvironmentAdapter {
             headers: new Map(),
             json: () => Promise.resolve(JSON.parse(xhr.responseText)),
             text: () => Promise.resolve(xhr.responseText),
-            arrayBuffer: () => Promise.resolve(xhr.response)
+            arrayBuffer: () => Promise.resolve(xhr.response),
           };
-          
+
           // 헤더 파싱
           if (xhr.getAllResponseHeaders) {
             const headerText = xhr.getAllResponseHeaders();
@@ -210,13 +211,13 @@ export class UniversalEnvironmentAdapter {
               }
             });
           }
-          
+
           resolve(response);
         };
-        
+
         xhr.onerror = () => reject(new Error('Network error'));
         xhr.ontimeout = () => reject(new Error('Request timeout'));
-        
+
         // 요청 전송
         if (options.body) {
           xhr.send(options.body);
@@ -250,11 +251,11 @@ export class UniversalEnvironmentAdapter {
       }
     } catch (error) {
       console.warn(`[UniversalEnvironmentAdapter] 모듈 로드 실패: ${modulePath}`, error.message);
-      
+
       if (fallback && typeof fallback === 'function') {
         return fallback();
       }
-      
+
       throw error;
     }
   }
@@ -295,7 +296,7 @@ export class UniversalEnvironmentAdapter {
         performance: {
           enableCaching: true,
           enableCompression: true,
-        }
+        },
       };
     } else if (isBrowser) {
       return {
@@ -311,7 +312,7 @@ export class UniversalEnvironmentAdapter {
         performance: {
           enableCaching: this.features.localStorage,
           enableCompression: false, // 브라우저에서는 서버가 처리
-        }
+        },
       };
     } else {
       return {
@@ -327,7 +328,7 @@ export class UniversalEnvironmentAdapter {
         performance: {
           enableCaching: false,
           enableCompression: false,
-        }
+        },
       };
     }
   }
@@ -337,13 +338,13 @@ export class UniversalEnvironmentAdapter {
    */
   getStorage() {
     return {
-      get: (key) => {
+      get: key => {
         if (this.globals.localStorage) {
           return this.globals.localStorage.getItem(key);
         }
         return null;
       },
-      
+
       set: (key, value) => {
         if (this.globals.localStorage) {
           this.globals.localStorage.setItem(key, value);
@@ -351,22 +352,22 @@ export class UniversalEnvironmentAdapter {
         }
         return false;
       },
-      
-      remove: (key) => {
+
+      remove: key => {
         if (this.globals.localStorage) {
           this.globals.localStorage.removeItem(key);
           return true;
         }
         return false;
       },
-      
+
       clear: () => {
         if (this.globals.localStorage) {
           this.globals.localStorage.clear();
           return true;
         }
         return false;
-      }
+      },
     };
   }
 
@@ -376,20 +377,20 @@ export class UniversalEnvironmentAdapter {
   getNetwork() {
     return {
       fetch: this.globals.fetch,
-      
+
       request: async (url, options = {}) => {
         if (!this.globals.fetch) {
           throw new Error('fetch not available');
         }
-        
+
         const config = this.getConfig();
         const mergedOptions = {
           timeout: config.network.timeout,
           ...options,
         };
-        
+
         return this.globals.fetch(url, mergedOptions);
-      }
+      },
     };
   }
 
@@ -409,9 +410,9 @@ export class UniversalEnvironmentAdapter {
           return this.globals.crypto.randomUUID();
         } else {
           // 폴백: 간단한 UUID v4 생성
-          return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-            const r = Math.random() * 16 | 0;
-            const v = c === 'x' ? r : (r & 0x3 | 0x8);
+          return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+            const r = (Math.random() * 16) | 0;
+            const v = c === 'x' ? r : (r & 0x3) | 0x8;
             return v.toString(16);
           });
         }
@@ -431,7 +432,7 @@ export class UniversalEnvironmentAdapter {
         } else {
           throw new Error('Crypto not available');
         }
-      }
+      },
     };
   }
 

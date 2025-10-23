@@ -1,11 +1,11 @@
-import React from 'react'
+import React from 'react';
 
-import { useCharacterDashboardContext } from '../context'
-import HeroProfileCard from './left/HeroProfileCard'
-import StatPageSelector from './left/StatPageSelector'
-import GameStatCarousel from './left/GameStatCarousel'
+import { useCharacterDashboardContext } from '../context';
+import HeroProfileCard from './left/HeroProfileCard';
+import StatPageSelector from './left/StatPageSelector';
+import GameStatCarousel from './left/GameStatCarousel';
 
-const columnStyle = { display: 'grid', gap: 24 }
+const columnStyle = { display: 'grid', gap: 24 };
 
 export default function LeftColumn() {
   const {
@@ -25,7 +25,7 @@ export default function LeftColumn() {
     onSelectGame,
     selectedEntry,
     openEditPanel,
-  } = useCharacterDashboardContext()
+  } = useCharacterDashboardContext();
 
   return (
     <aside style={columnStyle}>
@@ -52,5 +52,5 @@ export default function LeftColumn() {
         selectedEntry={selectedEntry}
       />
     </aside>
-  )
+  );
 }

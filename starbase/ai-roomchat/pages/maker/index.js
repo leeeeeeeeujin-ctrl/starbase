@@ -1,9 +1,9 @@
-'use client'
+'use client';
 
-import MakerHomeContainer from '../../components/maker/home/MakerHomeContainer'
+import MakerHomeContainer from '../../components/maker/home/MakerHomeContainer';
 
 export default function MakerIndex() {
-  return <MakerHomeContainer />
+  return <MakerHomeContainer />;
 }
 
 //

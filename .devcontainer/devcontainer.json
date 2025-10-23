@@ -23,10 +23,7 @@
         "files.eol": "\n",
         "task.allowAutomaticTasks": "on"
       },
-      "extensions": [
-        "ms-vscode.powershell",
-        "dbaeumer.vscode-eslint"
-      ]
+      "extensions": ["ms-vscode.powershell", "dbaeumer.vscode-eslint"]
     }
   },
   "remoteUser": "node"

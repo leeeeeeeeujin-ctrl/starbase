@@ -1,16 +1,16 @@
 /**
  * ⌨️ Keyboard Handler
- * 
+ *
  * Handles keyboard input events with cross-browser compatibility.
  * Provides debounce/throttle for key input to prevent duplicate events.
- * 
+ *
  * 🔧 Features:
  * - Cross-browser keyboard event handling
  * - Key press debouncing and throttling
  * - Keyboard shortcut support (Ctrl+Key, etc.)
  * - Accessibility keyboard navigation
  * - Memory leak prevention with cleanup
- * 
+ *
  * @version 1.0.0
  * @compatibility IE11+, Safari 12+, Chrome 70+, Firefox 65+
  */
@@ -38,29 +38,29 @@ export class KeyboardHandler {
     this.debounceDelay = options.debounceDelay || 100;
     this.throttleDelay = options.throttleDelay || 50;
     this.enableShortcuts = options.enableShortcuts !== false;
-    
+
     // Callbacks
     this.onKeyDown = options.onKeyDown || null;
     this.onKeyUp = options.onKeyUp || null;
     this.onKeyPress = options.onKeyPress || null;
-    
+
     // Internal state
     this.keysPressed = new Set();
     this.lastKeyTime = new Map();
     this.debounceTimers = new Map();
     this.throttleTimers = new Map();
     this.listeners = [];
-    
+
     // Compatibility info
     this.compatibilityInfo = null;
     this.isInitialized = false;
-    
+
     // Bind methods
     this.handleKeyDown = this.handleKeyDown.bind(this);
     this.handleKeyUp = this.handleKeyUp.bind(this);
     this.handleKeyPress = this.handleKeyPress.bind(this);
   }
-  
+
   /**
    * Initialize keyboard handler
    * @returns {Promise<void>}
@@ -70,34 +70,33 @@ export class KeyboardHandler {
       console.warn('[KeyboardHandler] Already initialized');
       return;
     }
-    
+
     if (!this.element) {
       console.warn('[KeyboardHandler] No element provided, skipping initialization');
       return;
     }
-    
+
     try {
       // Get compatibility info
       this.compatibilityInfo = compatibilityManager.getCompatibilityInfo();
-      
+
       // Add event listeners with cross-browser compatibility
       this.addListener('keydown', this.handleKeyDown);
       this.addListener('keyup', this.handleKeyUp);
-      
+
       // keypress is deprecated but still needed for IE11
       if (this.compatibilityInfo?.browser?.name === 'ie') {
         this.addListener('keypress', this.handleKeyPress);
       }
-      
+
       this.isInitialized = true;
       console.log('[KeyboardHandler] Initialized');
-      
     } catch (error) {
       console.error('[KeyboardHandler] Initialization failed:', error);
       throw error;
     }
   }
-  
+
   /**
    * Add event listener with compatibility
    * @param {string} eventType - Event type
@@ -110,15 +109,15 @@ export class KeyboardHandler {
       this.element.addEventListener(eventType, handler, false);
     } else if (this.element.attachEvent) {
       // IE8 fallback (though our target is IE11+)
-      const wrappedHandler = (e) => handler.call(this.element, e || window.event);
+      const wrappedHandler = e => handler.call(this.element, e || window.event);
       this.element.attachEvent(`on${eventType}`, wrappedHandler);
       handler._ieWrapper = wrappedHandler;
     }
-    
+
     // Store for cleanup
     this.listeners.push({ eventType, handler });
   }
-  
+
   /**
    * Remove event listener
    * @param {string} eventType - Event type
@@ -134,7 +133,7 @@ export class KeyboardHandler {
       this.element.detachEvent(`on${eventType}`, wrappedHandler);
     }
   }
-  
+
   /**
    * Handle keydown event
    * @param {KeyboardEvent} event - Keyboard event
@@ -143,25 +142,25 @@ export class KeyboardHandler {
   handleKeyDown(event) {
     const normalizedEvent = this.normalizeKeyboardEvent(event);
     const key = normalizedEvent.key;
-    
+
     // Prevent duplicate key down events (key repeat)
     if (this.keysPressed.has(key)) {
       return;
     }
-    
+
     this.keysPressed.add(key);
-    
+
     // Apply throttle
     if (this.shouldThrottle(key)) {
       return;
     }
-    
+
     // Handle keyboard shortcuts
     if (this.enableShortcuts && this.isShortcutKey(normalizedEvent)) {
       this.handleShortcut(normalizedEvent);
       return;
     }
-    
+
     // Call callback with debounce
     if (this.onKeyDown) {
       this.debounceCallback('keydown', key, () => {
@@ -169,7 +168,7 @@ export class KeyboardHandler {
       });
     }
   }
-  
+
   /**
    * Handle keyup event
    * @param {KeyboardEvent} event - Keyboard event
@@ -178,22 +177,22 @@ export class KeyboardHandler {
   handleKeyUp(event) {
     const normalizedEvent = this.normalizeKeyboardEvent(event);
     const key = normalizedEvent.key;
-    
+
     this.keysPressed.delete(key);
     this.lastKeyTime.delete(key);
-    
+
     // Clear debounce timer
     if (this.debounceTimers.has(`keyup-${key}`)) {
       clearTimeout(this.debounceTimers.get(`keyup-${key}`));
       this.debounceTimers.delete(`keyup-${key}`);
     }
-    
+
     // Call callback
     if (this.onKeyUp) {
       this.onKeyUp(normalizedEvent);
     }
   }
-  
+
   /**
    * Handle keypress event (legacy, for IE11)
    * @param {KeyboardEvent} event - Keyboard event
@@ -201,12 +200,12 @@ export class KeyboardHandler {
    */
   handleKeyPress(event) {
     const normalizedEvent = this.normalizeKeyboardEvent(event);
-    
+
     if (this.onKeyPress) {
       this.onKeyPress(normalizedEvent);
     }
   }
-  
+
   /**
    * Normalize keyboard event for cross-browser compatibility
    * @param {KeyboardEvent} event - Original keyboard event
@@ -215,12 +214,11 @@ export class KeyboardHandler {
    */
   normalizeKeyboardEvent(event) {
     // IE11 compatibility: use which or keyCode fallback
-    const key = event.key || 
-                event.keyIdentifier || 
-                String.fromCharCode(event.which || event.keyCode);
-    
+    const key =
+      event.key || event.keyIdentifier || String.fromCharCode(event.which || event.keyCode);
+
     const code = event.code || event.keyCode;
-    
+
     return {
       key: key,
       code: code,
@@ -244,10 +242,10 @@ export class KeyboardHandler {
         } else {
           event.cancelBubble = true; // IE8 fallback
         }
-      }
+      },
     };
   }
-  
+
   /**
    * Check if event is a keyboard shortcut
    * @param {Object} event - Normalized event
@@ -257,7 +255,7 @@ export class KeyboardHandler {
   isShortcutKey(event) {
     return event.ctrlKey || event.metaKey || event.altKey;
   }
-  
+
   /**
    * Handle keyboard shortcut
    * @param {Object} event - Normalized event
@@ -265,7 +263,7 @@ export class KeyboardHandler {
    */
   handleShortcut(event) {
     const shortcutKey = this.getShortcutString(event);
-    
+
     // Dispatch custom shortcut event
     if (typeof CustomEvent !== 'undefined') {
       const shortcutEvent = new CustomEvent('keyboardShortcut', {
@@ -275,16 +273,16 @@ export class KeyboardHandler {
           ctrlKey: event.ctrlKey,
           shiftKey: event.shiftKey,
           altKey: event.altKey,
-          metaKey: event.metaKey
+          metaKey: event.metaKey,
         },
         bubbles: true,
-        cancelable: true
+        cancelable: true,
       });
-      
+
       this.element.dispatchEvent(shortcutEvent);
     }
   }
-  
+
   /**
    * Get shortcut string representation
    * @param {Object} event - Normalized event
@@ -293,17 +291,17 @@ export class KeyboardHandler {
    */
   getShortcutString(event) {
     const parts = [];
-    
+
     if (event.ctrlKey) parts.push('Ctrl');
     if (event.altKey) parts.push('Alt');
     if (event.shiftKey) parts.push('Shift');
     if (event.metaKey) parts.push('Meta');
-    
+
     parts.push(event.key);
-    
+
     return parts.join('+');
   }
-  
+
   /**
    * Check if key should be throttled
    * @param {string} key - Key identifier
@@ -313,15 +311,15 @@ export class KeyboardHandler {
   shouldThrottle(key) {
     const now = Date.now();
     const lastTime = this.lastKeyTime.get(key) || 0;
-    
+
     if (now - lastTime < this.throttleDelay) {
       return true;
     }
-    
+
     this.lastKeyTime.set(key, now);
     return false;
   }
-  
+
   /**
    * Debounce callback execution
    * @param {string} type - Event type
@@ -331,21 +329,21 @@ export class KeyboardHandler {
    */
   debounceCallback(type, key, callback) {
     const timerKey = `${type}-${key}`;
-    
+
     // Clear existing timer
     if (this.debounceTimers.has(timerKey)) {
       clearTimeout(this.debounceTimers.get(timerKey));
     }
-    
+
     // Set new timer
     const timer = setTimeout(() => {
       callback();
       this.debounceTimers.delete(timerKey);
     }, this.debounceDelay);
-    
+
     this.debounceTimers.set(timerKey, timer);
   }
-  
+
   /**
    * Check if key is currently pressed
    * @param {string} key - Key to check
@@ -354,7 +352,7 @@ export class KeyboardHandler {
   isKeyPressed(key) {
     return this.keysPressed.has(key);
   }
-  
+
   /**
    * Get all currently pressed keys
    * @returns {Array<string>} Array of pressed keys
@@ -362,34 +360,34 @@ export class KeyboardHandler {
   getPressedKeys() {
     return Array.from(this.keysPressed);
   }
-  
+
   /**
    * Cleanup and remove all event listeners
    * Prevents memory leaks
    */
   cleanup() {
     if (!this.isInitialized) return;
-    
+
     // Remove all event listeners
     this.listeners.forEach(({ eventType, handler }) => {
       this.removeListener(eventType, handler);
     });
     this.listeners = [];
-    
+
     // Clear all timers
     this.debounceTimers.forEach(timer => clearTimeout(timer));
     this.debounceTimers.clear();
-    
+
     this.throttleTimers.forEach(timer => clearTimeout(timer));
     this.throttleTimers.clear();
-    
+
     // Clear state
     this.keysPressed.clear();
     this.lastKeyTime.clear();
-    
+
     this.isInitialized = false;
     this.element = null;
-    
+
     console.log('[KeyboardHandler] Cleanup complete');
   }
 }

@@ -1,14 +1,14 @@
 /**
  * 🎮 Game Resource Manager
  * 게임 리소스 로딩, 캐싱, 최적화 관리 시스템
- * 
+ *
  * 🔧 호환성 지원:
  * - IE 11+ (XHR 폴백)
  * - Safari 12+ (웹킷 최적화)
  * - Chrome 70+, Firefox 65+
  * - 네트워크 상태 기반 적응적 로딩
  * - 메모리 사용량 최적화
- * 
+ *
  * @version 2.0.0
  * @compatibility IE11+, Safari 12+, Chrome 70+, Firefox 65+
  */
@@ -20,7 +20,7 @@ export class GameResourceManager {
     this.isInitialized = false;
     this.compatibilityInfo = null;
     this.fetchFunction = null;
-    
+
     // 기본 설정
     this.settings = {
       performanceTier: 'medium', // 'high', 'medium', 'low'
@@ -32,9 +32,9 @@ export class GameResourceManager {
       retryDelay: 1000,
       enableCompression: true,
       enableResourceHints: true,
-      ...options
+      ...options,
     };
-    
+
     // 리소스 캐시
     this.cache = new Map();
     this.preloadQueue = [];
@@ -46,22 +46,22 @@ export class GameResourceManager {
       totalBytesLoaded: 0,
       averageLoadTime: 0,
     };
-    
+
     // 네트워크 상태
     this.networkInfo = {
       isOnline: navigator.onLine,
       connectionType: this.getConnectionType(),
       estimatedBandwidth: this.estimateBandwidth(),
     };
-    
+
     // 메모리 관리
     this.memoryUsage = 0;
     this.maxMemoryUsage = this.calculateMaxMemory();
-    
+
     // 요청 큐 관리
     this.activeRequests = 0;
     this.requestQueue = [];
-    
+
     this.init();
   }
 
@@ -72,28 +72,27 @@ export class GameResourceManager {
     try {
       // 호환성 정보 가져오기
       this.compatibilityInfo = CompatibilityManager.getCompatibilityInfo();
-      
+
       // 호환성 있는 fetch 함수 설정
-      this.fetchFunction = this.compatibilityInfo.features.fetch ? 
-        fetch.bind(window) : 
-        CompatibilityManager.getFetchPolyfill();
-      
+      this.fetchFunction = this.compatibilityInfo.features.fetch
+        ? fetch.bind(window)
+        : CompatibilityManager.getFetchPolyfill();
+
       // 네트워크 상태 모니터링
       this.setupNetworkMonitoring();
-      
+
       // 메모리 모니터링 (가능한 경우)
       this.setupMemoryMonitoring();
-      
+
       // 성능 기반 설정 조정
       this.adjustPerformanceSettings();
-      
+
       this.isInitialized = true;
       console.log('[GameResourceManager] 초기화 완료', {
         performanceTier: this.settings.performanceTier,
         compatibility: this.compatibilityInfo.level,
         networkType: this.networkInfo.connectionType,
       });
-      
     } catch (error) {
       console.error('[GameResourceManager] 초기화 실패:', error);
       throw error;
@@ -121,17 +120,17 @@ export class GameResourceManager {
     if (navigator.connection && navigator.connection.downlink) {
       return navigator.connection.downlink * 1000; // Mbps to kbps
     }
-    
+
     // 연결 타입 기반 추정
     const bandwidthMap = {
       'slow-2g': 50,
       '2g': 250,
       '3g': 1500,
       '4g': 10000,
-      'wifi': 25000,
-      'ethernet': 100000,
+      wifi: 25000,
+      ethernet: 100000,
     };
-    
+
     return bandwidthMap[this.networkInfo.connectionType] || 5000;
   }
 
@@ -143,14 +142,14 @@ export class GameResourceManager {
     if (navigator.deviceMemory) {
       return Math.min(navigator.deviceMemory * 1024 * 0.1, 100); // 10% of device memory, max 100MB
     }
-    
+
     // 성능 등급 기반 추정
     const memoryMap = {
-      'high': 100,   // 100MB
-      'medium': 50,  // 50MB
-      'low': 25,     // 25MB
+      high: 100, // 100MB
+      medium: 50, // 50MB
+      low: 25, // 25MB
     };
-    
+
     return memoryMap[this.settings.performanceTier] || 50;
   }
 
@@ -163,12 +162,12 @@ export class GameResourceManager {
       this.networkInfo.isOnline = true;
       this.resumeQueuedRequests();
     });
-    
+
     window.addEventListener('offline', () => {
       this.networkInfo.isOnline = false;
       console.warn('[GameResourceManager] 오프라인 모드로 전환');
     });
-    
+
     // 연결 상태 변경 감지 (지원되는 브라우저에서만)
     if (navigator.connection) {
       navigator.connection.addEventListener('change', () => {
@@ -187,8 +186,8 @@ export class GameResourceManager {
       // Chrome/Edge에서 메모리 정보 모니터링
       setInterval(() => {
         const memInfo = performance.memory;
-        this.memoryUsage = (memInfo.usedJSHeapSize / 1024 / 1024); // MB
-        
+        this.memoryUsage = memInfo.usedJSHeapSize / 1024 / 1024; // MB
+
         // 메모리 사용량이 임계치를 초과하면 캐시 정리
         if (this.memoryUsage > this.maxMemoryUsage * 0.8) {
           this.cleanupCache();
@@ -202,17 +201,20 @@ export class GameResourceManager {
    */
   adjustPerformanceSettings() {
     const connectionSpeed = this.networkInfo.estimatedBandwidth;
-    
+
     // 연결 속도에 따른 동적 조정
-    if (connectionSpeed < 500) { // 2G
+    if (connectionSpeed < 500) {
+      // 2G
       this.settings.maxConcurrentRequests = 1;
       this.settings.enablePreloading = false;
       this.settings.networkTimeout = 60000;
-    } else if (connectionSpeed < 2000) { // 3G
+    } else if (connectionSpeed < 2000) {
+      // 3G
       this.settings.maxConcurrentRequests = 2;
       this.settings.enablePreloading = false;
       this.settings.networkTimeout = 45000;
-    } else { // 4G/WiFi
+    } else {
+      // 4G/WiFi
       this.settings.maxConcurrentRequests = Math.min(6, this.settings.maxConcurrentRequests);
       this.settings.enablePreloading = true;
       this.settings.networkTimeout = 30000;
@@ -272,7 +274,7 @@ export class GameResourceManager {
     try {
       let result;
       const resourceType = this.getResourceType(url, options.type);
-      
+
       switch (resourceType) {
         case 'image':
           result = await this.loadImage(url, options);
@@ -293,12 +295,11 @@ export class GameResourceManager {
       // 캐시에 저장
       const cacheKey = this.getCacheKey(url, options);
       this.cacheResource(cacheKey, result, resourceType);
-      
+
       // 통계 업데이트
       this.updateStatistics(true, Date.now() - startTime, result.size || 0);
-      
+
       return result;
-      
     } catch (error) {
       this.updateStatistics(false, Date.now() - startTime, 0);
       throw error;
@@ -314,12 +315,12 @@ export class GameResourceManager {
   async loadImage(url, options) {
     return new Promise((resolve, reject) => {
       const img = new Image();
-      
+
       // CORS 설정
       if (options.crossOrigin) {
         img.crossOrigin = options.crossOrigin;
       }
-      
+
       // IE11 호환성: 이벤트 리스너를 먼저 등록
       img.onload = () => {
         resolve({
@@ -330,21 +331,21 @@ export class GameResourceManager {
           loadedAt: Date.now(),
         });
       };
-      
+
       img.onerror = () => {
         reject(new Error(`이미지 로드 실패: ${url}`));
       };
-      
+
       // 타임아웃 설정
       const timeout = setTimeout(() => {
         reject(new Error(`이미지 로드 타임아웃: ${url}`));
       }, this.settings.networkTimeout);
-      
+
       img.onload = (originalOnload => () => {
         clearTimeout(timeout);
         originalOnload();
       })(img.onload);
-      
+
       img.src = url;
     });
   }
@@ -355,41 +356,41 @@ export class GameResourceManager {
   async loadAudio(url, options) {
     return new Promise((resolve, reject) => {
       const audio = new Audio();
-      
+
       // CORS 설정
       if (options.crossOrigin) {
         audio.crossOrigin = options.crossOrigin;
       }
-      
+
       const onCanPlayThrough = () => {
         audio.removeEventListener('canplaythrough', onCanPlayThrough);
         audio.removeEventListener('error', onError);
-        
+
         resolve({
           data: audio,
           url: url,
           type: 'audio',
-          size: audio.duration * 128 * 1024 / 8, // 추정 크기 (128kbps)
+          size: (audio.duration * 128 * 1024) / 8, // 추정 크기 (128kbps)
           loadedAt: Date.now(),
         });
       };
-      
+
       const onError = () => {
         audio.removeEventListener('canplaythrough', onCanPlayThrough);
         audio.removeEventListener('error', onError);
         reject(new Error(`오디오 로드 실패: ${url}`));
       };
-      
+
       audio.addEventListener('canplaythrough', onCanPlayThrough);
       audio.addEventListener('error', onError);
-      
+
       // 타임아웃 설정
       setTimeout(() => {
         audio.removeEventListener('canplaythrough', onCanPlayThrough);
         audio.removeEventListener('error', onError);
         reject(new Error(`오디오 로드 타임아웃: ${url}`));
       }, this.settings.networkTimeout);
-      
+
       audio.preload = 'auto';
       audio.src = url;
     });
@@ -402,14 +403,14 @@ export class GameResourceManager {
     const response = await this.fetchWithRetry(url, {
       method: 'GET',
       headers: {
-        'Accept': 'application/json',
-        ...options.headers
+        Accept: 'application/json',
+        ...options.headers,
       },
-      ...options
+      ...options,
     });
-    
+
     const jsonData = await response.json();
-    
+
     return {
       data: jsonData,
       url: url,
@@ -426,14 +427,14 @@ export class GameResourceManager {
     const response = await this.fetchWithRetry(url, {
       method: 'GET',
       headers: {
-        'Accept': 'text/plain',
-        ...options.headers
+        Accept: 'text/plain',
+        ...options.headers,
       },
-      ...options
+      ...options,
     });
-    
+
     const textData = await response.text();
-    
+
     return {
       data: textData,
       url: url,
@@ -449,7 +450,7 @@ export class GameResourceManager {
   async loadGeneric(url, options) {
     const response = await this.fetchWithRetry(url, options);
     const arrayBuffer = await response.arrayBuffer();
-    
+
     return {
       data: arrayBuffer,
       url: url,
@@ -466,27 +467,29 @@ export class GameResourceManager {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), this.settings.networkTimeout);
-      
+
       const response = await this.fetchFunction(url, {
         ...options,
         signal: controller.signal,
       });
-      
+
       clearTimeout(timeoutId);
-      
+
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
-      
+
       return response;
-      
     } catch (error) {
       if (attempt < this.settings.retryAttempts && this.networkInfo.isOnline) {
-        console.warn(`[GameResourceManager] 재시도 ${attempt}/${this.settings.retryAttempts}: ${url}`, error.message);
+        console.warn(
+          `[GameResourceManager] 재시도 ${attempt}/${this.settings.retryAttempts}: ${url}`,
+          error.message
+        );
         await this.delay(this.settings.retryDelay * attempt);
         return this.fetchWithRetry(url, options, attempt + 1);
       }
-      
+
       throw error;
     }
   }
@@ -496,16 +499,28 @@ export class GameResourceManager {
    */
   getResourceType(url, explicitType) {
     if (explicitType) return explicitType;
-    
+
     const extension = url.split('.').pop().toLowerCase();
-    
+
     const typeMap = {
-      'jpg': 'image', 'jpeg': 'image', 'png': 'image', 'gif': 'image', 'webp': 'image', 'svg': 'image',
-      'mp3': 'audio', 'wav': 'audio', 'ogg': 'audio', 'aac': 'audio', 'm4a': 'audio',
-      'json': 'json',
-      'txt': 'text', 'html': 'text', 'css': 'text', 'js': 'text',
+      jpg: 'image',
+      jpeg: 'image',
+      png: 'image',
+      gif: 'image',
+      webp: 'image',
+      svg: 'image',
+      mp3: 'audio',
+      wav: 'audio',
+      ogg: 'audio',
+      aac: 'audio',
+      m4a: 'audio',
+      json: 'json',
+      txt: 'text',
+      html: 'text',
+      css: 'text',
+      js: 'text',
     };
-    
+
     return typeMap[extension] || 'generic';
   }
 
@@ -525,11 +540,11 @@ export class GameResourceManager {
     if (this.memoryUsage + (resource.size || 0) / 1024 / 1024 > this.maxMemoryUsage) {
       this.cleanupCache();
     }
-    
+
     this.cache.set(key, {
       ...resource,
       cachedAt: Date.now(),
-      expiresAt: Date.now() + (24 * 60 * 60 * 1000), // 24시간
+      expiresAt: Date.now() + 24 * 60 * 60 * 1000, // 24시간
     });
   }
 
@@ -545,22 +560,23 @@ export class GameResourceManager {
    */
   cleanupCache() {
     const now = Date.now();
-    const sortedEntries = Array.from(this.cache.entries())
-      .sort(([,a], [,b]) => a.cachedAt - b.cachedAt);
-    
+    const sortedEntries = Array.from(this.cache.entries()).sort(
+      ([, a], [, b]) => a.cachedAt - b.cachedAt
+    );
+
     // 오래된 엔트리부터 제거
     const targetSize = this.maxMemoryUsage * 0.7; // 70%까지 줄이기
     let currentSize = this.memoryUsage;
-    
+
     for (const [key, resource] of sortedEntries) {
       if (currentSize <= targetSize) break;
-      
+
       if (this.isExpired(resource) || currentSize > targetSize) {
         this.cache.delete(key);
         currentSize -= (resource.size || 0) / 1024 / 1024;
       }
     }
-    
+
     console.log(`[GameResourceManager] 캐시 정리 완료: ${this.cache.size} 항목 남음`);
   }
 
@@ -594,7 +610,10 @@ export class GameResourceManager {
    * 큐된 요청 재개
    */
   resumeQueuedRequests() {
-    while (this.requestQueue.length > 0 && this.activeRequests < this.settings.maxConcurrentRequests) {
+    while (
+      this.requestQueue.length > 0 &&
+      this.activeRequests < this.settings.maxConcurrentRequests
+    ) {
       this.processQueue();
     }
   }
@@ -604,13 +623,15 @@ export class GameResourceManager {
    */
   updateStatistics(success, loadTime, bytes) {
     this.loadStatistics.totalRequests++;
-    
+
     if (success) {
       this.loadStatistics.successfulRequests++;
       this.loadStatistics.totalBytesLoaded += bytes;
-      
+
       // 평균 로딩 시간 계산
-      const totalTime = this.loadStatistics.averageLoadTime * (this.loadStatistics.successfulRequests - 1) + loadTime;
+      const totalTime =
+        this.loadStatistics.averageLoadTime * (this.loadStatistics.successfulRequests - 1) +
+        loadTime;
       this.loadStatistics.averageLoadTime = totalTime / this.loadStatistics.successfulRequests;
     } else {
       this.loadStatistics.failedRequests++;
@@ -644,14 +665,14 @@ export class GameResourceManager {
   cleanup() {
     // 캐시 정리
     this.cache.clear();
-    
+
     // 요청 큐 정리
     this.requestQueue.forEach(resolve => resolve());
     this.requestQueue.length = 0;
-    
+
     // 로딩 프로미스 정리
     this.loadingPromises.clear();
-    
+
     console.log('[GameResourceManager] 정리 완료');
   }
 }

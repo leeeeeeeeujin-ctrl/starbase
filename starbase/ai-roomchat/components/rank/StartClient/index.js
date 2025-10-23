@@ -1,46 +1,47 @@
-'use client'
+'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import dynamic from 'next/dynamic'
-import { useRouter } from 'next/router'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
+import { useRouter } from 'next/router';
 
-import styles from './StartClient.module.css'
-import RosterPanel from './RosterPanel'
-import TurnInfoPanel from './TurnInfoPanel'
-import TurnSummaryPanel from './TurnSummaryPanel'
-import ManualResponsePanel from './ManualResponsePanel'
-import StatusBanner from './StatusBanner'
+import styles from './StartClient.module.css';
+import RosterPanel from './RosterPanel';
+import TurnInfoPanel from './TurnInfoPanel';
+import TurnSummaryPanel from './TurnSummaryPanel';
+import ManualResponsePanel from './ManualResponsePanel';
+import StatusBanner from './StatusBanner';
 import {
   clearMatchFlow,
   createEmptyMatchFlowState,
   readMatchFlowState,
-} from '../../../lib/rank/matchFlow'
-import { subscribeGameMatchData } from '../../../modules/rank/matchDataStore'
-import { normalizeRoleName } from '../../../lib/rank/roleLayoutLoader'
-import { useStartClientEngine } from './useStartClientEngine'
-import { supabase } from '../../../lib/supabase'
-import { buildSessionMetaRequest, postSessionMeta } from '../../../lib/rank/sessionMetaClient'
+} from '../../../lib/rank/matchFlow';
+import { subscribeGameMatchData } from '../../../modules/rank/matchDataStore';
+import { normalizeRoleName } from '../../../lib/rank/roleLayoutLoader';
+import { useStartClientEngine } from './useStartClientEngine';
+import { supabase } from '../../../lib/supabase';
+import { buildSessionMetaRequest, postSessionMeta } from '../../../lib/rank/sessionMetaClient';
 
 function toTrimmedId(value) {
-  if (value === null || value === undefined) return null
-  const trimmed = String(value).trim()
-  return trimmed ? trimmed : null
+  if (value === null || value === undefined) return null;
+  const trimmed = String(value).trim();
+  return trimmed ? trimmed : null;
 }
 
 function toSlotIndex(value, fallback) {
-  const numeric = Number(value)
-  if (Number.isFinite(numeric)) return numeric
-  return fallback
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) return numeric;
+  return fallback;
 }
 
 function buildParticipantRoster(participants) {
-  if (!Array.isArray(participants)) return []
+  if (!Array.isArray(participants)) return [];
   return participants
     .map((participant, index) => {
-      if (!participant) return null
-      const hero = participant.hero || {}
+      if (!participant) return null;
+      const hero = participant.hero || {};
       const heroId =
-        toTrimmedId(participant.heroId ?? participant.hero_id ?? participant.heroID ?? hero.id) || null
+        toTrimmedId(participant.heroId ?? participant.hero_id ?? participant.heroID ?? hero.id) ||
+        null;
       const ownerId =
         toTrimmedId(
           participant.ownerId ??
@@ -48,23 +49,19 @@ function buildParticipantRoster(participants) {
             participant.ownerID ??
             participant.owner?.id ??
             participant.user_id ??
-            participant.userId,
-        ) || null
-      const slotIndex = toSlotIndex(participant.slotIndex ?? participant.slot_index, index)
-      const role = participant.role || participant.role_name || ''
+            participant.userId
+        ) || null;
+      const slotIndex = toSlotIndex(participant.slotIndex ?? participant.slot_index, index);
+      const role = participant.role || participant.role_name || '';
       const heroName =
-        hero.name ??
-        participant.hero_name ??
-        participant.heroName ??
-        participant.displayName ??
-        ''
+        hero.name ?? participant.hero_name ?? participant.heroName ?? participant.displayName ?? '';
       const avatarUrl =
         hero.avatar_url ??
         hero.image_url ??
         participant.hero_avatar_url ??
         participant.avatar_url ??
         participant.avatarUrl ??
-        null
+        null;
       return {
         slotIndex,
         role,
@@ -73,19 +70,19 @@ function buildParticipantRoster(participants) {
         heroName,
         avatarUrl,
         ready: participant.ready === true,
-      }
+      };
     })
-    .filter(Boolean)
+    .filter(Boolean);
 }
 
 function buildMatchRoster(roster) {
-  if (!Array.isArray(roster)) return []
+  if (!Array.isArray(roster)) return [];
   return roster
     .map((entry, index) => {
-      if (!entry) return null
-      const heroId = toTrimmedId(entry.heroId ?? entry.hero_id)
-      const ownerId = toTrimmedId(entry.ownerId ?? entry.owner_id)
-      const slotIndex = toSlotIndex(entry.slotIndex ?? entry.slot_index, index)
+      if (!entry) return null;
+      const heroId = toTrimmedId(entry.heroId ?? entry.hero_id);
+      const ownerId = toTrimmedId(entry.ownerId ?? entry.owner_id);
+      const slotIndex = toSlotIndex(entry.slotIndex ?? entry.slot_index, index);
       return {
         slotIndex,
         role: entry.role || '',
@@ -94,22 +91,22 @@ function buildMatchRoster(roster) {
         heroName: entry.heroName || entry.hero_name || '',
         avatarUrl: entry.avatarUrl ?? entry.avatar_url ?? null,
         ready: entry.ready === true,
-      }
+      };
     })
-    .filter(Boolean)
+    .filter(Boolean);
 }
 
 function mergeRosterEntries(primary, fallback) {
-  if (!primary.length) return fallback
-  return primary.map((entry) => {
-    const candidate = fallback.find((target) => {
-      if (!target) return false
-      if (entry.heroId && target.heroId && entry.heroId === target.heroId) return true
-      if (entry.ownerId && target.ownerId && entry.ownerId === target.ownerId) return true
-      return false
-    })
+  if (!primary.length) return fallback;
+  return primary.map(entry => {
+    const candidate = fallback.find(target => {
+      if (!target) return false;
+      if (entry.heroId && target.heroId && entry.heroId === target.heroId) return true;
+      if (entry.ownerId && target.ownerId && entry.ownerId === target.ownerId) return true;
+      return false;
+    });
     if (!candidate) {
-      return entry
+      return entry;
     }
     return {
       ...entry,
@@ -117,149 +114,152 @@ function mergeRosterEntries(primary, fallback) {
       heroName: entry.heroName || candidate.heroName || '',
       avatarUrl: entry.avatarUrl || candidate.avatarUrl || null,
       ready: entry.ready || candidate.ready || false,
-    }
-  })
+    };
+  });
 }
 
 function findRosterEntry(roster, { heroId = null, ownerId = null } = {}) {
-  if (!Array.isArray(roster) || roster.length === 0) return null
+  if (!Array.isArray(roster) || roster.length === 0) return null;
   return (
-    roster.find((entry) => {
-      if (!entry) return false
-      if (heroId && entry.heroId && entry.heroId === heroId) return true
-      if (ownerId && entry.ownerId && entry.ownerId === ownerId) return true
-      return false
+    roster.find(entry => {
+      if (!entry) return false;
+      if (heroId && entry.heroId && entry.heroId === heroId) return true;
+      if (ownerId && entry.ownerId && entry.ownerId === ownerId) return true;
+      return false;
     }) || null
-  )
+  );
 }
 
 function formatSlotSource({ standin = false, matchSource = '' } = {}) {
-  if (standin) return '대역'
-  if (!matchSource) return ''
-  const normalized = String(matchSource).trim().toLowerCase()
-  if (!normalized) return ''
-  if (normalized === 'host') return '호스트'
-  if (normalized === 'queue') return '큐'
-  if (normalized === 'participant_pool') return '참여자 풀'
-  if (normalized === 'requeue') return '재합류'
-  if (normalized === 'matchmaking') return '매칭'
-  return matchSource
+  if (standin) return '대역';
+  if (!matchSource) return '';
+  const normalized = String(matchSource).trim().toLowerCase();
+  if (!normalized) return '';
+  if (normalized === 'host') return '호스트';
+  if (normalized === 'queue') return '큐';
+  if (normalized === 'participant_pool') return '참여자 풀';
+  if (normalized === 'requeue') return '재합류';
+  if (normalized === 'matchmaking') return '매칭';
+  return matchSource;
 }
 
 const LogsPanel = dynamic(() => import('./LogsPanel'), {
   loading: () => <div className={styles.logsLoading}>로그 패널을 불러오는 중…</div>,
   ssr: false,
-})
+});
 
 function buildSessionMeta(state) {
-  if (!state) return []
-  const meta = []
+  if (!state) return [];
+  const meta = [];
   if (state?.room?.code) {
-    meta.push({ label: '방 코드', value: state.room.code })
+    meta.push({ label: '방 코드', value: state.room.code });
   }
   if (state?.matchMode) {
-    meta.push({ label: '매치 모드', value: state.matchMode })
+    meta.push({ label: '매치 모드', value: state.matchMode });
   }
   if (state?.snapshot?.match?.matchType) {
-    meta.push({ label: '매치 유형', value: state.snapshot.match.matchType })
+    meta.push({ label: '매치 유형', value: state.snapshot.match.matchType });
   }
-  if (Number.isFinite(Number(state?.snapshot?.match?.maxWindow)) && Number(state.snapshot.match.maxWindow) > 0) {
-    meta.push({ label: '점수 범위', value: `±${Number(state.snapshot.match.maxWindow)}` })
+  if (
+    Number.isFinite(Number(state?.snapshot?.match?.maxWindow)) &&
+    Number(state.snapshot.match.maxWindow) > 0
+  ) {
+    meta.push({ label: '점수 범위', value: `±${Number(state.snapshot.match.maxWindow)}` });
   }
   if (state?.room?.realtimeMode) {
-    meta.push({ label: '실시간 옵션', value: state.room.realtimeMode })
+    meta.push({ label: '실시간 옵션', value: state.room.realtimeMode });
   }
   if (state?.rosterReadyCount != null && state?.totalSlots != null) {
-    meta.push({ label: '참가자', value: `${state.rosterReadyCount}/${state.totalSlots}` })
+    meta.push({ label: '참가자', value: `${state.rosterReadyCount}/${state.totalSlots}` });
   }
-  return meta
+  return meta;
 }
 
 function formatHeaderDescription({ state, meta, game }) {
-  const lines = []
+  const lines = [];
   if (game?.description) {
-    const trimmed = String(game.description).trim()
+    const trimmed = String(game.description).trim();
     if (trimmed) {
-      lines.push(trimmed)
+      lines.push(trimmed);
     }
   }
   if (state?.room?.blindMode) {
-    lines.push('블라인드 방에서 전투를 시작합니다. 이제 모든 참가자 정보가 공개됩니다.')
+    lines.push('블라인드 방에서 전투를 시작합니다. 이제 모든 참가자 정보가 공개됩니다.');
   }
   if (meta.length) {
-    const summary = meta.map((item) => `${item.label}: ${item.value}`).join(' · ')
-    lines.push(summary)
+    const summary = meta.map(item => `${item.label}: ${item.value}`).join(' · ');
+    lines.push(summary);
   }
-  return lines.join(' · ')
+  return lines.join(' · ');
 }
 
 function toDisplayError(error) {
-  if (!error) return ''
-  if (typeof error === 'string') return error
-  if (typeof error.message === 'string') return error.message
-  return '세션을 불러오는 중 오류가 발생했습니다.'
+  if (!error) return '';
+  if (typeof error === 'string') return error;
+  if (typeof error.message === 'string') return error.message;
+  return '세션을 불러오는 중 오류가 발생했습니다.';
 }
 
 export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
-  const router = useRouter()
-  const trimmedPropId = typeof gameIdProp === 'string' ? gameIdProp.trim() : ''
-  const usePropGameId = Boolean(trimmedPropId)
-  const [gameId, setGameId] = useState(trimmedPropId)
-  const [matchState, setMatchState] = useState(() => createEmptyMatchFlowState())
-  const [ready, setReady] = useState(false)
+  const router = useRouter();
+  const trimmedPropId = typeof gameIdProp === 'string' ? gameIdProp.trim() : '';
+  const usePropGameId = Boolean(trimmedPropId);
+  const [gameId, setGameId] = useState(trimmedPropId);
+  const [matchState, setMatchState] = useState(() => createEmptyMatchFlowState());
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     if (usePropGameId) {
-      setGameId(trimmedPropId)
-      setMatchState(readMatchFlowState(trimmedPropId))
-      setReady(true)
-      return
+      setGameId(trimmedPropId);
+      setMatchState(readMatchFlowState(trimmedPropId));
+      setReady(true);
+      return;
     }
-    if (!router.isReady) return undefined
-    const { id } = router.query
-    const resolvedId = typeof id === 'string' ? id.trim() : ''
+    if (!router.isReady) return undefined;
+    const { id } = router.query;
+    const resolvedId = typeof id === 'string' ? id.trim() : '';
     if (!resolvedId) {
-      setGameId('')
-      setMatchState(createEmptyMatchFlowState())
-      setReady(true)
-      return undefined
+      setGameId('');
+      setMatchState(createEmptyMatchFlowState());
+      setReady(true);
+      return undefined;
     }
-    setGameId(resolvedId)
-    setMatchState(readMatchFlowState(resolvedId))
-    setReady(true)
+    setGameId(resolvedId);
+    setMatchState(readMatchFlowState(resolvedId));
+    setReady(true);
 
     return () => {
-      clearMatchFlow(resolvedId)
-    }
-  }, [usePropGameId, trimmedPropId, router.isReady, router.query])
+      clearMatchFlow(resolvedId);
+    };
+  }, [usePropGameId, trimmedPropId, router.isReady, router.query]);
 
   useEffect(() => {
-    if (!gameId) return undefined
+    if (!gameId) return undefined;
     const unsubscribe = subscribeGameMatchData(gameId, () => {
-      setMatchState(readMatchFlowState(gameId))
-    })
-    return unsubscribe
-  }, [gameId])
+      setMatchState(readMatchFlowState(gameId));
+    });
+    return unsubscribe;
+  }, [gameId]);
 
   const hostOwnerId = useMemo(() => {
-    const roomOwner = matchState?.room?.ownerId
+    const roomOwner = matchState?.room?.ownerId;
     if (roomOwner !== null && roomOwner !== undefined) {
-      const trimmed = String(roomOwner).trim()
+      const trimmed = String(roomOwner).trim();
       if (trimmed) {
-        return trimmed
+        return trimmed;
       }
     }
-    const asyncHost = matchState?.sessionMeta?.asyncFill?.hostOwnerId
+    const asyncHost = matchState?.sessionMeta?.asyncFill?.hostOwnerId;
     if (asyncHost !== null && asyncHost !== undefined) {
-      const trimmed = String(asyncHost).trim()
+      const trimmed = String(asyncHost).trim();
       if (trimmed) {
-        return trimmed
+        return trimmed;
       }
     }
-    return ''
-  }, [matchState?.room?.ownerId, matchState?.sessionMeta?.asyncFill?.hostOwnerId])
+    return '';
+  }, [matchState?.room?.ownerId, matchState?.sessionMeta?.asyncFill?.hostOwnerId]);
 
-  const engine = useStartClientEngine(gameId, { hostOwnerId })
+  const engine = useStartClientEngine(gameId, { hostOwnerId });
   const {
     loading: engineLoading,
     error: engineError,
@@ -311,75 +311,78 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     turnTimerSnapshot,
     activeBackdropUrls,
     activeActorNames,
-  } = engine
+  } = engine;
 
-  const sessionMetaSignatureRef = useRef('')
-  const turnStateSignatureRef = useRef('')
-  const sessionIdRef = useRef(null)
+  const sessionMetaSignatureRef = useRef('');
+  const turnStateSignatureRef = useRef('');
+  const sessionIdRef = useRef(null);
 
   useEffect(() => {
-    const nextSessionId = sessionInfo?.id || null
+    const nextSessionId = sessionInfo?.id || null;
     if (sessionIdRef.current !== nextSessionId) {
-      sessionIdRef.current = nextSessionId
-      sessionMetaSignatureRef.current = ''
-      turnStateSignatureRef.current = ''
+      sessionIdRef.current = nextSessionId;
+      sessionMetaSignatureRef.current = '';
+      turnStateSignatureRef.current = '';
     }
-  }, [sessionInfo?.id])
+  }, [sessionInfo?.id]);
 
-  const sessionMeta = useMemo(() => buildSessionMeta(matchState), [matchState])
+  const sessionMeta = useMemo(() => buildSessionMeta(matchState), [matchState]);
   const headerTitle = useMemo(() => {
-    if (game?.name) return game.name
-    if (matchState?.room?.mode) return `${matchState.room.mode} 메인 게임`
-    return '메인 게임'
-  }, [game?.name, matchState?.room?.mode])
+    if (game?.name) return game.name;
+    if (matchState?.room?.mode) return `${matchState.room.mode} 메인 게임`;
+    return '메인 게임';
+  }, [game?.name, matchState?.room?.mode]);
   const headerDescription = useMemo(
     () => formatHeaderDescription({ state: matchState, meta: sessionMeta, game }),
-    [matchState, sessionMeta, game],
-  )
+    [matchState, sessionMeta, game]
+  );
 
   const handleBackToRoom = useCallback(() => {
     if (typeof onRequestClose === 'function') {
-      onRequestClose()
-      return
+      onRequestClose();
+      return;
     }
     if (matchState?.room?.id) {
-      router.push(`/rooms/${matchState.room.id}`).catch(() => {})
-      return
+      router.push(`/rooms/${matchState.room.id}`).catch(() => {});
+      return;
     }
     if (gameId) {
-      router.push(`/rank/${gameId}`).catch(() => {})
-      return
+      router.push(`/rank/${gameId}`).catch(() => {});
+      return;
     }
-    router.push('/match').catch(() => {})
-  }, [router, matchState?.room?.id, gameId, onRequestClose])
+    router.push('/match').catch(() => {});
+  }, [router, matchState?.room?.id, gameId, onRequestClose]);
 
   const statusMessages = useMemo(() => {
-    const messages = []
-    const errorText = toDisplayError(engineError)
-    if (errorText) messages.push(errorText)
-    if (statusMessage) messages.push(statusMessage)
-    if (apiKeyWarning) messages.push(apiKeyWarning)
-    if (promptMetaWarning) messages.push(promptMetaWarning)
-    const unique = []
-    messages.forEach((message) => {
-      if (!message) return
+    const messages = [];
+    const errorText = toDisplayError(engineError);
+    if (errorText) messages.push(errorText);
+    if (statusMessage) messages.push(statusMessage);
+    if (apiKeyWarning) messages.push(apiKeyWarning);
+    if (promptMetaWarning) messages.push(promptMetaWarning);
+    const unique = [];
+    messages.forEach(message => {
+      if (!message) return;
       if (!unique.includes(message)) {
-        unique.push(message)
+        unique.push(message);
       }
-    })
-    return unique
-  }, [engineError, statusMessage, apiKeyWarning, promptMetaWarning])
+    });
+    return unique;
+  }, [engineError, statusMessage, apiKeyWarning, promptMetaWarning]);
 
   useEffect(() => {
-    const sessionId = sessionInfo?.id
-    if (!sessionId) return
+    const sessionId = sessionInfo?.id;
+    if (!sessionId) return;
 
     const stateForRequest = {
       sessionMeta: matchState?.sessionMeta || null,
-      room: { realtimeMode: matchState?.room?.realtimeMode || null, id: matchState?.room?.id || null },
+      room: {
+        realtimeMode: matchState?.room?.realtimeMode || null,
+        id: matchState?.room?.id || null,
+      },
       roster: Array.isArray(matchState?.roster) ? matchState.roster : [],
       matchInstanceId: matchState?.matchInstanceId || '',
-    }
+    };
 
     const {
       metaPayload,
@@ -391,33 +394,33 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
       collaborators: requestCollaborators,
     } = buildSessionMetaRequest({
       state: stateForRequest,
-    })
+    });
 
-    if (!metaPayload) return
+    if (!metaPayload) return;
 
-    const metaChanged = metaSignature && metaSignature !== sessionMetaSignatureRef.current
-    const turnChanged = turnStateSignature && turnStateSignature !== turnStateSignatureRef.current
+    const metaChanged = metaSignature && metaSignature !== sessionMetaSignatureRef.current;
+    const turnChanged = turnStateSignature && turnStateSignature !== turnStateSignatureRef.current;
 
     if (!metaChanged && !turnChanged) {
-      return
+      return;
     }
 
-    sessionMetaSignatureRef.current = metaSignature || ''
+    sessionMetaSignatureRef.current = metaSignature || '';
     if (turnChanged) {
-      turnStateSignatureRef.current = turnStateSignature
+      turnStateSignatureRef.current = turnStateSignature;
     }
 
-    let cancelled = false
+    let cancelled = false;
 
-    ;(async () => {
+    (async () => {
       try {
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
         if (sessionError) {
-          throw sessionError
+          throw sessionError;
         }
-        const token = sessionData?.session?.access_token
+        const token = sessionData?.session?.access_token;
         if (!token) {
-          throw new Error('세션 토큰을 확인하지 못했습니다.')
+          throw new Error('세션 토큰을 확인하지 못했습니다.');
         }
 
         await postSessionMeta({
@@ -430,72 +433,70 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
           meta: metaPayload,
           turnStateEvent: turnChanged ? turnStateEvent : null,
           source: 'start-client',
-        })
+        });
       } catch (error) {
-        console.warn('[StartClient] 세션 메타 동기화 실패:', error)
+        console.warn('[StartClient] 세션 메타 동기화 실패:', error);
         if (!cancelled) {
           if (metaChanged) {
-            sessionMetaSignatureRef.current = ''
+            sessionMetaSignatureRef.current = '';
           }
           if (turnChanged) {
-            turnStateSignatureRef.current = ''
+            turnStateSignatureRef.current = '';
           }
         }
       }
-    })()
+    })();
 
     return () => {
-      cancelled = true
-    }
-  }, [gameId, matchState?.room?.realtimeMode, matchState?.sessionMeta, sessionInfo?.id])
+      cancelled = true;
+    };
+  }, [gameId, matchState?.room?.realtimeMode, matchState?.sessionMeta, sessionInfo?.id]);
 
   const realtimeLockNotice = useMemo(() => {
-    if (!consensus?.active) return ''
+    if (!consensus?.active) return '';
     if (consensus.viewerEligible) {
-      return `동의 ${consensus.count}/${consensus.required}명 확보 중입니다.`
+      return `동의 ${consensus.count}/${consensus.required}명 확보 중입니다.`;
     }
-    return '다른 참가자의 동의를 기다리고 있습니다.'
-  }, [consensus?.active, consensus?.viewerEligible, consensus?.count, consensus?.required])
+    return '다른 참가자의 동의를 기다리고 있습니다.';
+  }, [consensus?.active, consensus?.viewerEligible, consensus?.count, consensus?.required]);
 
-  const asyncFillInfo = matchState?.sessionMeta?.asyncFill || null
-  const sessionExtras = matchState?.sessionMeta?.extras || null
-  const isAsyncMode = asyncFillInfo?.mode === 'off'
-  const blindMode = Boolean(matchState?.room?.blindMode)
-  const rosterEntries = Array.isArray(matchState?.roster) ? matchState.roster : []
+  const asyncFillInfo = matchState?.sessionMeta?.asyncFill || null;
+  const sessionExtras = matchState?.sessionMeta?.extras || null;
+  const isAsyncMode = asyncFillInfo?.mode === 'off';
+  const blindMode = Boolean(matchState?.room?.blindMode);
+  const rosterEntries = Array.isArray(matchState?.roster) ? matchState.roster : [];
   const matchRosterForChat = useMemo(
     () => buildMatchRoster(matchState?.roster),
-    [matchState?.roster],
-  )
+    [matchState?.roster]
+  );
   const participantRosterForChat = useMemo(
     () => buildParticipantRoster(participants),
-    [participants],
-  )
+    [participants]
+  );
   const chatRoster = useMemo(
     () => mergeRosterEntries(matchRosterForChat, participantRosterForChat),
-    [matchRosterForChat, participantRosterForChat],
-  )
+    [matchRosterForChat, participantRosterForChat]
+  );
   const viewerOwnerId = useMemo(() => {
-    const raw = matchState?.viewer?.ownerId || matchState?.viewer?.viewerId
-    return raw ? String(raw).trim() : ''
-  }, [matchState?.viewer?.ownerId, matchState?.viewer?.viewerId])
+    const raw = matchState?.viewer?.ownerId || matchState?.viewer?.viewerId;
+    return raw ? String(raw).trim() : '';
+  }, [matchState?.viewer?.ownerId, matchState?.viewer?.viewerId]);
   const viewerHeroId = useMemo(() => {
     const direct =
       toTrimmedId(
-        matchState?.viewer?.heroId ??
-          matchState?.viewer?.hero_id ??
-          matchState?.viewer?.hero?.id,
-      ) || null
-    if (direct) return direct
+        matchState?.viewer?.heroId ?? matchState?.viewer?.hero_id ?? matchState?.viewer?.hero?.id
+      ) || null;
+    if (direct) return direct;
     const ownerCandidate =
       toTrimmedId(matchState?.viewer?.ownerId ?? matchState?.viewer?.viewerId) ||
-      (viewerOwnerId ? viewerOwnerId : null)
+      (viewerOwnerId ? viewerOwnerId : null);
     if (ownerCandidate) {
-      const entry = findRosterEntry(chatRoster, { ownerId: ownerCandidate })
+      const entry = findRosterEntry(chatRoster, { ownerId: ownerCandidate });
       if (entry?.heroId) {
-        return entry.heroId
+        return entry.heroId;
       }
     }
-    return null
+    return null;
   }, [
     chatRoster,
     matchState?.viewer?.hero?.id,
@@ -504,29 +505,26 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     matchState?.viewer?.ownerId,
     matchState?.viewer?.viewerId,
     viewerOwnerId,
-  ])
+  ]);
   const viewerHeroProfile = useMemo(() => {
     const ownerCandidate =
       toTrimmedId(matchState?.viewer?.ownerId ?? matchState?.viewer?.viewerId) ||
-      (viewerOwnerId ? viewerOwnerId : null)
+      (viewerOwnerId ? viewerOwnerId : null);
     const rosterEntry = findRosterEntry(chatRoster, {
       heroId: viewerHeroId,
       ownerId: ownerCandidate,
-    })
+    });
     const heroName =
-      matchState?.viewer?.heroName ??
-      matchState?.viewer?.hero?.name ??
-      rosterEntry?.heroName ??
-      ''
+      matchState?.viewer?.heroName ?? matchState?.viewer?.hero?.name ?? rosterEntry?.heroName ?? '';
     const avatarUrl =
       matchState?.viewer?.hero?.avatar_url ??
       matchState?.viewer?.avatarUrl ??
       matchState?.viewer?.avatar_url ??
       rosterEntry?.avatarUrl ??
-      null
+      null;
 
     if (!viewerHeroId && !ownerCandidate && !heroName && !avatarUrl) {
-      return null
+      return null;
     }
 
     return {
@@ -535,7 +533,7 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
       user_id: ownerCandidate || null,
       name: heroName || (viewerHeroId ? `캐릭터 #${viewerHeroId}` : '익명 참가자'),
       avatar_url: avatarUrl || null,
-    }
+    };
   }, [
     chatRoster,
     matchState?.viewer?.avatarUrl,
@@ -547,130 +545,122 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     matchState?.viewer?.viewerId,
     viewerHeroId,
     viewerOwnerId,
-  ])
+  ]);
   const asyncMatchInstanceId = useMemo(() => {
-    if (!asyncFillInfo) return null
+    if (!asyncFillInfo) return null;
     return (
       toTrimmedId(asyncFillInfo.matchInstanceId) ||
       toTrimmedId(asyncFillInfo.match_instance_id) ||
       null
-    )
-  }, [asyncFillInfo])
+    );
+  }, [asyncFillInfo]);
   const extrasMatchInstanceId = useMemo(() => {
-    if (!sessionExtras) return null
+    if (!sessionExtras) return null;
     return (
       toTrimmedId(sessionExtras.matchInstanceId) ||
       toTrimmedId(sessionExtras.match_instance_id) ||
       null
-    )
-  }, [sessionExtras])
+    );
+  }, [sessionExtras]);
   const sessionInfoMatchInstanceId = useMemo(() => {
-    if (!sessionInfo) return null
+    if (!sessionInfo) return null;
     return (
-      toTrimmedId(sessionInfo.matchInstanceId) ||
-      toTrimmedId(sessionInfo.match_instance_id) ||
-      null
-    )
-  }, [sessionInfo])
+      toTrimmedId(sessionInfo.matchInstanceId) || toTrimmedId(sessionInfo.match_instance_id) || null
+    );
+  }, [sessionInfo]);
   const hostRoleName = useMemo(() => {
     if (typeof asyncFillInfo?.hostRole === 'string' && asyncFillInfo.hostRole.trim()) {
-      return asyncFillInfo.hostRole.trim()
+      return asyncFillInfo.hostRole.trim();
     }
-    if (!hostOwnerId) return ''
-    const hostEntry = rosterEntries.find((entry) => {
-      if (!entry) return false
-      const ownerId = entry.ownerId != null ? String(entry.ownerId).trim() : ''
-      return ownerId === hostOwnerId
-    })
-    return hostEntry?.role ? String(hostEntry.role).trim() : ''
-  }, [asyncFillInfo?.hostRole, hostOwnerId, rosterEntries])
-  const normalizedHostRole = useMemo(() => normalizeRoleName(hostRoleName), [hostRoleName])
+    if (!hostOwnerId) return '';
+    const hostEntry = rosterEntries.find(entry => {
+      if (!entry) return false;
+      const ownerId = entry.ownerId != null ? String(entry.ownerId).trim() : '';
+      return ownerId === hostOwnerId;
+    });
+    return hostEntry?.role ? String(hostEntry.role).trim() : '';
+  }, [asyncFillInfo?.hostRole, hostOwnerId, rosterEntries]);
+  const normalizedHostRole = useMemo(() => normalizeRoleName(hostRoleName), [hostRoleName]);
   const normalizedViewerRole = useMemo(
     () => normalizeRoleName(matchState?.viewer?.role || ''),
-    [matchState?.viewer?.role],
-  )
-  const restrictedContext = blindMode || isAsyncMode
-  const viewerIsHostOwner = Boolean(hostOwnerId && viewerOwnerId && viewerOwnerId === hostOwnerId)
+    [matchState?.viewer?.role]
+  );
+  const restrictedContext = blindMode || isAsyncMode;
+  const viewerIsHostOwner = Boolean(hostOwnerId && viewerOwnerId && viewerOwnerId === hostOwnerId);
   const viewerMatchesHostRole = Boolean(
-    normalizedHostRole && normalizedViewerRole && normalizedHostRole === normalizedViewerRole,
-  )
-  const viewerMaySeeFull = !restrictedContext || viewerIsHostOwner || viewerMatchesHostRole
-  const viewerCanToggleDetails = restrictedContext && (viewerIsHostOwner || viewerMatchesHostRole)
-  const [showRosterDetails, setShowRosterDetails] = useState(() => viewerMaySeeFull)
+    normalizedHostRole && normalizedViewerRole && normalizedHostRole === normalizedViewerRole
+  );
+  const viewerMaySeeFull = !restrictedContext || viewerIsHostOwner || viewerMatchesHostRole;
+  const viewerCanToggleDetails = restrictedContext && (viewerIsHostOwner || viewerMatchesHostRole);
+  const [showRosterDetails, setShowRosterDetails] = useState(() => viewerMaySeeFull);
 
   useEffect(() => {
-    setShowRosterDetails(viewerMaySeeFull)
-  }, [viewerMaySeeFull, normalizedHostRole, normalizedViewerRole, restrictedContext])
+    setShowRosterDetails(viewerMaySeeFull);
+  }, [viewerMaySeeFull, normalizedHostRole, normalizedViewerRole, restrictedContext]);
 
-  const manualDisabled = preflight || !canSubmitAction
+  const manualDisabled = preflight || !canSubmitAction;
   const manualDisabledReason = preflight
     ? '먼저 게임을 시작해 주세요.'
-    : '현재 차례의 플레이어만 응답을 제출할 수 있습니다.'
+    : '현재 차례의 플레이어만 응답을 제출할 수 있습니다.';
 
   const rosterBySlot = useMemo(() => {
-    const roster = Array.isArray(matchState?.roster) ? matchState.roster : []
-    const map = new Map()
-    roster.forEach((entry) => {
-      if (!entry) return
-      const slotIndex = entry.slotIndex != null ? Number(entry.slotIndex) : null
+    const roster = Array.isArray(matchState?.roster) ? matchState.roster : [];
+    const map = new Map();
+    roster.forEach(entry => {
+      if (!entry) return;
+      const slotIndex = entry.slotIndex != null ? Number(entry.slotIndex) : null;
       if (Number.isFinite(slotIndex)) {
-        map.set(slotIndex, entry)
+        map.set(slotIndex, entry);
       }
-    })
-    return map
-  }, [matchState?.roster])
+    });
+    return map;
+  }, [matchState?.roster]);
 
   const rosterByHeroId = useMemo(() => {
-    const roster = Array.isArray(matchState?.roster) ? matchState.roster : []
-    const map = new Map()
-    roster.forEach((entry) => {
-      if (!entry) return
+    const roster = Array.isArray(matchState?.roster) ? matchState.roster : [];
+    const map = new Map();
+    roster.forEach(entry => {
+      if (!entry) return;
       if (entry.heroId) {
-        map.set(String(entry.heroId).trim(), entry)
+        map.set(String(entry.heroId).trim(), entry);
       }
-    })
-    return map
-  }, [matchState?.roster])
+    });
+    return map;
+  }, [matchState?.roster]);
 
   const scoreboardRooms = useMemo(() => {
-    const rooms = matchState?.snapshot?.rooms || matchState?.snapshot?.assignments
-    if (!Array.isArray(rooms) || !rooms.length) return []
+    const rooms = matchState?.snapshot?.rooms || matchState?.snapshot?.assignments;
+    if (!Array.isArray(rooms) || !rooms.length) return [];
     return rooms.map((room, index) => {
       const slotSources = Array.isArray(room?.slots)
         ? room.slots
         : Array.isArray(room?.roleSlots)
-        ? room.roleSlots.map((slot) => ({
-            role: slot?.role,
-            slotIndex: slot?.slotIndex,
-            member: slot?.member || (Array.isArray(slot?.members) ? slot.members[0] : null),
-          }))
-        : Array.isArray(room?.members)
-        ? room.members.map((member) => ({
-            role: member?.role,
-            slotIndex: member?.slotIndex,
-            member,
-          }))
-        : []
+          ? room.roleSlots.map(slot => ({
+              role: slot?.role,
+              slotIndex: slot?.slotIndex,
+              member: slot?.member || (Array.isArray(slot?.members) ? slot.members[0] : null),
+            }))
+          : Array.isArray(room?.members)
+            ? room.members.map(member => ({
+                role: member?.role,
+                slotIndex: member?.slotIndex,
+                member,
+              }))
+            : [];
 
       const slots = slotSources.map((slot, slotIndex) => {
-        const numericIndex = toSlotIndex(slot?.slotIndex, slotIndex)
-        const normalizedHeroId = toTrimmedId(slot?.member?.heroId ?? slot?.member?.hero_id)
+        const numericIndex = toSlotIndex(slot?.slotIndex, slotIndex);
+        const normalizedHeroId = toTrimmedId(slot?.member?.heroId ?? slot?.member?.hero_id);
         const fallback =
           rosterBySlot.get(numericIndex) ||
-          (normalizedHeroId ? rosterByHeroId.get(normalizedHeroId) : null)
+          (normalizedHeroId ? rosterByHeroId.get(normalizedHeroId) : null);
         const heroName =
-          slot?.member?.heroName ||
-          slot?.member?.hero_name ||
-          fallback?.heroName ||
-          ''
-        const role = slot?.role || fallback?.role || ''
-        const standin = slot?.member?.standin === true || fallback?.standin === true
+          slot?.member?.heroName || slot?.member?.hero_name || fallback?.heroName || '';
+        const role = slot?.role || fallback?.role || '';
+        const standin = slot?.member?.standin === true || fallback?.standin === true;
         const matchSource =
-          slot?.member?.matchSource ||
-          slot?.member?.match_source ||
-          fallback?.matchSource ||
-          ''
-        const ready = slot?.member?.ready === true || fallback?.ready === true
+          slot?.member?.matchSource || slot?.member?.match_source || fallback?.matchSource || '';
+        const ready = slot?.member?.ready === true || fallback?.ready === true;
         return {
           slotIndex: numericIndex,
           role,
@@ -678,8 +668,8 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
           standin,
           matchSource,
           ready,
-        }
-      })
+        };
+      });
 
       return {
         id: toTrimmedId(room?.id) || `room-${index + 1}`,
@@ -687,67 +677,74 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
         anchorScore: room?.anchorScore ?? room?.anchor_score ?? null,
         ready: room?.ready === true,
         slots,
-      }
-    })
-  }, [matchState?.snapshot?.rooms, matchState?.snapshot?.assignments, rosterByHeroId, rosterBySlot])
+      };
+    });
+  }, [
+    matchState?.snapshot?.rooms,
+    matchState?.snapshot?.assignments,
+    rosterByHeroId,
+    rosterBySlot,
+  ]);
 
   const roleBuckets = useMemo(() => {
-    const raw = matchState?.snapshot?.roleBuckets || matchState?.snapshot?.role_buckets
-    if (!Array.isArray(raw)) return []
+    const raw = matchState?.snapshot?.roleBuckets || matchState?.snapshot?.role_buckets;
+    if (!Array.isArray(raw)) return [];
     return raw.map((bucket, index) => {
-      const roleName = bucket?.role || bucket?.name || `역할 ${index + 1}`
-      const total = Number(bucket?.total ?? bucket?.slotCount ?? bucket?.slot_count ?? bucket?.totalSlots)
-      const filled = Number(bucket?.filled ?? bucket?.filledSlots ?? bucket?.filled_slots)
-      const missing = Number(bucket?.missing ?? bucket?.missingSlots ?? bucket?.missing_slots)
+      const roleName = bucket?.role || bucket?.name || `역할 ${index + 1}`;
+      const total = Number(
+        bucket?.total ?? bucket?.slotCount ?? bucket?.slot_count ?? bucket?.totalSlots
+      );
+      const filled = Number(bucket?.filled ?? bucket?.filledSlots ?? bucket?.filled_slots);
+      const missing = Number(bucket?.missing ?? bucket?.missingSlots ?? bucket?.missing_slots);
       return {
         role: roleName,
         total: Number.isFinite(total) ? total : 0,
         filled: Number.isFinite(filled) ? filled : 0,
         missing: Number.isFinite(missing) ? missing : 0,
         ready: bucket?.ready === true,
-      }
-    })
-  }, [matchState?.snapshot?.roleBuckets, matchState?.snapshot?.role_buckets])
+      };
+    });
+  }, [matchState?.snapshot?.roleBuckets, matchState?.snapshot?.role_buckets]);
 
-  const hasRoleSummary = roleBuckets.some((bucket) => bucket.total > 0)
+  const hasRoleSummary = roleBuckets.some(bucket => bucket.total > 0);
 
   const pageStyle = useMemo(() => {
     const baseGradient =
-      'radial-gradient(circle at top, rgba(16,26,51,0.92) 0%, rgba(4,7,18,0.96) 55%, rgba(2,4,10,1) 100%)'
+      'radial-gradient(circle at top, rgba(16,26,51,0.92) 0%, rgba(4,7,18,0.96) 55%, rgba(2,4,10,1) 100%)';
     const heroLayers = Array.isArray(activeBackdropUrls)
       ? activeBackdropUrls
-          .map((url) => (typeof url === 'string' ? url.trim() : ''))
+          .map(url => (typeof url === 'string' ? url.trim() : ''))
           .filter(Boolean)
-          .map((url) => `url(${url})`)
-      : []
+          .map(url => `url(${url})`)
+      : [];
     return {
       backgroundImage: [baseGradient, ...heroLayers].join(', '),
       backgroundSize: ['cover', ...heroLayers.map(() => 'cover')].join(', '),
       backgroundPosition: ['center', ...heroLayers.map(() => 'center')].join(', '),
       backgroundRepeat: ['no-repeat', ...heroLayers.map(() => 'no-repeat')].join(', '),
-    }
-  }, [activeBackdropUrls])
+    };
+  }, [activeBackdropUrls]);
 
-  const startLabel = isStarting ? '준비 중…' : preflight ? '게임 시작' : '다시 시작'
-  const nextLabel = isAdvancing ? '진행 중…' : '다음 턴'
-  const advanceDisabled = preflight || !sessionInfo?.id || engineLoading
-  const startButtonDisabled = isStarting || engineLoading
+  const startLabel = isStarting ? '준비 중…' : preflight ? '게임 시작' : '다시 시작';
+  const nextLabel = isAdvancing ? '진행 중…' : '다음 턴';
+  const advanceDisabled = preflight || !sessionInfo?.id || engineLoading;
+  const startButtonDisabled = isStarting || engineLoading;
   const consensusStatus = consensus?.active
     ? consensus.viewerEligible
       ? consensus.viewerHasConsented
         ? '내 동의 완료'
         : '내 동의 필요'
       : '동의 대상 아님'
-    : ''
+    : '';
   const roleSummaryText = hasRoleSummary
     ? roleBuckets
-        .map((bucket) => {
-          if (!bucket.role) return null
-          return `${bucket.role} ${bucket.filled}/${bucket.total}`
+        .map(bucket => {
+          if (!bucket.role) return null;
+          return `${bucket.role} ${bucket.filled}/${bucket.total}`;
         })
         .filter(Boolean)
         .join(' · ')
-    : ''
+    : '';
 
   if (!ready) {
     return (
@@ -756,7 +753,7 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
           <p className={styles.status}>매칭 정보를 불러오는 중…</p>
         </div>
       </div>
-    )
+    );
   }
 
   if (!gameId || !matchState?.snapshot) {
@@ -771,7 +768,7 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
           </div>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -831,7 +828,7 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
             </header>
             {sessionMeta.length ? (
               <ul className={styles.metaList}>
-                {sessionMeta.map((item) => (
+                {sessionMeta.map(item => (
                   <li key={item.label} className={styles.metaItem}>
                     <span className={styles.metaLabel}>{item.label}</span>
                     <span className={styles.metaValue}>{item.value}</span>
@@ -898,7 +895,7 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
             </header>
             {scoreboardRooms.length ? (
               <div className={styles.roomGrid}>
-                {scoreboardRooms.map((room) => (
+                {scoreboardRooms.map(room => (
                   <div key={room.id} className={styles.roomCard}>
                     <div className={styles.roomHeader}>
                       <span className={styles.roomLabel}>{room.label}</span>
@@ -908,16 +905,21 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
                     </div>
                     <ul className={styles.slotList}>
                       {room.slots.map((slot, index) => {
-                        const tag = formatSlotSource({ standin: slot.standin, matchSource: slot.matchSource })
+                        const tag = formatSlotSource({
+                          standin: slot.standin,
+                          matchSource: slot.matchSource,
+                        });
                         const statusClass = slot.ready
                           ? styles.slotReady
                           : slot.heroName === '빈 슬롯'
-                          ? styles.slotEmpty
-                          : styles.slotPending
+                            ? styles.slotEmpty
+                            : styles.slotPending;
                         return (
                           <li key={`${room.id}-${index}`} className={styles.slotItem}>
                             <div className={styles.slotRole}>{slot.role || '슬롯'}</div>
-                            <div className={`${styles.slotHero} ${statusClass}`}>{slot.heroName}</div>
+                            <div className={`${styles.slotHero} ${statusClass}`}>
+                              {slot.heroName}
+                            </div>
                             <div className={styles.slotTagRow}>
                               {tag ? <span className={styles.slotTag}>{tag}</span> : null}
                               {!slot.ready && slot.heroName !== '빈 슬롯' ? (
@@ -925,7 +927,7 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
                               ) : null}
                             </div>
                           </li>
-                        )
+                        );
                       })}
                     </ul>
                   </div>
@@ -939,9 +941,7 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
                 {roleBuckets.map((bucket, index) => (
                   <span
                     key={`${bucket.role}-${index}`}
-                    className={
-                      bucket.missing > 0 ? styles.roleBadgeMissing : styles.roleBadge
-                    }
+                    className={bucket.missing > 0 ? styles.roleBadgeMissing : styles.roleBadge}
                   >
                     {bucket.role} {bucket.filled}/{bucket.total}
                   </span>
@@ -1018,7 +1018,8 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
                   ) : null}
                 </div>
                 <p className={styles.visibilityHint}>
-                  블라인드 또는 비실시간 모드에서는 호스트 역할군만 상세한 캐릭터 정보를 확인할 수 있습니다.
+                  블라인드 또는 비실시간 모드에서는 호스트 역할군만 상세한 캐릭터 정보를 확인할 수
+                  있습니다.
                 </p>
                 <div className={styles.visibilityControls}>
                   <button
@@ -1038,8 +1039,8 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
                       showRosterDetails ? styles.visibilityButtonActive : styles.visibilityButton
                     }
                     onClick={() => {
-                      if (!viewerMaySeeFull) return
-                      setShowRosterDetails(true)
+                      if (!viewerMaySeeFull) return;
+                      setShowRosterDetails(true);
                     }}
                     disabled={!viewerCanToggleDetails}
                   >
@@ -1079,5 +1080,5 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
         </div>
       </div>
     </div>
-  )
+  );
 }

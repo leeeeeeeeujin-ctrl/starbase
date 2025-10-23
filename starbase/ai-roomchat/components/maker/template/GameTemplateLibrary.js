@@ -3,13 +3,13 @@
  * 장르별 게임 템플릿과 패턴 제공
  */
 
-'use client'
+'use client';
 
-import { useState } from 'react'
+import { useState } from 'react';
 
 const GameTemplateLibrary = ({ onSelectTemplate, onClose }) => {
-  const [selectedCategory, setSelectedCategory] = useState('all')
-  const [searchTerm, setSearchTerm] = useState('')
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [searchTerm, setSearchTerm] = useState('');
 
   // 🎯 게임 템플릿 데이터
   const gameTemplates = [
@@ -78,9 +78,9 @@ const keys = {}
 document.addEventListener('keydown', e => keys[e.code.replace('Key', '').toLowerCase()] = true)
 document.addEventListener('keyup', e => keys[e.code.replace('Key', '').toLowerCase()] = false)
       `.trim(),
-      preview: '🏃‍♂️ 캐릭터가 점프하며 플랫폼을 이동하는 게임'
+      preview: '🏃‍♂️ 캐릭터가 점프하며 플랫폼을 이동하는 게임',
     },
-    
+
     {
       id: 'shooter_basic',
       name: '슈팅 게임',
@@ -159,7 +159,7 @@ const game = {
   }
 }
       `.trim(),
-      preview: '🚀 우주선이 적을 물리치며 점수를 얻는 게임'
+      preview: '🚀 우주선이 적을 물리치며 점수를 얻는 게임',
     },
 
     // 🧩 퍼즐 게임
@@ -234,7 +234,7 @@ const game = {
   }
 }
       `.trim(),
-      preview: '🧩 같은 색깔을 3개 이상 맞추면 사라지는 퍼즐'
+      preview: '🧩 같은 색깔을 3개 이상 맞추면 사라지는 퍼즐',
     },
 
     // 🏎️ 레이싱 게임
@@ -314,7 +314,7 @@ const game = {
   }
 }
       `.trim(),
-      preview: '🏎️ 도로를 달리며 장애물을 피하는 레이싱'
+      preview: '🏎️ 도로를 달리며 장애물을 피하는 레이싱',
     },
 
     // 🃏 카드 게임
@@ -401,7 +401,7 @@ const game = {
   }
 }
       `.trim(),
-      preview: '🃏 카드를 뒤집어 같은 그림을 찾는 기억력 게임'
+      preview: '🃏 카드를 뒤집어 같은 그림을 찾는 기억력 게임',
     },
 
     // 🎲 보드 게임
@@ -501,9 +501,9 @@ const game = {
   }
 }
       `.trim(),
-      preview: '🎲 3x3 격자에서 3개를 일렬로 만드는 클래식 게임'
-    }
-  ]
+      preview: '🎲 3x3 격자에서 3개를 일렬로 만드는 클래식 게임',
+    },
+  ];
 
   // 카테고리 필터링
   const categories = [
@@ -512,84 +512,99 @@ const game = {
     { id: 'puzzle', name: '퍼즐', icon: '🧩' },
     { id: 'racing', name: '레이싱', icon: '🏎️' },
     { id: 'card', name: '카드', icon: '🃏' },
-    { id: 'board', name: '보드', icon: '🎲' }
-  ]
+    { id: 'board', name: '보드', icon: '🎲' },
+  ];
 
   // 난이도 색상
-  const getDifficultyColor = (difficulty) => {
+  const getDifficultyColor = difficulty => {
     switch (difficulty) {
-      case 'beginner': return '#22c55e'
-      case 'intermediate': return '#f59e0b'
-      case 'advanced': return '#ef4444'
-      default: return '#6b7280'
+      case 'beginner':
+        return '#22c55e';
+      case 'intermediate':
+        return '#f59e0b';
+      case 'advanced':
+        return '#ef4444';
+      default:
+        return '#6b7280';
     }
-  }
+  };
 
   // 필터링된 템플릿
   const filteredTemplates = gameTemplates.filter(template => {
-    const matchesCategory = selectedCategory === 'all' || template.category === selectedCategory
-    const matchesSearch = template.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         template.description.toLowerCase().includes(searchTerm.toLowerCase())
-    return matchesCategory && matchesSearch
-  })
+    const matchesCategory = selectedCategory === 'all' || template.category === selectedCategory;
+    const matchesSearch =
+      template.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      template.description.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchesCategory && matchesSearch;
+  });
 
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      background: 'rgba(0, 0, 0, 0.9)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 10000,
-      backdropFilter: 'blur(10px)'
-    }}>
-      <div style={{
-        background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #1e40af 100%)',
-        borderRadius: 24,
-        padding: 0,
-        width: '95vw',
-        height: '90vh',
-        maxWidth: 1400,
-        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)',
+    <div
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(0, 0, 0, 0.9)',
         display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden',
-        border: '1px solid rgba(255, 255, 255, 0.1)'
-      }}>
-        {/* 헤더 */}
-        <div style={{
-          padding: '24px 32px',
-          background: 'rgba(255, 255, 255, 0.05)',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 10000,
+        backdropFilter: 'blur(10px)',
+      }}
+    >
+      <div
+        style={{
+          background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #1e40af 100%)',
+          borderRadius: 24,
+          padding: 0,
+          width: '95vw',
+          height: '90vh',
+          maxWidth: 1400,
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)',
           display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between'
-        }}>
+          flexDirection: 'column',
+          overflow: 'hidden',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+        }}
+      >
+        {/* 헤더 */}
+        <div
+          style={{
+            padding: '24px 32px',
+            background: 'rgba(255, 255, 255, 0.05)',
+            borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
           <div>
-            <h1 style={{ 
-              margin: 0, 
-              color: '#ffffff', 
-              fontSize: 24,
-              fontWeight: 800,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12
-            }}>
+            <h1
+              style={{
+                margin: 0,
+                color: '#ffffff',
+                fontSize: 24,
+                fontWeight: 800,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+              }}
+            >
               🎮 게임 템플릿 라이브러리
             </h1>
-            <p style={{ 
-              margin: '4px 0 0 0', 
-              color: '#cbd5e1', 
-              fontSize: 14 
-            }}>
+            <p
+              style={{
+                margin: '4px 0 0 0',
+                color: '#cbd5e1',
+                fontSize: 14,
+              }}
+            >
               원하는 장르의 게임을 선택하고 바로 개발을 시작하세요!
             </p>
           </div>
-          
+
           <button
             onClick={onClose}
             style={{
@@ -600,7 +615,7 @@ const game = {
               padding: '8px 16px',
               cursor: 'pointer',
               fontSize: 14,
-              fontWeight: 600
+              fontWeight: 600,
             }}
           >
             ✕ 닫기
@@ -608,15 +623,17 @@ const game = {
         </div>
 
         {/* 필터 및 검색 */}
-        <div style={{
-          padding: '20px 32px',
-          background: 'rgba(255, 255, 255, 0.03)',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
-          display: 'flex',
-          gap: 16,
-          alignItems: 'center',
-          flexWrap: 'wrap'
-        }}>
+        <div
+          style={{
+            padding: '20px 32px',
+            background: 'rgba(255, 255, 255, 0.03)',
+            borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+            display: 'flex',
+            gap: 16,
+            alignItems: 'center',
+            flexWrap: 'wrap',
+          }}
+        >
           {/* 카테고리 필터 */}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {categories.map(category => (
@@ -624,9 +641,10 @@ const game = {
                 key={category.id}
                 onClick={() => setSelectedCategory(category.id)}
                 style={{
-                  background: selectedCategory === category.id
-                    ? 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)'
-                    : 'rgba(255, 255, 255, 0.1)',
+                  background:
+                    selectedCategory === category.id
+                      ? 'linear-gradient(135deg, #8b5cf6 0%, #06b6d4 100%)'
+                      : 'rgba(255, 255, 255, 0.1)',
                   border: '1px solid rgba(255, 255, 255, 0.2)',
                   borderRadius: 20,
                   color: '#ffffff',
@@ -637,7 +655,7 @@ const game = {
                   display: 'flex',
                   alignItems: 'center',
                   gap: 6,
-                  transition: 'all 0.2s ease'
+                  transition: 'all 0.2s ease',
                 }}
               >
                 {category.icon} {category.name}
@@ -649,7 +667,7 @@ const game = {
           <input
             type="text"
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={e => setSearchTerm(e.target.value)}
             placeholder="게임 템플릿 검색..."
             style={{
               background: 'rgba(255, 255, 255, 0.1)',
@@ -659,20 +677,22 @@ const game = {
               padding: '8px 12px',
               fontSize: 14,
               outline: 'none',
-              minWidth: 200
+              minWidth: 200,
             }}
           />
         </div>
 
         {/* 템플릿 그리드 */}
-        <div style={{
-          flex: 1,
-          padding: '24px 32px',
-          overflowY: 'auto',
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))',
-          gap: 20
-        }}>
+        <div
+          style={{
+            flex: 1,
+            padding: '24px 32px',
+            overflowY: 'auto',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))',
+            gap: 20,
+          }}
+        >
           {filteredTemplates.map(template => (
             <div
               key={template.id}
@@ -683,79 +703,94 @@ const game = {
                 padding: 20,
                 cursor: 'pointer',
                 transition: 'all 0.3s ease',
-                position: 'relative'
+                position: 'relative',
               }}
               onClick={() => onSelectTemplate(template)}
-              onMouseOver={(e) => {
-                e.target.style.transform = 'translateY(-4px)'
-                e.target.style.boxShadow = '0 20px 40px rgba(0, 0, 0, 0.3)'
-                e.target.style.background = 'rgba(255, 255, 255, 0.12)'
+              onMouseOver={e => {
+                e.target.style.transform = 'translateY(-4px)';
+                e.target.style.boxShadow = '0 20px 40px rgba(0, 0, 0, 0.3)';
+                e.target.style.background = 'rgba(255, 255, 255, 0.12)';
               }}
-              onMouseOut={(e) => {
-                e.target.style.transform = 'translateY(0)'
-                e.target.style.boxShadow = 'none'
-                e.target.style.background = 'rgba(255, 255, 255, 0.08)'
+              onMouseOut={e => {
+                e.target.style.transform = 'translateY(0)';
+                e.target.style.boxShadow = 'none';
+                e.target.style.background = 'rgba(255, 255, 255, 0.08)';
               }}
             >
               {/* 난이도 배지 */}
-              <div style={{
-                position: 'absolute',
-                top: 16,
-                right: 16,
-                background: getDifficultyColor(template.difficulty),
-                borderRadius: 12,
-                padding: '4px 8px',
-                fontSize: 11,
-                fontWeight: 600,
-                color: '#ffffff'
-              }}>
-                {template.difficulty === 'beginner' ? '초급' :
-                 template.difficulty === 'intermediate' ? '중급' : '고급'}
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 16,
+                  right: 16,
+                  background: getDifficultyColor(template.difficulty),
+                  borderRadius: 12,
+                  padding: '4px 8px',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: '#ffffff',
+                }}
+              >
+                {template.difficulty === 'beginner'
+                  ? '초급'
+                  : template.difficulty === 'intermediate'
+                    ? '중급'
+                    : '고급'}
               </div>
 
               {/* 템플릿 정보 */}
-              <h3 style={{
-                margin: '0 0 8px 0',
-                color: '#ffffff',
-                fontSize: 18,
-                fontWeight: 700
-              }}>
+              <h3
+                style={{
+                  margin: '0 0 8px 0',
+                  color: '#ffffff',
+                  fontSize: 18,
+                  fontWeight: 700,
+                }}
+              >
                 {template.name}
               </h3>
 
-              <p style={{
-                margin: '0 0 12px 0',
-                color: '#cbd5e1',
-                fontSize: 14,
-                lineHeight: 1.5
-              }}>
+              <p
+                style={{
+                  margin: '0 0 12px 0',
+                  color: '#cbd5e1',
+                  fontSize: 14,
+                  lineHeight: 1.5,
+                }}
+              >
                 {template.description}
               </p>
 
-              <div style={{
-                background: 'rgba(255, 255, 255, 0.05)',
-                borderRadius: 8,
-                padding: 12,
-                margin: '12px 0',
-                border: '1px solid rgba(255, 255, 255, 0.1)'
-              }}>
-                <p style={{
-                  margin: 0,
-                  color: '#e2e8f0',
-                  fontSize: 12,
-                  fontStyle: 'italic'
-                }}>
+              <div
+                style={{
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  borderRadius: 8,
+                  padding: 12,
+                  margin: '12px 0',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                }}
+              >
+                <p
+                  style={{
+                    margin: 0,
+                    color: '#e2e8f0',
+                    fontSize: 12,
+                    fontStyle: 'italic',
+                  }}
+                >
                   {template.preview}
                 </p>
               </div>
 
               {/* 기능 목록 */}
-              <div style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: 6,
-                marginBottom: 16
-              }}>
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 6,
+                  marginBottom: 16,
+                }}
+              >
                 {template.features.map((feature, index) => (
                   <span
                     key={index}
@@ -765,7 +800,7 @@ const game = {
                       borderRadius: 12,
                       padding: '3px 8px',
                       fontSize: 11,
-                      color: '#c4b5fd'
+                      color: '#c4b5fd',
                     }}
                   >
                     {feature}
@@ -775,9 +810,9 @@ const game = {
 
               {/* 선택 버튼 */}
               <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onSelectTemplate(template)
+                onClick={e => {
+                  e.stopPropagation();
+                  onSelectTemplate(template);
                 }}
                 style={{
                   width: '100%',
@@ -789,7 +824,7 @@ const game = {
                   fontSize: 14,
                   fontWeight: 600,
                   cursor: 'pointer',
-                  boxShadow: '0 4px 12px rgba(34, 197, 94, 0.4)'
+                  boxShadow: '0 4px 12px rgba(34, 197, 94, 0.4)',
                 }}
               >
                 🚀 이 템플릿으로 시작하기
@@ -800,33 +835,40 @@ const game = {
 
         {/* 검색 결과 없음 */}
         {filteredTemplates.length === 0 && (
-          <div style={{
-            flex: 1,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexDirection: 'column',
-            gap: 16
-          }}>
-            <div style={{
-              fontSize: 48,
-              opacity: 0.5
-            }}>
+          <div
+            style={{
+              flex: 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexDirection: 'column',
+              gap: 16,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 48,
+                opacity: 0.5,
+              }}
+            >
               🔍
             </div>
-            <p style={{
-              color: '#9ca3af',
-              fontSize: 16,
-              textAlign: 'center'
-            }}>
-              검색 조건에 맞는 템플릿이 없습니다.<br />
+            <p
+              style={{
+                color: '#9ca3af',
+                fontSize: 16,
+                textAlign: 'center',
+              }}
+            >
+              검색 조건에 맞는 템플릿이 없습니다.
+              <br />
               다른 카테고리나 검색어를 시도해보세요.
             </p>
           </div>
         )}
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default GameTemplateLibrary
+export default GameTemplateLibrary;

@@ -38,25 +38,27 @@
         "id": "…",
         "text": "최근 대화",
         "created_at": "2024-05-26T15:00:00Z",
-        "owner_id": "…"
-      }
-    }
+        "owner_id": "…",
+      },
+    },
   ],
-  "available": [ /* 공개 방 목록, joined와 동일 구조 */ ],
+  "available": [
+    /* 공개 방 목록, joined와 동일 구조 */
+  ],
   "trendingKeywords": [
     {
-      "keyword": "마피아",        // 최근 검색이 많은 키워드 (소문자로 정규화)
+      "keyword": "마피아", // 최근 검색이 많은 키워드 (소문자로 정규화)
       "search_count": 42,
-      "last_searched_at": "2024-05-27T00:30:00Z"
-    }
+      "last_searched_at": "2024-05-27T00:30:00Z",
+    },
   ],
   "suggestedKeywords": [
     {
       "keyword": "마피아 레이드", // 입력 중인 검색어와 유사한 추천 키워드
       "search_count": 7,
-      "last_searched_at": "2024-05-27T00:28:00Z"
-    }
-  ]
+      "last_searched_at": "2024-05-27T00:28:00Z",
+    },
+  ],
 }
 ```
 
@@ -99,20 +101,20 @@ using (bucket_id = 'chat-attachments');
 
 ### 핵심 정책 · 트리거 이름
 
-| 분류 | 객체 이름 | 설명 |
-| --- | --- | --- |
-| SELECT RLS | `messages_select_public` | 인증 사용자가 글로벌·방·세션·귓속말 메시지를 열람할 수 있도록 허용합니다. 스크립트는 적용 전에 기존 SELECT 정책을 모두 제거합니다. |
-| INSERT RLS | `messages_insert_service_role` | 서비스 롤만 직접 INSERT할 수 있게 제한합니다. |
-| UPDATE RLS | `messages_update_service_role` | 서비스 롤만 UPDATE를 수행할 수 있게 제한합니다. |
-| DELETE RLS | `messages_delete_service_role` | 서비스 롤만 DELETE를 수행할 수 있게 제한합니다. |
-| Realtime RLS | `realtime_messages_select_authenticated` | `realtime.messages` 뷰에서 인증 사용자가 브로드캐스트 메시지를 받을 수 있도록 허용합니다. |
-| 함수 | `public.emit_realtime_payload` | 브로드캐스트 토픽 배열을 순회하며 `realtime.broadcast_changes`에 전달합니다. |
-| 함수 | `public.broadcast_messages_changes` | `messages` 테이블 변경을 토픽별로 가공하고 `emit_realtime_payload`를 호출합니다. |
-| 함수 | `public.sync_chat_room_moderators` | `chat_room_members` 변동을 감지해 `chat_room_moderators` 캐시를 최신으로 유지합니다. |
-| 트리거 | `trg_messages_broadcast` | `messages` 테이블 변경 시 `broadcast_messages_changes` 함수를 실행합니다. |
-| 트리거 | `trg_chat_room_members_sync_moderators` | 운영자 승격/강등 시 `chat_room_moderators` 캐시를 갱신합니다. |
-| 트리거 | `trg_chat_room_members_room_metadata` | 멤버십 행 삽입/갱신 시 방 소유자·공개 여부를 미리 채워 순환 RLS를 방지합니다. |
-| 트리거 | `trg_chat_rooms_refresh_member_metadata` | 방 소유자나 공개 여부가 변경되면 모든 멤버 행의 캐시를 갱신합니다. |
+| 분류         | 객체 이름                                | 설명                                                                                                                               |
+| ------------ | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| SELECT RLS   | `messages_select_public`                 | 인증 사용자가 글로벌·방·세션·귓속말 메시지를 열람할 수 있도록 허용합니다. 스크립트는 적용 전에 기존 SELECT 정책을 모두 제거합니다. |
+| INSERT RLS   | `messages_insert_service_role`           | 서비스 롤만 직접 INSERT할 수 있게 제한합니다.                                                                                      |
+| UPDATE RLS   | `messages_update_service_role`           | 서비스 롤만 UPDATE를 수행할 수 있게 제한합니다.                                                                                    |
+| DELETE RLS   | `messages_delete_service_role`           | 서비스 롤만 DELETE를 수행할 수 있게 제한합니다.                                                                                    |
+| Realtime RLS | `realtime_messages_select_authenticated` | `realtime.messages` 뷰에서 인증 사용자가 브로드캐스트 메시지를 받을 수 있도록 허용합니다.                                          |
+| 함수         | `public.emit_realtime_payload`           | 브로드캐스트 토픽 배열을 순회하며 `realtime.broadcast_changes`에 전달합니다.                                                       |
+| 함수         | `public.broadcast_messages_changes`      | `messages` 테이블 변경을 토픽별로 가공하고 `emit_realtime_payload`를 호출합니다.                                                   |
+| 함수         | `public.sync_chat_room_moderators`       | `chat_room_members` 변동을 감지해 `chat_room_moderators` 캐시를 최신으로 유지합니다.                                               |
+| 트리거       | `trg_messages_broadcast`                 | `messages` 테이블 변경 시 `broadcast_messages_changes` 함수를 실행합니다.                                                          |
+| 트리거       | `trg_chat_room_members_sync_moderators`  | 운영자 승격/강등 시 `chat_room_moderators` 캐시를 갱신합니다.                                                                      |
+| 트리거       | `trg_chat_room_members_room_metadata`    | 멤버십 행 삽입/갱신 시 방 소유자·공개 여부를 미리 채워 순환 RLS를 방지합니다.                                                      |
+| 트리거       | `trg_chat_rooms_refresh_member_metadata` | 방 소유자나 공개 여부가 변경되면 모든 멤버 행의 캐시를 갱신합니다.                                                                 |
 
 퍼블리케이션은 `alter publication supabase_realtime add table ...` 구문으로 `messages`, `chat_rooms`, `chat_room_members`가 등록되어 있어야 합니다.
 
@@ -128,8 +130,8 @@ using (bucket_id = 'chat-attachments');
 
 요약하면:
 
-* **대시보드 채팅** → Postgres Changes(`pgchanges`) 구독.
-* **브로드캐스트 토픽** → 동일한 변경을 선택적으로 청취해야 하는 다른 클라이언트(랭크 매칭 등)가 사용할 수 있도록 백엔드에서 함께 내보내는 보조 채널.
+- **대시보드 채팅** → Postgres Changes(`pgchanges`) 구독.
+- **브로드캐스트 토픽** → 동일한 변경을 선택적으로 청취해야 하는 다른 클라이언트(랭크 매칭 등)가 사용할 수 있도록 백엔드에서 함께 내보내는 보조 채널.
 
 실제 배포에서는 두 경로 모두 동일한 `messages` 변경을 바라보므로, 한쪽이 장애가 나더라도 다른 경로로 재구성하기 쉽도록 유지하고 있습니다.
 

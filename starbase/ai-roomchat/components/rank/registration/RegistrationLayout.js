@@ -1,4 +1,4 @@
-'use client'
+'use client';
 
 export default function RegistrationLayout({
   backgroundImage,
@@ -26,7 +26,7 @@ export default function RegistrationLayout({
         background: 'linear-gradient(180deg, #0f172a 0%, #1f2937 28%, #0f172a 100%)',
         display: 'flex',
         flexDirection: 'column',
-      }
+      };
 
   return (
     <div style={pageStyle}>
@@ -90,14 +90,12 @@ export default function RegistrationLayout({
             }}
           >
             <main style={{ display: 'grid', gap: 20 }}>{children}</main>
-            {sidebar ? (
-              <aside style={{ display: 'grid', gap: 18 }}>{sidebar}</aside>
-            ) : null}
+            {sidebar ? <aside style={{ display: 'grid', gap: 18 }}>{sidebar}</aside> : null}
           </div>
 
           {footer ? <div>{footer}</div> : null}
         </div>
       </div>
     </div>
-  )
+  );
 }

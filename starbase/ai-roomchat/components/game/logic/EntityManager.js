@@ -7,10 +7,10 @@ export default class EntityManager {
     this.options = {
       maxEntities: 1000,
       ...options,
-    }
-    this.entities = new Map()
-    this.entityIdCounter = 0
-    this.isInitialized = false
+    };
+    this.entities = new Map();
+    this.entityIdCounter = 0;
+    this.isInitialized = false;
   }
 
   /**
@@ -18,13 +18,13 @@ export default class EntityManager {
    */
   async initialize() {
     try {
-      this.entities.clear()
-      this.entityIdCounter = 0
-      this.isInitialized = true
-      return true
+      this.entities.clear();
+      this.entityIdCounter = 0;
+      this.isInitialized = true;
+      return true;
     } catch (error) {
-      console.error('[EntityManager] 초기화 실패:', error)
-      return false
+      console.error('[EntityManager] 초기화 실패:', error);
+      return false;
     }
   }
 
@@ -33,110 +33,110 @@ export default class EntityManager {
    */
   createEntity(type, properties = {}) {
     if (this.entities.size >= this.options.maxEntities) {
-      console.warn('[EntityManager] 최대 엔티티 수 도달')
-      return null
+      console.warn('[EntityManager] 최대 엔티티 수 도달');
+      return null;
     }
 
-    const id = this.generateEntityId()
+    const id = this.generateEntityId();
     const entity = {
       id,
       type,
       active: true,
       createdAt: Date.now(),
       ...properties,
-    }
+    };
 
-    this.entities.set(id, entity)
-    console.log(`[EntityManager] 엔티티 생성: ${type} (ID: ${id})`)
-    return entity
+    this.entities.set(id, entity);
+    console.log(`[EntityManager] 엔티티 생성: ${type} (ID: ${id})`);
+    return entity;
   }
 
   /**
    * 엔티티 ID 생성
    */
   generateEntityId() {
-    return `entity_${++this.entityIdCounter}_${Date.now()}`
+    return `entity_${++this.entityIdCounter}_${Date.now()}`;
   }
 
   /**
    * 엔티티 가져오기
    */
   getEntity(id) {
-    return this.entities.get(id)
+    return this.entities.get(id);
   }
 
   /**
    * 모든 엔티티 가져오기
    */
   getAllEntities() {
-    return Array.from(this.entities.values())
+    return Array.from(this.entities.values());
   }
 
   /**
    * 타입별 엔티티 가져오기
    */
   getEntitiesByType(type) {
-    return Array.from(this.entities.values()).filter(e => e.type === type)
+    return Array.from(this.entities.values()).filter(e => e.type === type);
   }
 
   /**
    * 활성 엔티티만 가져오기
    */
   getActiveEntities() {
-    return Array.from(this.entities.values()).filter(e => e.active)
+    return Array.from(this.entities.values()).filter(e => e.active);
   }
 
   /**
    * 엔티티 업데이트
    */
   updateEntity(id, updates) {
-    const entity = this.entities.get(id)
+    const entity = this.entities.get(id);
     if (!entity) {
-      console.warn(`[EntityManager] 엔티티를 찾을 수 없음: ${id}`)
-      return false
+      console.warn(`[EntityManager] 엔티티를 찾을 수 없음: ${id}`);
+      return false;
     }
 
-    Object.assign(entity, updates)
-    return true
+    Object.assign(entity, updates);
+    return true;
   }
 
   /**
    * 엔티티 제거
    */
   removeEntity(id) {
-    const entity = this.entities.get(id)
+    const entity = this.entities.get(id);
     if (!entity) {
-      return false
+      return false;
     }
 
     // 정리 콜백 호출
     if (entity.onDestroy) {
       try {
-        entity.onDestroy()
+        entity.onDestroy();
       } catch (error) {
-        console.error(`[EntityManager] 엔티티 제거 콜백 오류 (${id}):`, error)
+        console.error(`[EntityManager] 엔티티 제거 콜백 오류 (${id}):`, error);
       }
     }
 
-    this.entities.delete(id)
-    console.log(`[EntityManager] 엔티티 제거: ${id}`)
-    return true
+    this.entities.delete(id);
+    console.log(`[EntityManager] 엔티티 제거: ${id}`);
+    return true;
   }
 
   /**
    * 조건에 맞는 엔티티 제거
    */
   removeEntitiesWhere(predicate) {
-    const toRemove = []
-    
+    const toRemove = [];
+
     this.entities.forEach((entity, id) => {
       if (predicate(entity)) {
-        toRemove.push(id)
+        toRemove.push(id);
       }
-    })
+    });
 
-    toRemove.forEach(id => this.removeEntity(id))
-    return toRemove.length
+    toRemove.forEach(id => this.removeEntity(id));
+    return toRemove.length;
   }
 
   /**
@@ -144,17 +144,17 @@ export default class EntityManager {
    */
   updateAll(deltaTime) {
     this.entities.forEach(entity => {
-      if (!entity.active) return
+      if (!entity.active) return;
 
       // 엔티티의 업데이트 함수 호출
       if (entity.update) {
         try {
-          entity.update(deltaTime)
+          entity.update(deltaTime);
         } catch (error) {
-          console.error(`[EntityManager] 엔티티 업데이트 오류 (${entity.id}):`, error)
+          console.error(`[EntityManager] 엔티티 업데이트 오류 (${entity.id}):`, error);
         }
       }
-    })
+    });
   }
 
   /**
@@ -162,52 +162,52 @@ export default class EntityManager {
    */
   findEntitiesNear(x, y, radius) {
     return Array.from(this.entities.values()).filter(entity => {
-      if (!entity.x || !entity.y) return false
+      if (!entity.x || !entity.y) return false;
 
-      const dx = entity.x - x
-      const dy = entity.y - y
-      const distance = Math.sqrt(dx * dx + dy * dy)
+      const dx = entity.x - x;
+      const dy = entity.y - y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
 
-      return distance <= radius
-    })
+      return distance <= radius;
+    });
   }
 
   /**
    * 엔티티 간 거리 계산
    */
   getDistance(entityA, entityB) {
-    if (!entityA || !entityB) return Infinity
-    if (!entityA.x || !entityA.y || !entityB.x || !entityB.y) return Infinity
+    if (!entityA || !entityB) return Infinity;
+    if (!entityA.x || !entityA.y || !entityB.x || !entityB.y) return Infinity;
 
-    const dx = entityB.x - entityA.x
-    const dy = entityB.y - entityA.y
+    const dx = entityB.x - entityA.x;
+    const dy = entityB.y - entityA.y;
 
-    return Math.sqrt(dx * dx + dy * dy)
+    return Math.sqrt(dx * dx + dy * dy);
   }
 
   /**
    * 가장 가까운 엔티티 찾기
    */
   findNearestEntity(x, y, type = null) {
-    let nearest = null
-    let minDistance = Infinity
+    let nearest = null;
+    let minDistance = Infinity;
 
     this.entities.forEach(entity => {
-      if (type && entity.type !== type) return
-      if (!entity.active) return
-      if (!entity.x || !entity.y) return
+      if (type && entity.type !== type) return;
+      if (!entity.active) return;
+      if (!entity.x || !entity.y) return;
 
-      const dx = entity.x - x
-      const dy = entity.y - y
-      const distance = Math.sqrt(dx * dx + dy * dy)
+      const dx = entity.x - x;
+      const dy = entity.y - y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
 
       if (distance < minDistance) {
-        minDistance = distance
-        nearest = entity
+        minDistance = distance;
+        nearest = entity;
       }
-    })
+    });
 
-    return nearest
+    return nearest;
   }
 
   /**
@@ -215,9 +215,9 @@ export default class EntityManager {
    */
   getEntityCount(type = null) {
     if (type) {
-      return this.getEntitiesByType(type).length
+      return this.getEntitiesByType(type).length;
     }
-    return this.entities.size
+    return this.entities.size;
   }
 
   /**
@@ -227,30 +227,30 @@ export default class EntityManager {
     this.entities.forEach((entity, id) => {
       if (entity.onDestroy) {
         try {
-          entity.onDestroy()
+          entity.onDestroy();
         } catch (error) {
-          console.error(`[EntityManager] 엔티티 정리 오류 (${id}):`, error)
+          console.error(`[EntityManager] 엔티티 정리 오류 (${id}):`, error);
         }
       }
-    })
+    });
 
-    this.entities.clear()
-    console.log('[EntityManager] 모든 엔티티 제거')
+    this.entities.clear();
+    console.log('[EntityManager] 모든 엔티티 제거');
   }
 
   /**
    * 엔티티 존재 여부 확인
    */
   hasEntity(id) {
-    return this.entities.has(id)
+    return this.entities.has(id);
   }
 
   /**
    * 리소스 정리
    */
   cleanup() {
-    this.clearAll()
-    this.entityIdCounter = 0
-    this.isInitialized = false
+    this.clearAll();
+    this.entityIdCounter = 0;
+    this.isInitialized = false;
   }
 }

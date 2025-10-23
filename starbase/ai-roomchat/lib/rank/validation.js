@@ -1,26 +1,26 @@
 export function requireUser(user) {
   if (user) {
-    return true
+    return true;
   }
 
-  alert('로그인이 필요합니다.')
-  return false
+  alert('로그인이 필요합니다.');
+  return false;
 }
 
 export function requireNonEmpty(value, message) {
   if (value) {
-    return true
+    return true;
   }
 
-  alert(message)
-  return false
+  alert(message);
+  return false;
 }
 
 export function requireList(list, message) {
   if (Array.isArray(list) && list.length > 0) {
-    return true
+    return true;
   }
 
-  alert(message)
-  return false
+  alert(message);
+  return false;
 }

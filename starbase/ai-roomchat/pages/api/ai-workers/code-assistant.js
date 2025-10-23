@@ -3,19 +3,19 @@
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' })
+    return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    const { message, language, currentCode, context, prompt, userApiConfig } = req.body
+    const { message, language, currentCode, context, prompt, userApiConfig } = req.body;
 
     // 사용자 API 설정 검증
     if (!userApiConfig) {
       return res.status(400).json({
         success: false,
         error: 'AI API 설정이 필요합니다',
-        needsApiSetup: true
-      })
+        needsApiSetup: true,
+      });
     }
 
     // AI 응답 생성 로직
@@ -25,100 +25,104 @@ export default async function handler(req, res) {
       existingCode: currentCode,
       gameContext: context,
       systemPrompt: prompt,
-      userApiConfig: userApiConfig
-    })
+      userApiConfig: userApiConfig,
+    });
 
     res.status(200).json({
       success: true,
       message: aiResponse.message,
       code: aiResponse.code,
       suggestions: aiResponse.suggestions,
-      timestamp: new Date().toISOString()
-    })
-
+      timestamp: new Date().toISOString(),
+    });
   } catch (error) {
-    console.error('AI 코드 도우미 오류:', error)
-    res.status(500).json({ 
+    console.error('AI 코드 도우미 오류:', error);
+    res.status(500).json({
       success: false,
-      error: '코드 도우미 처리 중 오류가 발생했습니다' 
-    })
+      error: '코드 도우미 처리 중 오류가 발생했습니다',
+    });
   }
 }
 
 // 🎯 AI 코드 도우미 메인 로직
-async function generateAICodeAssistance({ userMessage, programmingLanguage, existingCode, gameContext, systemPrompt, userApiConfig }) {
-  
+async function generateAICodeAssistance({
+  userMessage,
+  programmingLanguage,
+  existingCode,
+  gameContext,
+  systemPrompt,
+  userApiConfig,
+}) {
   // 🔍 메시지 분석
-  const intent = analyzeUserIntent(userMessage)
-  
+  const intent = analyzeUserIntent(userMessage);
+
   // 📚 언어별 전문 지식 베이스
-  const knowledgeBase = getLanguageKnowledgeBase(programmingLanguage)
-  
+  const knowledgeBase = getLanguageKnowledgeBase(programmingLanguage);
+
   // 🎮 게임 개발 패턴 매칭
-  const gamePatterns = matchGameDevelopmentPatterns(userMessage, existingCode)
-  
+  const gamePatterns = matchGameDevelopmentPatterns(userMessage, existingCode);
+
   try {
     // 사용자 설정 API 우선 사용
     if (userApiConfig && userApiConfig.apiKey) {
       return await callExternalAI({
         userMessage,
-        programmingLanguage, 
+        programmingLanguage,
         existingCode,
         gameContext,
         systemPrompt,
         intent,
         knowledgeBase,
         gamePatterns,
-        userApiConfig
-      })
+        userApiConfig,
+      });
     }
-    
+
     // 로컬 AI 응답 (사용자 API 없을 때)
     return generateLocalAIResponse({
       userMessage,
       programmingLanguage,
-      existingCode, 
+      existingCode,
       intent,
       knowledgeBase,
-      gamePatterns
-    })
-    
+      gamePatterns,
+    });
   } catch (error) {
-    console.error('AI 응답 생성 실패:', error)
-    
+    console.error('AI 응답 생성 실패:', error);
+
     // API 오류 시 로컬 응답으로 폴백
     return generateLocalAIResponse({
       userMessage,
       programmingLanguage,
-      existingCode, 
+      existingCode,
       intent,
       knowledgeBase,
       gamePatterns,
-      errorContext: error.message
-    })
+      errorContext: error.message,
+    });
   }
 }
 
 // 🧠 사용자 의도 분석
 function analyzeUserIntent(message) {
   const patterns = {
-    'code_generation': /(?:만들어|생성|작성|구현).*(?:코드|함수|클래스|로직)/i,
-    'bug_fix': /(?:버그|오류|에러|문제|고쳐|수정)/i,
-    'optimization': /(?:최적화|개선|성능|빠르게|효율)/i,
-    'explanation': /(?:설명|이해|무엇|어떻게|왜|원리)/i,
-    'feature_add': /(?:추가|기능|새로운|더|확장)/i,
-    'refactor': /(?:리팩토링|정리|구조|재구성|클린)/i,
-    'testing': /(?:테스트|검증|확인|시험)/i,
-    'documentation': /(?:문서|주석|설명|가이드)/i
-  }
+    code_generation: /(?:만들어|생성|작성|구현).*(?:코드|함수|클래스|로직)/i,
+    bug_fix: /(?:버그|오류|에러|문제|고쳐|수정)/i,
+    optimization: /(?:최적화|개선|성능|빠르게|효율)/i,
+    explanation: /(?:설명|이해|무엇|어떻게|왜|원리)/i,
+    feature_add: /(?:추가|기능|새로운|더|확장)/i,
+    refactor: /(?:리팩토링|정리|구조|재구성|클린)/i,
+    testing: /(?:테스트|검증|확인|시험)/i,
+    documentation: /(?:문서|주석|설명|가이드)/i,
+  };
 
   for (const [intent, pattern] of Object.entries(patterns)) {
     if (pattern.test(message)) {
-      return intent
+      return intent;
     }
   }
-  
-  return 'general_help'
+
+  return 'general_help';
 }
 
 // 📚 언어별 전문 지식 베이스
@@ -127,24 +131,24 @@ function getLanguageKnowledgeBase(language) {
     javascript: {
       gamePatterns: [
         'game loop implementation',
-        'player state management', 
+        'player state management',
         'real-time event handling',
         'WebSocket multiplayer',
         'Canvas rendering',
-        'performance optimization'
+        'performance optimization',
       ],
       commonIssues: [
         'async/await in game loops',
         'memory leaks in animations',
         'state synchronization',
-        'event listener cleanup'
+        'event listener cleanup',
       ],
       bestPractices: [
         'use requestAnimationFrame for smooth animations',
         'implement object pooling for performance',
         'use Web Workers for heavy computations',
-        'debounce rapid user inputs'
-      ]
+        'debounce rapid user inputs',
+      ],
     },
     python: {
       gamePatterns: [
@@ -153,20 +157,20 @@ function getLanguageKnowledgeBase(language) {
         'type hints for maintainability',
         'asyncio for concurrent operations',
         'logging for debugging',
-        'unit testing with pytest'
+        'unit testing with pytest',
       ],
       commonIssues: [
         'mutable default arguments',
         'circular imports in game modules',
         'performance in nested loops',
-        'memory usage with large datasets'
+        'memory usage with large datasets',
       ],
       bestPractices: [
         'use dataclasses for clean entity definitions',
         'implement proper error handling',
         'use context managers for resource management',
-        'profile code for performance bottlenecks'
-      ]
+        'profile code for performance bottlenecks',
+      ],
     },
     sql: {
       gamePatterns: [
@@ -175,20 +179,20 @@ function getLanguageKnowledgeBase(language) {
         'real-time leaderboards',
         'transaction safety',
         'indexing for performance',
-        'data archival strategies'
+        'data archival strategies',
       ],
       commonIssues: [
         'N+1 query problems',
         'deadlock in concurrent access',
         'slow queries on large tables',
-        'data integrity violations'
+        'data integrity violations',
       ],
       bestPractices: [
         'use proper indexes on foreign keys',
         'implement connection pooling',
         'use transactions for data consistency',
-        'regular backup and maintenance'
-      ]
+        'regular backup and maintenance',
+      ],
     },
     json: {
       gamePatterns: [
@@ -197,60 +201,69 @@ function getLanguageKnowledgeBase(language) {
         'localization data',
         'API response formatting',
         'save game serialization',
-        'event data structures'
+        'event data structures',
       ],
       commonIssues: [
         'circular references in objects',
         'large file parsing performance',
         'schema validation errors',
-        'encoding issues with special characters'
+        'encoding issues with special characters',
       ],
       bestPractices: [
         'use JSON Schema for validation',
         'implement proper error handling',
         'consider file size for performance',
-        'use consistent naming conventions'
-      ]
-    }
-  }
-  
-  return knowledgeBases[language] || knowledgeBases.javascript
+        'use consistent naming conventions',
+      ],
+    },
+  };
+
+  return knowledgeBases[language] || knowledgeBases.javascript;
 }
 
 // 🎮 게임 개발 패턴 매칭
 function matchGameDevelopmentPatterns(message, code) {
   const gamePatterns = {
-    'player_management': /(?:플레이어|player|유저|캐릭터)/i,
-    'combat_system': /(?:전투|공격|방어|데미지|combat|attack|defense)/i,
-    'game_state': /(?:게임.*상태|state|턴|round|게임.*로직)/i,
-    'multiplayer': /(?:멀티플레이어|실시간|real-time|multiplayer|socket)/i,
-    'ai_behavior': /(?:AI|인공지능|봇|자동|behavior|intelligent)/i,
-    'database_design': /(?:데이터베이스|저장|조회|database|query|table)/i,
-    'performance': /(?:성능|최적화|빠르게|performance|optimization)/i,
-    'ui_interaction': /(?:UI|인터페이스|버튼|클릭|interface|user)/i
-  }
+    player_management: /(?:플레이어|player|유저|캐릭터)/i,
+    combat_system: /(?:전투|공격|방어|데미지|combat|attack|defense)/i,
+    game_state: /(?:게임.*상태|state|턴|round|게임.*로직)/i,
+    multiplayer: /(?:멀티플레이어|실시간|real-time|multiplayer|socket)/i,
+    ai_behavior: /(?:AI|인공지능|봇|자동|behavior|intelligent)/i,
+    database_design: /(?:데이터베이스|저장|조회|database|query|table)/i,
+    performance: /(?:성능|최적화|빠르게|performance|optimization)/i,
+    ui_interaction: /(?:UI|인터페이스|버튼|클릭|interface|user)/i,
+  };
 
-  const matchedPatterns = []
-  
+  const matchedPatterns = [];
+
   for (const [pattern, regex] of Object.entries(gamePatterns)) {
     if (regex.test(message) || (code && regex.test(code))) {
-      matchedPatterns.push(pattern)
+      matchedPatterns.push(pattern);
     }
   }
-  
-  return matchedPatterns
+
+  return matchedPatterns;
 }
 
 // 🌐 외부 AI API 호출 (사용자 설정 API 사용)
-async function callExternalAI({ userMessage, programmingLanguage, existingCode, gameContext, systemPrompt, intent, knowledgeBase, gamePatterns, userApiConfig }) {
-  
+async function callExternalAI({
+  userMessage,
+  programmingLanguage,
+  existingCode,
+  gameContext,
+  systemPrompt,
+  intent,
+  knowledgeBase,
+  gamePatterns,
+  userApiConfig,
+}) {
   // 사용자가 설정한 API 구성 확인
   if (!userApiConfig || !userApiConfig.apiKey || !userApiConfig.provider) {
-    throw new Error('사용자 API 설정이 필요합니다. AI API 관리에서 API 키를 설정해주세요.')
+    throw new Error('사용자 API 설정이 필요합니다. AI API 관리에서 API 키를 설정해주세요.');
   }
 
-  const { provider, model, apiKey, endpoint } = userApiConfig
-  
+  const { provider, model, apiKey, endpoint } = userApiConfig;
+
   // 시스템 프롬프트 구성
   const fullSystemPrompt = `${systemPrompt}
 
@@ -263,7 +276,7 @@ async function callExternalAI({ userMessage, programmingLanguage, existingCode, 
 - 명확하고 실행 가능한 조언 제공
 - 코드 예시가 필요하면 완전하고 작동하는 코드 제공
 - 게임 개발 베스트 프랙티스 고려
-- 한국어로 친근하게 응답`
+- 한국어로 친근하게 응답`;
 
   const userContent = `현재 코드:
 \`\`\`${programmingLanguage}
@@ -272,9 +285,9 @@ ${existingCode}
 
 게임 컨텍스트: ${JSON.stringify(gameContext, null, 2)}
 
-질문/요청: ${userMessage}`
+질문/요청: ${userMessage}`;
 
-  let response, data
+  let response, data;
 
   try {
     // 제공업체별 API 호출
@@ -283,32 +296,32 @@ ${existingCode}
         response = await fetch(endpoint, {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json'
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
           },
           body: JSON.stringify({
             model: model,
             messages: [
-              { role: "system", content: fullSystemPrompt },
-              { role: "user", content: userContent }
+              { role: 'system', content: fullSystemPrompt },
+              { role: 'user', content: userContent },
             ],
             max_tokens: 2000,
-            temperature: 0.7
-          })
-        })
-        
+            temperature: 0.7,
+          }),
+        });
+
         if (!response.ok) {
-          throw new Error(`OpenAI API 오류: ${response.status} ${response.statusText}`)
+          throw new Error(`OpenAI API 오류: ${response.status} ${response.statusText}`);
         }
-        
-        data = await response.json()
-        const aiMessage = data.choices[0]?.message?.content || '응답을 생성할 수 없습니다.'
-        
+
+        data = await response.json();
+        const aiMessage = data.choices[0]?.message?.content || '응답을 생성할 수 없습니다.';
+
         return {
           message: aiMessage,
           code: extractCodeFromResponse(aiMessage),
-          suggestions: generateSuggestions(intent, gamePatterns, programmingLanguage)
-        }
+          suggestions: generateSuggestions(intent, gamePatterns, programmingLanguage),
+        };
 
       case 'anthropic':
         response = await fetch(endpoint, {
@@ -316,118 +329,118 @@ ${existingCode}
           headers: {
             'x-api-key': apiKey,
             'Content-Type': 'application/json',
-            'anthropic-version': '2023-06-01'
+            'anthropic-version': '2023-06-01',
           },
           body: JSON.stringify({
             model: model,
-            messages: [
-              { role: "user", content: `${fullSystemPrompt}\n\n${userContent}` }
-            ],
-            max_tokens: 2000
-          })
-        })
-        
+            messages: [{ role: 'user', content: `${fullSystemPrompt}\n\n${userContent}` }],
+            max_tokens: 2000,
+          }),
+        });
+
         if (!response.ok) {
-          throw new Error(`Anthropic API 오류: ${response.status} ${response.statusText}`)
+          throw new Error(`Anthropic API 오류: ${response.status} ${response.statusText}`);
         }
-        
-        data = await response.json()
-        const claudeMessage = data.content[0]?.text || '응답을 생성할 수 없습니다.'
-        
+
+        data = await response.json();
+        const claudeMessage = data.content[0]?.text || '응답을 생성할 수 없습니다.';
+
         return {
           message: claudeMessage,
           code: extractCodeFromResponse(claudeMessage),
-          suggestions: generateSuggestions(intent, gamePatterns, programmingLanguage)
-        }
+          suggestions: generateSuggestions(intent, gamePatterns, programmingLanguage),
+        };
 
       case 'google':
-        const googleUrl = `${endpoint}?key=${apiKey}`
+        const googleUrl = `${endpoint}?key=${apiKey}`;
         response = await fetch(googleUrl, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            contents: [{
-              parts: [{ text: `${fullSystemPrompt}\n\n${userContent}` }]
-            }]
-          })
-        })
-        
+            contents: [
+              {
+                parts: [{ text: `${fullSystemPrompt}\n\n${userContent}` }],
+              },
+            ],
+          }),
+        });
+
         if (!response.ok) {
-          throw new Error(`Google API 오류: ${response.status} ${response.statusText}`)
+          throw new Error(`Google API 오류: ${response.status} ${response.statusText}`);
         }
-        
-        data = await response.json()
-        const geminiMessage = data.candidates[0]?.content?.parts[0]?.text || '응답을 생성할 수 없습니다.'
-        
+
+        data = await response.json();
+        const geminiMessage =
+          data.candidates[0]?.content?.parts[0]?.text || '응답을 생성할 수 없습니다.';
+
         return {
           message: geminiMessage,
           code: extractCodeFromResponse(geminiMessage),
-          suggestions: generateSuggestions(intent, gamePatterns, programmingLanguage)
-        }
+          suggestions: generateSuggestions(intent, gamePatterns, programmingLanguage),
+        };
 
       case 'cohere':
         response = await fetch(endpoint, {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json'
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
           },
           body: JSON.stringify({
             model: model,
             prompt: `${fullSystemPrompt}\n\n${userContent}`,
             max_tokens: 2000,
-            temperature: 0.7
-          })
-        })
-        
+            temperature: 0.7,
+          }),
+        });
+
         if (!response.ok) {
-          throw new Error(`Cohere API 오류: ${response.status} ${response.statusText}`)
+          throw new Error(`Cohere API 오류: ${response.status} ${response.statusText}`);
         }
-        
-        data = await response.json()
-        const cohereMessage = data.generations[0]?.text || '응답을 생성할 수 없습니다.'
-        
+
+        data = await response.json();
+        const cohereMessage = data.generations[0]?.text || '응답을 생성할 수 없습니다.';
+
         return {
           message: cohereMessage,
           code: extractCodeFromResponse(cohereMessage),
-          suggestions: generateSuggestions(intent, gamePatterns, programmingLanguage)
-        }
+          suggestions: generateSuggestions(intent, gamePatterns, programmingLanguage),
+        };
 
       case 'local':
         response = await fetch(endpoint, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
           },
           body: JSON.stringify({
             model: model,
             prompt: `${fullSystemPrompt}\n\n${userContent}`,
-            stream: false
-          })
-        })
-        
+            stream: false,
+          }),
+        });
+
         if (!response.ok) {
-          throw new Error(`로컬 API 오류: ${response.status} ${response.statusText}`)
+          throw new Error(`로컬 API 오류: ${response.status} ${response.statusText}`);
         }
-        
-        data = await response.json()
-        const localMessage = data.response || '응답을 생성할 수 없습니다.'
-        
+
+        data = await response.json();
+        const localMessage = data.response || '응답을 생성할 수 없습니다.';
+
         return {
           message: localMessage,
           code: extractCodeFromResponse(localMessage),
-          suggestions: generateSuggestions(intent, gamePatterns, programmingLanguage)
-        }
+          suggestions: generateSuggestions(intent, gamePatterns, programmingLanguage),
+        };
 
       default:
-        throw new Error(`지원하지 않는 AI 제공업체: ${provider}`)
+        throw new Error(`지원하지 않는 AI 제공업체: ${provider}`);
     }
-    
   } catch (error) {
-    console.error(`${provider} API 호출 실패:`, error)
-    throw new Error(`AI API 호출 실패: ${error.message}`)
+    console.error(`${provider} API 호출 실패:`, error);
+    throw new Error(`AI API 호출 실패: ${error.message}`);
   }
 }
 
@@ -439,22 +452,28 @@ function extractCodeFromResponse(message) {
     /```(?:python|py)\n([\s\S]*?)\n```/gi,
     /```(?:sql)\n([\s\S]*?)\n```/gi,
     /```(?:json)\n([\s\S]*?)\n```/gi,
-    /```\n([\s\S]*?)\n```/gi  // 언어 지정 없는 코드 블록
-  ]
-  
+    /```\n([\s\S]*?)\n```/gi, // 언어 지정 없는 코드 블록
+  ];
+
   for (const pattern of patterns) {
-    const match = message.match(pattern)
+    const match = message.match(pattern);
     if (match) {
-      return match[1] || match[0].replace(/```[\w]*\n?/g, '').replace(/\n?```/g, '')
+      return match[1] || match[0].replace(/```[\w]*\n?/g, '').replace(/\n?```/g, '');
     }
   }
-  
-  return null
+
+  return null;
 }
 
 // 🏠 로컬 AI 응답 생성 (외부 API 없을 때)
-function generateLocalAIResponse({ userMessage, programmingLanguage, existingCode, intent, knowledgeBase, gamePatterns }) {
-  
+function generateLocalAIResponse({
+  userMessage,
+  programmingLanguage,
+  existingCode,
+  intent,
+  knowledgeBase,
+  gamePatterns,
+}) {
   const responses = {
     javascript: {
       code_generation: {
@@ -676,9 +695,9 @@ setTimeout(() => {
   player1.pendingAction = { type: 'attack', targetId: player2.id }
 }, 1000)
 
-return game`
+return game`,
       },
-      
+
       bug_fix: {
         message: `🔧 JavaScript 코드의 잠재적 문제점들을 분석해드릴게요!
 
@@ -811,10 +830,10 @@ const DebugHelper = {
   }
 }
 
-return { BugFreeGameSystem, DebugHelper }`
-      }
+return { BugFreeGameSystem, DebugHelper }`,
+      },
     },
-    
+
     python: {
       code_generation: {
         message: `🐍 Python으로 강력한 게임 시스템을 구현해드릴게요!
@@ -1214,13 +1233,13 @@ async def main():
 
 # 실행
 if __name__ == "__main__":
-    asyncio.run(main())`
-      }
-    }
-  }
+    asyncio.run(main())`,
+      },
+    },
+  };
 
   // 의도와 언어에 따른 응답 선택
-  const langResponses = responses[programmingLanguage] || responses.javascript
+  const langResponses = responses[programmingLanguage] || responses.javascript;
   const response = langResponses[intent] || {
     message: `✨ ${programmingLanguage.toUpperCase()} 개발을 도와드릴게요!
 
@@ -1230,46 +1249,52 @@ if __name__ == "__main__":
 - 게임 패턴: ${gamePatterns.join(', ') || '일반적인 요청'}
 
 💡 **추천 사항:**
-${knowledgeBase.bestPractices.slice(0, 3).map(tip => `- ${tip}`).join('\n')}
+${knowledgeBase.bestPractices
+  .slice(0, 3)
+  .map(tip => `- ${tip}`)
+  .join('\n')}
 
 🚨 **주의사항:**
-${knowledgeBase.commonIssues.slice(0, 2).map(issue => `- ${issue}`).join('\n')}`,
-    
-    code: null
-  }
+${knowledgeBase.commonIssues
+  .slice(0, 2)
+  .map(issue => `- ${issue}`)
+  .join('\n')}`,
+
+    code: null,
+  };
 
   return {
     message: response.message,
     code: response.code,
-    suggestions: generateSuggestions(intent, gamePatterns, programmingLanguage)
-  }
+    suggestions: generateSuggestions(intent, gamePatterns, programmingLanguage),
+  };
 }
 
 // 💡 추가 제안사항 생성
 function generateSuggestions(intent, gamePatterns, language) {
-  const suggestions = []
-  
+  const suggestions = [];
+
   if (gamePatterns.includes('player_management')) {
-    suggestions.push('플레이어 상태 저장/로드 시스템 추가')
-    suggestions.push('레벨업 및 스킬 트리 구현')
+    suggestions.push('플레이어 상태 저장/로드 시스템 추가');
+    suggestions.push('레벨업 및 스킬 트리 구현');
   }
-  
+
   if (gamePatterns.includes('combat_system')) {
-    suggestions.push('데미지 계산 공식 개선')
-    suggestions.push('상태 효과 시스템 추가')
+    suggestions.push('데미지 계산 공식 개선');
+    suggestions.push('상태 효과 시스템 추가');
   }
-  
+
   if (language === 'javascript') {
-    suggestions.push('TypeScript로 타입 안전성 향상')
-    suggestions.push('Web Worker로 성능 최적화')
+    suggestions.push('TypeScript로 타입 안전성 향상');
+    suggestions.push('Web Worker로 성능 최적화');
   }
-  
+
   if (language === 'python') {
-    suggestions.push('pytest로 유닛 테스트 작성')
-    suggestions.push('dataclass 검증 로직 추가')
+    suggestions.push('pytest로 유닛 테스트 작성');
+    suggestions.push('dataclass 검증 로직 추가');
   }
-  
-  return suggestions.slice(0, 3) // 최대 3개까지
+
+  return suggestions.slice(0, 3); // 최대 3개까지
 }
 
 // 🆘 폴백 응답 (모든 것이 실패했을 때)
@@ -1285,12 +1310,12 @@ function generateFallbackResponse(userMessage, language) {
 - 공식 문서나 커뮤니티 리소스를 참고해보세요
 
 🔄 잠시 후에 다시 시도해주시면 더 나은 답변을 드릴 수 있습니다!`,
-    
+
     code: null,
     suggestions: [
       '구체적인 에러 메시지 포함하여 질문',
       '단계별로 문제를 나누어 질문',
-      '예제 코드와 함께 질문'
-    ]
-  }
+      '예제 코드와 함께 질문',
+    ],
+  };
 }

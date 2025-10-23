@@ -1,22 +1,16 @@
-'use client'
+'use client';
 
-import { useRef } from 'react'
+import { useRef } from 'react';
 
-export default function HeroBgmUploadCard({
-  label,
-  duration,
-  error,
-  onSelect,
-  onReset,
-}) {
-  const inputRef = useRef(null)
+export default function HeroBgmUploadCard({ label, duration, error, onSelect, onReset }) {
+  const inputRef = useRef(null);
 
   const handleReset = () => {
-    onReset()
+    onReset();
     if (inputRef.current) {
-      inputRef.current.value = ''
+      inputRef.current.value = '';
     }
-  }
+  };
 
   return (
     <div style={{ display: 'grid', gap: 10 }}>
@@ -72,13 +66,13 @@ export default function HeroBgmUploadCard({
           ref={inputRef}
           type="file"
           accept="audio/*"
-          onChange={(event) => onSelect(event.target.files?.[0] || null)}
+          onChange={event => onSelect(event.target.files?.[0] || null)}
           style={{ display: 'none' }}
         />
         {error && <div style={{ color: '#fca5a5', fontSize: 12 }}>{error}</div>}
       </div>
     </div>
-  )
+  );
 }
 
 //

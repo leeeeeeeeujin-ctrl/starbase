@@ -1,7 +1,7 @@
-import useHeroBattles from '../useHeroBattles'
+import useHeroBattles from '../useHeroBattles';
 
 export function useCharacterBattleSection({ hero, selectedGameId }) {
-  const battles = useHeroBattles({ hero, selectedGameId })
+  const battles = useHeroBattles({ hero, selectedGameId });
 
   return {
     status: {
@@ -14,5 +14,5 @@ export function useCharacterBattleSection({ hero, selectedGameId }) {
     actions: {
       showMore: battles.showMore,
     },
-  }
+  };
 }

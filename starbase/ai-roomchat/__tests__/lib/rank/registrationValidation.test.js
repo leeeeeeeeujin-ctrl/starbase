@@ -1,4 +1,4 @@
-import { prepareRegistrationPayload } from '../../../lib/rank/registrationValidation.js'
+import { prepareRegistrationPayload } from '../../../lib/rank/registrationValidation.js';
 
 describe('prepareRegistrationPayload', () => {
   const basePayload = {
@@ -16,13 +16,13 @@ describe('prepareRegistrationPayload', () => {
       brawl_rule: 'banish-on-loss',
       char_limit: 200,
     },
-  }
+  };
 
   it('requires at least one active slot with a role', () => {
-    const result = prepareRegistrationPayload({ ...basePayload, slots: [] })
-    expect(result.ok).toBe(false)
-    expect(result.error).toMatch('슬롯을 활성화')
-  })
+    const result = prepareRegistrationPayload({ ...basePayload, slots: [] });
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch('슬롯을 활성화');
+  });
 
   it('derives role slot counts from the provided slots', () => {
     const result = prepareRegistrationPayload({
@@ -33,27 +33,25 @@ describe('prepareRegistrationPayload', () => {
         { slot_index: 3, role: '수비', active: true },
         { slot_index: 4, role: '수비', active: false },
       ],
-    })
+    });
 
-    expect(result.ok).toBe(true)
-    expect(result.slots).toHaveLength(4)
-    const attack = result.roles.find((role) => role.name === '공격')
-    const defence = result.roles.find((role) => role.name === '수비')
-    expect(attack.slot_count).toBe(1)
-    expect(defence.slot_count).toBe(2)
-  })
+    expect(result.ok).toBe(true);
+    expect(result.slots).toHaveLength(4);
+    const attack = result.roles.find(role => role.name === '공격');
+    const defence = result.roles.find(role => role.name === '수비');
+    expect(attack.slot_count).toBe(1);
+    expect(defence.slot_count).toBe(2);
+  });
 
   it('accepts slot_map alias and trims role names', () => {
     const result = prepareRegistrationPayload({
       ...basePayload,
-      slot_map: [
-        { slot_index: 1, role: '  공격  ', active: true },
-      ],
-    })
+      slot_map: [{ slot_index: 1, role: '  공격  ', active: true }],
+    });
 
-    expect(result.ok).toBe(true)
-    expect(result.slots[0]).toMatchObject({ role: '공격', active: true })
-    const attack = result.roles.find((role) => role.name === '공격')
-    expect(attack.slot_count).toBe(1)
-  })
-})
+    expect(result.ok).toBe(true);
+    expect(result.slots[0]).toMatchObject({ role: '공격', active: true });
+    const attack = result.roles.find(role => role.name === '공격');
+    expect(attack.slot_count).toBe(1);
+  });
+});

@@ -1,92 +1,92 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ensureRpc } from '@/modules/arena/rpcClient'
-import { subscribeToQueue } from '@/modules/arena/realtimeChannels'
-import { readTicket } from '@/modules/arena/ticketStorage'
-import styles from './ReadyVotePanel.module.css'
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ensureRpc } from '@/modules/arena/rpcClient';
+import { subscribeToQueue } from '@/modules/arena/realtimeChannels';
+import { readTicket } from '@/modules/arena/ticketStorage';
+import styles from './ReadyVotePanel.module.css';
 
-const READY_WINDOW_MS = 15000
+const READY_WINDOW_MS = 15000;
 
 export function ReadyVotePanel() {
-  const [ticket, setTicket] = useState(null)
-  const [readyState, setReadyState] = useState('idle')
-  const [countdownEndsAt, setCountdown] = useState(null)
-  const [seatMap, setSeatMap] = useState([])
-  const [error, setError] = useState(null)
-  const [evictedOwnerIds, setEvictedOwnerIds] = useState([])
+  const [ticket, setTicket] = useState(null);
+  const [readyState, setReadyState] = useState('idle');
+  const [countdownEndsAt, setCountdown] = useState(null);
+  const [seatMap, setSeatMap] = useState([]);
+  const [error, setError] = useState(null);
+  const [evictedOwnerIds, setEvictedOwnerIds] = useState([]);
 
   useEffect(() => {
-    setTicket(readTicket())
-  }, [])
+    setTicket(readTicket());
+  }, []);
 
   const countdownSeconds = useMemo(() => {
-    if (!countdownEndsAt) return null
-    const diff = countdownEndsAt - Date.now()
-    return diff > 0 ? Math.ceil(diff / 1000) : 0
-  }, [countdownEndsAt])
+    if (!countdownEndsAt) return null;
+    const diff = countdownEndsAt - Date.now();
+    return diff > 0 ? Math.ceil(diff / 1000) : 0;
+  }, [countdownEndsAt]);
 
   useEffect(() => {
-    if (!ticket?.queue_id) return undefined
-    const unsubscribe = subscribeToQueue(ticket.queue_id, (event) => {
+    if (!ticket?.queue_id) return undefined;
+    const unsubscribe = subscribeToQueue(ticket.queue_id, event => {
       if (event?.payload?.new?.seat_map) {
-        setSeatMap(event.payload.new.seat_map)
+        setSeatMap(event.payload.new.seat_map);
       }
-    })
-    return unsubscribe
-  }, [ticket])
+    });
+    return unsubscribe;
+  }, [ticket]);
 
   const stageMatch = useCallback(async () => {
-    if (!ticket?.id) return
-    setReadyState('staging')
-    setError(null)
+    if (!ticket?.id) return;
+    setReadyState('staging');
+    setError(null);
     try {
       const response = await ensureRpc('stage_rank_match', {
         queue_ticket_id: ticket.id,
-      })
+      });
       if (response?.ready_expires_at) {
-        setCountdown(new Date(response.ready_expires_at).getTime())
+        setCountdown(new Date(response.ready_expires_at).getTime());
       } else {
-        setCountdown(Date.now() + READY_WINDOW_MS)
+        setCountdown(Date.now() + READY_WINDOW_MS);
       }
-      setSeatMap(response?.seats || [])
-      setReadyState('countdown')
+      setSeatMap(response?.seats || []);
+      setReadyState('countdown');
     } catch (stageError) {
-      console.error('stage failed', stageError)
-      setError(stageError)
-      setReadyState('error')
+      console.error('stage failed', stageError);
+      setError(stageError);
+      setReadyState('error');
     }
-  }, [ticket])
+  }, [ticket]);
 
   const kickUnready = useCallback(async () => {
-    if (!seatMap?.length) return
-    const unreadySeats = seatMap.filter((seat) => seat.ready === false)
+    if (!seatMap?.length) return;
+    const unreadySeats = seatMap.filter(seat => seat.ready === false);
     await Promise.all(
-      unreadySeats.map(async (seat) => {
+      unreadySeats.map(async seat => {
         try {
           await ensureRpc('evict_unready_participant', {
             queue_ticket_id: ticket?.id,
             seat_index: seat.index,
-          })
-          setEvictedOwnerIds((prev) =>
-            seat.owner_id ? [...new Set([...prev, seat.owner_id])] : prev,
-          )
+          });
+          setEvictedOwnerIds(prev =>
+            seat.owner_id ? [...new Set([...prev, seat.owner_id])] : prev
+          );
         } catch (evictError) {
-          console.error('eviction failed', evictError)
+          console.error('eviction failed', evictError);
         }
-      }),
-    )
-  }, [seatMap, ticket])
+      })
+    );
+  }, [seatMap, ticket]);
 
   useEffect(() => {
-    if (readyState !== 'countdown' || !countdownEndsAt) return undefined
+    if (readyState !== 'countdown' || !countdownEndsAt) return undefined;
     const timer = setInterval(() => {
       if (Date.now() >= countdownEndsAt) {
-        clearInterval(timer)
-        kickUnready()
-        setReadyState('expired')
+        clearInterval(timer);
+        kickUnready();
+        setReadyState('expired');
       }
-    }, 500)
-    return () => clearInterval(timer)
-  }, [readyState, countdownEndsAt, kickUnready])
+    }, 500);
+    return () => clearInterval(timer);
+  }, [readyState, countdownEndsAt, kickUnready]);
 
   return (
     <section className={styles.panel}>
@@ -97,9 +97,7 @@ export function ReadyVotePanel() {
       <div className={styles.status}>
         <span>상태: {readyState}</span>
         {countdownSeconds !== null ? <span>남은 시간: {countdownSeconds}s</span> : null}
-        {evictedOwnerIds.length ? (
-          <span>퇴장 처리: {evictedOwnerIds.length}명</span>
-        ) : null}
+        {evictedOwnerIds.length ? <span>퇴장 처리: {evictedOwnerIds.length}명</span> : null}
       </div>
       <div className={styles.actions}>
         <button onClick={stageMatch} disabled={!ticket?.id || readyState === 'staging'}>
@@ -111,7 +109,7 @@ export function ReadyVotePanel() {
       </div>
       {error ? <p className={styles.error}>오류: {error.message || String(error)}</p> : null}
       <div className={styles.seats}>
-        {seatMap.map((seat) => (
+        {seatMap.map(seat => (
           <article key={seat.index} className={seat.ready ? styles.ready : styles.pending}>
             <header>
               <h4>{seat.hero_name || '미지정'}</h4>
@@ -122,7 +120,9 @@ export function ReadyVotePanel() {
           </article>
         ))}
       </div>
-      {!ticket ? <p className={styles.helper}>큐 티켓이 필요합니다. 먼저 큐 페이지에서 참가하세요.</p> : null}
+      {!ticket ? (
+        <p className={styles.helper}>큐 티켓이 필요합니다. 먼저 큐 페이지에서 참가하세요.</p>
+      ) : null}
     </section>
-  )
+  );
 }

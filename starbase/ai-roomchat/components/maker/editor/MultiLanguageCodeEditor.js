@@ -1,13 +1,13 @@
 // components/maker/editor/MultiLanguageCodeEditor.js
 // 🚀 AI 개발 환경 - 다중 언어 통합 코드 에디터
 
-'use client'
+'use client';
 
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react';
 
-import { useState, useCallback, useRef, useEffect } from 'react'
-import { apiManager } from '../../../lib/encryption'
-import AIApiManager from '../settings/AIApiManager'
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { apiManager } from '../../../lib/encryption';
+import AIApiManager from '../settings/AIApiManager';
 
 // 지원 언어 정의
 const SUPPORTED_LANGUAGES = {
@@ -55,11 +55,11 @@ const result = gameSystem(
 )
 
 console.log('🎮 게임 결과:', result)
-return result`
+return result`,
   },
   python: {
     name: 'Python',
-    icon: '🐍', 
+    icon: '🐍',
     extension: 'py',
     executable: false,
     color: '#3776ab',
@@ -183,12 +183,12 @@ if __name__ == "__main__":
     # 게임 상태 출력
     status = engine.get_game_status()
     print("🎮 게임 상태:")
-    print(json.dumps(status, ensure_ascii=False, indent=2))`
+    print(json.dumps(status, ensure_ascii=False, indent=2))`,
   },
   sql: {
     name: 'SQL Database',
     icon: '🗃️',
-    extension: 'sql', 
+    extension: 'sql',
     executable: false,
     color: '#336791',
     template: `-- 🎮 게임 데이터베이스 설계 및 쿼리
@@ -383,7 +383,7 @@ SELECT
 FROM player_achievements pa
 JOIN players p ON pa.player_id = p.id  
 JOIN achievements a ON pa.achievement_id = a.id
-ORDER BY pa.achieved_at DESC;`
+ORDER BY pa.achieved_at DESC;`,
   },
   json: {
     name: 'JSON Config',
@@ -688,9 +688,9 @@ ORDER BY pa.achieved_at DESC;`
       }
     ]
   }
-}`
-  }
-}
+}`,
+  },
+};
 
 // 🤖 AI 채팅 도우미 설정
 const AI_ASSISTANT_PROMPTS = {
@@ -708,46 +708,46 @@ const AI_ASSISTANT_PROMPTS = {
 
   json: `당신은 게임 설정 및 밸런싱 전문가입니다.
 게임 규칙, 캐릭터 밸런스, 아이템 설정, AI 동작 패턴을
-JSON 형태로 구조화하여 제공해주세요.`
-}
+JSON 형태로 구조화하여 제공해주세요.`,
+};
 
-export default function MultiLanguageCodeEditor({ 
-  onCodeRun, 
-  initialCode = '', 
+export default function MultiLanguageCodeEditor({
+  onCodeRun,
+  initialCode = '',
   gameContext = {},
-  visible = false 
+  visible = false,
 }) {
-  const [selectedLanguage, setSelectedLanguage] = useState('javascript')
+  const [selectedLanguage, setSelectedLanguage] = useState('javascript');
   const [code, setCode] = useState(() => {
-    return initialCode || SUPPORTED_LANGUAGES.javascript.template
-  })
-  const [aiChat, setAiChat] = useState('')
-  const [chatHistory, setChatHistory] = useState([])
-  const [isAiThinking, setIsAiThinking] = useState(false)
-  const [output, setOutput] = useState('')
-  const [isRunning, setIsRunning] = useState(false)
-  const [isDarkMode, setIsDarkMode] = useState(true)
-  const [showApiManager, setShowApiManager] = useState(false)
-  const [selectedApiConfig, setSelectedApiConfig] = useState(null)
-  const textareaRef = useRef(null)
-  const aiInputRef = useRef(null)
+    return initialCode || SUPPORTED_LANGUAGES.javascript.template;
+  });
+  const [aiChat, setAiChat] = useState('');
+  const [chatHistory, setChatHistory] = useState([]);
+  const [isAiThinking, setIsAiThinking] = useState(false);
+  const [output, setOutput] = useState('');
+  const [isRunning, setIsRunning] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(true);
+  const [showApiManager, setShowApiManager] = useState(false);
+  const [selectedApiConfig, setSelectedApiConfig] = useState(null);
+  const textareaRef = useRef(null);
+  const aiInputRef = useRef(null);
 
   // API 설정 로드
   useEffect(() => {
-    const activeApis = apiManager.getActiveApis()
+    const activeApis = apiManager.getActiveApis();
     if (activeApis.length > 0) {
       // 첫 번째 활성 API를 기본값으로 설정
-      const firstApi = activeApis[0]
-      const apiKey = apiManager.getActiveApiKey(firstApi.provider, firstApi.model)
-      
+      const firstApi = activeApis[0];
+      const apiKey = apiManager.getActiveApiKey(firstApi.provider, firstApi.model);
+
       setSelectedApiConfig({
         provider: firstApi.provider,
         model: firstApi.model,
         apiKey: apiKey,
-        endpoint: getApiEndpoint(firstApi.provider, firstApi.model)
-      })
+        endpoint: getApiEndpoint(firstApi.provider, firstApi.model),
+      });
     }
-  }, [])
+  }, []);
 
   // API 엔드포인트 가져오기
   const getApiEndpoint = (provider, model) => {
@@ -756,49 +756,54 @@ export default function MultiLanguageCodeEditor({
       anthropic: 'https://api.anthropic.com/v1/messages',
       google: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent',
       cohere: 'https://api.cohere.ai/v1/generate',
-      local: 'http://localhost:11434/api/generate'
-    }
-    return providers[provider]
-  }
+      local: 'http://localhost:11434/api/generate',
+    };
+    return providers[provider];
+  };
 
   // 언어 변경 핸들러
-  const handleLanguageChange = useCallback((newLanguage) => {
-    setSelectedLanguage(newLanguage)
-    setCode(SUPPORTED_LANGUAGES[newLanguage].template)
-    setOutput('')
-    setChatHistory([{
-      type: 'system',
-      message: `🔄 ${SUPPORTED_LANGUAGES[newLanguage].name} 환경으로 전환되었습니다!`,
-      timestamp: new Date().toLocaleTimeString()
-    }])
-  }, [])
+  const handleLanguageChange = useCallback(newLanguage => {
+    setSelectedLanguage(newLanguage);
+    setCode(SUPPORTED_LANGUAGES[newLanguage].template);
+    setOutput('');
+    setChatHistory([
+      {
+        type: 'system',
+        message: `🔄 ${SUPPORTED_LANGUAGES[newLanguage].name} 환경으로 전환되었습니다!`,
+        timestamp: new Date().toLocaleTimeString(),
+      },
+    ]);
+  }, []);
 
   // AI 도우미 채팅
   const handleAiChat = useCallback(async () => {
-    if (!aiChat.trim() || isAiThinking) return
+    if (!aiChat.trim() || isAiThinking) return;
 
-    const userMessage = aiChat.trim()
-    setAiChat('')
-    setIsAiThinking(true)
+    const userMessage = aiChat.trim();
+    setAiChat('');
+    setIsAiThinking(true);
 
     // 사용자 메시지 추가
     const newUserMessage = {
       type: 'user',
       message: userMessage,
-      timestamp: new Date().toLocaleTimeString()
-    }
+      timestamp: new Date().toLocaleTimeString(),
+    };
 
-    setChatHistory(prev => [...prev, newUserMessage])
+    setChatHistory(prev => [...prev, newUserMessage]);
 
     try {
       // API 설정 확인
       if (!selectedApiConfig) {
-        setChatHistory(prev => [...prev, {
-          type: 'error',
-          message: '🚨 AI API가 설정되지 않았습니다. 설정 버튼을 클릭하여 API를 추가해주세요.',
-          timestamp: new Date().toLocaleTimeString()
-        }])
-        return
+        setChatHistory(prev => [
+          ...prev,
+          {
+            type: 'error',
+            message: '🚨 AI API가 설정되지 않았습니다. 설정 버튼을 클릭하여 API를 추가해주세요.',
+            timestamp: new Date().toLocaleTimeString(),
+          },
+        ]);
+        return;
       }
 
       // AI 응답 생성 (사용자 설정 API 사용)
@@ -811,87 +816,96 @@ export default function MultiLanguageCodeEditor({
           currentCode: code,
           context: gameContext,
           prompt: AI_ASSISTANT_PROMPTS[selectedLanguage],
-          userApiConfig: selectedApiConfig
-        })
-      })
+          userApiConfig: selectedApiConfig,
+        }),
+      });
 
       if (!response.ok) {
-        const errorData = await response.json()
+        const errorData = await response.json();
         if (errorData.needsApiSetup) {
-          setChatHistory(prev => [...prev, {
-            type: 'error',
-            message: '🔑 AI API 설정이 필요합니다. 설정 버튼을 클릭하여 API 키를 추가해주세요.',
-            timestamp: new Date().toLocaleTimeString()
-          }])
-          return
+          setChatHistory(prev => [
+            ...prev,
+            {
+              type: 'error',
+              message: '🔑 AI API 설정이 필요합니다. 설정 버튼을 클릭하여 API 키를 추가해주세요.',
+              timestamp: new Date().toLocaleTimeString(),
+            },
+          ]);
+          return;
         }
-        throw new Error(errorData.error || 'AI 응답 실패')
+        throw new Error(errorData.error || 'AI 응답 실패');
       }
 
-      const aiResponse = await response.json()
-      
+      const aiResponse = await response.json();
+
       // AI 응답 추가
       const aiMessage = {
         type: 'ai',
         message: aiResponse.message || '죄송합니다. 응답을 생성할 수 없습니다.',
         code: aiResponse.code,
         suggestions: aiResponse.suggestions,
-        timestamp: new Date().toLocaleTimeString()
-      }
+        timestamp: new Date().toLocaleTimeString(),
+      };
 
-      setChatHistory(prev => [...prev, aiMessage])
+      setChatHistory(prev => [...prev, aiMessage]);
 
       // 코드 제안이 있으면 적용할지 물어보기
       if (aiResponse.code) {
-        const applyCode = window.confirm('AI가 제안한 코드를 적용하시겠습니까?')
+        const applyCode = window.confirm('AI가 제안한 코드를 적용하시겠습니까?');
         if (applyCode) {
-          setCode(aiResponse.code)
+          setCode(aiResponse.code);
         }
       }
-
     } catch (error) {
-      console.error('AI 채팅 오류:', error)
-      setChatHistory(prev => [...prev, {
-        type: 'error',
-        message: '🚨 AI 응답 중 오류가 발생했습니다. 다시 시도해주세요.',
-        timestamp: new Date().toLocaleTimeString()
-      }])
+      console.error('AI 채팅 오류:', error);
+      setChatHistory(prev => [
+        ...prev,
+        {
+          type: 'error',
+          message: '🚨 AI 응답 중 오류가 발생했습니다. 다시 시도해주세요.',
+          timestamp: new Date().toLocaleTimeString(),
+        },
+      ]);
     } finally {
-      setIsAiThinking(false)
+      setIsAiThinking(false);
     }
-  }, [aiChat, isAiThinking, selectedLanguage, code, gameContext])
+  }, [aiChat, isAiThinking, selectedLanguage, code, gameContext]);
 
   // 코드 실행
   const executeCode = useCallback(async () => {
-    if (isRunning) return
+    if (isRunning) return;
 
-    const currentLang = SUPPORTED_LANGUAGES[selectedLanguage]
-    
+    const currentLang = SUPPORTED_LANGUAGES[selectedLanguage];
+
     if (!currentLang.executable) {
-      setOutput(`❌ ${currentLang.name}는 브라우저에서 직접 실행할 수 없습니다.\n💡 코드를 확인하고 외부 환경에서 테스트해보세요!`)
-      return
+      setOutput(
+        `❌ ${currentLang.name}는 브라우저에서 직접 실행할 수 없습니다.\n💡 코드를 확인하고 외부 환경에서 테스트해보세요!`
+      );
+      return;
     }
 
-    setIsRunning(true)
-    setOutput('🚀 코드 실행 중...')
+    setIsRunning(true);
+    setOutput('🚀 코드 실행 중...');
 
     try {
       if (selectedLanguage === 'javascript') {
         // JavaScript 실행
-        const originalConsoleLog = console.log
-        const logs = []
-        
-        console.log = (...args) => {
-          logs.push(args.map(arg => 
-            typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
-          ).join(' '))
-          originalConsoleLog(...args)
-        }
+        const originalConsoleLog = console.log;
+        const logs = [];
 
-        const result = new Function('gameContext', code)(gameContext)
-        
-        console.log = originalConsoleLog
-        
+        console.log = (...args) => {
+          logs.push(
+            args
+              .map(arg => (typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)))
+              .join(' ')
+          );
+          originalConsoleLog(...args);
+        };
+
+        const result = new Function('gameContext', code)(gameContext);
+
+        console.log = originalConsoleLog;
+
         const output = [
           '✅ JavaScript 실행 완료!',
           '',
@@ -899,54 +913,57 @@ export default function MultiLanguageCodeEditor({
           ...logs,
           '',
           '🎯 반환값:',
-          typeof result === 'object' ? JSON.stringify(result, null, 2) : String(result)
-        ].join('\n')
-        
-        setOutput(output)
-        onCodeRun && onCodeRun({ success: true, result, logs })
-        
+          typeof result === 'object' ? JSON.stringify(result, null, 2) : String(result),
+        ].join('\n');
+
+        setOutput(output);
+        onCodeRun && onCodeRun({ success: true, result, logs });
       }
     } catch (error) {
-      console.error('코드 실행 오류:', error)
-      setOutput(`❌ 실행 오류:\n${error.message}\n\n💡 코드를 다시 확인해보세요!`)
-      onCodeRun && onCodeRun({ success: false, error: error.message })
+      console.error('코드 실행 오류:', error);
+      setOutput(`❌ 실행 오류:\n${error.message}\n\n💡 코드를 다시 확인해보세요!`);
+      onCodeRun && onCodeRun({ success: false, error: error.message });
     } finally {
-      setIsRunning(false)
+      setIsRunning(false);
     }
-  }, [code, selectedLanguage, isRunning, gameContext, onCodeRun])
+  }, [code, selectedLanguage, isRunning, gameContext, onCodeRun]);
 
   // 키보드 단축키
   useEffect(() => {
-    const handleKeyDown = (e) => {
+    const handleKeyDown = e => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault()
-        executeCode()
+        e.preventDefault();
+        executeCode();
       }
       if ((e.ctrlKey || e.metaKey) && e.key === '/') {
-        e.preventDefault()
-        aiInputRef.current?.focus()
+        e.preventDefault();
+        aiInputRef.current?.focus();
       }
-    }
+    };
 
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [executeCode])
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [executeCode]);
 
-  if (!visible) return null
+  if (!visible) return null;
 
-  const currentLang = SUPPORTED_LANGUAGES[selectedLanguage]
+  const currentLang = SUPPORTED_LANGUAGES[selectedLanguage];
 
   return (
-    <div className={`fixed inset-0 z-50 ${isDarkMode ? 'bg-gray-900' : 'bg-white'} transition-colors`}>
+    <div
+      className={`fixed inset-0 z-50 ${isDarkMode ? 'bg-gray-900' : 'bg-white'} transition-colors`}
+    >
       {/* 헤더 */}
-      <div className={`flex items-center justify-between p-4 border-b ${
-        isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-gray-50'
-      }`}>
+      <div
+        className={`flex items-center justify-between p-4 border-b ${
+          isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-gray-50'
+        }`}
+      >
         <div className="flex items-center space-x-4">
           <h2 className={`text-xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
             🚀 AI 개발 환경
           </h2>
-          
+
           {/* 언어 선택 */}
           <div className="flex space-x-2">
             {Object.entries(SUPPORTED_LANGUAGES).map(([key, lang]) => (
@@ -956,12 +973,12 @@ export default function MultiLanguageCodeEditor({
                 className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                   selectedLanguage === key
                     ? 'text-white shadow-lg transform scale-105'
-                    : isDarkMode 
-                      ? 'text-gray-300 bg-gray-700 hover:bg-gray-600' 
+                    : isDarkMode
+                      ? 'text-gray-300 bg-gray-700 hover:bg-gray-600'
                       : 'text-gray-700 bg-gray-200 hover:bg-gray-300'
                 }`}
                 style={{
-                  backgroundColor: selectedLanguage === key ? lang.color : undefined
+                  backgroundColor: selectedLanguage === key ? lang.color : undefined,
                 }}
               >
                 {lang.icon} {lang.name}
@@ -976,8 +993,12 @@ export default function MultiLanguageCodeEditor({
             onClick={() => setShowApiManager(true)}
             className={`p-2 rounded-lg ${
               selectedApiConfig
-                ? isDarkMode ? 'bg-green-700 text-green-200' : 'bg-green-200 text-green-800'
-                : isDarkMode ? 'bg-red-700 text-red-200' : 'bg-red-200 text-red-800'
+                ? isDarkMode
+                  ? 'bg-green-700 text-green-200'
+                  : 'bg-green-200 text-green-800'
+                : isDarkMode
+                  ? 'bg-red-700 text-red-200'
+                  : 'bg-red-200 text-red-800'
             }`}
             title={selectedApiConfig ? `연결됨: ${selectedApiConfig.provider}` : 'AI API 설정 필요'}
           >
@@ -1027,10 +1048,10 @@ export default function MultiLanguageCodeEditor({
             <textarea
               ref={textareaRef}
               value={code}
-              onChange={(e) => setCode(e.target.value)}
+              onChange={e => setCode(e.target.value)}
               className={`w-full h-full font-mono text-sm resize-none border rounded-lg p-4 ${
-                isDarkMode 
-                  ? 'bg-gray-800 text-green-400 border-gray-600 focus:border-green-500' 
+                isDarkMode
+                  ? 'bg-gray-800 text-green-400 border-gray-600 focus:border-green-500'
                   : 'bg-gray-50 text-gray-900 border-gray-300 focus:border-blue-500'
               } focus:outline-none focus:ring-2 ${
                 isDarkMode ? 'focus:ring-green-500' : 'focus:ring-blue-500'
@@ -1043,8 +1064,12 @@ export default function MultiLanguageCodeEditor({
           {/* 실행 결과 */}
           {output && (
             <div className={`h-64 border-t ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-              <div className={`h-full p-4 ${isDarkMode ? 'bg-black' : 'bg-gray-50'} overflow-y-auto`}>
-                <pre className={`text-sm ${isDarkMode ? 'text-green-300' : 'text-gray-800'} whitespace-pre-wrap`}>
+              <div
+                className={`h-full p-4 ${isDarkMode ? 'bg-black' : 'bg-gray-50'} overflow-y-auto`}
+              >
+                <pre
+                  className={`text-sm ${isDarkMode ? 'text-green-300' : 'text-gray-800'} whitespace-pre-wrap`}
+                >
                   {output}
                 </pre>
               </div>
@@ -1053,7 +1078,9 @@ export default function MultiLanguageCodeEditor({
         </div>
 
         {/* AI 채팅 패널 */}
-        <div className={`w-80 border-l ${isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-gray-50'} flex flex-col`}>
+        <div
+          className={`w-80 border-l ${isDarkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-gray-50'} flex flex-col`}
+        >
           {/* 채팅 헤더 */}
           <div className={`p-3 border-b ${isDarkMode ? 'border-gray-600' : 'border-gray-200'}`}>
             <h3 className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
@@ -1068,34 +1095,38 @@ export default function MultiLanguageCodeEditor({
           <div className="flex-1 p-3 overflow-y-auto space-y-3">
             {chatHistory.map((msg, idx) => (
               <div key={idx} className={`${msg.type === 'user' ? 'text-right' : 'text-left'}`}>
-                <div className={`inline-block max-w-[90%] p-3 rounded-lg text-sm ${
-                  msg.type === 'user'
-                    ? 'bg-blue-600 text-white'
-                    : msg.type === 'error'
-                    ? 'bg-red-600 text-white'
-                    : isDarkMode 
-                      ? 'bg-gray-700 text-gray-100' 
-                      : 'bg-white text-gray-900 border'
-                }`}>
+                <div
+                  className={`inline-block max-w-[90%] p-3 rounded-lg text-sm ${
+                    msg.type === 'user'
+                      ? 'bg-blue-600 text-white'
+                      : msg.type === 'error'
+                        ? 'bg-red-600 text-white'
+                        : isDarkMode
+                          ? 'bg-gray-700 text-gray-100'
+                          : 'bg-white text-gray-900 border'
+                  }`}
+                >
                   <div className="whitespace-pre-wrap">{msg.message}</div>
                   {msg.code && (
-                    <pre className={`mt-2 p-2 text-xs rounded ${
-                      isDarkMode ? 'bg-gray-800' : 'bg-gray-100'
-                    } overflow-x-auto`}>
+                    <pre
+                      className={`mt-2 p-2 text-xs rounded ${
+                        isDarkMode ? 'bg-gray-800' : 'bg-gray-100'
+                      } overflow-x-auto`}
+                    >
                       {msg.code}
                     </pre>
                   )}
-                  <div className={`text-xs mt-1 opacity-70`}>
-                    {msg.timestamp}
-                  </div>
+                  <div className={`text-xs mt-1 opacity-70`}>{msg.timestamp}</div>
                 </div>
               </div>
             ))}
             {isAiThinking && (
               <div className="text-left">
-                <div className={`inline-block p-3 rounded-lg ${
-                  isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-white text-gray-600 border'
-                }`}>
+                <div
+                  className={`inline-block p-3 rounded-lg ${
+                    isDarkMode ? 'bg-gray-700 text-gray-300' : 'bg-white text-gray-600 border'
+                  }`}
+                >
                   <div className="flex items-center space-x-2">
                     <div className="animate-spin">🤖</div>
                     <span className="text-sm">AI가 생각 중...</span>
@@ -1112,12 +1143,12 @@ export default function MultiLanguageCodeEditor({
                 ref={aiInputRef}
                 type="text"
                 value={aiChat}
-                onChange={(e) => setAiChat(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleAiChat()}
+                onChange={e => setAiChat(e.target.value)}
+                onKeyPress={e => e.key === 'Enter' && handleAiChat()}
                 placeholder="AI에게 질문하세요... (Ctrl+/)"
                 className={`flex-1 px-3 py-2 text-sm rounded-lg border ${
-                  isDarkMode 
-                    ? 'bg-gray-700 text-white border-gray-600 focus:border-blue-500' 
+                  isDarkMode
+                    ? 'bg-gray-700 text-white border-gray-600 focus:border-blue-500'
                     : 'bg-white text-gray-900 border-gray-300 focus:border-blue-500'
                 } focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50`}
                 disabled={isAiThinking}
@@ -1145,24 +1176,24 @@ export default function MultiLanguageCodeEditor({
       <AIApiManager
         visible={showApiManager}
         onClose={() => {
-          setShowApiManager(false)
+          setShowApiManager(false);
           // API 설정 변경 후 다시 로드
-          const activeApis = apiManager.getActiveApis()
+          const activeApis = apiManager.getActiveApis();
           if (activeApis.length > 0) {
-            const firstApi = activeApis[0]
-            const apiKey = apiManager.getActiveApiKey(firstApi.provider, firstApi.model)
-            
+            const firstApi = activeApis[0];
+            const apiKey = apiManager.getActiveApiKey(firstApi.provider, firstApi.model);
+
             setSelectedApiConfig({
               provider: firstApi.provider,
               model: firstApi.model,
               apiKey: apiKey,
-              endpoint: getApiEndpoint(firstApi.provider, firstApi.model)
-            })
+              endpoint: getApiEndpoint(firstApi.provider, firstApi.model),
+            });
           } else {
-            setSelectedApiConfig(null)
+            setSelectedApiConfig(null);
           }
         }}
       />
     </div>
-  )
+  );
 }

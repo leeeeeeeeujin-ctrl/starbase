@@ -1,34 +1,32 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState } from 'react';
 
-import styles from './styles'
+import styles from './styles';
 
 export default function HeroCard({ hero, onSelect }) {
-  const [active, setActive] = useState(false)
+  const [active, setActive] = useState(false);
 
   const heroName = useMemo(() => {
-    if (!hero) return '이름 없는 영웅'
-    const name = typeof hero.name === 'string' ? hero.name.trim() : ''
-    return name || '이름 없는 영웅'
-  }, [hero])
+    if (!hero) return '이름 없는 영웅';
+    const name = typeof hero.name === 'string' ? hero.name.trim() : '';
+    return name || '이름 없는 영웅';
+  }, [hero]);
 
   const handleClick = () => {
     if (typeof onSelect === 'function') {
-      onSelect(hero)
+      onSelect(hero);
     }
-  }
+  };
 
   const cardStyle = {
     ...styles.heroButton,
     transform: active ? 'scale(0.97)' : 'scale(1)',
-    boxShadow: active
-      ? '0 32px 75px -56px rgba(59,130,246,0.85)'
-      : styles.heroButton.boxShadow,
-  }
+    boxShadow: active ? '0 32px 75px -56px rgba(59,130,246,0.85)' : styles.heroButton.boxShadow,
+  };
 
   const imageStyle = {
     ...styles.heroImage,
     transform: active ? 'scale(1)' : styles.heroImage.transform,
-  }
+  };
 
   return (
     <button
@@ -54,5 +52,5 @@ export default function HeroCard({ hero, onSelect }) {
         </div>
       </div>
     </button>
-  )
+  );
 }

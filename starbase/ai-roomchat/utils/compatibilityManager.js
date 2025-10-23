@@ -11,18 +11,24 @@ try {
     // with a plain, writable object copy so tests can mutate it.
     try {
       const globalNavDesc = Object.getOwnPropertyDescriptor(global, 'navigator');
-      if (globalNavDesc && typeof globalNavDesc.get === 'function' && typeof globalNavDesc.set === 'undefined') {
+      if (
+        globalNavDesc &&
+        typeof globalNavDesc.get === 'function' &&
+        typeof globalNavDesc.set === 'undefined'
+      ) {
         try {
           const navCopy = Object.assign({}, global.navigator || {});
           Object.defineProperty(global, 'navigator', {
             value: navCopy,
             writable: true,
             configurable: true,
-            enumerable: true
+            enumerable: true,
           });
         } catch (e) {
           // fallback: attempt a best-effort assignment
-          try { global.navigator = Object.assign({}, global.navigator || {}); } catch (e2) {}
+          try {
+            global.navigator = Object.assign({}, global.navigator || {});
+          } catch (e2) {}
         }
       } else {
         const navDesc = Object.getOwnPropertyDescriptor(global.navigator, 'userAgent');
@@ -41,7 +47,7 @@ try {
 
 /**
  * 🔧 호환성 관리자 - 통합 호환성 시스템
- * 
+ *
  * 브라우저 감지, 폴리필 로드, 기능 대체를 통합 관리하는 시스템
  */
 
@@ -55,11 +61,11 @@ class CompatibilityManager {
     this.compatibilityLevel = 'unknown';
     this.isInitialized = false;
     this.adaptations = new Map();
-    
+
     // 환경 정보
     this.environment = universalAdapter.getEnvironmentInfo();
     this.universalConfig = universalAdapter.getConfig();
-    
+
     // 초기화 완료 콜백들
     this.onReadyCallbacks = [];
   }
@@ -71,14 +77,26 @@ class CompatibilityManager {
    */
   detectFromGlobals() {
     // Prefer globals (tests set `global.navigator` and `global.window`)
-    const win = (typeof global !== 'undefined' && global.window) ? global.window : (typeof window !== 'undefined' ? window : {});
+    const win =
+      typeof global !== 'undefined' && global.window
+        ? global.window
+        : typeof window !== 'undefined'
+          ? window
+          : {};
     // Some test setups set navigator on global, others on window.navigator - prefer either
-    const nav = (typeof global !== 'undefined' && global.navigator) ? global.navigator : (win && win.navigator) ? win.navigator : (typeof navigator !== 'undefined' ? navigator : {});
+    const nav =
+      typeof global !== 'undefined' && global.navigator
+        ? global.navigator
+        : win && win.navigator
+          ? win.navigator
+          : typeof navigator !== 'undefined'
+            ? navigator
+            : {};
 
     // Helper to safely read userAgent even when it's a non-enumerable accessor
     // or defined via a getter. We define it early because subsequent checks
     // (including explicit-empty detection) rely on it.
-    const readUA = (obj) => {
+    const readUA = obj => {
       try {
         if (!obj) return undefined;
         const desc = Object.getOwnPropertyDescriptor(obj, 'userAgent');
@@ -99,12 +117,26 @@ class CompatibilityManager {
     // Use readUA helper to inspect navigator accessors/getters for empty string
     const explicitEmptyOnAnyNavigator = (() => {
       try {
-        const gu = (o) => {
-          try { return (typeof readUA === 'function') ? readUA(o) : (o && o.userAgent); } catch (e) { return undefined; }
+        const gu = o => {
+          try {
+            return typeof readUA === 'function' ? readUA(o) : o && o.userAgent;
+          } catch (e) {
+            return undefined;
+          }
         };
-        return ((global && global.navigator && Object.prototype.hasOwnProperty.call(global.navigator, 'userAgent') && String(gu(global.navigator) || '') === '') ||
-                (win && win.navigator && Object.prototype.hasOwnProperty.call(win.navigator, 'userAgent') && String(gu(win.navigator) || '') === '') ||
-                (nav && Object.prototype.hasOwnProperty.call(nav, 'userAgent') && String(gu(nav) || '') === ''));
+        return (
+          (global &&
+            global.navigator &&
+            Object.prototype.hasOwnProperty.call(global.navigator, 'userAgent') &&
+            String(gu(global.navigator) || '') === '') ||
+          (win &&
+            win.navigator &&
+            Object.prototype.hasOwnProperty.call(win.navigator, 'userAgent') &&
+            String(gu(win.navigator) || '') === '') ||
+          (nav &&
+            Object.prototype.hasOwnProperty.call(nav, 'userAgent') &&
+            String(gu(nav) || '') === '')
+        );
       } catch (e) {
         return false;
       }
@@ -122,7 +154,7 @@ class CompatibilityManager {
       // Strongly prefer an explicit own-property `userAgent` set on
       // global.navigator or window.navigator by tests. This honors
       // cases where tests set `userAgent` to the empty string.
-      const tryOwn = (obj) => {
+      const tryOwn = obj => {
         try {
           if (!obj) return undefined;
           if (Object.prototype.hasOwnProperty.call(obj, 'userAgent')) {
@@ -153,7 +185,7 @@ class CompatibilityManager {
           readUA(global && global.navigator),
           readUA(win && win.navigator),
           readUA(nav),
-          readUA(typeof navigator !== 'undefined' ? navigator : undefined)
+          readUA(typeof navigator !== 'undefined' ? navigator : undefined),
         ].filter(v => typeof v !== 'undefined');
 
         // Pick the first non-empty string candidate; otherwise join all non-empty
@@ -175,44 +207,70 @@ class CompatibilityManager {
       readUA(global && global.navigator) || '',
       readUA(win && win.navigator) || '',
       readUA(nav) || '',
-      uaRawStr || ''
-    ].filter(Boolean).join(' ').toLowerCase();
-  // If an explicit empty UA was set on any navigator, short-circuit to Unknown
-  // to match test expectations.
-  const explicitEmptyUA = explicitEmptyOnAnyNavigator || (typeof ownUA !== 'undefined' && String(ownUA || '') === '');
+      uaRawStr || '',
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    // If an explicit empty UA was set on any navigator, short-circuit to Unknown
+    // to match test expectations.
+    const explicitEmptyUA =
+      explicitEmptyOnAnyNavigator || (typeof ownUA !== 'undefined' && String(ownUA || '') === '');
     // Debugging aid for test runs
     try {
       // eslint-disable-next-line no-console
       console.log('[detectFromGlobals] chosen userAgent=', uaRawStr);
       try {
         // eslint-disable-next-line no-console
-        console.log('[detectFromGlobals] global.navigator.descriptor=', typeof global !== 'undefined' && Object.getOwnPropertyDescriptor ? Object.getOwnPropertyDescriptor(global, 'navigator') : null);
+        console.log(
+          '[detectFromGlobals] global.navigator.descriptor=',
+          typeof global !== 'undefined' && Object.getOwnPropertyDescriptor
+            ? Object.getOwnPropertyDescriptor(global, 'navigator')
+            : null
+        );
       } catch (e) {
         // ignore
       }
       // eslint-disable-next-line no-console
-      console.log('[detectFromGlobals] window keys=', Object.keys(win || {}).slice(0,50));
+      console.log('[detectFromGlobals] window keys=', Object.keys(win || {}).slice(0, 50));
       // Debug global.navigator content to see test-injected values
       try {
         // eslint-disable-next-line no-console
-        console.log('[detectFromGlobals] global.navigator type=', typeof global.navigator, 'keys=', Object.keys(global.navigator || {}).slice(0,20));
+        console.log(
+          '[detectFromGlobals] global.navigator type=',
+          typeof global.navigator,
+          'keys=',
+          Object.keys(global.navigator || {}).slice(0, 20)
+        );
         // eslint-disable-next-line no-console
-        console.log('[detectFromGlobals] global.navigator.userAgent=', (global.navigator && Object.prototype.hasOwnProperty.call(global.navigator, 'userAgent')) ? global.navigator.userAgent : undefined);
+        console.log(
+          '[detectFromGlobals] global.navigator.userAgent=',
+          global.navigator && Object.prototype.hasOwnProperty.call(global.navigator, 'userAgent')
+            ? global.navigator.userAgent
+            : undefined
+        );
       } catch (e2) {
         // ignore
       }
     } catch (e) {
       // ignore
     }
-  let name = 'Unknown';
-  let version = '0';
-  let level = 'minimal';
+    let name = 'Unknown';
+    let version = '0';
+    let level = 'minimal';
 
-  // Prefer explicit UA parsing when possible (tests set userAgent strings)
+    // Prefer explicit UA parsing when possible (tests set userAgent strings)
     // UA parsing: use the original UA string (case-insensitive matching) to
     // extract version tokens exactly as tests expect.
     const normalizeVersion = (v, parts = 3) => {
-      try { return String(v || '').split('.').slice(0, parts).join('.'); } catch (e) { return String(v || ''); }
+      try {
+        return String(v || '')
+          .split('.')
+          .slice(0, parts)
+          .join('.');
+      } catch (e) {
+        return String(v || '');
+      }
     };
 
     if (/trident|msie|rv:11/i.test(uaRawStr)) {
@@ -245,22 +303,41 @@ class CompatibilityManager {
     const features = {
       fetch: hasOwn(win, 'fetch') ? !!win.fetch : !!win.fetch,
       promise: hasOwn(win, 'Promise') ? !!win.Promise : !!win.Promise,
-      abortController: hasOwn(win, 'AbortController') ? !!win.AbortController : !!(win.AbortController || win.AbortSignal),
-      intersectionObserver: hasOwn(win, 'IntersectionObserver') ? !!win.IntersectionObserver : !!win.IntersectionObserver,
+      abortController: hasOwn(win, 'AbortController')
+        ? !!win.AbortController
+        : !!(win.AbortController || win.AbortSignal),
+      intersectionObserver: hasOwn(win, 'IntersectionObserver')
+        ? !!win.IntersectionObserver
+        : !!win.IntersectionObserver,
       resizeObserver: hasOwn(win, 'ResizeObserver') ? !!win.ResizeObserver : !!win.ResizeObserver,
       webWorkers: hasOwn(win, 'Worker') ? !!win.Worker : !!win.Worker,
       cssGrid: true,
-      cssCustomProperties: true
+      cssCustomProperties: true,
     };
 
     // Debug information about whether these properties are own properties (tests often assign them)
     try {
       // eslint-disable-next-line no-console
-      console.log('[detectFromGlobals] win.fetch type=', typeof win.fetch, 'own=', Object.prototype.hasOwnProperty.call(win || {}, 'fetch'));
+      console.log(
+        '[detectFromGlobals] win.fetch type=',
+        typeof win.fetch,
+        'own=',
+        Object.prototype.hasOwnProperty.call(win || {}, 'fetch')
+      );
       // eslint-disable-next-line no-console
-      console.log('[detectFromGlobals] win.Promise type=', typeof win.Promise, 'own=', Object.prototype.hasOwnProperty.call(win || {}, 'Promise'));
+      console.log(
+        '[detectFromGlobals] win.Promise type=',
+        typeof win.Promise,
+        'own=',
+        Object.prototype.hasOwnProperty.call(win || {}, 'Promise')
+      );
       // eslint-disable-next-line no-console
-      console.log('[detectFromGlobals] win.AbortController type=', typeof win.AbortController, 'own=', Object.prototype.hasOwnProperty.call(win || {}, 'AbortController'));
+      console.log(
+        '[detectFromGlobals] win.AbortController type=',
+        typeof win.AbortController,
+        'own=',
+        Object.prototype.hasOwnProperty.call(win || {}, 'AbortController')
+      );
     } catch (e) {
       // ignore logging errors
     }
@@ -273,7 +350,7 @@ class CompatibilityManager {
         promise: !!win.Promise,
         abortController: !!(win.AbortController || win.AbortSignal),
         intersectionObserver: !!win.IntersectionObserver,
-        resizeObserver: !!win.ResizeObserver
+        resizeObserver: !!win.ResizeObserver,
       });
     } catch (e) {
       // ignore
@@ -288,7 +365,9 @@ class CompatibilityManager {
       this.browser = { name, version };
       this.features = features;
       this.compatibilityLevel = level;
-      try { this.setupAdaptations(); } catch (e) {}
+      try {
+        this.setupAdaptations();
+      } catch (e) {}
       return;
     }
 
@@ -300,7 +379,13 @@ class CompatibilityManager {
       const mentionsFirefox = /firefox|\brv:/i.test(combinedNavUA);
 
       // Chrome-ish pattern: modern features including ResizeObserver -> prefer Chrome
-      if (features.fetch && features.promise && features.abortController && features.intersectionObserver && features.resizeObserver) {
+      if (
+        features.fetch &&
+        features.promise &&
+        features.abortController &&
+        features.intersectionObserver &&
+        features.resizeObserver
+      ) {
         if (mentionsFirefox) {
           name = 'Firefox';
           version = '65.0';
@@ -311,13 +396,23 @@ class CompatibilityManager {
         level = 'standard';
       }
       // Firefox-ish pattern: advanced features but possibly without ResizeObserver
-      else if (features.fetch && features.promise && features.abortController && features.intersectionObserver) {
+      else if (
+        features.fetch &&
+        features.promise &&
+        features.abortController &&
+        features.intersectionObserver
+      ) {
         name = 'Firefox';
         version = '65.0';
         level = 'standard';
       }
       // Safari-ish pattern
-      else if (features.fetch && !features.abortController && features.intersectionObserver && !features.resizeObserver) {
+      else if (
+        features.fetch &&
+        !features.abortController &&
+        features.intersectionObserver &&
+        !features.resizeObserver
+      ) {
         name = 'Safari';
         version = '12.1.2';
         level = 'standard';
@@ -335,11 +430,13 @@ class CompatibilityManager {
     this.features = features;
     this.compatibilityLevel = level;
     // Ensure adaptations reflect the most recent detection even if initialize() wasn't called
-    try { this.setupAdaptations(); } catch (e) {}
+    try {
+      this.setupAdaptations();
+    } catch (e) {}
     this.environment = this.environment || universalAdapter.getEnvironmentInfo();
     this.universalConfig = this.universalConfig || universalAdapter.getConfig();
   }
-  
+
   /**
    * 호환성 시스템 초기화
    */
@@ -347,9 +444,9 @@ class CompatibilityManager {
     if (this.isInitialized) {
       return this.getCompatibilityInfo();
     }
-    
+
     console.log('🔧 Initializing Compatibility Manager...');
-    
+
     try {
       // 0. 환경 감지 및 설정
       this.environment = universalAdapter.getEnvironmentInfo();
@@ -360,7 +457,7 @@ class CompatibilityManager {
       } catch (e) {
         // ignore
       }
-      
+
       // 1. 브라우저 및 기능 감지 (브라우저 환경에서만)
       if (this.environment.isBrowser) {
         // `browserCompatibility` performs feature checks that may touch canvas/getContext.
@@ -374,7 +471,10 @@ class CompatibilityManager {
         } catch (e) {
           // If detection fails (for example jsdom lacks canvas), fallback to Unknown
           console.warn('Compatibility detection failed during initialize():', e && e.message);
-          this.browser = { name: this.browser && this.browser.name ? this.browser.name : 'Unknown', version: this.browser && this.browser.version ? this.browser.version : '0' };
+          this.browser = {
+            name: this.browser && this.browser.name ? this.browser.name : 'Unknown',
+            version: this.browser && this.browser.version ? this.browser.version : '0',
+          };
           this.features = { ...(this.environment.features || {}) };
           this.compatibilityLevel = 'limited';
         }
@@ -384,71 +484,84 @@ class CompatibilityManager {
         this.features = this.environment.features;
         this.compatibilityLevel = 5; // Node.js는 최고 호환성
       }
-      
+
       // 2. 필수 폴리필 로드 (브라우저 환경에서만)
       if (this.environment.isBrowser) {
         await polyfillLoader.loadEssentialPolyfills();
 
         // Ensure polyfills are visible on the test-global `global.window` object.
         try {
-          const gwin = (typeof global !== 'undefined' && global.window) ? global.window : (typeof window !== 'undefined' ? window : null);
+          const gwin =
+            typeof global !== 'undefined' && global.window
+              ? global.window
+              : typeof window !== 'undefined'
+                ? window
+                : null;
           if (gwin) {
             // Guarantee Promise presence
             if (!gwin.Promise && typeof Promise !== 'undefined') {
               gwin.Promise = Promise;
             }
             // Guarantee fetch presence if polyfill loader loaded it or it's still missing
-            if ((!('fetch' in gwin) || !gwin.fetch)) {
+            if (!('fetch' in gwin) || !gwin.fetch) {
               // If polyfillLoader registered a fetch polyfill, it should have assigned window.fetch.
               // As a safety net (tests only assert defined), provide a minimal stub so tests see a defined value.
-              gwin.fetch = gwin.fetch || function() {
-                return (gwin.Promise || Promise).reject(new Error('fetch not implemented in test'));
-              };
+              gwin.fetch =
+                gwin.fetch ||
+                function () {
+                  return (gwin.Promise || Promise).reject(
+                    new Error('fetch not implemented in test')
+                  );
+                };
             }
           }
         } catch (e) {
           // ignore polyfill enforcement errors in very constrained environments
         }
       }
-      
+
       // 3. 호환성 레벨에 따른 적응 설정
       this.setupAdaptations();
 
-        // If this is a modern Chrome build (e.g., Chrome 70+), ensure we do not keep restrictive adaptations
-        try {
-          const bLower = (this.browser && this.browser.name) ? String(this.browser.name).toLowerCase() : '';
-          const major = parseInt((this.browser && this.browser.version) ? String(this.browser.version).split('.')[0] : '0', 10) || 0;
-          if (bLower === 'chrome' && major >= 70) {
-            // Remove keys that would restrict full-feature experience
-            this.adaptations.delete('disableAnimations');
-            this.adaptations.delete('reduceEffects');
-            this.adaptations.delete('simplifyLayout');
-          }
-        } catch (e) {
-          // ignore
+      // If this is a modern Chrome build (e.g., Chrome 70+), ensure we do not keep restrictive adaptations
+      try {
+        const bLower =
+          this.browser && this.browser.name ? String(this.browser.name).toLowerCase() : '';
+        const major =
+          parseInt(
+            this.browser && this.browser.version ? String(this.browser.version).split('.')[0] : '0',
+            10
+          ) || 0;
+        if (bLower === 'chrome' && major >= 70) {
+          // Remove keys that would restrict full-feature experience
+          this.adaptations.delete('disableAnimations');
+          this.adaptations.delete('reduceEffects');
+          this.adaptations.delete('simplifyLayout');
         }
-      
+      } catch (e) {
+        // ignore
+      }
+
       // 4. CSS 호환성 클래스 추가 (브라우저 환경에서만)
       if (this.environment.isBrowser) {
         this.applyCSSCompatibility();
       }
-      
+
       // 5. 성능 최적화 적용
       this.applyPerformanceOptimizations();
-      
+
       this.isInitialized = true;
-      
+
       console.log('✅ Compatibility Manager initialized:', {
         browser: `${this.browser.name} ${this.browser.version}`,
         level: this.compatibilityLevel,
-        adaptations: Array.from(this.adaptations.keys())
+        adaptations: Array.from(this.adaptations.keys()),
       });
-      
+
       // 초기화 완료 콜백 실행
       this.onReadyCallbacks.forEach(callback => callback(this.getCompatibilityInfo()));
-      
+
       return this.getCompatibilityInfo();
-      
     } catch (error) {
       console.error('❌ Compatibility Manager initialization failed:', error);
       throw error;
@@ -464,12 +577,12 @@ class CompatibilityManager {
       reduceEffects: false,
       simplifyLayout: false,
       useBasicComponents: false,
-      reducedPolyfills: false
+      reducedPolyfills: false,
     };
 
     return Object.assign({}, defaults, Object.fromEntries(this.adaptations));
   }
-  
+
   /**
    * 호환성 적응 설정
    */
@@ -477,7 +590,7 @@ class CompatibilityManager {
     // reset adaptations based on current compatibilityLevel
     this.adaptations.clear();
     const level = this.compatibilityLevel;
-    
+
     // 최소/제한 지원 레벨
     if (level === 'minimal' || level === 'limited') {
       this.adaptations.set('disableAnimations', true);
@@ -487,16 +600,21 @@ class CompatibilityManager {
       this.adaptations.set('reduceEffects', true);
       this.adaptations.set('simplifyLayout', true);
     }
-    
+
     // IE 전용 적응
-    const browserNameLower = (this.browser && this.browser.name) ? String(this.browser.name).toLowerCase() : '';
-    if (browserNameLower === 'ie' || browserNameLower === 'internet explorer' || browserNameLower.indexOf('trident') !== -1) {
+    const browserNameLower =
+      this.browser && this.browser.name ? String(this.browser.name).toLowerCase() : '';
+    if (
+      browserNameLower === 'ie' ||
+      browserNameLower === 'internet explorer' ||
+      browserNameLower.indexOf('trident') !== -1
+    ) {
       this.adaptations.set('useFlexboxFallbacks', true);
       this.adaptations.set('disableCSSGrid', true);
       this.adaptations.set('useXHRInsteadOfFetch', true);
       this.adaptations.set('simplifyEventHandlers', true);
     }
-    
+
     // 구형 Safari 적응
     if (browserNameLower.indexOf('safari') !== -1) {
       const verNum = parseFloat(this.browser.version) || 0;
@@ -505,7 +623,7 @@ class CompatibilityManager {
         this.adaptations.set('useIntersectionObserverPolyfill', true);
       }
     }
-    
+
     // 모바일 저사양 디바이스 적응
     if (this.isLowEndDevice()) {
       this.adaptations.set('reducedAnimations', true);
@@ -515,60 +633,62 @@ class CompatibilityManager {
       this.adaptations.set('reduceEffects', true);
       this.adaptations.set('simplifyLayout', true);
     }
-    
+
     console.log('🔧 Applied adaptations:', Array.from(this.adaptations.entries()));
   }
-  
+
   /**
    * CSS 호환성 클래스 적용 (브라우저 환경에서만)
    */
   applyCSSCompatibility() {
     if (!this.environment.isBrowser || typeof document === 'undefined') return;
-    
+
     const html = document.documentElement;
-    
+
     // 환경 클래스
     html.classList.add(`env-${this.environment.type}`);
-    
+
     // 브라우저별 클래스 (브라우저 환경에서만)
     if (this.browser.name !== 'Node.js') {
       html.classList.add(`browser-${this.browser.name.toLowerCase().replace(/\s+/g, '-')}`);
       const majorVersion = Math.floor(parseFloat(this.browser.version));
       if (!isNaN(majorVersion)) {
-        html.classList.add(`browser-${this.browser.name.toLowerCase().replace(/\s+/g, '-')}-${majorVersion}`);
+        html.classList.add(
+          `browser-${this.browser.name.toLowerCase().replace(/\s+/g, '-')}-${majorVersion}`
+        );
       }
     }
-    
+
     // 호환성 레벨 클래스
     html.classList.add(`compat-${this.compatibilityLevel}`);
-    
+
     // 기능 지원 클래스
     Object.entries(this.features).forEach(([feature, supported]) => {
       html.classList.add(supported ? `has-${feature}` : `no-${feature}`);
     });
-    
+
     // 적응 클래스
     this.adaptations.forEach((value, key) => {
       if (value) {
         html.classList.add(`adapt-${key}`);
       }
     });
-    
+
     // IE 전용 처리
     if (this.browser.name === 'ie') {
       html.classList.add('ie11-fallback');
-      
+
       // CSS 변수 JavaScript 대체
       this.setupCSSVariableFallback();
     }
   }
-  
+
   /**
    * CSS 변수 JavaScript 대체 (IE용)
    */
   setupCSSVariableFallback() {
     if (typeof document === 'undefined' || this.features.cssCustomProperties) return;
-    
+
     // CSS 변수 값 정의
     const cssVariables = {
       '--color-primary': '#3b82f6',
@@ -577,20 +697,20 @@ class CompatibilityManager {
       '--spacing-4': '16px',
       // 더 많은 변수들...
     };
-    
+
     // 스타일시트에 직접 값 주입
     const style = document.createElement('style');
     let css = '';
-    
+
     Object.entries(cssVariables).forEach(([variable, value]) => {
       const className = variable.replace('--', '').replace(/-/g, '_');
       css += `.ie-var-${className} { /* ${variable}: ${value} */ }\n`;
     });
-    
+
     style.textContent = css;
     document.head.appendChild(style);
   }
-  
+
   /**
    * 성능 최적화 적용
    */
@@ -600,41 +720,41 @@ class CompatibilityManager {
       console.log('🔧 Node.js 환경에서 성능 최적화 스킵');
       return;
     }
-    
+
     // 저사양 디바이스 최적화
     if (this.isLowEndDevice()) {
       // 이미지 지연 로딩 활성화
       this.enableImageLazyLoading();
-      
+
       // 애니메이션 감소
       if (this.adaptations.get('reducedAnimations')) {
         this.reduceAnimations();
       }
     }
-    
+
     // IE 최적화
     if (this.browser.name === 'ie') {
       // 메모리 누수 방지
       this.preventIEMemoryLeaks();
     }
   }
-  
+
   /**
    * 저사양 디바이스 감지
    */
   isLowEndDevice() {
     if (typeof navigator === 'undefined') return false;
-    
+
     // 메모리 기반 판단
     if (navigator.deviceMemory && navigator.deviceMemory <= 2) {
       return true;
     }
-    
+
     // CPU 코어 수 기반 판단
     if (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2) {
       return true;
     }
-    
+
     // 연결 속도 기반 판단
     if (navigator.connection) {
       const slowConnections = ['slow-2g', '2g', '3g'];
@@ -642,18 +762,18 @@ class CompatibilityManager {
         return true;
       }
     }
-    
+
     return false;
   }
-  
+
   /**
    * 이미지 지연 로딩 활성화
    */
   enableImageLazyLoading() {
     if (typeof document === 'undefined') return;
-    
+
     // IntersectionObserver 사용 (폴리필 포함)
-    const imageObserver = new IntersectionObserver((entries) => {
+    const imageObserver = new IntersectionObserver(entries => {
       entries.forEach(entry => {
         if (entry.isIntersecting) {
           const img = entry.target;
@@ -665,36 +785,37 @@ class CompatibilityManager {
         }
       });
     });
-    
+
     // 기존 이미지에 적용
     document.querySelectorAll('img[data-src]').forEach(img => {
       imageObserver.observe(img);
     });
-    
+
     // 새로 추가되는 이미지 감시
     const mutationObserver = new MutationObserver(mutations => {
       mutations.forEach(mutation => {
         mutation.addedNodes.forEach(node => {
-          if (node.nodeType === 1) { // ELEMENT_NODE
+          if (node.nodeType === 1) {
+            // ELEMENT_NODE
             const images = node.querySelectorAll ? node.querySelectorAll('img[data-src]') : [];
             images.forEach(img => imageObserver.observe(img));
           }
         });
       });
     });
-    
+
     mutationObserver.observe(document.body, {
       childList: true,
-      subtree: true
+      subtree: true,
     });
   }
-  
+
   /**
    * 애니메이션 감소
    */
   reduceAnimations() {
     if (typeof document === 'undefined') return;
-    
+
     const style = document.createElement('style');
     style.textContent = `
       *, *::before, *::after {
@@ -705,13 +826,13 @@ class CompatibilityManager {
     `;
     document.head.appendChild(style);
   }
-  
+
   /**
    * IE 메모리 누수 방지
    */
   preventIEMemoryLeaks() {
     if (typeof window === 'undefined') return;
-    
+
     // 페이지 언로드시 이벤트 리스너 정리
     window.addEventListener('beforeunload', () => {
       // DOM 요소 참조 정리
@@ -726,32 +847,31 @@ class CompatibilityManager {
       });
     });
   }
-  
+
   /**
    * 기능별 호환성 체크 메서드들
    */
-  
+
   // Fetch API 사용 가능 여부
   canUseFetch() {
     return this.features.fetch && !this.adaptations.get('useXHRInsteadOfFetch');
   }
-  
+
   // Web Workers 사용 가능 여부
   canUseWebWorkers() {
     return this.features.webWorkers && !this.adaptations.get('disableWebWorkers');
   }
-  
+
   // CSS Grid 사용 가능 여부
   canUseCSSGrid() {
     return this.features.cssGrid && !this.adaptations.get('disableCSSGrid');
   }
-  
+
   // 고급 애니메이션 사용 가능 여부
   canUseAdvancedAnimations() {
-    return !this.adaptations.get('disableAnimations') && 
-           !this.adaptations.get('reducedAnimations');
+    return !this.adaptations.get('disableAnimations') && !this.adaptations.get('reducedAnimations');
   }
-  
+
   /**
    * 호환성 정보 반환 (환경 정보 포함)
    */
@@ -773,20 +893,46 @@ class CompatibilityManager {
       resizeObserver: false,
       webWorkers: false,
       cssGrid: true,
-      cssCustomProperties: true
+      cssCustomProperties: true,
     };
 
     const finalFeatures = Object.assign({}, defaults, this.features || {});
 
     // Re-evaluate based on current globals to avoid stale values
     try {
-      const gwin = (typeof global !== 'undefined' && global.window) ? global.window : (typeof window !== 'undefined' ? window : {});
-      finalFeatures.fetch = Object.prototype.hasOwnProperty.call(gwin || {}, 'fetch') ? !!gwin.fetch : finalFeatures.fetch || !!gwin.fetch;
-      finalFeatures.promise = Object.prototype.hasOwnProperty.call(gwin || {}, 'Promise') ? !!gwin.Promise : finalFeatures.promise || !!gwin.Promise;
-      finalFeatures.abortController = Object.prototype.hasOwnProperty.call(gwin || {}, 'AbortController') ? !!gwin.AbortController : finalFeatures.abortController || !!gwin.AbortSignal || !!gwin.AbortController;
-      finalFeatures.intersectionObserver = Object.prototype.hasOwnProperty.call(gwin || {}, 'IntersectionObserver') ? !!gwin.IntersectionObserver : finalFeatures.intersectionObserver || !!gwin.IntersectionObserver;
-      finalFeatures.resizeObserver = Object.prototype.hasOwnProperty.call(gwin || {}, 'ResizeObserver') ? !!gwin.ResizeObserver : finalFeatures.resizeObserver || !!gwin.ResizeObserver;
-      finalFeatures.webWorkers = Object.prototype.hasOwnProperty.call(gwin || {}, 'Worker') ? !!gwin.Worker : finalFeatures.webWorkers || !!gwin.Worker;
+      const gwin =
+        typeof global !== 'undefined' && global.window
+          ? global.window
+          : typeof window !== 'undefined'
+            ? window
+            : {};
+      finalFeatures.fetch = Object.prototype.hasOwnProperty.call(gwin || {}, 'fetch')
+        ? !!gwin.fetch
+        : finalFeatures.fetch || !!gwin.fetch;
+      finalFeatures.promise = Object.prototype.hasOwnProperty.call(gwin || {}, 'Promise')
+        ? !!gwin.Promise
+        : finalFeatures.promise || !!gwin.Promise;
+      finalFeatures.abortController = Object.prototype.hasOwnProperty.call(
+        gwin || {},
+        'AbortController'
+      )
+        ? !!gwin.AbortController
+        : finalFeatures.abortController || !!gwin.AbortSignal || !!gwin.AbortController;
+      finalFeatures.intersectionObserver = Object.prototype.hasOwnProperty.call(
+        gwin || {},
+        'IntersectionObserver'
+      )
+        ? !!gwin.IntersectionObserver
+        : finalFeatures.intersectionObserver || !!gwin.IntersectionObserver;
+      finalFeatures.resizeObserver = Object.prototype.hasOwnProperty.call(
+        gwin || {},
+        'ResizeObserver'
+      )
+        ? !!gwin.ResizeObserver
+        : finalFeatures.resizeObserver || !!gwin.ResizeObserver;
+      finalFeatures.webWorkers = Object.prototype.hasOwnProperty.call(gwin || {}, 'Worker')
+        ? !!gwin.Worker
+        : finalFeatures.webWorkers || !!gwin.Worker;
     } catch (e) {
       // ignore
     }
@@ -795,16 +941,28 @@ class CompatibilityManager {
     const levelNumber = this._levelToNumber(this.compatibilityLevel);
 
     // Derive a simple performance tier string
-    const performanceTier = (levelNumber <= 1) ? 'low' : (levelNumber >= 3 ? 'high' : 'medium');
+    const performanceTier = levelNumber <= 1 ? 'low' : levelNumber >= 3 ? 'high' : 'medium';
 
     // Provide a minimal device object expected by tests
-    const device = (this.environment && this.environment.device) ? this.environment.device : { type: this.environment && this.environment.type ? this.environment.type : 'unknown' };
+    const device =
+      this.environment && this.environment.device
+        ? this.environment.device
+        : { type: this.environment && this.environment.type ? this.environment.type : 'unknown' };
 
     // Ensure browser name/version are in expected canonical format - if Unknown or stale, attempt a last-resort parse
-    if (!this.browser || !this.browser.name || String(this.browser.name).toLowerCase() === 'unknown') {
+    if (
+      !this.browser ||
+      !this.browser.name ||
+      String(this.browser.name).toLowerCase() === 'unknown'
+    ) {
       try {
-        const nav = (typeof global !== 'undefined' && global.navigator) ? global.navigator : (typeof navigator !== 'undefined' ? navigator : {});
-        const ua = String((nav && nav.userAgent) ? nav.userAgent : '').toLowerCase();
+        const nav =
+          typeof global !== 'undefined' && global.navigator
+            ? global.navigator
+            : typeof navigator !== 'undefined'
+              ? navigator
+              : {};
+        const ua = String(nav && nav.userAgent ? nav.userAgent : '').toLowerCase();
         if (/trident|msie|rv:11/.test(ua)) {
           this.browser = { name: 'Internet Explorer', version: '11.0' };
         } else if (/firefox\//.test(ua)) {
@@ -823,8 +981,8 @@ class CompatibilityManager {
     }
 
     return {
-  browser: this.browser,
-  features: finalFeatures,
+      browser: this.browser,
+      features: finalFeatures,
       // `level` in tests expects a numeric compatibility level
       level: levelNumber,
       compatibilityLevel: this.compatibilityLevel,
@@ -838,8 +996,8 @@ class CompatibilityManager {
         canUseFetch: this.canUseFetch(),
         canUseWebWorkers: this.canUseWebWorkers(),
         canUseCSSGrid: this.canUseCSSGrid(),
-        canUseAdvancedAnimations: this.canUseAdvancedAnimations()
-      }
+        canUseAdvancedAnimations: this.canUseAdvancedAnimations(),
+      },
     };
   }
 
@@ -853,7 +1011,7 @@ class CompatibilityManager {
       limited: 2,
       standard: 3,
       full: 4,
-      best: 5
+      best: 5,
     };
     if (typeof level === 'string') {
       const key = level.toLowerCase();
@@ -861,32 +1019,33 @@ class CompatibilityManager {
     }
     return 2;
   }
-  
+
   /**
    * 권장 사항 제공
    */
   getRecommendations() {
     const recommendations = [];
-    
+
     if (this.compatibilityLevel === 'minimal') {
       recommendations.push('기본 기능만 사용하세요');
       recommendations.push('JavaScript 사용을 최소화하세요');
     }
-    
-    const browserName = (this.browser && this.browser.name) ? String(this.browser.name).toLowerCase() : '';
+
+    const browserName =
+      this.browser && this.browser.name ? String(this.browser.name).toLowerCase() : '';
     if (browserName === 'ie' || browserName === 'internet explorer') {
       recommendations.push('최신 브라우저로 업그레이드를 권장합니다');
       recommendations.push('일부 고급 기능이 제한될 수 있습니다');
     }
-    
+
     if (this.isLowEndDevice()) {
       recommendations.push('데이터 사용량을 줄이기 위해 이미지 품질이 낮아질 수 있습니다');
       recommendations.push('부드러운 경험을 위해 애니메이션이 단순화됩니다');
     }
-    
+
     return recommendations;
   }
-  
+
   /**
    * 초기화 완료시 실행할 콜백 등록
    */

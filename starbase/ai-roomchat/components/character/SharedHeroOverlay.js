@@ -1,19 +1,19 @@
-'use client'
+'use client';
 
-import { useRouter } from 'next/router'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import FriendOverlay from '@/components/social/FriendOverlay'
-import { supabase } from '@/lib/supabase'
-import { withTable } from '@/lib/supabaseTables'
-import { getHeroAudioManager } from '@/lib/audio/heroAudioManager'
-import { fetchHeroById, normaliseHero } from '@/services/heroes'
-import { useHeroSocial } from '@/hooks/social/useHeroSocial'
-import { clearHeroSelection, readHeroSelection } from '@/lib/heroes/selectedHeroStorage'
+import FriendOverlay from '@/components/social/FriendOverlay';
+import { supabase } from '@/lib/supabase';
+import { withTable } from '@/lib/supabaseTables';
+import { getHeroAudioManager } from '@/lib/audio/heroAudioManager';
+import { fetchHeroById, normaliseHero } from '@/services/heroes';
+import { useHeroSocial } from '@/hooks/social/useHeroSocial';
+import { clearHeroSelection, readHeroSelection } from '@/lib/heroes/selectedHeroStorage';
 
-const DEFAULT_HERO_NAME = '이름 없는 영웅'
+const DEFAULT_HERO_NAME = '이름 없는 영웅';
 const DEFAULT_DESCRIPTION =
-  '소개가 아직 준비되지 않았습니다. 이미지를 한 번 더 탭하면 능력을 볼 수 있어요.'
+  '소개가 아직 준비되지 않았습니다. 이미지를 한 번 더 탭하면 능력을 볼 수 있어요.';
 
 const overlayTabs = [
   { key: 'character', label: '캐릭터' },
@@ -22,13 +22,13 @@ const overlayTabs = [
   { key: 'ranking', label: '랭킹' },
   { key: 'friends', label: '친구' },
   { key: 'search', label: '방 검색' },
-]
+];
 
 const searchSortOptions = [
   { key: 'latest', label: '최신순' },
   { key: 'likes', label: '좋아요' },
   { key: 'plays', label: '게임횟수' },
-]
+];
 
 const styles = {
   container: {
@@ -110,7 +110,7 @@ const styles = {
     overflow: 'hidden',
     cursor: 'pointer',
   },
-  progressFill: (ratio) => ({
+  progressFill: ratio => ({
     position: 'absolute',
     top: 0,
     left: 0,
@@ -210,7 +210,7 @@ const styles = {
     justifyContent: 'center',
     boxShadow: '0 8px 18px -10px rgba(239,68,68,0.75)',
   },
-  dockTabButton: (active) => ({
+  dockTabButton: active => ({
     padding: '10px 18px',
     borderRadius: 999,
     border: active ? '1px solid rgba(56,189,248,0.85)' : '1px solid rgba(148,163,184,0.35)',
@@ -272,7 +272,7 @@ const styles = {
     gap: 8,
     flexWrap: 'wrap',
   },
-  sortButton: (active) => ({
+  sortButton: active => ({
     padding: '8px 14px',
     borderRadius: 999,
     border: active ? '1px solid rgba(56,189,248,0.75)' : '1px solid rgba(148,163,184,0.35)',
@@ -365,7 +365,7 @@ const styles = {
     cursor: 'pointer',
     fontWeight: 600,
   },
-}
+};
 
 const profileStyles = {
   backdrop: {
@@ -409,7 +409,7 @@ const profileStyles = {
     paddingTop: '150%',
     overflow: 'hidden',
   },
-  heroImage: (dimmed) => ({
+  heroImage: dimmed => ({
     position: 'absolute',
     inset: 0,
     width: '100%',
@@ -434,7 +434,8 @@ const profileStyles = {
     right: 0,
     bottom: 0,
     padding: '20px 22px 26px',
-    background: 'linear-gradient(180deg, rgba(15,23,42,0) 0%, rgba(15,23,42,0.75) 76%, rgba(15,23,42,0.92) 100%)',
+    background:
+      'linear-gradient(180deg, rgba(15,23,42,0) 0%, rgba(15,23,42,0.75) 76%, rgba(15,23,42,0.92) 100%)',
     display: 'flex',
     flexDirection: 'column',
     gap: 6,
@@ -538,7 +539,7 @@ const profileStyles = {
     cursor: 'pointer',
     fontWeight: 600,
   },
-}
+};
 
 const sampleGames = [
   {
@@ -568,75 +569,79 @@ const sampleGames = [
     plays: 533,
     createdAt: new Date('2024-03-30').getTime(),
   },
-]
+];
 
 function formatTime(seconds) {
-  if (!Number.isFinite(seconds)) return '0:00'
-  const total = Math.max(0, Math.floor(seconds))
-  const minutes = Math.floor(total / 60)
-  const remain = total % 60
-  return `${minutes}:${remain.toString().padStart(2, '0')}`
+  if (!Number.isFinite(seconds)) return '0:00';
+  const total = Math.max(0, Math.floor(seconds));
+  const minutes = Math.floor(total / 60);
+  const remain = total % 60;
+  return `${minutes}:${remain.toString().padStart(2, '0')}`;
 }
 
 function formatDate(value) {
-  if (!value) return '날짜 미확인'
+  if (!value) return '날짜 미확인';
   try {
-    const date = new Date(value)
+    const date = new Date(value);
     return `${date.getFullYear()}.${(date.getMonth() + 1).toString().padStart(2, '0')}.${date
       .getDate()
       .toString()
       .padStart(2, '0')} ${date.getHours().toString().padStart(2, '0')}:${date
       .getMinutes()
       .toString()
-      .padStart(2, '0')}`
+      .padStart(2, '0')}`;
   } catch (error) {
-    return '날짜 미확인'
+    return '날짜 미확인';
   }
 }
 
 async function fetchHeroBattleHistory(heroId, { limit = 10, offset = 0 } = {}) {
   if (!heroId) {
-    return { entries: [], hasMore: false }
+    return { entries: [], hasMore: false };
   }
 
-  const baseResult = await withTable(supabase, 'rank_battles', (table) =>
+  const baseResult = await withTable(supabase, 'rank_battles', table =>
     supabase
       .from(table)
       .select(
-        'id, game_id, result, score_delta, created_at, attacker_owner_id, defender_owner_id, attacker_hero_ids, defender_hero_ids',
+        'id, game_id, result, score_delta, created_at, attacker_owner_id, defender_owner_id, attacker_hero_ids, defender_hero_ids'
       )
       .order('created_at', { ascending: false })
-      .limit(80),
-  )
+      .limit(80)
+  );
 
   if (baseResult.error) {
-    throw baseResult.error
+    throw baseResult.error;
   }
 
-  const allRows = Array.isArray(baseResult.data) ? baseResult.data : []
-  const filtered = allRows.filter((row) => {
-    const attackers = Array.isArray(row.attacker_hero_ids) ? row.attacker_hero_ids : []
-    const defenders = Array.isArray(row.defender_hero_ids) ? row.defender_hero_ids : []
-    return attackers.includes(heroId) || defenders.includes(heroId)
-  })
+  const allRows = Array.isArray(baseResult.data) ? baseResult.data : [];
+  const filtered = allRows.filter(row => {
+    const attackers = Array.isArray(row.attacker_hero_ids) ? row.attacker_hero_ids : [];
+    const defenders = Array.isArray(row.defender_hero_ids) ? row.defender_hero_ids : [];
+    return attackers.includes(heroId) || defenders.includes(heroId);
+  });
 
-  const slice = filtered.slice(offset, offset + limit)
-  const gameIds = Array.from(new Set(slice.map((row) => row.game_id).filter(Boolean)))
+  const slice = filtered.slice(offset, offset + limit);
+  const gameIds = Array.from(new Set(slice.map(row => row.game_id).filter(Boolean)));
 
-  let gameMap = new Map()
+  let gameMap = new Map();
   if (gameIds.length) {
-    const gamesResult = await withTable(supabase, 'rank_games', (table) =>
-      supabase.from(table).select('id,name').in('id', gameIds),
-    )
+    const gamesResult = await withTable(supabase, 'rank_games', table =>
+      supabase.from(table).select('id,name').in('id', gameIds)
+    );
     if (!gamesResult.error) {
-      gameMap = new Map((gamesResult.data || []).map((row) => [row.id, row]))
+      gameMap = new Map((gamesResult.data || []).map(row => [row.id, row]));
     }
   }
 
-  const entries = slice.map((row) => {
-    const attackers = Array.isArray(row.attacker_hero_ids) ? row.attacker_hero_ids : []
-    const defenders = Array.isArray(row.defender_hero_ids) ? row.defender_hero_ids : []
-    const playedAs = attackers.includes(heroId) ? '공격' : defenders.includes(heroId) ? '수비' : '참전'
+  const entries = slice.map(row => {
+    const attackers = Array.isArray(row.attacker_hero_ids) ? row.attacker_hero_ids : [];
+    const defenders = Array.isArray(row.defender_hero_ids) ? row.defender_hero_ids : [];
+    const playedAs = attackers.includes(heroId)
+      ? '공격'
+      : defenders.includes(heroId)
+        ? '수비'
+        : '참전';
     return {
       id: row.id,
       gameId: row.game_id,
@@ -645,10 +650,10 @@ async function fetchHeroBattleHistory(heroId, { limit = 10, offset = 0 } = {}) {
       scoreDelta: row.score_delta ?? null,
       createdAt: row.created_at || null,
       role: playedAs,
-    }
-  })
+    };
+  });
 
-  return { entries, hasMore: filtered.length > offset + entries.length }
+  return { entries, hasMore: filtered.length > offset + entries.length };
 }
 
 function HeroProfileModal({
@@ -664,62 +669,59 @@ function HeroProfileModal({
   historyHasMore,
   onLoadMore,
 }) {
-  const [overlayState, setOverlayState] = useState({ visible: false, index: 0 })
+  const [overlayState, setOverlayState] = useState({ visible: false, index: 0 });
 
   const heroName = useMemo(() => {
-    if (!hero) return DEFAULT_HERO_NAME
-    const trimmed = typeof hero.name === 'string' ? hero.name.trim() : ''
-    return trimmed || DEFAULT_HERO_NAME
-  }, [hero])
+    if (!hero) return DEFAULT_HERO_NAME;
+    const trimmed = typeof hero.name === 'string' ? hero.name.trim() : '';
+    return trimmed || DEFAULT_HERO_NAME;
+  }, [hero]);
 
   const description = useMemo(() => {
-    if (!hero) return DEFAULT_DESCRIPTION
-    const trimmed = typeof hero.description === 'string' ? hero.description.trim() : ''
-    return trimmed || DEFAULT_DESCRIPTION
-  }, [hero])
+    if (!hero) return DEFAULT_DESCRIPTION;
+    const trimmed = typeof hero.description === 'string' ? hero.description.trim() : '';
+    return trimmed || DEFAULT_DESCRIPTION;
+  }, [hero]);
 
   const abilityPairs = useMemo(() => {
-    if (!hero) return []
-    const normalize = (value) => (typeof value === 'string' ? value.trim() : '')
-    const firstPair = [normalize(hero.ability1), normalize(hero.ability2)].filter(Boolean)
-    const secondPair = [normalize(hero.ability3), normalize(hero.ability4)].filter(Boolean)
-    const pairs = []
+    if (!hero) return [];
+    const normalize = value => (typeof value === 'string' ? value.trim() : '');
+    const firstPair = [normalize(hero.ability1), normalize(hero.ability2)].filter(Boolean);
+    const secondPair = [normalize(hero.ability3), normalize(hero.ability4)].filter(Boolean);
+    const pairs = [];
     if (firstPair.length) {
-      pairs.push({ label: '능력 1 & 2', text: firstPair.join(' / ') })
+      pairs.push({ label: '능력 1 & 2', text: firstPair.join(' / ') });
     }
     if (secondPair.length) {
-      pairs.push({ label: '능력 3 & 4', text: secondPair.join(' / ') })
+      pairs.push({ label: '능력 3 & 4', text: secondPair.join(' / ') });
     }
-    return pairs
-  }, [hero])
+    return pairs;
+  }, [hero]);
 
   const overlays = useMemo(() => {
-    const entries = [
-      { label: '소개', text: description },
-      ...abilityPairs,
-    ]
-    return entries.length ? entries : [{ label: '정보 없음', text: DEFAULT_DESCRIPTION }]
-  }, [abilityPairs, description])
+    const entries = [{ label: '소개', text: description }, ...abilityPairs];
+    return entries.length ? entries : [{ label: '정보 없음', text: DEFAULT_DESCRIPTION }];
+  }, [abilityPairs, description]);
 
-  const { visible: detailsVisible, index: infoIndex } = overlayState
-  const currentOverlay = overlays[infoIndex % overlays.length]
+  const { visible: detailsVisible, index: infoIndex } = overlayState;
+  const currentOverlay = overlays[infoIndex % overlays.length];
 
   const handleCycle = useCallback(() => {
-    setOverlayState((state) => {
+    setOverlayState(state => {
       if (!state.visible) {
-        return { visible: true, index: 0 }
+        return { visible: true, index: 0 };
       }
-      const nextIndex = (state.index + 1) % overlays.length
+      const nextIndex = (state.index + 1) % overlays.length;
       if (nextIndex === 0) {
-        return { visible: false, index: 0 }
+        return { visible: false, index: 0 };
       }
-      return { visible: true, index: nextIndex }
-    })
-  }, [overlays.length])
+      return { visible: true, index: nextIndex };
+    });
+  }, [overlays.length]);
 
   useEffect(() => {
-    setOverlayState({ visible: false, index: 0 })
-  }, [hero?.id])
+    setOverlayState({ visible: false, index: 0 });
+  }, [hero?.id]);
 
   return (
     <div style={profileStyles.backdrop} role="dialog" aria-modal>
@@ -731,13 +733,19 @@ function HeroProfileModal({
         <div style={profileStyles.heroMedia} role="presentation" onClick={handleCycle}>
           {hero?.image_url ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={hero.image_url} alt={heroName} style={profileStyles.heroImage(detailsVisible)} />
+            <img
+              src={hero.image_url}
+              alt={heroName}
+              style={profileStyles.heroImage(detailsVisible)}
+            />
           ) : (
             <div style={profileStyles.heroFallback}>{heroName.slice(0, 2)}</div>
           )}
           {detailsVisible ? (
             <div style={profileStyles.mediaOverlay}>
-              <p style={profileStyles.mediaText}>{`${currentOverlay.label}\n${currentOverlay.text}`}</p>
+              <p
+                style={profileStyles.mediaText}
+              >{`${currentOverlay.label}\n${currentOverlay.text}`}</p>
             </div>
           ) : (
             <div style={profileStyles.namePlate}>
@@ -750,7 +758,12 @@ function HeroProfileModal({
         <div style={profileStyles.body}>
           <div style={profileStyles.headerRow}>
             <h2 style={profileStyles.heroName}>{heroName}</h2>
-            <button type="button" style={profileStyles.actionButton} onClick={onAddFriend} disabled={friendBusy || !hero}>
+            <button
+              type="button"
+              style={profileStyles.actionButton}
+              onClick={onAddFriend}
+              disabled={friendBusy || !hero}
+            >
               {friendBusy ? '요청 중…' : '친구 요청'}
             </button>
           </div>
@@ -767,10 +780,12 @@ function HeroProfileModal({
             {!history.length && !historyLoading ? (
               <p style={profileStyles.statusText}>최근 10게임 기록이 아직 없습니다.</p>
             ) : null}
-            {history.map((entry) => (
+            {history.map(entry => (
               <div key={entry.id} style={profileStyles.historyCard}>
                 <p style={profileStyles.historyTitle}>{`${entry.gameName} · ${entry.role}`}</p>
-                <p style={profileStyles.historyMeta}>{`결과: ${entry.result} · 점수 변화: ${entry.scoreDelta ?? 0}`}</p>
+                <p
+                  style={profileStyles.historyMeta}
+                >{`결과: ${entry.result} · 점수 변화: ${entry.scoreDelta ?? 0}`}</p>
                 <p style={profileStyles.historyMeta}>{formatDate(entry.createdAt)}</p>
               </div>
             ))}
@@ -784,73 +799,77 @@ function HeroProfileModal({
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 export default function SharedHeroOverlay() {
-  const router = useRouter()
-  const audioManager = useMemo(() => getHeroAudioManager(), [])
-  const [audioState, setAudioState] = useState(() => audioManager.getState())
-  const { enabled: bgmEnabled, isPlaying, progress, duration, volume: bgmVolume } = audioState
+  const router = useRouter();
+  const audioManager = useMemo(() => getHeroAudioManager(), []);
+  const [audioState, setAudioState] = useState(() => audioManager.getState());
+  const { enabled: bgmEnabled, isPlaying, progress, duration, volume: bgmVolume } = audioState;
 
-  const [currentHero, setCurrentHero] = useState(null)
-  const [activeTab, setActiveTab] = useState(0)
-  const activeTabKey = overlayTabs[activeTab]?.key ?? 'character'
-  const [dockCollapsed, setDockCollapsed] = useState(true)
-  const [playerCollapsed, setPlayerCollapsed] = useState(true)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [searchSort, setSearchSort] = useState('latest')
-  const [otherHeroes, setOtherHeroes] = useState([])
+  const [currentHero, setCurrentHero] = useState(null);
+  const [activeTab, setActiveTab] = useState(0);
+  const activeTabKey = overlayTabs[activeTab]?.key ?? 'character';
+  const [dockCollapsed, setDockCollapsed] = useState(true);
+  const [playerCollapsed, setPlayerCollapsed] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchSort, setSearchSort] = useState('latest');
+  const [otherHeroes, setOtherHeroes] = useState([]);
 
-  const [profileVisible, setProfileVisible] = useState(false)
-  const [profileHero, setProfileHero] = useState(null)
-  const [profileLoading, setProfileLoading] = useState(false)
-  const [profileError, setProfileError] = useState(null)
-  const [profileHistory, setProfileHistory] = useState([])
-  const [profileHistoryHasMore, setProfileHistoryHasMore] = useState(false)
-  const [profileHistoryLoading, setProfileHistoryLoading] = useState(false)
-  const [friendStatus, setFriendStatus] = useState(null)
-  const [friendBusy, setFriendBusy] = useState(false)
+  const [profileVisible, setProfileVisible] = useState(false);
+  const [profileHero, setProfileHero] = useState(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileError, setProfileError] = useState(null);
+  const [profileHistory, setProfileHistory] = useState([]);
+  const [profileHistoryHasMore, setProfileHistoryHasMore] = useState(false);
+  const [profileHistoryLoading, setProfileHistoryLoading] = useState(false);
+  const [friendStatus, setFriendStatus] = useState(null);
+  const [friendBusy, setFriendBusy] = useState(false);
 
-  const [friendOpen, setFriendOpen] = useState(false)
+  const [friendOpen, setFriendOpen] = useState(false);
 
-  const profileOffsetRef = useRef(0)
-  const previousAudioRef = useRef(null)
+  const profileOffsetRef = useRef(0);
+  const previousAudioRef = useRef(null);
 
-  useEffect(() => audioManager.subscribe(setAudioState), [audioManager])
+  useEffect(() => audioManager.subscribe(setAudioState), [audioManager]);
 
   const heroName = useMemo(() => {
-    if (!currentHero) return DEFAULT_HERO_NAME
-    const trimmed = typeof currentHero.name === 'string' ? currentHero.name.trim() : ''
-    return trimmed || DEFAULT_HERO_NAME
-  }, [currentHero])
+    if (!currentHero) return DEFAULT_HERO_NAME;
+    const trimmed = typeof currentHero.name === 'string' ? currentHero.name.trim() : '';
+    return trimmed || DEFAULT_HERO_NAME;
+  }, [currentHero]);
 
   const description = useMemo(() => {
-    if (!currentHero) return DEFAULT_DESCRIPTION
-    const text = typeof currentHero.description === 'string' ? currentHero.description.trim() : ''
-    return text || DEFAULT_DESCRIPTION
-  }, [currentHero])
+    if (!currentHero) return DEFAULT_DESCRIPTION;
+    const text = typeof currentHero.description === 'string' ? currentHero.description.trim() : '';
+    return text || DEFAULT_DESCRIPTION;
+  }, [currentHero]);
 
   const abilityPairs = useMemo(() => {
-    if (!currentHero) return []
-    const normalize = (value) => (typeof value === 'string' ? value.trim() : '')
-    const firstPair = [normalize(currentHero.ability1), normalize(currentHero.ability2)].filter(Boolean)
-    const secondPair = [normalize(currentHero.ability3), normalize(currentHero.ability4)].filter(Boolean)
+    if (!currentHero) return [];
+    const normalize = value => (typeof value === 'string' ? value.trim() : '');
+    const firstPair = [normalize(currentHero.ability1), normalize(currentHero.ability2)].filter(
+      Boolean
+    );
+    const secondPair = [normalize(currentHero.ability3), normalize(currentHero.ability4)].filter(
+      Boolean
+    );
     return [
       { label: '능력 1 & 2', entries: firstPair },
       { label: '능력 3 & 4', entries: secondPair },
-    ].filter((pair) => pair.entries.length > 0)
-  }, [currentHero])
+    ].filter(pair => pair.entries.length > 0);
+  }, [currentHero]);
 
   const viewerHeroHint = useMemo(() => {
-    if (!currentHero) return null
+    if (!currentHero) return null;
     return {
       heroId: currentHero.id,
       heroName,
       avatarUrl: currentHero.image_url || null,
       ownerId: currentHero.owner_id || null,
-    }
-  }, [currentHero, heroName])
+    };
+  }, [currentHero, heroName]);
 
   const {
     viewer,
@@ -868,63 +887,69 @@ export default function SharedHeroOverlay() {
     heroName,
     page: `character:${activeTabKey}`,
     viewerHero: viewerHeroHint,
-  })
+  });
 
-  const [friendSummary, setFriendSummary] = useState({ total: 0, pending: 0 })
+  const [friendSummary, setFriendSummary] = useState({ total: 0, pending: 0 });
 
   useEffect(() => {
-    const total = Array.isArray(friends) ? friends.length : 0
-    const incomingCount = Array.isArray(friendRequests?.incoming) ? friendRequests.incoming.length : 0
-    const outgoingCount = Array.isArray(friendRequests?.outgoing) ? friendRequests.outgoing.length : 0
-    setFriendSummary({ total, pending: incomingCount + outgoingCount })
-  }, [friendRequests, friends])
+    const total = Array.isArray(friends) ? friends.length : 0;
+    const incomingCount = Array.isArray(friendRequests?.incoming)
+      ? friendRequests.incoming.length
+      : 0;
+    const outgoingCount = Array.isArray(friendRequests?.outgoing)
+      ? friendRequests.outgoing.length
+      : 0;
+    setFriendSummary({ total, pending: incomingCount + outgoingCount });
+  }, [friendRequests, friends]);
 
-  const loadOtherHeroes = useCallback(async (excludeId) => {
+  const loadOtherHeroes = useCallback(async excludeId => {
     try {
-      const result = await withTable(supabase, 'heroes', (table) =>
+      const result = await withTable(supabase, 'heroes', table =>
         supabase
           .from(table)
-          .select('id,name,image_url,owner_id,description,ability1,ability2,ability3,ability4,bgm_url,bgm_duration_seconds')
+          .select(
+            'id,name,image_url,owner_id,description,ability1,ability2,ability3,ability4,bgm_url,bgm_duration_seconds'
+          )
           .order('updated_at', { ascending: false })
-          .limit(12),
-      )
+          .limit(12)
+      );
       if (result.error) {
-        console.error('다른 영웅 목록을 불러오지 못했습니다:', result.error)
-        setOtherHeroes([])
-        return
+        console.error('다른 영웅 목록을 불러오지 못했습니다:', result.error);
+        setOtherHeroes([]);
+        return;
       }
-      const rows = Array.isArray(result.data) ? result.data : []
+      const rows = Array.isArray(result.data) ? result.data : [];
       const cleaned = rows
         .map(normaliseHero)
-        .filter((hero) => hero && hero.id && hero.id !== excludeId)
-      setOtherHeroes(cleaned)
+        .filter(hero => hero && hero.id && hero.id !== excludeId);
+      setOtherHeroes(cleaned);
     } catch (error) {
-      console.error('다른 영웅 목록을 불러오지 못했습니다:', error)
-      setOtherHeroes([])
+      console.error('다른 영웅 목록을 불러오지 못했습니다:', error);
+      setOtherHeroes([]);
     }
-  }, [])
+  }, []);
 
-    const loadCurrentHero = useCallback(async () => {
-      const selection = readHeroSelection()
-      const storedId = selection?.heroId || ''
-      if (!storedId) {
-        setCurrentHero(null)
-        audioManager.setEnabled(false)
-        return
+  const loadCurrentHero = useCallback(async () => {
+    const selection = readHeroSelection();
+    const storedId = selection?.heroId || '';
+    if (!storedId) {
+      setCurrentHero(null);
+      audioManager.setEnabled(false);
+      return;
+    }
+    try {
+      const heroRow = await fetchHeroById(storedId);
+      if (!heroRow) {
+        clearHeroSelection();
+        setCurrentHero(null);
+        audioManager.setEnabled(false);
+        return;
       }
-      try {
-        const heroRow = await fetchHeroById(storedId)
-        if (!heroRow) {
-          clearHeroSelection()
-          setCurrentHero(null)
-          audioManager.setEnabled(false)
-          return
-        }
-      setCurrentHero(heroRow)
-      const trackUrl = heroRow.bgm_url || null
-      const snapshot = audioManager.getState()
-      const sameTrack = snapshot.heroId === heroRow.id && snapshot.trackUrl === trackUrl
-      const shouldResume = snapshot.isPlaying || !sameTrack
+      setCurrentHero(heroRow);
+      const trackUrl = heroRow.bgm_url || null;
+      const snapshot = audioManager.getState();
+      const sameTrack = snapshot.heroId === heroRow.id && snapshot.trackUrl === trackUrl;
+      const shouldResume = snapshot.isPlaying || !sameTrack;
       await audioManager.loadHeroTrack({
         heroId: heroRow.id,
         heroName: heroRow.name,
@@ -932,75 +957,72 @@ export default function SharedHeroOverlay() {
         duration: heroRow.bgm_duration_seconds || 0,
         autoPlay: shouldResume && Boolean(trackUrl),
         loop: true,
-      })
+      });
       if (trackUrl) {
-        audioManager.setEnabled(true, { resume: shouldResume })
+        audioManager.setEnabled(true, { resume: shouldResume });
       } else {
-        audioManager.setEnabled(false)
+        audioManager.setEnabled(false);
       }
-      loadOtherHeroes(heroRow.id)
+      loadOtherHeroes(heroRow.id);
     } catch (error) {
-      console.error('공유 오버레이용 캐릭터 불러오기 실패:', error)
-      setCurrentHero(null)
-      audioManager.setEnabled(false)
+      console.error('공유 오버레이용 캐릭터 불러오기 실패:', error);
+      setCurrentHero(null);
+      audioManager.setEnabled(false);
     }
-  }, [audioManager, loadOtherHeroes])
+  }, [audioManager, loadOtherHeroes]);
 
   useEffect(() => {
-    loadCurrentHero()
-  }, [loadCurrentHero])
+    loadCurrentHero();
+  }, [loadCurrentHero]);
 
   useEffect(() => {
     const handleRefresh = () => {
-      loadCurrentHero()
-    }
-    window.addEventListener('hero-overlay:refresh', handleRefresh)
+      loadCurrentHero();
+    };
+    window.addEventListener('hero-overlay:refresh', handleRefresh);
     return () => {
-      window.removeEventListener('hero-overlay:refresh', handleRefresh)
-    }
-  }, [loadCurrentHero])
+      window.removeEventListener('hero-overlay:refresh', handleRefresh);
+    };
+  }, [loadCurrentHero]);
 
-  const loadProfileHistory = useCallback(
-    async (heroId, { reset = false } = {}) => {
-      if (!heroId) return
-      const offset = reset ? 0 : profileOffsetRef.current
-      if (reset) {
-        setProfileHistory([])
-        setProfileHistoryHasMore(false)
-        profileOffsetRef.current = 0
-      }
-      setProfileHistoryLoading(true)
-      try {
-        const { entries, hasMore } = await fetchHeroBattleHistory(heroId, { limit: 10, offset })
-        setProfileHistory((prev) => (reset ? entries : [...prev, ...entries]))
-        profileOffsetRef.current = offset + entries.length
-        setProfileHistoryHasMore(hasMore)
-      } catch (error) {
-        console.error('전적을 불러오지 못했습니다:', error)
-        setProfileError('전적을 불러오지 못했습니다.')
-      } finally {
-        setProfileHistoryLoading(false)
-      }
-    },
-    [],
-  )
+  const loadProfileHistory = useCallback(async (heroId, { reset = false } = {}) => {
+    if (!heroId) return;
+    const offset = reset ? 0 : profileOffsetRef.current;
+    if (reset) {
+      setProfileHistory([]);
+      setProfileHistoryHasMore(false);
+      profileOffsetRef.current = 0;
+    }
+    setProfileHistoryLoading(true);
+    try {
+      const { entries, hasMore } = await fetchHeroBattleHistory(heroId, { limit: 10, offset });
+      setProfileHistory(prev => (reset ? entries : [...prev, ...entries]));
+      profileOffsetRef.current = offset + entries.length;
+      setProfileHistoryHasMore(hasMore);
+    } catch (error) {
+      console.error('전적을 불러오지 못했습니다:', error);
+      setProfileError('전적을 불러오지 못했습니다.');
+    } finally {
+      setProfileHistoryLoading(false);
+    }
+  }, []);
 
   const openProfile = useCallback(
-    async (heroId) => {
-      if (!heroId) return
-      setProfileVisible(true)
-      setProfileLoading(true)
-      setProfileError(null)
-      setFriendStatus(null)
-      profileOffsetRef.current = 0
-      previousAudioRef.current = audioManager.getState()
+    async heroId => {
+      if (!heroId) return;
+      setProfileVisible(true);
+      setProfileLoading(true);
+      setProfileError(null);
+      setFriendStatus(null);
+      profileOffsetRef.current = 0;
+      previousAudioRef.current = audioManager.getState();
       try {
-        const heroRow = await fetchHeroById(heroId)
+        const heroRow = await fetchHeroById(heroId);
         if (!heroRow) {
-          throw new Error('해당 캐릭터를 찾을 수 없습니다.')
+          throw new Error('해당 캐릭터를 찾을 수 없습니다.');
         }
-        setProfileHero(heroRow)
-        const trackUrl = heroRow.bgm_url || null
+        setProfileHero(heroRow);
+        const trackUrl = heroRow.bgm_url || null;
         await audioManager.loadHeroTrack({
           heroId: heroRow.id,
           heroName: heroRow.name,
@@ -1008,31 +1030,31 @@ export default function SharedHeroOverlay() {
           duration: heroRow.bgm_duration_seconds || 0,
           autoPlay: Boolean(trackUrl),
           loop: true,
-        })
+        });
         if (trackUrl) {
-          audioManager.setEnabled(true, { resume: true })
+          audioManager.setEnabled(true, { resume: true });
         } else {
-          audioManager.setEnabled(false)
+          audioManager.setEnabled(false);
         }
-        await loadProfileHistory(heroRow.id, { reset: true })
+        await loadProfileHistory(heroRow.id, { reset: true });
       } catch (error) {
-        console.error('프로필을 불러오지 못했습니다:', error)
-        setProfileError(error?.message || '프로필을 불러오지 못했습니다.')
+        console.error('프로필을 불러오지 못했습니다:', error);
+        setProfileError(error?.message || '프로필을 불러오지 못했습니다.');
       } finally {
-        setProfileLoading(false)
+        setProfileLoading(false);
       }
     },
-    [audioManager, loadProfileHistory],
-  )
+    [audioManager, loadProfileHistory]
+  );
 
   const closeProfile = useCallback(() => {
-    setProfileVisible(false)
-    setProfileHero(null)
-    setProfileHistory([])
-    setProfileError(null)
-    profileOffsetRef.current = 0
-    const snapshot = previousAudioRef.current
-    previousAudioRef.current = null
+    setProfileVisible(false);
+    setProfileHero(null);
+    setProfileHistory([]);
+    setProfileError(null);
+    profileOffsetRef.current = 0;
+    const snapshot = previousAudioRef.current;
+    previousAudioRef.current = null;
     if (snapshot && snapshot.heroId) {
       audioManager
         .loadHeroTrack({
@@ -1043,52 +1065,52 @@ export default function SharedHeroOverlay() {
           autoPlay: snapshot.isPlaying && snapshot.enabled && Boolean(snapshot.trackUrl),
           loop: snapshot.loop,
         })
-        .catch(() => {})
+        .catch(() => {});
       audioManager.setEnabled(snapshot.enabled && Boolean(snapshot.trackUrl), {
         resume: snapshot.isPlaying && snapshot.enabled && Boolean(snapshot.trackUrl),
-      })
+      });
       if (snapshot.progress) {
-        audioManager.seek(snapshot.progress)
+        audioManager.seek(snapshot.progress);
       }
     } else {
-      loadCurrentHero()
+      loadCurrentHero();
     }
-  }, [audioManager, loadCurrentHero])
+  }, [audioManager, loadCurrentHero]);
 
   useEffect(() => {
-    const handleOpen = (event) => {
-      const heroId = event?.detail?.heroId
+    const handleOpen = event => {
+      const heroId = event?.detail?.heroId;
       if (heroId) {
-        openProfile(heroId)
+        openProfile(heroId);
       }
-    }
-    window.addEventListener('shared-hero:open-profile', handleOpen)
+    };
+    window.addEventListener('shared-hero:open-profile', handleOpen);
     return () => {
-      window.removeEventListener('shared-hero:open-profile', handleOpen)
-    }
-  }, [openProfile])
+      window.removeEventListener('shared-hero:open-profile', handleOpen);
+    };
+  }, [openProfile]);
 
   const filteredGames = useMemo(() => {
-    const trimmed = searchTerm.trim().toLowerCase()
+    const trimmed = searchTerm.trim().toLowerCase();
     const base = !trimmed
       ? sampleGames
-      : sampleGames.filter((game) => {
-          const haystack = `${game.title} ${game.tags.join(' ')}`.toLowerCase()
-          return haystack.includes(trimmed)
-        })
+      : sampleGames.filter(game => {
+          const haystack = `${game.title} ${game.tags.join(' ')}`.toLowerCase();
+          return haystack.includes(trimmed);
+        });
 
-    const sorted = [...base]
+    const sorted = [...base];
     if (searchSort === 'latest') {
-      sorted.sort((a, b) => b.createdAt - a.createdAt)
+      sorted.sort((a, b) => b.createdAt - a.createdAt);
     }
     if (searchSort === 'likes') {
-      sorted.sort((a, b) => b.likes - a.likes)
+      sorted.sort((a, b) => b.likes - a.likes);
     }
     if (searchSort === 'plays') {
-      sorted.sort((a, b) => b.plays - a.plays)
+      sorted.sort((a, b) => b.plays - a.plays);
     }
-    return sorted
-  }, [searchSort, searchTerm])
+    return sorted;
+  }, [searchSort, searchTerm]);
 
   const overlayBody = useMemo(() => {
     if (activeTabKey === 'character') {
@@ -1108,7 +1130,7 @@ export default function SharedHeroOverlay() {
             </button>
           </div>
         </div>
-      )
+      );
     }
 
     if (activeTabKey === 'abilities') {
@@ -1117,7 +1139,7 @@ export default function SharedHeroOverlay() {
           <p style={styles.infoTitle}>능력 정보</p>
           {abilityPairs.length ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {abilityPairs.map((pair) => (
+              {abilityPairs.map(pair => (
                 <div key={pair.label} style={styles.listItem}>
                   <p style={styles.listTitle}>{pair.label}</p>
                   <p style={styles.listMeta}>{pair.entries.join(' / ')}</p>
@@ -1128,7 +1150,7 @@ export default function SharedHeroOverlay() {
             <p style={styles.listMeta}>등록된 능력이 없습니다.</p>
           )}
         </div>
-      )
+      );
     }
 
     if (activeTabKey === 'stats') {
@@ -1136,8 +1158,8 @@ export default function SharedHeroOverlay() {
         <div style={styles.tabContent}>
           <p style={styles.infoTitle}>통계 요약</p>
           <p style={styles.infoText}>
-            전체 승률과 평균 점수는 추후 랭킹 게임 데이터와 함께 제공될 예정입니다. 캐릭터 화면에서 자세한 전투 기록을 확인해
-            주세요.
+            전체 승률과 평균 점수는 추후 랭킹 게임 데이터와 함께 제공될 예정입니다. 캐릭터 화면에서
+            자세한 전투 기록을 확인해 주세요.
           </p>
           <div style={styles.listItem}>
             <p style={styles.listTitle}>참여 중인 게임</p>
@@ -1148,7 +1170,7 @@ export default function SharedHeroOverlay() {
             </p>
           </div>
         </div>
-      )
+      );
     }
 
     if (activeTabKey === 'ranking') {
@@ -1158,7 +1180,7 @@ export default function SharedHeroOverlay() {
           <p style={styles.infoText}>프로필을 열어 친구 추가와 전적을 확인해 보세요.</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {otherHeroes.length ? (
-              otherHeroes.map((hero) => (
+              otherHeroes.map(hero => (
                 <div key={hero.id} style={styles.rankingHeroRow}>
                   <div style={styles.rankingHeroMeta}>
                     {hero.image_url ? (
@@ -1169,7 +1191,11 @@ export default function SharedHeroOverlay() {
                     )}
                     <span>{hero.name}</span>
                   </div>
-                  <button type="button" style={styles.rankingButton} onClick={() => openProfile(hero.id)}>
+                  <button
+                    type="button"
+                    style={styles.rankingButton}
+                    onClick={() => openProfile(hero.id)}
+                  >
                     프로필 보기
                   </button>
                 </div>
@@ -1179,29 +1205,38 @@ export default function SharedHeroOverlay() {
             )}
           </div>
         </div>
-      )
+      );
     }
 
     if (activeTabKey === 'friends') {
-      const previewFriends = Array.isArray(friends) ? friends.slice(0, 3) : []
+      const previewFriends = Array.isArray(friends) ? friends.slice(0, 3) : [];
       const pendingText =
-        friendSummary.pending > 0 ? `대기 중인 요청 ${friendSummary.pending}건` : '대기 중인 요청 없음'
+        friendSummary.pending > 0
+          ? `대기 중인 요청 ${friendSummary.pending}건`
+          : '대기 중인 요청 없음';
 
       return (
         <div style={styles.tabContent}>
           <p style={styles.infoTitle}>친구 현황</p>
           <p style={styles.listMeta}>{`등록된 친구 ${friendSummary.total}명 · ${pendingText}`}</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {previewFriends.map((friend) => {
+            {previewFriends.map(friend => {
               const heroName =
-                friend.friendHeroName || friend.currentHeroName || friend.displayName || friend.username || '친구'
-              const status = friend.online ? '온라인' : '오프라인'
+                friend.friendHeroName ||
+                friend.currentHeroName ||
+                friend.displayName ||
+                friend.username ||
+                '친구';
+              const status = friend.online ? '온라인' : '오프라인';
               return (
-                <div key={`${friend.friendOwnerId || friend.ownerId || heroName}`} style={styles.listItem}>
+                <div
+                  key={`${friend.friendOwnerId || friend.ownerId || heroName}`}
+                  style={styles.listItem}
+                >
                   <p style={styles.listTitle}>{heroName}</p>
                   <p style={styles.listMeta}>{status}</p>
                 </div>
-              )
+              );
             })}
             {!previewFriends.length ? <p style={styles.listMeta}>친구가 아직 없습니다.</p> : null}
           </div>
@@ -1211,7 +1246,7 @@ export default function SharedHeroOverlay() {
             </button>
           </div>
         </div>
-      )
+      );
     }
 
     if (activeTabKey === 'search') {
@@ -1221,10 +1256,10 @@ export default function SharedHeroOverlay() {
             style={styles.searchInput}
             placeholder="게임 이름이나 태그를 검색해 보세요"
             value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
+            onChange={event => setSearchTerm(event.target.value)}
           />
           <div style={styles.sortRow}>
-            {searchSortOptions.map((option) => (
+            {searchSortOptions.map(option => (
               <button
                 key={option.key}
                 type="button"
@@ -1236,7 +1271,7 @@ export default function SharedHeroOverlay() {
             ))}
           </div>
           <div style={styles.gameList}>
-            {filteredGames.map((game) => (
+            {filteredGames.map(game => (
               <div key={game.id} style={styles.listItem}>
                 <p style={styles.listTitle}>{game.title}</p>
                 <p style={styles.listMeta}>{`${game.players}인 · ${game.tags.join(' / ')}`}</p>
@@ -1244,10 +1279,10 @@ export default function SharedHeroOverlay() {
             ))}
           </div>
         </div>
-      )
+      );
     }
 
-    return null
+    return null;
   }, [
     activeTabKey,
     abilityPairs,
@@ -1265,55 +1300,55 @@ export default function SharedHeroOverlay() {
     currentHero?.id,
     currentHero?.tags,
     router,
-  ])
+  ]);
 
-  const activeBgmUrl = currentHero?.bgm_url || null
+  const activeBgmUrl = currentHero?.bgm_url || null;
 
   const handleSeek = useCallback(
-    (event) => {
-      if (!duration) return
-      const rect = event.currentTarget.getBoundingClientRect()
-      const ratio = Math.min(Math.max((event.clientX - rect.left) / rect.width, 0), 1)
-      const next = ratio * duration
-      audioManager.seek(next)
+    event => {
+      if (!duration) return;
+      const rect = event.currentTarget.getBoundingClientRect();
+      const ratio = Math.min(Math.max((event.clientX - rect.left) / rect.width, 0), 1);
+      const next = ratio * duration;
+      audioManager.seek(next);
     },
-    [audioManager, duration],
-  )
+    [audioManager, duration]
+  );
 
   const togglePlayback = useCallback(() => {
-    if (!activeBgmUrl) return
-    audioManager.toggle()
-  }, [audioManager, activeBgmUrl])
+    if (!activeBgmUrl) return;
+    audioManager.toggle();
+  }, [audioManager, activeBgmUrl]);
 
   const stopPlayback = useCallback(() => {
-    audioManager.stop()
-  }, [audioManager])
+    audioManager.stop();
+  }, [audioManager]);
 
   const handleFriendRequest = useCallback(async () => {
-    if (!profileHero?.id) return
+    if (!profileHero?.id) return;
     if (!viewer?.user_id) {
-      setFriendStatus('로그인 후 이용할 수 있습니다.')
-      return
+      setFriendStatus('로그인 후 이용할 수 있습니다.');
+      return;
     }
-    setFriendBusy(true)
+    setFriendBusy(true);
     try {
-      const result = await addFriend({ heroId: profileHero.id })
+      const result = await addFriend({ heroId: profileHero.id });
       if (result?.ok) {
-        setFriendStatus('친구 요청을 보냈습니다.')
+        setFriendStatus('친구 요청을 보냈습니다.');
       } else if (result?.error) {
-        setFriendStatus(result.error)
+        setFriendStatus(result.error);
       } else {
-        setFriendStatus('친구 요청을 보내지 못했습니다.')
+        setFriendStatus('친구 요청을 보내지 못했습니다.');
       }
     } catch (error) {
-      setFriendStatus(error?.message || '친구 요청을 보내지 못했습니다.')
+      setFriendStatus(error?.message || '친구 요청을 보내지 못했습니다.');
     } finally {
-      setFriendBusy(false)
+      setFriendBusy(false);
     }
-  }, [addFriend, profileHero, viewer?.user_id])
+  }, [addFriend, profileHero, viewer?.user_id]);
 
   if (!currentHero) {
-    return null
+    return null;
   }
 
   return (
@@ -1350,7 +1385,7 @@ export default function SharedHeroOverlay() {
                         <button
                           type="button"
                           style={styles.collapseButton}
-                          onClick={() => setPlayerCollapsed((prev) => !prev)}
+                          onClick={() => setPlayerCollapsed(prev => !prev)}
                         >
                           {playerCollapsed ? '▲' : '▼'}
                         </button>
@@ -1361,7 +1396,9 @@ export default function SharedHeroOverlay() {
                           <div style={styles.progressBar} role="presentation" onClick={handleSeek}>
                             <div style={styles.progressFill(duration ? progress / duration : 0)} />
                           </div>
-                          <span style={styles.listMeta}>{`${formatTime(progress)} / ${formatTime(duration)}`}</span>
+                          <span
+                            style={styles.listMeta}
+                          >{`${formatTime(progress)} / ${formatTime(duration)}`}</span>
                         </>
                       ) : null}
                     </div>
@@ -1395,13 +1432,19 @@ export default function SharedHeroOverlay() {
                       ))}
                     </div>
                     <div style={styles.headerActions}>
-                      <button type="button" style={styles.headerActionButton} onClick={() => setFriendOpen(true)}>
+                      <button
+                        type="button"
+                        style={styles.headerActionButton}
+                        onClick={() => setFriendOpen(true)}
+                      >
                         친구창 열기
                       </button>
                       <button
                         type="button"
                         style={styles.headerActionButton}
-                        onClick={() => currentHero?.id && router.push(`/character/${currentHero.id}`)}
+                        onClick={() =>
+                          currentHero?.id && router.push(`/character/${currentHero.id}`)
+                        }
                       >
                         캐릭터 화면
                       </button>
@@ -1447,5 +1490,5 @@ export default function SharedHeroOverlay() {
         onCancelRequest={cancelFriendRequest}
       />
     </>
-  )
+  );
 }

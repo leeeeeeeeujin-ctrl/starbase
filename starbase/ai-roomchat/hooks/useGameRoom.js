@@ -1,221 +1,210 @@
-'use client'
+'use client';
 
 // hooks/useGameRoom.js
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { withTable } from '@/lib/supabaseTables'
+import { withTable } from '@/lib/supabaseTables';
 import {
   clearHeroSelection,
   persistHeroSelection,
   resolveStoredHeroForUser,
-} from '@/lib/heroes/selectedHeroStorage'
+} from '@/lib/heroes/selectedHeroStorage';
 
-import { mapTimelineRowToEvent, normalizeTimelineEvents } from '../lib/rank/timelineEvents'
-import { normalizeHeroIdValue, resolveParticipantHeroId } from '../lib/rank/participantUtils'
+import { mapTimelineRowToEvent, normalizeTimelineEvents } from '../lib/rank/timelineEvents';
+import { normalizeHeroIdValue, resolveParticipantHeroId } from '../lib/rank/participantUtils';
 
-import { supabase } from '../lib/supabase'
+import { supabase } from '../lib/supabase';
 
 async function fetchParticipantsWithHeroes(gameId) {
-  const {
-    data: participantsData,
-    error: participantError,
-  } = await withTable(supabase, 'rank_participants', (table) =>
-    supabase
-      .from(table)
-      .select(
-        'id, game_id, hero_id, hero_ids, owner_id, role, score, rating, battles, win_rate, status, slot_no, created_at'
-      )
-      .eq('game_id', gameId)
-      .order('score', { ascending: false })
-  )
-
-  if (participantError) throw participantError
-
-  const participants = participantsData || []
-  const heroIdSet = new Set()
-  participants.forEach((participant) => {
-    const resolvedId = resolveParticipantHeroId(participant)
-    if (resolvedId) {
-      heroIdSet.add(resolvedId)
-      return
-    }
-
-    const heroArray = Array.isArray(participant?.hero_ids) ? participant.hero_ids : []
-    heroArray.forEach((value) => {
-      const normalized = normalizeHeroIdValue(value)
-      if (normalized) {
-        heroIdSet.add(normalized)
-      }
-    })
-  })
-  const heroIds = Array.from(heroIdSet)
-
-  if (!heroIds.length) {
-    return participants.map((p) => ({ ...p, hero: null }))
-  }
-
-  const { data: heroesData, error: heroError } = await withTable(
+  const { data: participantsData, error: participantError } = await withTable(
     supabase,
-    'heroes',
-    (table) =>
+    'rank_participants',
+    table =>
       supabase
         .from(table)
         .select(
-          'id, name, image_url, background_url, description, owner_id, ability1, ability2, ability3, ability4, bgm_url, bgm_duration_seconds'
+          'id, game_id, hero_id, hero_ids, owner_id, role, score, rating, battles, win_rate, status, slot_no, created_at'
         )
-        .in('id', heroIds)
-  )
+        .eq('game_id', gameId)
+        .order('score', { ascending: false })
+  );
 
-  if (heroError) throw heroError
+  if (participantError) throw participantError;
 
-  const heroesById = new Map()
-  ;(heroesData || []).forEach((hero) => {
-    const key = normalizeHeroIdValue(hero?.id)
-    if (!key) return
-    heroesById.set(key, hero)
-  })
+  const participants = participantsData || [];
+  const heroIdSet = new Set();
+  participants.forEach(participant => {
+    const resolvedId = resolveParticipantHeroId(participant);
+    if (resolvedId) {
+      heroIdSet.add(resolvedId);
+      return;
+    }
 
-  return participants.map((participant) => ({
+    const heroArray = Array.isArray(participant?.hero_ids) ? participant.hero_ids : [];
+    heroArray.forEach(value => {
+      const normalized = normalizeHeroIdValue(value);
+      if (normalized) {
+        heroIdSet.add(normalized);
+      }
+    });
+  });
+  const heroIds = Array.from(heroIdSet);
+
+  if (!heroIds.length) {
+    return participants.map(p => ({ ...p, hero: null }));
+  }
+
+  const { data: heroesData, error: heroError } = await withTable(supabase, 'heroes', table =>
+    supabase
+      .from(table)
+      .select(
+        'id, name, image_url, background_url, description, owner_id, ability1, ability2, ability3, ability4, bgm_url, bgm_duration_seconds'
+      )
+      .in('id', heroIds)
+  );
+
+  if (heroError) throw heroError;
+
+  const heroesById = new Map();
+  (heroesData || []).forEach(hero => {
+    const key = normalizeHeroIdValue(hero?.id);
+    if (!key) return;
+    heroesById.set(key, hero);
+  });
+
+  return participants.map(participant => ({
     ...participant,
     hero: (() => {
-      const resolvedId = resolveParticipantHeroId(participant)
-      if (!resolvedId) return null
-      return heroesById.get(resolvedId) || null
+      const resolvedId = resolveParticipantHeroId(participant);
+      if (!resolvedId) return null;
+      return heroesById.get(resolvedId) || null;
     })(),
-  }))
+  }));
 }
 
 async function fetchRoleMetadata(gameId) {
-  if (!gameId) return []
-  const { data, error } = await withTable(supabase, 'rank_game_roles', (table) =>
-    supabase
-      .from(table)
-      .select('name, slot_count, active')
-      .eq('game_id', gameId),
-  )
-  if (error) throw error
-  return Array.isArray(data) ? data : []
+  if (!gameId) return [];
+  const { data, error } = await withTable(supabase, 'rank_game_roles', table =>
+    supabase.from(table).select('name, slot_count, active').eq('game_id', gameId)
+  );
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
 }
 
 async function fetchActiveSlotCounts(gameId) {
-  if (!gameId) return new Map()
-  const { data, error } = await withTable(supabase, 'rank_game_slots', (table) =>
-    supabase
-      .from(table)
-      .select('role, active')
-      .eq('game_id', gameId),
-  )
-  if (error) throw error
-  const map = new Map()
-  ;(Array.isArray(data) ? data : []).forEach((slot) => {
-    if (slot?.active === false) return
-    const name = typeof slot?.role === 'string' ? slot.role.trim() : ''
-    if (!name) return
-    map.set(name, (map.get(name) || 0) + 1)
-  })
-  return map
+  if (!gameId) return new Map();
+  const { data, error } = await withTable(supabase, 'rank_game_slots', table =>
+    supabase.from(table).select('role, active').eq('game_id', gameId)
+  );
+  if (error) throw error;
+  const map = new Map();
+  (Array.isArray(data) ? data : []).forEach(slot => {
+    if (slot?.active === false) return;
+    const name = typeof slot?.role === 'string' ? slot.role.trim() : '';
+    if (!name) return;
+    map.set(name, (map.get(name) || 0) + 1);
+  });
+  return map;
 }
 
 async function fetchSlotDetails(gameId) {
-  if (!gameId) return []
-  const { data, error } = await withTable(supabase, 'rank_game_slots', (table) =>
+  if (!gameId) return [];
+  const { data, error } = await withTable(supabase, 'rank_game_slots', table =>
     supabase
       .from(table)
       .select('id, slot_index, role, active, hero_id, hero_owner_id, updated_at')
       .eq('game_id', gameId)
-      .order('slot_index', { ascending: true }),
-  )
-  if (error) throw error
-  return Array.isArray(data) ? data : []
+      .order('slot_index', { ascending: true })
+  );
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
 }
 
 function normalizeRoles({ gameRoles, roleRows, slotCounts }) {
-  const byName = new Map()
+  const byName = new Map();
 
-  ;(Array.isArray(roleRows) ? roleRows : []).forEach((row) => {
-    const rawName = typeof row?.name === 'string' ? row.name.trim() : ''
-    if (!rawName) return
-    const rawCount = Number(row?.slot_count ?? row?.slotCount)
-    const slotCount = Number.isFinite(rawCount) && rawCount >= 0 ? rawCount : null
+  (Array.isArray(roleRows) ? roleRows : []).forEach(row => {
+    const rawName = typeof row?.name === 'string' ? row.name.trim() : '';
+    if (!rawName) return;
+    const rawCount = Number(row?.slot_count ?? row?.slotCount);
+    const slotCount = Number.isFinite(rawCount) && rawCount >= 0 ? rawCount : null;
     byName.set(rawName, {
       name: rawName,
-      slot_count: slotCount ?? (slotCounts?.get(rawName) ?? null),
-    })
-  })
+      slot_count: slotCount ?? slotCounts?.get(rawName) ?? null,
+    });
+  });
 
   if (slotCounts instanceof Map) {
     slotCounts.forEach((count, name) => {
-      if (!name) return
-      const normalizedCount = Number.isFinite(Number(count)) ? Number(count) : null
+      if (!name) return;
+      const normalizedCount = Number.isFinite(Number(count)) ? Number(count) : null;
       if (byName.has(name)) {
-        const current = byName.get(name)
+        const current = byName.get(name);
         if (normalizedCount != null) {
-          current.slot_count = normalizedCount
+          current.slot_count = normalizedCount;
         }
       } else {
-        byName.set(name, { name, slot_count: normalizedCount })
+        byName.set(name, { name, slot_count: normalizedCount });
       }
-    })
+    });
   }
 
   if (!byName.size && Array.isArray(gameRoles) && gameRoles.length) {
-    gameRoles.forEach((raw) => {
-      const name = typeof raw === 'string' ? raw.trim() : ''
-      if (!name) return
-      const fallbackCount = slotCounts instanceof Map ? slotCounts.get(name) : null
-      const normalizedCount = Number.isFinite(Number(fallbackCount))
-        ? Number(fallbackCount)
-        : null
+    gameRoles.forEach(raw => {
+      const name = typeof raw === 'string' ? raw.trim() : '';
+      if (!name) return;
+      const fallbackCount = slotCounts instanceof Map ? slotCounts.get(name) : null;
+      const normalizedCount = Number.isFinite(Number(fallbackCount)) ? Number(fallbackCount) : null;
       if (!byName.has(name)) {
-        byName.set(name, { name, slot_count: normalizedCount })
+        byName.set(name, { name, slot_count: normalizedCount });
       }
-    })
+    });
   }
 
   if (!byName.size) {
-    return []
+    return [];
   }
 
-  return Array.from(byName.values())
+  return Array.from(byName.values());
 }
 
 function computeRequiredSlots(roleList, slotCounts) {
   if (Array.isArray(roleList) && roleList.length) {
     const total = roleList.reduce((acc, role) => {
-      const raw = Number(role?.slot_count ?? role?.slotCount)
+      const raw = Number(role?.slot_count ?? role?.slotCount);
       if (Number.isFinite(raw) && raw > 0) {
-        return acc + raw
+        return acc + raw;
       }
-      return acc
-    }, 0)
+      return acc;
+    }, 0);
     if (total > 0) {
-      return total
+      return total;
     }
   }
 
   if (slotCounts instanceof Map && slotCounts.size) {
-    let sum = 0
-    slotCounts.forEach((count) => {
-      const raw = Number(count)
+    let sum = 0;
+    slotCounts.forEach(count => {
+      const raw = Number(count);
       if (Number.isFinite(raw) && raw > 0) {
-        sum += raw
+        sum += raw;
       }
-    })
-    return sum
+    });
+    return sum;
   }
 
-  return 0
+  return 0;
 }
 
 async function resolveStoredHero(ownerId) {
   return resolveStoredHeroForUser(ownerId, {
     columns:
       'id, name, image_url, background_url, description, owner_id, ability1, ability2, ability3, ability4, bgm_url, bgm_duration_seconds',
-  })
+  });
 }
 
 async function fetchRecentBattles(gameId) {
-  const { data, error } = await withTable(supabase, 'rank_battles', (table) =>
+  const { data, error } = await withTable(supabase, 'rank_battles', table =>
     supabase
       .from(table)
       .select(
@@ -224,44 +213,40 @@ async function fetchRecentBattles(gameId) {
       .eq('game_id', gameId)
       .order('created_at', { ascending: false })
       .limit(40)
-  )
+  );
 
-  if (error) throw error
-  return data || []
+  if (error) throw error;
+  return data || [];
 }
 
-async function fetchOwnSessionHistory(
-  gameId,
-  ownerId,
-  { sessionLimit = 3, turnLimit = 40 } = {},
-) {
+async function fetchOwnSessionHistory(gameId, ownerId, { sessionLimit = 3, turnLimit = 40 } = {}) {
   if (!gameId || !ownerId) {
-    return []
+    return [];
   }
 
   const { data: sessionRows, error: sessionError } = await withTable(
     supabase,
     'rank_sessions',
-    (table) =>
+    table =>
       supabase
         .from(table)
         .select('id, status, turn, created_at, updated_at')
         .eq('game_id', gameId)
         .eq('owner_id', ownerId)
         .order('created_at', { ascending: false })
-        .limit(sessionLimit),
-  )
+        .limit(sessionLimit)
+  );
 
-  if (sessionError) throw sessionError
+  if (sessionError) throw sessionError;
 
-  const sessions = Array.isArray(sessionRows) ? sessionRows : []
+  const sessions = Array.isArray(sessionRows) ? sessionRows : [];
   if (!sessions.length) {
-    return []
+    return [];
   }
 
-  const sessionIds = sessions.map((row) => row?.id).filter(Boolean)
+  const sessionIds = sessions.map(row => row?.id).filter(Boolean);
   if (!sessionIds.length) {
-    return sessions.map((session) => ({
+    return sessions.map(session => ({
       sessionId: session.id,
       sessionStatus: session.status || 'active',
       sessionCreatedAt: session.created_at || null,
@@ -272,118 +257,114 @@ async function fetchOwnSessionHistory(
       hiddenCount: 0,
       hasMore: false,
       timelineEvents: [],
-    }))
+    }));
   }
 
-  const { data: turnRows, error: turnError } = await withTable(
-    supabase,
-    'rank_turns',
-    (table) =>
-      supabase
-        .from(table)
-        .select('id, session_id, idx, role, public, is_visible, content, summary_payload, created_at')
-        .in('session_id', sessionIds)
-        .order('session_id', { ascending: false })
-        .order('idx', { ascending: true }),
-  )
+  const { data: turnRows, error: turnError } = await withTable(supabase, 'rank_turns', table =>
+    supabase
+      .from(table)
+      .select('id, session_id, idx, role, public, is_visible, content, summary_payload, created_at')
+      .in('session_id', sessionIds)
+      .order('session_id', { ascending: false })
+      .order('idx', { ascending: true })
+  );
 
-  if (turnError) throw turnError
+  if (turnError) throw turnError;
 
-  const turnsBySession = new Map()
-  ;(Array.isArray(turnRows) ? turnRows : []).forEach((turn) => {
-    if (!turn?.session_id) return
-    const key = turn.session_id
+  const turnsBySession = new Map();
+  (Array.isArray(turnRows) ? turnRows : []).forEach(turn => {
+    if (!turn?.session_id) return;
+    const key = turn.session_id;
     if (!turnsBySession.has(key)) {
-      turnsBySession.set(key, [])
+      turnsBySession.set(key, []);
     }
-    turnsBySession.get(key).push(turn)
-  })
+    turnsBySession.get(key).push(turn);
+  });
 
-  let timelineBySession = new Map()
+  let timelineBySession = new Map();
   try {
     const { data: timelineRows, error: timelineError } = await withTable(
       supabase,
       'rank_session_timeline_events',
-      (table) =>
+      table =>
         supabase
           .from(table)
           .select(
-            'session_id, game_id, event_id, event_type, owner_id, reason, strike, remaining, limit:limit_remaining, status, turn, event_timestamp, context, metadata',
+            'session_id, game_id, event_id, event_type, owner_id, reason, strike, remaining, limit:limit_remaining, status, turn, event_timestamp, context, metadata'
           )
           .in('session_id', sessionIds)
           .order('session_id', { ascending: false })
-          .order('event_timestamp', { ascending: true }),
-    )
+          .order('event_timestamp', { ascending: true })
+    );
 
     if (timelineError) {
-      throw timelineError
+      throw timelineError;
     }
 
-    timelineBySession = new Map()
-    ;(Array.isArray(timelineRows) ? timelineRows : []).forEach((row) => {
-      if (!row?.session_id) return
-      const event = mapTimelineRowToEvent(row, { defaultTurn: row?.turn })
-      if (!event) return
+    timelineBySession = new Map();
+    (Array.isArray(timelineRows) ? timelineRows : []).forEach(row => {
+      if (!row?.session_id) return;
+      const event = mapTimelineRowToEvent(row, { defaultTurn: row?.turn });
+      if (!event) return;
       if (!timelineBySession.has(row.session_id)) {
-        timelineBySession.set(row.session_id, [])
+        timelineBySession.set(row.session_id, []);
       }
-      timelineBySession.get(row.session_id).push(event)
-    })
+      timelineBySession.get(row.session_id).push(event);
+    });
   } catch (timelineError) {
-    console.warn('세션 타임라인을 불러오지 못했습니다:', timelineError)
-    timelineBySession = new Map()
+    console.warn('세션 타임라인을 불러오지 못했습니다:', timelineError);
+    timelineBySession = new Map();
   }
 
-  const perSessionLimit = Number.isFinite(Number(turnLimit)) && Number(turnLimit) > 0
-    ? Number(turnLimit)
-    : 40
+  const perSessionLimit =
+    Number.isFinite(Number(turnLimit)) && Number(turnLimit) > 0 ? Number(turnLimit) : 40;
 
-  let battleLogsBySession = new Map()
+  let battleLogsBySession = new Map();
   try {
     const { data: battleRows, error: battleError } = await withTable(
       supabase,
       'rank_session_battle_logs',
-      (table) =>
+      table =>
         supabase
           .from(table)
           .select('session_id, game_id, owner_id, result, reason, payload, created_at, updated_at')
-          .in('session_id', sessionIds),
-    )
+          .in('session_id', sessionIds)
+    );
 
     if (battleError) {
-      throw battleError
+      throw battleError;
     }
 
-    battleLogsBySession = new Map()
-    ;(Array.isArray(battleRows) ? battleRows : []).forEach((row) => {
-      if (!row?.session_id) return
-      battleLogsBySession.set(row.session_id, row)
-    })
+    battleLogsBySession = new Map();
+    (Array.isArray(battleRows) ? battleRows : []).forEach(row => {
+      if (!row?.session_id) return;
+      battleLogsBySession.set(row.session_id, row);
+    });
   } catch (battleError) {
-    console.warn('세션 베틀로그를 불러오지 못했습니다:', battleError)
-    battleLogsBySession = new Map()
+    console.warn('세션 베틀로그를 불러오지 못했습니다:', battleError);
+    battleLogsBySession = new Map();
   }
 
-  return sessions.map((session) => {
-    const allTurns = turnsBySession.get(session.id) || []
+  return sessions.map(session => {
+    const allTurns = turnsBySession.get(session.id) || [];
     const sorted = [...allTurns].sort((a, b) => {
-      const left = Number(a?.idx)
-      const right = Number(b?.idx)
+      const left = Number(a?.idx);
+      const right = Number(b?.idx);
       if (Number.isFinite(left) && Number.isFinite(right)) {
-        return left - right
+        return left - right;
       }
-      return 0
-    })
+      return 0;
+    });
     const shareableTurns = sorted.filter(
-      (turn) => turn?.public !== false && turn?.is_visible !== false,
-    )
+      turn => turn?.public !== false && turn?.is_visible !== false
+    );
     const limitedShareable =
-      perSessionLimit > 0 ? shareableTurns.slice(-perSessionLimit) : shareableTurns
-    const hiddenTurns = sorted.filter((turn) => turn?.public === false)
+      perSessionLimit > 0 ? shareableTurns.slice(-perSessionLimit) : shareableTurns;
+    const hiddenTurns = sorted.filter(turn => turn?.public === false);
     const suppressedTurns = sorted.filter(
-      (turn) => turn?.public !== false && turn?.is_visible === false,
-    )
-    const latestSummarySource = [...sorted].reverse().find((turn) => turn?.summary_payload)
+      turn => turn?.public !== false && turn?.is_visible === false
+    );
+    const latestSummarySource = [...sorted].reverse().find(turn => turn?.summary_payload);
 
     return {
       sessionId: session.id,
@@ -398,17 +379,20 @@ async function fetchOwnSessionHistory(
       suppressedCount: suppressedTurns.length,
       trimmedCount: Math.max(shareableTurns.length - limitedShareable.length, 0),
       latestSummary: latestSummarySource?.summary_payload || null,
-      hasMore: shareableTurns.length > limitedShareable.length || sorted.length > limitedShareable.length,
-      timelineEvents: normalizeTimelineEvents(timelineBySession.get(session.id) || [], { order: 'desc' }),
+      hasMore:
+        shareableTurns.length > limitedShareable.length || sorted.length > limitedShareable.length,
+      timelineEvents: normalizeTimelineEvents(timelineBySession.get(session.id) || [], {
+        order: 'desc',
+      }),
       battleLog: (() => {
-        const row = battleLogsBySession.get(session.id)
-        if (!row) return null
-        let payload = null
+        const row = battleLogsBySession.get(session.id);
+        if (!row) return null;
+        let payload = null;
         if (row.payload && typeof row.payload === 'object') {
           try {
-            payload = JSON.parse(JSON.stringify(row.payload))
+            payload = JSON.parse(JSON.stringify(row.payload));
           } catch (error) {
-            payload = null
+            payload = null;
           }
         }
         return {
@@ -417,59 +401,59 @@ async function fetchOwnSessionHistory(
           payload,
           created_at: row.created_at || null,
           updated_at: row.updated_at || null,
-        }
+        };
       })(),
-    }
-  })
+    };
+  });
 }
 
 async function fetchSharedSessionHistory(
   gameId,
   token,
-  { limit = 5, turnLimit = 30, timelineLimit = 60 } = {},
+  { limit = 5, turnLimit = 30, timelineLimit = 60 } = {}
 ) {
   if (!gameId || !token || typeof fetch === 'undefined') {
-    return []
+    return [];
   }
 
-  const params = new URLSearchParams()
-  params.set('gameId', gameId)
+  const params = new URLSearchParams();
+  params.set('gameId', gameId);
   if (Number.isFinite(Number(limit))) {
-    params.set('limit', String(limit))
+    params.set('limit', String(limit));
   }
   if (Number.isFinite(Number(turnLimit))) {
-    params.set('turnLimit', String(turnLimit))
+    params.set('turnLimit', String(turnLimit));
   }
   if (Number.isFinite(Number(timelineLimit))) {
-    params.set('timelineLimit', String(timelineLimit))
+    params.set('timelineLimit', String(timelineLimit));
   }
 
   const response = await fetch(`/api/rank/sessions?${params.toString()}`, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
-  })
+  });
 
   if (!response.ok) {
-    const errorText = await response.text().catch(() => '')
-    throw new Error(errorText || `Failed to load shared session history (${response.status})`)
+    const errorText = await response.text().catch(() => '');
+    throw new Error(errorText || `Failed to load shared session history (${response.status})`);
   }
 
-  const payload = await response.json().catch(() => ({}))
-  const sessions = Array.isArray(payload.sessions) ? payload.sessions : []
-  return sessions.map((session) => ({
+  const payload = await response.json().catch(() => ({}));
+  const sessions = Array.isArray(payload.sessions) ? payload.sessions : [];
+  return sessions.map(session => ({
     ...session,
     turns: Array.isArray(session.turns) ? session.turns : [],
     timelineEvents: normalizeTimelineEvents(session.timeline_events || [], { order: 'desc' }),
     battleLog: (() => {
-      const row = session.battle_log || session.battleLog || null
-      if (!row || typeof row !== 'object') return null
-      let payload = null
+      const row = session.battle_log || session.battleLog || null;
+      if (!row || typeof row !== 'object') return null;
+      let payload = null;
       if (row.payload && typeof row.payload === 'object') {
         try {
-          payload = JSON.parse(JSON.stringify(row.payload))
+          payload = JSON.parse(JSON.stringify(row.payload));
         } catch (error) {
-          payload = null
+          payload = null;
         }
       }
       return {
@@ -478,389 +462,376 @@ async function fetchSharedSessionHistory(
         payload,
         created_at: row.created_at || null,
         updated_at: row.updated_at || null,
-      }
+      };
     })(),
-  }))
+  }));
 }
 
-export function useGameRoom(
-  gameId,
-  {
-    onRequireLogin,
-    onGameMissing,
-    onDeleted,
-  } = {}
-) {
-  const [loading, setLoading] = useState(true)
-  const [user, setUser] = useState(null)
-  const [authToken, setAuthToken] = useState(null)
-  const [game, setGame] = useState(null)
-  const [roles, setRoles] = useState([])
-  const [participants, setParticipants] = useState([])
-  const [slots, setSlots] = useState([])
-  const [myHero, setMyHero] = useState(null)
-  const [recentBattles, setRecentBattles] = useState([])
-  const [deleting, setDeleting] = useState(false)
-  const [requiredSlots, setRequiredSlots] = useState(0)
-  const [sessionHistory, setSessionHistory] = useState([])
-  const [sharedSessionHistory, setSharedSessionHistory] = useState([])
+export function useGameRoom(gameId, { onRequireLogin, onGameMissing, onDeleted } = {}) {
+  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(null);
+  const [authToken, setAuthToken] = useState(null);
+  const [game, setGame] = useState(null);
+  const [roles, setRoles] = useState([]);
+  const [participants, setParticipants] = useState([]);
+  const [slots, setSlots] = useState([]);
+  const [myHero, setMyHero] = useState(null);
+  const [recentBattles, setRecentBattles] = useState([]);
+  const [deleting, setDeleting] = useState(false);
+  const [requiredSlots, setRequiredSlots] = useState(0);
+  const [sessionHistory, setSessionHistory] = useState([]);
+  const [sharedSessionHistory, setSharedSessionHistory] = useState([]);
 
   useEffect(() => {
-    if (!gameId) return
-    let alive = true
+    if (!gameId) return;
+    let alive = true;
 
     const bootstrap = async () => {
-      setLoading(true)
+      setLoading(true);
       try {
-        const { data: authData, error: authError } = await supabase.auth.getUser()
-        if (!alive) return
-        if (authError) throw authError
-        const currentUser = authData?.user || null
+        const { data: authData, error: authError } = await supabase.auth.getUser();
+        if (!alive) return;
+        if (authError) throw authError;
+        const currentUser = authData?.user || null;
         if (!currentUser) {
-          onRequireLogin?.()
-          setLoading(false)
-          return
+          onRequireLogin?.();
+          setLoading(false);
+          return;
         }
-        setUser(currentUser)
+        setUser(currentUser);
 
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
-        if (!alive) return
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        if (!alive) return;
         if (sessionError) {
-          console.warn('세션 토큰을 가져오지 못했습니다:', sessionError)
+          console.warn('세션 토큰을 가져오지 못했습니다:', sessionError);
         }
-        setAuthToken(sessionData?.session?.access_token || null)
+        setAuthToken(sessionData?.session?.access_token || null);
 
         const { data: gameData, error: gameError } = await withTable(
           supabase,
           'rank_games',
-          (table) =>
-            supabase
-              .from(table)
-              .select('*')
-              .eq('id', gameId)
-              .maybeSingle()
-        )
+          table => supabase.from(table).select('*').eq('id', gameId).maybeSingle()
+        );
 
-        if (!alive) return
+        if (!alive) return;
         if (gameError || !gameData) {
-          onGameMissing?.()
-          setLoading(false)
-          return
+          onGameMissing?.();
+          setLoading(false);
+          return;
         }
 
-        setGame(gameData)
+        setGame(gameData);
 
-        let slotCounts = new Map()
+        let slotCounts = new Map();
         try {
-          slotCounts = await fetchActiveSlotCounts(gameId)
+          slotCounts = await fetchActiveSlotCounts(gameId);
         } catch (slotError) {
-          console.warn('슬롯 정보를 불러오지 못했습니다:', slotError)
-          slotCounts = new Map()
+          console.warn('슬롯 정보를 불러오지 못했습니다:', slotError);
+          slotCounts = new Map();
         }
 
-        let roleRows = []
+        let roleRows = [];
         try {
-          roleRows = await fetchRoleMetadata(gameId)
+          roleRows = await fetchRoleMetadata(gameId);
         } catch (roleError) {
-          console.warn('역할 메타데이터를 불러오지 못했습니다:', roleError)
-          roleRows = []
+          console.warn('역할 메타데이터를 불러오지 못했습니다:', roleError);
+          roleRows = [];
         }
 
         const normalizedRoles = normalizeRoles({
           gameRoles: gameData.roles,
           roleRows,
           slotCounts,
-        })
+        });
 
-        let resolvedRoles = normalizedRoles
+        let resolvedRoles = normalizedRoles;
 
         if (!resolvedRoles.length && Array.isArray(gameData.roles) && gameData.roles.length) {
           resolvedRoles = gameData.roles
-            .map((name) =>
+            .map(name =>
               typeof name === 'string' && name.trim().length
                 ? { name: name.trim(), slot_count: slotCounts.get(name.trim()) ?? null }
-                : null,
+                : null
             )
-            .filter(Boolean)
+            .filter(Boolean);
         }
 
         if (!resolvedRoles.length) {
           resolvedRoles = [
             { name: '공격', slot_count: slotCounts.get('공격') ?? null },
             { name: '수비', slot_count: slotCounts.get('수비') ?? null },
-          ]
+          ];
         }
 
-        let slotRows = []
+        let slotRows = [];
         try {
-          slotRows = await fetchSlotDetails(gameId)
+          slotRows = await fetchSlotDetails(gameId);
         } catch (slotLoadError) {
-          console.warn('슬롯 상세 정보를 불러오지 못했습니다:', slotLoadError)
-          slotRows = []
+          console.warn('슬롯 상세 정보를 불러오지 못했습니다:', slotLoadError);
+          slotRows = [];
         }
 
-        setSlots(slotRows)
-        setRoles(resolvedRoles)
+        setSlots(slotRows);
+        setRoles(resolvedRoles);
 
-        const activeSlotTotal = slotRows.filter((slot) => slot?.active !== false).length
-        const computedRequired = activeSlotTotal > 0
-          ? activeSlotTotal
-          : computeRequiredSlots(resolvedRoles, slotCounts)
-        setRequiredSlots(computedRequired)
+        const activeSlotTotal = slotRows.filter(slot => slot?.active !== false).length;
+        const computedRequired =
+          activeSlotTotal > 0 ? activeSlotTotal : computeRequiredSlots(resolvedRoles, slotCounts);
+        setRequiredSlots(computedRequired);
 
-        const mappedParticipants = await fetchParticipantsWithHeroes(gameId)
-        if (!alive) return
-        setParticipants(mappedParticipants)
+        const mappedParticipants = await fetchParticipantsWithHeroes(gameId);
+        if (!alive) return;
+        setParticipants(mappedParticipants);
 
         try {
-          const battles = await fetchRecentBattles(gameId)
-          if (!alive) return
-          setRecentBattles(battles)
+          const battles = await fetchRecentBattles(gameId);
+          if (!alive) return;
+          setRecentBattles(battles);
         } catch (battleError) {
-          console.warn('최근 전투 기록을 불러오지 못했습니다:', battleError)
+          console.warn('최근 전투 기록을 불러오지 못했습니다:', battleError);
         }
 
-        const storedHero = await resolveStoredHero(currentUser?.id)
-        if (!alive) return
-        setMyHero(storedHero)
+        const storedHero = await resolveStoredHero(currentUser?.id);
+        if (!alive) return;
+        setMyHero(storedHero);
 
         try {
-          const historyGroups = await fetchOwnSessionHistory(gameId, currentUser.id)
-          if (!alive) return
-          setSessionHistory(historyGroups)
+          const historyGroups = await fetchOwnSessionHistory(gameId, currentUser.id);
+          if (!alive) return;
+          setSessionHistory(historyGroups);
         } catch (historyError) {
-          console.warn('세션 히스토리를 불러오지 못했습니다:', historyError)
+          console.warn('세션 히스토리를 불러오지 못했습니다:', historyError);
         }
 
         if (sessionData?.session?.access_token) {
           try {
             const sharedGroups = await fetchSharedSessionHistory(
               gameId,
-              sessionData.session.access_token,
-            )
-            if (!alive) return
-            setSharedSessionHistory(sharedGroups)
+              sessionData.session.access_token
+            );
+            if (!alive) return;
+            setSharedSessionHistory(sharedGroups);
           } catch (sharedError) {
-            console.warn('공용 히스토리를 불러오지 못했습니다:', sharedError)
+            console.warn('공용 히스토리를 불러오지 못했습니다:', sharedError);
           }
         } else {
-          setSharedSessionHistory([])
+          setSharedSessionHistory([]);
         }
       } catch (err) {
-        console.error('게임 방 초기화 실패:', err)
+        console.error('게임 방 초기화 실패:', err);
       } finally {
-        if (alive) setLoading(false)
+        if (alive) setLoading(false);
       }
-    }
+    };
 
-    bootstrap()
+    bootstrap();
     return () => {
-      alive = false
-    }
-  }, [gameId, onGameMissing, onRequireLogin])
+      alive = false;
+    };
+  }, [gameId, onGameMissing, onRequireLogin]);
 
   const refreshParticipants = useCallback(async () => {
-    if (!gameId) return
+    if (!gameId) return;
     try {
-      const mapped = await fetchParticipantsWithHeroes(gameId)
-      setParticipants(mapped)
+      const mapped = await fetchParticipantsWithHeroes(gameId);
+      setParticipants(mapped);
     } catch (err) {
-      console.error('참가자 갱신 실패:', err)
+      console.error('참가자 갱신 실패:', err);
     }
-  }, [gameId])
+  }, [gameId]);
 
   useEffect(() => {
-    if (!user?.id) return
-    if (!Array.isArray(participants) || !participants.length) return
+    if (!user?.id) return;
+    if (!Array.isArray(participants) || !participants.length) return;
 
-    const viewerKey = String(user.id)
-    const entry = participants.find((participant) => {
-      if (!participant) return false
+    const viewerKey = String(user.id);
+    const entry = participants.find(participant => {
+      if (!participant) return false;
       const ownerId =
         participant.owner_id != null
           ? String(participant.owner_id)
           : participant.ownerId != null
             ? String(participant.ownerId)
-            : null
-      return ownerId === viewerKey
-    })
+            : null;
+      return ownerId === viewerKey;
+    });
 
-    if (!entry) return
+    if (!entry) return;
 
-    const heroRecord = entry.hero || null
-    if (!heroRecord || !heroRecord.id) return
+    const heroRecord = entry.hero || null;
+    if (!heroRecord || !heroRecord.id) return;
 
-    if (myHero?.id === heroRecord.id) return
+    if (myHero?.id === heroRecord.id) return;
 
     try {
-      persistHeroSelection(heroRecord)
+      persistHeroSelection(heroRecord);
     } catch (err) {
-      console.warn('로컬 영웅 저장 실패:', err)
+      console.warn('로컬 영웅 저장 실패:', err);
     }
 
-    setMyHero(heroRecord)
-  }, [myHero?.id, participants, user?.id])
+    setMyHero(heroRecord);
+  }, [myHero?.id, participants, user?.id]);
 
   const refreshBattles = useCallback(async () => {
-    if (!gameId) return
+    if (!gameId) return;
     try {
-      const battles = await fetchRecentBattles(gameId)
-      setRecentBattles(battles)
+      const battles = await fetchRecentBattles(gameId);
+      setRecentBattles(battles);
     } catch (err) {
-      console.error('전투 기록 갱신 실패:', err)
+      console.error('전투 기록 갱신 실패:', err);
     }
-  }, [gameId])
+  }, [gameId]);
 
   const refreshSlots = useCallback(async () => {
-    if (!gameId) return []
+    if (!gameId) return [];
     try {
-      const next = await fetchSlotDetails(gameId)
-      setSlots(next)
-      return next
+      const next = await fetchSlotDetails(gameId);
+      setSlots(next);
+      return next;
     } catch (err) {
-      console.error('슬롯 정보 갱신 실패:', err)
-      return null
+      console.error('슬롯 정보 갱신 실패:', err);
+      return null;
     }
-  }, [gameId])
+  }, [gameId]);
 
   const refreshSessionHistory = useCallback(async () => {
     if (!gameId || !user?.id) {
-      setSessionHistory([])
-      return
+      setSessionHistory([]);
+      return;
     }
 
     try {
-      const groups = await fetchOwnSessionHistory(gameId, user.id)
-      setSessionHistory(groups)
+      const groups = await fetchOwnSessionHistory(gameId, user.id);
+      setSessionHistory(groups);
     } catch (err) {
-      console.error('세션 히스토리 갱신 실패:', err)
+      console.error('세션 히스토리 갱신 실패:', err);
     }
-  }, [gameId, user?.id])
+  }, [gameId, user?.id]);
 
   const refreshSharedHistory = useCallback(async () => {
     if (!gameId) {
-      setSharedSessionHistory([])
-      return
+      setSharedSessionHistory([]);
+      return;
     }
 
     try {
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       if (sessionError) {
-        console.error('세션 토큰 갱신 실패:', sessionError)
+        console.error('세션 토큰 갱신 실패:', sessionError);
       }
 
-      const token = sessionData?.session?.access_token || authToken
+      const token = sessionData?.session?.access_token || authToken;
       if (!token) {
-        setAuthToken(null)
-        setSharedSessionHistory([])
-        return
+        setAuthToken(null);
+        setSharedSessionHistory([]);
+        return;
       }
 
       if (token !== authToken) {
-        setAuthToken(token)
+        setAuthToken(token);
       }
 
-      const sessions = await fetchSharedSessionHistory(gameId, token)
-      setSharedSessionHistory(sessions)
+      const sessions = await fetchSharedSessionHistory(gameId, token);
+      setSharedSessionHistory(sessions);
     } catch (err) {
-      console.error('공용 히스토리 갱신 실패:', err)
+      console.error('공용 히스토리 갱신 실패:', err);
     }
-  }, [authToken, gameId])
+  }, [authToken, gameId]);
 
-  const selectHero = useCallback((hero) => {
+  const selectHero = useCallback(hero => {
     try {
       if (hero) {
-        persistHeroSelection(hero)
+        persistHeroSelection(hero);
       } else {
-        clearHeroSelection()
+        clearHeroSelection();
       }
     } catch (err) {
-      console.warn('로컬 저장 실패:', err)
+      console.warn('로컬 저장 실패:', err);
     }
-    setMyHero(hero || null)
-  }, [])
+    setMyHero(hero || null);
+  }, []);
 
   const joinGame = useCallback(
-    async (roleOverride) => {
+    async roleOverride => {
       if (!gameId || !user) {
-        alert('로그인이 필요합니다.')
-        return { ok: false }
+        alert('로그인이 필요합니다.');
+        return { ok: false };
       }
       if (!myHero) {
-        alert('로스터에서 캐릭터를 선택하고 다시 시도하세요.')
-        return { ok: false }
+        alert('로스터에서 캐릭터를 선택하고 다시 시도하세요.');
+        return { ok: false };
       }
       const resolveRoleMeta = () => {
-        if (!roleOverride) return roles[0]
+        if (!roleOverride) return roles[0];
         if (typeof roleOverride === 'string') {
-          const match = roles.find((role) => {
+          const match = roles.find(role => {
             if (typeof role === 'string') {
-              return role === roleOverride
+              return role === roleOverride;
             }
-            if (!role || typeof role !== 'object') return false
-            return role.name === roleOverride
-          })
-          return match || roleOverride
+            if (!role || typeof role !== 'object') return false;
+            return role.name === roleOverride;
+          });
+          return match || roleOverride;
         }
-        return roleOverride
-      }
+        return roleOverride;
+      };
 
-      const roleMeta = resolveRoleMeta()
+      const roleMeta = resolveRoleMeta();
       const roleName =
         typeof roleMeta === 'string'
           ? roleMeta
           : typeof roleMeta?.name === 'string'
             ? roleMeta.name
-            : ''
+            : '';
 
       if (!roleName) {
-        alert('역할을 선택하세요.')
-        return { ok: false }
+        alert('역할을 선택하세요.');
+        return { ok: false };
       }
 
-      let capacity = null
+      let capacity = null;
       if (roleMeta && typeof roleMeta === 'object') {
-        const rawCapacity = Number(roleMeta.slot_count ?? roleMeta.slotCount ?? roleMeta.capacity)
+        const rawCapacity = Number(roleMeta.slot_count ?? roleMeta.slotCount ?? roleMeta.capacity);
         if (Number.isFinite(rawCapacity) && rawCapacity >= 0) {
-          capacity = rawCapacity
+          capacity = rawCapacity;
         }
       }
 
-      const roleSlots = slots.filter((slot) => {
-        if (!slot || slot.active === false) return false
-        const slotRole = typeof slot.role === 'string' ? slot.role.trim() : ''
-        return slotRole === roleName
-      })
-      const alreadyClaimedSlot = roleSlots.find((slot) => slot?.hero_owner_id === user.id)
-      const availableSlot = roleSlots.find((slot) => !slot?.hero_id && slot?.hero_owner_id == null)
+      const roleSlots = slots.filter(slot => {
+        if (!slot || slot.active === false) return false;
+        const slotRole = typeof slot.role === 'string' ? slot.role.trim() : '';
+        return slotRole === roleName;
+      });
+      const alreadyClaimedSlot = roleSlots.find(slot => slot?.hero_owner_id === user.id);
+      const availableSlot = roleSlots.find(slot => !slot?.hero_id && slot?.hero_owner_id == null);
 
-      const joiningWithoutSlot = !alreadyClaimedSlot && !availableSlot
+      const joiningWithoutSlot = !alreadyClaimedSlot && !availableSlot;
 
       const existingEntry =
-        participants.find((participant) => participant?.owner_id === user.id) || null
+        participants.find(participant => participant?.owner_id === user.id) || null;
 
       const nextScore = (() => {
-        const rawScore = Number(existingEntry?.score)
+        const rawScore = Number(existingEntry?.score);
         if (Number.isFinite(rawScore) && rawScore > 0) {
-          return rawScore
+          return rawScore;
         }
-        const rawRating = Number(existingEntry?.rating)
+        const rawRating = Number(existingEntry?.rating);
         if (Number.isFinite(rawRating) && rawRating > 0) {
-          return rawRating
+          return rawRating;
         }
-        return 1000
-      })()
+        return 1000;
+      })();
 
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       if (sessionError) {
-        alert('세션 정보를 확인하지 못했습니다.')
-        return { ok: false, error: sessionError }
+        alert('세션 정보를 확인하지 못했습니다.');
+        return { ok: false, error: sessionError };
       }
-      const token = sessionData?.session?.access_token
+      const token = sessionData?.session?.access_token;
       if (!token) {
-        alert('로그인이 만료되었습니다. 다시 로그인해주세요.')
-        onRequireLogin?.()
-        return { ok: false, error: new Error('missing_session') }
+        alert('로그인이 만료되었습니다. 다시 로그인해주세요.');
+        onRequireLogin?.();
+        return { ok: false, error: new Error('missing_session') };
       }
 
       const response = await fetch('/api/rank/join-game', {
@@ -875,30 +846,32 @@ export function useGameRoom(
           role: roleName,
           score: nextScore,
         }),
-      })
+      });
 
       if (!response.ok) {
-        const text = await response.text()
-        console.error('참여 실패 응답:', text)
-        alert('참여에 실패했습니다. 잠시 후 다시 시도하세요.')
-        return { ok: false, error: new Error(text) }
+        const text = await response.text();
+        console.error('참여 실패 응답:', text);
+        alert('참여에 실패했습니다. 잠시 후 다시 시도하세요.');
+        return { ok: false, error: new Error(text) };
       }
 
-      const result = await response.json()
+      const result = await response.json();
       if (!result?.ok) {
-        const message = result?.error || '참여에 실패했습니다.'
-        alert(message)
-        return { ok: false, error: new Error(message) }
+        const message = result?.error || '참여에 실패했습니다.';
+        alert(message);
+        return { ok: false, error: new Error(message) };
       }
 
-      await refreshParticipants()
-      await refreshSlots()
-      await refreshBattles()
-      await refreshSessionHistory()
+      await refreshParticipants();
+      await refreshSlots();
+      await refreshBattles();
+      await refreshSessionHistory();
       if (joiningWithoutSlot && result?.overflow) {
-        alert('기본 슬롯은 이미 채워졌습니다. 추가 참가자로 합류했으며 시작 조건은 기존 슬롯 충족 여부에 따라 달라집니다.')
+        alert(
+          '기본 슬롯은 이미 채워졌습니다. 추가 참가자로 합류했으며 시작 조건은 기존 슬롯 충족 여부에 따라 달라집니다.'
+        );
       }
-      return { ok: true, slot: result.slot, overflow: Boolean(result?.overflow) }
+      return { ok: true, slot: result.slot, overflow: Boolean(result?.overflow) };
     },
     [
       gameId,
@@ -913,25 +886,25 @@ export function useGameRoom(
       slots,
       user,
     ]
-  )
+  );
 
   const leaveGame = useCallback(async () => {
     if (!gameId || !user) {
-      alert('로그인이 필요합니다.')
-      return { ok: false }
+      alert('로그인이 필요합니다.');
+      return { ok: false };
     }
 
-    const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
     if (sessionError) {
-      alert('세션 정보를 확인하지 못했습니다.')
-      return { ok: false, error: sessionError }
+      alert('세션 정보를 확인하지 못했습니다.');
+      return { ok: false, error: sessionError };
     }
 
-    const token = sessionData?.session?.access_token
+    const token = sessionData?.session?.access_token;
     if (!token) {
-      alert('로그인이 만료되었습니다. 다시 로그인해주세요.')
-      onRequireLogin?.()
-      return { ok: false, error: new Error('missing_session') }
+      alert('로그인이 만료되었습니다. 다시 로그인해주세요.');
+      onRequireLogin?.();
+      return { ok: false, error: new Error('missing_session') };
     }
 
     const response = await fetch('/api/rank/leave-game', {
@@ -941,28 +914,28 @@ export function useGameRoom(
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({ game_id: gameId }),
-    })
+    });
 
     if (!response.ok) {
-      const text = await response.text()
-      console.error('슬롯 해제 실패 응답:', text)
-      alert('슬롯을 비우는 데 실패했습니다. 잠시 후 다시 시도하세요.')
-      return { ok: false, error: new Error(text) }
+      const text = await response.text();
+      console.error('슬롯 해제 실패 응답:', text);
+      alert('슬롯을 비우는 데 실패했습니다. 잠시 후 다시 시도하세요.');
+      return { ok: false, error: new Error(text) };
     }
 
-    const result = await response.json()
+    const result = await response.json();
     if (!result?.ok) {
-      const message = result?.error || '슬롯을 비우는 데 실패했습니다.'
-      alert(message)
-      return { ok: false, error: new Error(message) }
+      const message = result?.error || '슬롯을 비우는 데 실패했습니다.';
+      alert(message);
+      return { ok: false, error: new Error(message) };
     }
 
-    await refreshParticipants()
-    await refreshSlots()
-    await refreshBattles()
-    await refreshSessionHistory()
+    await refreshParticipants();
+    await refreshSlots();
+    await refreshBattles();
+    await refreshSessionHistory();
 
-    return { ok: true }
+    return { ok: true };
   }, [
     gameId,
     onRequireLogin,
@@ -971,106 +944,107 @@ export function useGameRoom(
     refreshSessionHistory,
     refreshSlots,
     user,
-  ])
+  ]);
 
   const deleteRoom = useCallback(async () => {
-    if (!gameId || !user || !game) return { ok: false }
-    if (user.id !== game.owner_id) return { ok: false }
+    if (!gameId || !user || !game) return { ok: false };
+    if (user.id !== game.owner_id) return { ok: false };
 
-    setDeleting(true)
+    setDeleting(true);
     try {
-      await withTable(supabase, 'rank_battle_logs', (table) =>
+      await withTable(supabase, 'rank_battle_logs', table =>
         supabase.from(table).delete().eq('game_id', gameId)
-      )
-      await withTable(supabase, 'rank_participants', (table) =>
+      );
+      await withTable(supabase, 'rank_participants', table =>
         supabase.from(table).delete().eq('game_id', gameId)
-      )
-      await withTable(supabase, 'rank_game_slots', (table) =>
+      );
+      await withTable(supabase, 'rank_game_slots', table =>
         supabase.from(table).delete().eq('game_id', gameId)
-      )
-      await withTable(supabase, 'rank_games', (table) =>
+      );
+      await withTable(supabase, 'rank_games', table =>
         supabase.from(table).delete().eq('id', gameId)
-      )
-      onDeleted?.()
-      return { ok: true }
+      );
+      onDeleted?.();
+      return { ok: true };
     } catch (err) {
-      console.error('방 삭제 실패:', err)
-      alert('방 삭제 실패: ' + (err.message || err))
-      return { ok: false, error: err }
+      console.error('방 삭제 실패:', err);
+      alert('방 삭제 실패: ' + (err.message || err));
+      return { ok: false, error: err };
     } finally {
-      setDeleting(false)
+      setDeleting(false);
     }
-  }, [gameId, game, onDeleted, user])
+  }, [gameId, game, onDeleted, user]);
 
   const myEntry = useMemo(() => {
-    if (!Array.isArray(participants) || !participants.length) return null
-    const heroKey = normalizeHeroIdValue(myHero?.id)
+    if (!Array.isArray(participants) || !participants.length) return null;
+    const heroKey = normalizeHeroIdValue(myHero?.id);
     if (heroKey) {
       const match = participants.find(
-        (participant) => resolveParticipantHeroId(participant) === heroKey,
-      )
-      if (match) return match
+        participant => resolveParticipantHeroId(participant) === heroKey
+      );
+      if (match) return match;
     }
-    return null
-  }, [myHero?.id, participants])
+    return null;
+  }, [myHero?.id, participants]);
 
   const fallbackMinimum = useMemo(() => {
-    if (!Array.isArray(roles) || !roles.length) return 1
-    const names = new Set()
-    roles.forEach((role) => {
+    if (!Array.isArray(roles) || !roles.length) return 1;
+    const names = new Set();
+    roles.forEach(role => {
       if (typeof role === 'string') {
-        if (role.trim()) names.add(role.trim())
-        return
+        if (role.trim()) names.add(role.trim());
+        return;
       }
       if (role && typeof role === 'object' && typeof role.name === 'string') {
-        const trimmed = role.name.trim()
-        if (trimmed) names.add(trimmed)
+        const trimmed = role.name.trim();
+        if (trimmed) names.add(trimmed);
       }
-    })
-    return Math.max(1, names.size)
-  }, [roles])
+    });
+    return Math.max(1, names.size);
+  }, [roles]);
 
   const minimumParticipants = useMemo(() => {
     if (Number.isFinite(requiredSlots) && requiredSlots > 0) {
-      return requiredSlots
+      return requiredSlots;
     }
-    return fallbackMinimum
-  }, [fallbackMinimum, requiredSlots])
+    return fallbackMinimum;
+  }, [fallbackMinimum, requiredSlots]);
 
   const activeSlots = useMemo(() => {
-    if (!Array.isArray(slots)) return []
-    return slots.filter((slot) => slot && slot.active !== false)
-  }, [slots])
+    if (!Array.isArray(slots)) return [];
+    return slots.filter(slot => slot && slot.active !== false);
+  }, [slots]);
 
   const activeParticipants = useMemo(() => {
-    if (!Array.isArray(participants)) return []
-    return participants.filter((participant) => {
-      if (!participant) return false
-      const status = typeof participant?.status === 'string' ? participant.status.trim().toLowerCase() : ''
+    if (!Array.isArray(participants)) return [];
+    return participants.filter(participant => {
+      if (!participant) return false;
+      const status =
+        typeof participant?.status === 'string' ? participant.status.trim().toLowerCase() : '';
       if (status === 'out') {
-        return false
+        return false;
       }
-      const directHeroId = participant?.hero_id || participant?.heroId || null
+      const directHeroId = participant?.hero_id || participant?.heroId || null;
       if (directHeroId) {
-        return true
+        return true;
       }
       if (participant?.hero && participant.hero.id) {
-        return true
+        return true;
       }
       if (Array.isArray(participant?.hero_ids)) {
-        return participant.hero_ids.some((value) => Boolean(value))
+        return participant.hero_ids.some(value => Boolean(value));
       }
-      return false
-    })
-  }, [participants])
+      return false;
+    });
+  }, [participants]);
 
   const roleOccupancy = useMemo(() => {
-    const order = []
-    const map = new Map()
+    const order = [];
+    const map = new Map();
 
-    const register = (rawName) => {
-      const name = typeof rawName === 'string' ? rawName.trim() : ''
-      if (!name) return null
+    const register = rawName => {
+      const name = typeof rawName === 'string' ? rawName.trim() : '';
+      if (!name) return null;
       if (!map.has(name)) {
         map.set(name, {
           name,
@@ -1078,61 +1052,61 @@ export function useGameRoom(
           totalSlots: 0,
           occupiedSlots: 0,
           participantCount: 0,
-        })
-        order.push(name)
+        });
+        order.push(name);
       }
-      return map.get(name)
-    }
+      return map.get(name);
+    };
 
     if (Array.isArray(roles)) {
-      roles.forEach((role) => {
+      roles.forEach(role => {
         if (typeof role === 'string') {
-          register(role)
-          return
+          register(role);
+          return;
         }
-        if (!role || typeof role !== 'object') return
-        const entry = register(role.name)
-        if (!entry) return
-        const rawCapacity = Number(role.slot_count ?? role.slotCount ?? role.capacity)
+        if (!role || typeof role !== 'object') return;
+        const entry = register(role.name);
+        if (!entry) return;
+        const rawCapacity = Number(role.slot_count ?? role.slotCount ?? role.capacity);
         if (Number.isFinite(rawCapacity) && rawCapacity >= 0) {
-          entry.capacity = rawCapacity
+          entry.capacity = rawCapacity;
         }
-      })
+      });
     }
 
-    activeSlots.forEach((slot) => {
-      const entry = register(slot?.role)
-      if (!entry) return
-      entry.totalSlots += 1
-      const heroId = slot?.hero_id ?? slot?.heroId ?? slot?.heroID
+    activeSlots.forEach(slot => {
+      const entry = register(slot?.role);
+      if (!entry) return;
+      entry.totalSlots += 1;
+      const heroId = slot?.hero_id ?? slot?.heroId ?? slot?.heroID;
       if (heroId) {
-        entry.occupiedSlots += 1
+        entry.occupiedSlots += 1;
       }
-    })
+    });
 
-    activeParticipants.forEach((participant) => {
-      const entry = register(participant?.role)
-      if (!entry) return
-      entry.participantCount += 1
-    })
+    activeParticipants.forEach(participant => {
+      const entry = register(participant?.role);
+      if (!entry) return;
+      entry.participantCount += 1;
+    });
 
     return order
-      .map((name) => {
-        const entry = map.get(name)
-        if (!entry) return null
+      .map(name => {
+        const entry = map.get(name);
+        if (!entry) return null;
         const numericCapacity =
           Number.isFinite(Number(entry.capacity)) && Number(entry.capacity) >= 0
             ? Number(entry.capacity)
-            : null
-        const totalSlots = entry.totalSlots > 0 ? entry.totalSlots : numericCapacity
-        let occupiedSlots = entry.occupiedSlots
+            : null;
+        const totalSlots = entry.totalSlots > 0 ? entry.totalSlots : numericCapacity;
+        let occupiedSlots = entry.occupiedSlots;
         if (occupiedSlots <= 0 && entry.participantCount > 0) {
-          occupiedSlots = entry.participantCount
+          occupiedSlots = entry.participantCount;
         }
         if (totalSlots != null && occupiedSlots > totalSlots) {
-          occupiedSlots = totalSlots
+          occupiedSlots = totalSlots;
         }
-        const availableSlots = totalSlots != null ? Math.max(totalSlots - occupiedSlots, 0) : null
+        const availableSlots = totalSlots != null ? Math.max(totalSlots - occupiedSlots, 0) : null;
 
         return {
           name,
@@ -1141,115 +1115,113 @@ export function useGameRoom(
           occupiedSlots,
           availableSlots,
           participantCount: entry.participantCount,
-        }
+        };
       })
-      .filter(Boolean)
-  }, [activeParticipants, activeSlots, participants, roles])
+      .filter(Boolean);
+  }, [activeParticipants, activeSlots, participants, roles]);
 
   const roleLeaderboards = useMemo(() => {
     if (!Array.isArray(participants) || participants.length === 0) {
-      return []
+      return [];
     }
 
-    const seenOrder = new Set()
-    const order = []
-    const pushOrder = (raw) => {
-      const name = typeof raw === 'string' ? raw.trim() : ''
-      if (!name || seenOrder.has(name)) return
-      seenOrder.add(name)
-      order.push(name)
-    }
+    const seenOrder = new Set();
+    const order = [];
+    const pushOrder = raw => {
+      const name = typeof raw === 'string' ? raw.trim() : '';
+      if (!name || seenOrder.has(name)) return;
+      seenOrder.add(name);
+      order.push(name);
+    };
 
     if (Array.isArray(roleOccupancy) && roleOccupancy.length) {
-      roleOccupancy.forEach((entry) => {
-        if (!entry) return
-        pushOrder(entry.name)
-      })
+      roleOccupancy.forEach(entry => {
+        if (!entry) return;
+        pushOrder(entry.name);
+      });
     }
 
     if (Array.isArray(roles) && roles.length) {
-      roles.forEach((role) => {
+      roles.forEach(role => {
         if (typeof role === 'string') {
-          pushOrder(role)
-          return
+          pushOrder(role);
+          return;
         }
-        if (!role || typeof role !== 'object') return
-        pushOrder(role.name)
-      })
+        if (!role || typeof role !== 'object') return;
+        pushOrder(role.name);
+      });
     }
 
-    const groups = new Map()
-    participants.forEach((participant) => {
-      const roleName = typeof participant?.role === 'string' ? participant.role.trim() : ''
-      if (!roleName) return
+    const groups = new Map();
+    participants.forEach(participant => {
+      const roleName = typeof participant?.role === 'string' ? participant.role.trim() : '';
+      if (!roleName) return;
       if (!groups.has(roleName)) {
-        groups.set(roleName, [])
+        groups.set(roleName, []);
       }
-      groups.get(roleName).push(participant)
-      pushOrder(roleName)
-    })
+      groups.get(roleName).push(participant);
+      pushOrder(roleName);
+    });
 
     if (!groups.size) {
-      return []
+      return [];
     }
 
-    const toNumberOrNull = (value) => {
-      const numeric = Number(value)
-      return Number.isFinite(numeric) ? numeric : null
-    }
+    const toNumberOrNull = value => {
+      const numeric = Number(value);
+      return Number.isFinite(numeric) ? numeric : null;
+    };
 
-    const result = []
+    const result = [];
 
-    order.forEach((roleName) => {
-      const bucket = groups.get(roleName)
+    order.forEach(roleName => {
+      const bucket = groups.get(roleName);
       if (!bucket || bucket.length === 0) {
-        return
+        return;
       }
 
-      const sorted = bucket
-        .slice()
-        .sort((a, b) => {
-          const ratingA = toNumberOrNull(a?.rating)
-          const ratingB = toNumberOrNull(b?.rating)
-          if (ratingA != null || ratingB != null) {
-            return (ratingB ?? Number.NEGATIVE_INFINITY) - (ratingA ?? Number.NEGATIVE_INFINITY)
-          }
+      const sorted = bucket.slice().sort((a, b) => {
+        const ratingA = toNumberOrNull(a?.rating);
+        const ratingB = toNumberOrNull(b?.rating);
+        if (ratingA != null || ratingB != null) {
+          return (ratingB ?? Number.NEGATIVE_INFINITY) - (ratingA ?? Number.NEGATIVE_INFINITY);
+        }
 
-          const scoreA = toNumberOrNull(a?.score)
-          const scoreB = toNumberOrNull(b?.score)
-          if (scoreA != null || scoreB != null) {
-            return (scoreB ?? Number.NEGATIVE_INFINITY) - (scoreA ?? Number.NEGATIVE_INFINITY)
-          }
+        const scoreA = toNumberOrNull(a?.score);
+        const scoreB = toNumberOrNull(b?.score);
+        if (scoreA != null || scoreB != null) {
+          return (scoreB ?? Number.NEGATIVE_INFINITY) - (scoreA ?? Number.NEGATIVE_INFINITY);
+        }
 
-          const winRateA = toNumberOrNull(a?.win_rate ?? a?.winRate)
-          const winRateB = toNumberOrNull(b?.win_rate ?? b?.winRate)
-          if (winRateA != null || winRateB != null) {
-            return (winRateB ?? Number.NEGATIVE_INFINITY) - (winRateA ?? Number.NEGATIVE_INFINITY)
-          }
+        const winRateA = toNumberOrNull(a?.win_rate ?? a?.winRate);
+        const winRateB = toNumberOrNull(b?.win_rate ?? b?.winRate);
+        if (winRateA != null || winRateB != null) {
+          return (winRateB ?? Number.NEGATIVE_INFINITY) - (winRateA ?? Number.NEGATIVE_INFINITY);
+        }
 
-          const battlesA = toNumberOrNull(a?.battles)
-          const battlesB = toNumberOrNull(b?.battles)
-          if (battlesA != null || battlesB != null) {
-            return (battlesB ?? Number.NEGATIVE_INFINITY) - (battlesA ?? Number.NEGATIVE_INFINITY)
-          }
+        const battlesA = toNumberOrNull(a?.battles);
+        const battlesB = toNumberOrNull(b?.battles);
+        if (battlesA != null || battlesB != null) {
+          return (battlesB ?? Number.NEGATIVE_INFINITY) - (battlesA ?? Number.NEGATIVE_INFINITY);
+        }
 
-          const heroNameA = typeof a?.hero?.name === 'string' ? a.hero.name : ''
-          const heroNameB = typeof b?.hero?.name === 'string' ? b.hero.name : ''
-          return heroNameA.localeCompare(heroNameB, 'ko')
-        })
+        const heroNameA = typeof a?.hero?.name === 'string' ? a.hero.name : '';
+        const heroNameB = typeof b?.hero?.name === 'string' ? b.hero.name : '';
+        return heroNameA.localeCompare(heroNameB, 'ko');
+      });
 
-      const entries = sorted.slice(0, 5).map((participant) => {
-        const rating = toNumberOrNull(participant?.rating)
-        const score = toNumberOrNull(participant?.score)
-        const winRate = toNumberOrNull(participant?.win_rate ?? participant?.winRate)
-        const battles = toNumberOrNull(participant?.battles)
-        const hero = participant?.hero || null
+      const entries = sorted.slice(0, 5).map(participant => {
+        const rating = toNumberOrNull(participant?.rating);
+        const score = toNumberOrNull(participant?.score);
+        const winRate = toNumberOrNull(participant?.win_rate ?? participant?.winRate);
+        const battles = toNumberOrNull(participant?.battles);
+        const hero = participant?.hero || null;
         const heroName =
           typeof hero?.name === 'string' && hero.name.trim()
             ? hero.name.trim()
             : participant?.hero_id
-            ? `#${participant.hero_id}`
-            : '미지정'
+              ? `#${participant.hero_id}`
+              : '미지정';
 
         return {
           id: participant?.id || `${roleName}-${participant?.owner_id || heroName}`,
@@ -1261,40 +1233,40 @@ export function useGameRoom(
           score,
           winRate,
           battles,
-        }
-      })
+        };
+      });
 
       result.push({
         role: roleName,
         entries,
         totalParticipants: bucket.length,
         remainingCount: bucket.length - entries.length,
-      })
-    })
+      });
+    });
 
-    return result
-  }, [participants, roleOccupancy, roles])
+    return result;
+  }, [participants, roleOccupancy, roles]);
 
   const filledSlotCount = useMemo(
-    () => activeSlots.filter((slot) => slot?.hero_id).length,
-    [activeSlots],
-  )
+    () => activeSlots.filter(slot => slot?.hero_id).length,
+    [activeSlots]
+  );
 
-  const totalActiveSlots = activeSlots.length
+  const totalActiveSlots = activeSlots.length;
 
   const canStart = useMemo(() => {
     if (totalActiveSlots > 0) {
-      return filledSlotCount >= totalActiveSlots
+      return filledSlotCount >= totalActiveSlots;
     }
-    return activeParticipants.length >= minimumParticipants
-  }, [activeParticipants.length, filledSlotCount, minimumParticipants, totalActiveSlots])
+    return activeParticipants.length >= minimumParticipants;
+  }, [activeParticipants.length, filledSlotCount, minimumParticipants, totalActiveSlots]);
 
   const isOwner = useMemo(() => {
-    if (!user || !game) return false
-    return user.id === game.owner_id
-  }, [game, user])
+    if (!user || !game) return false;
+    return user.id === game.owner_id;
+  }, [game, user]);
 
-  const alreadyJoined = !!myEntry
+  const alreadyJoined = !!myEntry;
 
   return {
     state: {
@@ -1331,7 +1303,7 @@ export function useGameRoom(
       refreshSessionHistory,
       refreshSharedHistory,
     },
-  }
+  };
 }
 
-// 
+//

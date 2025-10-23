@@ -1,21 +1,16 @@
-'use client'
+'use client';
 
-import { useRef } from 'react'
+import { useRef } from 'react';
 
-export default function HeroBackgroundUploadCard({
-  preview,
-  error,
-  onSelect,
-  onReset,
-}) {
-  const inputRef = useRef(null)
+export default function HeroBackgroundUploadCard({ preview, error, onSelect, onReset }) {
+  const inputRef = useRef(null);
 
   const handleReset = () => {
-    onReset()
+    onReset();
     if (inputRef.current) {
-      inputRef.current.value = ''
+      inputRef.current.value = '';
     }
-  }
+  };
 
   return (
     <div style={{ display: 'grid', gap: 10 }}>
@@ -40,7 +35,9 @@ export default function HeroBackgroundUploadCard({
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
           />
         ) : (
-          <span style={{ color: '#94a3b8', fontSize: 13 }}>배경 이미지를 선택하세요 (움짤 제외)</span>
+          <span style={{ color: '#94a3b8', fontSize: 13 }}>
+            배경 이미지를 선택하세요 (움짤 제외)
+          </span>
         )}
       </div>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -75,12 +72,12 @@ export default function HeroBackgroundUploadCard({
         ref={inputRef}
         type="file"
         accept="image/*"
-        onChange={(event) => onSelect(event.target.files?.[0] || null)}
+        onChange={event => onSelect(event.target.files?.[0] || null)}
         style={{ display: 'none' }}
       />
       {error && <div style={{ color: '#fca5a5', fontSize: 12 }}>{error}</div>}
     </div>
-  )
+  );
 }
 
 //

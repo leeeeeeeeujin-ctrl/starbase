@@ -19,7 +19,7 @@ export default function AdminPortal({ authorized, misconfigured }) {
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('matchmaking');
 
-  const handleSubmit = async (event) => {
+  const handleSubmit = async event => {
     event.preventDefault();
     setLoading(true);
     setStatus(null);
@@ -63,10 +63,12 @@ export default function AdminPortal({ authorized, misconfigured }) {
                   <strong>서버 환경이 아직 준비되지 않았습니다.</strong>
                 </p>
                 <p className={styles.description}>
-                  배포 대상의 환경 변수에 <code>ADMIN_PORTAL_PASSWORD</code> 값을 설정한 뒤 다시 시도해주세요.
+                  배포 대상의 환경 변수에 <code>ADMIN_PORTAL_PASSWORD</code> 값을 설정한 뒤 다시
+                  시도해주세요.
                 </p>
                 <p className={styles.description}>
-                  필요한 변수 목록은 운영 문서의 <em>환경 변수 관리</em> 섹션에서 확인할 수 있습니다.
+                  필요한 변수 목록은 운영 문서의 <em>환경 변수 관리</em> 섹션에서 확인할 수
+                  있습니다.
                 </p>
               </div>
             ) : (
@@ -81,14 +83,16 @@ export default function AdminPortal({ authorized, misconfigured }) {
                   autoComplete="current-password"
                   className={styles.input}
                   value={password}
-                  onChange={(event) => setPassword(event.target.value)}
+                  onChange={event => setPassword(event.target.value)}
                   disabled={loading}
                 />
                 <button type="submit" className={styles.button} disabled={loading || !password}>
                   {loading ? '확인 중…' : '접속'}
                 </button>
                 {status && (
-                  <p className={status.type === 'error' ? styles.error : styles.success}>{status.message}</p>
+                  <p className={status.type === 'error' ? styles.error : styles.success}>
+                    {status.message}
+                  </p>
                 )}
               </form>
             )}

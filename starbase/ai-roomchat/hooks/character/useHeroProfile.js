@@ -1,13 +1,13 @@
-import { useEffect } from 'react'
-import { useRouter } from 'next/router'
+import { useEffect } from 'react';
+import { useRouter } from 'next/router';
 
-import { useHeroEditState } from './profile/useHeroEditState'
-import { useHeroBackgroundManager } from './profile/useHeroBackgroundManager'
-import { useHeroBgmManager } from './profile/useHeroBgmManager'
-import { useHeroPersistence } from './profile/useHeroPersistence'
+import { useHeroEditState } from './profile/useHeroEditState';
+import { useHeroBackgroundManager } from './profile/useHeroBackgroundManager';
+import { useHeroBgmManager } from './profile/useHeroBgmManager';
+import { useHeroPersistence } from './profile/useHeroPersistence';
 
 export default function useHeroProfile({ heroId, onRequireAuth, onMissingHero, onDeleted }) {
-  const router = useRouter()
+  const router = useRouter();
   const {
     loading,
     hero,
@@ -19,7 +19,7 @@ export default function useHeroProfile({ heroId, onRequireAuth, onMissingHero, o
     onAddAbility,
     onReverseAbilities,
     onClearAbility,
-  } = useHeroEditState({ heroId, onRequireAuth, onMissingHero })
+  } = useHeroEditState({ heroId, onRequireAuth, onMissingHero });
 
   const {
     backgroundInputRef,
@@ -30,7 +30,7 @@ export default function useHeroProfile({ heroId, onRequireAuth, onMissingHero, o
     onClearBackground,
     onHeroChange: syncBackgroundFromHero,
     onSaveComplete: completeBackgroundSave,
-  } = useHeroBackgroundManager({ setEdit })
+  } = useHeroBackgroundManager({ setEdit });
 
   const {
     bgmInputRef,
@@ -43,12 +43,12 @@ export default function useHeroProfile({ heroId, onRequireAuth, onMissingHero, o
     onClearBgm,
     onHeroChange: syncBgmFromHero,
     onSaveComplete: completeBgmSave,
-  } = useHeroBgmManager({ setEdit })
+  } = useHeroBgmManager({ setEdit });
 
   useEffect(() => {
-    syncBackgroundFromHero(hero)
-    syncBgmFromHero(hero)
-  }, [hero, syncBackgroundFromHero, syncBgmFromHero])
+    syncBackgroundFromHero(hero);
+    syncBgmFromHero(hero);
+  }, [hero, syncBackgroundFromHero, syncBgmFromHero]);
 
   const { saving, onSave, onDelete } = useHeroPersistence({
     heroId,
@@ -68,7 +68,7 @@ export default function useHeroProfile({ heroId, onRequireAuth, onMissingHero, o
     },
     onDeleted,
     router,
-  })
+  });
 
   return {
     loading,
@@ -95,5 +95,5 @@ export default function useHeroProfile({ heroId, onRequireAuth, onMissingHero, o
     onSave,
     onDelete,
     reload: loadHero,
-  }
+  };
 }

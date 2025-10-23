@@ -1,14 +1,14 @@
-'use client'
+'use client';
 
-import { useMemo } from 'react'
+import { useMemo } from 'react';
 
 import {
   formatAbsoluteTimelineLabel,
   formatRelativeTimelineLabel,
   normalizeTimelineEvents,
-} from '@/lib/rank/timelineEvents'
+} from '@/lib/rank/timelineEvents';
 
-import styles from './TimelineSection.module.css'
+import styles from './TimelineSection.module.css';
 
 const TYPE_LABELS = {
   warning: '경고',
@@ -18,7 +18,7 @@ const TYPE_LABELS = {
   consensus_reached: '합의 완료',
   turn_extended: '턴 연장',
   turn_bonus_pending: '보너스 대기',
-}
+};
 
 const TYPE_TONES = {
   warning: 'warn',
@@ -28,109 +28,109 @@ const TYPE_TONES = {
   consensus_reached: 'info',
   turn_extended: 'info',
   turn_bonus_pending: 'info',
-}
+};
 
 function defaultOwnerLabel(event) {
-  if (!event) return '알 수 없는 참가자'
+  if (!event) return '알 수 없는 참가자';
   if (event.context && typeof event.context === 'object') {
     const actorLabel =
       typeof event.context.actorLabel === 'string' && event.context.actorLabel.trim()
         ? event.context.actorLabel.trim()
-        : ''
+        : '';
     if (actorLabel) {
-      return actorLabel
+      return actorLabel;
     }
   }
   if (event.ownerId) {
-    const trimmed = String(event.ownerId).trim()
+    const trimmed = String(event.ownerId).trim();
     if (trimmed) {
-      return `플레이어 ${trimmed.slice(0, 6)}`
+      return `플레이어 ${trimmed.slice(0, 6)}`;
     }
   }
-  return '알 수 없는 참가자'
+  return '알 수 없는 참가자';
 }
 
 function buildMetaParts(event) {
-  if (!event || typeof event !== 'object') return []
-  const meta = []
+  if (!event || typeof event !== 'object') return [];
+  const meta = [];
   if (Number.isFinite(Number(event.strike))) {
-    meta.push(`경고 ${Number(event.strike)}회`)
+    meta.push(`경고 ${Number(event.strike)}회`);
   }
   if (Number.isFinite(Number(event.remaining))) {
-    meta.push(`남은 기회 ${Number(event.remaining)}회`)
+    meta.push(`남은 기회 ${Number(event.remaining)}회`);
   }
   if (Number.isFinite(Number(event.limit))) {
-    meta.push(`한도 ${Number(event.limit)}회`)
+    meta.push(`한도 ${Number(event.limit)}회`);
   }
   if (event.status === 'proxy') {
-    meta.push('현재 상태: 대역')
+    meta.push('현재 상태: 대역');
   } else if (event.status === 'spectating') {
-    meta.push('현재 상태: 관전')
+    meta.push('현재 상태: 관전');
   } else if (event.status === 'defeated') {
-    meta.push('현재 상태: 탈락')
+    meta.push('현재 상태: 탈락');
   }
-  const context = event.context && typeof event.context === 'object' ? event.context : {}
+  const context = event.context && typeof event.context === 'object' ? event.context : {};
   if (context.role) {
-    meta.push(`역할: ${context.role}`)
+    meta.push(`역할: ${context.role}`);
   }
   if (context.heroName) {
-    meta.push(`캐릭터: ${context.heroName}`)
+    meta.push(`캐릭터: ${context.heroName}`);
   }
   if (context.sessionLabel) {
-    meta.push(`세션: ${context.sessionLabel}`)
+    meta.push(`세션: ${context.sessionLabel}`);
   }
   if (context.sessionCreatedAt) {
-    meta.push(`시작: ${context.sessionCreatedAt}`)
+    meta.push(`시작: ${context.sessionCreatedAt}`);
   }
   if (context.mode === 'async') {
-    meta.push('모드: 비실시간')
+    meta.push('모드: 비실시간');
   } else if (context.mode === 'realtime') {
-    meta.push('모드: 실시간')
+    meta.push('모드: 실시간');
   }
   if (Number.isFinite(Number(context.bonusSeconds))) {
-    meta.push(`보너스 +${Number(context.bonusSeconds)}초`)
+    meta.push(`보너스 +${Number(context.bonusSeconds)}초`);
   }
   if (Number.isFinite(Number(context.arrivalCount))) {
-    meta.push(`합류 ${Number(context.arrivalCount)}명`)
+    meta.push(`합류 ${Number(context.arrivalCount)}명`);
   }
   if (Number.isFinite(Number(context.queueDepth))) {
-    meta.push(`대기열 ${Number(context.queueDepth)}명`)
+    meta.push(`대기열 ${Number(context.queueDepth)}명`);
   }
   if (Number.isFinite(Number(context.replacements))) {
-    meta.push(`교체 ${Number(context.replacements)}회`)
+    meta.push(`교체 ${Number(context.replacements)}회`);
   }
-  const metadata = event.metadata && typeof event.metadata === 'object' ? event.metadata : null
+  const metadata = event.metadata && typeof event.metadata === 'object' ? event.metadata : null;
   if (metadata?.apiKeyPool) {
-    const pool = metadata.apiKeyPool
+    const pool = metadata.apiKeyPool;
     if (pool.source) {
-      meta.push(`키 출처: ${pool.source}`)
+      meta.push(`키 출처: ${pool.source}`);
     }
     if (pool.provider) {
-      meta.push(`프로바이더: ${pool.provider}`)
+      meta.push(`프로바이더: ${pool.provider}`);
     }
     if (pool.newSample) {
-      meta.push(`신규 키: ${pool.newSample}`)
+      meta.push(`신규 키: ${pool.newSample}`);
     }
     if (pool.replacedSample) {
-      meta.push(`교체 키: ${pool.replacedSample}`)
+      meta.push(`교체 키: ${pool.replacedSample}`);
     }
   }
   if (metadata?.matching) {
-    const matching = metadata.matching
+    const matching = metadata.matching;
     if (matching.matchType) {
-      meta.push(`매치 유형: ${matching.matchType}`)
+      meta.push(`매치 유형: ${matching.matchType}`);
     }
     if (matching.matchCode) {
-      meta.push(`매치 코드: ${matching.matchCode}`)
+      meta.push(`매치 코드: ${matching.matchCode}`);
     }
     if (matching.dropInTarget?.role) {
-      meta.push(`대상 역할: ${matching.dropInTarget.role}`)
+      meta.push(`대상 역할: ${matching.dropInTarget.role}`);
     }
     if (Number.isFinite(Number(matching.dropInMeta?.queueSize))) {
-      meta.push(`큐 대기 ${Number(matching.dropInMeta.queueSize)}명`)
+      meta.push(`큐 대기 ${Number(matching.dropInMeta.queueSize)}명`);
     }
   }
-  return meta
+  return meta;
 }
 
 export default function TimelineSection({
@@ -144,8 +144,8 @@ export default function TimelineSection({
 }) {
   const normalizedEvents = useMemo(
     () => normalizeTimelineEvents(events, { order: 'desc' }),
-    [events],
-  )
+    [events]
+  );
 
   return (
     <div className={styles.card}>
@@ -170,21 +170,24 @@ export default function TimelineSection({
         <p className={styles.collapsedNotice}>{collapsedNotice}</p>
       ) : normalizedEvents.length ? (
         <ul className={styles.timelineList}>
-          {normalizedEvents.map((event) => {
-            const ownerLabel = getOwnerLabel(event)
-            const metaParts = buildMetaParts(event)
-            const reasonLabel = event.reason || ''
-            const badgeTone = TYPE_TONES[event.type] || 'info'
+          {normalizedEvents.map(event => {
+            const ownerLabel = getOwnerLabel(event);
+            const metaParts = buildMetaParts(event);
+            const reasonLabel = event.reason || '';
+            const badgeTone = TYPE_TONES[event.type] || 'info';
             const badgeClass =
               badgeTone === 'alert'
                 ? styles.timelineBadgeAlert
                 : badgeTone === 'warn'
                   ? styles.timelineBadgeWarn
-                  : styles.timelineBadgeInfo
-            const typeLabel = TYPE_LABELS[event.type] || '이벤트'
+                  : styles.timelineBadgeInfo;
+            const typeLabel = TYPE_LABELS[event.type] || '이벤트';
 
             return (
-              <li key={event.id || `${event.type}:${event.timestamp}`} className={styles.timelineItem}>
+              <li
+                key={event.id || `${event.type}:${event.timestamp}`}
+                className={styles.timelineItem}
+              >
                 <div className={styles.timelineHeader}>
                   <span className={badgeClass}>{typeLabel}</span>
                   {event.turn != null ? (
@@ -207,12 +210,12 @@ export default function TimelineSection({
                   ) : null}
                 </div>
               </li>
-            )
+            );
           })}
         </ul>
       ) : (
         <p className={styles.empty}>{emptyMessage}</p>
       )}
     </div>
-  )
+  );
 }

@@ -1,10 +1,10 @@
-import React from 'react'
+import React from 'react';
 
 export default function TabBar({ tabs, activeTab, onChange }) {
   return (
     <div style={{ ...styles.root, gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
-      {tabs.map((tab) => {
-        const active = tab.key === activeTab
+      {tabs.map(tab => {
+        const active = tab.key === activeTab;
         return (
           <button
             key={tab.key}
@@ -13,10 +13,10 @@ export default function TabBar({ tabs, activeTab, onChange }) {
           >
             {tab.label}
           </button>
-        )
+        );
       })}
     </div>
-  )
+  );
 }
 
 const styles = {
@@ -41,5 +41,5 @@ const styles = {
   inactive: {
     color: '#0f172a',
   },
-}
+};
 //

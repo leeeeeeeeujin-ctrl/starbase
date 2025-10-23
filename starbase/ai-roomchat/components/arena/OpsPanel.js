@@ -1,31 +1,31 @@
-import { useCallback, useState } from 'react'
-import { ensureRpc } from '@/modules/arena/rpcClient'
-import styles from './OpsPanel.module.css'
+import { useCallback, useState } from 'react';
+import { ensureRpc } from '@/modules/arena/rpcClient';
+import styles from './OpsPanel.module.css';
 
 const CHECKS = [
   { id: 'publication', rpc: 'audit_realtime_publication', label: 'Realtime publication 점검' },
   { id: 'ttl', rpc: 'run_rank_session_ttl_cleanup', label: '세션 TTL 정리' },
   { id: 'queue', rpc: 'reset_rank_queue', label: '큐 초기화' },
-]
+];
 
 export function OpsPanel() {
-  const [result, setResult] = useState(null)
-  const [running, setRunning] = useState(false)
+  const [result, setResult] = useState(null);
+  const [running, setRunning] = useState(false);
 
   const execute = useCallback(
-    async (rpc) => {
-      setRunning(true)
+    async rpc => {
+      setRunning(true);
       try {
-        const data = await ensureRpc(rpc)
-        setResult({ rpc, data })
+        const data = await ensureRpc(rpc);
+        setResult({ rpc, data });
       } catch (error) {
-        setResult({ rpc, error })
+        setResult({ rpc, error });
       } finally {
-        setRunning(false)
+        setRunning(false);
       }
     },
-    [setRunning, setResult],
-  )
+    [setRunning, setResult]
+  );
 
   return (
     <section className={styles.panel}>
@@ -34,7 +34,7 @@ export function OpsPanel() {
         <p>주요 RPC를 수동 실행해 상태를 점검하세요.</p>
       </header>
       <div className={styles.buttons}>
-        {CHECKS.map((check) => (
+        {CHECKS.map(check => (
           <button key={check.id} disabled={running} onClick={() => execute(check.rpc)}>
             {check.label}
           </button>
@@ -49,5 +49,5 @@ export function OpsPanel() {
         )}
       </div>
     </section>
-  )
+  );
 }

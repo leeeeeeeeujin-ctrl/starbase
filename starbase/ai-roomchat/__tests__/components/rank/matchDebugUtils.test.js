@@ -1,7 +1,4 @@
-import {
-  summarizeAssignments,
-  summarizeRemovedMembers,
-} from '@/components/rank/matchDebugUtils'
+import { summarizeAssignments, summarizeRemovedMembers } from '@/components/rank/matchDebugUtils';
 
 describe('matchDebugUtils.summarizeAssignments', () => {
   it('flattens role slots and preserves individual roles', () => {
@@ -29,17 +26,33 @@ describe('matchDebugUtils.summarizeAssignments', () => {
           { ownerId: 'owner-b', heroId: 'hero-b', slotIndex: 1, reason: 'duplicate_slot_member' },
         ],
       },
-    ]
+    ];
 
-    const summary = summarizeAssignments(assignments)
+    const summary = summarizeAssignments(assignments);
 
     expect(summary).toEqual([
       {
         role: '수비',
         slotIndex: 0,
         members: [
-          { index: 0, ownerId: 'owner-a', heroId: 'hero-a', ready: true, standin: false, status: null, heroName: null },
-          { index: 1, ownerId: 'owner-a', heroId: 'hero-a', ready: true, standin: false, status: null, heroName: null },
+          {
+            index: 0,
+            ownerId: 'owner-a',
+            heroId: 'hero-a',
+            ready: true,
+            standin: false,
+            status: null,
+            heroName: null,
+          },
+          {
+            index: 1,
+            ownerId: 'owner-a',
+            heroId: 'hero-a',
+            ready: true,
+            standin: false,
+            status: null,
+            heroName: null,
+          },
         ],
         removedMembers: [
           {
@@ -56,7 +69,15 @@ describe('matchDebugUtils.summarizeAssignments', () => {
         role: '공격',
         slotIndex: 1,
         members: [
-          { index: 0, ownerId: 'owner-b', heroId: 'hero-b', ready: false, standin: false, status: null, heroName: null },
+          {
+            index: 0,
+            ownerId: 'owner-b',
+            heroId: 'hero-b',
+            ready: false,
+            standin: false,
+            status: null,
+            heroName: null,
+          },
         ],
         removedMembers: [
           {
@@ -69,8 +90,8 @@ describe('matchDebugUtils.summarizeAssignments', () => {
           },
         ],
       },
-    ])
-  })
+    ]);
+  });
 
   it('falls back to aggregated members when slots are missing', () => {
     const assignments = [
@@ -81,39 +102,82 @@ describe('matchDebugUtils.summarizeAssignments', () => {
           { owner_id: 'owner-d', hero_id: 'hero-d', ready: true },
         ],
       },
-    ]
+    ];
 
-    const summary = summarizeAssignments(assignments)
+    const summary = summarizeAssignments(assignments);
 
     expect(summary).toEqual([
       {
         role: '지원',
         slotIndex: 0,
         members: [
-          { index: 0, ownerId: 'owner-c', heroId: 'hero-c', ready: false, standin: false, status: null, heroName: null },
-          { index: 1, ownerId: 'owner-d', heroId: 'hero-d', ready: true, standin: false, status: null, heroName: null },
+          {
+            index: 0,
+            ownerId: 'owner-c',
+            heroId: 'hero-c',
+            ready: false,
+            standin: false,
+            status: null,
+            heroName: null,
+          },
+          {
+            index: 1,
+            ownerId: 'owner-d',
+            heroId: 'hero-d',
+            ready: true,
+            standin: false,
+            status: null,
+            heroName: null,
+          },
         ],
         removedMembers: [],
       },
-    ])
-  })
-})
+    ]);
+  });
+});
 
 describe('matchDebugUtils.summarizeRemovedMembers', () => {
   it('deduplicates identical removed entries', () => {
     const entries = [
       { ownerId: 'owner-a', heroId: 'hero-a', slotIndex: 0, reason: 'duplicate' },
       { ownerId: 'owner-a', heroId: 'hero-a', slotIndex: 0, reason: 'duplicate' },
-      { ownerId: 'owner-a', heroId: 'hero-a', slotIndex: 0, reason: 'duplicate', slotKey: 'slot:0' },
+      {
+        ownerId: 'owner-a',
+        heroId: 'hero-a',
+        slotIndex: 0,
+        reason: 'duplicate',
+        slotKey: 'slot:0',
+      },
       { ownerId: 'owner-b', heroId: 'hero-b', slotIndex: 1, reason: 'duplicate' },
-    ]
+    ];
 
-    const summary = summarizeRemovedMembers(entries)
+    const summary = summarizeRemovedMembers(entries);
 
     expect(summary).toEqual([
-      { ownerId: 'owner-a', heroId: 'hero-a', slotIndex: 0, role: null, reason: 'duplicate', slotKey: null },
-      { ownerId: 'owner-a', heroId: 'hero-a', slotIndex: 0, role: null, reason: 'duplicate', slotKey: 'slot:0' },
-      { ownerId: 'owner-b', heroId: 'hero-b', slotIndex: 1, role: null, reason: 'duplicate', slotKey: null },
-    ])
-  })
-})
+      {
+        ownerId: 'owner-a',
+        heroId: 'hero-a',
+        slotIndex: 0,
+        role: null,
+        reason: 'duplicate',
+        slotKey: null,
+      },
+      {
+        ownerId: 'owner-a',
+        heroId: 'hero-a',
+        slotIndex: 0,
+        role: null,
+        reason: 'duplicate',
+        slotKey: 'slot:0',
+      },
+      {
+        ownerId: 'owner-b',
+        heroId: 'hero-b',
+        slotIndex: 1,
+        role: null,
+        reason: 'duplicate',
+        slotKey: null,
+      },
+    ]);
+  });
+});

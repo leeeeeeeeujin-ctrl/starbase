@@ -7,18 +7,18 @@ export default class GameEngine {
     this.options = {
       tickRate: 60, // 초당 틱 수
       ...options,
-    }
-    this.isRunning = false
-    this.isPaused = false
+    };
+    this.isRunning = false;
+    this.isPaused = false;
     this.gameState = {
       phase: 'idle', // idle, preparing, running, paused, ended
       currentTurn: 0,
       startTime: null,
       elapsedTime: 0,
-    }
-    this.updateCallbacks = []
-    this.lastUpdateTime = 0
-    this.isInitialized = false
+    };
+    this.updateCallbacks = [];
+    this.lastUpdateTime = 0;
+    this.isInitialized = false;
   }
 
   /**
@@ -30,13 +30,13 @@ export default class GameEngine {
         ...this.gameState,
         ...initialState,
         phase: 'idle',
-      }
+      };
 
-      this.isInitialized = true
-      return true
+      this.isInitialized = true;
+      return true;
     } catch (error) {
-      console.error('[GameEngine] 초기화 실패:', error)
-      return false
+      console.error('[GameEngine] 초기화 실패:', error);
+      return false;
     }
   }
 
@@ -45,83 +45,83 @@ export default class GameEngine {
    */
   start() {
     if (!this.isInitialized) {
-      console.warn('[GameEngine] 초기화되지 않은 상태에서 시작 시도')
-      return false
+      console.warn('[GameEngine] 초기화되지 않은 상태에서 시작 시도');
+      return false;
     }
 
     if (this.isRunning) {
-      console.warn('[GameEngine] 이미 실행 중')
-      return false
+      console.warn('[GameEngine] 이미 실행 중');
+      return false;
     }
 
-    this.isRunning = true
-    this.isPaused = false
-    this.gameState.phase = 'running'
-    this.gameState.startTime = Date.now()
-    this.lastUpdateTime = Date.now()
+    this.isRunning = true;
+    this.isPaused = false;
+    this.gameState.phase = 'running';
+    this.gameState.startTime = Date.now();
+    this.lastUpdateTime = Date.now();
 
-    console.log('[GameEngine] 게임 시작')
-    return true
+    console.log('[GameEngine] 게임 시작');
+    return true;
   }
 
   /**
    * 게임 일시정지
    */
   pause() {
-    if (!this.isRunning) return
+    if (!this.isRunning) return;
 
-    this.isPaused = true
-    this.gameState.phase = 'paused'
-    console.log('[GameEngine] 게임 일시정지')
+    this.isPaused = true;
+    this.gameState.phase = 'paused';
+    console.log('[GameEngine] 게임 일시정지');
   }
 
   /**
    * 게임 재개
    */
   resume() {
-    if (!this.isRunning || !this.isPaused) return
+    if (!this.isRunning || !this.isPaused) return;
 
-    this.isPaused = false
-    this.gameState.phase = 'running'
-    this.lastUpdateTime = Date.now()
-    console.log('[GameEngine] 게임 재개')
+    this.isPaused = false;
+    this.gameState.phase = 'running';
+    this.lastUpdateTime = Date.now();
+    console.log('[GameEngine] 게임 재개');
   }
 
   /**
    * 게임 정지
    */
   stop() {
-    this.isRunning = false
-    this.isPaused = false
-    this.gameState.phase = 'ended'
-    console.log('[GameEngine] 게임 종료')
+    this.isRunning = false;
+    this.isPaused = false;
+    this.gameState.phase = 'ended';
+    console.log('[GameEngine] 게임 종료');
   }
 
   /**
    * 게임 상태 업데이트
    */
   update() {
-    if (!this.isRunning || this.isPaused) return
+    if (!this.isRunning || this.isPaused) return;
 
-    const currentTime = Date.now()
-    const deltaTime = (currentTime - this.lastUpdateTime) / 1000 // 초 단위
-    this.lastUpdateTime = currentTime
+    const currentTime = Date.now();
+    const deltaTime = (currentTime - this.lastUpdateTime) / 1000; // 초 단위
+    this.lastUpdateTime = currentTime;
 
     // 경과 시간 업데이트
     if (this.gameState.startTime) {
-      this.gameState.elapsedTime = (currentTime - this.gameState.startTime) / 1000
+      this.gameState.elapsedTime = (currentTime - this.gameState.startTime) / 1000;
     }
 
     // 등록된 업데이트 콜백 실행
     this.updateCallbacks.forEach(callback => {
       try {
-        callback(deltaTime, this.gameState)
+        callback(deltaTime, this.gameState);
       } catch (error) {
-        console.error('[GameEngine] 업데이트 콜백 오류:', error)
+        console.error('[GameEngine] 업데이트 콜백 오류:', error);
       }
-    })
+    });
 
-    return deltaTime
+    return deltaTime;
   }
 
   /**
@@ -129,7 +129,7 @@ export default class GameEngine {
    */
   onUpdate(callback) {
     if (typeof callback === 'function') {
-      this.updateCallbacks.push(callback)
+      this.updateCallbacks.push(callback);
     }
   }
 
@@ -137,14 +137,14 @@ export default class GameEngine {
    * 업데이트 콜백 제거
    */
   offUpdate(callback) {
-    this.updateCallbacks = this.updateCallbacks.filter(cb => cb !== callback)
+    this.updateCallbacks = this.updateCallbacks.filter(cb => cb !== callback);
   }
 
   /**
    * 게임 상태 가져오기
    */
   getState() {
-    return { ...this.gameState }
+    return { ...this.gameState };
   }
 
   /**
@@ -154,47 +154,47 @@ export default class GameEngine {
     this.gameState = {
       ...this.gameState,
       ...newState,
-    }
+    };
   }
 
   /**
    * 턴 진행
    */
   nextTurn() {
-    this.gameState.currentTurn += 1
-    console.log(`[GameEngine] 턴 ${this.gameState.currentTurn} 시작`)
-    return this.gameState.currentTurn
+    this.gameState.currentTurn += 1;
+    console.log(`[GameEngine] 턴 ${this.gameState.currentTurn} 시작`);
+    return this.gameState.currentTurn;
   }
 
   /**
    * 게임 리셋
    */
   reset() {
-    this.isRunning = false
-    this.isPaused = false
+    this.isRunning = false;
+    this.isPaused = false;
     this.gameState = {
       phase: 'idle',
       currentTurn: 0,
       startTime: null,
       elapsedTime: 0,
-    }
-    this.lastUpdateTime = 0
-    console.log('[GameEngine] 게임 리셋')
+    };
+    this.lastUpdateTime = 0;
+    console.log('[GameEngine] 게임 리셋');
   }
 
   /**
    * 실행 중 여부
    */
   isGameRunning() {
-    return this.isRunning && !this.isPaused
+    return this.isRunning && !this.isPaused;
   }
 
   /**
    * 리소스 정리
    */
   cleanup() {
-    this.stop()
-    this.updateCallbacks = []
-    this.isInitialized = false
+    this.stop();
+    this.updateCallbacks = [];
+    this.isInitialized = false;
   }
 }

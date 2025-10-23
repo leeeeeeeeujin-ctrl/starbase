@@ -1,4 +1,4 @@
-import React from 'react'
+import React from 'react';
 
 export default function FooterBar({ onBack, onGoLobby }) {
   return (
@@ -10,7 +10,7 @@ export default function FooterBar({ onBack, onGoLobby }) {
         로비로 이동
       </button>
     </footer>
-  )
+  );
 }
 
 const styles = {
@@ -42,6 +42,6 @@ const styles = {
     color: '#020617',
     fontWeight: 800,
   },
-}
+};
 
 //

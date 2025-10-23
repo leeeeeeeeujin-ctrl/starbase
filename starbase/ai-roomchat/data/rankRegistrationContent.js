@@ -13,7 +13,7 @@ export const registrationOverviewCopy = {
     description:
       '게임 소개 자료와 룰 구성을 마쳤다면 하단 카드에서 역할·슬롯·모드를 채운 뒤 등록 버튼을 눌러 주세요. 제작 중인 세트는 Maker에서, 캐릭터 정보는 로스터에서 언제든 보완할 수 있습니다.',
   },
-}
+};
 
 export const brawlModeCopy = {
   title: '난입 허용',
@@ -28,7 +28,7 @@ export const brawlModeCopy = {
       '등록 폼의 끝에서 두 번째 줄에 위치한 변수 칸과 연결됩니다. 조건을 만족할 때까지 게임은 종료되지 않으며, 종료 시 승리 횟수에 따라 점수가 정산됩니다.',
   },
   offHint: '난입 허용을 끄면 패배한 참가자는 해당 경기 동안 재참여할 수 없습니다.',
-}
+};
 
 export const realtimeModeCopy = {
   label: '실시간 매칭 모드',
@@ -39,7 +39,7 @@ export const realtimeModeCopy = {
   ],
   helper:
     '비실시간은 턴/비동기 흐름으로 진행되며, Pulse 실시간은 방장과 같은 역할군에 동시에 참여할 수 있는 인원을 제한합니다.',
-}
+};
 
 export const imageFieldCopy = {
   label: '표지 이미지',
@@ -48,7 +48,7 @@ export const imageFieldCopy = {
   sizeLimitNotice: '최대 3MB 이하의 PNG/JPEG/GIF를 권장합니다.',
   typeError: '이미지 파일만 업로드할 수 있습니다.',
   sizeError: '이미지 용량이 3MB를 초과했습니다. 압축 후 다시 시도해 주세요.',
-}
+};
 
 export const rulesChecklistCopy = {
   toggles: [
@@ -61,4 +61,4 @@ export const rulesChecklistCopy = {
   charLimit: {
     label: 'AI가 응답할 문장 길이(글자수 기준, 0=미지정)',
   },
-}
+};

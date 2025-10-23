@@ -1,33 +1,33 @@
-import { useEffect, useState } from 'react'
-import styles from './MatchmakingAnalytics.module.css'
+import { useEffect, useState } from 'react';
+import styles from './MatchmakingAnalytics.module.css';
 
 const TIME_RANGES = [
   { value: '1h', label: '1시간' },
   { value: '24h', label: '24시간' },
   { value: '7d', label: '7일' },
   { value: '30d', label: '30일' },
-]
+];
 
 function formatNumber(num) {
-  if (!Number.isFinite(num)) return '0'
-  return new Intl.NumberFormat('ko-KR').format(Math.round(num))
+  if (!Number.isFinite(num)) return '0';
+  return new Intl.NumberFormat('ko-KR').format(Math.round(num));
 }
 
 function formatPercent(value, total) {
-  if (!total || !Number.isFinite(value)) return '0%'
-  return `${Math.round((value / total) * 100)}%`
+  if (!total || !Number.isFinite(value)) return '0%';
+  return `${Math.round((value / total) * 100)}%`;
 }
 
 function StageDistributionChart({ stageStats, total }) {
-  const stages = Object.entries(stageStats).sort((a, b) => b[1].total - a[1].total)
-  const maxCount = Math.max(...stages.map(([, s]) => s.total))
+  const stages = Object.entries(stageStats).sort((a, b) => b[1].total - a[1].total);
+  const maxCount = Math.max(...stages.map(([, s]) => s.total));
 
   return (
     <div className={styles.chartSection}>
       <h4 className={styles.chartTitle}>Stage 분포</h4>
       <div className={styles.barChart}>
         {stages.map(([stage, stats]) => {
-          const heightPercent = (stats.total / maxCount) * 100
+          const heightPercent = (stats.total / maxCount) * 100;
           return (
             <div key={stage} className={styles.barWrapper}>
               <div className={styles.barTrack}>
@@ -45,28 +45,31 @@ function StageDistributionChart({ stageStats, total }) {
                 <span className={styles.barMetaPending}>⏳ {stats.pending}</span>
               </div>
             </div>
-          )
+          );
         })}
       </div>
     </div>
-  )
+  );
 }
 
 function TimelineChart({ timeline }) {
   if (!timeline || timeline.length === 0) {
-    return <p className={styles.emptyMessage}>타임라인 데이터가 없습니다.</p>
+    return <p className={styles.emptyMessage}>타임라인 데이터가 없습니다.</p>;
   }
 
-  const maxCount = Math.max(...timeline.map((t) => t.count))
+  const maxCount = Math.max(...timeline.map(t => t.count));
 
   return (
     <div className={styles.chartSection}>
       <h4 className={styles.chartTitle}>시간대별 활동</h4>
       <div className={styles.timelineChart}>
         {timeline.map((bucket, idx) => {
-          const heightPercent = (bucket.count / maxCount) * 100
-          const timestamp = new Date(bucket.timestamp)
-          const label = timestamp.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+          const heightPercent = (bucket.count / maxCount) * 100;
+          const timestamp = new Date(bucket.timestamp);
+          const label = timestamp.toLocaleTimeString('ko-KR', {
+            hour: '2-digit',
+            minute: '2-digit',
+          });
           return (
             <div key={idx} className={styles.timelineBar}>
               <div className={styles.timelineTrack}>
@@ -76,11 +79,11 @@ function TimelineChart({ timeline }) {
               </div>
               <div className={styles.timelineLabel}>{label}</div>
             </div>
-          )
+          );
         })}
       </div>
     </div>
-  )
+  );
 }
 
 function StatCard({ title, value, subtitle, highlight }) {
@@ -90,45 +93,45 @@ function StatCard({ title, value, subtitle, highlight }) {
       <dd className={styles.statValue}>{value}</dd>
       {subtitle && <p className={styles.statSubtitle}>{subtitle}</p>}
     </div>
-  )
+  );
 }
 
 export default function MatchmakingAnalytics() {
-  const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
-  const [error, setError] = useState(null)
-  const [data, setData] = useState(null)
-  const [range, setRange] = useState('24h')
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(null);
+  const [data, setData] = useState(null);
+  const [range, setRange] = useState('24h');
 
   const fetchAnalytics = async (manual = false) => {
     if (manual) {
-      setRefreshing(true)
+      setRefreshing(true);
     } else {
-      setLoading(true)
+      setLoading(true);
     }
-    setError(null)
+    setError(null);
 
     try {
-      const response = await fetch(`/api/admin/matchmaking-analytics?range=${range}`)
+      const response = await fetch(`/api/admin/matchmaking-analytics?range=${range}`);
       if (!response.ok) {
-        const detail = await response.json().catch(() => ({}))
-        throw new Error(detail?.error || '집계 데이터를 불러오지 못했습니다.')
+        const detail = await response.json().catch(() => ({}));
+        throw new Error(detail?.error || '집계 데이터를 불러오지 못했습니다.');
       }
-      const payload = await response.json()
-      setData(payload)
+      const payload = await response.json();
+      setData(payload);
     } catch (err) {
-      setError(err.message)
+      setError(err.message);
     } finally {
-      setLoading(false)
-      setRefreshing(false)
+      setLoading(false);
+      setRefreshing(false);
     }
-  }
+  };
 
   useEffect(() => {
-    fetchAnalytics(false)
-  }, [range])
+    fetchAnalytics(false);
+  }, [range]);
 
-  const isUnavailable = data && data.available === false
+  const isUnavailable = data && data.available === false;
 
   return (
     <section className={styles.container}>
@@ -139,7 +142,7 @@ export default function MatchmakingAnalytics() {
         </div>
         <div className={styles.actions}>
           <div className={styles.rangeSelector}>
-            {TIME_RANGES.map((r) => (
+            {TIME_RANGES.map(r => (
               <button
                 key={r.value}
                 className={`${styles.rangeButton} ${range === r.value ? styles.rangeButtonActive : ''}`}
@@ -227,5 +230,5 @@ export default function MatchmakingAnalytics() {
         </div>
       )}
     </section>
-  )
+  );
 }

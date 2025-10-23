@@ -1,12 +1,12 @@
-import { useEffect } from 'react'
-import { useRouter } from 'next/router'
+import { useEffect } from 'react';
+import { useRouter } from 'next/router';
 
 export default function RoomsRedirectPage() {
-  const router = useRouter()
+  const router = useRouter();
   useEffect(() => {
-    router.replace('/match')
-  }, [router])
-  return null
+    router.replace('/match');
+  }, [router]);
+  return null;
 }
 
 export async function getServerSideProps() {
@@ -15,5 +15,5 @@ export async function getServerSideProps() {
       destination: '/match',
       permanent: false,
     },
-  }
+  };
 }

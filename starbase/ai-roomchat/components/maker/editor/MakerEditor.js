@@ -1,25 +1,34 @@
-'use client'
+'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { useMakerEditor } from '../../../hooks/maker/useMakerEditor'
-import { exportSet, importSet } from './importExport'
-import MakerEditorCanvas from './MakerEditorCanvas'
-import MakerEditorHeader from './MakerEditorHeader'
-import MakerEditorPanel from './MakerEditorPanel'
-import VariableDrawer from './VariableDrawer'
-import AdvancedToolsPanel from './AdvancedToolsPanel'
-import CodeEditor from './CodeEditor'
-import MultiLanguageCodeEditor from './MultiLanguageCodeEditor'
-import GameSimulator from './GameSimulator'
+import { useMakerEditor } from '../../../hooks/maker/useMakerEditor';
+import { exportSet, importSet } from './importExport';
+import MakerEditorCanvas from './MakerEditorCanvas';
+import MakerEditorHeader from './MakerEditorHeader';
+import MakerEditorPanel from './MakerEditorPanel';
+import VariableDrawer from './VariableDrawer';
+import AdvancedToolsPanel from './AdvancedToolsPanel';
+import CodeEditor from './CodeEditor';
+import MultiLanguageCodeEditor from './MultiLanguageCodeEditor';
+import GameSimulator from './GameSimulator';
 
 export default function MakerEditor() {
-  const { status, graph, selection, variables, persistence, history, version } = useMakerEditor()
+  const { status, graph, selection, variables, persistence, history, version } = useMakerEditor();
 
-  const { isReady, loading, setInfo } = status
+  const { isReady, loading, setInfo } = status;
 
-  const { nodes, edges, onNodesChange, onEdgesChange, onConnect, onNodesDelete, onEdgesDelete, setNodes, setEdges } =
-    graph
+  const {
+    nodes,
+    edges,
+    onNodesChange,
+    onEdgesChange,
+    onConnect,
+    onNodesDelete,
+    onEdgesDelete,
+    setNodes,
+    setEdges,
+  } = graph;
 
   const {
     selectedNode,
@@ -34,7 +43,7 @@ export default function MakerEditor() {
     setActivePanelTab,
     markAsStart,
     appendTokenToSelected,
-  } = selection
+  } = selection;
 
   const {
     selectedGlobalRules,
@@ -47,9 +56,9 @@ export default function MakerEditor() {
     toggleInvisible,
     slotSuggestions,
     characterSuggestions,
-  } = variables
+  } = variables;
 
-  const { busy, saveAll, deletePrompt, addPromptNode, goToSetList, goToLobby } = persistence
+  const { busy, saveAll, deletePrompt, addPromptNode, goToSetList, goToLobby } = persistence;
 
   const {
     entries: saveHistory,
@@ -58,112 +67,139 @@ export default function MakerEditor() {
     clearEntries: clearHistory,
     receipt: saveReceipt,
     ackReceipt,
-  } = history
+  } = history;
 
-  const { alert: versionAlert, clearAlert: clearVersionAlert } = version
-  const [variableDrawerOpen, setVariableDrawerOpen] = useState(false)
-  const [headerCollapsed, setHeaderCollapsed] = useState(false)
-  const [inspectorOpen, setInspectorOpen] = useState(false)
-  const [advancedToolsOpen, setAdvancedToolsOpen] = useState(false)
-  const [receiptVisible, setReceiptVisible] = useState(null)
+  const { alert: versionAlert, clearAlert: clearVersionAlert } = version;
+  const [variableDrawerOpen, setVariableDrawerOpen] = useState(false);
+  const [headerCollapsed, setHeaderCollapsed] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [advancedToolsOpen, setAdvancedToolsOpen] = useState(false);
+  const [receiptVisible, setReceiptVisible] = useState(null);
 
   // 🤖 AI로 게임 만들기 핸들러
-  const [isAICreating, setIsAICreating] = useState(false)
-  
+  const [isAICreating, setIsAICreating] = useState(false);
+
   // ⚡ JavaScript 코드 에디터
-  const [codeEditorOpen, setCodeEditorOpen] = useState(false)
-  const [showCodeEditor, setShowCodeEditor] = useState(false)
-  const [showMultiLanguageEditor, setShowMultiLanguageEditor] = useState(false)
-  const [gameCode, setGameCode] = useState('')
-  const [showGameSimulator, setShowGameSimulator] = useState(false)
-  const [simulationResults, setSimulationResults] = useState(null)
-  
+  const [codeEditorOpen, setCodeEditorOpen] = useState(false);
+  const [showCodeEditor, setShowCodeEditor] = useState(false);
+  const [showMultiLanguageEditor, setShowMultiLanguageEditor] = useState(false);
+  const [gameCode, setGameCode] = useState('');
+  const [showGameSimulator, setShowGameSimulator] = useState(false);
+  const [simulationResults, setSimulationResults] = useState(null);
+
   const handleCreateWithAI = useCallback(async () => {
-    const userPrompt = prompt('🎮 어떤 게임을 만들고 싶으세요?\n\n예시:\n• "중세 기사들이 용과 싸우는 게임"\n• "우주에서 외계인과 전투하는 게임"\n• "좀비 아포칼립스 생존 게임"')
-    
-    if (!userPrompt) return
-    
-    setIsAICreating(true)
-    
+    const userPrompt = prompt(
+      '🎮 어떤 게임을 만들고 싶으세요?\n\n예시:\n• "중세 기사들이 용과 싸우는 게임"\n• "우주에서 외계인과 전투하는 게임"\n• "좀비 아포칼립스 생존 게임"'
+    );
+
+    if (!userPrompt) return;
+
+    setIsAICreating(true);
+
     try {
       // 🚀 실제 AI Worker Pool 호출!
-      const { generateGameWithAI } = await import('../../../lib/aiWorkerClient')
-      
-      console.log('🤖 AI Worker Pool에 게임 생성 요청:', userPrompt)
-      
-      const aiResult = await generateGameWithAI(userPrompt)
-      
+      const { generateGameWithAI } = await import('../../../lib/aiWorkerClient');
+
+      console.log('🤖 AI Worker Pool에 게임 생성 요청:', userPrompt);
+
+      const aiResult = await generateGameWithAI(userPrompt);
+
       if (aiResult && aiResult.gameNodes) {
         // AI가 생성한 게임 노드들 추가
         aiResult.gameNodes.forEach((node, index) => {
           setTimeout(() => {
-            addPromptNode(node.type, node.template)
-          }, index * 300) // 0.3초 간격으로 순차 생성
-        })
-        
-        alert(`🎮 AI가 "${aiResult.gameName || '새로운 게임'}"을 생성했습니다!\n\n${aiResult.gameNodes.length}개의 프롬프트 노드가 생성되었습니다.`)
+            addPromptNode(node.type, node.template);
+          }, index * 300); // 0.3초 간격으로 순차 생성
+        });
+
+        alert(
+          `🎮 AI가 "${aiResult.gameName || '새로운 게임'}"을 생성했습니다!\n\n${aiResult.gameNodes.length}개의 프롬프트 노드가 생성되었습니다.`
+        );
       } else {
-        throw new Error('AI 응답 형식이 올바르지 않습니다.')
+        throw new Error('AI 응답 형식이 올바르지 않습니다.');
       }
-      
     } catch (error) {
-      console.warn('AI Worker Pool 연결 실패, 로컬 생성으로 대체:', error.message)
-      
+      console.warn('AI Worker Pool 연결 실패, 로컬 생성으로 대체:', error.message);
+
       // AI Worker Pool 연결 실패시 로컬 생성으로 대체
       if (userPrompt.includes('중세') || userPrompt.includes('기사')) {
-        addPromptNode('ai', '당신은 중세 시대의 용맹한 기사입니다. 용감하게 모험을 시작하세요!')
-        setTimeout(() => addPromptNode('user_action', '어떤 행동을 하시겠습니까? (공격, 방어, 마법 등)'), 300)
-        setTimeout(() => addPromptNode('system', '🐉 거대한 용이 나타났습니다! HP: 100 | 공격력: 25'), 600)
+        addPromptNode('ai', '당신은 중세 시대의 용맹한 기사입니다. 용감하게 모험을 시작하세요!');
+        setTimeout(
+          () => addPromptNode('user_action', '어떤 행동을 하시겠습니까? (공격, 방어, 마법 등)'),
+          300
+        );
+        setTimeout(
+          () => addPromptNode('system', '🐉 거대한 용이 나타났습니다! HP: 100 | 공격력: 25'),
+          600
+        );
       } else if (userPrompt.includes('우주') || userPrompt.includes('외계인')) {
-        addPromptNode('ai', '🚀 우주선 조종사가 되어 외계인과 맞서 싸우세요!')
-        setTimeout(() => addPromptNode('user_action', '어떤 전술을 사용하시겠습니까? (레이저, 미사일, 회피 등)'), 300)
-        setTimeout(() => addPromptNode('system', '👽 외계인 함대 접근 중... 경고! 적 함선 3대 감지'), 600)
+        addPromptNode('ai', '🚀 우주선 조종사가 되어 외계인과 맞서 싸우세요!');
+        setTimeout(
+          () =>
+            addPromptNode('user_action', '어떤 전술을 사용하시겠습니까? (레이저, 미사일, 회피 등)'),
+          300
+        );
+        setTimeout(
+          () => addPromptNode('system', '👽 외계인 함대 접근 중... 경고! 적 함선 3대 감지'),
+          600
+        );
       } else if (userPrompt.includes('좀비')) {
-        addPromptNode('ai', '🧟 좀비 아포칼립스에서 살아남으세요! 자원을 관리하고 생존하세요.')
-        setTimeout(() => addPromptNode('user_action', '어떻게 행동하시겠습니까? (수색, 건설, 전투 등)'), 300)
-        setTimeout(() => addPromptNode('system', '⚠️ 좀비 무리가 다가옵니다! 생존자 HP: 100 | 탄약: 30'), 600)
+        addPromptNode('ai', '🧟 좀비 아포칼립스에서 살아남으세요! 자원을 관리하고 생존하세요.');
+        setTimeout(
+          () => addPromptNode('user_action', '어떻게 행동하시겠습니까? (수색, 건설, 전투 등)'),
+          300
+        );
+        setTimeout(
+          () => addPromptNode('system', '⚠️ 좀비 무리가 다가옵니다! 생존자 HP: 100 | 탄약: 30'),
+          600
+        );
       } else {
         // 범용 게임 생성
-        addPromptNode('ai', `${userPrompt}을 주제로 한 흥미진진한 게임을 시작합니다!`)
-        setTimeout(() => addPromptNode('user_action', '어떤 행동을 선택하시겠습니까?'), 300)
-        setTimeout(() => addPromptNode('system', '게임이 시작되었습니다! 상황을 파악하세요.'), 600)
+        addPromptNode('ai', `${userPrompt}을 주제로 한 흥미진진한 게임을 시작합니다!`);
+        setTimeout(() => addPromptNode('user_action', '어떤 행동을 선택하시겠습니까?'), 300);
+        setTimeout(() => addPromptNode('system', '게임이 시작되었습니다! 상황을 파악하세요.'), 600);
       }
-      
-      alert('🎮 로컬 AI로 게임을 생성했습니다!\n\n생성된 프롬프트들을 확인하고 편집해보세요.\n\n💡 팁: AI Worker Pool VS Code Extension을 실행하면 더 고급 AI 기능을 사용할 수 있습니다!')
+
+      alert(
+        '🎮 로컬 AI로 게임을 생성했습니다!\n\n생성된 프롬프트들을 확인하고 편집해보세요.\n\n💡 팁: AI Worker Pool VS Code Extension을 실행하면 더 고급 AI 기능을 사용할 수 있습니다!'
+      );
     } finally {
-      setTimeout(() => setIsAICreating(false), 1000) // 1초 후 로딩 종료
+      setTimeout(() => setIsAICreating(false), 1000); // 1초 후 로딩 종료
     }
-  }, [addPromptNode])
+  }, [addPromptNode]);
 
   // ⚡ 코드 실행 핸들러
-  const handleCodeRun = useCallback((result) => {
-    console.log('🎮 게임 코드 실행 결과:', result)
-    
-    if (result.success) {
-      // 코드 실행 성공시 게임 로직을 저장
-      setGameCode(result.code)
-      
-      // 실행 결과를 시스템 노드로 추가 (옵션)
-      if (result.result && typeof result.result === 'object') {
-        const resultText = `🎮 게임 코드 실행 결과:\n${JSON.stringify(result.result, null, 2)}`
-        addPromptNode('system', resultText)
+  const handleCodeRun = useCallback(
+    result => {
+      console.log('🎮 게임 코드 실행 결과:', result);
+
+      if (result.success) {
+        // 코드 실행 성공시 게임 로직을 저장
+        setGameCode(result.code);
+
+        // 실행 결과를 시스템 노드로 추가 (옵션)
+        if (result.result && typeof result.result === 'object') {
+          const resultText = `🎮 게임 코드 실행 결과:\n${JSON.stringify(result.result, null, 2)}`;
+          addPromptNode('system', resultText);
+        }
       }
-    }
-  }, [addPromptNode])
+    },
+    [addPromptNode]
+  );
 
   // 코드 에디터 열기
   const openCodeEditor = useCallback(() => {
-    setCodeEditorOpen(true)
-  }, [])
+    setCodeEditorOpen(true);
+  }, []);
 
   // 🎮 게임 시뮬레이션 상태
-  const [gameSimulatorOpen, setGameSimulatorOpen] = useState(false)
-  
+  const [gameSimulatorOpen, setGameSimulatorOpen] = useState(false);
+
   // 게임 시뮬레이션 시작
   const startGameSimulation = useCallback(() => {
     if (!nodes || nodes.length === 0) {
-      alert('시뮬레이션할 게임 노드가 없습니다. 먼저 프롬프트를 추가하세요.')
-      return
+      alert('시뮬레이션할 게임 노드가 없습니다. 먼저 프롬프트를 추가하세요.');
+      return;
     }
 
     // 현재 게임 데이터를 JSON 형태로 변환
@@ -171,11 +207,11 @@ export default function MakerEditor() {
       meta: {
         version: 2,
         createdAt: new Date().toISOString(),
-        createdBy: 'Game Simulator'
+        createdBy: 'Game Simulator',
       },
       set: {
         name: setInfo?.name || '시뮬레이션 게임',
-        description: '게임 시뮬레이션 테스트'
+        description: '게임 시뮬레이션 테스트',
       },
       slots: nodes.map((node, index) => ({
         slot_no: parseInt(node.id) || index,
@@ -185,7 +221,7 @@ export default function MakerEditor() {
         canvas_x: node.position?.x || 0,
         canvas_y: node.position?.y || 0,
         var_rules_global: {},
-        var_rules_local: {}
+        var_rules_local: {},
       })),
       bridges: edges.map(edge => ({
         from_slot_id: edge.source,
@@ -193,36 +229,36 @@ export default function MakerEditor() {
         trigger_words: [],
         conditions: [],
         priority: 1,
-        probability: 1
-      }))
-    }
+        probability: 1,
+      })),
+    };
 
-    console.log('🎮 게임 시뮬레이션 데이터:', gameData)
-    setGameSimulatorOpen(true)
-  }, [nodes, edges, setInfo])
+    console.log('🎮 게임 시뮬레이션 데이터:', gameData);
+    setGameSimulatorOpen(true);
+  }, [nodes, edges, setInfo]);
 
   // 시뮬레이션 결과 처리
-  const handleSimulationResult = useCallback((result) => {
-    console.log('🎯 시뮬레이션 결과:', result)
+  const handleSimulationResult = useCallback(result => {
+    console.log('🎯 시뮬레이션 결과:', result);
     if (result.success) {
-      alert(`시뮬레이션 완료!\n총 ${result.logs.length}개의 로그가 생성되었습니다.`)
+      alert(`시뮬레이션 완료!\n총 ${result.logs.length}개의 로그가 생성되었습니다.`);
     }
-  }, [])
+  }, []);
 
   // 다중 언어 코드 실행 핸들러
-  const handleMultiLanguageCodeExecution = useCallback((result) => {
+  const handleMultiLanguageCodeExecution = useCallback(result => {
     if (result.action === 'close') {
-      setShowMultiLanguageEditor(false)
+      setShowMultiLanguageEditor(false);
     } else {
-      console.log('🚀 다중 언어 코드 실행 결과:', result)
-      
+      console.log('🚀 다중 언어 코드 실행 결과:', result);
+
       // 실행 결과를 게임에 적용하는 로직
       if (result.success && result.result) {
         // JavaScript 실행 결과를 노드로 변환하거나 게임 상태 업데이트
-        console.log('🎮 게임 상태 업데이트:', result.result)
+        console.log('🎮 게임 상태 업데이트:', result.result);
       }
     }
-  }, [])
+  }, []);
 
   const collapsedQuickActions = useMemo(
     () => [
@@ -231,110 +267,112 @@ export default function MakerEditor() {
       { label: '+시스템', onClick: () => addPromptNode('system') },
       { label: busy ? '저장 중…' : '저장', onClick: saveAll, disabled: busy },
     ],
-    [addPromptNode, busy, saveAll],
-  )
+    [addPromptNode, busy, saveAll]
+  );
 
   const openInspector = useCallback(
-    (tabId) => {
+    tabId => {
       if (tabId) {
-        const hasTab = panelTabs?.some((tab) => tab.id === tabId)
+        const hasTab = panelTabs?.some(tab => tab.id === tabId);
         if (hasTab) {
-          setActivePanelTab(tabId)
+          setActivePanelTab(tabId);
           if (tabId === 'history') {
-            setAdvancedToolsOpen(true)
+            setAdvancedToolsOpen(true);
           }
         } else if (panelTabs?.length) {
-          setActivePanelTab(panelTabs[0].id)
+          setActivePanelTab(panelTabs[0].id);
         }
       } else if (panelTabs?.length) {
-        setActivePanelTab(panelTabs[0].id)
+        setActivePanelTab(panelTabs[0].id);
       }
 
-      setInspectorOpen(true)
+      setInspectorOpen(true);
     },
-    [panelTabs, setActivePanelTab, setAdvancedToolsOpen],
-  )
+    [panelTabs, setActivePanelTab, setAdvancedToolsOpen]
+  );
 
   const handleNodeDoubleClick = useCallback(
     (event, node) => {
       if (typeof onNodeClick === 'function') {
-        onNodeClick(event, node)
+        onNodeClick(event, node);
       }
-      openInspector('selection')
+      openInspector('selection');
     },
-    [onNodeClick, openInspector],
-  )
+    [onNodeClick, openInspector]
+  );
 
   const handleEdgeDoubleClick = useCallback(
     (event, edge) => {
       if (typeof onEdgeClick === 'function') {
-        onEdgeClick(event, edge)
+        onEdgeClick(event, edge);
       }
-      openInspector('selection')
+      openInspector('selection');
     },
-    [onEdgeClick, openInspector],
-  )
+    [onEdgeClick, openInspector]
+  );
 
   const handleAutoUpgrade = useCallback(async () => {
-    if (busy) return
+    if (busy) return;
     try {
-      await saveAll()
+      await saveAll();
     } catch (error) {
-      console.error(error)
+      console.error(error);
     }
-  }, [busy, saveAll])
+  }, [busy, saveAll]);
 
   const handleDismissVersionAlert = useCallback(() => {
-    clearVersionAlert()
-  }, [clearVersionAlert])
+    clearVersionAlert();
+  }, [clearVersionAlert]);
 
   useEffect(() => {
     if (!saveReceipt) {
-      setReceiptVisible(null)
-      return
+      setReceiptVisible(null);
+      return;
     }
 
-    setReceiptVisible(saveReceipt)
+    setReceiptVisible(saveReceipt);
 
     const timeout = window.setTimeout(() => {
-      ackReceipt(saveReceipt.id)
-    }, 6000)
+      ackReceipt(saveReceipt.id);
+    }, 6000);
 
     return () => {
-      window.clearTimeout(timeout)
-    }
-  }, [saveReceipt, ackReceipt])
+      window.clearTimeout(timeout);
+    };
+  }, [saveReceipt, ackReceipt]);
 
   useEffect(() => {
-    if (!receiptVisible) return
+    if (!receiptVisible) return;
 
-    const handleKeyDown = (event) => {
+    const handleKeyDown = event => {
       if (event.key === 'Escape') {
-        ackReceipt(receiptVisible.id)
+        ackReceipt(receiptVisible.id);
       }
-    }
+    };
 
-    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('keydown', handleKeyDown);
     return () => {
-      window.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [receiptVisible, ackReceipt])
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [receiptVisible, ackReceipt]);
 
   if (!isReady || loading) {
-    return <div style={{ padding: 20 }}>불러오는 중…</div>
+    return <div style={{ padding: 20 }}>불러오는 중…</div>;
   }
 
   // AI 게임 생성 중일 때 로딩 화면
   if (isAICreating) {
     return (
-      <div style={{ 
-        height: '100vh', 
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'center',
-        color: '#fff'
-      }}>
+      <div
+        style={{
+          height: '100vh',
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#fff',
+        }}
+      >
         <div style={{ textAlign: 'center', maxWidth: 400 }}>
           <div style={{ fontSize: 48, marginBottom: 20 }}>🤖</div>
           <h2 style={{ fontSize: 24, marginBottom: 16 }}>AI가 게임을 생성하고 있습니다</h2>
@@ -344,22 +382,26 @@ export default function MakerEditor() {
             <div>⚔️ 게임플레이 시나리오 생성 중...</div>
             <div>🎲 게임 규칙 최적화 중...</div>
           </div>
-          <div style={{ 
-            marginTop: 30, 
-            padding: '12px 24px',
-            background: 'rgba(255,255,255,0.2)',
-            borderRadius: 20,
-            fontSize: 14
-          }}>
+          <div
+            style={{
+              marginTop: 30,
+              padding: '12px 24px',
+              background: 'rgba(255,255,255,0.2)',
+              borderRadius: 20,
+              fontSize: 14,
+            }}
+          >
             잠시만 기다려주세요... ✨
           </div>
         </div>
       </div>
-    )
+    );
   }
 
   return (
-    <div style={{ height: '100vh', background: '#f1f5f9', display: 'flex', flexDirection: 'column' }}>
+    <div
+      style={{ height: '100vh', background: '#f1f5f9', display: 'flex', flexDirection: 'column' }}
+    >
       <div
         style={{
           flex: '1 1 auto',
@@ -385,7 +427,7 @@ export default function MakerEditor() {
           onImport={importSet}
           onGoLobby={goToLobby}
           collapsed={headerCollapsed}
-          onToggleCollapse={() => setHeaderCollapsed((prev) => !prev)}
+          onToggleCollapse={() => setHeaderCollapsed(prev => !prev)}
           onOpenVariables={() => setVariableDrawerOpen(true)}
           onCreateWithAI={handleCreateWithAI}
           onOpenCodeEditor={openCodeEditor}
@@ -413,7 +455,7 @@ export default function MakerEditor() {
               <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6 }}>{versionAlert.summary}</p>
               {Array.isArray(versionAlert.details) && versionAlert.details.length > 0 && (
                 <ul style={{ margin: '0 0 0 18px', padding: 0, fontSize: 12, lineHeight: 1.5 }}>
-                  {versionAlert.details.map((detail) => (
+                  {versionAlert.details.map(detail => (
                     <li key={detail}>{detail}</li>
                   ))}
                 </ul>
@@ -474,9 +516,7 @@ export default function MakerEditor() {
       <button
         type="button"
         onClick={() =>
-          inspectorOpen
-            ? (setInspectorOpen(false), setAdvancedToolsOpen(false))
-            : openInspector()
+          inspectorOpen ? (setInspectorOpen(false), setAdvancedToolsOpen(false)) : openInspector()
         }
         style={{
           position: 'fixed',
@@ -542,8 +582,8 @@ export default function MakerEditor() {
               <button
                 type="button"
                 onClick={() => {
-                  setInspectorOpen(false)
-                  setAdvancedToolsOpen(false)
+                  setInspectorOpen(false);
+                  setAdvancedToolsOpen(false);
                 }}
                 style={{
                   padding: '4px 10px',
@@ -584,7 +624,7 @@ export default function MakerEditor() {
             />
             <AdvancedToolsPanel
               expanded={advancedToolsOpen}
-              onToggle={() => setAdvancedToolsOpen((prev) => !prev)}
+              onToggle={() => setAdvancedToolsOpen(prev => !prev)}
               storageKey={historyStorageKey}
               historyEntries={saveHistory}
               onExport={exportHistory}
@@ -651,7 +691,14 @@ export default function MakerEditor() {
             gap: 10,
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
             <strong style={{ fontSize: 14 }}>저장 완료</strong>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               <button
@@ -672,7 +719,7 @@ export default function MakerEditor() {
               </button>
               <button
                 type="button"
-              onClick={() => ackReceipt(receiptVisible.id)}
+                onClick={() => ackReceipt(receiptVisible.id)}
                 style={{
                   appearance: 'none',
                   border: '1px solid rgba(148, 163, 184, 0.45)',
@@ -691,7 +738,7 @@ export default function MakerEditor() {
           <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6 }}>{receiptVisible.message}</p>
           {Array.isArray(receiptVisible.details) && receiptVisible.details.length > 0 && (
             <ul style={{ margin: '0 0 0 18px', padding: 0, fontSize: 12, lineHeight: 1.5 }}>
-              {receiptVisible.details.map((detail) => (
+              {receiptVisible.details.map(detail => (
                 <li key={detail}>{detail}</li>
               ))}
             </ul>
@@ -706,7 +753,7 @@ export default function MakerEditor() {
         gameContext={{
           nodes: nodes,
           edges: edges,
-          selectedNode: selectedNode
+          selectedNode: selectedNode,
         }}
       />
 
@@ -717,7 +764,7 @@ export default function MakerEditor() {
         gameContext={{
           nodes: nodes,
           edges: edges,
-          gameInfo: setInfo
+          gameInfo: setInfo,
         }}
         onCodeRun={handleMultiLanguageCodeExecution}
       />
@@ -728,10 +775,10 @@ export default function MakerEditor() {
         gameData={{
           meta: {
             version: 2,
-            createdAt: new Date().toISOString()
+            createdAt: new Date().toISOString(),
           },
           set: {
-            name: setInfo?.name || '시뮬레이션 게임'
+            name: setInfo?.name || '시뮬레이션 게임',
           },
           slots: nodes.map((node, index) => ({
             slot_no: parseInt(node.id) || index,
@@ -739,12 +786,12 @@ export default function MakerEditor() {
             template: node.data?.label || '',
             is_start: node.data?.isStart || index === 0,
             canvas_x: node.position?.x || 0,
-            canvas_y: node.position?.y || 0
+            canvas_y: node.position?.y || 0,
           })),
           bridges: edges.map(edge => ({
             from_slot_id: edge.source,
-            to_slot_id: edge.target
-          }))
+            to_slot_id: edge.target,
+          })),
         }}
         onClose={() => setGameSimulatorOpen(false)}
         onSimulationResult={handleSimulationResult}
@@ -768,12 +815,12 @@ export default function MakerEditor() {
             fontWeight: 600,
             cursor: 'pointer',
             zIndex: 250,
-            boxShadow: '0 4px 12px rgba(239, 68, 68, 0.4)'
+            boxShadow: '0 4px 12px rgba(239, 68, 68, 0.4)',
           }}
         >
           ×
         </button>
       )}
     </div>
-  )
+  );
 }

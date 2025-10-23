@@ -2,7 +2,8 @@ export const shellStyles = {
   root: {
     position: 'relative',
     minHeight: '100vh',
-    background: 'radial-gradient(circle at 20% 20%, rgba(15, 118, 110, 0.22), transparent 55%), radial-gradient(circle at 85% 15%, rgba(59, 130, 246, 0.18), transparent 45%), #020617',
+    background:
+      'radial-gradient(circle at 20% 20%, rgba(15, 118, 110, 0.22), transparent 55%), radial-gradient(circle at 85% 15%, rgba(59, 130, 246, 0.18), transparent 45%), #020617',
     color: '#e2e8f0',
     fontFamily: '"Noto Sans CJK KR", sans-serif',
     overflow: 'hidden',
@@ -100,7 +101,7 @@ export const shellStyles = {
     display: 'flex',
     justifyContent: 'flex-end',
   },
-}
+};
 
 export const navigationStyles = {
   root: {
@@ -148,7 +149,7 @@ export const navigationStyles = {
     fontWeight: 500,
     color: 'rgba(203, 213, 225, 0.78)',
   },
-}
+};
 
 export const quickActionStyles = {
   root: {
@@ -195,4 +196,4 @@ export const quickActionStyles = {
     fontWeight: 500,
     color: 'rgba(226, 232, 240, 0.78)',
   },
-}
+};

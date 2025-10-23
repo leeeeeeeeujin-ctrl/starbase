@@ -1,9 +1,9 @@
-import React from 'react'
+import React from 'react';
 
 export default function AlertsPanel({ alerts }) {
   return (
     <div style={styles.root}>
-      {alerts.map((alert) => (
+      {alerts.map(alert => (
         <div key={alert.id} style={styles.card}>
           <strong style={styles.title}>{alert.title}</strong>
           <p style={styles.body}>{alert.body}</p>
@@ -11,7 +11,7 @@ export default function AlertsPanel({ alerts }) {
         </div>
       ))}
     </div>
-  )
+  );
 }
 
 const styles = {
@@ -45,5 +45,5 @@ const styles = {
     fontSize: 12,
     color: '#94a3b8',
   },
-}
+};
 //

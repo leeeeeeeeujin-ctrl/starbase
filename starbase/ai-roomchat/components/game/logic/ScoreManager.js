@@ -8,12 +8,12 @@ export default class ScoreManager {
       enableAchievements: true,
       enableStats: true,
       ...options,
-    }
-    this.score = 0
-    this.highScore = 0
-    this.stats = {}
-    this.achievements = []
-    this.isInitialized = false
+    };
+    this.score = 0;
+    this.highScore = 0;
+    this.stats = {};
+    this.achievements = [];
+    this.isInitialized = false;
   }
 
   /**
@@ -21,16 +21,16 @@ export default class ScoreManager {
    */
   async initialize(savedData = {}) {
     try {
-      this.score = savedData.score || 0
-      this.highScore = savedData.highScore || 0
-      this.stats = savedData.stats || {}
-      this.achievements = savedData.achievements || []
+      this.score = savedData.score || 0;
+      this.highScore = savedData.highScore || 0;
+      this.stats = savedData.stats || {};
+      this.achievements = savedData.achievements || [];
 
-      this.isInitialized = true
-      return true
+      this.isInitialized = true;
+      return true;
     } catch (error) {
-      console.error('[ScoreManager] 초기화 실패:', error)
-      return false
+      console.error('[ScoreManager] 초기화 실패:', error);
+      return false;
     }
   }
 
@@ -39,22 +39,22 @@ export default class ScoreManager {
    */
   addScore(points) {
     if (typeof points !== 'number' || points < 0) {
-      console.warn('[ScoreManager] 유효하지 않은 점수:', points)
-      return
+      console.warn('[ScoreManager] 유효하지 않은 점수:', points);
+      return;
     }
 
-    this.score += points
-    
+    this.score += points;
+
     // 최고 점수 업데이트
     if (this.score > this.highScore) {
-      this.highScore = this.score
-      console.log(`[ScoreManager] 새로운 최고 점수: ${this.highScore}`)
+      this.highScore = this.score;
+      console.log(`[ScoreManager] 새로운 최고 점수: ${this.highScore}`);
     }
 
     // 업적 체크
-    this.checkAchievements()
+    this.checkAchievements();
 
-    return this.score
+    return this.score;
   }
 
   /**
@@ -62,12 +62,12 @@ export default class ScoreManager {
    */
   subtractScore(points) {
     if (typeof points !== 'number' || points < 0) {
-      console.warn('[ScoreManager] 유효하지 않은 점수:', points)
-      return
+      console.warn('[ScoreManager] 유효하지 않은 점수:', points);
+      return;
     }
 
-    this.score = Math.max(0, this.score - points)
-    return this.score
+    this.score = Math.max(0, this.score - points);
+    return this.score;
   }
 
   /**
@@ -75,43 +75,43 @@ export default class ScoreManager {
    */
   setScore(points) {
     if (typeof points !== 'number' || points < 0) {
-      console.warn('[ScoreManager] 유효하지 않은 점수:', points)
-      return
+      console.warn('[ScoreManager] 유효하지 않은 점수:', points);
+      return;
     }
 
-    this.score = points
-    
+    this.score = points;
+
     if (this.score > this.highScore) {
-      this.highScore = this.score
+      this.highScore = this.score;
     }
 
-    return this.score
+    return this.score;
   }
 
   /**
    * 현재 점수 가져오기
    */
   getScore() {
-    return this.score
+    return this.score;
   }
 
   /**
    * 최고 점수 가져오기
    */
   getHighScore() {
-    return this.highScore
+    return this.highScore;
   }
 
   /**
    * 통계 기록
    */
   recordStat(statName, value) {
-    if (!this.options.enableStats) return
+    if (!this.options.enableStats) return;
 
     if (typeof value === 'number') {
-      this.stats[statName] = (this.stats[statName] || 0) + value
+      this.stats[statName] = (this.stats[statName] || 0) + value;
     } else {
-      this.stats[statName] = value
+      this.stats[statName] = value;
     }
   }
 
@@ -119,33 +119,33 @@ export default class ScoreManager {
    * 통계 가져오기
    */
   getStat(statName) {
-    return this.stats[statName] || 0
+    return this.stats[statName] || 0;
   }
 
   /**
    * 모든 통계 가져오기
    */
   getAllStats() {
-    return { ...this.stats }
+    return { ...this.stats };
   }
 
   /**
    * 업적 등록
    */
   registerAchievement(achievement) {
-    if (!this.options.enableAchievements) return
+    if (!this.options.enableAchievements) return;
 
-    const { id, name, description, condition } = achievement
+    const { id, name, description, condition } = achievement;
 
     if (!id || !name || !condition) {
-      console.warn('[ScoreManager] 유효하지 않은 업적 정의')
-      return false
+      console.warn('[ScoreManager] 유효하지 않은 업적 정의');
+      return false;
     }
 
     // 중복 체크
     if (this.achievements.some(a => a.id === id)) {
-      console.warn(`[ScoreManager] 이미 등록된 업적: ${id}`)
-      return false
+      console.warn(`[ScoreManager] 이미 등록된 업적: ${id}`);
+      return false;
     }
 
     this.achievements.push({
@@ -155,86 +155,86 @@ export default class ScoreManager {
       condition,
       unlocked: false,
       unlockedAt: null,
-    })
+    });
 
-    return true
+    return true;
   }
 
   /**
    * 업적 해제
    */
   unlockAchievement(achievementId) {
-    const achievement = this.achievements.find(a => a.id === achievementId)
-    
+    const achievement = this.achievements.find(a => a.id === achievementId);
+
     if (!achievement) {
-      console.warn(`[ScoreManager] 업적을 찾을 수 없음: ${achievementId}`)
-      return false
+      console.warn(`[ScoreManager] 업적을 찾을 수 없음: ${achievementId}`);
+      return false;
     }
 
     if (achievement.unlocked) {
-      return false
+      return false;
     }
 
-    achievement.unlocked = true
-    achievement.unlockedAt = new Date().toISOString()
-    
-    console.log(`[ScoreManager] 업적 해제: ${achievement.name}`)
-    return true
+    achievement.unlocked = true;
+    achievement.unlockedAt = new Date().toISOString();
+
+    console.log(`[ScoreManager] 업적 해제: ${achievement.name}`);
+    return true;
   }
 
   /**
    * 업적 체크
    */
   checkAchievements() {
-    if (!this.options.enableAchievements) return
+    if (!this.options.enableAchievements) return;
 
     this.achievements.forEach(achievement => {
-      if (achievement.unlocked) return
+      if (achievement.unlocked) return;
 
       try {
-        const conditionMet = achievement.condition(this)
+        const conditionMet = achievement.condition(this);
         if (conditionMet) {
-          this.unlockAchievement(achievement.id)
+          this.unlockAchievement(achievement.id);
         }
       } catch (error) {
-        console.error(`[ScoreManager] 업적 조건 체크 오류 (${achievement.id}):`, error)
+        console.error(`[ScoreManager] 업적 조건 체크 오류 (${achievement.id}):`, error);
       }
-    })
+    });
   }
 
   /**
    * 해제된 업적 가져오기
    */
   getUnlockedAchievements() {
-    return this.achievements.filter(a => a.unlocked)
+    return this.achievements.filter(a => a.unlocked);
   }
 
   /**
    * 모든 업적 가져오기
    */
   getAllAchievements() {
-    return [...this.achievements]
+    return [...this.achievements];
   }
 
   /**
    * 점수 리셋
    */
   resetScore() {
-    this.score = 0
-    console.log('[ScoreManager] 점수 리셋')
+    this.score = 0;
+    console.log('[ScoreManager] 점수 리셋');
   }
 
   /**
    * 모든 데이터 리셋
    */
   resetAll() {
-    this.score = 0
-    this.stats = {}
+    this.score = 0;
+    this.stats = {};
     this.achievements.forEach(a => {
-      a.unlocked = false
-      a.unlockedAt = null
-    })
-    console.log('[ScoreManager] 모든 데이터 리셋')
+      a.unlocked = false;
+      a.unlockedAt = null;
+    });
+    console.log('[ScoreManager] 모든 데이터 리셋');
   }
 
   /**
@@ -250,31 +250,30 @@ export default class ScoreManager {
         unlocked: a.unlocked,
         unlockedAt: a.unlockedAt,
       })),
-    }
+    };
   }
 
   /**
    * 보고서 생성
    */
   generateReport() {
-    const totalAchievements = this.achievements.length
-    const unlockedAchievements = this.getUnlockedAchievements().length
+    const totalAchievements = this.achievements.length;
+    const unlockedAchievements = this.getUnlockedAchievements().length;
 
     return {
       score: this.score,
       highScore: this.highScore,
       achievementProgress: `${unlockedAchievements}/${totalAchievements}`,
-      achievementPercentage: totalAchievements > 0 
-        ? Math.round((unlockedAchievements / totalAchievements) * 100)
-        : 0,
+      achievementPercentage:
+        totalAchievements > 0 ? Math.round((unlockedAchievements / totalAchievements) * 100) : 0,
       stats: { ...this.stats },
-    }
+    };
   }
 
   /**
    * 리소스 정리
    */
   cleanup() {
-    this.isInitialized = false
+    this.isInitialized = false;
   }
 }

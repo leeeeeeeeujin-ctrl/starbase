@@ -9,32 +9,32 @@ import {
   setGameMatchSlotTemplate,
   setGameMatchSessionMeta,
   subscribeGameMatchData,
-} from '../../../modules/rank/matchDataStore'
+} from '../../../modules/rank/matchDataStore';
 
 describe('matchDataStore', () => {
-  const gameId = 'test-game'
+  const gameId = 'test-game';
 
   beforeEach(() => {
     if (typeof window !== 'undefined') {
-      window.sessionStorage.clear()
+      window.sessionStorage.clear();
     }
-    clearGameMatchData(gameId)
-  })
+    clearGameMatchData(gameId);
+  });
 
   it('stores hero selection per game', () => {
     setGameMatchHeroSelection(gameId, {
       heroId: 'hero-1',
       viewerId: 'owner-1',
       role: '공격',
-    })
+    });
 
-    const snapshot = hydrateGameMatchData(gameId)
+    const snapshot = hydrateGameMatchData(gameId);
     expect(snapshot?.heroSelection).toMatchObject({
       heroId: 'hero-1',
       viewerId: 'owner-1',
       role: '공격',
-    })
-  })
+    });
+  });
 
   it('keeps participation lists and hero options', () => {
     setGameMatchParticipation(gameId, {
@@ -49,13 +49,13 @@ describe('matchDataStore', () => {
           },
         ],
       ]),
-    })
+    });
 
-    const snapshot = hydrateGameMatchData(gameId)
-    expect(snapshot?.participation?.roster).toHaveLength(1)
-    expect(snapshot?.participation?.heroOptions).toHaveLength(1)
-    expect(snapshot?.participation?.heroMap).toHaveProperty('hero-1')
-  })
+    const snapshot = hydrateGameMatchData(gameId);
+    expect(snapshot?.participation?.roster).toHaveLength(1);
+    expect(snapshot?.participation?.heroOptions).toHaveLength(1);
+    expect(snapshot?.participation?.heroMap).toHaveProperty('hero-1');
+  });
 
   it('builds async fill snapshot for async lobbies', () => {
     setGameMatchParticipation(gameId, {
@@ -125,20 +125,20 @@ describe('matchDataStore', () => {
       realtimeMode: 'off',
       hostOwnerId: 'host-1',
       hostRoleLimit: 3,
-    })
+    });
 
-    const snapshot = hydrateGameMatchData(gameId)
-    const asyncFill = snapshot?.sessionMeta?.asyncFill
-    expect(asyncFill?.mode).toBe('off')
-    expect(asyncFill?.seatLimit).toMatchObject({ allowed: 3, total: 5 })
-    expect(asyncFill?.pendingSeatIndexes).toContain(2)
-    expect(asyncFill?.overflow?.map((entry) => entry.slotIndex)).toContain(4)
-    expect(asyncFill?.fillQueue).toHaveLength(1)
-    expect(asyncFill?.fillQueue?.[0]).toMatchObject({ ownerId: 'candidate-1' })
-  })
+    const snapshot = hydrateGameMatchData(gameId);
+    const asyncFill = snapshot?.sessionMeta?.asyncFill;
+    expect(asyncFill?.mode).toBe('off');
+    expect(asyncFill?.seatLimit).toMatchObject({ allowed: 3, total: 5 });
+    expect(asyncFill?.pendingSeatIndexes).toContain(2);
+    expect(asyncFill?.overflow?.map(entry => entry.slotIndex)).toContain(4);
+    expect(asyncFill?.fillQueue).toHaveLength(1);
+    expect(asyncFill?.fillQueue?.[0]).toMatchObject({ ownerId: 'candidate-1' });
+  });
 
   it('persists match snapshots to session storage', () => {
-    const createdAt = Date.now()
+    const createdAt = Date.now();
     setGameMatchSnapshot(gameId, {
       match: { matchCode: 'ABCD', matchType: 'standard' },
       viewerId: 'owner-1',
@@ -146,9 +146,9 @@ describe('matchDataStore', () => {
       role: '공격',
       mode: 'rank',
       createdAt,
-    })
+    });
 
-    const stored = hydrateGameMatchData(gameId)
+    const stored = hydrateGameMatchData(gameId);
     expect(stored?.matchSnapshot).toMatchObject({
       match: { matchCode: 'ABCD', matchType: 'standard' },
       viewerId: 'owner-1',
@@ -156,11 +156,11 @@ describe('matchDataStore', () => {
       role: '공격',
       mode: 'rank',
       createdAt,
-    })
+    });
 
-    const raw = window.sessionStorage.getItem(`rank.match.game.${gameId}`)
-    expect(raw).toBeTruthy()
-  })
+    const raw = window.sessionStorage.getItem(`rank.match.game.${gameId}`);
+    expect(raw).toBeTruthy();
+  });
 
   it('stores slot template data with version metadata', () => {
     setGameMatchSlotTemplate(gameId, {
@@ -192,49 +192,49 @@ describe('matchDataStore', () => {
       version: '3',
       source: 'room-stage',
       updatedAt: 123456,
-    })
+    });
 
-    const snapshot = hydrateGameMatchData(gameId)
-    expect(snapshot?.slotTemplate?.version).toBe(3)
-    expect(snapshot?.slotTemplate?.source).toBe('room-stage')
-    expect(snapshot?.slotTemplate?.updatedAt).toBe(123456)
-    expect(snapshot?.slotTemplate?.slots).toHaveLength(2)
+    const snapshot = hydrateGameMatchData(gameId);
+    expect(snapshot?.slotTemplate?.version).toBe(3);
+    expect(snapshot?.slotTemplate?.source).toBe('room-stage');
+    expect(snapshot?.slotTemplate?.updatedAt).toBe(123456);
+    expect(snapshot?.slotTemplate?.slots).toHaveLength(2);
     expect(snapshot?.slotTemplate?.slots?.[0]).toMatchObject({
       slotIndex: 1,
       role: '딜러',
       ownerId: 'owner-1',
-    })
-    expect(snapshot?.slotTemplate?.roles).toHaveLength(1)
+    });
+    expect(snapshot?.slotTemplate?.roles).toHaveLength(1);
     expect(snapshot?.slotTemplate?.roles?.[0]).toMatchObject({
       role: '딜러',
       slots: 2,
-    })
-  })
+    });
+  });
 
   it('merges session meta updates and supports clearing data', () => {
     setGameMatchSessionMeta(gameId, {
       turnTimer: { baseSeconds: 90, source: 'vote' },
       dropIn: { bonusSeconds: 30 },
       source: 'room-stage',
-    })
+    });
 
-    const firstSnapshot = hydrateGameMatchData(gameId)
+    const firstSnapshot = hydrateGameMatchData(gameId);
     expect(firstSnapshot?.sessionMeta?.turnTimer).toMatchObject({
       baseSeconds: 90,
       source: 'vote',
-    })
-    expect(firstSnapshot?.sessionMeta?.dropIn).toMatchObject({ bonusSeconds: 30 })
-    expect(firstSnapshot?.sessionMeta?.source).toBe('room-stage')
-    expect(firstSnapshot?.sessionMeta?.updatedAt).toBeGreaterThan(0)
-    expect(firstSnapshot?.sessionMeta?.turnState).toMatchObject({ turnNumber: 0 })
+    });
+    expect(firstSnapshot?.sessionMeta?.dropIn).toMatchObject({ bonusSeconds: 30 });
+    expect(firstSnapshot?.sessionMeta?.source).toBe('room-stage');
+    expect(firstSnapshot?.sessionMeta?.updatedAt).toBeGreaterThan(0);
+    expect(firstSnapshot?.sessionMeta?.turnState).toMatchObject({ turnNumber: 0 });
 
     setGameMatchSessionMeta(gameId, {
-      vote: { '30': 2, '60': 1 },
-    })
+      vote: { 30: 2, 60: 1 },
+    });
 
-    const secondSnapshot = hydrateGameMatchData(gameId)
-    expect(secondSnapshot?.sessionMeta?.turnTimer).toMatchObject({ baseSeconds: 90 })
-    expect(secondSnapshot?.sessionMeta?.vote).toMatchObject({ '30': 2, '60': 1 })
+    const secondSnapshot = hydrateGameMatchData(gameId);
+    expect(secondSnapshot?.sessionMeta?.turnTimer).toMatchObject({ baseSeconds: 90 });
+    expect(secondSnapshot?.sessionMeta?.vote).toMatchObject({ 30: 2, 60: 1 });
 
     setGameMatchSessionMeta(gameId, {
       turnState: {
@@ -248,50 +248,50 @@ describe('matchDataStore', () => {
         dropInBonusTurn: 3,
         status: 'scheduled',
       },
-    })
+    });
 
-    const thirdSnapshot = hydrateGameMatchData(gameId)
-    expect(thirdSnapshot?.sessionMeta?.turnTimer).toMatchObject({ baseSeconds: 90 })
+    const thirdSnapshot = hydrateGameMatchData(gameId);
+    expect(thirdSnapshot?.sessionMeta?.turnTimer).toMatchObject({ baseSeconds: 90 });
     expect(thirdSnapshot?.sessionMeta?.turnState).toMatchObject({
       turnNumber: 3,
       deadline: 6010,
       remainingSeconds: 45,
       dropInBonusSeconds: 15,
       status: 'scheduled',
-    })
+    });
 
-    setGameMatchSessionMeta(gameId, null)
+    setGameMatchSessionMeta(gameId, null);
 
-    const clearedSnapshot = hydrateGameMatchData(gameId)
-    expect(clearedSnapshot?.sessionMeta?.turnTimer).toBeNull()
-    expect(clearedSnapshot?.sessionMeta?.vote).toBeNull()
-    expect(clearedSnapshot?.sessionMeta?.dropIn).toBeNull()
+    const clearedSnapshot = hydrateGameMatchData(gameId);
+    expect(clearedSnapshot?.sessionMeta?.turnTimer).toBeNull();
+    expect(clearedSnapshot?.sessionMeta?.vote).toBeNull();
+    expect(clearedSnapshot?.sessionMeta?.dropIn).toBeNull();
     expect(clearedSnapshot?.sessionMeta?.turnState).toMatchObject({
       turnNumber: 0,
       deadline: 0,
       remainingSeconds: 0,
-    })
-  })
+    });
+  });
 
   it('clears stale session entries after TTL cleanup', () => {
-    const baseNow = 1000
-    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(baseNow)
+    const baseNow = 1000;
+    const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(baseNow);
 
     setGameMatchSessionMeta(gameId, {
       turnTimer: { baseSeconds: 45, source: 'init' },
-    })
+    });
 
-    expect(hydrateGameMatchData(gameId)?.sessionMeta?.turnTimer).toMatchObject({ baseSeconds: 45 })
+    expect(hydrateGameMatchData(gameId)?.sessionMeta?.turnTimer).toMatchObject({ baseSeconds: 45 });
 
-    nowSpy.mockReturnValue(baseNow + 200)
-    cleanupStaleGameMatchData({ now: baseNow + 200, ttlMs: 100 })
+    nowSpy.mockReturnValue(baseNow + 200);
+    cleanupStaleGameMatchData({ now: baseNow + 200, ttlMs: 100 });
 
-    const snapshot = hydrateGameMatchData(gameId)
-    expect(snapshot?.sessionMeta?.turnTimer).toBeNull()
-    expect(snapshot?.sessionMeta?.turnState).toMatchObject({ turnNumber: 0 })
+    const snapshot = hydrateGameMatchData(gameId);
+    expect(snapshot?.sessionMeta?.turnTimer).toBeNull();
+    expect(snapshot?.sessionMeta?.turnState).toMatchObject({ turnNumber: 0 });
 
-    nowSpy.mockRestore()
-  })
+    nowSpy.mockRestore();
+  });
 
   it('updates confirmation payloads consistently', () => {
     setGameMatchConfirmation(gameId, {
@@ -301,32 +301,32 @@ describe('matchDataStore', () => {
       viewerId: 'owner-1',
       heroId: 'hero-1',
       createdAt: Date.now(),
-    })
+    });
 
-    const snapshot = hydrateGameMatchData(gameId)
+    const snapshot = hydrateGameMatchData(gameId);
     expect(snapshot?.confirmation).toMatchObject({
       gameId,
       mode: 'rank',
       roleName: '공격',
-    })
-  })
+    });
+  });
 
   it('notifies subscribers when session data changes', () => {
-    const updates = []
-    const unsubscribe = subscribeGameMatchData(gameId, (snapshot) => {
-      updates.push(snapshot?.sessionMeta?.turnTimer?.baseSeconds || 0)
-    })
+    const updates = [];
+    const unsubscribe = subscribeGameMatchData(gameId, snapshot => {
+      updates.push(snapshot?.sessionMeta?.turnTimer?.baseSeconds || 0);
+    });
 
-    setGameMatchSessionMeta(gameId, { turnTimer: { baseSeconds: 45 } })
-    setGameMatchSessionMeta(gameId, { turnTimer: { baseSeconds: 60 } })
-    setGameMatchSessionMeta(gameId, { turnTimer: { baseSeconds: 60 } })
+    setGameMatchSessionMeta(gameId, { turnTimer: { baseSeconds: 45 } });
+    setGameMatchSessionMeta(gameId, { turnTimer: { baseSeconds: 60 } });
+    setGameMatchSessionMeta(gameId, { turnTimer: { baseSeconds: 60 } });
 
-    expect(updates).toEqual([45, 60])
+    expect(updates).toEqual([45, 60]);
 
-    unsubscribe()
+    unsubscribe();
 
-    setGameMatchSessionMeta(gameId, { turnTimer: { baseSeconds: 90 } })
+    setGameMatchSessionMeta(gameId, { turnTimer: { baseSeconds: 90 } });
 
-    expect(updates).toEqual([45, 60])
-  })
-})
+    expect(updates).toEqual([45, 60]);
+  });
+});

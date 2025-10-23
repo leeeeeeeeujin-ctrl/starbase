@@ -1,13 +1,13 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient } from '@supabase/supabase-js';
 
-import { fetchUserApiKey, upsertUserApiKey } from '@/lib/rank/userApiKeys'
-import { sanitizeSupabaseUrl } from '@/lib/supabaseEnv'
+import { fetchUserApiKey, upsertUserApiKey } from '@/lib/rank/userApiKeys';
+import { sanitizeSupabaseUrl } from '@/lib/supabaseEnv';
 
-const url = sanitizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL)
-const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+const url = sanitizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL);
+const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 if (!url || !anonKey) {
-  throw new Error('Missing Supabase configuration for user-api-key API')
+  throw new Error('Missing Supabase configuration for user-api-key API');
 }
 
 const anonClient = createClient(url, anonKey, {
@@ -18,31 +18,31 @@ const anonClient = createClient(url, anonKey, {
       Authorization: `Bearer ${anonKey}`,
     },
   },
-})
+});
 
 export default async function handler(req, res) {
   if (!['POST', 'GET'].includes(req.method)) {
-    res.setHeader('Allow', ['GET', 'POST'])
-    return res.status(405).json({ error: 'method_not_allowed' })
+    res.setHeader('Allow', ['GET', 'POST']);
+    return res.status(405).json({ error: 'method_not_allowed' });
   }
 
-  const authHeader = req.headers.authorization || ''
-  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
   if (!token) {
-    return res.status(401).json({ error: 'unauthorized' })
+    return res.status(401).json({ error: 'unauthorized' });
   }
 
-  const { data: userData, error: userError } = await anonClient.auth.getUser(token)
-  const user = userData?.user || null
+  const { data: userData, error: userError } = await anonClient.auth.getUser(token);
+  const user = userData?.user || null;
   if (userError || !user) {
-    return res.status(401).json({ error: 'unauthorized' })
+    return res.status(401).json({ error: 'unauthorized' });
   }
 
   if (req.method === 'GET') {
     try {
-      const stored = await fetchUserApiKey(user.id)
+      const stored = await fetchUserApiKey(user.id);
       if (!stored) {
-        return res.status(200).json({ ok: false })
+        return res.status(200).json({ ok: false });
       }
       return res.status(200).json({
         ok: true,
@@ -50,26 +50,26 @@ export default async function handler(req, res) {
         apiVersion: stored.apiVersion || null,
         geminiMode: stored.geminiMode || null,
         geminiModel: stored.geminiModel || null,
-      })
+      });
     } catch (error) {
-      return res.status(400).json({ error: error.message || 'failed_to_load_api_key' })
+      return res.status(400).json({ error: error.message || 'failed_to_load_api_key' });
     }
   }
 
-  let payload = req.body
+  let payload = req.body;
   if (typeof payload === 'string') {
     try {
-      payload = JSON.parse(payload || '{}')
+      payload = JSON.parse(payload || '{}');
     } catch (error) {
-      return res.status(400).json({ error: 'invalid_payload' })
+      return res.status(400).json({ error: 'invalid_payload' });
     }
   }
 
-  const { apiKey, apiVersion, geminiMode, geminiModel } = payload || {}
-  const trimmedApiKey = typeof apiKey === 'string' ? apiKey.trim() : ''
+  const { apiKey, apiVersion, geminiMode, geminiModel } = payload || {};
+  const trimmedApiKey = typeof apiKey === 'string' ? apiKey.trim() : '';
 
   if (!trimmedApiKey) {
-    return res.status(400).json({ error: 'missing_user_api_key' })
+    return res.status(400).json({ error: 'missing_user_api_key' });
   }
 
   try {
@@ -79,7 +79,7 @@ export default async function handler(req, res) {
       apiVersion: typeof apiVersion === 'string' ? apiVersion.trim() || null : null,
       geminiMode: typeof geminiMode === 'string' ? geminiMode.trim() || null : null,
       geminiModel: typeof geminiModel === 'string' ? geminiModel.trim() || null : null,
-    })
+    });
 
     return res.status(200).json({
       ok: true,
@@ -88,9 +88,8 @@ export default async function handler(req, res) {
       gemini_mode: result?.gemini_mode || null,
       gemini_model: result?.gemini_model || null,
       updated_at: result?.updated_at || null,
-    })
+    });
   } catch (error) {
-    return res.status(400).json({ error: error.message || 'failed_to_store_api_key' })
+    return res.status(400).json({ error: error.message || 'failed_to_store_api_key' });
   }
 }
-

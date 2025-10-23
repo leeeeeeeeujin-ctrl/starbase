@@ -1,13 +1,13 @@
 /**
  * 🚀 성능 모니터링 및 최적화 시스템
  * IE11+, 저사양 디바이스 성능 최적화 및 모니터링
- * 
+ *
  * 🔧 기능:
  * - 메모리 사용량 모니터링
  * - 로딩 시간 측정
  * - 성능 병목 지점 감지
  * - 자동 최적화 적용
- * 
+ *
  * @version 2.0.0
  * @compatibility IE11+, Safari 12+, Chrome 70+, Firefox 65+
  */
@@ -20,7 +20,7 @@ export class PerformanceMonitor {
     this.isInitialized = false;
     this.compatibilityInfo = null;
     this.environment = null;
-    
+
     // 성능 메트릭
     this.metrics = {
       memoryUsage: {
@@ -43,9 +43,9 @@ export class PerformanceMonitor {
       interactions: {
         inputDelay: [],
         responseTime: [],
-      }
+      },
     };
-    
+
     // 성능 통계
     this.statistics = {
       startTime: Date.now(),
@@ -53,7 +53,7 @@ export class PerformanceMonitor {
       optimizationsApplied: 0,
       errorsDetected: 0,
     };
-    
+
     // 최적화 설정
     this.optimizations = {
       enableImageLazyLoading: true,
@@ -62,11 +62,11 @@ export class PerformanceMonitor {
       enableMemoryCleanup: true,
       enableAnimationOptimization: true,
     };
-    
+
     // 모니터링 간격
     this.monitoringInterval = null;
     this.reportingInterval = null;
-    
+
     // 성능 임계값
     this.thresholds = {
       memoryWarning: 50, // MB
@@ -88,29 +88,28 @@ export class PerformanceMonitor {
       // 호환성 정보 가져오기
       this.compatibilityInfo = CompatibilityManager.getCompatibilityInfo();
       this.environment = universalAdapter.getEnvironmentInfo();
-      
+
       // 옵션 적용
       Object.assign(this.optimizations, options);
-      
+
       // 환경별 임계값 조정
       this.adjustThresholds();
-      
+
       // 성능 API 확인 및 설정
       this.setupPerformanceAPIs();
-      
+
       // 모니터링 시작
       this.startMonitoring();
-      
+
       // 최적화 적용
       this.applyInitialOptimizations();
-      
+
       this.isInitialized = true;
       console.log('[PerformanceMonitor] 초기화 완료', {
         environment: this.environment.type,
         compatibility: this.compatibilityInfo.level,
         optimizations: this.optimizations,
       });
-      
     } catch (error) {
       console.error('[PerformanceMonitor] 초기화 실패:', error);
       throw error;
@@ -127,7 +126,11 @@ export class PerformanceMonitor {
       this.thresholds.memoryError = 50;
       this.thresholds.fpsWarning = 20;
       this.thresholds.fpsError = 10;
-    } else if (this.environment.isBrowser && navigator.deviceMemory && navigator.deviceMemory <= 2) {
+    } else if (
+      this.environment.isBrowser &&
+      navigator.deviceMemory &&
+      navigator.deviceMemory <= 2
+    ) {
       // 저사양 모바일
       this.thresholds.memoryWarning = 30;
       this.thresholds.memoryError = 60;
@@ -139,22 +142,22 @@ export class PerformanceMonitor {
    */
   setupPerformanceAPIs() {
     // Performance API 지원 여부 확인
-    this.hasPerformanceAPI = typeof performance !== 'undefined' && 
-                            typeof performance.now === 'function';
-    
+    this.hasPerformanceAPI =
+      typeof performance !== 'undefined' && typeof performance.now === 'function';
+
     // Memory API 지원 여부 확인 (Chrome)
-    this.hasMemoryAPI = typeof performance !== 'undefined' && 
-                       typeof performance.memory !== 'undefined';
-    
+    this.hasMemoryAPI =
+      typeof performance !== 'undefined' && typeof performance.memory !== 'undefined';
+
     // Observer APIs 지원 여부 확인
     this.hasPerformanceObserver = typeof PerformanceObserver !== 'undefined';
-    
+
     // IntersectionObserver 지원 여부 (이미지 지연 로딩용)
     this.hasIntersectionObserver = typeof IntersectionObserver !== 'undefined';
-    
+
     // RequestAnimationFrame 지원 여부
     this.hasRAF = typeof requestAnimationFrame !== 'undefined';
-    
+
     console.log('[PerformanceMonitor] API 지원 상태:', {
       performance: this.hasPerformanceAPI,
       memory: this.hasMemoryAPI,
@@ -172,20 +175,20 @@ export class PerformanceMonitor {
     if (this.hasMemoryAPI) {
       this.startMemoryMonitoring();
     }
-    
+
     // FPS 모니터링
     if (this.hasRAF) {
       this.startFPSMonitoring();
     }
-    
+
     // 로딩 시간 모니터링
     if (this.hasPerformanceAPI) {
       this.startLoadTimeMonitoring();
     }
-    
+
     // 입력 지연 모니터링
     this.startInputDelayMonitoring();
-    
+
     // 정기 보고
     this.startReporting();
   }
@@ -197,18 +200,17 @@ export class PerformanceMonitor {
     this.monitoringInterval = setInterval(() => {
       const memInfo = performance.memory;
       const currentUsage = memInfo.usedJSHeapSize / 1024 / 1024; // MB
-      
+
       this.metrics.memoryUsage.current = currentUsage;
       this.metrics.memoryUsage.peak = Math.max(this.metrics.memoryUsage.peak, currentUsage);
       this.metrics.memoryUsage.limit = memInfo.jsHeapSizeLimit / 1024 / 1024; // MB
-      
+
       // 임계값 확인
       if (currentUsage > this.thresholds.memoryError) {
         this.handleMemoryError();
       } else if (currentUsage > this.thresholds.memoryWarning) {
         this.handleMemoryWarning();
       }
-      
     }, 5000); // 5초마다
   }
 
@@ -220,31 +222,31 @@ export class PerformanceMonitor {
     let frameCount = 0;
     let totalFPS = 0;
     let samples = 0;
-    
-    const measureFPS = (currentTime) => {
+
+    const measureFPS = currentTime => {
       frameCount++;
-      
+
       if (currentTime - lastTime >= 1000) {
         const fps = Math.round((frameCount * 1000) / (currentTime - lastTime));
-        
+
         this.metrics.fps.current = fps;
         totalFPS += fps;
         samples++;
         this.metrics.fps.average = Math.round(totalFPS / samples);
-        
+
         if (fps < this.thresholds.fpsError) {
           this.handleFPSError();
         } else if (fps < this.thresholds.fpsWarning) {
           this.handleFPSWarning();
         }
-        
+
         frameCount = 0;
         lastTime = currentTime;
       }
-      
+
       requestAnimationFrame(measureFPS);
     };
-    
+
     requestAnimationFrame(measureFPS);
   }
 
@@ -254,12 +256,12 @@ export class PerformanceMonitor {
   startLoadTimeMonitoring() {
     if (this.hasPerformanceObserver) {
       // PerformanceObserver 사용
-      const observer = new PerformanceObserver((entryList) => {
+      const observer = new PerformanceObserver(entryList => {
         for (const entry of entryList.getEntries()) {
           this.recordLoadTime(entry);
         }
       });
-      
+
       observer.observe({ entryTypes: ['navigation', 'resource', 'measure'] });
     } else {
       // 폴백: 기본 Performance API
@@ -273,8 +275,8 @@ export class PerformanceMonitor {
    * 로딩 시간 기록
    */
   recordLoadTime(entry) {
-    const duration = entry.duration || (entry.responseEnd - entry.startTime);
-    
+    const duration = entry.duration || entry.responseEnd - entry.startTime;
+
     if (entry.entryType === 'navigation') {
       this.metrics.loadTimes.total = duration;
     } else if (entry.entryType === 'resource') {
@@ -299,7 +301,7 @@ export class PerformanceMonitor {
    */
   recordNavigationTiming() {
     if (typeof performance.timing === 'undefined') return;
-    
+
     const timing = performance.timing;
     this.metrics.loadTimes.total = timing.loadEventEnd - timing.navigationStart;
   }
@@ -309,34 +311,50 @@ export class PerformanceMonitor {
    */
   startInputDelayMonitoring() {
     let inputStartTime = 0;
-    
+
     // 마우스 이벤트
-    document.addEventListener('mousedown', () => {
-      inputStartTime = this.now();
-    }, { passive: true });
-    
-    document.addEventListener('mouseup', () => {
-      if (inputStartTime) {
-        const delay = this.now() - inputStartTime;
-        this.metrics.interactions.responseTime.push(delay);
-        this.checkInputDelay(delay);
-        inputStartTime = 0;
-      }
-    }, { passive: true });
-    
+    document.addEventListener(
+      'mousedown',
+      () => {
+        inputStartTime = this.now();
+      },
+      { passive: true }
+    );
+
+    document.addEventListener(
+      'mouseup',
+      () => {
+        if (inputStartTime) {
+          const delay = this.now() - inputStartTime;
+          this.metrics.interactions.responseTime.push(delay);
+          this.checkInputDelay(delay);
+          inputStartTime = 0;
+        }
+      },
+      { passive: true }
+    );
+
     // 터치 이벤트
-    document.addEventListener('touchstart', () => {
-      inputStartTime = this.now();
-    }, { passive: true });
-    
-    document.addEventListener('touchend', () => {
-      if (inputStartTime) {
-        const delay = this.now() - inputStartTime;
-        this.metrics.interactions.responseTime.push(delay);
-        this.checkInputDelay(delay);
-        inputStartTime = 0;
-      }
-    }, { passive: true });
+    document.addEventListener(
+      'touchstart',
+      () => {
+        inputStartTime = this.now();
+      },
+      { passive: true }
+    );
+
+    document.addEventListener(
+      'touchend',
+      () => {
+        if (inputStartTime) {
+          const delay = this.now() - inputStartTime;
+          this.metrics.interactions.responseTime.push(delay);
+          this.checkInputDelay(delay);
+          inputStartTime = 0;
+        }
+      },
+      { passive: true }
+    );
   }
 
   /**
@@ -355,12 +373,20 @@ export class PerformanceMonitor {
    */
   handleMemoryError() {
     this.metrics.memoryUsage.warnings++;
-    console.error('[PerformanceMonitor] 메모리 사용량 위험:', this.metrics.memoryUsage.current, 'MB');
+    console.error(
+      '[PerformanceMonitor] 메모리 사용량 위험:',
+      this.metrics.memoryUsage.current,
+      'MB'
+    );
     this.applyEmergencyOptimizations();
   }
 
   handleMemoryWarning() {
-    console.warn('[PerformanceMonitor] 메모리 사용량 경고:', this.metrics.memoryUsage.current, 'MB');
+    console.warn(
+      '[PerformanceMonitor] 메모리 사용량 경고:',
+      this.metrics.memoryUsage.current,
+      'MB'
+    );
     this.applyMemoryOptimizations();
   }
 
@@ -390,7 +416,7 @@ export class PerformanceMonitor {
     if (this.optimizations.enableImageLazyLoading) {
       this.enableImageLazyLoading();
     }
-    
+
     if (this.optimizations.enableAnimationOptimization) {
       this.optimizeAnimations();
     }
@@ -399,10 +425,10 @@ export class PerformanceMonitor {
   applyMemoryOptimizations() {
     // 이미지 캐시 정리
     this.clearImageCache();
-    
+
     // 미사용 DOM 정리
     this.cleanupUnusedDOM();
-    
+
     this.statistics.optimizationsApplied++;
   }
 
@@ -411,33 +437,33 @@ export class PerformanceMonitor {
     if (typeof window !== 'undefined' && window.gc) {
       window.gc();
     }
-    
+
     // 모든 애니메이션 중지
     this.disableAnimations();
-    
+
     // 이미지 품질 저하
     this.reduceImageQuality();
-    
+
     this.statistics.optimizationsApplied++;
   }
 
   applyFrameRateOptimizations() {
     // 애니메이션 최적화
     this.optimizeAnimations();
-    
+
     // 렌더링 빈도 감소
     this.reduceRenderFrequency();
-    
+
     this.statistics.optimizationsApplied++;
   }
 
   applyInputOptimizations() {
     // 이벤트 핸들러 최적화
     this.optimizeEventHandlers();
-    
+
     // DOM 업데이트 배치 처리
     this.batchDOMUpdates();
-    
+
     this.statistics.optimizationsApplied++;
   }
 
@@ -446,9 +472,9 @@ export class PerformanceMonitor {
    */
   enableImageLazyLoading() {
     if (!this.hasIntersectionObserver) return;
-    
+
     const images = document.querySelectorAll('img[data-src]');
-    const observer = new IntersectionObserver((entries) => {
+    const observer = new IntersectionObserver(entries => {
       entries.forEach(entry => {
         if (entry.isIntersecting) {
           const img = entry.target;
@@ -457,7 +483,7 @@ export class PerformanceMonitor {
         }
       });
     });
-    
+
     images.forEach(img => observer.observe(img));
   }
 
@@ -522,11 +548,19 @@ export class PerformanceMonitor {
       metrics: this.metrics,
       statistics: this.statistics,
       health: {
-        memory: this.metrics.memoryUsage.current < this.thresholds.memoryWarning ? 'good' : 
-               this.metrics.memoryUsage.current < this.thresholds.memoryError ? 'warning' : 'error',
-        fps: this.metrics.fps.current > this.thresholds.fpsWarning ? 'good' :
-             this.metrics.fps.current > this.thresholds.fpsError ? 'warning' : 'error',
-        overall: 'calculating...'
+        memory:
+          this.metrics.memoryUsage.current < this.thresholds.memoryWarning
+            ? 'good'
+            : this.metrics.memoryUsage.current < this.thresholds.memoryError
+              ? 'warning'
+              : 'error',
+        fps:
+          this.metrics.fps.current > this.thresholds.fpsWarning
+            ? 'good'
+            : this.metrics.fps.current > this.thresholds.fpsError
+              ? 'warning'
+              : 'error',
+        overall: 'calculating...',
       },
       recommendations: this.getRecommendations(),
     };
@@ -537,19 +571,19 @@ export class PerformanceMonitor {
    */
   getRecommendations() {
     const recommendations = [];
-    
+
     if (this.metrics.memoryUsage.current > this.thresholds.memoryWarning) {
       recommendations.push('메모리 사용량이 높습니다. 이미지 최적화를 고려하세요.');
     }
-    
+
     if (this.metrics.fps.current < this.thresholds.fpsWarning) {
       recommendations.push('프레임 레이트가 낮습니다. 애니메이션을 단순화하세요.');
     }
-    
+
     if (this.metrics.loadTimes.total > 3000) {
       recommendations.push('로딩 시간이 깁니다. 코드 스플리팅을 고려하세요.');
     }
-    
+
     return recommendations;
   }
 
@@ -560,15 +594,15 @@ export class PerformanceMonitor {
     if (this.monitoringInterval) {
       clearInterval(this.monitoringInterval);
     }
-    
+
     if (this.reportingInterval) {
       clearInterval(this.reportingInterval);
     }
-    
+
     // 최적화로 추가된 스타일 제거
     const optimizationStyles = document.querySelectorAll('style[id^="performance-"]');
     optimizationStyles.forEach(style => style.remove());
-    
+
     console.log('[PerformanceMonitor] 정리 완료');
   }
 }

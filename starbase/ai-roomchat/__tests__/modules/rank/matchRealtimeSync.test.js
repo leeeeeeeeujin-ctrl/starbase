@@ -1,37 +1,37 @@
-const mockWithTable = jest.fn()
+const mockWithTable = jest.fn();
 
 jest.mock('@/lib/supabaseTables', () => ({
   withTable: (...args) => mockWithTable(...args),
-}))
+}));
 
-import { fetchLatestSessionRow, loadMatchFlowSnapshot } from '@/modules/rank/matchRealtimeSync'
+import { fetchLatestSessionRow, loadMatchFlowSnapshot } from '@/modules/rank/matchRealtimeSync';
 
 describe('fetchLatestSessionRow', () => {
-  const originalWindow = global.window
-  const originalFetch = global.fetch
+  const originalWindow = global.window;
+  const originalFetch = global.fetch;
 
   beforeEach(() => {
-    mockWithTable.mockReset()
+    mockWithTable.mockReset();
     if (typeof global.fetch !== 'undefined') {
-      global.fetch = originalFetch
+      global.fetch = originalFetch;
     }
     if (typeof global.window !== 'undefined') {
-      delete global.window
+      delete global.window;
     }
-  })
+  });
 
   afterAll(() => {
     if (typeof originalWindow !== 'undefined') {
-      global.window = originalWindow
+      global.window = originalWindow;
     } else {
-      delete global.window
+      delete global.window;
     }
     if (typeof originalFetch !== 'undefined') {
-      global.fetch = originalFetch
+      global.fetch = originalFetch;
     } else {
-      delete global.fetch
+      delete global.fetch;
     }
-  })
+  });
 
   it('returns the RPC payload when available', async () => {
     const supabaseClient = {
@@ -46,11 +46,11 @@ describe('fetchLatestSessionRow', () => {
             match_mode: 'standard',
           },
           error: null,
-        }),
+        })
       ),
-    }
+    };
 
-    const result = await fetchLatestSessionRow(supabaseClient, 'game-1')
+    const result = await fetchLatestSessionRow(supabaseClient, 'game-1');
 
     expect(result).toEqual({
       id: 'session-1',
@@ -61,9 +61,9 @@ describe('fetchLatestSessionRow', () => {
       updated_at: '2025-01-01T00:00:00Z',
       mode: 'standard',
       match_mode: 'standard',
-    })
-    expect(mockWithTable).not.toHaveBeenCalled()
-  })
+    });
+    expect(mockWithTable).not.toHaveBeenCalled();
+  });
 
   it('returns session history when rank_turns rows exist', async () => {
     const rpcPayload = {
@@ -118,7 +118,7 @@ describe('fetchLatestSessionRow', () => {
       slot_template_version: 1,
       slot_template_source: 'room-stage',
       slot_template_updated_at: '2025-02-01T00:00:00Z',
-    }
+    };
 
     const historyRows = [
       {
@@ -141,33 +141,33 @@ describe('fetchLatestSessionRow', () => {
         is_visible: true,
         created_at: '2025-02-01T00:05:00Z',
       },
-    ]
+    ];
 
-    const createQueryBuilder = (rows) => {
+    const createQueryBuilder = rows => {
       const builder = {
         select: jest.fn(() => builder),
         eq: jest.fn(() => builder),
         order: jest.fn(() => builder),
         limit: jest.fn(() => Promise.resolve({ data: rows, error: null })),
-      }
-      return builder
-    }
+      };
+      return builder;
+    };
 
     const supabaseClient = {
       rpc: jest.fn(() => Promise.resolve({ data: rpcPayload, error: null })),
-      from: jest.fn((table) =>
-        table === 'rank_turns' ? createQueryBuilder(historyRows) : createQueryBuilder([]),
+      from: jest.fn(table =>
+        table === 'rank_turns' ? createQueryBuilder(historyRows) : createQueryBuilder([])
       ),
-    }
+    };
 
     mockWithTable.mockImplementation((_client, logicalName, executor) => {
       if (logicalName === 'rank_turns') {
-        return executor('rank_turns')
+        return executor('rank_turns');
       }
-      return Promise.resolve({ data: [], error: null })
-    })
+      return Promise.resolve({ data: [], error: null });
+    });
 
-    const snapshot = await loadMatchFlowSnapshot(supabaseClient, 'game-hist')
+    const snapshot = await loadMatchFlowSnapshot(supabaseClient, 'game-hist');
 
     expect(snapshot.sessionHistory).toMatchObject({
       sessionId: 'session-hist',
@@ -175,14 +175,14 @@ describe('fetchLatestSessionRow', () => {
       publicCount: 2,
       hiddenCount: 0,
       truncated: false,
-    })
+    });
     expect(snapshot.sessionHistory.turns).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ role: 'system', content: '시스템 요약' }),
         expect.objectContaining({ role: 'assistant', content: '첫 응답' }),
-      ]),
-    )
-  })
+      ])
+    );
+  });
 
   it('passes the owner filter when provided', async () => {
     const supabaseClient = {
@@ -199,11 +199,11 @@ describe('fetchLatestSessionRow', () => {
             },
           ],
           error: null,
-        }),
+        })
       ),
-    }
+    };
 
-    const result = await fetchLatestSessionRow(supabaseClient, 'game-3', { ownerId: 'owner-2' })
+    const result = await fetchLatestSessionRow(supabaseClient, 'game-3', { ownerId: 'owner-2' });
 
     expect(result).toEqual({
       id: 'session-2',
@@ -214,12 +214,12 @@ describe('fetchLatestSessionRow', () => {
       updated_at: '2025-01-02T00:00:00Z',
       mode: 'standard',
       match_mode: 'standard',
-    })
+    });
     expect(supabaseClient.rpc).toHaveBeenCalledWith(
       'fetch_latest_rank_session_v2',
-      expect.objectContaining({ p_game_id: 'game-3', p_owner_id: 'owner-2' }),
-    )
-  })
+      expect.objectContaining({ p_game_id: 'game-3', p_owner_id: 'owner-2' })
+    );
+  });
 
   it('returns null when the RPC reports ambiguity', async () => {
     const supabaseClient = {
@@ -227,17 +227,17 @@ describe('fetchLatestSessionRow', () => {
         Promise.resolve({
           data: null,
           error: { code: 'PGRST203', message: 'ambiguous overload' },
-        }),
+        })
       ),
-    }
+    };
 
-    const result = await fetchLatestSessionRow(supabaseClient, 'game-4')
+    const result = await fetchLatestSessionRow(supabaseClient, 'game-4');
 
-    expect(result).toBeNull()
+    expect(result).toBeNull();
     expect(supabaseClient.rpc).toHaveBeenCalledWith('fetch_latest_rank_session_v2', {
       p_game_id: 'game-4',
-    })
-  })
+    });
+  });
 
   it('returns null when the RPC is missing', async () => {
     const supabaseClient = {
@@ -245,23 +245,23 @@ describe('fetchLatestSessionRow', () => {
         Promise.resolve({
           data: null,
           error: { code: '42883', message: 'undefined function' },
-        }),
+        })
       ),
-    }
+    };
 
-    const result = await fetchLatestSessionRow(supabaseClient, 'game-2')
+    const result = await fetchLatestSessionRow(supabaseClient, 'game-2');
 
-    expect(result).toBeNull()
+    expect(result).toBeNull();
     expect(supabaseClient.rpc).toHaveBeenCalledWith('fetch_latest_rank_session_v2', {
       p_game_id: 'game-2',
-    })
-  })
+    });
+  });
 
   it('uses the latest-session API in the browser', async () => {
-    const supabaseClient = { rpc: jest.fn() }
+    const supabaseClient = { rpc: jest.fn() };
 
-    const originalWindow = global.window
-    const originalFetch = global.fetch
+    const originalWindow = global.window;
+    const originalFetch = global.fetch;
 
     const mockResponse = {
       ok: true,
@@ -276,16 +276,16 @@ describe('fetchLatestSessionRow', () => {
               updated_at: '2025-03-01T12:05:00Z',
               match_mode: 'pulse',
             },
-          }),
+          })
         ),
-    }
+    };
 
-    global.fetch = jest.fn(() => Promise.resolve(mockResponse))
-    global.window = { document: {}, fetch: global.fetch }
+    global.fetch = jest.fn(() => Promise.resolve(mockResponse));
+    global.window = { document: {}, fetch: global.fetch };
 
     const result = await fetchLatestSessionRow(supabaseClient, 'game-browser', {
       ownerId: 'owner-browser',
-    })
+    });
 
     expect(result).toEqual({
       id: 'session-browser',
@@ -296,107 +296,110 @@ describe('fetchLatestSessionRow', () => {
       updated_at: '2025-03-01T12:05:00Z',
       mode: 'pulse',
       match_mode: 'pulse',
-    })
+    });
     expect(global.fetch).toHaveBeenCalledWith(
       '/api/rank/latest-session',
       expect.objectContaining({
         method: 'POST',
-      }),
-    )
-    expect(supabaseClient.rpc).not.toHaveBeenCalled()
+      })
+    );
+    expect(supabaseClient.rpc).not.toHaveBeenCalled();
 
-    global.window = originalWindow
-    global.fetch = originalFetch
-  })
+    global.window = originalWindow;
+    global.fetch = originalFetch;
+  });
 
   it('emits diagnostics when the browser API fails', async () => {
-    const supabaseClient = { rpc: jest.fn() }
+    const supabaseClient = { rpc: jest.fn() };
 
-    const originalWindow = global.window
-    const originalFetch = global.fetch
+    const originalWindow = global.window;
+    const originalFetch = global.fetch;
 
     const failurePayload = {
       error: 'rpc_failed',
       supabaseError: { code: '42883', message: 'function does not exist' },
-    }
+    };
 
     global.fetch = jest.fn(() =>
       Promise.resolve({
         ok: false,
         status: 502,
         text: () => Promise.resolve(JSON.stringify(failurePayload)),
-      }),
-    )
-    global.window = { document: {}, fetch: global.fetch }
+      })
+    );
+    global.window = { document: {}, fetch: global.fetch };
 
-    const diagnostics = jest.fn()
+    const diagnostics = jest.fn();
 
     const result = await fetchLatestSessionRow(supabaseClient, 'game-missing', {
       onDiagnostics: diagnostics,
-    })
+    });
 
-    expect(result).toBeNull()
+    expect(result).toBeNull();
     expect(diagnostics).toHaveBeenCalledWith(
       expect.objectContaining({
         source: 'latest-session-api',
         hint: expect.stringContaining('fetch_latest_rank_session_v2'),
-      }),
-    )
+      })
+    );
 
-    global.window = originalWindow
-    global.fetch = originalFetch
-  })
+    global.window = originalWindow;
+    global.fetch = originalFetch;
+  });
 
   it('emits diagnostics when the browser API reports a 200 response with RPC metadata', async () => {
-    const supabaseClient = { rpc: jest.fn() }
+    const supabaseClient = { rpc: jest.fn() };
 
-    const originalWindow = global.window
-    const originalFetch = global.fetch
+    const originalWindow = global.window;
+    const originalFetch = global.fetch;
 
     const payload = {
       error: 'rpc_failed',
-      supabaseError: { code: '42809', message: 'WITHIN GROUP is required for ordered-set aggregate mode' },
+      supabaseError: {
+        code: '42809',
+        message: 'WITHIN GROUP is required for ordered-set aggregate mode',
+      },
       hint: 'ordered-set aggregate requires WITHIN GROUP',
       session: null,
       via: 'table-error',
-    }
+    };
 
     global.fetch = jest.fn(() =>
       Promise.resolve({
         ok: true,
         status: 200,
         text: () => Promise.resolve(JSON.stringify(payload)),
-      }),
-    )
-    global.window = { document: {}, fetch: global.fetch }
+      })
+    );
+    global.window = { document: {}, fetch: global.fetch };
 
-    const diagnostics = jest.fn()
+    const diagnostics = jest.fn();
 
     const result = await fetchLatestSessionRow(supabaseClient, 'game-ordered-set', {
       onDiagnostics: diagnostics,
-    })
+    });
 
-    expect(result).toBeNull()
+    expect(result).toBeNull();
     expect(diagnostics).toHaveBeenCalledWith(
       expect.objectContaining({
         source: 'latest-session-api',
         hint: expect.stringContaining('WITHIN GROUP'),
-      }),
-    )
+      })
+    );
     expect(global.fetch).toHaveBeenCalledWith(
       '/api/rank/latest-session',
-      expect.objectContaining({ method: 'POST' }),
-    )
+      expect.objectContaining({ method: 'POST' })
+    );
 
-    global.window = originalWindow
-    global.fetch = originalFetch
-  })
+    global.window = originalWindow;
+    global.fetch = originalFetch;
+  });
 
   it('returns a session row when the browser API recovers from an ordered-set error', async () => {
-    const supabaseClient = { rpc: jest.fn() }
+    const supabaseClient = { rpc: jest.fn() };
 
-    const originalWindow = global.window
-    const originalFetch = global.fetch
+    const originalWindow = global.window;
+    const originalFetch = global.fetch;
 
     const payload = {
       session: {
@@ -413,39 +416,39 @@ describe('fetchLatestSessionRow', () => {
         orderedSetRecovered: true,
         hintSuppressed: true,
       },
-    }
+    };
 
     global.fetch = jest.fn(() =>
       Promise.resolve({
         ok: true,
         status: 200,
         text: () => Promise.resolve(JSON.stringify(payload)),
-      }),
-    )
-    global.window = { document: {}, fetch: global.fetch }
+      })
+    );
+    global.window = { document: {}, fetch: global.fetch };
 
-    const diagnostics = jest.fn()
+    const diagnostics = jest.fn();
 
     const result = await fetchLatestSessionRow(supabaseClient, 'game-ordered-set', {
       onDiagnostics: diagnostics,
-    })
+    });
 
     expect(result).toMatchObject({
       id: 'session-ordered-set',
       status: 'ready',
       ownerId: 'owner-ordered',
-    })
-    expect(diagnostics).not.toHaveBeenCalled()
+    });
+    expect(diagnostics).not.toHaveBeenCalled();
 
-    global.window = originalWindow
-    global.fetch = originalFetch
-  })
+    global.window = originalWindow;
+    global.fetch = originalFetch;
+  });
 
   it('emits an ordered-set hint when the browser API reports a WITHIN GROUP error', async () => {
-    const supabaseClient = { rpc: jest.fn() }
+    const supabaseClient = { rpc: jest.fn() };
 
-    const originalWindow = global.window
-    const originalFetch = global.fetch
+    const originalWindow = global.window;
+    const originalFetch = global.fetch;
 
     const failurePayload = {
       error: 'rpc_failed',
@@ -454,46 +457,46 @@ describe('fetchLatestSessionRow', () => {
         message: 'WITHIN GROUP is required for ordered-set aggregate mode',
         details: 'ordered-set aggregate needs WITHIN GROUP',
       },
-    }
+    };
 
     global.fetch = jest.fn(() =>
       Promise.resolve({
         ok: false,
         status: 502,
         text: () => Promise.resolve(JSON.stringify(failurePayload)),
-      }),
-    )
-    global.window = { document: {}, fetch: global.fetch }
+      })
+    );
+    global.window = { document: {}, fetch: global.fetch };
 
-    const diagnostics = jest.fn()
+    const diagnostics = jest.fn();
 
     const result = await fetchLatestSessionRow(supabaseClient, 'game-ordered-set', {
       onDiagnostics: diagnostics,
-    })
+    });
 
-    expect(result).toBeNull()
+    expect(result).toBeNull();
     expect(diagnostics).toHaveBeenCalledWith(
       expect.objectContaining({
         source: 'latest-session-api',
         hint: expect.stringContaining('WITHIN GROUP'),
-      }),
-    )
+      })
+    );
 
-    global.window = originalWindow
-    global.fetch = originalFetch
-  })
-})
+    global.window = originalWindow;
+    global.fetch = originalFetch;
+  });
+});
 
 describe('loadMatchFlowSnapshot', () => {
   beforeEach(() => {
-    mockWithTable.mockReset()
+    mockWithTable.mockReset();
     if (typeof global.window !== 'undefined') {
-      delete global.window
+      delete global.window;
     }
     if (typeof global.fetch !== 'undefined') {
-      delete global.fetch
+      delete global.fetch;
     }
-  })
+  });
 
   it('throws an ordered-set aggregate error when the snapshot RPC fails without WITHIN GROUP', async () => {
     const supabaseClient = {
@@ -505,16 +508,16 @@ describe('loadMatchFlowSnapshot', () => {
             message: 'WITHIN GROUP is required for ordered-set aggregate mode',
             details: 'ordered-set aggregate needs WITHIN GROUP',
           },
-        }),
+        })
       ),
-    }
+    };
 
     await expect(loadMatchFlowSnapshot(supabaseClient, 'game-error')).rejects.toMatchObject({
       code: 'ordered_set_aggregate',
       hint: expect.stringContaining('WITHIN GROUP'),
-    })
-    expect(mockWithTable).not.toHaveBeenCalled()
-  })
+    });
+    expect(mockWithTable).not.toHaveBeenCalled();
+  });
 
   it('throws a snapshot return type mismatch error when the RPC body is misconfigured', async () => {
     const supabaseClient = {
@@ -524,18 +527,18 @@ describe('loadMatchFlowSnapshot', () => {
           error: {
             code: '42P13',
             message: 'return type mismatch in function declared to return jsonb',
-            details: 'Function\'s final statement must be SELECT',
+            details: "Function's final statement must be SELECT",
           },
-        }),
+        })
       ),
-    }
+    };
 
     await expect(loadMatchFlowSnapshot(supabaseClient, 'game-return-error')).rejects.toMatchObject({
       code: 'snapshot_return_type_mismatch',
       hint: expect.stringContaining('PL/pgSQL'),
-    })
-    expect(mockWithTable).not.toHaveBeenCalled()
-  })
+    });
+    expect(mockWithTable).not.toHaveBeenCalled();
+  });
 
   it('throws a snapshot SQL syntax error when the RPC was pasted with placeholders', async () => {
     const supabaseClient = {
@@ -547,16 +550,16 @@ describe('loadMatchFlowSnapshot', () => {
             message: 'syntax error at or near ".."',
             details: "LINE 15: 'roster', coalesce( ... )",
           },
-        }),
+        })
       ),
-    }
+    };
 
     await expect(loadMatchFlowSnapshot(supabaseClient, 'game-syntax-error')).rejects.toMatchObject({
       code: 'snapshot_sql_syntax_error',
       hint: expect.stringContaining('docs/sql/fetch-rank-match-ready-snapshot.sql'),
-    })
-    expect(mockWithTable).not.toHaveBeenCalled()
-  })
+    });
+    expect(mockWithTable).not.toHaveBeenCalled();
+  });
 
   it('maps the RPC snapshot payload into the match-ready structure', async () => {
     const rpcPayload = {
@@ -612,13 +615,13 @@ describe('loadMatchFlowSnapshot', () => {
       slot_template_version: 7,
       slot_template_source: 'room-stage',
       slot_template_updated_at: '2025-01-01T00:00:00Z',
-    }
+    };
 
     const supabaseClient = {
       rpc: jest.fn(() => Promise.resolve({ data: rpcPayload, error: null })),
-    }
+    };
 
-    const snapshot = await loadMatchFlowSnapshot(supabaseClient, 'game-1')
+    const snapshot = await loadMatchFlowSnapshot(supabaseClient, 'game-1');
 
     expect(snapshot).toMatchObject({
       roster: [
@@ -634,10 +637,10 @@ describe('loadMatchFlowSnapshot', () => {
       slotTemplateVersion: 7,
       realtimeMode: 'standard',
       hostOwnerId: 'owner-1',
-    })
-    expect(snapshot.matchSnapshot?.match?.roles?.[0]?.role).toBe('전략가')
-    expect(mockWithTable).not.toHaveBeenCalled()
-  })
+    });
+    expect(snapshot.matchSnapshot?.match?.roles?.[0]?.role).toBe('전략가');
+    expect(mockWithTable).not.toHaveBeenCalled();
+  });
 
   it('fills pending async seats with stand-in candidates', async () => {
     const rpcPayload = {
@@ -744,18 +747,18 @@ describe('loadMatchFlowSnapshot', () => {
       slot_template_version: 9,
       slot_template_source: 'room-stage',
       slot_template_updated_at: '2025-02-01T00:00:00Z',
-    }
+    };
 
     const supabaseClient = {
-      rpc: jest.fn((fnName) => {
+      rpc: jest.fn(fnName => {
         if (fnName === 'fetch_rank_match_ready_snapshot') {
-          return Promise.resolve({ data: rpcPayload, error: null })
+          return Promise.resolve({ data: rpcPayload, error: null });
         }
-        return Promise.resolve({ data: null, error: null })
+        return Promise.resolve({ data: null, error: null });
       }),
-    }
+    };
 
-    const snapshot = await loadMatchFlowSnapshot(supabaseClient, 'game-async')
+    const snapshot = await loadMatchFlowSnapshot(supabaseClient, 'game-async');
 
     expect(snapshot.roster).toEqual(
       expect.arrayContaining([
@@ -766,29 +769,23 @@ describe('loadMatchFlowSnapshot', () => {
           heroId: 'hero-standin',
           matchSource: 'participant_pool',
         }),
-      ]),
-    )
+      ])
+    );
     expect(snapshot.participantPool).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ ownerId: 'standin-owner', standin: true }),
-      ]),
-    )
-    expect(snapshot.sessionMeta?.asyncFill?.pendingSeatIndexes).toEqual([])
-    expect(snapshot.sessionMeta?.asyncFill?.fillQueue).toHaveLength(0)
+      expect.arrayContaining([expect.objectContaining({ ownerId: 'standin-owner', standin: true })])
+    );
+    expect(snapshot.sessionMeta?.asyncFill?.pendingSeatIndexes).toEqual([]);
+    expect(snapshot.sessionMeta?.asyncFill?.fillQueue).toHaveLength(0);
     expect(snapshot.sessionMeta?.asyncFill?.assigned).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ ownerId: 'standin-owner', slotIndex: 1 }),
-      ]),
-    )
+      expect.arrayContaining([expect.objectContaining({ ownerId: 'standin-owner', slotIndex: 1 })])
+    );
     expect(snapshot.matchSnapshot?.match?.roles?.[0]?.members).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ ownerId: 'standin-owner', standin: true }),
-      ]),
-    )
+      expect.arrayContaining([expect.objectContaining({ ownerId: 'standin-owner', standin: true })])
+    );
     expect(snapshot.heroMap).toMatchObject({
       'hero-standin': expect.objectContaining({ name: '대역 AI' }),
-    })
-  })
+    });
+  });
 
   it('creates placeholder roster entries when async seats are missing', async () => {
     const rpcPayload = {
@@ -876,31 +873,31 @@ describe('loadMatchFlowSnapshot', () => {
       slot_template_version: 9,
       slot_template_source: 'room-stage',
       slot_template_updated_at: '2025-02-01T00:00:00Z',
-    }
+    };
 
     const supabaseClient = {
-      rpc: jest.fn((fnName) => {
+      rpc: jest.fn(fnName => {
         if (fnName === 'fetch_rank_match_ready_snapshot') {
-          return Promise.resolve({ data: rpcPayload, error: null })
+          return Promise.resolve({ data: rpcPayload, error: null });
         }
-        return Promise.resolve({ data: null, error: null })
+        return Promise.resolve({ data: null, error: null });
       }),
-    }
+    };
 
-    const snapshot = await loadMatchFlowSnapshot(supabaseClient, 'game-async')
+    const snapshot = await loadMatchFlowSnapshot(supabaseClient, 'game-async');
 
-    expect(snapshot.roster).toHaveLength(2)
-    const standinSeat = snapshot.roster.find((entry) => entry.slotIndex === 1)
+    expect(snapshot.roster).toHaveLength(2);
+    const standinSeat = snapshot.roster.find(entry => entry.slotIndex === 1);
     expect(standinSeat).toMatchObject({
       ownerId: 'standin-owner',
       standin: true,
       role: '전략가',
       ready: true,
       matchSource: 'participant_pool',
-    })
-    expect(snapshot.sessionMeta?.asyncFill?.pendingSeatIndexes).toEqual([])
-    expect(snapshot.sessionMeta?.asyncFill?.fillQueue).toHaveLength(0)
-  })
+    });
+    expect(snapshot.sessionMeta?.asyncFill?.pendingSeatIndexes).toEqual([]);
+    expect(snapshot.sessionMeta?.asyncFill?.fillQueue).toHaveLength(0);
+  });
 
   it('hydrates async fill queue via the async stand-in API when the snapshot queue is empty', async () => {
     const rpcPayload = {
@@ -995,16 +992,16 @@ describe('loadMatchFlowSnapshot', () => {
       slot_template_version: 9,
       slot_template_source: 'room-stage',
       slot_template_updated_at: '2025-02-01T00:00:00Z',
-    }
+    };
 
     const supabaseClient = {
-      rpc: jest.fn((fnName) => {
+      rpc: jest.fn(fnName => {
         if (fnName === 'fetch_rank_match_ready_snapshot') {
-          return Promise.resolve({ data: rpcPayload, error: null })
+          return Promise.resolve({ data: rpcPayload, error: null });
         }
-        return Promise.resolve({ data: null, error: null })
+        return Promise.resolve({ data: null, error: null });
       }),
-    }
+    };
 
     const fetchResponse = {
       ok: true,
@@ -1024,37 +1021,35 @@ describe('loadMatchFlowSnapshot', () => {
                 joinedAt: '2025-02-01T00:03:00Z',
               },
             ],
-          }),
+          })
         ),
-    }
+    };
 
-    global.window = { document: {} }
-    global.fetch = jest.fn(() => Promise.resolve(fetchResponse))
+    global.window = { document: {} };
+    global.fetch = jest.fn(() => Promise.resolve(fetchResponse));
 
-    const snapshot = await loadMatchFlowSnapshot(supabaseClient, 'game-async')
+    const snapshot = await loadMatchFlowSnapshot(supabaseClient, 'game-async');
 
     expect(global.fetch).toHaveBeenCalledWith(
       '/api/rank/async-standins',
-      expect.objectContaining({ method: 'POST' }),
-    )
+      expect.objectContaining({ method: 'POST' })
+    );
 
-    const fetchBody = JSON.parse(global.fetch.mock.calls[0][1].body)
+    const fetchBody = JSON.parse(global.fetch.mock.calls[0][1].body);
     expect(fetchBody.seat_requests).toEqual(
-      expect.arrayContaining([expect.objectContaining({ slotIndex: 1, role: '전략가' })]),
-    )
+      expect.arrayContaining([expect.objectContaining({ slotIndex: 1, role: '전략가' })])
+    );
 
     expect(snapshot.roster).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ ownerId: 'async-standin', standin: true }),
-      ]),
-    )
+      expect.arrayContaining([expect.objectContaining({ ownerId: 'async-standin', standin: true })])
+    );
     expect(snapshot.sessionMeta?.asyncFill?.assigned).toEqual(
-      expect.arrayContaining([expect.objectContaining({ ownerId: 'async-standin', slotIndex: 1 })]),
-    )
+      expect.arrayContaining([expect.objectContaining({ ownerId: 'async-standin', slotIndex: 1 })])
+    );
 
-    delete global.window
-    delete global.fetch
-  })
+    delete global.window;
+    delete global.fetch;
+  });
 
   it('assigns stand-ins even when initial roster is empty', async () => {
     const rpcPayload = {
@@ -1112,32 +1107,32 @@ describe('loadMatchFlowSnapshot', () => {
       slot_template_version: 9,
       slot_template_source: 'room-stage',
       slot_template_updated_at: '2025-02-01T00:00:00Z',
-    }
+    };
 
     const supabaseClient = {
-      rpc: jest.fn((fnName) => {
+      rpc: jest.fn(fnName => {
         if (fnName === 'fetch_rank_match_ready_snapshot') {
-          return Promise.resolve({ data: rpcPayload, error: null })
+          return Promise.resolve({ data: rpcPayload, error: null });
         }
-        return Promise.resolve({ data: null, error: null })
+        return Promise.resolve({ data: null, error: null });
       }),
-    }
+    };
 
-    const snapshot = await loadMatchFlowSnapshot(supabaseClient, 'game-async')
+    const snapshot = await loadMatchFlowSnapshot(supabaseClient, 'game-async');
 
-    expect(snapshot.roster).toHaveLength(2)
-    const standinSeat = snapshot.roster.find((entry) => entry.ownerId === 'standin-owner')
+    expect(snapshot.roster).toHaveLength(2);
+    const standinSeat = snapshot.roster.find(entry => entry.ownerId === 'standin-owner');
     expect(standinSeat).toMatchObject({
       ownerId: 'standin-owner',
       standin: true,
       matchSource: 'participant_pool',
       slotIndex: 0,
-    })
-    const vacantSeat = snapshot.roster.find((entry) => !entry.ownerId)
-    expect(vacantSeat).toMatchObject({ slotIndex: 1, standin: false })
-    expect(snapshot.sessionMeta?.asyncFill?.pendingSeatIndexes).toEqual([1])
-    expect(snapshot.sessionMeta?.asyncFill?.fillQueue).toEqual([])
-  })
+    });
+    const vacantSeat = snapshot.roster.find(entry => !entry.ownerId);
+    expect(vacantSeat).toMatchObject({ slotIndex: 1, standin: false });
+    expect(snapshot.sessionMeta?.asyncFill?.pendingSeatIndexes).toEqual([1]);
+    expect(snapshot.sessionMeta?.asyncFill?.fillQueue).toEqual([]);
+  });
 
   it('fills vacancies when pending seat data is missing but seat indexes reveal gaps', async () => {
     const rpcPayload = {
@@ -1244,24 +1239,24 @@ describe('loadMatchFlowSnapshot', () => {
       slot_template_version: 9,
       slot_template_source: 'room-stage',
       slot_template_updated_at: '2025-02-01T00:00:00Z',
-    }
+    };
 
     const supabaseClient = {
-      rpc: jest.fn((fnName) => {
+      rpc: jest.fn(fnName => {
         if (fnName === 'fetch_rank_match_ready_snapshot') {
-          return Promise.resolve({ data: rpcPayload, error: null })
+          return Promise.resolve({ data: rpcPayload, error: null });
         }
-        return Promise.resolve({ data: null, error: null })
+        return Promise.resolve({ data: null, error: null });
       }),
-    }
+    };
 
-    const snapshot = await loadMatchFlowSnapshot(supabaseClient, 'game-async-gap')
+    const snapshot = await loadMatchFlowSnapshot(supabaseClient, 'game-async-gap');
 
-    const standinSeat = snapshot.roster.find((entry) => entry.slotIndex === 1)
-    expect(standinSeat).toMatchObject({ ownerId: 'standin-owner', standin: true })
-    expect(snapshot.sessionMeta?.asyncFill?.pendingSeatIndexes).toEqual([])
-    expect(snapshot.sessionMeta?.asyncFill?.fillQueue).toEqual([])
-  })
+    const standinSeat = snapshot.roster.find(entry => entry.slotIndex === 1);
+    expect(standinSeat).toMatchObject({ ownerId: 'standin-owner', standin: true });
+    expect(snapshot.sessionMeta?.asyncFill?.pendingSeatIndexes).toEqual([]);
+    expect(snapshot.sessionMeta?.asyncFill?.fillQueue).toEqual([]);
+  });
 
   it('prefers stand-in candidates that match the pending seat role', async () => {
     const rpcPayload = {
@@ -1381,32 +1376,39 @@ describe('loadMatchFlowSnapshot', () => {
       slot_template_version: 4,
       slot_template_source: 'room-stage',
       slot_template_updated_at: '2025-02-01T00:00:00Z',
-    }
+    };
 
     const supabaseClient = {
-      rpc: jest.fn((fnName) => {
+      rpc: jest.fn(fnName => {
         if (fnName === 'fetch_rank_match_ready_snapshot') {
-          return Promise.resolve({ data: rpcPayload, error: null })
+          return Promise.resolve({ data: rpcPayload, error: null });
         }
-        return Promise.resolve({ data: null, error: null })
+        return Promise.resolve({ data: null, error: null });
       }),
-    }
+    };
 
-    const snapshot = await loadMatchFlowSnapshot(supabaseClient, 'game-async-role')
+    const snapshot = await loadMatchFlowSnapshot(supabaseClient, 'game-async-role');
 
-    const standinSeat = snapshot.roster.find((entry) => entry.slotIndex === 1)
-    expect(standinSeat).toMatchObject({ ownerId: 'queue-match', standin: true, role: '수호자' })
-    expect(standinSeat.rating).toBe(1510)
+    const standinSeat = snapshot.roster.find(entry => entry.slotIndex === 1);
+    expect(standinSeat).toMatchObject({ ownerId: 'queue-match', standin: true, role: '수호자' });
+    expect(standinSeat.rating).toBe(1510);
 
-    expect(snapshot.sessionMeta?.asyncFill?.fillQueue).toHaveLength(1)
-    expect(snapshot.sessionMeta?.asyncFill?.fillQueue?.[0]).toMatchObject({ ownerId: 'queue-mismatch' })
-    const assigned = snapshot.sessionMeta?.asyncFill?.assigned || []
+    expect(snapshot.sessionMeta?.asyncFill?.fillQueue).toHaveLength(1);
+    expect(snapshot.sessionMeta?.asyncFill?.fillQueue?.[0]).toMatchObject({
+      ownerId: 'queue-mismatch',
+    });
+    const assigned = snapshot.sessionMeta?.asyncFill?.assigned || [];
     expect(assigned).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ ownerId: 'queue-match', slotIndex: 1, role: '수호자', rating: 1510 }),
-      ]),
-    )
-  })
+        expect.objectContaining({
+          ownerId: 'queue-match',
+          slotIndex: 1,
+          role: '수호자',
+          rating: 1510,
+        }),
+      ])
+    );
+  });
 
   it('chooses the closest rating stand-in when multiple candidates share the role', async () => {
     const rpcPayload = {
@@ -1526,38 +1528,40 @@ describe('loadMatchFlowSnapshot', () => {
       slot_template_version: 5,
       slot_template_source: 'room-stage',
       slot_template_updated_at: '2025-02-01T00:00:00Z',
-    }
+    };
 
     const supabaseClient = {
-      rpc: jest.fn((fnName) => {
+      rpc: jest.fn(fnName => {
         if (fnName === 'fetch_rank_match_ready_snapshot') {
-          return Promise.resolve({ data: rpcPayload, error: null })
+          return Promise.resolve({ data: rpcPayload, error: null });
         }
-        return Promise.resolve({ data: null, error: null })
+        return Promise.resolve({ data: null, error: null });
       }),
-    }
+    };
 
-    const snapshot = await loadMatchFlowSnapshot(supabaseClient, 'game-async-rating')
+    const snapshot = await loadMatchFlowSnapshot(supabaseClient, 'game-async-rating');
 
-    const standinSeat = snapshot.roster.find((entry) => entry.slotIndex === 1)
-    expect(standinSeat).toMatchObject({ ownerId: 'queue-close', standin: true })
-    expect(standinSeat.rating).toBe(1515)
+    const standinSeat = snapshot.roster.find(entry => entry.slotIndex === 1);
+    expect(standinSeat).toMatchObject({ ownerId: 'queue-close', standin: true });
+    expect(standinSeat.rating).toBe(1515);
 
-    expect(snapshot.sessionMeta?.asyncFill?.fillQueue).toHaveLength(1)
-    expect(snapshot.sessionMeta?.asyncFill?.fillQueue?.[0]).toMatchObject({ ownerId: 'queue-distant' })
-    const assigned = snapshot.sessionMeta?.asyncFill?.assigned || []
+    expect(snapshot.sessionMeta?.asyncFill?.fillQueue).toHaveLength(1);
+    expect(snapshot.sessionMeta?.asyncFill?.fillQueue?.[0]).toMatchObject({
+      ownerId: 'queue-distant',
+    });
+    const assigned = snapshot.sessionMeta?.asyncFill?.assigned || [];
     expect(assigned).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ ownerId: 'queue-close', slotIndex: 1, rating: 1515 }),
-      ]),
-    )
-  })
+      ])
+    );
+  });
 
   it('raises a latest-session hint when the RPC is unavailable', async () => {
-    mockWithTable.mockImplementation(() => Promise.resolve({ data: null, error: null }))
+    mockWithTable.mockImplementation(() => Promise.resolve({ data: null, error: null }));
 
     const supabaseClient = {
-      rpc: jest.fn((fnName) => {
+      rpc: jest.fn(fnName => {
         if (fnName === 'fetch_rank_match_ready_snapshot') {
           return Promise.resolve({
             data: {
@@ -1567,29 +1571,31 @@ describe('loadMatchFlowSnapshot', () => {
               session_meta: null,
             },
             error: null,
-          })
+          });
         }
         if (fnName === 'fetch_latest_rank_session_v2') {
           return Promise.resolve({
             data: null,
             error: { code: '42883', message: 'function does not exist' },
-          })
+          });
         }
-        return Promise.resolve({ data: null, error: null })
+        return Promise.resolve({ data: null, error: null });
       }),
-    }
+    };
 
-    await expect(loadMatchFlowSnapshot(supabaseClient, 'game-latest-missing')).rejects.toMatchObject({
+    await expect(
+      loadMatchFlowSnapshot(supabaseClient, 'game-latest-missing')
+    ).rejects.toMatchObject({
       code: 'latest_session_unavailable',
       hint: expect.stringContaining('fetch_latest_rank_session_v2'),
-    })
-  })
+    });
+  });
 
   it('raises an ordered-set hint when the latest-session RPC is missing WITHIN GROUP', async () => {
-    mockWithTable.mockImplementation(() => Promise.resolve({ data: null, error: null }))
+    mockWithTable.mockImplementation(() => Promise.resolve({ data: null, error: null }));
 
     const supabaseClient = {
-      rpc: jest.fn((fnName) => {
+      rpc: jest.fn(fnName => {
         if (fnName === 'fetch_rank_match_ready_snapshot') {
           return Promise.resolve({
             data: {
@@ -1599,7 +1605,7 @@ describe('loadMatchFlowSnapshot', () => {
               session_meta: null,
             },
             error: null,
-          })
+          });
         }
         if (fnName === 'fetch_latest_rank_session_v2') {
           return Promise.resolve({
@@ -1609,15 +1615,17 @@ describe('loadMatchFlowSnapshot', () => {
               message: 'WITHIN GROUP is required for ordered-set aggregate mode',
               details: 'ordered-set aggregate needs WITHIN GROUP',
             },
-          })
+          });
         }
-        return Promise.resolve({ data: null, error: null })
+        return Promise.resolve({ data: null, error: null });
       }),
-    }
+    };
 
-    await expect(loadMatchFlowSnapshot(supabaseClient, 'game-latest-ordered-set')).rejects.toMatchObject({
+    await expect(
+      loadMatchFlowSnapshot(supabaseClient, 'game-latest-ordered-set')
+    ).rejects.toMatchObject({
       code: 'latest_session_unavailable',
       hint: expect.stringContaining('WITHIN GROUP'),
-    })
-  })
-})
+    });
+  });
+});

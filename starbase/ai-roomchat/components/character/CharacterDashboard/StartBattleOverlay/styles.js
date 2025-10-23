@@ -69,7 +69,7 @@ export const baseStyles = {
     color: '#020617',
     fontWeight: 800,
   },
-}
+};
 
 export const previewStyles = {
   container: {
@@ -197,7 +197,7 @@ export const previewStyles = {
     textAlign: 'center',
     color: '#94a3b8',
   },
-}
+};
 
 export const matchingStyles = {
   section: {
@@ -290,7 +290,7 @@ export const matchingStyles = {
     fontSize: 12,
     fontWeight: 700,
   },
-}
+};
 
 export const readyStyles = {
   section: {
@@ -314,6 +314,6 @@ export const readyStyles = {
     color: '#bae6fd',
     lineHeight: 1.6,
   },
-}
+};
 
 //

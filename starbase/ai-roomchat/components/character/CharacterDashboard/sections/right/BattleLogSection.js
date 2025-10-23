@@ -1,4 +1,4 @@
-import React from 'react'
+import React from 'react';
 
 const styles = {
   section: {
@@ -53,7 +53,7 @@ const styles = {
     border: '1px dashed rgba(148, 163, 184, 0.35)',
   },
   errorText: { color: '#f87171', fontSize: 12 },
-}
+};
 
 export default function BattleLogSection({
   battleDetails,
@@ -74,7 +74,7 @@ export default function BattleLogSection({
         <div style={styles.loading}>전투 로그를 불러오는 중…</div>
       ) : battleDetails.length ? (
         <div style={styles.list}>
-          {battleDetails.slice(0, visibleBattles).map((battle) => (
+          {battleDetails.slice(0, visibleBattles).map(battle => (
             <article key={battle.id} style={styles.card}>
               <div style={styles.cardHeader}>
                 <strong>{new Date(battle.created_at || 0).toLocaleString()}</strong>
@@ -83,7 +83,7 @@ export default function BattleLogSection({
               <div style={styles.score}>점수 변화: {battle.score_delta ?? 0}</div>
               {battle.logs?.length ? (
                 <div style={styles.logs}>
-                  {battle.logs.map((log) => (
+                  {battle.logs.map(log => (
                     <div key={`${log.battle_id}-${log.turn_no}`} style={styles.logRow}>
                       <strong style={styles.turn}>턴 {log.turn_no}</strong>
                       <div>프롬프트: {log.prompt}</div>
@@ -105,5 +105,5 @@ export default function BattleLogSection({
       )}
       {battleError ? <div style={styles.errorText}>{battleError}</div> : null}
     </section>
-  )
+  );
 }

@@ -1,119 +1,119 @@
 {
-	"version": "2.0.0",
-	"tasks": [
-		{
-			"label": "app: dev (onOpen)",
-			"type": "npm",
-			"script": "dev",
-			"options": {
-				"cwd": "${workspaceFolder}/ai-roomchat/starbase/ai-roomchat",
-				"env": {
-					"ADMIN_PORTAL_PASSWORD": "localdev",
-					"HOST": "0.0.0.0",
-					"PORT": "3000"
-				}
-			},
-			"runOptions": {
-				"runOn": "folderOpen"
-			},
-			"isBackground": true,
-			"group": "build"
-		},
-		{
-			"label": "app: dev",
-			"type": "npm",
-			"script": "dev",
-			"options": {
-				"cwd": "${workspaceFolder}/ai-roomchat/starbase/ai-roomchat",
-				"env": {
-					"ADMIN_PORTAL_PASSWORD": "localdev",
-					"HOST": "0.0.0.0",
-					"PORT": "3000"
-				}
-			},
-			"isBackground": true,
-			"problemMatcher": [
-				{
-					"owner": "custom",
-					"pattern": {
-						"regexp": ".*",
-						"file": 1,
-						"location": 2,
-						"message": 3
-					},
-					"background": {
-						"activeOnStart": true,
-						"beginsPattern": ".*ready - started server.*",
-						"endsPattern": ".*ready - started server.*"
-					}
-				}
-			],
-			"group": "build"
-		},
-		{
-			"label": "app: test",
-			"type": "npm",
-			"script": "test",
-			"options": {
-				"cwd": "${workspaceFolder}/ai-roomchat/starbase/ai-roomchat"
-			},
-			"group": "build"
-		},
-		{
-			"label": "app: test:fuzz",
-			"type": "npm",
-			"script": "test:fuzz",
-			"options": {
-				"cwd": "${workspaceFolder}/ai-roomchat/starbase/ai-roomchat"
-			},
-			"group": "build"
-		},
-		{
-			"label": "app: test:samples",
-			"type": "npm",
-			"script": "test:samples",
-			"options": {
-				"cwd": "${workspaceFolder}/ai-roomchat/starbase/ai-roomchat"
-			},
-			"group": "build"
-		},
-		{
-			"label": "git-push-main",
-			"type": "shell",
-			"command": "cmd",
-			"args": [
-				"/d",
-				"/c",
-				"cd C:\\Users\\yujin\\Documents\\234423\\starbase && git status && git add . && git commit -m \"rank: prefer rank_game_slots; add tests,fuzzer,health API; add CI workflow\" || echo NOCOMMIT && git push origin main"
-			],
-			"problemMatcher": [],
-			"group": "build"
-		},
-		{
-			"label": "node-run-matching-samples",
-			"type": "shell",
-			"command": "cmd",
-			"args": [
-				"/d",
-				"/c",
-				"cd C:\\Users\\yujin\\Documents\\234423\\starbase\\ai-roomchat\\starbase\\ai-roomchat && node scripts\\run-matching-samples.js"
-			],
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "build"
-		},
-		{
-			"label": "node-run-matching-samples",
-			"type": "shell",
-			"command": "cmd",
-			"args": [
-				"/d",
-				"/c",
-				"cd C:\\Users\\yujin\\Documents\\234423\\starbase\\ai-roomchat\\starbase\\ai-roomchat && node scripts\\run-matching-samples.js && type reports\\matching-samples.json"
-			],
-			"isBackground": false,
-			"problemMatcher": [],
-			"group": "build"
-		}
-	]
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "app: dev (onOpen)",
+      "type": "npm",
+      "script": "dev",
+      "options": {
+        "cwd": "${workspaceFolder}/ai-roomchat/starbase/ai-roomchat",
+        "env": {
+          "ADMIN_PORTAL_PASSWORD": "localdev",
+          "HOST": "0.0.0.0",
+          "PORT": "3000"
+        }
+      },
+      "runOptions": {
+        "runOn": "folderOpen"
+      },
+      "isBackground": true,
+      "group": "build"
+    },
+    {
+      "label": "app: dev",
+      "type": "npm",
+      "script": "dev",
+      "options": {
+        "cwd": "${workspaceFolder}/ai-roomchat/starbase/ai-roomchat",
+        "env": {
+          "ADMIN_PORTAL_PASSWORD": "localdev",
+          "HOST": "0.0.0.0",
+          "PORT": "3000"
+        }
+      },
+      "isBackground": true,
+      "problemMatcher": [
+        {
+          "owner": "custom",
+          "pattern": {
+            "regexp": ".*",
+            "file": 1,
+            "location": 2,
+            "message": 3
+          },
+          "background": {
+            "activeOnStart": true,
+            "beginsPattern": ".*ready - started server.*",
+            "endsPattern": ".*ready - started server.*"
+          }
+        }
+      ],
+      "group": "build"
+    },
+    {
+      "label": "app: test",
+      "type": "npm",
+      "script": "test",
+      "options": {
+        "cwd": "${workspaceFolder}/ai-roomchat/starbase/ai-roomchat"
+      },
+      "group": "build"
+    },
+    {
+      "label": "app: test:fuzz",
+      "type": "npm",
+      "script": "test:fuzz",
+      "options": {
+        "cwd": "${workspaceFolder}/ai-roomchat/starbase/ai-roomchat"
+      },
+      "group": "build"
+    },
+    {
+      "label": "app: test:samples",
+      "type": "npm",
+      "script": "test:samples",
+      "options": {
+        "cwd": "${workspaceFolder}/ai-roomchat/starbase/ai-roomchat"
+      },
+      "group": "build"
+    },
+    {
+      "label": "git-push-main",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/d",
+        "/c",
+        "cd C:\\Users\\yujin\\Documents\\234423\\starbase && git status && git add . && git commit -m \"rank: prefer rank_game_slots; add tests,fuzzer,health API; add CI workflow\" || echo NOCOMMIT && git push origin main"
+      ],
+      "problemMatcher": [],
+      "group": "build"
+    },
+    {
+      "label": "node-run-matching-samples",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/d",
+        "/c",
+        "cd C:\\Users\\yujin\\Documents\\234423\\starbase\\ai-roomchat\\starbase\\ai-roomchat && node scripts\\run-matching-samples.js"
+      ],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "build"
+    },
+    {
+      "label": "node-run-matching-samples",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/d",
+        "/c",
+        "cd C:\\Users\\yujin\\Documents\\234423\\starbase\\ai-roomchat\\starbase\\ai-roomchat && node scripts\\run-matching-samples.js && type reports\\matching-samples.json"
+      ],
+      "isBackground": false,
+      "problemMatcher": [],
+      "group": "build"
+    }
+  ]
 }

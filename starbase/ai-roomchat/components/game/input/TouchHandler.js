@@ -1,10 +1,10 @@
 /**
  * 👆 Touch Handler
- * 
+ *
  * Handles touch, pointer, and mouse events with unified interface.
  * Optimized for mobile devices with gesture recognition.
  * Integrates with MobileOptimizationManager for best performance.
- * 
+ *
  * 🔧 Features:
  * - Touch/Pointer/Mouse event unification
  * - Gesture recognition (tap, swipe, pinch, long-press)
@@ -12,7 +12,7 @@
  * - Cross-browser compatibility (IE11+ with Pointer Events)
  * - Memory leak prevention
  * - Mobile optimization integration
- * 
+ *
  * @version 1.0.0
  * @compatibility IE11+, Safari 12+, Chrome 70+, Firefox 65+
  */
@@ -48,7 +48,7 @@ export class TouchHandler {
     this.tapThreshold = options.tapThreshold || 10;
     this.swipeThreshold = options.swipeThreshold || 100;
     this.longPressDuration = options.longPressDuration || 500;
-    
+
     // Callbacks
     this.onTap = options.onTap || null;
     this.onSwipe = options.onSwipe || null;
@@ -57,7 +57,7 @@ export class TouchHandler {
     this.onTouchStart = options.onTouchStart || null;
     this.onTouchMove = options.onTouchMove || null;
     this.onTouchEnd = options.onTouchEnd || null;
-    
+
     // Touch state
     this.touchState = {
       isActive: false,
@@ -69,22 +69,22 @@ export class TouchHandler {
       startDistance: 0,
       currentDistance: 0,
       touchCount: 0,
-      moved: false
+      moved: false,
     };
-    
+
     // Timers
     this.longPressTimer = null;
-    
+
     // Event listeners registry
     this.listeners = [];
-    
+
     // Compatibility info
     this.compatibilityInfo = null;
     this.supportsTouchEvents = false;
     this.supportsPointerEvents = false;
     this.supportsPassiveListeners = false;
     this.isInitialized = false;
-    
+
     // Bind methods
     this.handleTouchStart = this.handleTouchStart.bind(this);
     this.handleTouchMove = this.handleTouchMove.bind(this);
@@ -98,7 +98,7 @@ export class TouchHandler {
     this.handleMouseMove = this.handleMouseMove.bind(this);
     this.handleMouseUp = this.handleMouseUp.bind(this);
   }
-  
+
   /**
    * Initialize touch handler
    * @returns {Promise<void>}
@@ -108,54 +108,52 @@ export class TouchHandler {
       console.warn('[TouchHandler] Already initialized');
       return;
     }
-    
+
     if (!this.element) {
       console.warn('[TouchHandler] No element provided, skipping initialization');
       return;
     }
-    
+
     try {
       // Get compatibility info
       this.compatibilityInfo = compatibilityManager.getCompatibilityInfo();
-      
+
       // Detect feature support
       this.detectFeatureSupport();
-      
+
       // Register appropriate event listeners based on browser support
       this.registerEventListeners();
-      
+
       // Apply CSS optimizations
       this.applyCSSOptimizations();
-      
+
       this.isInitialized = true;
       console.log('[TouchHandler] Initialized', {
         touchSupport: this.supportsTouchEvents,
         pointerSupport: this.supportsPointerEvents,
-        passiveSupport: this.supportsPassiveListeners
+        passiveSupport: this.supportsPassiveListeners,
       });
-      
     } catch (error) {
       console.error('[TouchHandler] Initialization failed:', error);
       throw error;
     }
   }
-  
+
   /**
    * Detect feature support
    * @private
    */
   detectFeatureSupport() {
     // Touch events support
-    this.supportsTouchEvents = (
+    this.supportsTouchEvents =
       typeof window !== 'undefined' &&
       ('ontouchstart' in window ||
-       (navigator && navigator.maxTouchPoints > 0) ||
-       (navigator && navigator.msMaxTouchPoints > 0))
-    );
-    
+        (navigator && navigator.maxTouchPoints > 0) ||
+        (navigator && navigator.msMaxTouchPoints > 0));
+
     // Pointer events support (IE11+, modern browsers)
     this.supportsPointerEvents = typeof window !== 'undefined' && 'onpointerdown' in window;
-    
+
     // Passive listeners support
     this.supportsPassiveListeners = (() => {
       let supportsPassive = false;
@@ -164,17 +162,17 @@ export class TouchHandler {
           get() {
             supportsPassive = true;
             return false;
-          }
+          },
         });
         if (typeof window !== 'undefined') {
           window.addEventListener('testPassive', null, opts);
           window.removeEventListener('testPassive', null, opts);
         }
-  } catch (_e) {}
+      } catch (_e) {}
       return supportsPassive;
     })();
   }
-  
+
   /**
    * Register event listeners based on browser support
    * @private
@@ -182,26 +180,24 @@ export class TouchHandler {
   registerEventListeners() {
     // Determine listener options
     const listenerOptions = this.getListenerOptions();
-    
+
     if (this.supportsPointerEvents) {
       // Use Pointer Events (IE11+, modern browsers)
       this.addListener('pointerdown', this.handlePointerDown, listenerOptions);
       this.addListener('pointermove', this.handlePointerMove, listenerOptions);
       this.addListener('pointerup', this.handlePointerUp, false);
       this.addListener('pointercancel', this.handlePointerCancel, false);
-      
     } else if (this.supportsTouchEvents) {
       // Use Touch Events (mobile browsers)
       this.addListener('touchstart', this.handleTouchStart, listenerOptions);
       this.addListener('touchmove', this.handleTouchMove, listenerOptions);
       this.addListener('touchend', this.handleTouchEnd, false);
       this.addListener('touchcancel', this.handleTouchCancel, false);
-      
+
       // Also add mouse events as fallback
       this.addListener('mousedown', this.handleMouseDown, false);
       this.addListener('mousemove', this.handleMouseMove, false);
       this.addListener('mouseup', this.handleMouseUp, false);
-      
     } else {
       // Fallback to Mouse Events only
       this.addListener('mousedown', this.handleMouseDown, false);
@@ -209,7 +205,7 @@ export class TouchHandler {
       this.addListener('mouseup', this.handleMouseUp, false);
     }
   }
-  
+
   /**
    * Get listener options for passive support
    * @returns {Object|boolean} Listener options
@@ -219,13 +215,13 @@ export class TouchHandler {
     if (!this.supportsPassiveListeners) {
       return false;
     }
-    
+
     return {
       passive: !this.preventDefaultTouch,
-      capture: false
+      capture: false,
     };
   }
-  
+
   /**
    * Add event listener
    * @param {string} eventType - Event type
@@ -235,20 +231,20 @@ export class TouchHandler {
    */
   addListener(eventType, handler, options) {
     if (!this.element) return;
-    
+
     if (this.element.addEventListener) {
       this.element.addEventListener(eventType, handler, options);
     } else if (this.element.attachEvent) {
       // IE8 fallback (though our target is IE11+)
-      const wrappedHandler = (e) => handler.call(this.element, e || window.event);
+      const wrappedHandler = e => handler.call(this.element, e || window.event);
       this.element.attachEvent(`on${eventType}`, wrappedHandler);
       handler._ieWrapper = wrappedHandler;
     }
-    
+
     // Store for cleanup
     this.listeners.push({ eventType, handler, options });
   }
-  
+
   /**
    * Remove event listener
    * @param {string} eventType - Event type
@@ -258,7 +254,7 @@ export class TouchHandler {
    */
   removeListener(eventType, handler, options) {
     if (!this.element) return;
-    
+
     if (this.element.removeEventListener) {
       this.element.removeEventListener(eventType, handler, options);
     } else if (this.element.detachEvent) {
@@ -267,16 +263,16 @@ export class TouchHandler {
       this.element.detachEvent(`on${eventType}`, wrappedHandler);
     }
   }
-  
+
   /**
    * Apply CSS optimizations for touch
    * @private
    */
   applyCSSOptimizations() {
     if (!this.element || !this.element.style) return;
-    
+
     const style = this.element.style;
-    
+
     // Touch action (IE11+)
     if ('touchAction' in style) {
       style.touchAction = 'manipulation';
@@ -284,20 +280,20 @@ export class TouchHandler {
       // IE10 prefix
       style.msTouchAction = 'manipulation';
     }
-    
+
     // Prevent text selection during touch
     style.webkitUserSelect = 'none';
     style.mozUserSelect = 'none';
     style.msUserSelect = 'none';
     style.userSelect = 'none';
-    
+
     // Prevent tap highlight (mobile Safari)
     style.webkitTapHighlightColor = 'transparent';
-    
+
     // Prevent text size adjust (iOS)
     style.webkitTextSizeAdjust = '100%';
   }
-  
+
   /**
    * Handle touch start
    * @param {TouchEvent} event - Touch event
@@ -306,16 +302,16 @@ export class TouchHandler {
   handleTouchStart(event) {
     const touch = event.touches[0];
     this.startTouch(touch.clientX, touch.clientY, event.touches.length);
-    
+
     if (this.onTouchStart) {
       this.onTouchStart(this.normalizeTouchEvent(event));
     }
-    
+
     if (this.preventDefaultTouch && !this.supportsPassiveListeners) {
       event.preventDefault();
     }
   }
-  
+
   /**
    * Handle touch move
    * @param {TouchEvent} event - Touch event
@@ -323,24 +319,24 @@ export class TouchHandler {
    */
   handleTouchMove(event) {
     if (!this.touchState.isActive) return;
-    
+
     const touch = event.touches[0];
     this.moveTouch(touch.clientX, touch.clientY);
-    
+
     // Handle pinch gesture for multi-touch
     if (event.touches.length === 2 && this.enableGestures) {
       this.handlePinchGesture(event);
     }
-    
+
     if (this.onTouchMove) {
       this.onTouchMove(this.normalizeTouchEvent(event));
     }
-    
+
     if (this.preventDefaultTouch && !this.supportsPassiveListeners) {
       event.preventDefault();
     }
   }
-  
+
   /**
    * Handle touch end
    * @param {TouchEvent} event - Touch event
@@ -348,14 +344,14 @@ export class TouchHandler {
    */
   handleTouchEnd(event) {
     if (!this.touchState.isActive) return;
-    
+
     this.endTouch();
-    
+
     if (this.onTouchEnd) {
       this.onTouchEnd(this.normalizeTouchEvent(event));
     }
   }
-  
+
   /**
    * Handle touch cancel
    * @param {TouchEvent} event - Touch event
@@ -363,12 +359,12 @@ export class TouchHandler {
    */
   handleTouchCancel(event) {
     this.cancelTouch();
-    
+
     if (this.onTouchEnd) {
       this.onTouchEnd(this.normalizeTouchEvent(event));
     }
   }
-  
+
   /**
    * Handle pointer down (IE11+)
    * @param {PointerEvent} event - Pointer event
@@ -376,16 +372,16 @@ export class TouchHandler {
    */
   handlePointerDown(event) {
     this.startTouch(event.clientX, event.clientY, 1);
-    
+
     if (this.onTouchStart) {
       this.onTouchStart(this.normalizePointerEvent(event));
     }
-    
+
     if (this.preventDefaultTouch) {
       event.preventDefault();
     }
   }
-  
+
   /**
    * Handle pointer move
    * @param {PointerEvent} event - Pointer event
@@ -393,18 +389,18 @@ export class TouchHandler {
    */
   handlePointerMove(event) {
     if (!this.touchState.isActive) return;
-    
+
     this.moveTouch(event.clientX, event.clientY);
-    
+
     if (this.onTouchMove) {
       this.onTouchMove(this.normalizePointerEvent(event));
     }
-    
+
     if (this.preventDefaultTouch) {
       event.preventDefault();
     }
   }
-  
+
   /**
    * Handle pointer up
    * @param {PointerEvent} event - Pointer event
@@ -412,14 +408,14 @@ export class TouchHandler {
    */
   handlePointerUp(event) {
     if (!this.touchState.isActive) return;
-    
+
     this.endTouch();
-    
+
     if (this.onTouchEnd) {
       this.onTouchEnd(this.normalizePointerEvent(event));
     }
   }
-  
+
   /**
    * Handle pointer cancel
    * @param {PointerEvent} event - Pointer event
@@ -427,12 +423,12 @@ export class TouchHandler {
    */
   handlePointerCancel(event) {
     this.cancelTouch();
-    
+
     if (this.onTouchEnd) {
       this.onTouchEnd(this.normalizePointerEvent(event));
     }
   }
-  
+
   /**
    * Handle mouse down (fallback)
    * @param {MouseEvent} event - Mouse event
@@ -441,14 +437,14 @@ export class TouchHandler {
   handleMouseDown(event) {
     // Prevent if touch already handled
     if (this.touchState.isActive) return;
-    
+
     this.startTouch(event.clientX, event.clientY, 1);
-    
+
     if (this.onTouchStart) {
       this.onTouchStart(this.normalizeMouseEvent(event));
     }
   }
-  
+
   /**
    * Handle mouse move (fallback)
    * @param {MouseEvent} event - Mouse event
@@ -456,14 +452,14 @@ export class TouchHandler {
    */
   handleMouseMove(event) {
     if (!this.touchState.isActive) return;
-    
+
     this.moveTouch(event.clientX, event.clientY);
-    
+
     if (this.onTouchMove) {
       this.onTouchMove(this.normalizeMouseEvent(event));
     }
   }
-  
+
   /**
    * Handle mouse up (fallback)
    * @param {MouseEvent} event - Mouse event
@@ -471,14 +467,14 @@ export class TouchHandler {
    */
   handleMouseUp(event) {
     if (!this.touchState.isActive) return;
-    
+
     this.endTouch();
-    
+
     if (this.onTouchEnd) {
       this.onTouchEnd(this.normalizeMouseEvent(event));
     }
   }
-  
+
   /**
    * Start touch tracking
    * @param {number} x - X coordinate
@@ -497,9 +493,9 @@ export class TouchHandler {
       startDistance: 0,
       currentDistance: 0,
       touchCount: touchCount,
-      moved: false
+      moved: false,
     };
-    
+
     // Start long press timer if gestures enabled
     if (this.enableGestures) {
       this.longPressTimer = setTimeout(() => {
@@ -509,7 +505,7 @@ export class TouchHandler {
       }, this.longPressDuration);
     }
   }
-  
+
   /**
    * Update touch position
    * @param {number} x - X coordinate
@@ -519,16 +515,16 @@ export class TouchHandler {
   moveTouch(x, y) {
     this.touchState.currentX = x;
     this.touchState.currentY = y;
-    
+
     // Calculate movement distance
     const deltaX = x - this.touchState.startX;
     const deltaY = y - this.touchState.startY;
     const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-    
+
     // Mark as moved if exceeds tap threshold
     if (distance > this.tapThreshold) {
       this.touchState.moved = true;
-      
+
       // Cancel long press
       if (this.longPressTimer) {
         clearTimeout(this.longPressTimer);
@@ -536,7 +532,7 @@ export class TouchHandler {
       }
     }
   }
-  
+
   /**
    * End touch tracking and detect gesture
    * @private
@@ -546,13 +542,13 @@ export class TouchHandler {
     const deltaX = this.touchState.currentX - this.touchState.startX;
     const deltaY = this.touchState.currentY - this.touchState.startY;
     const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-    
+
     // Cancel long press timer
     if (this.longPressTimer) {
       clearTimeout(this.longPressTimer);
       this.longPressTimer = null;
     }
-    
+
     // Detect gesture if enabled
     if (this.enableGestures) {
       if (!this.touchState.moved && distance < this.tapThreshold) {
@@ -563,11 +559,11 @@ export class TouchHandler {
         this.handleSwipe(deltaX, deltaY, distance);
       }
     }
-    
+
     // Reset state
     this.touchState.isActive = false;
   }
-  
+
   /**
    * Cancel touch tracking
    * @private
@@ -577,10 +573,10 @@ export class TouchHandler {
       clearTimeout(this.longPressTimer);
       this.longPressTimer = null;
     }
-    
+
     this.touchState.isActive = false;
   }
-  
+
   /**
    * Handle tap gesture
    * @private
@@ -590,13 +586,13 @@ export class TouchHandler {
       this.onTap({
         x: this.touchState.startX,
         y: this.touchState.startY,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
     }
-    
+
     this.dispatchGestureEvent('tap');
   }
-  
+
   /**
    * Handle swipe gesture
    * @param {number} deltaX - X displacement
@@ -612,22 +608,22 @@ export class TouchHandler {
     } else {
       direction = deltaY > 0 ? 'down' : 'up';
     }
-    
+
     const swipeData = {
       direction: direction,
       deltaX: deltaX,
       deltaY: deltaY,
       distance: distance,
-      velocity: distance / (Date.now() - this.touchState.startTime)
+      velocity: distance / (Date.now() - this.touchState.startTime),
     };
-    
+
     if (this.onSwipe) {
       this.onSwipe(swipeData);
     }
-    
+
     this.dispatchGestureEvent('swipe', swipeData);
   }
-  
+
   /**
    * Handle long press gesture
    * @private
@@ -637,13 +633,13 @@ export class TouchHandler {
       this.onLongPress({
         x: this.touchState.startX,
         y: this.touchState.startY,
-        duration: this.longPressDuration
+        duration: this.longPressDuration,
       });
     }
-    
+
     this.dispatchGestureEvent('longPress');
   }
-  
+
   /**
    * Handle pinch gesture (multi-touch)
    * @param {TouchEvent} event - Touch event
@@ -652,32 +648,31 @@ export class TouchHandler {
   handlePinchGesture(event) {
     const touch1 = event.touches[0];
     const touch2 = event.touches[1];
-    
+
     const currentDistance = Math.sqrt(
-      Math.pow(touch2.clientX - touch1.clientX, 2) +
-      Math.pow(touch2.clientY - touch1.clientY, 2)
+      Math.pow(touch2.clientX - touch1.clientX, 2) + Math.pow(touch2.clientY - touch1.clientY, 2)
     );
-    
+
     if (this.touchState.startDistance === 0) {
       this.touchState.startDistance = currentDistance;
     }
-    
+
     this.touchState.currentDistance = currentDistance;
-    
+
     const scale = currentDistance / this.touchState.startDistance;
-    
+
     if (this.onPinch) {
       this.onPinch({
         scale: scale,
         distance: currentDistance,
         centerX: (touch1.clientX + touch2.clientX) / 2,
-        centerY: (touch1.clientY + touch2.clientY) / 2
+        centerY: (touch1.clientY + touch2.clientY) / 2,
       });
     }
-    
+
     this.dispatchGestureEvent('pinch', { scale });
   }
-  
+
   /**
    * Dispatch custom gesture event
    * @param {string} gestureType - Type of gesture
@@ -686,20 +681,20 @@ export class TouchHandler {
    */
   dispatchGestureEvent(gestureType, detail = {}) {
     if (!this.element || typeof CustomEvent === 'undefined') return;
-    
+
     const event = new CustomEvent('gesture', {
       detail: {
         type: gestureType,
         ...detail,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       },
       bubbles: true,
-      cancelable: true
+      cancelable: true,
     });
-    
+
     this.element.dispatchEvent(event);
   }
-  
+
   /**
    * Normalize touch event
    * @param {TouchEvent} event - Original touch event
@@ -708,16 +703,16 @@ export class TouchHandler {
    */
   normalizeTouchEvent(event) {
     const touch = event.touches[0] || event.changedTouches[0];
-    
+
     return {
       type: 'touch',
       x: touch ? touch.clientX : 0,
       y: touch ? touch.clientY : 0,
       touchCount: event.touches.length,
-      originalEvent: event
+      originalEvent: event,
     };
   }
-  
+
   /**
    * Normalize pointer event
    * @param {PointerEvent} event - Original pointer event
@@ -731,10 +726,10 @@ export class TouchHandler {
       y: event.clientY,
       pointerType: event.pointerType,
       pressure: event.pressure,
-      originalEvent: event
+      originalEvent: event,
     };
   }
-  
+
   /**
    * Normalize mouse event
    * @param {MouseEvent} event - Original mouse event
@@ -747,29 +742,29 @@ export class TouchHandler {
       x: event.clientX,
       y: event.clientY,
       button: event.button,
-      originalEvent: event
+      originalEvent: event,
     };
   }
-  
+
   /**
    * Cleanup and remove all event listeners
    * Prevents memory leaks
    */
   cleanup() {
     if (!this.isInitialized) return;
-    
+
     // Cancel pending timers
     if (this.longPressTimer) {
       clearTimeout(this.longPressTimer);
       this.longPressTimer = null;
     }
-    
+
     // Remove all event listeners
     this.listeners.forEach(({ eventType, handler, options }) => {
       this.removeListener(eventType, handler, options);
     });
     this.listeners = [];
-    
+
     // Reset state
     this.touchState = {
       isActive: false,
@@ -781,12 +776,12 @@ export class TouchHandler {
       startDistance: 0,
       currentDistance: 0,
       touchCount: 0,
-      moved: false
+      moved: false,
     };
-    
+
     this.isInitialized = false;
     this.element = null;
-    
+
     console.log('[TouchHandler] Cleanup complete');
   }
 }

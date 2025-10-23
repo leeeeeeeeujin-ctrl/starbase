@@ -9,22 +9,22 @@ The config file [`tinode.conf`](./server/tinode.conf) contains extensive instruc
 2. Make sure your database is running. Make sure it's configured to accept connections from `localhost`. In case of MySQL, Tinode will try to connect as `root` without the password. In case of PostgreSQL, Tinode will try connect as `postgres` with the password `postgres`. See notes below (_Building from Source_, section 4) on how to configure Tinode to use a different user or a password. MySQL 5.7 or above is required (use InnoDB, not MyISAM storage engine). MySQL 5.6 or below **will not work**, use of MyISAM **will cause problems**. PostgreSQL 13 or above is required. PostgreSQL 12 or below **will not work**.
 
 3. Run the database initializer `init-db` (or `init-db.exe` on Windows):
-	```
-	./init-db -data=data.json
-	```
+
+   ```
+   ./init-db -data=data.json
+   ```
 
 4. Run the `tinode` (or `tinode.exe` on Windows) server. It will work without any parameters.
-	```
-	./tinode
-	```
+
+   ```
+   ./tinode
+   ```
 
 5. Test your installation by pointing your browser to http://localhost:6060/
-
 
 ## Docker
 
 See [instructions](./docker/README.md)
-
 
 ## Building from Source
 
@@ -33,51 +33,57 @@ See [instructions](./docker/README.md)
 2. OPTIONAL only if you intend to modify the code: Install [protobuf](https://developers.google.com/protocol-buffers/) and [gRPC](https://grpc.io/docs/languages/go/quickstart/) including [code generator](https://developers.google.com/protocol-buffers/docs/reference/go-generated) for Go.
 
 3. Make sure one of the following databases is installed and running:
- * MySQL 5.7 or above configured with `InnoDB` engine. MySQL 5.6 or below **will not work**.
- * PostgreSQL 13 or above. PostgreSQL 12 or below **will not work**.
- * MongoDB 4.4 or above. MongoDB 4.2 and below **will not work**.
- * RethinkDB (deprecated, support will be dropped in 2027).
+
+- MySQL 5.7 or above configured with `InnoDB` engine. MySQL 5.6 or below **will not work**.
+- PostgreSQL 13 or above. PostgreSQL 12 or below **will not work**.
+- MongoDB 4.4 or above. MongoDB 4.2 and below **will not work**.
+- RethinkDB (deprecated, support will be dropped in 2027).
 
 4. Fetch, build Tinode server and tinode-db database initializer:
-  - **MySQL**:
-	```
-	go install -tags mysql github.com/tinode/chat/server@latest
-	go install -tags mysql github.com/tinode/chat/tinode-db@latest
-	```
-  - **PostgreSQL**:
-	```
-	go install -tags postgres github.com/tinode/chat/server@latest
-	go install -tags postgres github.com/tinode/chat/tinode-db@latest
-	```
-  - **MongoDB**:
-	```
-	go install -tags mongodb github.com/tinode/chat/server@latest
-	go install -tags mongodb github.com/tinode/chat/tinode-db@latest
-	```
-  - **RethinkDb**:
-	```
-	go install -tags rethinkdb github.com/tinode/chat/server@latest
-	go install -tags rethinkdb github.com/tinode/chat/tinode-db@latest
-	```
-  - **All** (bundle all of the above DB adapters):
-	```
-	go install -tags "mysql rethinkdb mongodb postgres" github.com/tinode/chat/server@latest
-	go install -tags "mysql rethinkdb mongodb postgres" github.com/tinode/chat/tinode-db@latest
-	```
 
-    The steps above install Tinode binaries at `$GOPATH/bin/`, sorces and supporting files are located at `$GOPATH/pkg/mod/github.com/tinode/chat@vX.XX.X/` where `X.XX.X` is the version you installed, such as `0.19.1`.
+- **MySQL**:
+  ```
+  go install -tags mysql github.com/tinode/chat/server@latest
+  go install -tags mysql github.com/tinode/chat/tinode-db@latest
+  ```
+- **PostgreSQL**:
+  ```
+  go install -tags postgres github.com/tinode/chat/server@latest
+  go install -tags postgres github.com/tinode/chat/tinode-db@latest
+  ```
+- **MongoDB**:
+  ```
+  go install -tags mongodb github.com/tinode/chat/server@latest
+  go install -tags mongodb github.com/tinode/chat/tinode-db@latest
+  ```
+- **RethinkDb**:
+  ```
+  go install -tags rethinkdb github.com/tinode/chat/server@latest
+  go install -tags rethinkdb github.com/tinode/chat/tinode-db@latest
+  ```
+- **All** (bundle all of the above DB adapters):
 
-    Note the required **`-tags rethinkdb`**, **`-tags mysql`**, **`-tags mongodb`** or **`-tags postgres`** build option.
+  ```
+  go install -tags "mysql rethinkdb mongodb postgres" github.com/tinode/chat/server@latest
+  go install -tags "mysql rethinkdb mongodb postgres" github.com/tinode/chat/tinode-db@latest
+  ```
 
-    You may also optionally define `main.buildstamp` for the server by adding a build option, for instance, with a timestamp:
-    ```
-    go install -tags mysql -ldflags "-X main.buildstamp=`date -u '+%Y%m%dT%H:%M:%SZ'`" github.com/tinode/chat/server@latest
-    ```
-    The value of `buildstamp` will be sent by the server to the clients.
+  The steps above install Tinode binaries at `$GOPATH/bin/`, sorces and supporting files are located at `$GOPATH/pkg/mod/github.com/tinode/chat@vX.XX.X/` where `X.XX.X` is the version you installed, such as `0.19.1`.
 
-    Building with Go 1.17 or below **will fail**!
+  Note the required **`-tags rethinkdb`**, **`-tags mysql`**, **`-tags mongodb`** or **`-tags postgres`** build option.
+
+  You may also optionally define `main.buildstamp` for the server by adding a build option, for instance, with a timestamp:
+
+  ```
+  go install -tags mysql -ldflags "-X main.buildstamp=`date -u '+%Y%m%dT%H:%M:%SZ'`" github.com/tinode/chat/server@latest
+  ```
+
+  The value of `buildstamp` will be sent by the server to the clients.
+
+  Building with Go 1.17 or below **will fail**!
 
 5. Open `tinode.conf` (located at `$GOPATH/pkg/mod/github.com/tinode/chat@vX.XX.X/server/`). Check that the database connection parameters are correct for your database. If you are using MySQL make sure [DSN](https://github.com/go-sql-driver/mysql#dsn-data-source-name) in `"mysql"` section is appropriate for your MySQL installation. Option `parseTime=true` is required.
+
 ```js
 	"mysql": {
 		"dsn": "root@tcp(localhost)/tinode?parseTime=true",
@@ -86,6 +92,7 @@ See [instructions](./docker/README.md)
 ```
 
 6. Make sure you specify the adapter name in your `tinode.conf`. E.g. you want to run Tinode with MySQL:
+
 ```js
 	"store_config": {
 		...
@@ -96,62 +103,67 @@ See [instructions](./docker/README.md)
 
 7. Now that you have built the binaries, follow instructions in the _Running a Standalone Server_ section.
 
-
 ## Running a Standalone Server
 
 If you followed instructions in the previous section then the Tinode binaries are installed in `$GOPATH/bin/`, the sources and supporting files are located in `$GOPATH/pkg/mod/github.com/tinode/chat@vX.XX.X/`, where `X.XX.X` is the version you installed, for example `0.19.1`.
 
 Switch to sources directory (replace `X.XX.X` with your actual version, such as `0.19.1`):
+
 ```
 cd $GOPATH/pkg/mod/github.com/tinode/chat@vX.XX.X
 ```
 
 1. Make sure your database is running:
- - **MySQL**: https://dev.mysql.com/doc/mysql-startstop-excerpt/5.7/en/mysql-server.html
-	```
-	mysql.server start
-	```
- - **PostgreSQL**: https://www.postgresql.org/docs/current/app-pg-ctl.html
-	```
-	pg_ctl start
-	```
- - **MongoDB**: https://docs.mongodb.com/manual/administration/install-community/
-MongoDB should run as single node replicaset. See https://docs.mongodb.com/manual/administration/replica-set-deployment/
-	```
+
+- **MySQL**: https://dev.mysql.com/doc/mysql-startstop-excerpt/5.7/en/mysql-server.html
+  ```
+  mysql.server start
+  ```
+- **PostgreSQL**: https://www.postgresql.org/docs/current/app-pg-ctl.html
+  ```
+  pg_ctl start
+  ```
+- **MongoDB**: https://docs.mongodb.com/manual/administration/install-community/
+  MongoDB should run as single node replicaset. See https://docs.mongodb.com/manual/administration/replica-set-deployment/
+  `
 	mongod
-	```
- - **RethinkDB**: https://www.rethinkdb.com/docs/start-a-server/
-	```
-	rethinkdb --bind all --daemon
-	```
+	`
+- **RethinkDB**: https://www.rethinkdb.com/docs/start-a-server/
+  ```
+  rethinkdb --bind all --daemon
+  ```
 
 2. Run DB initializer
-	```
-	$GOPATH/bin/tinode-db -config=./tinode-db/tinode.conf
-	```
-	add `-data=./tinode-db/data.json` flag if you want sample data to be loaded:
-	```
-	$GOPATH/bin/tinode-db -config=./tinode-db/tinode.conf -data=./tinode-db/data.json
-	```
 
-	DB initializer needs to be run only once per installation. See [instructions](tinode-db/README.md) for more options.
+   ```
+   $GOPATH/bin/tinode-db -config=./tinode-db/tinode.conf
+   ```
+
+   add `-data=./tinode-db/data.json` flag if you want sample data to be loaded:
+
+   ```
+   $GOPATH/bin/tinode-db -config=./tinode-db/tinode.conf -data=./tinode-db/data.json
+   ```
+
+   DB initializer needs to be run only once per installation. See [instructions](tinode-db/README.md) for more options.
 
 3. Unpack JS client to a directory, for instance `$HOME/tinode/webapp/` by unzipping `https://github.com/tinode/webapp/archive/master.zip` and `https://github.com/tinode/tinode-js/archive/master.zip` to the same directory.
 
 4. Copy or symlink template directory `./server/templ` to `$GOPATH/bin/templ`
-	```
-	ln -s ./server/templ $GOPATH/bin
-	```
+
+   ```
+   ln -s ./server/templ $GOPATH/bin
+   ```
 
 5. Run the server
-	```
-	$GOPATH/bin/server -config=./server/tinode.conf -static_data=$HOME/tinode/webapp/
-	```
+
+   ```
+   $GOPATH/bin/server -config=./server/tinode.conf -static_data=$HOME/tinode/webapp/
+   ```
 
 6. Test your installation by pointing your browser to [http://localhost:6060/](http://localhost:6060/). The static files from the `-static_data` path are served at web root `/`. You can change this by editing the line `static_mount` in the config file.
 
 **Important!** If you are running Tinode alongside another webserver, such as Apache or nginx, keep in mind that you need to launch the webapp from the URL served by Tinode. Otherwise it won't work.
-
 
 ## Running a Cluster
 
@@ -180,36 +192,37 @@ MongoDB should run as single node replicaset. See https://docs.mongodb.com/manua
 		}
 	}
 ```
-* `self` is the name of the current node. Generally it's more convenient to specify the name of the current node at the command line using `cluster_self` option. Command line value overrides the config file value. If the value is not provided either in the config file or through the command line, the clustering is disabled.
-* `nodes` defines individual cluster nodes. The sample defines three nodes named `one`, `two`, and `tree` running at the localhost at the specified cluster communication ports. Cluster addresses don't need to be exposed to the outside world.
-* `failover` is an experimental feature which migrates topics from failed cluster nodes keeping them accessible:
-  * `enabled` turns on failover mode; failover mode requires at least three nodes in the cluster.
-  * `heartbeat` interval in milliseconds between heartbeats sent by the leader node to follower nodes to ensure they are accessible.
-  * `vote_after` number of failed heartbeats before a new leader node is elected.
-  * `node_fail_after` number of heartbeats that a follower node misses before it's considered to be down.
+
+- `self` is the name of the current node. Generally it's more convenient to specify the name of the current node at the command line using `cluster_self` option. Command line value overrides the config file value. If the value is not provided either in the config file or through the command line, the clustering is disabled.
+- `nodes` defines individual cluster nodes. The sample defines three nodes named `one`, `two`, and `tree` running at the localhost at the specified cluster communication ports. Cluster addresses don't need to be exposed to the outside world.
+- `failover` is an experimental feature which migrates topics from failed cluster nodes keeping them accessible:
+  - `enabled` turns on failover mode; failover mode requires at least three nodes in the cluster.
+  - `heartbeat` interval in milliseconds between heartbeats sent by the leader node to follower nodes to ensure they are accessible.
+  - `vote_after` number of failed heartbeats before a new leader node is elected.
+  - `node_fail_after` number of heartbeats that a follower node misses before it's considered to be down.
 
 If you are testing the cluster with all nodes running on the same host, you also must override the `listen` and `grpc_listen` ports. Here is an example for launching two cluster nodes from the same host using the same config file:
+
 ```
 $GOPATH/bin/tinode -config=./server/tinode.conf -static_data=./server/webapp/ -listen=:6060 -grpc_listen=:6080 -cluster_self=one &
 $GOPATH/bin/tinode -config=./server/tinode.conf -static_data=./server/webapp/ -listen=:6061 -grpc_listen=:6081 -cluster_self=two &
 ```
+
 A bash script [run-cluster.sh](./server/run-cluster.sh) may be found useful.
 
 ### Enabling Push Notifications
 
 Follow [instructions](./docs/faq.md#q-how-to-setup-push-notifications-with-google-fcm).
 
-
 ### Enabling Video Calls
 
-Video calls use [WebRTC](https://en.wikipedia.org/wiki/WebRTC). WebRTC is a peer to peer protocol: once the call is established, the client applications exchange data directly. Direct data exchange is efficient but creates a problem when the parties are not accessible from the internet. WebRTC solves it by means of [ICE](https://en.wikipedia.org/wiki/Interactive_Connectivity_Establishment) servers  which implement protocols [TURN(S)](https://en.wikipedia.org/wiki/Traversal_Using_Relays_around_NAT) and [STUN](https://en.wikipedia.org/wiki/STUN) as fallback.
+Video calls use [WebRTC](https://en.wikipedia.org/wiki/WebRTC). WebRTC is a peer to peer protocol: once the call is established, the client applications exchange data directly. Direct data exchange is efficient but creates a problem when the parties are not accessible from the internet. WebRTC solves it by means of [ICE](https://en.wikipedia.org/wiki/Interactive_Connectivity_Establishment) servers which implement protocols [TURN(S)](https://en.wikipedia.org/wiki/Traversal_Using_Relays_around_NAT) and [STUN](https://en.wikipedia.org/wiki/STUN) as fallback.
 
 Tinode does not provide ICE servers out of the box. You must install and configure (or purchase) your own servers otherwise video and voice calling will not be available.
 
 Once you obtain the ICE TURN/STUN configuration from your service provider, add it to `tinode.conf` section `"webrtc"` - `"ice_servers"` (or `"ice_servers_file"`). Also change `"webrtc"` - `"enabled"` to `true`. An example configuration is provided in the `tinode.conf` for illustration only. IT WILL NOT FUNCTION because it uses dummy values instead of actual server addresses.
 
 You may find this information useful for choosing the servers: https://gist.github.com/yetithefoot/7592580
-
 
 ### Note on Running the Server in Background
 

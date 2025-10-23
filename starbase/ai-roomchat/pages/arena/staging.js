@@ -1,6 +1,6 @@
-import Head from 'next/head'
-import { ArcadeLayout } from '@/components/arena/ArcadeLayout'
-import { ReadyVotePanel } from '@/components/arena/ReadyVotePanel'
+import Head from 'next/head';
+import { ArcadeLayout } from '@/components/arena/ArcadeLayout';
+import { ReadyVotePanel } from '@/components/arena/ReadyVotePanel';
 
 export default function StagingPage() {
   return (
@@ -12,5 +12,5 @@ export default function StagingPage() {
         <ReadyVotePanel />
       </ArcadeLayout>
     </>
-  )
+  );
 }

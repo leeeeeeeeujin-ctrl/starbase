@@ -2,9 +2,9 @@ name: CI - Jest (ai-roomchat)
 
 on:
   push:
-    branches: [ main, 'copilot/**', '**' ]
+    branches: [main, 'copilot/**', '**']
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   jest:

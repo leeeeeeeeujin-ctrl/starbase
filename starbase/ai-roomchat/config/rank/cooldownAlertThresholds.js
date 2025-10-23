@@ -35,6 +35,6 @@ const cooldownAlertThresholds = {
     warning: 0.9,
     critical: 0.7,
   },
-}
+};
 
-export default cooldownAlertThresholds
+export default cooldownAlertThresholds;

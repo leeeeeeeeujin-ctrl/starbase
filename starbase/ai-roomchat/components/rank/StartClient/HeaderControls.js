@@ -13,9 +13,9 @@ export default function HeaderControls({
   isStarting = false,
   showAdvance = true,
 }) {
-  const nextLabel = advanceLabel || (isAdvancing ? '진행 중…' : '다음 턴')
-  const startLabel = isStarting ? '준비 중…' : preflight ? '게임 시작' : '다시 시작'
-  const startButtonDisabled = isStarting || startDisabled
+  const nextLabel = advanceLabel || (isAdvancing ? '진행 중…' : '다음 턴');
+  const startLabel = isStarting ? '준비 중…' : preflight ? '게임 시작' : '다시 시작';
+  const startButtonDisabled = isStarting || startDisabled;
   return (
     <header
       style={{
@@ -75,8 +75,7 @@ export default function HeaderControls({
             style={{
               padding: '10px 16px',
               borderRadius: 999,
-              background:
-                isAdvancing || advanceDisabled ? 'rgba(37, 99, 235, 0.35)' : '#2563eb',
+              background: isAdvancing || advanceDisabled ? 'rgba(37, 99, 235, 0.35)' : '#2563eb',
               color: '#f8fafc',
               fontWeight: 700,
               border: 'none',
@@ -107,7 +106,7 @@ export default function HeaderControls({
         ) : null}
       </div>
     </header>
-  )
+  );
 }
 
 //

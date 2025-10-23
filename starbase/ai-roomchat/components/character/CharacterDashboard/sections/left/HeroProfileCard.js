@@ -1,4 +1,4 @@
-import React from 'react'
+import React from 'react';
 
 const styles = {
   container: {
@@ -56,7 +56,7 @@ const styles = {
   audioLabel: { fontSize: 13, color: '#94a3b8' },
   audioControl: { width: '100%' },
   audioDuration: { fontSize: 12, color: '#bae6fd' },
-}
+};
 
 const buttonTones = {
   primary: { background: '#3b82f6', color: '#e0f2fe', minWidth: 96 },
@@ -75,7 +75,7 @@ const buttonTones = {
     color: '#e2e8f0',
     border: '1px solid rgba(148, 163, 184, 0.35)',
   },
-}
+};
 
 export default function HeroProfileCard({
   hero,
@@ -123,11 +123,11 @@ export default function HeroProfileCard({
         </div>
       ) : null}
     </div>
-  )
+  );
 }
 
 function HeroActionButton({ tone, children, style, ...buttonProps }) {
-  const toneStyle = buttonTones[tone] || buttonTones.neutral
+  const toneStyle = buttonTones[tone] || buttonTones.neutral;
   return (
     <button
       type="button"
@@ -143,5 +143,5 @@ function HeroActionButton({ tone, children, style, ...buttonProps }) {
     >
       {children}
     </button>
-  )
+  );
 }

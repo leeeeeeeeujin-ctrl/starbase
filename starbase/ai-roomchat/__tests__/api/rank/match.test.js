@@ -1,24 +1,24 @@
-import handler from '@/pages/api/rank/match'
+import handler from '@/pages/api/rank/match';
 
 jest.mock('@/lib/supabaseTables', () => ({
   withTable: jest.fn(),
-}))
+}));
 
 jest.mock('@/lib/rank/matchingPipeline', () => ({
   buildCandidateSample: jest.fn(),
   extractMatchingToggles: jest.fn(),
   findRealtimeDropInTarget: jest.fn(),
   loadMatchingResources: jest.fn(),
-}))
+}));
 
 jest.mock('@/lib/rank/matchmakingLogs', () => ({
   recordMatchmakingLog: jest.fn(),
   buildAssignmentSummary: jest.fn(() => ({})),
-}))
+}));
 
 jest.mock('@/lib/rank/matchRoleSummary', () => ({
   computeRoleReadiness: jest.fn(),
-}))
+}));
 
 jest.mock('@/lib/rank/matchmakingService', () => ({
   loadHeroesByIds: jest.fn(),
@@ -27,22 +27,22 @@ jest.mock('@/lib/rank/matchmakingService', () => ({
   flattenAssignmentMembers: jest.fn(),
   postCheckMatchAssignments: jest.fn(),
   sanitizeAssignments: jest.fn(),
-  sanitizeRooms: jest.fn((rooms) => rooms),
-}))
+  sanitizeRooms: jest.fn(rooms => rooms),
+}));
 
 jest.mock('@/lib/rank/db', () => ({
   supabase: {},
-}))
+}));
 
-const { withTable } = require('@/lib/supabaseTables')
+const { withTable } = require('@/lib/supabaseTables');
 const {
   buildCandidateSample,
   extractMatchingToggles,
   findRealtimeDropInTarget,
   loadMatchingResources,
-} = require('@/lib/rank/matchingPipeline')
-const { recordMatchmakingLog } = require('@/lib/rank/matchmakingLogs')
-const { computeRoleReadiness } = require('@/lib/rank/matchRoleSummary')
+} = require('@/lib/rank/matchingPipeline');
+const { recordMatchmakingLog } = require('@/lib/rank/matchmakingLogs');
+const { computeRoleReadiness } = require('@/lib/rank/matchRoleSummary');
 const {
   loadHeroesByIds,
   markAssignmentsMatched,
@@ -51,35 +51,35 @@ const {
   postCheckMatchAssignments,
   sanitizeAssignments: sanitizeAssignmentsMock,
   sanitizeRooms: sanitizeRoomsMock,
-} = require('@/lib/rank/matchmakingService')
+} = require('@/lib/rank/matchmakingService');
 
 function createReq(body = {}) {
-  return { method: 'POST', body }
+  return { method: 'POST', body };
 }
 
 function createRes() {
-  const res = {}
-  res.statusCode = 200
-  res.headers = {}
-  res.status = (code) => {
-    res.statusCode = code
-    return res
-  }
+  const res = {};
+  res.statusCode = 200;
+  res.headers = {};
+  res.status = code => {
+    res.statusCode = code;
+    return res;
+  };
   res.setHeader = (name, value) => {
-    res.headers[name] = value
-  }
-  res.json = (payload) => {
-    res.body = payload
-    return res
-  }
-  return res
+    res.headers[name] = value;
+  };
+  res.json = payload => {
+    res.body = payload;
+    return res;
+  };
+  return res;
 }
 
 describe('POST /api/rank/match', () => {
-  const hostOwnerId = '26002fab-6edc-4956-9c56-3f2d6f4f9b1d'
-  const hostHeroId = '0f98b94a-5e6a-4fd8-8070-cb7802620b80'
-  const standinOwnerId = 'f63ce37c-d3bd-4c00-b9fc-bac4d74b2c89'
-  const standinHeroId = '57e894fc-60ac-42a5-9b07-c18f8b88b3f2'
+  const hostOwnerId = '26002fab-6edc-4956-9c56-3f2d6f4f9b1d';
+  const hostHeroId = '0f98b94a-5e6a-4fd8-8070-cb7802620b80';
+  const standinOwnerId = 'f63ce37c-d3bd-4c00-b9fc-bac4d74b2c89';
+  const standinHeroId = '57e894fc-60ac-42a5-9b07-c18f8b88b3f2';
 
   const duplicateAssignments = [
     {
@@ -111,7 +111,7 @@ describe('POST /api/rank/match', () => {
         },
       ],
     },
-  ]
+  ];
 
   const postCheckAssignments = [
     {
@@ -124,12 +124,12 @@ describe('POST /api/rank/match', () => {
       ],
       roleSlots: duplicateAssignments[0].roleSlots,
     },
-  ]
+  ];
 
   const sanitizedMembers = [
     { owner_id: hostOwnerId, hero_id: hostHeroId },
     { owner_id: standinOwnerId, hero_id: standinHeroId, standin: true },
-  ]
+  ];
 
   const sanitizedRoleSlots = [
     {
@@ -146,7 +146,7 @@ describe('POST /api/rank/match', () => {
       members: [{ owner_id: standinOwnerId, hero_id: standinHeroId, standin: true }],
       member: { owner_id: standinOwnerId, hero_id: standinHeroId, standin: true },
     },
-  ]
+  ];
 
   const sanitizedRemoved = [
     {
@@ -163,7 +163,7 @@ describe('POST /api/rank/match', () => {
       slotIndex: 1,
       reason: 'duplicate_owner',
     },
-  ]
+  ];
 
   const sanitizedFirst = [
     {
@@ -172,7 +172,7 @@ describe('POST /api/rank/match', () => {
       roleSlots: sanitizedRoleSlots,
       removedMembers: sanitizedRemoved,
     },
-  ]
+  ];
 
   const sanitizedSecond = [
     {
@@ -181,20 +181,20 @@ describe('POST /api/rank/match', () => {
       roleSlots: sanitizedRoleSlots,
       removedMembers: sanitizedRemoved,
     },
-  ]
+  ];
 
   beforeEach(() => {
-    jest.resetAllMocks()
+    jest.resetAllMocks();
 
     withTable.mockResolvedValue({
       data: { id: 'game-1', realtime_match: false, rules: '{}' },
       error: null,
-    })
+    });
 
     extractMatchingToggles.mockReturnValue({
       realtimeEnabled: false,
       dropInEnabled: false,
-    })
+    });
 
     loadMatchingResources.mockResolvedValue({
       roles: [{ name: '공격' }, { name: '수비' }],
@@ -205,10 +205,10 @@ describe('POST /api/rank/match', () => {
       queue: [],
       participantPool: [],
       roleStatusMap: new Map(),
-    })
+    });
 
-    buildCandidateSample.mockReturnValue({ sample: [], meta: {}, standins: [] })
-    findRealtimeDropInTarget.mockResolvedValue(null)
+    buildCandidateSample.mockReturnValue({ sample: [], meta: {}, standins: [] });
+    findRealtimeDropInTarget.mockResolvedValue(null);
 
     runMatching.mockResolvedValue({
       ready: true,
@@ -216,7 +216,7 @@ describe('POST /api/rank/match', () => {
       rooms: [],
       totalSlots: 2,
       maxWindow: 0,
-    })
+    });
 
     postCheckMatchAssignments.mockResolvedValue({
       assignments: postCheckAssignments,
@@ -230,36 +230,36 @@ describe('POST /api/rank/match', () => {
           reason: 'post_check',
         },
       ],
-    })
+    });
 
-    computeRoleReadiness.mockReturnValue({ ready: true, buckets: [] })
+    computeRoleReadiness.mockReturnValue({ ready: true, buckets: [] });
     sanitizeAssignmentsMock
       .mockImplementationOnce(() => sanitizedFirst)
-      .mockImplementation(() => sanitizedSecond)
-    sanitizeRoomsMock.mockImplementation((rooms) => rooms)
+      .mockImplementation(() => sanitizedSecond);
+    sanitizeRoomsMock.mockImplementation(rooms => rooms);
 
-    flattenAssignmentMembers.mockReturnValue(sanitizedMembers)
+    flattenAssignmentMembers.mockReturnValue(sanitizedMembers);
 
     loadHeroesByIds.mockResolvedValue(
       new Map([
         [hostHeroId, { id: hostHeroId }],
         [standinHeroId, { id: standinHeroId }],
-      ]),
-    )
+      ])
+    );
 
-    markAssignmentsMatched.mockResolvedValue(undefined)
-    recordMatchmakingLog.mockResolvedValue(undefined)
-  })
+    markAssignmentsMatched.mockResolvedValue(undefined);
+    recordMatchmakingLog.mockResolvedValue(undefined);
+  });
 
   test('returns sanitized assignments and aggregates removed members', async () => {
-    const req = createReq({ gameId: 'game-1' })
-    const res = createRes()
+    const req = createReq({ gameId: 'game-1' });
+    const res = createRes();
 
-    await handler(req, res)
+    await handler(req, res);
 
-    expect(res.statusCode).toBe(200)
-    expect(res.body.ready).toBe(true)
-    expect(res.body.assignments).toBe(sanitizedSecond)
+    expect(res.statusCode).toBe(200);
+    expect(res.body.ready).toBe(true);
+    expect(res.body.assignments).toBe(sanitizedSecond);
     expect(res.body.removedMembers).toEqual([
       ...sanitizedRemoved,
       {
@@ -269,21 +269,21 @@ describe('POST /api/rank/match', () => {
         slotIndex: 2,
         reason: 'post_check',
       },
-    ])
+    ]);
 
     expect(markAssignmentsMatched).toHaveBeenCalledWith(expect.any(Object), {
       assignments: sanitizedSecond,
       gameId: 'game-1',
       mode: undefined,
       matchCode: expect.any(String),
-    })
+    });
 
-    expect(flattenAssignmentMembers).toHaveBeenCalledWith(sanitizedSecond)
+    expect(flattenAssignmentMembers).toHaveBeenCalledWith(sanitizedSecond);
 
-    expect(sanitizeAssignmentsMock).toHaveBeenCalledTimes(2)
-    expect(sanitizeRoomsMock).toHaveBeenCalledTimes(2)
-    sanitizeAssignmentsMock.mock.calls.forEach((call) => {
-      expect(Array.isArray(call[0])).toBe(true)
-    })
-  })
-})
+    expect(sanitizeAssignmentsMock).toHaveBeenCalledTimes(2);
+    expect(sanitizeRoomsMock).toHaveBeenCalledTimes(2);
+    sanitizeAssignmentsMock.mock.calls.forEach(call => {
+      expect(Array.isArray(call[0])).toBe(true);
+    });
+  });
+});

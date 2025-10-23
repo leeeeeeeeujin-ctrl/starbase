@@ -1,6 +1,6 @@
 /**
  * 캐릭터 변수 시스템 단위 테스트
- * 
+ *
  * 캐릭터 데이터 → 게임 변수 연동 및 템플릿 컴파일 검증
  */
 
@@ -16,34 +16,40 @@ const testCharacter = {
   image_url: '/images/hero.jpg',
   background_url: '/images/castle.jpg',
   bgm_url: '/audio/heroic.mp3',
-}
+};
 
 // 템플릿 컴파일 함수 (UnifiedGameSystem에서 복사)
 function compileTemplate(template, variables = {}) {
-  let compiled = template
-  
+  let compiled = template;
+
   // 변수 치환
   Object.entries(variables).forEach(([key, value]) => {
-    const regex = new RegExp(key.replace(/[{}]/g, '\\$&'), 'g')
-    compiled = compiled.replace(regex, String(value))
-  })
+    const regex = new RegExp(key.replace(/[{}]/g, '\\$&'), 'g');
+    compiled = compiled.replace(regex, String(value));
+  });
 
   // 조건부 블록 처리 {{#if 조건}} ... {{/if}}
-  compiled = compiled.replace(/\{\{#if\s+(.+?)\}\}(.*?)\{\{\/if\}\}/gs, (match, condition, content) => {
-    const conditionValue = variables[`{{${condition}}}`]
-    return conditionValue ? content : ''
-  })
+  compiled = compiled.replace(
+    /\{\{#if\s+(.+?)\}\}(.*?)\{\{\/if\}\}/gs,
+    (match, condition, content) => {
+      const conditionValue = variables[`{{${condition}}}`];
+      return conditionValue ? content : '';
+    }
+  );
 
   // 반복 블록 처리 {{#each 배열}} ... {{/each}}
-  compiled = compiled.replace(/\{\{#each\s+(.+?)\}\}(.*?)\{\{\/each\}\}/gs, (match, arrayName, content) => {
-    const arrayValue = variables[`{{${arrayName}}}`]
-    if (Array.isArray(arrayValue)) {
-      return arrayValue.map(item => content.replace(/\{\{this\}\}/g, item)).join('\n')
+  compiled = compiled.replace(
+    /\{\{#each\s+(.+?)\}\}(.*?)\{\{\/each\}\}/gs,
+    (match, arrayName, content) => {
+      const arrayValue = variables[`{{${arrayName}}}`];
+      if (Array.isArray(arrayValue)) {
+        return arrayValue.map(item => content.replace(/\{\{this\}\}/g, item)).join('\n');
+      }
+      return '';
     }
-    return ''
-  })
+  );
 
-  return compiled
+  return compiled;
 }
 
 // 캐릭터 변수 생성 함수
@@ -61,7 +67,7 @@ function generateCharacterVariables(character) {
     '{{캐릭터.HP}}': 100,
     '{{캐릭터.MP}}': 50,
     '{{캐릭터.레벨}}': 1,
-  }
+  };
 }
 
 // 테스트 케이스들
@@ -78,7 +84,8 @@ const testCases = [
   },
   {
     name: '조건부 블록 테스트 (능력1 존재)',
-    template: '{{#if 캐릭터.능력1}}{{캐릭터.이름}}은(는) {{캐릭터.능력1}} 능력을 가지고 있습니다.{{/if}}',
+    template:
+      '{{#if 캐릭터.능력1}}{{캐릭터.이름}}은(는) {{캐릭터.능력1}} 능력을 가지고 있습니다.{{/if}}',
     expected: '전설의 기사은(는) 검술의 달인 능력을 가지고 있습니다.',
   },
   {
@@ -101,50 +108,50 @@ const testCases = [
 💚 생명력: 100 | 💙 마나: 50
 `,
   },
-]
+];
 
 // 테스트 실행
 function runCharacterVariableTests() {
-  console.log('🧪 캐릭터 변수 시스템 테스트 시작\n')
-  
-  const variables = generateCharacterVariables(testCharacter)
-  let passedTests = 0
-  let totalTests = testCases.length
-  
-  console.log('📊 생성된 변수들:')
+  console.log('🧪 캐릭터 변수 시스템 테스트 시작\n');
+
+  const variables = generateCharacterVariables(testCharacter);
+  let passedTests = 0;
+  let totalTests = testCases.length;
+
+  console.log('📊 생성된 변수들:');
   Object.entries(variables).forEach(([key, value]) => {
-    console.log(`  ${key}: "${value}"`)
-  })
-  console.log('\n')
-  
+    console.log(`  ${key}: "${value}"`);
+  });
+  console.log('\n');
+
   testCases.forEach((testCase, index) => {
-    console.log(`🔍 테스트 ${index + 1}: ${testCase.name}`)
-    console.log(`   입력: "${testCase.template.trim()}"`)
-    
-    const result = compileTemplate(testCase.template, variables)
-    const passed = result.trim() === testCase.expected.trim()
-    
-    console.log(`   출력: "${result.trim()}"`)
-    console.log(`   예상: "${testCase.expected.trim()}"`)
-    console.log(`   결과: ${passed ? '✅ 통과' : '❌ 실패'}\n`)
-    
-    if (passed) passedTests++
-  })
-  
+    console.log(`🔍 테스트 ${index + 1}: ${testCase.name}`);
+    console.log(`   입력: "${testCase.template.trim()}"`);
+
+    const result = compileTemplate(testCase.template, variables);
+    const passed = result.trim() === testCase.expected.trim();
+
+    console.log(`   출력: "${result.trim()}"`);
+    console.log(`   예상: "${testCase.expected.trim()}"`);
+    console.log(`   결과: ${passed ? '✅ 통과' : '❌ 실패'}\n`);
+
+    if (passed) passedTests++;
+  });
+
   // 결과 요약
-  console.log('📈 테스트 결과 요약:')
-  console.log(`   총 테스트: ${totalTests}`)
-  console.log(`   통과: ${passedTests}`)
-  console.log(`   실패: ${totalTests - passedTests}`)
-  console.log(`   성공률: ${Math.round(passedTests / totalTests * 100)}%`)
-  
-  return passedTests === totalTests
+  console.log('📈 테스트 결과 요약:');
+  console.log(`   총 테스트: ${totalTests}`);
+  console.log(`   통과: ${passedTests}`);
+  console.log(`   실패: ${totalTests - passedTests}`);
+  console.log(`   성공률: ${Math.round((passedTests / totalTests) * 100)}%`);
+
+  return passedTests === totalTests;
 }
 
 // 에지 케이스 테스트
 function runEdgeCaseTests() {
-  console.log('\n🔬 에지 케이스 테스트\n')
-  
+  console.log('\n🔬 에지 케이스 테스트\n');
+
   const edgeTestCases = [
     {
       name: '빈 캐릭터 데이터',
@@ -164,32 +171,32 @@ function runEdgeCaseTests() {
       template: '{{캐릭터.이름}}의 "특별한" 모험! [레벨: {{캐릭터.레벨}}]',
       expected: '전설의 기사의 "특별한" 모험! [레벨: 1]',
     },
-  ]
-  
-  let passed = 0
-  
+  ];
+
+  let passed = 0;
+
   edgeTestCases.forEach((testCase, index) => {
-    console.log(`🧩 에지 케이스 ${index + 1}: ${testCase.name}`)
-    
-    const variables = generateCharacterVariables(testCase.character)
-    const result = compileTemplate(testCase.template, variables)
-    const success = result === testCase.expected
-    
-    console.log(`   결과: ${success ? '✅ 통과' : '❌ 실패'}`)
-    console.log(`   출력: "${result}"`)
-    console.log(`   예상: "${testCase.expected}"\n`)
-    
-    if (success) passed++
-  })
-  
-  return passed === edgeTestCases.length
+    console.log(`🧩 에지 케이스 ${index + 1}: ${testCase.name}`);
+
+    const variables = generateCharacterVariables(testCase.character);
+    const result = compileTemplate(testCase.template, variables);
+    const success = result === testCase.expected;
+
+    console.log(`   결과: ${success ? '✅ 통과' : '❌ 실패'}`);
+    console.log(`   출력: "${result}"`);
+    console.log(`   예상: "${testCase.expected}"\n`);
+
+    if (success) passed++;
+  });
+
+  return passed === edgeTestCases.length;
 }
 
 // 성능 테스트
 function runPerformanceTest() {
-  console.log('⚡ 성능 테스트\n')
-  
-  const variables = generateCharacterVariables(testCharacter)
+  console.log('⚡ 성능 테스트\n');
+
+  const variables = generateCharacterVariables(testCharacter);
   const complexTemplate = `
 {{캐릭터.이름}}의 모험
 설명: {{캐릭터.설명}}
@@ -200,51 +207,51 @@ function runPerformanceTest() {
 {{#if 캐릭터.능력1}}주요 능력: {{캐릭터.능력1}}{{/if}}
 {{#if 캐릭터.능력2}}보조 능력: {{캐릭터.능력2}}{{/if}}
 상태: HP {{캐릭터.HP}}/100, MP {{캐릭터.MP}}/100
-`
-  
-  const iterations = 1000
-  const startTime = performance.now()
-  
+`;
+
+  const iterations = 1000;
+  const startTime = performance.now();
+
   for (let i = 0; i < iterations; i++) {
-    compileTemplate(complexTemplate, variables)
+    compileTemplate(complexTemplate, variables);
   }
-  
-  const endTime = performance.now()
-  const totalTime = endTime - startTime
-  const avgTime = totalTime / iterations
-  
-  console.log(`📊 성능 측정 결과:`)
-  console.log(`   반복 횟수: ${iterations}`)
-  console.log(`   총 시간: ${totalTime.toFixed(2)}ms`)
-  console.log(`   평균 시간: ${avgTime.toFixed(4)}ms`)
-  console.log(`   초당 처리: ${Math.round(1000 / avgTime)}회`)
-  
-  return avgTime < 1 // 1ms 이내면 성능 양호
+
+  const endTime = performance.now();
+  const totalTime = endTime - startTime;
+  const avgTime = totalTime / iterations;
+
+  console.log(`📊 성능 측정 결과:`);
+  console.log(`   반복 횟수: ${iterations}`);
+  console.log(`   총 시간: ${totalTime.toFixed(2)}ms`);
+  console.log(`   평균 시간: ${avgTime.toFixed(4)}ms`);
+  console.log(`   초당 처리: ${Math.round(1000 / avgTime)}회`);
+
+  return avgTime < 1; // 1ms 이내면 성능 양호
 }
 
 // 메인 테스트 실행
 function runAllTests() {
-  console.log('🚀 캐릭터 변수 시스템 전체 테스트 시작\n')
-  console.log('='.repeat(60))
-  
-  const basicTestResult = runCharacterVariableTests()
-  console.log('='.repeat(60))
-  
-  const edgeTestResult = runEdgeCaseTests()
-  console.log('='.repeat(60))
-  
-  const perfTestResult = runPerformanceTest()
-  console.log('='.repeat(60))
-  
-  console.log('\n🏁 전체 테스트 결과:')
-  console.log(`   기본 테스트: ${basicTestResult ? '✅' : '❌'}`)
-  console.log(`   에지 케이스: ${edgeTestResult ? '✅' : '❌'}`)
-  console.log(`   성능 테스트: ${perfTestResult ? '✅' : '❌'}`)
-  
-  const allPassed = basicTestResult && edgeTestResult && perfTestResult
-  console.log(`\n${allPassed ? '🎉 모든 테스트 통과!' : '⚠️  일부 테스트 실패'}`)
-  
-  return allPassed
+  console.log('🚀 캐릭터 변수 시스템 전체 테스트 시작\n');
+  console.log('='.repeat(60));
+
+  const basicTestResult = runCharacterVariableTests();
+  console.log('='.repeat(60));
+
+  const edgeTestResult = runEdgeCaseTests();
+  console.log('='.repeat(60));
+
+  const perfTestResult = runPerformanceTest();
+  console.log('='.repeat(60));
+
+  console.log('\n🏁 전체 테스트 결과:');
+  console.log(`   기본 테스트: ${basicTestResult ? '✅' : '❌'}`);
+  console.log(`   에지 케이스: ${edgeTestResult ? '✅' : '❌'}`);
+  console.log(`   성능 테스트: ${perfTestResult ? '✅' : '❌'}`);
+
+  const allPassed = basicTestResult && edgeTestResult && perfTestResult;
+  console.log(`\n${allPassed ? '🎉 모든 테스트 통과!' : '⚠️  일부 테스트 실패'}`);
+
+  return allPassed;
 }
 
 // Node.js 환경에서 실행
@@ -256,7 +263,7 @@ if (typeof module !== 'undefined' && module.exports) {
     runPerformanceTest,
     compileTemplate,
     generateCharacterVariables,
-  }
+  };
 }
 
 // 브라우저 환경에서 실행
@@ -266,10 +273,10 @@ if (typeof window !== 'undefined') {
     runCharacterVariableTests,
     runEdgeCaseTests,
     runPerformanceTest,
-  }
+  };
 }
 
 // 직접 실행시 테스트 시작
 if (require.main === module) {
-  runAllTests()
+  runAllTests();
 }

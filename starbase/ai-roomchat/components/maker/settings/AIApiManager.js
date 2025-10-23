@@ -1,10 +1,10 @@
 // components/maker/settings/AIApiManager.js
 // 🤖 AI API 관리 시스템 - 사용자 API 키 설정 및 관리
 
-'use client'
+'use client';
 
-import { useState, useEffect, useCallback } from 'react'
-import { encrypt, decrypt } from '../../../lib/encryption'
+import { useState, useEffect, useCallback } from 'react';
+import { encrypt, decrypt } from '../../../lib/encryption';
 
 // 🌐 지원하는 AI 제공업체들
 const AI_PROVIDERS = {
@@ -13,126 +13,132 @@ const AI_PROVIDERS = {
     icon: '🧠',
     endpoints: {
       'gpt-4': 'https://api.openai.com/v1/chat/completions',
-      'gpt-3.5-turbo': 'https://api.openai.com/v1/chat/completions'
+      'gpt-3.5-turbo': 'https://api.openai.com/v1/chat/completions',
     },
     keyFormat: 'sk-...',
     testPrompt: 'Hello, this is a test message. Please respond with "API connection successful!"',
     requiredHeaders: {
-      'Authorization': 'Bearer {API_KEY}',
-      'Content-Type': 'application/json'
-    }
+      Authorization: 'Bearer {API_KEY}',
+      'Content-Type': 'application/json',
+    },
   },
   anthropic: {
     name: 'Anthropic Claude',
     icon: '🎭',
     endpoints: {
       'claude-3-opus': 'https://api.anthropic.com/v1/messages',
-      'claude-3-sonnet': 'https://api.anthropic.com/v1/messages'
+      'claude-3-sonnet': 'https://api.anthropic.com/v1/messages',
     },
     keyFormat: 'sk-ant-...',
     testPrompt: 'Hello, this is a test message. Please respond with "API connection successful!"',
     requiredHeaders: {
       'x-api-key': '{API_KEY}',
       'Content-Type': 'application/json',
-      'anthropic-version': '2023-06-01'
-    }
+      'anthropic-version': '2023-06-01',
+    },
   },
   google: {
     name: 'Google Gemini',
     icon: '💎',
     endpoints: {
-      'gemini-pro': 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent'
+      'gemini-pro':
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent',
     },
     keyFormat: 'AIza...',
     testPrompt: 'Hello, this is a test message. Please respond with "API connection successful!"',
     requiredHeaders: {
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
     },
-    urlPattern: '{ENDPOINT}?key={API_KEY}'
+    urlPattern: '{ENDPOINT}?key={API_KEY}',
   },
   cohere: {
     name: 'Cohere',
     icon: '🔗',
     endpoints: {
-      'command': 'https://api.cohere.ai/v1/generate',
-      'command-light': 'https://api.cohere.ai/v1/generate'
+      command: 'https://api.cohere.ai/v1/generate',
+      'command-light': 'https://api.cohere.ai/v1/generate',
     },
     keyFormat: 'co-...',
     testPrompt: 'Hello, this is a test message. Please respond with "API connection successful!"',
     requiredHeaders: {
-      'Authorization': 'Bearer {API_KEY}',
-      'Content-Type': 'application/json'
-    }
+      Authorization: 'Bearer {API_KEY}',
+      'Content-Type': 'application/json',
+    },
   },
   local: {
     name: '로컬 서버',
     icon: '🏠',
     endpoints: {
-      'local-api': 'http://localhost:11434/api/generate' // Ollama 기본 포트
+      'local-api': 'http://localhost:11434/api/generate', // Ollama 기본 포트
     },
     keyFormat: 'none',
     testPrompt: 'Hello, this is a test message. Please respond with "API connection successful!"',
     requiredHeaders: {
-      'Content-Type': 'application/json'
-    }
-  }
-}
+      'Content-Type': 'application/json',
+    },
+  },
+};
 
 export default function AIApiManager({ visible, onClose }) {
-  const [apiConfigs, setApiConfigs] = useState({})
-  const [activeProvider, setActiveProvider] = useState('openai')
-  const [newApiKey, setNewApiKey] = useState('')
-  const [selectedModel, setSelectedModel] = useState('')
-  const [isTestingConnection, setIsTestingConnection] = useState(false)
-  const [testResults, setTestResults] = useState({})
-  const [showAddForm, setShowAddForm] = useState(false)
+  const [apiConfigs, setApiConfigs] = useState({});
+  const [activeProvider, setActiveProvider] = useState('openai');
+  const [newApiKey, setNewApiKey] = useState('');
+  const [selectedModel, setSelectedModel] = useState('');
+  const [isTestingConnection, setIsTestingConnection] = useState(false);
+  const [testResults, setTestResults] = useState({});
+  const [showAddForm, setShowAddForm] = useState(false);
 
   // 🔐 암호화된 API 설정 로드
   useEffect(() => {
-    loadApiConfigs()
-  }, [])
+    loadApiConfigs();
+  }, []);
 
   const loadApiConfigs = useCallback(() => {
     try {
-      const encryptedConfigs = localStorage.getItem('ai_api_configs')
+      const encryptedConfigs = localStorage.getItem('ai_api_configs');
       if (encryptedConfigs) {
-        const decryptedConfigs = decrypt(encryptedConfigs)
-        setApiConfigs(JSON.parse(decryptedConfigs))
+        const decryptedConfigs = decrypt(encryptedConfigs);
+        setApiConfigs(JSON.parse(decryptedConfigs));
       }
     } catch (error) {
-      console.error('API 설정 로드 실패:', error)
+      console.error('API 설정 로드 실패:', error);
     }
-  }, [])
+  }, []);
 
   // 🔐 암호화된 API 설정 저장
-  const saveApiConfigs = useCallback((configs) => {
+  const saveApiConfigs = useCallback(configs => {
     try {
-      const encryptedConfigs = encrypt(JSON.stringify(configs))
-      localStorage.setItem('ai_api_configs', encryptedConfigs)
-      setApiConfigs(configs)
+      const encryptedConfigs = encrypt(JSON.stringify(configs));
+      localStorage.setItem('ai_api_configs', encryptedConfigs);
+      setApiConfigs(configs);
     } catch (error) {
-      console.error('API 설정 저장 실패:', error)
+      console.error('API 설정 저장 실패:', error);
     }
-  }, [])
+  }, []);
 
   // ➕ 새 API 키 추가
   const handleAddApiKey = useCallback(async () => {
-    if (!newApiKey.trim() || !selectedModel) return
+    if (!newApiKey.trim() || !selectedModel) return;
 
-    const provider = AI_PROVIDERS[activeProvider]
-    
+    const provider = AI_PROVIDERS[activeProvider];
+
     // API 키 형식 검증
-    if (provider.keyFormat !== 'none' && !newApiKey.startsWith(provider.keyFormat.split('...')[0])) {
-      alert(`${provider.name}의 API 키 형식이 올바르지 않습니다.\n예상 형식: ${provider.keyFormat}`)
-      return
+    if (
+      provider.keyFormat !== 'none' &&
+      !newApiKey.startsWith(provider.keyFormat.split('...')[0])
+    ) {
+      alert(
+        `${provider.name}의 API 키 형식이 올바르지 않습니다.\n예상 형식: ${provider.keyFormat}`
+      );
+      return;
     }
 
-    setIsTestingConnection(true)
+    setIsTestingConnection(true);
 
     try {
       // 🧪 API 연결 테스트
-      const testResult = await testApiConnection(activeProvider, selectedModel, newApiKey)
-      
+      const testResult = await testApiConnection(activeProvider, selectedModel, newApiKey);
+
       if (testResult.success) {
         const newConfigs = {
           ...apiConfigs,
@@ -144,126 +150,137 @@ export default function AIApiManager({ visible, onClose }) {
               enabled: true,
               addedAt: new Date().toISOString(),
               lastTested: new Date().toISOString(),
-              testResult: testResult
-            }
-          }
-        }
-        
-        saveApiConfigs(newConfigs)
-        setTestResults(prev => ({ ...prev, [`${activeProvider}-${selectedModel}`]: testResult }))
-        setNewApiKey('')
-        setShowAddForm(false)
-        alert('✅ API 키가 성공적으로 추가되었습니다!')
+              testResult: testResult,
+            },
+          },
+        };
+
+        saveApiConfigs(newConfigs);
+        setTestResults(prev => ({ ...prev, [`${activeProvider}-${selectedModel}`]: testResult }));
+        setNewApiKey('');
+        setShowAddForm(false);
+        alert('✅ API 키가 성공적으로 추가되었습니다!');
       } else {
-        alert(`❌ API 연결 테스트 실패:\n${testResult.error}`)
+        alert(`❌ API 연결 테스트 실패:\n${testResult.error}`);
       }
     } catch (error) {
-      alert(`❌ API 테스트 중 오류:\n${error.message}`)
+      alert(`❌ API 테스트 중 오류:\n${error.message}`);
     } finally {
-      setIsTestingConnection(false)
+      setIsTestingConnection(false);
     }
-  }, [newApiKey, selectedModel, activeProvider, apiConfigs, saveApiConfigs])
+  }, [newApiKey, selectedModel, activeProvider, apiConfigs, saveApiConfigs]);
 
   // 🧪 API 연결 테스트
   const testApiConnection = async (provider, model, apiKey) => {
-    const providerConfig = AI_PROVIDERS[provider]
-    const endpoint = providerConfig.endpoints[model]
-    
+    const providerConfig = AI_PROVIDERS[provider];
+    const endpoint = providerConfig.endpoints[model];
+
     try {
       let requestConfig = {
         method: 'POST',
-        headers: { ...providerConfig.requiredHeaders }
-      }
+        headers: { ...providerConfig.requiredHeaders },
+      };
 
       // 헤더에 API 키 삽입
       Object.keys(requestConfig.headers).forEach(header => {
         if (requestConfig.headers[header].includes('{API_KEY}')) {
-          requestConfig.headers[header] = requestConfig.headers[header].replace('{API_KEY}', apiKey)
+          requestConfig.headers[header] = requestConfig.headers[header].replace(
+            '{API_KEY}',
+            apiKey
+          );
         }
-      })
+      });
 
       // 요청 본문 구성 (제공업체별 다름)
-      let body = {}
-      let url = endpoint
+      let body = {};
+      let url = endpoint;
 
       if (provider === 'openai' || provider === 'anthropic') {
         body = {
           model: model,
           messages: [{ role: 'user', content: providerConfig.testPrompt }],
-          max_tokens: 50
-        }
+          max_tokens: 50,
+        };
       } else if (provider === 'google') {
-        url = providerConfig.urlPattern.replace('{ENDPOINT}', endpoint).replace('{API_KEY}', apiKey)
+        url = providerConfig.urlPattern
+          .replace('{ENDPOINT}', endpoint)
+          .replace('{API_KEY}', apiKey);
         body = {
-          contents: [{ parts: [{ text: providerConfig.testPrompt }] }]
-        }
+          contents: [{ parts: [{ text: providerConfig.testPrompt }] }],
+        };
       } else if (provider === 'cohere') {
         body = {
           prompt: providerConfig.testPrompt,
-          max_tokens: 50
-        }
+          max_tokens: 50,
+        };
       } else if (provider === 'local') {
         body = {
           model: model,
           prompt: providerConfig.testPrompt,
-          stream: false
-        }
+          stream: false,
+        };
       }
 
-      requestConfig.body = JSON.stringify(body)
+      requestConfig.body = JSON.stringify(body);
 
-      const response = await fetch(url, requestConfig)
-      
+      const response = await fetch(url, requestConfig);
+
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      const data = await response.json()
-      
+      const data = await response.json();
+
       return {
         success: true,
         response: data,
-        testedAt: new Date().toISOString()
-      }
+        testedAt: new Date().toISOString(),
+      };
     } catch (error) {
       return {
         success: false,
         error: error.message,
-        testedAt: new Date().toISOString()
-      }
+        testedAt: new Date().toISOString(),
+      };
     }
-  }
+  };
 
   // 🔄 API 활성화/비활성화 토글
-  const toggleApiEnabled = useCallback((provider, model) => {
-    const newConfigs = {
-      ...apiConfigs,
-      [provider]: {
-        ...apiConfigs[provider],
-        [model]: {
-          ...apiConfigs[provider][model],
-          enabled: !apiConfigs[provider][model].enabled
-        }
-      }
-    }
-    saveApiConfigs(newConfigs)
-  }, [apiConfigs, saveApiConfigs])
+  const toggleApiEnabled = useCallback(
+    (provider, model) => {
+      const newConfigs = {
+        ...apiConfigs,
+        [provider]: {
+          ...apiConfigs[provider],
+          [model]: {
+            ...apiConfigs[provider][model],
+            enabled: !apiConfigs[provider][model].enabled,
+          },
+        },
+      };
+      saveApiConfigs(newConfigs);
+    },
+    [apiConfigs, saveApiConfigs]
+  );
 
   // 🗑️ API 키 삭제
-  const deleteApiKey = useCallback((provider, model) => {
-    if (confirm(`${AI_PROVIDERS[provider].name}의 ${model} API 키를 삭제하시겠습니까?`)) {
-      const newConfigs = { ...apiConfigs }
-      if (newConfigs[provider]) {
-        delete newConfigs[provider][model]
-        if (Object.keys(newConfigs[provider]).length === 0) {
-          delete newConfigs[provider]
+  const deleteApiKey = useCallback(
+    (provider, model) => {
+      if (confirm(`${AI_PROVIDERS[provider].name}의 ${model} API 키를 삭제하시겠습니까?`)) {
+        const newConfigs = { ...apiConfigs };
+        if (newConfigs[provider]) {
+          delete newConfigs[provider][model];
+          if (Object.keys(newConfigs[provider]).length === 0) {
+            delete newConfigs[provider];
+          }
         }
+        saveApiConfigs(newConfigs);
       }
-      saveApiConfigs(newConfigs)
-    }
-  }, [apiConfigs, saveApiConfigs])
+    },
+    [apiConfigs, saveApiConfigs]
+  );
 
-  if (!visible) return null
+  if (!visible) return null;
 
   return (
     <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center">
@@ -291,9 +308,9 @@ export default function AIApiManager({ visible, onClose }) {
                 <button
                   key={key}
                   onClick={() => {
-                    setActiveProvider(key)
-                    setSelectedModel(Object.keys(provider.endpoints)[0])
-                    setShowAddForm(false)
+                    setActiveProvider(key);
+                    setSelectedModel(Object.keys(provider.endpoints)[0]);
+                    setShowAddForm(false);
                   }}
                   className={`w-full text-left p-3 rounded-lg transition-colors ${
                     activeProvider === key
@@ -333,7 +350,7 @@ export default function AIApiManager({ visible, onClose }) {
             {showAddForm && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
                 <h4 className="font-medium mb-3">새 API 키 추가</h4>
-                
+
                 <div className="space-y-3">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -341,11 +358,13 @@ export default function AIApiManager({ visible, onClose }) {
                     </label>
                     <select
                       value={selectedModel}
-                      onChange={(e) => setSelectedModel(e.target.value)}
+                      onChange={e => setSelectedModel(e.target.value)}
                       className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       {Object.keys(AI_PROVIDERS[activeProvider].endpoints).map(model => (
-                        <option key={model} value={model}>{model}</option>
+                        <option key={model} value={model}>
+                          {model}
+                        </option>
                       ))}
                     </select>
                   </div>
@@ -357,7 +376,7 @@ export default function AIApiManager({ visible, onClose }) {
                     <input
                       type="password"
                       value={newApiKey}
-                      onChange={(e) => setNewApiKey(e.target.value)}
+                      onChange={e => setNewApiKey(e.target.value)}
                       placeholder={`${AI_PROVIDERS[activeProvider].keyFormat} 형식의 API 키를 입력하세요`}
                       className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
@@ -388,7 +407,7 @@ export default function AIApiManager({ visible, onClose }) {
 
             {/* 등록된 API 키 목록 */}
             <div className="space-y-4">
-              {apiConfigs[activeProvider] ? 
+              {apiConfigs[activeProvider] ? (
                 Object.entries(apiConfigs[activeProvider]).map(([model, config]) => (
                   <div key={model} className="bg-white border border-gray-200 rounded-lg p-4">
                     <div className="flex items-center justify-between mb-3">
@@ -420,11 +439,13 @@ export default function AIApiManager({ visible, onClose }) {
 
                     {/* 테스트 결과 */}
                     {config.testResult && (
-                      <div className={`p-3 rounded-lg text-sm ${
-                        config.testResult.success
-                          ? 'bg-green-50 text-green-800 border border-green-200'
-                          : 'bg-red-50 text-red-800 border border-red-200'
-                      }`}>
+                      <div
+                        className={`p-3 rounded-lg text-sm ${
+                          config.testResult.success
+                            ? 'bg-green-50 text-green-800 border border-green-200'
+                            : 'bg-red-50 text-red-800 border border-red-200'
+                        }`}
+                      >
                         <div className="font-medium">
                           {config.testResult.success ? '✅ 연결 성공' : '❌ 연결 실패'}
                         </div>
@@ -439,22 +460,22 @@ export default function AIApiManager({ visible, onClose }) {
 
                     {/* API 키 미리보기 (마스킹) */}
                     <div className="text-xs text-gray-500 mt-2">
-                      API 키: {config.apiKey.substring(0, 8)}...{config.apiKey.substring(config.apiKey.length - 4)}
+                      API 키: {config.apiKey.substring(0, 8)}...
+                      {config.apiKey.substring(config.apiKey.length - 4)}
                     </div>
                   </div>
-                )) 
-                : (
-                  <div className="text-center py-8 text-gray-500">
-                    <div className="text-4xl mb-2">🔑</div>
-                    <p>등록된 API 키가 없습니다</p>
-                    <p className="text-sm">위의 "API 키 추가" 버튼을 클릭하여 시작하세요</p>
-                  </div>
-                )
-              }
+                ))
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <div className="text-4xl mb-2">🔑</div>
+                  <p>등록된 API 키가 없습니다</p>
+                  <p className="text-sm">위의 "API 키 추가" 버튼을 클릭하여 시작하세요</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
     </div>
-  )
+  );
 }

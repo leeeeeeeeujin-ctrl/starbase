@@ -1,7 +1,7 @@
-import React from 'react'
+import React from 'react';
 
 export default function LobbyLayout({ header, tabs, children, backgroundUrl }) {
-  const pageStyle = backgroundUrl ? styles.pageWithBackground(backgroundUrl) : styles.page
+  const pageStyle = backgroundUrl ? styles.pageWithBackground(backgroundUrl) : styles.page;
 
   return (
     <div style={pageStyle}>
@@ -11,7 +11,7 @@ export default function LobbyLayout({ header, tabs, children, backgroundUrl }) {
         {children}
       </div>
     </div>
-  )
+  );
 }
 
 const basePage = {
@@ -19,12 +19,13 @@ const basePage = {
   display: 'flex',
   flexDirection: 'column',
   backgroundColor: '#0f172a',
-  backgroundImage: 'linear-gradient(180deg, rgba(15,23,42,0.94) 0%, rgba(15,23,42,0.86) 40%, rgba(15,23,42,0.76) 100%)',
-}
+  backgroundImage:
+    'linear-gradient(180deg, rgba(15,23,42,0.94) 0%, rgba(15,23,42,0.86) 40%, rgba(15,23,42,0.76) 100%)',
+};
 
 const styles = {
   page: basePage,
-  pageWithBackground: (imageUrl) => ({
+  pageWithBackground: imageUrl => ({
     ...basePage,
     backgroundImage: `linear-gradient(180deg, rgba(15,23,42,0.72) 0%, rgba(15,23,42,0.88) 45%, rgba(15,23,42,0.95) 100%), url(${imageUrl})`,
     backgroundSize: 'cover',
@@ -41,5 +42,5 @@ const styles = {
     flexDirection: 'column',
     gap: 18,
   },
-}
+};
 //

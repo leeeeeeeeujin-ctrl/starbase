@@ -1,82 +1,82 @@
-'use client'
+'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import RoleOccupancySummary from './RoleOccupancySummary'
-import styles from './DuoRoomClient.module.css'
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import RoleOccupancySummary from './RoleOccupancySummary';
+import styles from './DuoRoomClient.module.css';
 
-const STORAGE_PREFIX = 'duoRooms:'
-const ACTION_OPTIONS = new Set(['create', 'search', 'code'])
+const STORAGE_PREFIX = 'duoRooms:';
+const ACTION_OPTIONS = new Set(['create', 'search', 'code']);
 
 function cleanupRooms(list) {
-  if (!Array.isArray(list)) return []
+  if (!Array.isArray(list)) return [];
   return list
-    .map((room) => ({
+    .map(room => ({
       ...room,
       members: Array.isArray(room?.members)
         ? room.members
-            .filter((member) => member && member.userId)
-            .map((member) => ({
+            .filter(member => member && member.userId)
+            .map(member => ({
               ...member,
               ready: Boolean(member.ready),
               isHost: Boolean(member.isHost),
             }))
         : [],
     }))
-    .filter((room) => room.members.length > 0 && room.role)
+    .filter(room => room.members.length > 0 && room.role);
 }
 
 function cloneRooms(list) {
-  return list.map((room) => ({
+  return list.map(room => ({
     ...room,
-    members: room.members.map((member) => ({ ...member })),
-  }))
+    members: room.members.map(member => ({ ...member })),
+  }));
 }
 
 function loadRooms(gameId) {
-  if (!gameId || typeof window === 'undefined') return []
+  if (!gameId || typeof window === 'undefined') return [];
   try {
-    const raw = window.sessionStorage.getItem(`${STORAGE_PREFIX}${gameId}`)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    return cleanupRooms(Array.isArray(parsed) ? parsed : [])
+    const raw = window.sessionStorage.getItem(`${STORAGE_PREFIX}${gameId}`);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return cleanupRooms(Array.isArray(parsed) ? parsed : []);
   } catch (error) {
-    console.warn('듀오 방 정보를 불러오지 못했습니다:', error)
-    return []
+    console.warn('듀오 방 정보를 불러오지 못했습니다:', error);
+    return [];
   }
 }
 
 function saveRooms(gameId, rooms) {
-  if (!gameId || typeof window === 'undefined') return
+  if (!gameId || typeof window === 'undefined') return;
   try {
     window.sessionStorage.setItem(
       `${STORAGE_PREFIX}${gameId}`,
-      JSON.stringify(cleanupRooms(rooms)),
-    )
+      JSON.stringify(cleanupRooms(rooms))
+    );
   } catch (error) {
-    console.warn('듀오 방 정보를 저장하지 못했습니다:', error)
+    console.warn('듀오 방 정보를 저장하지 못했습니다:', error);
   }
 }
 
 function generateCode(existingCodes) {
-  const codes = new Set(existingCodes)
+  const codes = new Set(existingCodes);
   while (true) {
-    const value = Math.floor(100000 + Math.random() * 900000).toString()
+    const value = Math.floor(100000 + Math.random() * 900000).toString();
     if (!codes.has(value)) {
-      return value
+      return value;
     }
   }
 }
 
 function formatName(hero, user) {
-  if (hero?.name) return hero.name
-  if (user?.email) return user.email
-  if (user?.id) return `사용자 ${user.id.slice(0, 6)}`
-  return '미지정 플레이어'
+  if (hero?.name) return hero.name;
+  if (user?.email) return user.email;
+  if (user?.id) return `사용자 ${user.id.slice(0, 6)}`;
+  return '미지정 플레이어';
 }
 
 function resolveInitialAction(initial) {
-  if (ACTION_OPTIONS.has(initial)) return initial
-  return 'create'
+  if (ACTION_OPTIONS.has(initial)) return initial;
+  return 'create';
 }
 
 function RoleBadge({ label, count }) {
@@ -84,7 +84,7 @@ function RoleBadge({ label, count }) {
     <span className={styles.roleBadge}>
       {label} · 정원 {count}명
     </span>
-  )
+  );
 }
 
 export default function DuoRoomClient({
@@ -99,141 +99,141 @@ export default function DuoRoomClient({
   onExit,
   onLaunch,
 }) {
-  const gameId = game?.id || ''
-  const [rooms, setRooms] = useState([])
-  const [view, setView] = useState(resolveInitialAction(initialAction))
-  const [selectedRole, setSelectedRole] = useState('')
-  const [codeValue, setCodeValue] = useState('')
-  const [error, setError] = useState('')
+  const gameId = game?.id || '';
+  const [rooms, setRooms] = useState([]);
+  const [view, setView] = useState(resolveInitialAction(initialAction));
+  const [selectedRole, setSelectedRole] = useState('');
+  const [codeValue, setCodeValue] = useState('');
+  const [error, setError] = useState('');
 
   const lockedRole = useMemo(() => {
-    if (!myEntry?.role) return ''
-    const trimmed = String(myEntry.role).trim()
-    return trimmed
-  }, [myEntry?.role])
+    if (!myEntry?.role) return '';
+    const trimmed = String(myEntry.role).trim();
+    return trimmed;
+  }, [myEntry?.role]);
 
   useEffect(() => {
-    if (!gameId) return
-    const initial = loadRooms(gameId)
-    setRooms(initial)
+    if (!gameId) return;
+    const initial = loadRooms(gameId);
+    setRooms(initial);
     if (initial.length) {
-      saveRooms(gameId, initial)
+      saveRooms(gameId, initial);
     }
-  }, [gameId])
+  }, [gameId]);
 
   const updateRooms = useCallback(
-    (mutator) => {
-      setRooms((prev) => {
-        const base = cloneRooms(cleanupRooms(prev))
-        const next = cleanupRooms(mutator(base))
-        saveRooms(gameId, next)
-        return next
-      })
+    mutator => {
+      setRooms(prev => {
+        const base = cloneRooms(cleanupRooms(prev));
+        const next = cleanupRooms(mutator(base));
+        saveRooms(gameId, next);
+        return next;
+      });
     },
-    [gameId],
-  )
+    [gameId]
+  );
 
   const baseRoleCapacities = useMemo(() => {
-    const entries = new Map()
+    const entries = new Map();
     if (Array.isArray(roleDetails) && roleDetails.length) {
-      roleDetails.forEach((role) => {
-        const count = Number(role.slot_count ?? role.slotCount)
-        entries.set(role.name, Math.max(2, Number.isFinite(count) ? count : 2))
-      })
+      roleDetails.forEach(role => {
+        const count = Number(role.slot_count ?? role.slotCount);
+        entries.set(role.name, Math.max(2, Number.isFinite(count) ? count : 2));
+      });
     } else if (Array.isArray(roles) && roles.length) {
-      roles.forEach((role) => {
+      roles.forEach(role => {
         const name =
           typeof role === 'string'
             ? role.trim()
             : typeof role?.name === 'string'
               ? role.name.trim()
-              : ''
-        if (!name) return
-        if (!entries.has(name)) entries.set(name, 2)
-      })
+              : '';
+        if (!name) return;
+        if (!entries.has(name)) entries.set(name, 2);
+      });
     }
     if (!entries.size) {
-      entries.set('공격', 2)
-      entries.set('수비', 2)
+      entries.set('공격', 2);
+      entries.set('수비', 2);
     }
-    return entries
-  }, [roleDetails, roles])
+    return entries;
+  }, [roleDetails, roles]);
 
   const roleCapacities = useMemo(() => {
-    if (!lockedRole) return baseRoleCapacities
-    const resolved = new Map()
+    if (!lockedRole) return baseRoleCapacities;
+    const resolved = new Map();
     if (baseRoleCapacities.has(lockedRole)) {
-      resolved.set(lockedRole, baseRoleCapacities.get(lockedRole))
+      resolved.set(lockedRole, baseRoleCapacities.get(lockedRole));
     } else {
-      resolved.set(lockedRole, 2)
+      resolved.set(lockedRole, 2);
     }
-    return resolved
-  }, [baseRoleCapacities, lockedRole])
+    return resolved;
+  }, [baseRoleCapacities, lockedRole]);
 
   useEffect(() => {
     if (lockedRole) {
       if (selectedRole !== lockedRole) {
-        setSelectedRole(lockedRole)
+        setSelectedRole(lockedRole);
       }
-      return
+      return;
     }
 
-    if (selectedRole) return
+    if (selectedRole) return;
 
-    const first = roleCapacities.keys().next()
+    const first = roleCapacities.keys().next();
     if (!first.done) {
-      setSelectedRole(first.value)
+      setSelectedRole(first.value);
     }
-  }, [lockedRole, roleCapacities, selectedRole])
+  }, [lockedRole, roleCapacities, selectedRole]);
 
   const viewerRoom = useMemo(() => {
-    if (!user?.id) return null
-    return rooms.find((room) => room.members.some((member) => member.userId === user.id)) || null
-  }, [rooms, user?.id])
+    if (!user?.id) return null;
+    return rooms.find(room => room.members.some(member => member.userId === user.id)) || null;
+  }, [rooms, user?.id]);
 
   const viewerMember = useMemo(() => {
-    if (!viewerRoom || !user?.id) return null
-    return viewerRoom.members.find((member) => member.userId === user.id) || null
-  }, [viewerRoom, user?.id])
+    if (!viewerRoom || !user?.id) return null;
+    return viewerRoom.members.find(member => member.userId === user.id) || null;
+  }, [viewerRoom, user?.id]);
 
-  const capacity = selectedRole ? roleCapacities.get(selectedRole) || 2 : 2
-  const lockedCapacity = lockedRole ? roleCapacities.get(lockedRole) || 2 : null
+  const capacity = selectedRole ? roleCapacities.get(selectedRole) || 2 : 2;
+  const lockedCapacity = lockedRole ? roleCapacities.get(lockedRole) || 2 : null;
 
   useEffect(() => {
     if (viewerRoom) {
-      setView('room')
+      setView('room');
     } else if (!ACTION_OPTIONS.has(view)) {
-      setView('create')
+      setView('create');
     }
-  }, [viewerRoom, view])
+  }, [viewerRoom, view]);
 
   const handleCreateRoom = useCallback(() => {
     if (!gameId || !user?.id) {
-      setError('로그인이 필요합니다.')
-      return
+      setError('로그인이 필요합니다.');
+      return;
     }
     if (!myHero?.id) {
-      setError('먼저 사용할 캐릭터를 선택해 주세요.')
-      return
+      setError('먼저 사용할 캐릭터를 선택해 주세요.');
+      return;
     }
     if (!selectedRole) {
-      setError('역할을 선택해 주세요.')
-      return
+      setError('역할을 선택해 주세요.');
+      return;
     }
-    const hostName = formatName(myHero, user)
-    const cap = Math.max(2, capacity)
+    const hostName = formatName(myHero, user);
+    const cap = Math.max(2, capacity);
 
-    updateRooms((prev) => {
-      const existingCodes = prev.map((room) => room.code)
-      const code = generateCode(existingCodes)
+    updateRooms(prev => {
+      const existingCodes = prev.map(room => room.code);
+      const code = generateCode(existingCodes);
       const withoutViewer = prev
-        .map((room) => ({
+        .map(room => ({
           ...room,
-          members: room.members.filter((member) => member.userId !== user.id),
+          members: room.members.filter(member => member.userId !== user.id),
         }))
-        .filter((room) => room.members.length > 0)
+        .filter(room => room.members.length > 0);
 
-      const roomId = `duo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      const roomId = `duo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const nextRoom = {
         id: roomId,
         gameId,
@@ -252,34 +252,34 @@ export default function DuoRoomClient({
             isHost: true,
           },
         ],
-      }
-      return [...withoutViewer, nextRoom]
-    })
-    setError('')
-    setView('room')
-  }, [capacity, gameId, myHero, selectedRole, updateRooms, user])
+      };
+      return [...withoutViewer, nextRoom];
+    });
+    setError('');
+    setView('room');
+  }, [capacity, gameId, myHero, selectedRole, updateRooms, user]);
 
   const handleJoinRoom = useCallback(
-    (roomId) => {
+    roomId => {
       if (!gameId || !user?.id) {
-        setError('로그인이 필요합니다.')
-        return
+        setError('로그인이 필요합니다.');
+        return;
       }
       if (!myHero?.id) {
-        setError('먼저 사용할 캐릭터를 선택해 주세요.')
-        return
+        setError('먼저 사용할 캐릭터를 선택해 주세요.');
+        return;
       }
-      updateRooms((prev) => {
+      updateRooms(prev => {
         const withoutViewer = prev
-          .map((room) => ({
+          .map(room => ({
             ...room,
-            members: room.members.filter((member) => member.userId !== user.id),
+            members: room.members.filter(member => member.userId !== user.id),
           }))
-          .filter((room) => room.members.length > 0)
+          .filter(room => room.members.length > 0);
 
-        return withoutViewer.map((room) => {
-          if (room.id !== roomId) return room
-          if (room.members.length >= room.capacity) return room
+        return withoutViewer.map(room => {
+          if (room.id !== roomId) return room;
+          if (room.members.length >= room.capacity) return room;
           return {
             ...room,
             members: [
@@ -292,118 +292,118 @@ export default function DuoRoomClient({
                 isHost: false,
               },
             ],
-          }
-        })
-      })
-      setError('')
-      setView('room')
+          };
+        });
+      });
+      setError('');
+      setView('room');
     },
-    [gameId, myHero, updateRooms, user],
-  )
+    [gameId, myHero, updateRooms, user]
+  );
 
   const handleJoinByCode = useCallback(() => {
     if (!codeValue.trim()) {
-      setError('방 코드를 입력해 주세요.')
-      return
+      setError('방 코드를 입력해 주세요.');
+      return;
     }
-    const normalized = codeValue.trim()
-    const target = rooms.find((room) => room.code === normalized)
+    const normalized = codeValue.trim();
+    const target = rooms.find(room => room.code === normalized);
     if (!target) {
-      setError('해당 코드를 가진 방을 찾을 수 없습니다.')
-      return
+      setError('해당 코드를 가진 방을 찾을 수 없습니다.');
+      return;
     }
     if (target.members.length >= target.capacity) {
-      setError('이미 정원이 가득 찬 방입니다.')
-      return
+      setError('이미 정원이 가득 찬 방입니다.');
+      return;
     }
-    handleJoinRoom(target.id)
-    setCodeValue('')
-  }, [codeValue, handleJoinRoom, rooms])
+    handleJoinRoom(target.id);
+    setCodeValue('');
+  }, [codeValue, handleJoinRoom, rooms]);
 
   const handleToggleReady = useCallback(() => {
-    if (!viewerRoom || !user?.id) return
-    updateRooms((prev) =>
-      prev.map((room) => {
-        if (room.id !== viewerRoom.id) return room
+    if (!viewerRoom || !user?.id) return;
+    updateRooms(prev =>
+      prev.map(room => {
+        if (room.id !== viewerRoom.id) return room;
         return {
           ...room,
-          members: room.members.map((member) =>
-            member.userId === user.id
-              ? { ...member, ready: !member.ready }
-              : member,
+          members: room.members.map(member =>
+            member.userId === user.id ? { ...member, ready: !member.ready } : member
           ),
-        }
-      }),
-    )
-    setError('')
-  }, [setError, updateRooms, user?.id, viewerRoom])
+        };
+      })
+    );
+    setError('');
+  }, [setError, updateRooms, user?.id, viewerRoom]);
 
   const handleLeave = useCallback(() => {
-    if (!viewerRoom || !user?.id) return
-    updateRooms((prev) =>
+    if (!viewerRoom || !user?.id) return;
+    updateRooms(prev =>
       prev
-        .map((room) => {
-          if (room.id !== viewerRoom.id) return room
+        .map(room => {
+          if (room.id !== viewerRoom.id) return room;
           if (room.hostId === user.id) {
-            return null
+            return null;
           }
           return {
             ...room,
-            members: room.members.filter((member) => member.userId !== user.id),
-          }
+            members: room.members.filter(member => member.userId !== user.id),
+          };
         })
-        .filter(Boolean),
-    )
-    setView('create')
-  }, [updateRooms, user?.id, viewerRoom])
+        .filter(Boolean)
+    );
+    setView('create');
+  }, [updateRooms, user?.id, viewerRoom]);
 
   const handleKick = useCallback(
-    (targetId) => {
-      if (!viewerRoom || viewerRoom.hostId !== user?.id) return
-      updateRooms((prev) =>
+    targetId => {
+      if (!viewerRoom || viewerRoom.hostId !== user?.id) return;
+      updateRooms(prev =>
         prev
-          .map((room) => {
-            if (room.id !== viewerRoom.id) return room
+          .map(room => {
+            if (room.id !== viewerRoom.id) return room;
             return {
               ...room,
-              members: room.members.filter((member) => member.userId !== targetId),
-            }
+              members: room.members.filter(member => member.userId !== targetId),
+            };
           })
-          .filter((room) => room.members.length > 0),
-      )
+          .filter(room => room.members.length > 0)
+      );
     },
-    [updateRooms, user?.id, viewerRoom],
-  )
+    [updateRooms, user?.id, viewerRoom]
+  );
 
   const handleStart = useCallback(() => {
-    if (!viewerRoom || viewerRoom.hostId !== user?.id) return
-    const allReady = viewerRoom.members.length === viewerRoom.capacity && viewerRoom.members.every((member) => member.ready)
+    if (!viewerRoom || viewerRoom.hostId !== user?.id) return;
+    const allReady =
+      viewerRoom.members.length === viewerRoom.capacity &&
+      viewerRoom.members.every(member => member.ready);
     if (!allReady) {
-      setError('모든 인원이 준비 완료일 때만 시작할 수 있습니다.')
-      return
+      setError('모든 인원이 준비 완료일 때만 시작할 수 있습니다.');
+      return;
     }
-    onLaunch?.({ room: viewerRoom })
-    updateRooms((prev) => prev.filter((room) => room.id !== viewerRoom.id))
-  }, [onLaunch, updateRooms, user?.id, viewerRoom])
+    onLaunch?.({ room: viewerRoom });
+    updateRooms(prev => prev.filter(room => room.id !== viewerRoom.id));
+  }, [onLaunch, updateRooms, user?.id, viewerRoom]);
 
-  const handleResetError = useCallback(() => setError(''), [])
+  const handleResetError = useCallback(() => setError(''), []);
 
   const joinableRooms = useMemo(() => {
-    if (!selectedRole) return []
+    if (!selectedRole) return [];
     return rooms
-      .filter((room) => room.role === selectedRole)
-      .filter((room) => room.members.length < room.capacity)
-      .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
-  }, [rooms, selectedRole])
+      .filter(room => room.role === selectedRole)
+      .filter(room => room.members.length < room.capacity)
+      .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  }, [rooms, selectedRole]);
 
   const allReady = viewerRoom
     ? viewerRoom.members.length === viewerRoom.capacity &&
-      viewerRoom.members.every((member) => member.ready)
-    : false
+      viewerRoom.members.every(member => member.ready)
+    : false;
 
-  const canLeave = viewerMember ? !viewerMember.ready : true
+  const canLeave = viewerMember ? !viewerMember.ready : true;
 
-  const heroName = myHero?.name || '선택된 캐릭터 없음'
+  const heroName = myHero?.name || '선택된 캐릭터 없음';
 
   return (
     <div className={styles.page}>
@@ -415,7 +415,8 @@ export default function DuoRoomClient({
           <p className={styles.gameName}>{game?.name || '랭크 게임'}</p>
           <h1 className={styles.title}>듀오 랭크 팀 편성</h1>
           <p className={styles.subtitle}>
-            같은 역할군으로 구성된 팀을 만들어 게임을 시작하세요. 준비 상태는 언제든 다시 눌러 조정할 수 있습니다.
+            같은 역할군으로 구성된 팀을 만들어 게임을 시작하세요. 준비 상태는 언제든 다시 눌러
+            조정할 수 있습니다.
           </p>
         </div>
       </header>
@@ -430,7 +431,8 @@ export default function DuoRoomClient({
         <section className={styles.card}>
           <h2 className={styles.sectionTitle}>캐릭터가 필요합니다</h2>
           <p className={styles.sectionText}>
-            듀오 랭크에 참가하려면 먼저 사용할 캐릭터를 선택해야 합니다. 로스터에서 캐릭터를 고른 뒤 다시 시도해 주세요.
+            듀오 랭크에 참가하려면 먼저 사용할 캐릭터를 선택해야 합니다. 로스터에서 캐릭터를 고른 뒤
+            다시 시도해 주세요.
           </p>
           <button type="button" className={styles.primaryButton} onClick={onExit}>
             캐릭터 선택하러 가기
@@ -455,7 +457,8 @@ export default function DuoRoomClient({
               <p className={styles.sectionHint}>선택된 캐릭터: {heroName}</p>
             </div>
             <p className={styles.sectionText}>
-              이미 <strong>{lockedRole}</strong> 역할로 등록되어 있습니다. 듀오 방은 같은 역할군으로만 구성됩니다.
+              이미 <strong>{lockedRole}</strong> 역할로 등록되어 있습니다. 듀오 방은 같은
+              역할군으로만 구성됩니다.
             </p>
             <div className={styles.roleGroup}>
               <button
@@ -467,7 +470,9 @@ export default function DuoRoomClient({
                 <RoleBadge label="필요 인원" count={lockedCapacity || capacity} />
               </button>
             </div>
-            <p className={styles.sectionHint}>역할은 메인 룸 참여 시점에 고정되며 여기에서 변경할 수 없습니다.</p>
+            <p className={styles.sectionHint}>
+              역할은 메인 룸 참여 시점에 고정되며 여기에서 변경할 수 없습니다.
+            </p>
           </section>
         ) : (
           <section className={styles.card}>
@@ -477,7 +482,7 @@ export default function DuoRoomClient({
             </div>
             <div className={styles.roleGroup}>
               {Array.from(roleCapacities.entries()).map(([roleName, count]) => {
-                const active = selectedRole === roleName
+                const active = selectedRole === roleName;
                 return (
                   <button
                     key={roleName}
@@ -488,7 +493,7 @@ export default function DuoRoomClient({
                     <span className={styles.roleName}>{roleName}</span>
                     <RoleBadge label="필요 인원" count={count} />
                   </button>
-                )
+                );
               })}
             </div>
           </section>
@@ -524,7 +529,8 @@ export default function DuoRoomClient({
           {view === 'create' ? (
             <div className={styles.panelBody}>
               <p className={styles.sectionText}>
-                선택한 역할 <strong>{selectedRole}</strong>로 팀을 만들고, 정원 {capacity}명 중 1명을 당신이 차지합니다.
+                선택한 역할 <strong>{selectedRole}</strong>로 팀을 만들고, 정원 {capacity}명 중
+                1명을 당신이 차지합니다.
               </p>
               <button type="button" className={styles.primaryButton} onClick={handleCreateRoom}>
                 새 듀오 방 만들기
@@ -538,10 +544,12 @@ export default function DuoRoomClient({
                 {selectedRole} 역할군 방을 찾고 있습니다. 남은 자리가 있는 방만 표시됩니다.
               </p>
               {joinableRooms.length === 0 ? (
-                <p className={styles.emptyText}>조건에 맞는 방이 없습니다. 직접 방을 만들어 보세요.</p>
+                <p className={styles.emptyText}>
+                  조건에 맞는 방이 없습니다. 직접 방을 만들어 보세요.
+                </p>
               ) : (
                 <ul className={styles.roomList}>
-                  {joinableRooms.map((room) => (
+                  {joinableRooms.map(room => (
                     <li key={room.id} className={styles.roomItem}>
                       <div>
                         <p className={styles.roomTitle}>{room.hostName || '방장'}</p>
@@ -572,7 +580,7 @@ export default function DuoRoomClient({
                 id="duo-room-code"
                 className={styles.input}
                 value={codeValue}
-                onChange={(event) => setCodeValue(event.target.value.replace(/[^0-9]/g, ''))}
+                onChange={event => setCodeValue(event.target.value.replace(/[^0-9]/g, ''))}
                 placeholder="예: 123456"
                 maxLength={6}
               />
@@ -590,22 +598,30 @@ export default function DuoRoomClient({
             <div>
               <h2 className={styles.sectionTitle}>내 듀오 방</h2>
               <p className={styles.sectionText}>
-                역할 {viewerRoom.role} · 코드 {viewerRoom.code} · {viewerRoom.members.length}/{viewerRoom.capacity}명
+                역할 {viewerRoom.role} · 코드 {viewerRoom.code} · {viewerRoom.members.length}/
+                {viewerRoom.capacity}명
               </p>
             </div>
-            <button type="button" className={styles.secondaryButton} onClick={handleLeave} disabled={!canLeave}>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={handleLeave}
+              disabled={!canLeave}
+            >
               방 나가기
             </button>
           </div>
           <ul className={styles.memberList}>
-            {viewerRoom.members.map((member) => (
+            {viewerRoom.members.map(member => (
               <li key={member.userId} className={styles.memberItem}>
                 <div>
                   <p className={styles.memberName}>{member.heroName || '플레이어'}</p>
                   <p className={styles.memberMeta}>{member.isHost ? '방장' : '참가자'}</p>
                 </div>
                 <div className={styles.memberActions}>
-                  <span className={`${styles.readyBadge} ${member.ready ? styles.readyActive : styles.readyWaiting}`}>
+                  <span
+                    className={`${styles.readyBadge} ${member.ready ? styles.readyActive : styles.readyWaiting}`}
+                  >
                     {member.ready ? '준비 완료' : '대기 중'}
                   </span>
                   {viewerRoom.hostId === user?.id && !member.isHost ? (
@@ -652,6 +668,5 @@ export default function DuoRoomClient({
         </section>
       ) : null}
     </div>
-  )
+  );
 }
-

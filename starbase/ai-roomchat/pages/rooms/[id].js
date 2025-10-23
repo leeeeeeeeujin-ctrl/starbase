@@ -1,12 +1,12 @@
-import { useEffect } from 'react'
-import { useRouter } from 'next/router'
+import { useEffect } from 'react';
+import { useRouter } from 'next/router';
 
 export default function LegacyRoomRedirect() {
-  const router = useRouter()
+  const router = useRouter();
   useEffect(() => {
-    router.replace('/match')
-  }, [router])
-  return null
+    router.replace('/match');
+  }, [router]);
+  return null;
 }
 
 export async function getServerSideProps({ params }) {
@@ -15,5 +15,5 @@ export async function getServerSideProps({ params }) {
       destination: params?.id ? `/match?fromRoom=${encodeURIComponent(params.id)}` : '/match',
       permanent: false,
     },
-  }
+  };
 }

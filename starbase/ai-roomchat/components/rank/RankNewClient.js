@@ -1,53 +1,53 @@
 // components/rank/RankNewClient.js
-'use client'
+'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useRouter } from 'next/router'
-import { supabase } from '../../lib/supabase'
-import { REALTIME_MODES } from '../../lib/rank/realtimeModes'
-import PromptSetPicker from '../../components/rank/PromptSetPicker'
-import SlotMatrix from '../../components/rank/SlotMatrix'
-import RolesEditor from '../../components/rank/RolesEditor'
-import RulesChecklist, { buildRulesPrefix } from '../../components/rank/RulesChecklist'
-import { uploadGameImage } from '../../lib/rank/storage'
-import { useSharedPromptSetStorage } from '../../hooks/shared/useSharedPromptSetStorage'
-import RegistrationLayout from './registration/RegistrationLayout'
-import RegistrationCard from './registration/RegistrationCard'
-import SidebarCard from './registration/SidebarCard'
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/router';
+import { supabase } from '../../lib/supabase';
+import { REALTIME_MODES } from '../../lib/rank/realtimeModes';
+import PromptSetPicker from '../../components/rank/PromptSetPicker';
+import SlotMatrix from '../../components/rank/SlotMatrix';
+import RolesEditor from '../../components/rank/RolesEditor';
+import RulesChecklist, { buildRulesPrefix } from '../../components/rank/RulesChecklist';
+import { uploadGameImage } from '../../lib/rank/storage';
+import { useSharedPromptSetStorage } from '../../hooks/shared/useSharedPromptSetStorage';
+import RegistrationLayout from './registration/RegistrationLayout';
+import RegistrationCard from './registration/RegistrationCard';
+import SidebarCard from './registration/SidebarCard';
 import {
   brawlModeCopy,
   imageFieldCopy,
   registrationOverviewCopy,
   realtimeModeCopy,
-} from '../../data/rankRegistrationContent'
-import { prepareRegistrationPayload } from '../../lib/rank/registrationValidation'
-import { MATCH_MODE_KEYS } from '../../lib/rank/matchModes'
+} from '../../data/rankRegistrationContent';
+import { prepareRegistrationPayload } from '../../lib/rank/registrationValidation';
+import { MATCH_MODE_KEYS } from '../../lib/rank/matchModes';
 
-const MAX_IMAGE_SIZE_BYTES = 3 * 1024 * 1024
+const MAX_IMAGE_SIZE_BYTES = 3 * 1024 * 1024;
 
-const REALTIME_MODE_OPTIONS = (realtimeModeCopy?.options || []).map((option) => ({
+const REALTIME_MODE_OPTIONS = (realtimeModeCopy?.options || []).map(option => ({
   value: REALTIME_MODES?.[option.value] ?? option.value,
   label: option.label,
-}))
+}));
 
 async function registerGame(payload) {
   const {
     data: { session },
     error: sessionError,
-  } = await supabase.auth.getSession()
+  } = await supabase.auth.getSession();
 
-  const token = session?.access_token
+  const token = session?.access_token;
 
   if (sessionError || !token) {
-    return { ok: false, error: '로그인이 필요합니다.' }
+    return { ok: false, error: '로그인이 필요합니다.' };
   }
 
-  const prepared = prepareRegistrationPayload({ ...payload })
+  const prepared = prepareRegistrationPayload({ ...payload });
   if (!prepared.ok) {
-    return { ok: false, error: prepared.error }
+    return { ok: false, error: prepared.error };
   }
 
-  let response
+  let response;
   try {
     response = await fetch('/api/rank/register-game', {
       method: 'POST',
@@ -60,42 +60,42 @@ async function registerGame(payload) {
         roles: prepared.roles,
         slots: prepared.slots,
       }),
-    })
+    });
   } catch (networkError) {
-    console.warn('register-game request failed:', networkError)
-    return { ok: false, error: '게임 등록 요청을 전송하지 못했습니다.' }
+    console.warn('register-game request failed:', networkError);
+    return { ok: false, error: '게임 등록 요청을 전송하지 못했습니다.' };
   }
 
   if (!response.ok) {
     try {
-      const errorPayload = await response.json()
-      return { ok: false, error: errorPayload?.error || '게임 등록에 실패했습니다.' }
+      const errorPayload = await response.json();
+      return { ok: false, error: errorPayload?.error || '게임 등록에 실패했습니다.' };
     } catch (error) {
-      return { ok: false, error: '게임 등록에 실패했습니다.' }
+      return { ok: false, error: '게임 등록에 실패했습니다.' };
     }
   }
 
-  const result = await response.json()
+  const result = await response.json();
   if (!result?.ok) {
-    return { ok: false, error: result?.error || '게임 등록에 실패했습니다.' }
+    return { ok: false, error: result?.error || '게임 등록에 실패했습니다.' };
   }
 
-  return { ok: true, gameId: result.gameId }
+  return { ok: true, gameId: result.gameId };
 }
 
 export default function RankNewClient() {
-  const router = useRouter()
-  const [user, setUser] = useState(null)
+  const router = useRouter();
+  const [user, setUser] = useState(null);
 
   // 기본 정보
-  const [name, setName] = useState('')
-  const [desc, setDesc] = useState('')
-  const [imgFile, setImgFile] = useState(null)
-  const [imgPreviewUrl, setImgPreviewUrl] = useState('')
-  const [imgError, setImgError] = useState('')
-  const [fileInputKey, setFileInputKey] = useState(0)
-  const [setId, setSetId] = useState('')
-  const [realtimeMode, setRealtimeMode] = useState(REALTIME_MODES.STANDARD)
+  const [name, setName] = useState('');
+  const [desc, setDesc] = useState('');
+  const [imgFile, setImgFile] = useState(null);
+  const [imgPreviewUrl, setImgPreviewUrl] = useState('');
+  const [imgError, setImgError] = useState('');
+  const [fileInputKey, setFileInputKey] = useState(0);
+  const [setId, setSetId] = useState('');
+  const [realtimeMode, setRealtimeMode] = useState(REALTIME_MODES.STANDARD);
 
   // 역할/슬롯
   const DEFAULT_ROLES = useMemo(
@@ -103,10 +103,10 @@ export default function RankNewClient() {
       { name: '공격', score_delta_min: 20, score_delta_max: 40 },
       { name: '수비', score_delta_min: 20, score_delta_max: 40 },
     ],
-    [],
-  )
-  const [roles, setRoles] = useState(DEFAULT_ROLES)
-  const [slotMap, setSlotMap] = useState([])
+    []
+  );
+  const [roles, setRoles] = useState(DEFAULT_ROLES);
+  const [slotMap, setSlotMap] = useState([]);
 
   // 규칙
   const [rules, setRules] = useState({
@@ -116,114 +116,124 @@ export default function RankNewClient() {
     nerf_ultimate_injection: true,
     fair_power_balance: true,
     char_limit: 0,
-  })
-  const [brawlEnabled, setBrawlEnabled] = useState(false)
-  const [endCondition, setEndCondition] = useState('')
-  const [showBrawlHelp, setShowBrawlHelp] = useState(false)
-  const [submitStatus, setSubmitStatus] = useState('idle')
-  const [submitError, setSubmitError] = useState('')
-  const [lastCreatedGame, setLastCreatedGame] = useState(null)
+  });
+  const [brawlEnabled, setBrawlEnabled] = useState(false);
+  const [endCondition, setEndCondition] = useState('');
+  const [showBrawlHelp, setShowBrawlHelp] = useState(false);
+  const [submitStatus, setSubmitStatus] = useState('idle');
+  const [submitError, setSubmitError] = useState('');
+  const [lastCreatedGame, setLastCreatedGame] = useState(null);
   const {
     backgroundUrl,
     promptSetId: sharedPromptSetId,
     setPromptSetId: setSharedPromptSetId,
-  } = useSharedPromptSetStorage()
+  } = useSharedPromptSetStorage();
 
   useEffect(() => {
-    let alive = true
-    ;(async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!alive) return
-      if (!user) { router.replace('/'); return }
-      setUser(user)
-    })()
-    return () => { alive = false }
-  }, [router])
+    let alive = true;
+    (async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!alive) return;
+      if (!user) {
+        router.replace('/');
+        return;
+      }
+      setUser(user);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [router]);
 
   useEffect(() => {
     if (sharedPromptSetId) {
-      setSetId(sharedPromptSetId)
+      setSetId(sharedPromptSetId);
     }
-  }, [sharedPromptSetId])
+  }, [sharedPromptSetId]);
 
   useEffect(() => {
     return () => {
       if (imgPreviewUrl) {
-        URL.revokeObjectURL(imgPreviewUrl)
+        URL.revokeObjectURL(imgPreviewUrl);
       }
-    }
-  }, [imgPreviewUrl])
+    };
+  }, [imgPreviewUrl]);
 
   const handlePromptSetChange = useCallback(
-    (value) => {
-      setSetId(value)
-      setSharedPromptSetId(value)
+    value => {
+      setSetId(value);
+      setSharedPromptSetId(value);
     },
-    [setSharedPromptSetId],
-  )
+    [setSharedPromptSetId]
+  );
 
   const handleClearImage = useCallback(() => {
-    setImgFile(null)
-    setImgError('')
-    setImgPreviewUrl((prev) => {
+    setImgFile(null);
+    setImgError('');
+    setImgPreviewUrl(prev => {
       if (prev) {
-        URL.revokeObjectURL(prev)
+        URL.revokeObjectURL(prev);
       }
-      return ''
-    })
-    setFileInputKey((prev) => prev + 1)
-  }, [])
+      return '';
+    });
+    setFileInputKey(prev => prev + 1);
+  }, []);
 
-  const handleImageChange = useCallback((event) => {
-    const file = event.target.files?.[0] || null
-    handleClearImage()
+  const handleImageChange = useCallback(
+    event => {
+      const file = event.target.files?.[0] || null;
+      handleClearImage();
 
-    if (!file) {
-      return
-    }
+      if (!file) {
+        return;
+      }
 
-    if (!file.type?.startsWith('image/')) {
-      setImgError(imageFieldCopy.typeError)
-      setFileInputKey((prev) => prev + 1)
-      return
-    }
+      if (!file.type?.startsWith('image/')) {
+        setImgError(imageFieldCopy.typeError);
+        setFileInputKey(prev => prev + 1);
+        return;
+      }
 
-    if (file.size > MAX_IMAGE_SIZE_BYTES) {
-      setImgError(imageFieldCopy.sizeError)
-      setFileInputKey((prev) => prev + 1)
-      return
-    }
+      if (file.size > MAX_IMAGE_SIZE_BYTES) {
+        setImgError(imageFieldCopy.sizeError);
+        setFileInputKey(prev => prev + 1);
+        return;
+      }
 
-    const nextUrl = URL.createObjectURL(file)
-    setImgFile(file)
-    setImgPreviewUrl(nextUrl)
-  }, [handleClearImage])
+      const nextUrl = URL.createObjectURL(file);
+      setImgFile(file);
+      setImgPreviewUrl(nextUrl);
+    },
+    [handleClearImage]
+  );
 
   const activeSlots = useMemo(
     () => (slotMap || []).filter(s => s.active && s.role && s.role.trim()),
     [slotMap]
-  )
+  );
 
   const handleToggleBrawl = () => {
-    setBrawlEnabled((prev) => {
-      const next = !prev
+    setBrawlEnabled(prev => {
+      const next = !prev;
       if (!next) {
-        setShowBrawlHelp(false)
-        setEndCondition('')
+        setShowBrawlHelp(false);
+        setEndCondition('');
       }
-      return next
-    })
-  }
+      return next;
+    });
+  };
 
   const resetForm = useCallback(() => {
-    setName('')
-    setDesc('')
-    handleClearImage()
-    setSetId('')
-    setSharedPromptSetId('')
-    setRealtimeMode(REALTIME_MODES.STANDARD)
-    setRoles(DEFAULT_ROLES)
-    setSlotMap([])
+    setName('');
+    setDesc('');
+    handleClearImage();
+    setSetId('');
+    setSharedPromptSetId('');
+    setRealtimeMode(REALTIME_MODES.STANDARD);
+    setRoles(DEFAULT_ROLES);
+    setSlotMap([]);
     setRules({
       nerf_insight: false,
       ban_kindness: false,
@@ -231,67 +241,69 @@ export default function RankNewClient() {
       nerf_ultimate_injection: true,
       fair_power_balance: true,
       char_limit: 0,
-    })
-    setBrawlEnabled(false)
-    setEndCondition('')
-    setShowBrawlHelp(false)
-    setSubmitStatus('idle')
-    setSubmitError('')
-  }, [DEFAULT_ROLES, handleClearImage, setSharedPromptSetId])
+    });
+    setBrawlEnabled(false);
+    setEndCondition('');
+    setShowBrawlHelp(false);
+    setSubmitStatus('idle');
+    setSubmitError('');
+  }, [DEFAULT_ROLES, handleClearImage, setSharedPromptSetId]);
 
   async function onSubmit() {
     if (submitStatus === 'submitting') {
-      return
+      return;
     }
-    if (!user) return alert('로그인이 필요합니다.')
-    if (!setId) return alert('프롬프트 세트를 선택하세요.')
-    if (activeSlots.length === 0) return alert('최소 1개의 슬롯을 활성화하고 역할을 지정하세요.')
-    if (imgError) return alert(imgError)
+    if (!user) return alert('로그인이 필요합니다.');
+    if (!setId) return alert('프롬프트 세트를 선택하세요.');
+    if (activeSlots.length === 0) return alert('최소 1개의 슬롯을 활성화하고 역할을 지정하세요.');
+    if (imgError) return alert(imgError);
 
-    setSubmitStatus('submitting')
-    setSubmitError('')
+    setSubmitStatus('submitting');
+    setSubmitError('');
 
-    let image_url = ''
+    let image_url = '';
     if (imgFile) {
       try {
-        const up = await uploadGameImage(imgFile)
-        image_url = up.url
+        const up = await uploadGameImage(imgFile);
+        image_url = up.url;
       } catch (e) {
-        return alert('이미지 업로드 실패: ' + (e?.message || e))
+        return alert('이미지 업로드 실패: ' + (e?.message || e));
       }
     }
 
-    const trimmedEndCondition = endCondition.trim()
+    const trimmedEndCondition = endCondition.trim();
     if (brawlEnabled && !trimmedEndCondition) {
-      return alert('난입 허용 시 종료 조건 변수를 입력해야 합니다.')
+      return alert('난입 허용 시 종료 조건 변수를 입력해야 합니다.');
     }
     const compiledRules = {
       ...rules,
       brawl_rule: brawlEnabled ? 'allow-brawl' : 'banish-on-loss',
       end_condition_variable: brawlEnabled ? trimmedEndCondition || null : null,
-    }
+    };
 
     const slotCountMap = activeSlots.reduce((acc, slot) => {
-      const key = slot.role ? String(slot.role).trim() : ''
-      if (!key) return acc
-      acc[key] = (acc[key] || 0) + 1
-      return acc
-    }, {})
+      const key = slot.role ? String(slot.role).trim() : '';
+      if (!key) return acc;
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {});
 
-    const rolePayload = roles.map((role) => {
-      const name = role?.name ? String(role.name).trim() : '역할'
-      const rawMin = Number(role?.score_delta_min)
-      const rawMax = Number(role?.score_delta_max)
-      const min = Number.isFinite(rawMin) ? rawMin : 20
-      const max = Number.isFinite(rawMax) ? rawMax : 40
-      const slotCount = Number.isFinite(Number(slotCountMap[name])) ? Number(slotCountMap[name]) : 0
+    const rolePayload = roles.map(role => {
+      const name = role?.name ? String(role.name).trim() : '역할';
+      const rawMin = Number(role?.score_delta_min);
+      const rawMax = Number(role?.score_delta_max);
+      const min = Number.isFinite(rawMin) ? rawMin : 20;
+      const max = Number.isFinite(rawMax) ? rawMax : 40;
+      const slotCount = Number.isFinite(Number(slotCountMap[name]))
+        ? Number(slotCountMap[name])
+        : 0;
       return {
         name,
         slot_count: Math.max(0, slotCount),
         score_delta_min: min,
         score_delta_max: max,
-      }
-    })
+      };
+    });
 
     const res = await registerGame({
       name: name || '새 게임',
@@ -303,23 +315,23 @@ export default function RankNewClient() {
       rules_prefix: buildRulesPrefix(compiledRules),
       realtime_match: realtimeMode,
       slots: slotMap,
-    })
+    });
 
     if (!res.ok) {
-      setSubmitStatus('idle')
-      setSubmitError(res.error || '게임 등록에 실패했습니다.')
-      return
+      setSubmitStatus('idle');
+      setSubmitError(res.error || '게임 등록에 실패했습니다.');
+      return;
     }
 
-    const gameId = res.gameId
-    const createdAt = new Date().toISOString()
+    const gameId = res.gameId;
+    const createdAt = new Date().toISOString();
     setLastCreatedGame({
       id: gameId,
       name: name || '새 게임',
       realtimeMode,
       createdAt,
-    })
-    setSubmitStatus('success')
+    });
+    setSubmitStatus('success');
   }
 
   const inputStyle = {
@@ -329,11 +341,11 @@ export default function RankNewClient() {
     border: '1px solid rgba(148,163,184,0.45)',
     background: 'rgba(15,23,42,0.55)',
     color: '#f8fafc',
-  }
+  };
 
-  const labelStyle = { display: 'grid', gap: 6, fontSize: 13 }
+  const labelStyle = { display: 'grid', gap: 6, fontSize: 13 };
 
-  const togglePillStyle = (active) => ({
+  const togglePillStyle = active => ({
     padding: '8px 18px',
     borderRadius: 999,
     border: active ? '1px solid #60a5fa' : '1px solid rgba(148,163,184,0.45)',
@@ -342,20 +354,20 @@ export default function RankNewClient() {
     fontWeight: 700,
     letterSpacing: 0.5,
     cursor: 'pointer',
-  })
+  });
 
-  const helperTextStyle = { fontSize: 12, color: '#94a3b8' }
+  const helperTextStyle = { fontSize: 12, color: '#94a3b8' };
 
   const moduleShellStyle = {
     background: 'rgba(15,23,42,0.45)',
     borderRadius: 16,
     padding: '12px 14px',
-  }
+  };
 
   const sidebarCards = [
     <SidebarCard key="overview-checklist" title={registrationOverviewCopy.checklist.title}>
       <ul style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 6, color: '#cbd5f5' }}>
-        {registrationOverviewCopy.checklist.items.map((item) => (
+        {registrationOverviewCopy.checklist.items.map(item => (
           <li key={item.id}>{item.text}</li>
         ))}
       </ul>
@@ -366,46 +378,47 @@ export default function RankNewClient() {
     <SidebarCard key="realtime-helper" title={realtimeModeCopy.label}>
       <p style={{ margin: 0, color: '#bfdbfe' }}>{realtimeModeCopy.helper}</p>
     </SidebarCard>,
-  ]
+  ];
 
   const renderSuccessCard = () => {
-    if (!lastCreatedGame) return null
+    if (!lastCreatedGame) return null;
 
-    const { id: gameId, name: gameName, realtimeMode: createdRealtimeMode, createdAt } =
-      lastCreatedGame
+    const {
+      id: gameId,
+      name: gameName,
+      realtimeMode: createdRealtimeMode,
+      createdAt,
+    } = lastCreatedGame;
 
     const realtimeSummaryLabel =
-      REALTIME_MODE_OPTIONS.find((option) => option.value === createdRealtimeMode)?.label ||
-      '실시간 (표준)'
+      REALTIME_MODE_OPTIONS.find(option => option.value === createdRealtimeMode)?.label ||
+      '실시간 (표준)';
 
-    const summaryLines = [
-      `${gameName} (ID: ${gameId})`,
-      `선택한 모드: ${realtimeSummaryLabel}`,
-    ]
+    const summaryLines = [`${gameName} (ID: ${gameId})`, `선택한 모드: ${realtimeSummaryLabel}`];
 
     const handleOpenHub = () => {
-      router.push(`/rank/${gameId}`)
-    }
+      router.push(`/rank/${gameId}`);
+    };
 
     const handleOpenMatchReady = () => {
-      router.push(`/rank/${gameId}/match-ready?mode=${MATCH_MODE_KEYS.RANK_SHARED}`)
-    }
+      router.push(`/rank/${gameId}/match-ready?mode=${MATCH_MODE_KEYS.RANK_SHARED}`);
+    };
 
     const handleOpenSimulator = () => {
-      router.push(`/rank/${gameId}/manual-console`)
-    }
+      router.push(`/rank/${gameId}/manual-console`);
+    };
 
     const handleRegisterAnother = () => {
-      setLastCreatedGame(null)
-      resetForm()
-    }
+      setLastCreatedGame(null);
+      resetForm();
+    };
 
     return (
       <RegistrationCard
         key="registration-success"
         title="등록이 완료되었습니다"
         description={`테스트 전투나 매칭 준비를 바로 진행할 수 있습니다. (${new Date(
-          createdAt,
+          createdAt
         ).toLocaleTimeString()})`}
       >
         <ul style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 4, color: '#cbd5f5' }}>
@@ -479,8 +492,8 @@ export default function RankNewClient() {
           </button>
         </div>
       </RegistrationCard>
-    )
-  }
+    );
+  };
 
   return (
     <RegistrationLayout
@@ -534,7 +547,7 @@ export default function RankNewClient() {
           <span style={{ color: '#cbd5f5' }}>게임 이름</span>
           <input
             value={name}
-            onChange={(event) => setName(event.target.value)}
+            onChange={event => setName(event.target.value)}
             placeholder="예: 별빛 난투 시즌1"
             style={inputStyle}
           />
@@ -545,7 +558,7 @@ export default function RankNewClient() {
             placeholder="게임 소개와 매칭 규칙을 간단히 적어 주세요."
             rows={3}
             value={desc}
-            onChange={(event) => setDesc(event.target.value)}
+            onChange={event => setDesc(event.target.value)}
             style={{ ...inputStyle, resize: 'vertical' }}
           />
         </label>
@@ -581,7 +594,9 @@ export default function RankNewClient() {
                 border: '1px solid rgba(148,163,184,0.35)',
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              >
                 <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>
                   {imageFieldCopy.previewLabel}
                 </span>
@@ -624,10 +639,10 @@ export default function RankNewClient() {
           <span style={{ color: '#cbd5f5' }}>{realtimeModeCopy.label}</span>
           <select
             value={realtimeMode}
-            onChange={(event) => setRealtimeMode(event.target.value)}
+            onChange={event => setRealtimeMode(event.target.value)}
             style={inputStyle}
           >
-            {REALTIME_MODE_OPTIONS.map((option) => (
+            {REALTIME_MODE_OPTIONS.map(option => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
@@ -656,13 +671,17 @@ export default function RankNewClient() {
             }}
           >
             <div style={{ display: 'grid', gap: 4, minWidth: 240 }}>
-              <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>{brawlModeCopy.title}</p>
-              <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: '#dbeafe' }}>{brawlModeCopy.summary}</p>
+              <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>
+                {brawlModeCopy.title}
+              </p>
+              <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: '#dbeafe' }}>
+                {brawlModeCopy.summary}
+              </p>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <button
                 type="button"
-                onClick={() => setShowBrawlHelp((prev) => !prev)}
+                onClick={() => setShowBrawlHelp(prev => !prev)}
                 style={{
                   width: 40,
                   height: 40,
@@ -675,7 +694,11 @@ export default function RankNewClient() {
               >
                 ?
               </button>
-              <button type="button" style={togglePillStyle(brawlEnabled)} onClick={handleToggleBrawl}>
+              <button
+                type="button"
+                style={togglePillStyle(brawlEnabled)}
+                onClick={handleToggleBrawl}
+              >
                 {brawlEnabled ? 'ON' : 'OFF'}
               </button>
             </div>
@@ -702,11 +725,13 @@ export default function RankNewClient() {
               <input
                 type="text"
                 value={endCondition}
-                onChange={(event) => setEndCondition(event.target.value)}
+                onChange={event => setEndCondition(event.target.value)}
                 placeholder={brawlModeCopy.endCondition.placeholder}
                 style={inputStyle}
               />
-              <span style={{ fontSize: 12, color: '#bfdbfe' }}>{brawlModeCopy.endCondition.helper}</span>
+              <span style={{ fontSize: 12, color: '#bfdbfe' }}>
+                {brawlModeCopy.endCondition.helper}
+              </span>
             </label>
           ) : (
             <p style={{ margin: 0, fontSize: 13, color: '#cbd5f5' }}>{brawlModeCopy.offHint}</p>
@@ -728,7 +753,11 @@ export default function RankNewClient() {
         description="역할과 슬롯을 연결해 매칭 시나리오를 구성합니다."
       >
         <div style={moduleShellStyle}>
-          <SlotMatrix value={slotMap} onChange={setSlotMap} roleOptions={roles.map((role) => role.name)} />
+          <SlotMatrix
+            value={slotMap}
+            onChange={setSlotMap}
+            roleOptions={roles.map(role => role.name)}
+          />
         </div>
       </RegistrationCard>
 
@@ -741,5 +770,5 @@ export default function RankNewClient() {
         </div>
       </RegistrationCard>
     </RegistrationLayout>
-  )
+  );
 }

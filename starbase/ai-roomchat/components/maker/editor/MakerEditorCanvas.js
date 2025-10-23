@@ -1,11 +1,11 @@
-'use client'
+'use client';
 
-import ReactFlow, { Background, Controls, MiniMap } from 'reactflow'
-import 'reactflow/dist/style.css'
+import ReactFlow, { Background, Controls, MiniMap } from 'reactflow';
+import 'reactflow/dist/style.css';
 
-import PromptNode from '../PromptNode'
+import PromptNode from '../PromptNode';
 
-const nodeTypes = { prompt: PromptNode }
+const nodeTypes = { prompt: PromptNode };
 
 export default function MakerEditorCanvas({
   nodes,
@@ -59,10 +59,15 @@ export default function MakerEditorCanvas({
         fitViewOptions={{ padding: 0.24, duration: 400 }}
         style={{ width: '100%', height: '100%', touchAction: 'none' }}
       >
-        <MiniMap pannable zoomable style={{ background: '#0f172a' }} maskColor="rgba(15,23,42,0.85)" />
+        <MiniMap
+          pannable
+          zoomable
+          style={{ background: '#0f172a' }}
+          maskColor="rgba(15,23,42,0.85)"
+        />
         <Controls style={{ background: 'rgba(15,23,42,0.75)', borderRadius: 12 }} />
         <Background color="#1f2937" gap={28} size={2} />
       </ReactFlow>
     </div>
-  )
+  );
 }

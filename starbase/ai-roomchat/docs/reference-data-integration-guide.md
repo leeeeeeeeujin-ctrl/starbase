@@ -6,6 +6,7 @@ modules can accelerate development of the current Supabase-backed game platform.
 ## Tinode Chat Server (`chat-master`)
 
 ### What it Provides
+
 - Full-stack instant messaging platform written in Go with web, Android, and iOS clients, plus gRPC bindings for many other
   languages. It supports WebSocket and long polling transports with JSON or protobuf payloads.
 - Extensive feature set including user/group messaging, voice and video calls, read receipts, typing indicators, access control,
@@ -14,6 +15,7 @@ modules can accelerate development of the current Supabase-backed game platform.
   helpers for production deployments.
 
 ### How We Can Reuse It
+
 - **Realtime messaging contract:** Reuse the Tinode topic & subscription schema as inspiration for Supabase Realtime channels.
   Their distinction between personal topics (`usr`) and group topics (`grp`) maps well to our room sessions. The Tinode access
   control list (ACL) matrix can translate into Postgres policies plus RPC helpers for managing read/write permissions.
@@ -24,6 +26,7 @@ modules can accelerate development of the current Supabase-backed game platform.
   Supabase.
 
 ### Concrete Implementation Notes
+
 - Model our message storage tables after `server/store`, keeping message bodies small and shipping large attachments through
   direct client ↔ Supabase Storage uploads.
 - Implement RPCs mirroring Tinode’s `set` and `get` operations so that clients can update topic metadata, manage subscriptions,
@@ -34,11 +37,13 @@ modules can accelerate development of the current Supabase-backed game platform.
 ## Shopify Liquid Template Engine (`liquid-main`)
 
 ### What it Provides
+
 - Secure, sandboxed templating language designed for user-editable themes with stateless compilation and rendering phases.
 - Rich feature set for loops, filters, custom tags, and strict error modes, plus pluggable environments for scoping custom logic.
 - Ruby implementation but the templating concepts translate to any host environment, including serverless contexts.
 
 ### How We Can Reuse It
+
 - **Player-authored content:** Use Liquid-compatible syntax for configurable room descriptions, NPC dialogue scripts, or player
   guild pages without risking arbitrary code execution. Rendering can occur in Supabase Edge Functions (Ruby via WASM, Node via
   liquid.js) or in the client before submitting sanitized templates.
@@ -48,6 +53,7 @@ modules can accelerate development of the current Supabase-backed game platform.
   database without redeploying clients.
 
 ### Concrete Implementation Notes
+
 - Keep template source in Postgres tables with versioning and moderation flags; use RPCs to load the latest published version.
 - When rendering on the backend, enforce `strict_variables` / `strict_filters` equivalents to surface configuration errors early.
 - Define a curated set of filters (e.g., `markdown`, `title_case`) and tags (e.g., conditional rendering based on player stats)
@@ -57,12 +63,14 @@ modules can accelerate development of the current Supabase-backed game platform.
 ## Open Match 2 (`open-match2-main`)
 
 ### What it Provides
+
 - Open-source matchmaking framework from Google for assembling players into matches based on customizable logic and gRPC APIs.
 - Core Go application (`main.go`) serving matchmaking endpoints, protobuf definitions in `proto/`, and generated Go clients in
   `pkg/` for integrating with various services.
 - Deployment references (`deploy/`) covering containerization and operational metrics scaffolding (`metrics.go`).
 
 ### How We Can Reuse It
+
 - **Matchmaking architecture:** Mirror Open Match’s division between the frontend (ticket ingestion), the core orchestrator, and
   Matchmaking Functions (MMFs). We can implement these roles as Supabase RPCs and cron jobs: tickets stored in Postgres tables,
   MMFs expressed as SQL or serverless functions, and distribution handled by Realtime broadcasts.
@@ -73,6 +81,7 @@ modules can accelerate development of the current Supabase-backed game platform.
   game mode or region—with advisory locks or row-level locks in Postgres to avoid conflicts.
 
 ### Concrete Implementation Notes
+
 - Implement a `match_tickets` table mirroring `openmatch.Ticket` fields, with RPCs to create tickets and an Edge Function to run
   selection logic similar to the MMF examples.
 - Use Supabase Realtime to notify clients when a ticket transitions to `Matched`, inspired by the Assignment service in Open

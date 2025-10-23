@@ -1,5 +1,5 @@
-import RankHubScreen from '../../components/rank/hub/RankHubScreen'
+import RankHubScreen from '../../components/rank/hub/RankHubScreen';
 
 export default function RankHome() {
-  return <RankHubScreen />
+  return <RankHubScreen />;
 }

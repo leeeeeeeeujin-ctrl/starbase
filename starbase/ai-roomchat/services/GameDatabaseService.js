@@ -6,11 +6,10 @@
 import { supabase } from '../lib/supabase';
 
 export class GameDatabaseService {
-  
   // =========================================
   //  🎯 게임 프로젝트 관리
   // =========================================
-  
+
   /**
    * 새 게임 프로젝트 생성
    */
@@ -19,9 +18,9 @@ export class GameDatabaseService {
       const { data, error } = await supabase.rpc('create_game_project', {
         project_name: projectData.name,
         project_type: projectData.type || 'text_game',
-        initial_settings: projectData.settings || {}
+        initial_settings: projectData.settings || {},
       });
-      
+
       if (error) throw error;
       return { success: true, projectId: data };
     } catch (error) {
@@ -29,7 +28,7 @@ export class GameDatabaseService {
       return { success: false, error: error.message };
     }
   }
-  
+
   /**
    * 사용자의 게임 프로젝트 목록 조회
    */
@@ -40,7 +39,7 @@ export class GameDatabaseService {
         .select('*')
         .eq('user_id', userId)
         .order('updated_at', { ascending: false });
-      
+
       if (error) throw error;
       return { success: true, projects: data };
     } catch (error) {
@@ -48,7 +47,7 @@ export class GameDatabaseService {
       return { success: false, error: error.message };
     }
   }
-  
+
   /**
    * 프로젝트 정보 업데이트
    */
@@ -58,11 +57,11 @@ export class GameDatabaseService {
         .from('game_projects')
         .update({
           ...updates,
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
         })
         .eq('id', projectId)
         .select();
-      
+
       if (error) throw error;
       return { success: true, project: data[0] };
     } catch (error) {
@@ -70,11 +69,11 @@ export class GameDatabaseService {
       return { success: false, error: error.message };
     }
   }
-  
+
   // =========================================
   //  📁 프로젝트 파일 관리
   // =========================================
-  
+
   /**
    * 프로젝트 파일 생성/업데이트
    */
@@ -88,10 +87,10 @@ export class GameDatabaseService {
           file_type: fileType,
           content: content,
           size_bytes: new Blob([content]).size,
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
         })
         .select();
-      
+
       if (error) throw error;
       return { success: true, file: data[0] };
     } catch (error) {
@@ -99,7 +98,7 @@ export class GameDatabaseService {
       return { success: false, error: error.message };
     }
   }
-  
+
   /**
    * 프로젝트 파일 목록 조회
    */
@@ -110,7 +109,7 @@ export class GameDatabaseService {
         .select('*')
         .eq('project_id', projectId)
         .order('file_path');
-      
+
       if (error) throw error;
       return { success: true, files: data };
     } catch (error) {
@@ -118,7 +117,7 @@ export class GameDatabaseService {
       return { success: false, error: error.message };
     }
   }
-  
+
   /**
    * 특정 파일 내용 조회
    */
@@ -131,22 +130,22 @@ export class GameDatabaseService {
         .eq('file_path', filePath)
         .order('version', { ascending: false })
         .limit(1);
-      
+
       if (error) throw error;
-      return { 
-        success: true, 
-        file: data.length > 0 ? data[0] : null 
+      return {
+        success: true,
+        file: data.length > 0 ? data[0] : null,
       };
     } catch (error) {
       console.error('파일 조회 실패:', error);
       return { success: false, error: error.message };
     }
   }
-  
+
   // =========================================
   //  🎮 게임 세션 관리 (FlexibleGameEngine 연동)
   // =========================================
-  
+
   /**
    * 게임 세션 시작
    */
@@ -154,9 +153,9 @@ export class GameDatabaseService {
     try {
       const { data, error } = await supabase.rpc('start_game_session', {
         p_project_id: projectId,
-        initial_data: initialData
+        initial_data: initialData,
       });
-      
+
       if (error) throw error;
       return { success: true, sessionId: data };
     } catch (error) {
@@ -164,7 +163,7 @@ export class GameDatabaseService {
       return { success: false, error: error.message };
     }
   }
-  
+
   /**
    * 점수 업데이트 (FlexibleGameEngine의 updateScore와 연동)
    */
@@ -175,9 +174,9 @@ export class GameDatabaseService {
         p_event_type: eventType,
         p_score_change: scoreChange,
         p_reason: reason,
-        p_turn_number: turnNumber
+        p_turn_number: turnNumber,
       });
-      
+
       if (error) throw error;
       return { success: true, result: data };
     } catch (error) {
@@ -185,7 +184,7 @@ export class GameDatabaseService {
       return { success: false, error: error.message };
     }
   }
-  
+
   /**
    * 게임 종료 (FlexibleGameEngine의 endGame과 연동)
    */
@@ -194,9 +193,9 @@ export class GameDatabaseService {
       const { data, error } = await supabase.rpc('end_game_session', {
         p_session_id: sessionId,
         p_result: result,
-        p_end_reason: endReason
+        p_end_reason: endReason,
       });
-      
+
       if (error) throw error;
       return { success: true, result: data };
     } catch (error) {
@@ -204,7 +203,7 @@ export class GameDatabaseService {
       return { success: false, error: error.message };
     }
   }
-  
+
   /**
    * 현재 활성 세션 조회
    */
@@ -218,37 +217,42 @@ export class GameDatabaseService {
         .in('status', ['waiting', 'active', 'paused'])
         .order('created_at', { ascending: false })
         .limit(1);
-      
+
       if (error) throw error;
-      return { 
-        success: true, 
-        session: data.length > 0 ? data[0] : null 
+      return {
+        success: true,
+        session: data.length > 0 ? data[0] : null,
       };
     } catch (error) {
       console.error('활성 세션 조회 실패:', error);
       return { success: false, error: error.message };
     }
   }
-  
+
   /**
    * 세션 데이터 업데이트 (게임 변수, 상태 등)
    */
-  static async updateSessionData(sessionId, sessionData = null, persistentData = null, gameVariables = null) {
+  static async updateSessionData(
+    sessionId,
+    sessionData = null,
+    persistentData = null,
+    gameVariables = null
+  ) {
     try {
       const updates = {
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
       };
-      
+
       if (sessionData !== null) updates.session_data = sessionData;
       if (persistentData !== null) updates.persistent_data = persistentData;
       if (gameVariables !== null) updates.game_variables = gameVariables;
-      
+
       const { data, error } = await supabase
         .from('game_sessions')
         .update(updates)
         .eq('id', sessionId)
         .select();
-      
+
       if (error) throw error;
       return { success: true, session: data[0] };
     } catch (error) {
@@ -256,7 +260,7 @@ export class GameDatabaseService {
       return { success: false, error: error.message };
     }
   }
-  
+
   /**
    * 점수 이벤트 히스토리 조회
    */
@@ -267,7 +271,7 @@ export class GameDatabaseService {
         .select('*')
         .eq('session_id', sessionId)
         .order('created_at');
-      
+
       if (error) throw error;
       return { success: true, events: data };
     } catch (error) {
@@ -275,11 +279,11 @@ export class GameDatabaseService {
       return { success: false, error: error.message };
     }
   }
-  
+
   // =========================================
   //  🤖 AI API 관리
   // =========================================
-  
+
   /**
    * 사용자의 AI API 설정 조회
    */
@@ -291,7 +295,7 @@ export class GameDatabaseService {
         .eq('user_id', userId)
         .eq('enabled', true)
         .order('provider');
-      
+
       if (error) throw error;
       return { success: true, configs: data };
     } catch (error) {
@@ -299,7 +303,7 @@ export class GameDatabaseService {
       return { success: false, error: error.message };
     }
   }
-  
+
   /**
    * AI API 설정 저장/업데이트
    */
@@ -314,10 +318,10 @@ export class GameDatabaseService {
           api_key_encrypted: configData.apiKeyEncrypted,
           endpoint_url: configData.endpointUrl,
           enabled: configData.enabled !== false,
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
         })
         .select();
-      
+
       if (error) throw error;
       return { success: true, config: data[0] };
     } catch (error) {
@@ -325,7 +329,7 @@ export class GameDatabaseService {
       return { success: false, error: error.message };
     }
   }
-  
+
   /**
    * API 테스트 결과 업데이트
    */
@@ -334,9 +338,9 @@ export class GameDatabaseService {
       const { error } = await supabase.rpc('update_api_test_result', {
         p_config_id: configId,
         p_status: status,
-        p_error_message: errorMessage
+        p_error_message: errorMessage,
       });
-      
+
       if (error) throw error;
       return { success: true };
     } catch (error) {
@@ -344,7 +348,7 @@ export class GameDatabaseService {
       return { success: false, error: error.message };
     }
   }
-  
+
   /**
    * AI 도우미 사용 로그 기록
    */
@@ -366,10 +370,10 @@ export class GameDatabaseService {
           execution_error: logData.executionError,
           response_time_ms: logData.responseTimeMs,
           tokens_used: logData.tokensUsed,
-          cost_estimate: logData.costEstimate
+          cost_estimate: logData.costEstimate,
         })
         .select();
-      
+
       if (error) throw error;
       return { success: true, log: data[0] };
     } catch (error) {
@@ -377,11 +381,11 @@ export class GameDatabaseService {
       return { success: false, error: error.message };
     }
   }
-  
+
   // =========================================
   //  📊 통계 및 분석
   // =========================================
-  
+
   /**
    * 사용자 게임 통계 조회
    */
@@ -392,39 +396,39 @@ export class GameDatabaseService {
         .from('game_projects')
         .select('project_type, status, play_count, likes_count')
         .eq('user_id', userId);
-      
+
       if (projectError) throw projectError;
-      
+
       // 세션 통계
       const { data: sessionStats, error: sessionError } = await supabase
         .from('game_sessions')
         .select('status, result, current_score, duration_seconds')
         .eq('user_id', userId);
-      
+
       if (sessionError) throw sessionError;
-      
+
       // AI 사용 통계
       const { data: aiStats, error: aiError } = await supabase
         .from('ai_assistant_logs')
         .select('provider, programming_language, execution_success')
         .eq('user_id', userId);
-      
+
       if (aiError) throw aiError;
-      
-      return { 
-        success: true, 
+
+      return {
+        success: true,
         stats: {
           projects: projectStats,
           sessions: sessionStats,
-          aiUsage: aiStats
-        }
+          aiUsage: aiStats,
+        },
       };
     } catch (error) {
       console.error('사용자 통계 조회 실패:', error);
       return { success: false, error: error.message };
     }
   }
-  
+
   /**
    * 인기 프로젝트 조회
    */
@@ -436,7 +440,7 @@ export class GameDatabaseService {
         .eq('is_public', true)
         .order('play_count', { ascending: false })
         .limit(limit);
-      
+
       if (error) throw error;
       return { success: true, projects: data };
     } catch (error) {
@@ -444,11 +448,11 @@ export class GameDatabaseService {
       return { success: false, error: error.message };
     }
   }
-  
+
   // =========================================
   //  🔄 실시간 업데이트
   // =========================================
-  
+
   /**
    * 게임 세션 실시간 구독
    */
@@ -461,13 +465,13 @@ export class GameDatabaseService {
           event: 'UPDATE',
           schema: 'public',
           table: 'game_sessions',
-          filter: `id=eq.${sessionId}`
+          filter: `id=eq.${sessionId}`,
         },
         onUpdate
       )
       .subscribe();
   }
-  
+
   /**
    * 점수 이벤트 실시간 구독
    */
@@ -480,13 +484,13 @@ export class GameDatabaseService {
           event: 'INSERT',
           schema: 'public',
           table: 'score_events',
-          filter: `session_id=eq.${sessionId}`
+          filter: `session_id=eq.${sessionId}`,
         },
         onScoreUpdate
       )
       .subscribe();
   }
-  
+
   /**
    * 프로젝트 파일 변경 실시간 구독
    */
@@ -499,7 +503,7 @@ export class GameDatabaseService {
           event: '*',
           schema: 'public',
           table: 'project_files',
-          filter: `project_id=eq.${projectId}`
+          filter: `project_id=eq.${projectId}`,
         },
         onFileUpdate
       )

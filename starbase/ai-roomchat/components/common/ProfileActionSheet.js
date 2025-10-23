@@ -1,5 +1,5 @@
 // components/common/ProfileActionSheet.js
-'use client'
+'use client';
 
 export default function ProfileActionSheet({
   open,
@@ -13,21 +13,21 @@ export default function ProfileActionSheet({
   blocked,
   onToggleBlock,
 }) {
-  if (!open || !hero) return null
+  if (!open || !hero) return null;
 
-  const { heroId, heroName, avatarUrl, isSelf } = hero
-  const displayName = heroName || '이름 없는 영웅'
+  const { heroId, heroName, avatarUrl, isSelf } = hero;
+  const displayName = heroName || '이름 없는 영웅';
 
   function handleAction(action) {
     if (typeof action === 'function') {
-      action(hero)
+      action(hero);
     }
     if (typeof onClose === 'function') {
-      onClose()
+      onClose();
     }
   }
 
-  const disabledLabel = isSelf ? '자신의 캐릭터입니다.' : null
+  const disabledLabel = isSelf ? '자신의 캐릭터입니다.' : null;
 
   return (
     <div
@@ -96,9 +96,7 @@ export default function ProfileActionSheet({
           </div>
         </header>
 
-        {isSelf ? (
-          <div style={{ fontSize: 12, color: '#94a3b8' }}>{disabledLabel}</div>
-        ) : null}
+        {isSelf ? <div style={{ fontSize: 12, color: '#94a3b8' }}>{disabledLabel}</div> : null}
 
         <div style={{ display: 'grid', gap: 10 }}>
           {isFriend ? (
@@ -205,7 +203,7 @@ export default function ProfileActionSheet({
         </button>
       </div>
     </div>
-  )
+  );
 }
 
 //

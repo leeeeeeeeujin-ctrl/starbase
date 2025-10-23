@@ -4,69 +4,64 @@
  */
 import React, { useState, useEffect, useRef } from 'react';
 
-const GameResourceEditor = ({ 
-  onClose, 
-  gameData,
-  onGameUpdate,
-  resourceManager 
-}) => {
+const GameResourceEditor = ({ onClose, gameData, onGameUpdate, resourceManager }) => {
   const [activeTab, setActiveTab] = useState('characters');
   const [selectedResource, setSelectedResource] = useState(null);
   const [resources, setResources] = useState({
     characters: [],
-    skills: [], 
+    skills: [],
     items: [],
     music: [],
-    backgrounds: []
+    backgrounds: [],
   });
   const [editMode, setEditMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const fileInputRef = useRef(null);
-  
+
   // 리소스 매니저가 없으면 전역 인스턴스 사용
   const resourceMgr = resourceManager || window.gameResourceManager;
-  
+
   useEffect(() => {
     if (resourceMgr) {
       // 게임 ID 설정
       if (gameData?.id) {
         resourceMgr.setGameId(gameData.id);
       }
-      
+
       // 리소스 로드
       loadResources();
-      
+
       // 변경사항 리스너 등록
       const unsubscribe = resourceMgr.addChangeListener(() => {
         loadResources();
       });
-      
+
       return unsubscribe;
     }
   }, [resourceMgr, gameData?.id]);
-  
+
   const loadResources = () => {
     if (!resourceMgr) return;
-    
+
     setResources({
       characters: resourceMgr.getAllCharacters(),
       skills: resourceMgr.getAllSkills(),
       items: resourceMgr.getAllItems(),
       music: Array.from(resourceMgr.resources.music.values()),
-      backgrounds: Array.from(resourceMgr.resources.backgrounds.values())
+      backgrounds: Array.from(resourceMgr.resources.backgrounds.values()),
     });
   };
-  
+
   const handleCreateNew = () => {
     const newId = `${activeTab}_${Date.now()}`;
     let newResource = {};
-    
+
     switch (activeTab) {
       case 'characters':
         newResource = resourceMgr.setCharacter(newId, {
           name: '새로운 캐릭터',
           description: '새롭게 만들어진 캐릭터입니다.',
-          stats: { hp: 100, mp: 50, attack: 15, defense: 10, speed: 12, intelligence: 8 }
+          stats: { hp: 100, mp: 50, attack: 15, defense: 10, speed: 12, intelligence: 8 },
         });
         break;
       case 'skills':
@@ -75,7 +70,7 @@ const GameResourceEditor = ({
           description: '새로운 스킬입니다.',
           damage: 20,
           cooldown: 3,
-          manaCost: 15
+          manaCost: 15,
         });
         break;
       case 'items':
@@ -83,31 +78,31 @@ const GameResourceEditor = ({
           name: '새로운 아이템',
           description: '새로운 아이템입니다.',
           type: 'consumable',
-          effects: { healing: 50 }
+          effects: { healing: 50 },
         });
         break;
       case 'music':
         newResource = resourceMgr.setMusic(newId, {
           name: '새로운 BGM',
-          tags: ['ambient']
+          tags: ['ambient'],
         });
         break;
       case 'backgrounds':
         newResource = resourceMgr.setBackground(newId, {
-          name: '새로운 배경'
+          name: '새로운 배경',
         });
         break;
     }
-    
+
     setSelectedResource(newResource);
     setEditMode(true);
   };
-  
-  const handleSave = (resourceData) => {
+
+  const handleSave = resourceData => {
     if (!resourceMgr || !selectedResource) return;
-    
+
     const resourceId = selectedResource.id;
-    
+
     switch (activeTab) {
       case 'characters':
         resourceMgr.setCharacter(resourceId, resourceData);
@@ -125,31 +120,31 @@ const GameResourceEditor = ({
         resourceMgr.setBackground(resourceId, resourceData);
         break;
     }
-    
+
     setEditMode(false);
     loadResources();
   };
-  
-  const handleDelete = (resourceId) => {
+
+  const handleDelete = resourceId => {
     if (!resourceMgr) return;
-    
+
     if (confirm('정말로 이 리소스를 삭제하시겠습니까?')) {
       resourceMgr.resources[activeTab].delete(resourceId);
       resourceMgr.saveGameResources();
       loadResources();
-      
+
       if (selectedResource?.id === resourceId) {
         setSelectedResource(null);
         setEditMode(false);
       }
     }
   };
-  
+
   const handleImageUpload = (event, field) => {
     const file = event.target.files[0];
     if (file) {
       const reader = new FileReader();
-      reader.onload = (e) => {
+      reader.onload = e => {
         if (selectedResource) {
           const updatedResource = { ...selectedResource };
           if (field.includes('.')) {
@@ -165,66 +160,76 @@ const GameResourceEditor = ({
       reader.readAsDataURL(file);
     }
   };
-  
-  const filteredResources = resources[activeTab]?.filter(resource => 
-    resource.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    resource.description?.toLowerCase().includes(searchQuery.toLowerCase())
-  ) || [];
-  
+
+  const filteredResources =
+    resources[activeTab]?.filter(
+      resource =>
+        resource.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        resource.description?.toLowerCase().includes(searchQuery.toLowerCase())
+    ) || [];
+
   const tabs = [
     { id: 'characters', label: '캐릭터', icon: '👤' },
     { id: 'skills', label: '스킬', icon: '⚡' },
     { id: 'items', label: '아이템', icon: '🎒' },
     { id: 'music', label: 'BGM', icon: '🎵' },
-    { id: 'backgrounds', label: '배경', icon: '🖼️' }
+    { id: 'backgrounds', label: '배경', icon: '🖼️' },
   ];
-  
+
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      width: '100%',
-      height: '100%',
-      background: 'rgba(0,0,0,0.9)',
-      zIndex: 1000,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center'
-    }}>
-      <div style={{
-        width: '95%',
-        maxWidth: '1400px',
-        height: '90%',
-        background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
-        borderRadius: 20,
-        border: '2px solid rgba(255,255,255,0.1)',
+    <div
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        background: 'rgba(0,0,0,0.9)',
+        zIndex: 1000,
         display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden',
-        boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)'
-      }}>
-        {/* 헤더 */}
-        <div style={{
-          padding: '20px 30px',
-          borderBottom: '2px solid rgba(255,255,255,0.1)',
-          background: 'rgba(0,0,0,0.3)',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <div
+        style={{
+          width: '95%',
+          maxWidth: '1400px',
+          height: '90%',
+          background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+          borderRadius: 20,
+          border: '2px solid rgba(255,255,255,0.1)',
           display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between'
-        }}>
-          <h2 style={{ 
-            margin: 0, 
-            color: '#ffffff', 
-            fontSize: 28,
-            fontWeight: 800,
+          flexDirection: 'column',
+          overflow: 'hidden',
+          boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)',
+        }}
+      >
+        {/* 헤더 */}
+        <div
+          style={{
+            padding: '20px 30px',
+            borderBottom: '2px solid rgba(255,255,255,0.1)',
+            background: 'rgba(0,0,0,0.3)',
             display: 'flex',
             alignItems: 'center',
-            gap: 15
-          }}>
+            justifyContent: 'space-between',
+          }}
+        >
+          <h2
+            style={{
+              margin: 0,
+              color: '#ffffff',
+              fontSize: 28,
+              fontWeight: 800,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 15,
+            }}
+          >
             🎮 게임 리소스 편집기
           </h2>
-          
+
           <button
             onClick={onClose}
             style={{
@@ -235,31 +240,35 @@ const GameResourceEditor = ({
               padding: '12px 20px',
               cursor: 'pointer',
               fontSize: 16,
-              fontWeight: 600
+              fontWeight: 600,
             }}
           >
             ✕ 닫기
           </button>
         </div>
-        
+
         {/* 메인 컨텐츠 */}
         <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
           {/* 사이드바 - 탭과 리소스 목록 */}
-          <div style={{
-            width: '400px',
-            background: 'rgba(0,0,0,0.2)',
-            borderRight: '2px solid rgba(255,255,255,0.1)',
-            display: 'flex',
-            flexDirection: 'column'
-          }}>
-            {/* 탭 메뉴 */}
-            <div style={{
+          <div
+            style={{
+              width: '400px',
+              background: 'rgba(0,0,0,0.2)',
+              borderRight: '2px solid rgba(255,255,255,0.1)',
               display: 'flex',
-              flexWrap: 'wrap',
-              gap: 8,
-              padding: 20,
-              borderBottom: '1px solid rgba(255,255,255,0.1)'
-            }}>
+              flexDirection: 'column',
+            }}
+          >
+            {/* 탭 메뉴 */}
+            <div
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: 8,
+                padding: 20,
+                borderBottom: '1px solid rgba(255,255,255,0.1)',
+              }}
+            >
               {tabs.map(tab => (
                 <button
                   key={tab.id}
@@ -269,9 +278,10 @@ const GameResourceEditor = ({
                     setEditMode(false);
                   }}
                   style={{
-                    background: activeTab === tab.id 
-                      ? 'linear-gradient(135deg, #8b5cf6, #06b6d4)'
-                      : 'rgba(255,255,255,0.1)',
+                    background:
+                      activeTab === tab.id
+                        ? 'linear-gradient(135deg, #8b5cf6, #06b6d4)'
+                        : 'rgba(255,255,255,0.1)',
                     border: 'none',
                     borderRadius: 10,
                     color: '#ffffff',
@@ -284,7 +294,7 @@ const GameResourceEditor = ({
                     gap: 8,
                     flex: 1,
                     minWidth: 'auto',
-                    transition: 'all 0.2s ease'
+                    transition: 'all 0.2s ease',
                   }}
                 >
                   <span>{tab.icon}</span>
@@ -292,7 +302,7 @@ const GameResourceEditor = ({
                 </button>
               ))}
             </div>
-            
+
             {/* 검색 및 새로 만들기 */}
             <div style={{ padding: '20px 20px 10px' }}>
               <div style={{ display: 'flex', gap: 10, marginBottom: 15 }}>
@@ -300,7 +310,7 @@ const GameResourceEditor = ({
                   type="text"
                   placeholder="리소스 검색..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={e => setSearchQuery(e.target.value)}
                   style={{
                     flex: 1,
                     background: 'rgba(255,255,255,0.1)',
@@ -308,11 +318,11 @@ const GameResourceEditor = ({
                     borderRadius: 8,
                     color: '#ffffff',
                     padding: '10px 15px',
-                    fontSize: 14
+                    fontSize: 14,
                   }}
                 />
               </div>
-              
+
               <button
                 onClick={handleCreateNew}
                 style={{
@@ -328,19 +338,21 @@ const GameResourceEditor = ({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: 10
+                  gap: 10,
                 }}
               >
                 + 새로운 {tabs.find(t => t.id === activeTab)?.label} 만들기
               </button>
             </div>
-            
+
             {/* 리소스 목록 */}
-            <div style={{
-              flex: 1,
-              overflow: 'auto',
-              padding: '0 20px 20px'
-            }}>
+            <div
+              style={{
+                flex: 1,
+                overflow: 'auto',
+                padding: '0 20px 20px',
+              }}
+            >
               {filteredResources.map(resource => (
                 <div
                   key={resource.id}
@@ -349,25 +361,29 @@ const GameResourceEditor = ({
                     setEditMode(false);
                   }}
                   style={{
-                    background: selectedResource?.id === resource.id 
-                      ? 'rgba(139, 92, 246, 0.2)' 
-                      : 'rgba(255,255,255,0.05)',
-                    border: selectedResource?.id === resource.id
-                      ? '2px solid #8b5cf6'
-                      : '1px solid rgba(255,255,255,0.1)',
+                    background:
+                      selectedResource?.id === resource.id
+                        ? 'rgba(139, 92, 246, 0.2)'
+                        : 'rgba(255,255,255,0.05)',
+                    border:
+                      selectedResource?.id === resource.id
+                        ? '2px solid #8b5cf6'
+                        : '1px solid rgba(255,255,255,0.1)',
                     borderRadius: 12,
                     padding: 15,
                     marginBottom: 10,
                     cursor: 'pointer',
-                    transition: 'all 0.2s ease'
+                    transition: 'all 0.2s ease',
                   }}
                 >
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 12,
-                    marginBottom: 8
-                  }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      marginBottom: 8,
+                    }}
+                  >
                     {resource.image && (
                       <img
                         src={resource.image}
@@ -376,82 +392,99 @@ const GameResourceEditor = ({
                           width: 40,
                           height: 40,
                           borderRadius: 8,
-                          objectFit: 'cover'
+                          objectFit: 'cover',
                         }}
-                        onError={(e) => {
+                        onError={e => {
                           e.target.style.display = 'none';
                         }}
                       />
                     )}
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <h4 style={{
-                        margin: 0,
-                        color: '#ffffff',
-                        fontSize: 16,
-                        fontWeight: 600,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap'
-                      }}>
+                      <h4
+                        style={{
+                          margin: 0,
+                          color: '#ffffff',
+                          fontSize: 16,
+                          fontWeight: 600,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
                         {resource.name}
                       </h4>
-                      <p style={{
-                        margin: 0,
-                        color: '#cbd5e1',
-                        fontSize: 12,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap'
-                      }}>
+                      <p
+                        style={{
+                          margin: 0,
+                          color: '#cbd5e1',
+                          fontSize: 12,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
                         {resource.description || 'No description'}
                       </p>
                     </div>
                   </div>
-                  
+
                   {/* 리소스 특화 정보 */}
                   {activeTab === 'characters' && resource.stats && (
-                    <div style={{ 
-                      display: 'flex', 
-                      gap: 8, 
-                      fontSize: 11, 
-                      color: '#94a3b8' 
-                    }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: 8,
+                        fontSize: 11,
+                        color: '#94a3b8',
+                      }}
+                    >
                       <span>HP:{resource.stats.hp}</span>
                       <span>ATK:{resource.stats.attack}</span>
                       <span>DEF:{resource.stats.defense}</span>
                     </div>
                   )}
-                  
+
                   {activeTab === 'skills' && (
-                    <div style={{ 
-                      display: 'flex', 
-                      gap: 8, 
-                      fontSize: 11, 
-                      color: '#94a3b8' 
-                    }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: 8,
+                        fontSize: 11,
+                        color: '#94a3b8',
+                      }}
+                    >
                       <span>{resource.type}</span>
                       <span>DMG:{resource.damage}</span>
                       <span>MP:{resource.manaCost}</span>
                     </div>
                   )}
-                  
+
                   {activeTab === 'items' && (
-                    <div style={{ 
-                      display: 'flex', 
-                      gap: 8, 
-                      fontSize: 11, 
-                      color: '#94a3b8' 
-                    }}>
-                      <span style={{
-                        background: resource.rarity === 'legendary' ? '#fbbf24' :
-                                   resource.rarity === 'epic' ? '#a855f7' :
-                                   resource.rarity === 'rare' ? '#3b82f6' : '#6b7280',
-                        color: '#ffffff',
-                        padding: '2px 6px',
-                        borderRadius: 4,
-                        fontSize: 10,
-                        fontWeight: 600
-                      }}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: 8,
+                        fontSize: 11,
+                        color: '#94a3b8',
+                      }}
+                    >
+                      <span
+                        style={{
+                          background:
+                            resource.rarity === 'legendary'
+                              ? '#fbbf24'
+                              : resource.rarity === 'epic'
+                                ? '#a855f7'
+                                : resource.rarity === 'rare'
+                                  ? '#3b82f6'
+                                  : '#6b7280',
+                          color: '#ffffff',
+                          padding: '2px 6px',
+                          borderRadius: 4,
+                          fontSize: 10,
+                          fontWeight: 600,
+                        }}
+                      >
                         {resource.rarity}
                       </span>
                       <span>{resource.type}</span>
@@ -461,37 +494,43 @@ const GameResourceEditor = ({
               ))}
             </div>
           </div>
-          
+
           {/* 메인 편집 영역 */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
             {selectedResource ? (
               <>
                 {/* 리소스 헤더 */}
-                <div style={{
-                  padding: 30,
-                  borderBottom: '1px solid rgba(255,255,255,0.1)',
-                  background: 'rgba(0,0,0,0.1)'
-                }}>
-                  <div style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'space-between',
-                    marginBottom: 20
-                  }}>
-                    <h3 style={{
-                      margin: 0,
-                      color: '#ffffff',
-                      fontSize: 24,
-                      fontWeight: 700
-                    }}>
+                <div
+                  style={{
+                    padding: 30,
+                    borderBottom: '1px solid rgba(255,255,255,0.1)',
+                    background: 'rgba(0,0,0,0.1)',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: 20,
+                    }}
+                  >
+                    <h3
+                      style={{
+                        margin: 0,
+                        color: '#ffffff',
+                        fontSize: 24,
+                        fontWeight: 700,
+                      }}
+                    >
                       {selectedResource.name}
                     </h3>
-                    
+
                     <div style={{ display: 'flex', gap: 10 }}>
                       <button
                         onClick={() => setEditMode(!editMode)}
                         style={{
-                          background: editMode 
+                          background: editMode
                             ? 'linear-gradient(135deg, #ef4444, #dc2626)'
                             : 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
                           border: 'none',
@@ -500,12 +539,12 @@ const GameResourceEditor = ({
                           padding: '12px 20px',
                           cursor: 'pointer',
                           fontSize: 14,
-                          fontWeight: 600
+                          fontWeight: 600,
                         }}
                       >
                         {editMode ? '✕ 취소' : '✏️ 편집'}
                       </button>
-                      
+
                       <button
                         onClick={() => handleDelete(selectedResource.id)}
                         style={{
@@ -516,30 +555,34 @@ const GameResourceEditor = ({
                           padding: '12px 20px',
                           cursor: 'pointer',
                           fontSize: 14,
-                          fontWeight: 600
+                          fontWeight: 600,
                         }}
                       >
                         🗑️ 삭제
                       </button>
                     </div>
                   </div>
-                  
-                  <p style={{
-                    margin: 0,
-                    color: '#cbd5e1',
-                    fontSize: 16,
-                    lineHeight: 1.5
-                  }}>
+
+                  <p
+                    style={{
+                      margin: 0,
+                      color: '#cbd5e1',
+                      fontSize: 16,
+                      lineHeight: 1.5,
+                    }}
+                  >
                     {selectedResource.description}
                   </p>
                 </div>
-                
+
                 {/* 리소스 편집 폼 */}
-                <div style={{
-                  flex: 1,
-                  overflow: 'auto',
-                  padding: 30
-                }}>
+                <div
+                  style={{
+                    flex: 1,
+                    overflow: 'auto',
+                    padding: 30,
+                  }}
+                >
                   <ResourceEditForm
                     resource={selectedResource}
                     resourceType={activeTab}
@@ -565,15 +608,17 @@ const GameResourceEditor = ({
                 </div>
               </>
             ) : (
-              <div style={{
-                flex: 1,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#64748b',
-                fontSize: 18,
-                textAlign: 'center'
-              }}>
+              <div
+                style={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#64748b',
+                  fontSize: 18,
+                  textAlign: 'center',
+                }}
+              >
                 <div>
                   <div style={{ fontSize: 48, marginBottom: 20 }}>
                     {tabs.find(t => t.id === activeTab)?.icon}
@@ -587,7 +632,7 @@ const GameResourceEditor = ({
           </div>
         </div>
       </div>
-      
+
       <input
         ref={fileInputRef}
         type="file"
@@ -600,40 +645,42 @@ const GameResourceEditor = ({
 };
 
 // 리소스별 편집 폼 컴포넌트
-const ResourceEditForm = ({ 
-  resource, 
-  resourceType, 
-  editMode, 
-  onSave, 
+const ResourceEditForm = ({
+  resource,
+  resourceType,
+  editMode,
+  onSave,
   onImageUpload,
-  onFieldChange 
+  onFieldChange,
 }) => {
-  const handleSubmit = (e) => {
+  const handleSubmit = e => {
     e.preventDefault();
     onSave(resource);
   };
-  
+
   const renderField = (label, field, type = 'text', options = {}) => {
-    const value = field.includes('.') 
+    const value = field.includes('.')
       ? field.split('.').reduce((obj, key) => obj?.[key], resource)
       : resource[field];
-    
+
     return (
       <div style={{ marginBottom: 20 }}>
-        <label style={{
-          display: 'block',
-          color: '#e2e8f0',
-          fontSize: 14,
-          fontWeight: 600,
-          marginBottom: 8
-        }}>
+        <label
+          style={{
+            display: 'block',
+            color: '#e2e8f0',
+            fontSize: 14,
+            fontWeight: 600,
+            marginBottom: 8,
+          }}
+        >
           {label}
         </label>
-        
+
         {type === 'textarea' ? (
           <textarea
             value={value || ''}
-            onChange={(e) => onFieldChange(field, e.target.value)}
+            onChange={e => onFieldChange(field, e.target.value)}
             disabled={!editMode}
             rows={options.rows || 3}
             style={{
@@ -644,14 +691,14 @@ const ResourceEditForm = ({
               color: '#ffffff',
               padding: '12px 15px',
               fontSize: 14,
-              resize: 'vertical'
+              resize: 'vertical',
             }}
           />
         ) : type === 'number' ? (
           <input
             type="number"
             value={value || 0}
-            onChange={(e) => onFieldChange(field, parseFloat(e.target.value) || 0)}
+            onChange={e => onFieldChange(field, parseFloat(e.target.value) || 0)}
             disabled={!editMode}
             min={options.min || 0}
             max={options.max}
@@ -663,13 +710,13 @@ const ResourceEditForm = ({
               borderRadius: 8,
               color: '#ffffff',
               padding: '12px 15px',
-              fontSize: 14
+              fontSize: 14,
             }}
           />
         ) : type === 'select' ? (
           <select
             value={value || ''}
-            onChange={(e) => onFieldChange(field, e.target.value)}
+            onChange={e => onFieldChange(field, e.target.value)}
             disabled={!editMode}
             style={{
               width: '100%',
@@ -678,7 +725,7 @@ const ResourceEditForm = ({
               borderRadius: 8,
               color: '#ffffff',
               padding: '12px 15px',
-              fontSize: 14
+              fontSize: 14,
             }}
           >
             {options.options?.map(option => (
@@ -699,7 +746,7 @@ const ResourceEditForm = ({
                   objectFit: 'cover',
                   borderRadius: 8,
                   marginBottom: 10,
-                  display: 'block'
+                  display: 'block',
                 }}
               />
             )}
@@ -710,7 +757,7 @@ const ResourceEditForm = ({
                   const input = document.createElement('input');
                   input.type = 'file';
                   input.accept = 'image/*';
-                  input.onchange = (e) => onImageUpload(e, field);
+                  input.onchange = e => onImageUpload(e, field);
                   input.click();
                 }}
                 style={{
@@ -720,7 +767,7 @@ const ResourceEditForm = ({
                   color: '#3b82f6',
                   padding: '8px 16px',
                   cursor: 'pointer',
-                  fontSize: 12
+                  fontSize: 12,
                 }}
               >
                 📷 이미지 업로드
@@ -731,7 +778,7 @@ const ResourceEditForm = ({
           <input
             type="text"
             value={value || ''}
-            onChange={(e) => onFieldChange(field, e.target.value)}
+            onChange={e => onFieldChange(field, e.target.value)}
             disabled={!editMode}
             style={{
               width: '100%',
@@ -740,15 +787,14 @@ const ResourceEditForm = ({
               borderRadius: 8,
               color: '#ffffff',
               padding: '12px 15px',
-              fontSize: 14
+              fontSize: 14,
             }}
           />
-        )
-      }
+        )}
       </div>
     );
   };
-  
+
   return (
     <form onSubmit={handleSubmit}>
       {/* 공통 필드 */}
@@ -756,19 +802,28 @@ const ResourceEditForm = ({
         {renderField('이름', 'name')}
         {renderField('설명', 'description', 'textarea')}
       </div>
-      
+
       {/* 리소스별 특화 필드 */}
       {resourceType === 'characters' && (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 30 }}>
+          <div
+            style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 30 }}
+          >
             {renderField('캐릭터 이미지', 'image', 'image')}
             {renderField('초상화', 'portrait', 'image')}
           </div>
-          
+
           <h4 style={{ color: '#ffffff', fontSize: 18, fontWeight: 600, marginBottom: 15 }}>
             ⚔️ 기본 능력치
           </h4>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 15, marginBottom: 30 }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, 1fr)',
+              gap: 15,
+              marginBottom: 30,
+            }}
+          >
             {renderField('체력 (HP)', 'stats.hp', 'number', { min: 1, max: 9999 })}
             {renderField('마나 (MP)', 'stats.mp', 'number', { min: 0, max: 9999 })}
             {renderField('공격력', 'stats.attack', 'number', { min: 1, max: 999 })}
@@ -778,25 +833,34 @@ const ResourceEditForm = ({
           </div>
         </>
       )}
-      
+
       {resourceType === 'skills' && (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 30 }}>
+          <div
+            style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 30 }}
+          >
             {renderField('스킬 아이콘', 'icon', 'image')}
             {renderField('스킬 타입', 'type', 'select', {
               options: [
                 { value: 'attack', label: '공격' },
                 { value: 'defense', label: '방어' },
                 { value: 'support', label: '지원' },
-                { value: 'ultimate', label: '궁극기' }
-              ]
+                { value: 'ultimate', label: '궁극기' },
+              ],
             })}
           </div>
-          
+
           <h4 style={{ color: '#ffffff', fontSize: 18, fontWeight: 600, marginBottom: 15 }}>
             ⚡ 스킬 효과
           </h4>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 15, marginBottom: 30 }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, 1fr)',
+              gap: 15,
+              marginBottom: 30,
+            }}
+          >
             {renderField('피해량', 'damage', 'number', { min: 0, max: 9999 })}
             {renderField('치유량', 'healAmount', 'number', { min: 0, max: 9999 })}
             {renderField('쿨다운 (초)', 'cooldown', 'number', { min: 0.1, step: 0.1 })}
@@ -805,10 +869,17 @@ const ResourceEditForm = ({
           </div>
         </>
       )}
-      
+
       {resourceType === 'items' && (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20, marginBottom: 30 }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr 1fr',
+              gap: 20,
+              marginBottom: 30,
+            }}
+          >
             {renderField('아이템 아이콘', 'icon', 'image')}
             {renderField('아이템 타입', 'type', 'select', {
               options: [
@@ -816,8 +887,8 @@ const ResourceEditForm = ({
                 { value: 'weapon', label: '무기' },
                 { value: 'armor', label: '방어구' },
                 { value: 'quest', label: '퀘스트' },
-                { value: 'misc', label: '기타' }
-              ]
+                { value: 'misc', label: '기타' },
+              ],
             })}
             {renderField('등급', 'rarity', 'select', {
               options: [
@@ -825,29 +896,38 @@ const ResourceEditForm = ({
                 { value: 'uncommon', label: '고급' },
                 { value: 'rare', label: '희귀' },
                 { value: 'epic', label: '영웅' },
-                { value: 'legendary', label: '전설' }
-              ]
+                { value: 'legendary', label: '전설' },
+              ],
             })}
           </div>
-          
+
           <h4 style={{ color: '#ffffff', fontSize: 18, fontWeight: 600, marginBottom: 15 }}>
             💰 아이템 정보
           </h4>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 15, marginBottom: 30 }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr 1fr',
+              gap: 15,
+              marginBottom: 30,
+            }}
+          >
             {renderField('구매 가격', 'price', 'number', { min: 0 })}
             {renderField('판매 가격', 'sellPrice', 'number', { min: 0 })}
             {renderField('치유량', 'effects.healing', 'number', { min: 0 })}
           </div>
         </>
       )}
-      
+
       {editMode && (
-        <div style={{ 
-          display: 'flex', 
-          gap: 15, 
-          paddingTop: 20, 
-          borderTop: '1px solid rgba(255,255,255,0.1)' 
-        }}>
+        <div
+          style={{
+            display: 'flex',
+            gap: 15,
+            paddingTop: 20,
+            borderTop: '1px solid rgba(255,255,255,0.1)',
+          }}
+        >
           <button
             type="submit"
             style={{
@@ -861,7 +941,7 @@ const ResourceEditForm = ({
               fontWeight: 700,
               display: 'flex',
               alignItems: 'center',
-              gap: 10
+              gap: 10,
             }}
           >
             💾 저장하기

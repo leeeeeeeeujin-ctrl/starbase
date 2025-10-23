@@ -1,6 +1,6 @@
-import Head from 'next/head'
-import { ArcadeLayout } from '@/components/arena/ArcadeLayout'
-import { OpsPanel } from '@/components/arena/OpsPanel'
+import Head from 'next/head';
+import { ArcadeLayout } from '@/components/arena/ArcadeLayout';
+import { OpsPanel } from '@/components/arena/OpsPanel';
 
 export default function ControlPage() {
   return (
@@ -12,5 +12,5 @@ export default function ControlPage() {
         <OpsPanel />
       </ArcadeLayout>
     </>
-  )
+  );
 }

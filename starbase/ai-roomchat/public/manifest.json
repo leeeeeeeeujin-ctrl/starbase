@@ -10,7 +10,7 @@
   "scope": "/",
   "lang": "ko-KR",
   "dir": "ltr",
-  
+
   "icons": [
     {
       "src": "/icons/icon-72.png",
@@ -61,7 +61,7 @@
       "purpose": "any maskable"
     }
   ],
-  
+
   "screenshots": [
     {
       "src": "/screenshots/game-editor.png",
@@ -76,13 +76,13 @@
       "label": "Project Dashboard"
     }
   ],
-  
+
   "categories": ["games", "developer", "productivity", "education"],
   "iarc_rating_id": "",
-  
+
   "prefer_related_applications": false,
   "related_applications": [],
-  
+
   "shortcuts": [
     {
       "name": "New Game Project",
@@ -118,7 +118,7 @@
       "icons": [
         {
           "src": "/icons/shortcut-projects.png",
-          "sizes": "96x96", 
+          "sizes": "96x96",
           "type": "image/png"
         }
       ]
@@ -137,7 +137,7 @@
       ]
     }
   ],
-  
+
   "file_handlers": [
     {
       "action": "/editor",
@@ -150,14 +150,14 @@
       }
     }
   ],
-  
+
   "protocol_handlers": [
     {
       "protocol": "starbase",
       "url": "/open?url=%s"
     }
   ],
-  
+
   "share_target": {
     "action": "/share",
     "method": "POST",
@@ -174,7 +174,7 @@
       ]
     }
   },
-  
+
   "display_override": ["window-controls-overlay", "minimal-ui"],
   "edge_side_panel": {
     "preferred_width": 400

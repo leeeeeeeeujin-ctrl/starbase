@@ -1,108 +1,114 @@
-'use client'
+'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { supabase } from '../lib/supabase'
-import { fetchHeroById } from '../services/heroes'
-import { fetchHeroParticipationBundle } from '../modules/character/participation'
-import { buildAbilityCards, buildBattleSummary, buildStatSlides } from '../utils/characterStats'
-import { formatKoreanDate } from '../utils/dateFormatting'
+import { supabase } from '../lib/supabase';
+import { fetchHeroById } from '../services/heroes';
+import { fetchHeroParticipationBundle } from '../modules/character/participation';
+import { buildAbilityCards, buildBattleSummary, buildStatSlides } from '../utils/characterStats';
+import { formatKoreanDate } from '../utils/dateFormatting';
 
-const DEFAULT_HERO_NAME = '이름 없는 캐릭터'
+const DEFAULT_HERO_NAME = '이름 없는 캐릭터';
 
 function extractBgmLabel(url) {
-  if (!url) return ''
+  if (!url) return '';
   try {
-    const parsed = new URL(url)
-    const segments = parsed.pathname.split('/').filter(Boolean)
+    const parsed = new URL(url);
+    const segments = parsed.pathname.split('/').filter(Boolean);
     if (segments.length) {
-      return decodeURIComponent(segments[segments.length - 1])
+      return decodeURIComponent(segments[segments.length - 1]);
     }
-    return parsed.hostname || ''
+    return parsed.hostname || '';
   } catch (error) {
-    const fallback = url.split('/').filter(Boolean)
-    return fallback.length ? decodeURIComponent(fallback[fallback.length - 1]) : ''
+    const fallback = url.split('/').filter(Boolean);
+    return fallback.length ? decodeURIComponent(fallback[fallback.length - 1]) : '';
   }
 }
 
 export default function useCharacterDashboard(heroId) {
-  const mountedRef = useRef(true)
+  const mountedRef = useRef(true);
   useEffect(() => {
     return () => {
-      mountedRef.current = false
-    }
-  }, [])
+      mountedRef.current = false;
+    };
+  }, []);
 
-  const requestRef = useRef(0)
-  const backgroundInputRef = useRef(null)
-  const bgmInputRef = useRef(null)
+  const requestRef = useRef(0);
+  const backgroundInputRef = useRef(null);
+  const bgmInputRef = useRef(null);
 
   const [status, setStatus] = useState({
     loading: true,
     error: '',
     unauthorized: false,
     missingHero: false,
-  })
-  const [hero, setHero] = useState(null)
-  const [participations, setParticipations] = useState([])
-  const [scoreboardMap, setScoreboardMap] = useState({})
-  const [heroLookup, setHeroLookup] = useState({})
-  const [selectedGameId, setSelectedGameId] = useState(null)
-  const [statPageIndex, setStatPageIndex] = useState(0)
+  });
+  const [hero, setHero] = useState(null);
+  const [participations, setParticipations] = useState([]);
+  const [scoreboardMap, setScoreboardMap] = useState({});
+  const [heroLookup, setHeroLookup] = useState({});
+  const [selectedGameId, setSelectedGameId] = useState(null);
+  const [statPageIndex, setStatPageIndex] = useState(0);
 
   const loadData = useCallback(async () => {
-    const requestId = ++requestRef.current
+    const requestId = ++requestRef.current;
 
-    if (!mountedRef.current) return
+    if (!mountedRef.current) return;
 
     if (!heroId) {
-      setHero(null)
-      setParticipations([])
-      setScoreboardMap({})
-      setHeroLookup({})
-      setSelectedGameId(null)
-      setStatus({ loading: false, error: '', unauthorized: false, missingHero: false })
-      return
+      setHero(null);
+      setParticipations([]);
+      setScoreboardMap({});
+      setHeroLookup({});
+      setSelectedGameId(null);
+      setStatus({ loading: false, error: '', unauthorized: false, missingHero: false });
+      return;
     }
 
-    setStatus((prev) => ({ ...prev, loading: true, error: '', unauthorized: false, missingHero: false }))
+    setStatus(prev => ({
+      ...prev,
+      loading: true,
+      error: '',
+      unauthorized: false,
+      missingHero: false,
+    }));
 
     try {
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
-      if (sessionError) throw sessionError
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
 
-      let user = sessionData?.session?.user || null
+      let user = sessionData?.session?.user || null;
       if (!user) {
-        const { data: userData, error: userError } = await supabase.auth.getUser()
-        if (userError) throw userError
-        user = userData?.user || null
+        const { data: userData, error: userError } = await supabase.auth.getUser();
+        if (userError) throw userError;
+        user = userData?.user || null;
       }
 
       if (!user) {
-        if (!mountedRef.current || requestId !== requestRef.current) return
-        setHero(null)
-        setParticipations([])
-        setScoreboardMap({})
-        setHeroLookup({})
-        setSelectedGameId(null)
-        setStatus({ loading: false, error: '', unauthorized: true, missingHero: false })
-        return
+        if (!mountedRef.current || requestId !== requestRef.current) return;
+        setHero(null);
+        setParticipations([]);
+        setScoreboardMap({});
+        setHeroLookup({});
+        setSelectedGameId(null);
+        setStatus({ loading: false, error: '', unauthorized: true, missingHero: false });
+        return;
       }
 
-      const heroRow = await fetchHeroById(heroId)
-      if (!mountedRef.current || requestId !== requestRef.current) return
+      const heroRow = await fetchHeroById(heroId);
+      if (!mountedRef.current || requestId !== requestRef.current) return;
 
       if (!heroRow) {
-        setHero(null)
-        setParticipations([])
-        setScoreboardMap({})
-        setHeroLookup({})
-        setSelectedGameId(null)
-        setStatus({ loading: false, error: '', unauthorized: false, missingHero: true })
-        return
+        setHero(null);
+        setParticipations([]);
+        setScoreboardMap({});
+        setHeroLookup({});
+        setSelectedGameId(null);
+        setStatus({ loading: false, error: '', unauthorized: false, missingHero: true });
+        return;
       }
 
-      setHero(heroRow)
+      setHero(heroRow);
 
       const heroSeed = {
         id: heroRow.id,
@@ -113,140 +119,140 @@ export default function useCharacterDashboard(heroId) {
         ability3: heroRow.ability3 || '',
         ability4: heroRow.ability4 || '',
         owner_id: heroRow.owner_id || null,
-      }
+      };
 
-      const bundle = await fetchHeroParticipationBundle(heroRow.id, { heroSeed })
-      if (!mountedRef.current || requestId !== requestRef.current) return
+      const bundle = await fetchHeroParticipationBundle(heroRow.id, { heroSeed });
+      if (!mountedRef.current || requestId !== requestRef.current) return;
 
-      const formattedParticipations = (bundle.participations || []).map((entry) => ({
+      const formattedParticipations = (bundle.participations || []).map(entry => ({
         ...entry,
         latestSessionAt: entry.latestSessionAt ? formatKoreanDate(entry.latestSessionAt) : null,
         firstSessionAt: entry.firstSessionAt ? formatKoreanDate(entry.firstSessionAt) : null,
-      }))
+      }));
 
-      setParticipations(formattedParticipations)
-      setScoreboardMap(bundle.scoreboardMap || {})
-      setHeroLookup(bundle.heroLookup || (heroSeed.id ? { [heroSeed.id]: heroSeed } : {}))
-      setSelectedGameId((current) => {
-        if (current && formattedParticipations.some((row) => row.game_id === current)) {
-          return current
+      setParticipations(formattedParticipations);
+      setScoreboardMap(bundle.scoreboardMap || {});
+      setHeroLookup(bundle.heroLookup || (heroSeed.id ? { [heroSeed.id]: heroSeed } : {}));
+      setSelectedGameId(current => {
+        if (current && formattedParticipations.some(row => row.game_id === current)) {
+          return current;
         }
-        return formattedParticipations[0]?.game_id || null
-      })
-      setStatPageIndex(0)
-      setStatus({ loading: false, error: '', unauthorized: false, missingHero: false })
+        return formattedParticipations[0]?.game_id || null;
+      });
+      setStatPageIndex(0);
+      setStatus({ loading: false, error: '', unauthorized: false, missingHero: false });
     } catch (error) {
-      console.error('Failed to load character dashboard:', error)
-      if (!mountedRef.current || requestId !== requestRef.current) return
+      console.error('Failed to load character dashboard:', error);
+      if (!mountedRef.current || requestId !== requestRef.current) return;
       setStatus({
         loading: false,
         error: error?.message || '캐릭터 정보를 불러오지 못했습니다.',
         unauthorized: false,
         missingHero: false,
-      })
+      });
     }
-  }, [heroId])
+  }, [heroId]);
 
   useEffect(() => {
-    loadData()
+    loadData();
     return () => {
-      requestRef.current += 1
-    }
-  }, [loadData])
+      requestRef.current += 1;
+    };
+  }, [loadData]);
 
   useEffect(() => {
     if (!participations.length) {
       if (selectedGameId) {
-        setSelectedGameId(null)
+        setSelectedGameId(null);
       }
-      return
+      return;
     }
-    if (selectedGameId && !participations.some((row) => row.game_id === selectedGameId)) {
-      setSelectedGameId(participations[0]?.game_id || null)
+    if (selectedGameId && !participations.some(row => row.game_id === selectedGameId)) {
+      setSelectedGameId(participations[0]?.game_id || null);
     }
-  }, [participations, selectedGameId])
+  }, [participations, selectedGameId]);
 
   const heroName = useMemo(() => {
-    const raw = hero?.name
+    const raw = hero?.name;
     if (typeof raw === 'string' && raw.trim()) {
-      return raw.trim()
+      return raw.trim();
     }
-    return DEFAULT_HERO_NAME
-  }, [hero?.name])
+    return DEFAULT_HERO_NAME;
+  }, [hero?.name]);
 
-  const abilityCards = useMemo(() => buildAbilityCards(hero), [hero])
+  const abilityCards = useMemo(() => buildAbilityCards(hero), [hero]);
 
   const selectedEntry = useMemo(
-    () => participations.find((row) => row.game_id === selectedGameId) || null,
-    [participations, selectedGameId],
-  )
+    () => participations.find(row => row.game_id === selectedGameId) || null,
+    [participations, selectedGameId]
+  );
 
-  const selectedGame = selectedEntry?.game || null
+  const selectedGame = selectedEntry?.game || null;
 
   const selectedScoreboard = useMemo(() => {
-    if (!selectedGameId) return []
-    const rows = scoreboardMap[selectedGameId] || []
+    if (!selectedGameId) return [];
+    const rows = scoreboardMap[selectedGameId] || [];
     return [...rows].sort((a, b) => {
-      const left = a.slot_no ?? Number.MAX_SAFE_INTEGER
-      const right = b.slot_no ?? Number.MAX_SAFE_INTEGER
-      return left - right
-    })
-  }, [scoreboardMap, selectedGameId])
+      const left = a.slot_no ?? Number.MAX_SAFE_INTEGER;
+      const right = b.slot_no ?? Number.MAX_SAFE_INTEGER;
+      return left - right;
+    });
+  }, [scoreboardMap, selectedGameId]);
 
   const statSlides = useMemo(
     () => buildStatSlides(participations, scoreboardMap, hero?.id || null),
-    [participations, scoreboardMap, hero?.id],
-  )
+    [participations, scoreboardMap, hero?.id]
+  );
 
   const statPages = useMemo(() => {
-    if (!statSlides.length) return []
-    const pages = []
+    if (!statSlides.length) return [];
+    const pages = [];
     for (let index = 0; index < statSlides.length; index += 6) {
-      pages.push(statSlides.slice(index, index + 6))
+      pages.push(statSlides.slice(index, index + 6));
     }
-    return pages
-  }, [statSlides])
+    return pages;
+  }, [statSlides]);
 
-  const statPagesLength = statPages.length
+  const statPagesLength = statPages.length;
 
   useEffect(() => {
     if (!statPagesLength) {
-      if (statPageIndex !== 0) setStatPageIndex(0)
-      return
+      if (statPageIndex !== 0) setStatPageIndex(0);
+      return;
     }
     if (statPageIndex >= statPagesLength) {
-      setStatPageIndex(statPagesLength - 1)
+      setStatPageIndex(statPagesLength - 1);
     }
-  }, [statPageIndex, statPagesLength])
+  }, [statPageIndex, statPagesLength]);
 
   const visibleStatSlides = statPagesLength
     ? statPages[Math.min(statPageIndex, statPagesLength - 1)]
-    : statSlides
+    : statSlides;
 
-  const hasParticipations = Boolean(statSlides.length)
+  const hasParticipations = Boolean(statSlides.length);
 
-  const handleSelectGame = useCallback((gameId) => {
-    setSelectedGameId(gameId || null)
-  }, [])
+  const handleSelectGame = useCallback(gameId => {
+    setSelectedGameId(gameId || null);
+  }, []);
 
   const handleSetStatPageIndex = useCallback(
-    (index) => {
+    index => {
       if (!statPagesLength) {
-        setStatPageIndex(0)
-        return
+        setStatPageIndex(0);
+        return;
       }
-      const numeric = Number.isFinite(index) ? index : 0
-      const clamped = Math.max(0, Math.min(statPagesLength - 1, numeric))
-      setStatPageIndex(clamped)
+      const numeric = Number.isFinite(index) ? index : 0;
+      const clamped = Math.max(0, Math.min(statPagesLength - 1, numeric));
+      setStatPageIndex(clamped);
     },
-    [statPagesLength],
-  )
+    [statPagesLength]
+  );
 
   const handleUnsupportedAction = useCallback(() => {
-    console.warn('Hero editing features are not available in this build.')
-  }, [])
+    console.warn('Hero editing features are not available in this build.');
+  }, []);
 
-  const bgmLabel = useMemo(() => extractBgmLabel(hero?.bgm_url), [hero?.bgm_url])
+  const bgmLabel = useMemo(() => extractBgmLabel(hero?.bgm_url), [hero?.bgm_url]);
 
   const profile = useMemo(
     () => ({
@@ -297,8 +303,8 @@ export default function useCharacterDashboard(heroId) {
       heroName,
       loadData,
       status.loading,
-    ],
-  )
+    ]
+  );
 
   const participation = useMemo(
     () => ({
@@ -337,8 +343,8 @@ export default function useCharacterDashboard(heroId) {
       statSlides,
       status.loading,
       visibleStatSlides,
-    ],
-  )
+    ]
+  );
 
   const battles = useMemo(
     () => ({
@@ -348,11 +354,11 @@ export default function useCharacterDashboard(heroId) {
       actions: { showMore: handleUnsupportedAction },
       status: { loading: false, error: '' },
     }),
-    [handleUnsupportedAction],
-  )
+    [handleUnsupportedAction]
+  );
 
-  const audioSource = hero?.bgm_url || ''
-  const selectedScoreboardRows = selectedScoreboard
+  const audioSource = hero?.bgm_url || '';
+  const selectedScoreboardRows = selectedScoreboard;
 
   return {
     status,
@@ -404,5 +410,5 @@ export default function useCharacterDashboard(heroId) {
     audioSource,
     scoreboardRows: selectedScoreboardRows,
     reload: loadData,
-  }
+  };
 }

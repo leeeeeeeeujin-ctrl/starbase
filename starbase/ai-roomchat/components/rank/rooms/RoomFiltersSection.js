@@ -23,12 +23,10 @@ const styles = {
     flexWrap: 'wrap',
     gap: 8,
   },
-  modeTab: (active) => ({
+  modeTab: active => ({
     padding: '8px 16px',
     borderRadius: 12,
-    border: active
-      ? '1px solid rgba(96, 165, 250, 0.55)'
-      : '1px solid rgba(148, 163, 184, 0.35)',
+    border: active ? '1px solid rgba(96, 165, 250, 0.55)' : '1px solid rgba(148, 163, 184, 0.35)',
     background: active ? 'rgba(37, 99, 235, 0.35)' : 'rgba(15, 23, 42, 0.6)',
     color: active ? '#bfdbfe' : '#cbd5f5',
     fontWeight: active ? 700 : 500,
@@ -39,12 +37,10 @@ const styles = {
     flexWrap: 'wrap',
     gap: 10,
   },
-  gameFilterButton: (active) => ({
+  gameFilterButton: active => ({
     padding: '8px 14px',
     borderRadius: 10,
-    border: active
-      ? '1px solid rgba(45, 212, 191, 0.6)'
-      : '1px solid rgba(148, 163, 184, 0.32)',
+    border: active ? '1px solid rgba(45, 212, 191, 0.6)' : '1px solid rgba(148, 163, 184, 0.32)',
     background: active ? 'rgba(16, 185, 129, 0.22)' : 'rgba(15, 23, 42, 0.5)',
     color: active ? '#99f6e4' : '#cbd5f5',
     fontSize: 13,
@@ -57,19 +53,17 @@ const styles = {
     flexWrap: 'wrap',
     gap: 10,
   },
-  scoreButton: (active) => ({
+  scoreButton: active => ({
     padding: '8px 14px',
     borderRadius: 999,
-    border: active
-      ? '1px solid rgba(59, 130, 246, 0.6)'
-      : '1px solid rgba(148, 163, 184, 0.3)',
+    border: active ? '1px solid rgba(59, 130, 246, 0.6)' : '1px solid rgba(148, 163, 184, 0.3)',
     background: active ? 'rgba(59, 130, 246, 0.2)' : 'rgba(15, 23, 42, 0.45)',
     color: active ? '#bfdbfe' : '#cbd5f5',
     fontSize: 13,
     fontWeight: active ? 700 : 500,
     cursor: 'pointer',
   }),
-  refreshButton: (disabled) => ({
+  refreshButton: disabled => ({
     padding: '10px 16px',
     borderRadius: 999,
     border: '1px solid rgba(148, 163, 184, 0.35)',
@@ -79,7 +73,7 @@ const styles = {
     cursor: disabled ? 'not-allowed' : 'pointer',
     transition: 'background 0.2s ease',
   }),
-}
+};
 
 /**
  * @param {Object} props
@@ -113,7 +107,7 @@ export function RoomFiltersSection({
       <div>
         <p style={styles.title}>모드 선택</p>
         <div style={styles.modeTabs}>
-          {modeTabs.map((tab) => (
+          {modeTabs.map(tab => (
             <button
               key={tab.key}
               type="button"
@@ -137,7 +131,7 @@ export function RoomFiltersSection({
           >
             전체 보기
           </button>
-          {gameFilters.map((game) => (
+          {gameFilters.map(game => (
             <button
               key={game.id}
               type="button"
@@ -152,9 +146,11 @@ export function RoomFiltersSection({
 
       <div>
         <p style={styles.title}>점수 범위</p>
-        <p style={styles.hint}>원하는 점수 차이를 설정하면 평균 점수가 범위 안에 있는 방만 표시합니다.</p>
+        <p style={styles.hint}>
+          원하는 점수 차이를 설정하면 평균 점수가 범위 안에 있는 방만 표시합니다.
+        </p>
         <div style={styles.scoreRow}>
-          {scoreOptions.map((option) => (
+          {scoreOptions.map(option => (
             <button
               key={option.key}
               type="button"
@@ -178,11 +174,11 @@ export function RoomFiltersSection({
         </button>
       </div>
     </section>
-  )
+  );
 }
 
 RoomFiltersSection.defaultProps = {
   scoreWindow: null,
-}
+};
 
-export default RoomFiltersSection
+export default RoomFiltersSection;

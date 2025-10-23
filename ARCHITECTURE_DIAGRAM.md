@@ -191,36 +191,36 @@ Memory released
 const inputManager = new InputManager({
   // Target element
   element: document.body,
-  
+
   // Enable/disable handlers
   enableKeyboard: true,
   enableTouch: true,
   enableGamepad: false,
-  
+
   // Global callback
-  onInput: (event) => {
+  onInput: event => {
     console.log(event.type, event);
   },
-  
+
   // Handler-specific options
   keyboardOptions: {
-    debounceDelay: 100,    // ms
-    throttleDelay: 50,     // ms
-    enableShortcuts: true
+    debounceDelay: 100, // ms
+    throttleDelay: 50, // ms
+    enableShortcuts: true,
   },
-  
+
   touchOptions: {
     enableGestures: true,
     preventDefaultTouch: false,
-    tapThreshold: 10,      // pixels
-    swipeThreshold: 100,   // pixels
-    longPressDuration: 500 // ms
+    tapThreshold: 10, // pixels
+    swipeThreshold: 100, // pixels
+    longPressDuration: 500, // ms
   },
-  
+
   gamepadOptions: {
-    pollInterval: 16,      // ms (~60fps)
-    deadzone: 0.15        // 0-1
-  }
+    pollInterval: 16, // ms (~60fps)
+    deadzone: 0.15, // 0-1
+  },
 });
 ```
 
@@ -261,6 +261,7 @@ GamepadHandler State:
 ```
 
 This architecture provides:
+
 - ✅ Clear separation of concerns
 - ✅ Reusable, testable components
 - ✅ Efficient event handling

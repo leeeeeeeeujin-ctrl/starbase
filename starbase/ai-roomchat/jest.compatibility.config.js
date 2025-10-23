@@ -8,33 +8,42 @@ module.exports = {
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   testMatch: [
     '<rootDir>/__tests__/compatibility/**/*.test.js',
-    '<rootDir>/**/*.compatibility.test.js'
+    '<rootDir>/**/*.compatibility.test.js',
   ],
   transform: {
-    '^.+\\.(js|jsx)$': ['babel-jest', {
-      presets: [
-        ['@babel/preset-env', {
-          targets: {
-            "ie": "11",
-            "chrome": "70",
-            "firefox": "65", 
-            "safari": "12",
-            "ios": "12"
-          },
-          useBuiltIns: 'usage',
-          corejs: 3
-        }],
-        ['@babel/preset-react', {
-          runtime: 'automatic'
-        }]
-      ]
-    }]
+    '^.+\\.(js|jsx)$': [
+      'babel-jest',
+      {
+        presets: [
+          [
+            '@babel/preset-env',
+            {
+              targets: {
+                ie: '11',
+                chrome: '70',
+                firefox: '65',
+                safari: '12',
+                ios: '12',
+              },
+              useBuiltIns: 'usage',
+              corejs: 3,
+            },
+          ],
+          [
+            '@babel/preset-react',
+            {
+              runtime: 'automatic',
+            },
+          ],
+        ],
+      },
+    ],
   },
   moduleNameMapping: {
-    '^@/(.*)$': '<rootDir>/$1'
+    '^@/(.*)$': '<rootDir>/$1',
   },
   testEnvironmentOptions: {
-    customExportConditions: ['']
+    customExportConditions: [''],
   },
   collectCoverageFrom: [
     'utils/browserCompatibility.js',
@@ -44,14 +53,14 @@ module.exports = {
     'utils/gameResourceManager.js',
     'utils/apiCompatibilityLayer.js',
     'components/game/UnifiedGameSystem.js',
-    'components/maker/visual/VisualNodeEditor.js'
+    'components/maker/visual/VisualNodeEditor.js',
   ],
   coverageThreshold: {
     global: {
       branches: 70,
       functions: 70,
       lines: 70,
-      statements: 70
-    }
-  }
+      statements: 70,
+    },
+  },
 };

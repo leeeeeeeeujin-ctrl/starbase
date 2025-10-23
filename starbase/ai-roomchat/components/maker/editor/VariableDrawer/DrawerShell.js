@@ -1,9 +1,9 @@
 function DrawerShell({ onClose, children }) {
-  const handleBackdropClick = (event) => {
+  const handleBackdropClick = event => {
     if (event.target === event.currentTarget) {
-      onClose?.()
+      onClose?.();
     }
-  }
+  };
 
   return (
     <div
@@ -19,7 +19,7 @@ function DrawerShell({ onClose, children }) {
       }}
     >
       <div
-        onClick={(event) => event.stopPropagation()}
+        onClick={event => event.stopPropagation()}
         style={{
           width: 'min(420px, 100%)',
           background: '#fff',
@@ -41,7 +41,9 @@ function DrawerShell({ onClose, children }) {
         >
           <div style={{ display: 'grid' }}>
             <strong style={{ color: '#0f172a' }}>변수 규칙 설정</strong>
-            <span style={{ fontSize: 12, color: '#64748b' }}>전역/로컬 규칙을 한 번에 관리하세요.</span>
+            <span style={{ fontSize: 12, color: '#64748b' }}>
+              전역/로컬 규칙을 한 번에 관리하세요.
+            </span>
           </div>
           <button
             type="button"
@@ -71,9 +73,9 @@ function DrawerShell({ onClose, children }) {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
-export default DrawerShell
+export default DrawerShell;
 
 //

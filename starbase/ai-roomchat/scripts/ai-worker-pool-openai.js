@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
  * Practical AI Worker Pool using OpenAI API
- * 
+ *
  * Usage:
  * 1. Set OPENAI_API_KEY environment variable
  * 2. npm run ai-workers tasks.json
- * 
+ *
  * tasks.json format:
  * [
  *   {
@@ -42,27 +42,27 @@ async function callOpenAI(prompt, files = []) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
+        Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         model: 'gpt-4',
         messages: [
           {
             role: 'system',
-            content: 'You are an expert software engineer. Provide code solutions and analysis.'
+            content: 'You are an expert software engineer. Provide code solutions and analysis.',
           },
           {
             role: 'user',
-            content: fullPrompt
-          }
+            content: fullPrompt,
+          },
         ],
         temperature: 0.7,
-        max_tokens: 2000
-      })
+        max_tokens: 2000,
+      }),
     });
 
     const data = await response.json();
-    
+
     if (!response.ok) {
       throw new Error(`OpenAI API error: ${data.error?.message || response.statusText}`);
     }
@@ -75,36 +75,36 @@ async function callOpenAI(prompt, files = []) {
 
 async function executeWorkerPool(tasksFile) {
   console.log('🚀 Starting AI Worker Pool\n');
-  
+
   // Load tasks
   const tasksPath = path.join(__dirname, '..', tasksFile);
   const tasks = JSON.parse(fs.readFileSync(tasksPath, 'utf8'));
-  
+
   console.log(`📋 Loaded ${tasks.length} tasks\n`);
 
   // Execute all tasks in parallel
   const startTime = Date.now();
   const promises = tasks.map(async (task, index) => {
     console.log(`🤖 Worker ${index + 1}: Starting "${task.description}"`);
-    
+
     try {
       const result = await callOpenAI(task.instruction, task.files || []);
       console.log(`✅ Worker ${index + 1}: Complete`);
-      
+
       return {
         taskIndex: index + 1,
         description: task.description,
         success: true,
-        result: result
+        result: result,
       };
     } catch (error) {
       console.error(`❌ Worker ${index + 1}: Failed - ${error.message}`);
-      
+
       return {
         taskIndex: index + 1,
         description: task.description,
         success: false,
-        error: error.message
+        error: error.message,
       };
     }
   });
@@ -124,17 +124,24 @@ async function executeWorkerPool(tasksFile) {
   // Save detailed results
   const reportPath = path.join(__dirname, '..', 'reports', 'ai-workers-report.json');
   const reportDir = path.dirname(reportPath);
-  
+
   if (!fs.existsSync(reportDir)) {
     fs.mkdirSync(reportDir, { recursive: true });
   }
 
-  fs.writeFileSync(reportPath, JSON.stringify({
-    timestamp: new Date().toISOString(),
-    duration: duration,
-    tasks: tasks.length,
-    results: results
-  }, null, 2));
+  fs.writeFileSync(
+    reportPath,
+    JSON.stringify(
+      {
+        timestamp: new Date().toISOString(),
+        duration: duration,
+        tasks: tasks.length,
+        results: results,
+      },
+      null,
+      2
+    )
+  );
 
   console.log(`\n💾 Detailed report saved to: ${reportPath}`);
 
@@ -143,7 +150,7 @@ async function executeWorkerPool(tasksFile) {
     console.log(`\n${'─'.repeat(70)}`);
     console.log(`🤖 Worker ${result.taskIndex}: ${result.description}`);
     console.log('─'.repeat(70));
-    
+
     if (result.success) {
       console.log(result.result.substring(0, 500));
       if (result.result.length > 500) {
@@ -165,13 +172,19 @@ const tasksFile = process.argv[2];
 if (!tasksFile) {
   console.error('Usage: node ai-worker-pool-openai.js <tasks.json>');
   console.error('\nExample tasks.json:');
-  console.error(JSON.stringify([
-    {
-      description: "Write tests",
-      files: ["lib/rank/matching.js"],
-      instruction: "Write comprehensive Jest tests for this file"
-    }
-  ], null, 2));
+  console.error(
+    JSON.stringify(
+      [
+        {
+          description: 'Write tests',
+          files: ['lib/rank/matching.js'],
+          instruction: 'Write comprehensive Jest tests for this file',
+        },
+      ],
+      null,
+      2
+    )
+  );
   process.exit(1);
 }
 

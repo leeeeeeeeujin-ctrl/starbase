@@ -1,10 +1,10 @@
-import React, { useState, useCallback } from 'react'
-import AIBattleGameLauncher from './AIBattleGameLauncher'
-import AIBattleArena from './AIBattleArena'
+import React, { useState, useCallback } from 'react';
+import AIBattleGameLauncher from './AIBattleGameLauncher';
+import AIBattleArena from './AIBattleArena';
 
 /**
  * AI 배틀 게임 통합 컨트롤러
- * 
+ *
  * 캐릭터 선택 → 게임 시작 → 배틀 진행 → 결과 처리의 전체 플로우를 관리
  */
 export default function AIBattleGameController({
@@ -12,40 +12,43 @@ export default function AIBattleGameController({
   onClose,
   onBattleResult,
 }) {
-  const [gameState, setGameState] = useState('launcher') // launcher, battle, result
-  const [gameData, setGameData] = useState(null)
-  const [battleResult, setBattleResult] = useState(null)
+  const [gameState, setGameState] = useState('launcher'); // launcher, battle, result
+  const [gameData, setGameData] = useState(null);
+  const [battleResult, setBattleResult] = useState(null);
 
   // 게임 시작
-  const handleGameStart = useCallback((launchData) => {
-    setGameData(launchData)
-    setGameState('battle')
-  }, [])
+  const handleGameStart = useCallback(launchData => {
+    setGameData(launchData);
+    setGameState('battle');
+  }, []);
 
   // 배틀 종료
-  const handleBattleEnd = useCallback((result) => {
-    setBattleResult(result)
-    setGameState('result')
-    
-    // 상위 컴포넌트에 결과 전달
-    if (onBattleResult) {
-      onBattleResult(result)
-    }
-  }, [onBattleResult])
+  const handleBattleEnd = useCallback(
+    result => {
+      setBattleResult(result);
+      setGameState('result');
+
+      // 상위 컴포넌트에 결과 전달
+      if (onBattleResult) {
+        onBattleResult(result);
+      }
+    },
+    [onBattleResult]
+  );
 
   // 게임 재시작
   const handleRestart = useCallback(() => {
-    setGameData(null)
-    setBattleResult(null)
-    setGameState('launcher')
-  }, [])
+    setGameData(null);
+    setBattleResult(null);
+    setGameState('launcher');
+  }, []);
 
   // 게임 종료
   const handleClose = useCallback(() => {
     if (onClose) {
-      onClose(battleResult)
+      onClose(battleResult);
     }
-  }, [onClose, battleResult])
+  }, [onClose, battleResult]);
 
   if (gameState === 'launcher') {
     return (
@@ -54,7 +57,7 @@ export default function AIBattleGameController({
         onGameStart={handleGameStart}
         onCancel={handleClose}
       />
-    )
+    );
   }
 
   if (gameState === 'battle' && gameData) {
@@ -66,20 +69,16 @@ export default function AIBattleGameController({
         battleSettings={gameData.battleSettings}
         onBattleEnd={handleBattleEnd}
       />
-    )
+    );
   }
 
   if (gameState === 'result' && battleResult) {
     return (
-      <BattleResultScreen
-        result={battleResult}
-        onRestart={handleRestart}
-        onClose={handleClose}
-      />
-    )
+      <BattleResultScreen result={battleResult} onRestart={handleRestart} onClose={handleClose} />
+    );
   }
 
-  return null
+  return null;
 }
 
 /**
@@ -195,17 +194,15 @@ function BattleResultScreen({ result, onRestart, onClose }) {
       color: '#94a3b8',
       border: '1px solid rgba(148, 163, 184, 0.3)',
     },
-  }
+  };
 
   return (
     <div style={styles.screen}>
       <div style={styles.card}>
         <h1 style={styles.title}>배틀 종료!</h1>
-        
-        {result.winner && (
-          <div style={styles.winner}>🏆 {result.winner} 승리!</div>
-        )}
-        
+
+        {result.winner && <div style={styles.winner}>🏆 {result.winner} 승리!</div>}
+
         <div style={styles.stats}>
           <div style={styles.statItem}>
             <div style={styles.statLabel}>총 턴 수</div>
@@ -216,7 +213,7 @@ function BattleResultScreen({ result, onRestart, onClose }) {
             <div style={styles.statValue}>{result.battleLog?.length || 0}개</div>
           </div>
         </div>
-        
+
         {result.battleLog && result.battleLog.length > 0 && (
           <div style={styles.logSection}>
             <h3 style={styles.logTitle}>배틀 하이라이트</h3>
@@ -232,22 +229,16 @@ function BattleResultScreen({ result, onRestart, onClose }) {
             ))}
           </div>
         )}
-        
+
         <div style={styles.actions}>
-          <button
-            style={{...styles.button, ...styles.restartButton}}
-            onClick={onRestart}
-          >
+          <button style={{ ...styles.button, ...styles.restartButton }} onClick={onRestart}>
             다시 배틀
           </button>
-          <button
-            style={{...styles.button, ...styles.closeButton}}
-            onClick={onClose}
-          >
+          <button style={{ ...styles.button, ...styles.closeButton }} onClick={onClose}>
             종료
           </button>
         </div>
       </div>
     </div>
-  )
+  );
 }

@@ -1,4 +1,4 @@
-import React from 'react'
+import React from 'react';
 
 const styles = {
   section: {
@@ -47,7 +47,7 @@ const styles = {
     borderRadius: 18,
     border: '1px dashed rgba(148, 163, 184, 0.35)',
   },
-}
+};
 
 export default function RankingSection({ scoreboardRows, heroId, heroLookup, selectedEntry }) {
   return (
@@ -61,19 +61,15 @@ export default function RankingSection({ scoreboardRows, heroId, heroLookup, sel
       {scoreboardRows.length ? (
         <div style={styles.list}>
           {scoreboardRows.map((row, index) => {
-            const highlight = row.hero_id === heroId
-            const displayName = heroLookup[row.hero_id]?.name || row.role || `참가자 ${index + 1}`
+            const highlight = row.hero_id === heroId;
+            const displayName = heroLookup[row.hero_id]?.name || row.role || `참가자 ${index + 1}`;
             return (
               <div
                 key={row.id || `${row.hero_id}-${row.slot_no ?? index}`}
                 style={{
                   ...styles.row,
-                  background: highlight
-                    ? 'rgba(56, 189, 248, 0.25)'
-                    : styles.row.background,
-                  border: highlight
-                    ? '1px solid rgba(56, 189, 248, 0.55)'
-                    : styles.row.border,
+                  background: highlight ? 'rgba(56, 189, 248, 0.25)' : styles.row.background,
+                  border: highlight ? '1px solid rgba(56, 189, 248, 0.55)' : styles.row.border,
                 }}
               >
                 <div style={styles.badge}>#{index + 1}</div>
@@ -83,12 +79,12 @@ export default function RankingSection({ scoreboardRows, heroId, heroLookup, sel
                 </div>
                 <div style={styles.score}>{row.rating ?? row.score ?? '—'}</div>
               </div>
-            )
+            );
           })}
         </div>
       ) : (
         <div style={styles.emptyState}>선택한 게임의 랭킹 데이터가 없습니다.</div>
       )}
     </section>
-  )
+  );
 }

@@ -1,6 +1,6 @@
-import { z } from 'zod'
+import { z } from 'zod';
 
-import { sanitizeVariableRules } from '../../variableRules'
+import { sanitizeVariableRules } from '../../variableRules';
 
 const metaSchema = z
   .object({
@@ -8,7 +8,7 @@ const metaSchema = z
     version: z.coerce.number().int().nonnegative().optional(),
   })
   .catchall(z.unknown())
-  .optional()
+  .optional();
 
 const setSchema = z
   .object({
@@ -16,7 +16,7 @@ const setSchema = z
     description: z.union([z.string(), z.number()]).optional(),
   })
   .catchall(z.unknown())
-  .optional()
+  .optional();
 
 const slotSchema = z
   .object({
@@ -50,7 +50,7 @@ const slotSchema = z
     var_rules_local: z.record(z.any()).optional(),
     varRulesLocal: z.record(z.any()).optional(),
   })
-  .passthrough()
+  .passthrough();
 
 const bridgeSchema = z
   .object({
@@ -66,7 +66,7 @@ const bridgeSchema = z
     fallback: z.boolean().optional(),
     action: z.union([z.string(), z.number()]).optional(),
   })
-  .passthrough()
+  .passthrough();
 
 const bundleSchema = z
   .object({
@@ -75,249 +75,236 @@ const bundleSchema = z
     slots: z.array(slotSchema).optional(),
     bridges: z.array(bridgeSchema).optional(),
   })
-  .catchall(z.unknown())
+  .catchall(z.unknown());
 
 function toNumber(value) {
-  if (value == null || value === '') return null
-  const numeric = Number(value)
-  return Number.isFinite(numeric) ? numeric : null
+  if (value == null || value === '') return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
 }
 
 function normalizeTemplate(value) {
-  if (typeof value === 'string') return value
-  if (value == null) return ''
-  if (typeof value === 'number') return String(value)
-  return ''
+  if (typeof value === 'string') return value;
+  if (value == null) return '';
+  if (typeof value === 'number') return String(value);
+  return '';
 }
 
 function toBoolean(value) {
-  return value === true || value === 'true'
+  return value === true || value === 'true';
 }
 
 function sanitizeVisibleSlots(slot) {
-  const list = slot.visible_slots ?? slot.visibleSlots
-  if (!Array.isArray(list)) return []
-  return list
-    .map((entry) => toNumber(entry))
-    .filter((entry) => entry != null)
+  const list = slot.visible_slots ?? slot.visibleSlots;
+  if (!Array.isArray(list)) return [];
+  return list.map(entry => toNumber(entry)).filter(entry => entry != null);
 }
 
 function sanitizeVariableRulesField(value) {
-  if (!value || typeof value !== 'object') return {}
-  return sanitizeVariableRules(value)
+  if (!value || typeof value !== 'object') return {};
+  return sanitizeVariableRules(value);
 }
 
 function sanitizeMeta(meta = {}) {
-  const sanitized = { ...meta }
+  const sanitized = { ...meta };
   if (sanitized.variableRulesVersion != null) {
-    const version = toNumber(sanitized.variableRulesVersion)
-    sanitized.variableRulesVersion = version != null ? version : undefined
+    const version = toNumber(sanitized.variableRulesVersion);
+    sanitized.variableRulesVersion = version != null ? version : undefined;
   }
   if (sanitized.version != null) {
-    const version = toNumber(sanitized.version)
-    sanitized.version = version != null ? version : undefined
+    const version = toNumber(sanitized.version);
+    sanitized.version = version != null ? version : undefined;
   }
-  Object.keys(sanitized).forEach((key) => {
+  Object.keys(sanitized).forEach(key => {
     if (sanitized[key] === undefined) {
-      delete sanitized[key]
+      delete sanitized[key];
     }
-  })
-  return sanitized
+  });
+  return sanitized;
 }
 
 function sanitizeSet(set = {}) {
-  const sanitized = { ...set }
+  const sanitized = { ...set };
   if (sanitized.name != null) {
-    sanitized.name = String(sanitized.name).trim()
+    sanitized.name = String(sanitized.name).trim();
   }
   if (sanitized.description != null) {
-    sanitized.description = String(sanitized.description)
+    sanitized.description = String(sanitized.description);
   }
-  return sanitized
+  return sanitized;
 }
 
 function buildSlotIdentifier(value) {
-  if (value == null) return null
+  if (value == null) return null;
   if (typeof value === 'number') {
-    return `number:${value}`
+    return `number:${value}`;
   }
-  return `string:${String(value)}`
+  return `string:${String(value)}`;
 }
 
 function sanitizeSlot(slot, index, issues) {
-  const sanitized = { ...slot }
+  const sanitized = { ...slot };
 
   const slotNumber =
-    toNumber(slot.slot_no ?? slot.slotNo) ??
-    toNumber(slot.slot_index ?? slot.slotIndex) ??
-    index
+    toNumber(slot.slot_no ?? slot.slotNo) ?? toNumber(slot.slot_index ?? slot.slotIndex) ?? index;
   if (!Number.isFinite(slotNumber)) {
-    issues.push(`슬롯 ${index + 1}: slot_no 정보를 찾지 못해 인덱스로 대체했습니다.`)
+    issues.push(`슬롯 ${index + 1}: slot_no 정보를 찾지 못해 인덱스로 대체했습니다.`);
   }
-  const resolvedSlotNumber = Number.isFinite(slotNumber) ? slotNumber : index
+  const resolvedSlotNumber = Number.isFinite(slotNumber) ? slotNumber : index;
 
-  sanitized.slot_no = resolvedSlotNumber
-  sanitized.slotNo = resolvedSlotNumber
-  sanitized.slot_index = resolvedSlotNumber
-  sanitized.slotIndex = resolvedSlotNumber
+  sanitized.slot_no = resolvedSlotNumber;
+  sanitized.slotNo = resolvedSlotNumber;
+  sanitized.slot_index = resolvedSlotNumber;
+  sanitized.slotIndex = resolvedSlotNumber;
 
   const slotType =
     (typeof slot.slot_type === 'string' && slot.slot_type.trim()) ||
     (typeof slot.slotType === 'string' && slot.slotType.trim()) ||
-    'ai'
-  sanitized.slot_type = slotType
-  sanitized.slotType = slotType
+    'ai';
+  sanitized.slot_type = slotType;
+  sanitized.slotType = slotType;
 
   const slotPick =
     (typeof slot.slot_pick === 'string' && slot.slot_pick.trim()) ||
     (typeof slot.slotPick === 'string' && slot.slotPick.trim()) ||
-    '1'
-  sanitized.slot_pick = slotPick
-  sanitized.slotPick = slotPick
+    '1';
+  sanitized.slot_pick = slotPick;
+  sanitized.slotPick = slotPick;
 
-  const template = normalizeTemplate(slot.template)
+  const template = normalizeTemplate(slot.template);
   if (!template) {
-    issues.push(`슬롯 ${index + 1}: 프롬프트가 비어 있어 빈 문자열로 처리했습니다.`)
+    issues.push(`슬롯 ${index + 1}: 프롬프트가 비어 있어 빈 문자열로 처리했습니다.`);
   }
-  sanitized.template = template
+  sanitized.template = template;
 
-  const isStart = toBoolean(slot.is_start) || toBoolean(slot.isStart)
-  sanitized.is_start = isStart
-  sanitized.isStart = isStart
+  const isStart = toBoolean(slot.is_start) || toBoolean(slot.isStart);
+  sanitized.is_start = isStart;
+  sanitized.isStart = isStart;
 
-  sanitized.invisible = toBoolean(slot.invisible)
+  sanitized.invisible = toBoolean(slot.invisible);
 
-  const visibleSlots = sanitizeVisibleSlots(slot)
-  sanitized.visible_slots = visibleSlots
-  sanitized.visibleSlots = visibleSlots
+  const visibleSlots = sanitizeVisibleSlots(slot);
+  sanitized.visible_slots = visibleSlots;
+  sanitized.visibleSlots = visibleSlots;
 
-  const canvasX =
-    toNumber(slot.canvas_x) ??
-    toNumber(slot.canvasX) ??
-    toNumber(slot.position?.x)
-  const canvasY =
-    toNumber(slot.canvas_y) ??
-    toNumber(slot.canvasY) ??
-    toNumber(slot.position?.y)
-  sanitized.canvas_x = canvasX
-  sanitized.canvas_y = canvasY
+  const canvasX = toNumber(slot.canvas_x) ?? toNumber(slot.canvasX) ?? toNumber(slot.position?.x);
+  const canvasY = toNumber(slot.canvas_y) ?? toNumber(slot.canvasY) ?? toNumber(slot.position?.y);
+  sanitized.canvas_x = canvasX;
+  sanitized.canvas_y = canvasY;
 
-  const globalRules = sanitizeVariableRulesField(slot.var_rules_global ?? slot.varRulesGlobal)
-  sanitized.var_rules_global = globalRules
-  sanitized.varRulesGlobal = globalRules
+  const globalRules = sanitizeVariableRulesField(slot.var_rules_global ?? slot.varRulesGlobal);
+  sanitized.var_rules_global = globalRules;
+  sanitized.varRulesGlobal = globalRules;
 
-  const localRules = sanitizeVariableRulesField(slot.var_rules_local ?? slot.varRulesLocal)
-  sanitized.var_rules_local = localRules
-  sanitized.varRulesLocal = localRules
+  const localRules = sanitizeVariableRulesField(slot.var_rules_local ?? slot.varRulesLocal);
+  sanitized.var_rules_local = localRules;
+  sanitized.varRulesLocal = localRules;
 
-  const identifier = slot.id ?? slot.slot_id ?? slot.slotId ?? null
+  const identifier = slot.id ?? slot.slot_id ?? slot.slotId ?? null;
   if (identifier != null) {
-    sanitized.id = identifier
-    sanitized.slot_id = identifier
-    sanitized.slotId = identifier
+    sanitized.id = identifier;
+    sanitized.slot_id = identifier;
+    sanitized.slotId = identifier;
   }
 
-  Object.keys(sanitized).forEach((key) => {
+  Object.keys(sanitized).forEach(key => {
     if (sanitized[key] === undefined) {
-      delete sanitized[key]
+      delete sanitized[key];
     }
-  })
+  });
 
-  return sanitized
+  return sanitized;
 }
 
 function sanitizeBridge(bridge, index, knownIdentifiers, issues) {
-  const sanitized = { ...bridge }
+  const sanitized = { ...bridge };
 
-  const fromRef = bridge.from_slot_id ?? bridge.fromSlotId ?? null
-  const toRef = bridge.to_slot_id ?? bridge.toSlotId ?? null
+  const fromRef = bridge.from_slot_id ?? bridge.fromSlotId ?? null;
+  const toRef = bridge.to_slot_id ?? bridge.toSlotId ?? null;
 
   if (fromRef == null || toRef == null) {
-    issues.push(`브리지 ${index + 1}: 연결 대상이 부족해 무시했습니다.`)
-    return null
+    issues.push(`브리지 ${index + 1}: 연결 대상이 부족해 무시했습니다.`);
+    return null;
   }
 
-  const fromKey = buildSlotIdentifier(fromRef)
-  const toKey = buildSlotIdentifier(toRef)
+  const fromKey = buildSlotIdentifier(fromRef);
+  const toKey = buildSlotIdentifier(toRef);
   if (!knownIdentifiers.has(fromKey) || !knownIdentifiers.has(toKey)) {
-    issues.push(`브리지 ${index + 1}: 존재하지 않는 슬롯을 참조해 제외했습니다.`)
-    return null
+    issues.push(`브리지 ${index + 1}: 존재하지 않는 슬롯을 참조해 제외했습니다.`);
+    return null;
   }
 
-  sanitized.from_slot_id = fromRef
-  sanitized.fromSlotId = fromRef
-  sanitized.to_slot_id = toRef
-  sanitized.toSlotId = toRef
+  sanitized.from_slot_id = fromRef;
+  sanitized.fromSlotId = fromRef;
+  sanitized.to_slot_id = toRef;
+  sanitized.toSlotId = toRef;
 
   const triggerWords = Array.isArray(bridge.trigger_words ?? bridge.triggerWords)
-    ? (bridge.trigger_words ?? bridge.triggerWords).map((value) => String(value))
-    : []
-  sanitized.trigger_words = triggerWords
-  sanitized.triggerWords = triggerWords
+    ? (bridge.trigger_words ?? bridge.triggerWords).map(value => String(value))
+    : [];
+  sanitized.trigger_words = triggerWords;
+  sanitized.triggerWords = triggerWords;
 
-  sanitized.conditions = Array.isArray(bridge.conditions) ? [...bridge.conditions] : []
+  sanitized.conditions = Array.isArray(bridge.conditions) ? [...bridge.conditions] : [];
 
-  const priority = toNumber(bridge.priority)
+  const priority = toNumber(bridge.priority);
   if (priority != null) {
-    sanitized.priority = priority
+    sanitized.priority = priority;
   }
 
-  const probability = toNumber(bridge.probability)
+  const probability = toNumber(bridge.probability);
   if (probability != null) {
-    const clamped = Math.max(0, Math.min(probability, 1))
-    sanitized.probability = clamped
+    const clamped = Math.max(0, Math.min(probability, 1));
+    sanitized.probability = clamped;
   }
 
-  sanitized.fallback = toBoolean(bridge.fallback)
-  const action = bridge.action != null ? String(bridge.action).trim() : 'continue'
-  sanitized.action = action || 'continue'
+  sanitized.fallback = toBoolean(bridge.fallback);
+  const action = bridge.action != null ? String(bridge.action).trim() : 'continue';
+  sanitized.action = action || 'continue';
 
-  Object.keys(sanitized).forEach((key) => {
+  Object.keys(sanitized).forEach(key => {
     if (sanitized[key] === undefined) {
-      delete sanitized[key]
+      delete sanitized[key];
     }
-  })
+  });
 
-  return sanitized
+  return sanitized;
 }
 
 export function parsePromptSetImportBundle(raw) {
-  const issues = []
-  const parsed = bundleSchema.safeParse(raw)
+  const issues = [];
+  const parsed = bundleSchema.safeParse(raw);
   if (!parsed.success) {
-    throw new Error('프롬프트 세트 JSON 구조가 올바르지 않습니다.')
+    throw new Error('프롬프트 세트 JSON 구조가 올바르지 않습니다.');
   }
 
-  const meta = sanitizeMeta(parsed.data.meta || {})
-  if (
-    meta.variableRulesVersion == null &&
-    meta.version == null
-  ) {
-    issues.push('meta.variableRulesVersion 값이 없어 기본값으로 처리했습니다.')
+  const meta = sanitizeMeta(parsed.data.meta || {});
+  if (meta.variableRulesVersion == null && meta.version == null) {
+    issues.push('meta.variableRulesVersion 값이 없어 기본값으로 처리했습니다.');
   }
 
-  const set = sanitizeSet(parsed.data.set || {})
-  const rawSlots = parsed.data.slots || []
-  const sanitizedSlots = rawSlots.map((slot, index) => sanitizeSlot(slot, index, issues))
+  const set = sanitizeSet(parsed.data.set || {});
+  const rawSlots = parsed.data.slots || [];
+  const sanitizedSlots = rawSlots.map((slot, index) => sanitizeSlot(slot, index, issues));
 
-  const identifierSet = new Set()
-  sanitizedSlots.forEach((slot) => {
-    const idKey = buildSlotIdentifier(slot.id ?? slot.slot_id ?? slot.slotId)
+  const identifierSet = new Set();
+  sanitizedSlots.forEach(slot => {
+    const idKey = buildSlotIdentifier(slot.id ?? slot.slot_id ?? slot.slotId);
     if (idKey) {
-      identifierSet.add(idKey)
+      identifierSet.add(idKey);
     }
     if (slot.slot_no != null) {
-      identifierSet.add(buildSlotIdentifier(slot.slot_no))
+      identifierSet.add(buildSlotIdentifier(slot.slot_no));
     }
     if (slot.slot_index != null) {
-      identifierSet.add(buildSlotIdentifier(slot.slot_index))
+      identifierSet.add(buildSlotIdentifier(slot.slot_index));
     }
-  })
+  });
 
-  const rawBridges = parsed.data.bridges || []
+  const rawBridges = parsed.data.bridges || [];
   const sanitizedBridges = rawBridges
     .map((bridge, index) => sanitizeBridge(bridge, index, identifierSet, issues))
-    .filter(Boolean)
+    .filter(Boolean);
 
   return {
     bundle: {
@@ -327,5 +314,5 @@ export function parsePromptSetImportBundle(raw) {
       bridges: sanitizedBridges,
     },
     warnings: issues,
-  }
+  };
 }

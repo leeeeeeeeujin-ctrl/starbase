@@ -1,13 +1,13 @@
 /**
  * 📱 Mobile Optimization Manager
  * 모바일 디바이스 최적화 및 터치 인터랙션 관리 시스템
- * 
+ *
  * 🔧 호환성 지원:
  * - iOS 12+ Safari, Android 7.0+ Chrome
  * - IE 11+ (제한적 터치 지원)
  * - 다양한 화면 크기 및 밀도 대응
  * - 터치 이벤트와 마우스 이벤트 통합 처리
- * 
+ *
  * @version 2.0.0
  * @compatibility IE11+, Safari 12+, Chrome 70+, Firefox 65+
  */
@@ -21,13 +21,13 @@ export class MobileOptimizationManager {
     this.touchListeners = new Map();
     this.resizeObserver = null;
     this.orientationChangeTimeout = null;
-    
+
     // 호환성 정보
     this.compatibilityInfo = null;
     this.supportsTouchEvents = false;
     this.supportsPointerEvents = false;
     this.supportsPassiveListeners = false;
-    
+
     // 터치 상태
     this.touchState = {
       isActive: false,
@@ -37,7 +37,7 @@ export class MobileOptimizationManager {
       multiTouch: false,
       gestureType: null, // 'tap', 'pan', 'pinch', 'swipe'
     };
-    
+
     // 모바일 최적화 설정
     this.settings = {
       enableTouchOptimization: true,
@@ -48,7 +48,7 @@ export class MobileOptimizationManager {
       swipeThreshold: 100, // 픽셀
       compatibilityLevel: 3,
     };
-    
+
     // 바인딩
     this.handleTouchStart = this.handleTouchStart.bind(this);
     this.handleTouchMove = this.handleTouchMove.bind(this);
@@ -73,42 +73,41 @@ export class MobileOptimizationManager {
     try {
       // 호환성 정보 가져오기
       this.compatibilityInfo = CompatibilityManager.getCompatibilityInfo();
-      
+
       // 설정 적용
       Object.assign(this.settings, options);
-      
+
       // 기능 지원 여부 확인
       this.detectFeatureSupport();
-      
+
       // 대상 엘리먼트 설정
       if (options.element) {
         this.targetElement = options.element;
       } else {
         this.targetElement = document.body;
       }
-      
+
       // 터치 최적화 설정
       if (this.settings.enableTouchOptimization) {
         this.setupTouchOptimization();
       }
-      
+
       // 키보드 네비게이션 설정
       if (this.settings.enableKeyboardNavigation) {
         this.setupKeyboardNavigation();
       }
-      
+
       // 반응형 레이아웃 설정
       if (this.settings.enableResponsiveLayout) {
         this.setupResponsiveLayout();
       }
-      
+
       this.isInitialized = true;
       console.log('[MobileOptimizationManager] 초기화 완료', {
         compatibility: this.compatibilityInfo.level,
         touchSupport: this.supportsTouchEvents,
         pointerSupport: this.supportsPointerEvents,
       });
-      
     } catch (error) {
       console.error('[MobileOptimizationManager] 초기화 실패:', error);
       throw error;
@@ -127,12 +126,12 @@ export class MobileOptimizationManager {
     } else if (typeof navigator.msMaxTouchPoints === 'number') {
       this.supportsTouchEvents = navigator.msMaxTouchPoints > 0;
     } else {
-      this.supportsTouchEvents = ('ontouchstart' in window) || false;
+      this.supportsTouchEvents = 'ontouchstart' in window || false;
     }
-    
+
     // 포인터 이벤트 지원 여부 (IE11+, 모던 브라우저)
     this.supportsPointerEvents = 'onpointerdown' in window;
-    
+
     // 패시브 리스너 지원 여부
     this.supportsPassiveListeners = (() => {
       let supportsPassive = false;
@@ -141,11 +140,11 @@ export class MobileOptimizationManager {
           get() {
             supportsPassive = true;
             return false;
-          }
+          },
         });
         window.addEventListener('testPassive', null, opts);
         window.removeEventListener('testPassive', null, opts);
-  } catch (_e) {}
+      } catch (_e) {}
       return supportsPassive;
     })();
   }
@@ -155,17 +154,16 @@ export class MobileOptimizationManager {
    */
   setupTouchOptimization() {
     if (!this.targetElement) return;
-    
-    const listenerOptions = this.supportsPassiveListeners ? 
-      { passive: false } : false;
-    
+
+    const listenerOptions = this.supportsPassiveListeners ? { passive: false } : false;
+
     if (this.supportsTouchEvents) {
       // 터치 이벤트 리스너 등록
       this.addTouchListener('touchstart', this.handleTouchStart, listenerOptions);
       this.addTouchListener('touchmove', this.handleTouchMove, listenerOptions);
       this.addTouchListener('touchend', this.handleTouchEnd, listenerOptions);
     }
-    
+
     if (this.supportsPointerEvents) {
       // 포인터 이벤트 리스너 등록 (IE11+ 호환)
       this.addTouchListener('pointerdown', this.handleMouseDown, false);
@@ -177,7 +175,7 @@ export class MobileOptimizationManager {
       this.addTouchListener('mousemove', this.handleMouseMove, false);
       this.addTouchListener('mouseup', this.handleMouseUp, false);
     }
-    
+
     // CSS 터치 최적화 적용
     this.applyTouchCSS();
   }
@@ -187,7 +185,7 @@ export class MobileOptimizationManager {
    */
   addTouchListener(event, handler, options) {
     this.targetElement.addEventListener(event, handler, options);
-    
+
     // 나중에 정리할 수 있도록 저장
     if (!this.touchListeners.has(event)) {
       this.touchListeners.set(event, []);
@@ -200,30 +198,29 @@ export class MobileOptimizationManager {
    */
   applyTouchCSS() {
     if (!this.targetElement) return;
-    
+
     const style = this.targetElement.style;
     // Always attempt to set touchAction for modern engines; add msTouchAction as fallback
     try {
       style.touchAction = 'manipulation';
-  } catch (_e) {
+    } catch (_e) {
       // If direct assignment fails, set msTouchAction as fallback
     }
     // IE10/11 legacy name
     style.msTouchAction = 'manipulation';
-    
+
     // 사용자 선택 방지
     style.webkitUserSelect = 'none';
     style.mozUserSelect = 'none';
     style.msUserSelect = 'none';
     style.userSelect = 'none';
-    
+
     // 텍스트 크기 조정 방지 (모바일 Safari)
     style.webkitTextSizeAdjust = '100%';
-    
+
     // 탭 하이라이트 제거 (모바일 Safari)
     style.webkitTapHighlightColor = 'transparent';
   }
-
 
   /**
    * 터치 시작 처리
@@ -233,7 +230,7 @@ export class MobileOptimizationManager {
 
     // Use Date.now() so Jest fake timers (which can mock Date) will make
     // duration calculations deterministic in tests.
-    const now = Date.now()
+    const now = Date.now();
 
     this.touchState = {
       isActive: true,
@@ -243,7 +240,7 @@ export class MobileOptimizationManager {
       multiTouch: event.touches && event.touches.length > 1,
       gestureType: null,
     };
-    
+
     // 멀티터치 제스처 감지
     if (this.touchState.multiTouch) {
       this.touchState.gestureType = 'pinch';
@@ -270,14 +267,14 @@ export class MobileOptimizationManager {
    */
   handleTouchMove(event) {
     if (!this.touchState.isActive) return;
-    
+
     const touch = event.touches ? event.touches[0] : event;
     const deltaX = touch.clientX - this.touchState.startPosition.x;
     const deltaY = touch.clientY - this.touchState.startPosition.y;
     const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-    
+
     this.touchState.currentPosition = { x: touch.clientX, y: touch.clientY };
-    
+
     // 제스처 타입 결정
     if (!this.touchState.gestureType && distance > this.settings.touchSensitivity) {
       if (Math.abs(deltaX) > Math.abs(deltaY)) {
@@ -286,7 +283,7 @@ export class MobileOptimizationManager {
         this.touchState.gestureType = 'swipe-vertical';
       }
     }
-    
+
     // 스크롤 방지 (필요시)
     if (this.touchState.gestureType && this.touchState.gestureType.startsWith('swipe')) {
       event.preventDefault();
@@ -303,33 +300,40 @@ export class MobileOptimizationManager {
     // callbacks are executed before we compute duration. This makes tests that
     // advance timers deterministic even if Date.now isn't advanced.
     try {
-      const j = (typeof globalThis !== 'undefined' && globalThis.jest) || (typeof global !== 'undefined' && global.jest) || null;
+      const j =
+        (typeof globalThis !== 'undefined' && globalThis.jest) ||
+        (typeof global !== 'undefined' && global.jest) ||
+        null;
       // If we're running under Jest fake timers, force any pending timers to run
       // so tests that advance time deterministically will trigger the long-press
       // callback before we compute gesture outcome.
       if (j && typeof j.runOnlyPendingTimers === 'function') {
         j.runOnlyPendingTimers();
       }
-  } catch (_e) {
+    } catch (_e) {
       // ignore in non-test environments
     }
-    
+
     const duration = Date.now() - this.touchState.startTime;
     const deltaX = this.touchState.currentPosition.x - this.touchState.startPosition.x;
     const deltaY = this.touchState.currentPosition.y - this.touchState.startPosition.y;
     const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-    
+
     // 제스처 타입 최종 결정 (respect long-press timer)
     if (!this.touchState.gestureType) {
       // If the timer already fired (longPressTimer cleared) or longPressTriggered set,
       // treat as long-press. Also respect duration as a fallback.
-      if (this.longPressTriggered || this.longPressTimer === null || duration > this.settings.longPressDuration) {
+      if (
+        this.longPressTriggered ||
+        this.longPressTimer === null ||
+        duration > this.settings.longPressDuration
+      ) {
         this.touchState.gestureType = 'long-press';
       } else if (distance < this.settings.touchSensitivity) {
         this.touchState.gestureType = 'tap';
       }
     }
-    
+
     // 스와이프 제스처 감지
     if (distance > this.settings.swipeThreshold) {
       if (Math.abs(deltaX) > Math.abs(deltaY)) {
@@ -338,10 +342,10 @@ export class MobileOptimizationManager {
         this.touchState.gestureType = deltaY > 0 ? 'swipe-down' : 'swipe-up';
       }
     }
-    
+
     // 제스처 이벤트 발생
     this.dispatchGestureEvent();
-    
+
     // 상태 초기화
     this.touchState.isActive = false;
     if (this.longPressTimer) {
@@ -370,7 +374,7 @@ export class MobileOptimizationManager {
    */
   dispatchGestureEvent() {
     if (!this.touchState.gestureType || !this.targetElement) return;
-    
+
     const gestureEvent = new CustomEvent('mobileGesture', {
       detail: {
         type: this.touchState.gestureType,
@@ -382,7 +386,7 @@ export class MobileOptimizationManager {
       bubbles: true,
       cancelable: true,
     });
-    
+
     this.targetElement.dispatchEvent(gestureEvent);
   }
 
@@ -391,24 +395,24 @@ export class MobileOptimizationManager {
    */
   setupKeyboardNavigation() {
     if (!this.targetElement) return;
-    
+
     // 포커스 가능한 엘리먼트들에 tabindex 설정
     const focusableElements = this.targetElement.querySelectorAll(
       'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
     );
-    
+
     focusableElements.forEach((element, index) => {
       if (!element.hasAttribute('tabindex')) {
         element.setAttribute('tabindex', '0');
       }
-      
+
       // 키보드 네비게이션 스타일 추가
-      element.addEventListener('focus', (e) => {
+      element.addEventListener('focus', e => {
         e.target.style.outline = '2px solid #3b82f6';
         e.target.style.outlineOffset = '2px';
       });
-      
-      element.addEventListener('blur', (e) => {
+
+      element.addEventListener('blur', e => {
         e.target.style.outline = '';
         e.target.style.outlineOffset = '';
       });
@@ -427,7 +431,7 @@ export class MobileOptimizationManager {
       // IE11 폴백: window resize 이벤트 사용
       window.addEventListener('resize', this.handleResize);
     }
-    
+
     // 오리엔테이션 변경 처리
     // Some environments expose window.onorientationchange, others expose window.orientation
     if ('onorientationchange' in window || typeof window.orientation !== 'undefined') {
@@ -447,7 +451,7 @@ export class MobileOptimizationManager {
     if (this.resizeTimeout) {
       clearTimeout(this.resizeTimeout);
     }
-    
+
     this.resizeTimeout = setTimeout(() => {
       const event = new CustomEvent('mobileResize', {
         detail: {
@@ -459,7 +463,7 @@ export class MobileOptimizationManager {
         bubbles: true,
         cancelable: true,
       });
-      
+
       if (this.targetElement) {
         this.targetElement.dispatchEvent(event);
       }
@@ -474,7 +478,7 @@ export class MobileOptimizationManager {
     if (this.orientationChangeTimeout) {
       clearTimeout(this.orientationChangeTimeout);
     }
-    
+
     this.orientationChangeTimeout = setTimeout(() => {
       this.handleResize();
       // ensure the spy in tests sees that this handler ran
@@ -516,7 +520,7 @@ export class MobileOptimizationManager {
    */
   cleanup() {
     if (!this.isInitialized) return;
-    
+
     // 터치 리스너 제거
     this.touchListeners.forEach((listeners, event) => {
       listeners.forEach(({ handler, options }) => {
@@ -524,7 +528,7 @@ export class MobileOptimizationManager {
       });
     });
     this.touchListeners.clear();
-    
+
     // ResizeObserver 정리
     if (this.resizeObserver) {
       this.resizeObserver.disconnect();
@@ -532,19 +536,19 @@ export class MobileOptimizationManager {
     } else {
       window.removeEventListener('resize', this.handleResize);
     }
-    
+
     // 오리엔테이션 리스너 제거
     if (this._orientationHandler) {
       window.removeEventListener('orientationchange', this._orientationHandler);
       this._orientationHandler = null;
     }
-    
+
     // 타이머 정리
     if (this.resizeTimeout) {
       clearTimeout(this.resizeTimeout);
       this.resizeTimeout = null;
     }
-    
+
     if (this.orientationChangeTimeout) {
       clearTimeout(this.orientationChangeTimeout);
       this.orientationChangeTimeout = null;
@@ -553,10 +557,10 @@ export class MobileOptimizationManager {
       clearTimeout(this.longPressTimer);
       this.longPressTimer = null;
     }
-    
+
     this.isInitialized = false;
     this.targetElement = null;
-    
+
     console.log('[MobileOptimizationManager] 정리 완료');
   }
 }

@@ -1,13 +1,19 @@
-import styles from './styles'
+import styles from './styles';
 
 export default function DeleteHeroModal({ hero, open, deleting, onCancel, onConfirm }) {
-  if (!open || !hero) return null
+  if (!open || !hero) return null;
 
   return (
     <div style={styles.modalBackdrop} role="dialog" aria-modal="true">
       <div style={styles.modalBody}>
         <div style={styles.modalIcon}>
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <svg
+            width="32"
+            height="32"
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
             <path d="M9 3h6l1 2h4v2H4V5h4l1-2Zm1 6h2v8h-2V9Zm4 0h2v8h-2V9Z" fill="currentColor" />
           </svg>
         </div>
@@ -20,7 +26,12 @@ export default function DeleteHeroModal({ hero, open, deleting, onCancel, onConf
           </p>
         </div>
         <div style={styles.modalActions}>
-          <button type="button" onClick={onCancel} style={styles.modalCancelButton} disabled={deleting}>
+          <button
+            type="button"
+            onClick={onCancel}
+            style={styles.modalCancelButton}
+            disabled={deleting}
+          >
             취소
           </button>
           <button
@@ -41,5 +52,5 @@ export default function DeleteHeroModal({ hero, open, deleting, onCancel, onConf
         </div>
       </div>
     </div>
-  )
+  );
 }

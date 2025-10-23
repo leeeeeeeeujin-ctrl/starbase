@@ -1,9 +1,9 @@
-'use client'
+'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
-import ProfileActionSheet from '../common/ProfileActionSheet'
-import SurfaceOverlay from '../common/SurfaceOverlay'
+import ProfileActionSheet from '../common/ProfileActionSheet';
+import SurfaceOverlay from '../common/SurfaceOverlay';
 
 function friendDisplayName(friend) {
   return (
@@ -12,15 +12,21 @@ function friendDisplayName(friend) {
     friend?.displayName ||
     friend?.username ||
     '이름 미확인'
-  )
+  );
 }
 
 function friendKey(friend) {
-  return friend?.friendOwnerId || friend?.ownerId || friend?.friendHeroId || friend?.currentHeroId || friendDisplayName(friend)
+  return (
+    friend?.friendOwnerId ||
+    friend?.ownerId ||
+    friend?.friendHeroId ||
+    friend?.currentHeroId ||
+    friendDisplayName(friend)
+  );
 }
 
 function requestDisplayName(request) {
-  return request?.partnerHeroName || request?.partnerName || '이름 미확인'
+  return request?.partnerHeroName || request?.partnerName || '이름 미확인';
 }
 
 export default function FriendOverlay({
@@ -38,128 +44,128 @@ export default function FriendOverlay({
   onCancelRequest,
   overlayZIndex,
 }) {
-  const [input, setInput] = useState('')
-  const [activeTab, setActiveTab] = useState('friends')
-  const [sheetOpen, setSheetOpen] = useState(false)
-  const [selectedFriend, setSelectedFriend] = useState(null)
-  const [copied, setCopied] = useState(false)
+  const [input, setInput] = useState('');
+  const [activeTab, setActiveTab] = useState('friends');
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [selectedFriend, setSelectedFriend] = useState(null);
+  const [copied, setCopied] = useState(false);
 
-  const incomingRequests = friendRequests?.incoming ?? []
-  const outgoingRequests = friendRequests?.outgoing ?? []
-  const viewerHeroId = viewer?.hero_id || viewer?.heroId || ''
+  const incomingRequests = friendRequests?.incoming ?? [];
+  const outgoingRequests = friendRequests?.outgoing ?? [];
+  const viewerHeroId = viewer?.hero_id || viewer?.heroId || '';
 
   useEffect(() => {
-    if (!copied) return undefined
-    const timer = setTimeout(() => setCopied(false), 1600)
-    return () => clearTimeout(timer)
-  }, [copied])
+    if (!copied) return undefined;
+    const timer = setTimeout(() => setCopied(false), 1600);
+    return () => clearTimeout(timer);
+  }, [copied]);
 
   const sortedFriends = useMemo(() => {
-    if (!Array.isArray(friends)) return []
+    if (!Array.isArray(friends)) return [];
     return [...friends].sort((a, b) => {
-      const aOnline = a?.online ? 1 : 0
-      const bOnline = b?.online ? 1 : 0
-      if (aOnline !== bOnline) return bOnline - aOnline
-      return friendDisplayName(a).localeCompare(friendDisplayName(b))
-    })
-  }, [friends])
+      const aOnline = a?.online ? 1 : 0;
+      const bOnline = b?.online ? 1 : 0;
+      if (aOnline !== bOnline) return bOnline - aOnline;
+      return friendDisplayName(a).localeCompare(friendDisplayName(b));
+    });
+  }, [friends]);
 
   const handleSubmit = useCallback(
-    async (event) => {
-      event.preventDefault()
-      const trimmed = input.trim()
-      if (!trimmed || typeof onAddFriend !== 'function') return
-      const result = await onAddFriend({ heroId: trimmed })
+    async event => {
+      event.preventDefault();
+      const trimmed = input.trim();
+      if (!trimmed || typeof onAddFriend !== 'function') return;
+      const result = await onAddFriend({ heroId: trimmed });
       if (result?.ok) {
-        setInput('')
+        setInput('');
       } else if (result?.error) {
-        alert(result.error)
+        alert(result.error);
       }
     },
-    [input, onAddFriend],
-  )
+    [input, onAddFriend]
+  );
 
   const handleRemoveFriend = useCallback(
-    async (friend) => {
-      if (typeof onRemoveFriend !== 'function') return
-      const result = await onRemoveFriend(friend)
+    async friend => {
+      if (typeof onRemoveFriend !== 'function') return;
+      const result = await onRemoveFriend(friend);
       if (result?.error) {
-        alert(result.error)
+        alert(result.error);
       }
     },
-    [onRemoveFriend],
-  )
+    [onRemoveFriend]
+  );
 
   const handleAcceptRequest = useCallback(
-    async (request) => {
-      if (typeof onAcceptRequest !== 'function') return
-      const result = await onAcceptRequest(request?.id)
+    async request => {
+      if (typeof onAcceptRequest !== 'function') return;
+      const result = await onAcceptRequest(request?.id);
       if (result?.error) {
-        alert(result.error)
+        alert(result.error);
       }
     },
-    [onAcceptRequest],
-  )
+    [onAcceptRequest]
+  );
 
   const handleDeclineRequest = useCallback(
-    async (request) => {
-      if (typeof onDeclineRequest !== 'function') return
-      const result = await onDeclineRequest(request?.id)
+    async request => {
+      if (typeof onDeclineRequest !== 'function') return;
+      const result = await onDeclineRequest(request?.id);
       if (result?.error) {
-        alert(result.error)
+        alert(result.error);
       }
     },
-    [onDeclineRequest],
-  )
+    [onDeclineRequest]
+  );
 
   const handleCancelRequest = useCallback(
-    async (request) => {
-      if (typeof onCancelRequest !== 'function') return
-      const result = await onCancelRequest(request?.id)
+    async request => {
+      if (typeof onCancelRequest !== 'function') return;
+      const result = await onCancelRequest(request?.id);
       if (result?.error) {
-        alert(result.error)
+        alert(result.error);
       }
     },
-    [onCancelRequest],
-  )
+    [onCancelRequest]
+  );
 
-  const openFriendSheet = useCallback((friend) => {
-    setSelectedFriend(friend || null)
-    setSheetOpen(Boolean(friend))
-  }, [])
+  const openFriendSheet = useCallback(friend => {
+    setSelectedFriend(friend || null);
+    setSheetOpen(Boolean(friend));
+  }, []);
 
   const handleCopyViewerHeroId = useCallback(async () => {
-    if (!viewerHeroId) return
+    if (!viewerHeroId) return;
     try {
       if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(viewerHeroId)
-        setCopied(true)
-        return
+        await navigator.clipboard.writeText(viewerHeroId);
+        setCopied(true);
+        return;
       }
     } catch (error) {
-      console.error('친구창 캐릭터 ID 복사 실패:', error)
+      console.error('친구창 캐릭터 ID 복사 실패:', error);
     }
     if (typeof window !== 'undefined') {
-      window.prompt('아래 캐릭터 ID를 복사해 주세요.', viewerHeroId)
+      window.prompt('아래 캐릭터 ID를 복사해 주세요.', viewerHeroId);
     }
-  }, [viewerHeroId])
+  }, [viewerHeroId]);
 
   const closeFriendSheet = useCallback(() => {
-    setSheetOpen(false)
-    setSelectedFriend(null)
-  }, [])
+    setSheetOpen(false);
+    setSelectedFriend(null);
+  }, []);
 
   const sheetHero = useMemo(() => {
-    if (!selectedFriend) return null
+    if (!selectedFriend) return null;
 
-    const heroId = selectedFriend.currentHeroId || selectedFriend.friendHeroId
-    const heroName = friendDisplayName(selectedFriend)
-    const avatarUrl = selectedFriend.currentHeroAvatar || selectedFriend.friendHeroAvatar || null
+    const heroId = selectedFriend.currentHeroId || selectedFriend.friendHeroId;
+    const heroName = friendDisplayName(selectedFriend);
+    const avatarUrl = selectedFriend.currentHeroAvatar || selectedFriend.friendHeroAvatar || null;
 
     const viewDetail = () => {
-      if (!heroId) return
-      window.open(`/character/${heroId}`, '_blank', 'noopener')
-    }
+      if (!heroId) return;
+      window.open(`/character/${heroId}`, '_blank', 'noopener');
+    };
 
     return {
       heroId,
@@ -169,15 +175,15 @@ export default function FriendOverlay({
       isFriend: true,
       onRemoveFriend: () => handleRemoveFriend(selectedFriend),
       onViewDetail: viewDetail,
-    }
-  }, [handleRemoveFriend, selectedFriend, viewer?.hero_id])
+    };
+  }, [handleRemoveFriend, selectedFriend, viewer?.hero_id]);
 
   const friendSection = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {!sortedFriends.length ? <p style={styles.hint}>친구 목록이 비어 있습니다.</p> : null}
-      {sortedFriends.map((friend) => {
-        const heroName = friendDisplayName(friend)
-        const status = friend.online ? '온라인' : '오프라인'
+      {sortedFriends.map(friend => {
+        const heroName = friendDisplayName(friend);
+        const status = friend.online ? '온라인' : '오프라인';
         return (
           <div key={friendKey(friend)} style={styles.listItem}>
             <div>
@@ -185,67 +191,87 @@ export default function FriendOverlay({
               <p style={styles.listMeta}>{status}</p>
             </div>
             <div style={styles.itemActions}>
-              <button type="button" style={styles.ghostButton} onClick={() => openFriendSheet(friend)}>
+              <button
+                type="button"
+                style={styles.ghostButton}
+                onClick={() => openFriendSheet(friend)}
+              >
                 보기
               </button>
-              <button type="button" style={styles.dangerButton} onClick={() => handleRemoveFriend(friend)}>
+              <button
+                type="button"
+                style={styles.dangerButton}
+                onClick={() => handleRemoveFriend(friend)}
+              >
                 삭제
               </button>
             </div>
           </div>
-        )
+        );
       })}
     </div>
-  )
+  );
 
   const incomingSection = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {!incomingRequests.length ? <p style={styles.hint}>받은 친구 요청이 없습니다.</p> : null}
-      {incomingRequests.map((request) => (
+      {incomingRequests.map(request => (
         <div key={request?.id || requestDisplayName(request)} style={styles.listItem}>
           <div>
             <p style={styles.listTitle}>{requestDisplayName(request)}</p>
             <p style={styles.listMeta}>요청 수신</p>
           </div>
           <div style={styles.itemActions}>
-            <button type="button" style={styles.primaryButton} onClick={() => handleAcceptRequest(request)}>
+            <button
+              type="button"
+              style={styles.primaryButton}
+              onClick={() => handleAcceptRequest(request)}
+            >
               수락
             </button>
-            <button type="button" style={styles.dangerButton} onClick={() => handleDeclineRequest(request)}>
+            <button
+              type="button"
+              style={styles.dangerButton}
+              onClick={() => handleDeclineRequest(request)}
+            >
               거절
             </button>
           </div>
         </div>
       ))}
     </div>
-  )
+  );
 
   const outgoingSection = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {!outgoingRequests.length ? <p style={styles.hint}>보낸 친구 요청이 없습니다.</p> : null}
-      {outgoingRequests.map((request) => (
+      {outgoingRequests.map(request => (
         <div key={request?.id || requestDisplayName(request)} style={styles.listItem}>
           <div>
             <p style={styles.listTitle}>{requestDisplayName(request)}</p>
             <p style={styles.listMeta}>요청 보냄</p>
           </div>
-          <button type="button" style={styles.ghostButton} onClick={() => handleCancelRequest(request)}>
+          <button
+            type="button"
+            style={styles.ghostButton}
+            onClick={() => handleCancelRequest(request)}
+          >
             취소
           </button>
         </div>
       ))}
     </div>
-  )
+  );
 
-  let body = friendSection
+  let body = friendSection;
   if (activeTab === 'incoming') {
-    body = incomingSection
+    body = incomingSection;
   } else if (activeTab === 'outgoing') {
-    body = outgoingSection
+    body = outgoingSection;
   }
 
-  const sheetHeroRemove = sheetHero ? sheetHero.onRemoveFriend : undefined
-  const sheetHeroView = sheetHero ? sheetHero.onViewDetail : undefined
+  const sheetHeroRemove = sheetHero ? sheetHero.onRemoveFriend : undefined;
+  const sheetHeroView = sheetHero ? sheetHero.onViewDetail : undefined;
 
   return (
     <SurfaceOverlay
@@ -258,7 +284,11 @@ export default function FriendOverlay({
     >
       <div style={styles.container}>
         {viewerHeroId ? (
-          <button type="button" style={styles.viewerIdBadge(copied)} onClick={handleCopyViewerHeroId}>
+          <button
+            type="button"
+            style={styles.viewerIdBadge(copied)}
+            onClick={handleCopyViewerHeroId}
+          >
             {copied ? '내 캐릭터 ID 복사됨!' : `내 캐릭터 ID: ${viewerHeroId}`}
           </button>
         ) : null}
@@ -267,7 +297,7 @@ export default function FriendOverlay({
           <input
             type="text"
             value={input}
-            onChange={(event) => setInput(event.target.value)}
+            onChange={event => setInput(event.target.value)}
             placeholder="추가할 캐릭터 ID 입력"
             style={styles.input}
           />
@@ -318,7 +348,7 @@ export default function FriendOverlay({
         onViewDetail={sheetHeroView}
       />
     </SurfaceOverlay>
-  )
+  );
 }
 
 const styles = {
@@ -332,7 +362,7 @@ const styles = {
     border: '1px solid rgba(148,163,184,0.2)',
     color: '#e2e8f0',
   },
-  viewerIdBadge: (copied) => ({
+  viewerIdBadge: copied => ({
     alignSelf: 'flex-start',
     appearance: 'none',
     borderRadius: 999,
@@ -365,7 +395,7 @@ const styles = {
     gap: 8,
     flexWrap: 'wrap',
   },
-  tabButton: (active) => ({
+  tabButton: active => ({
     padding: '8px 16px',
     borderRadius: 999,
     border: active ? '1px solid rgba(96,165,250,0.6)' : '1px solid rgba(148,163,184,0.35)',
@@ -434,5 +464,4 @@ const styles = {
     fontSize: 13,
     color: '#94a3b8',
   },
-}
-
+};

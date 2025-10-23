@@ -34,9 +34,7 @@
     "assignments": [
       {
         "role": "defense",
-        "members": [
-          { "hero_id": "hero-gamma", "owner_id": "owner-3", "slot_no": 2 }
-        ]
+        "members": [{ "hero_id": "hero-gamma", "owner_id": "owner-3", "slot_no": 2 }]
       }
     ]
   }

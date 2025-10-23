@@ -1,66 +1,63 @@
-const { describe, it, expect, beforeEach } = require('@jest/globals')
+const { describe, it, expect, beforeEach } = require('@jest/globals');
 
 const {
   createApiRequest,
   createMockResponse,
   loadApiRoute,
   registerSupabaseAdminMock,
-} = require('../testUtils')
+} = require('../testUtils');
 
 function loadHandler() {
-  return loadApiRoute('rank', 'async-standins')
+  return loadApiRoute('rank', 'async-standins');
 }
 
 describe('POST /api/rank/async-standins', () => {
   beforeEach(() => {
-    jest.resetModules()
-    jest.clearAllMocks()
-  })
+    jest.resetModules();
+    jest.clearAllMocks();
+  });
 
   afterEach(() => {
-    jest.restoreAllMocks()
-  })
+    jest.restoreAllMocks();
+  });
 
   it('returns 400 when the payload is invalid', async () => {
-    const rpcMock = jest.fn()
-    registerSupabaseAdminMock(jest.fn(), rpcMock)
+    const rpcMock = jest.fn();
+    registerSupabaseAdminMock(jest.fn(), rpcMock);
 
-    const handler = loadHandler()
-    const req = createApiRequest({ method: 'POST', body: {} })
-    const res = createMockResponse()
+    const handler = loadHandler();
+    const req = createApiRequest({ method: 'POST', body: {} });
+    const res = createMockResponse();
 
-    await handler(req, res)
+    await handler(req, res);
 
-    expect(res.statusCode).toBe(400)
-    expect(res.body).toMatchObject({ error: 'invalid_payload' })
-    expect(rpcMock).not.toHaveBeenCalled()
-  })
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toMatchObject({ error: 'invalid_payload' });
+    expect(rpcMock).not.toHaveBeenCalled();
+  });
 
   it('returns 500 when the RPC throws an error', async () => {
-    const rpcMock = jest.fn(() => Promise.reject(new Error('network failure')))
-    registerSupabaseAdminMock(jest.fn(), rpcMock)
+    const rpcMock = jest.fn(() => Promise.reject(new Error('network failure')));
+    registerSupabaseAdminMock(jest.fn(), rpcMock);
 
-    const handler = loadHandler()
+    const handler = loadHandler();
     const req = createApiRequest({
       method: 'POST',
       body: {
         game_id: 'game-1',
         seat_requests: [{ slotIndex: 1, role: '전략가' }],
       },
-    })
-    const res = createMockResponse()
+    });
+    const res = createMockResponse();
 
-    await handler(req, res)
+    await handler(req, res);
 
-    expect(res.statusCode).toBe(500)
-    expect(res.body).toMatchObject({ error: 'rpc_failed' })
-  })
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toMatchObject({ error: 'rpc_failed' });
+  });
 
   it('assigns stand-in candidates across multiple seats', async () => {
-    jest
-      .spyOn(Math, 'random')
-      .mockReturnValueOnce(0.1)
-      .mockReturnValueOnce(0.9)
+    jest.spyOn(Math, 'random').mockReturnValueOnce(0.1).mockReturnValueOnce(0.9);
 
     const rpcMock = jest
       .fn()
@@ -115,11 +112,11 @@ describe('POST /api/rank/async-standins', () => {
           },
         ],
         error: null,
-      })
+      });
 
-    registerSupabaseAdminMock(jest.fn(), rpcMock)
+    registerSupabaseAdminMock(jest.fn(), rpcMock);
 
-    const handler = loadHandler()
+    const handler = loadHandler();
     const req = createApiRequest({
       method: 'POST',
       body: {
@@ -131,20 +128,26 @@ describe('POST /api/rank/async-standins', () => {
         ],
         exclude_owner_ids: ['host-owner'],
       },
-    })
-    const res = createMockResponse()
+    });
+    const res = createMockResponse();
 
-    await handler(req, res)
+    await handler(req, res);
 
-    expect(res.statusCode).toBe(200)
-    expect(res.body.queue).toHaveLength(2)
+    expect(res.statusCode).toBe(200);
+    expect(res.body.queue).toHaveLength(2);
     expect(res.body.assignments).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ slotIndex: 1, candidate: expect.objectContaining({ ownerId: 'candidate-1' }) }),
-        expect.objectContaining({ slotIndex: 2, candidate: expect.objectContaining({ ownerId: 'candidate-2' }) }),
-      ]),
-    )
-    expect(rpcMock).toHaveBeenCalledTimes(2)
+        expect.objectContaining({
+          slotIndex: 1,
+          candidate: expect.objectContaining({ ownerId: 'candidate-1' }),
+        }),
+        expect.objectContaining({
+          slotIndex: 2,
+          candidate: expect.objectContaining({ ownerId: 'candidate-2' }),
+        }),
+      ])
+    );
+    expect(rpcMock).toHaveBeenCalledTimes(2);
     expect(rpcMock).toHaveBeenNthCalledWith(
       1,
       'fetch_rank_async_standin_pool',
@@ -154,20 +157,20 @@ describe('POST /api/rank/async-standins', () => {
         p_limit: 6,
         p_reference_score: 1200,
         p_reference_rating: 1500,
-      }),
-    )
+      })
+    );
     expect(rpcMock).toHaveBeenNthCalledWith(
       2,
       'fetch_rank_async_standin_pool',
       expect.objectContaining({
         p_excluded_owner_ids: expect.arrayContaining(['host-owner', 'candidate-1']),
         p_reference_score: 1190,
-      }),
-    )
+      })
+    );
     expect(res.body.diagnostics).toMatchObject({
       randomizedAssignments: 0,
-    })
-  })
+    });
+  });
 
   it('falls back to any role when role-specific results are empty', async () => {
     const rpcMock = jest
@@ -188,45 +191,45 @@ describe('POST /api/rank/async-standins', () => {
           },
         ],
         error: null,
-      })
+      });
 
-    registerSupabaseAdminMock(jest.fn(), rpcMock)
+    registerSupabaseAdminMock(jest.fn(), rpcMock);
 
-    const handler = loadHandler()
+    const handler = loadHandler();
     const req = createApiRequest({
       method: 'POST',
       body: {
         game_id: 'game-async',
         seat_requests: [{ slotIndex: 5, role: '전략가', score: 1180, rating: 1500 }],
       },
-    })
-    const res = createMockResponse()
+    });
+    const res = createMockResponse();
 
-    await handler(req, res)
+    await handler(req, res);
 
-    expect(res.statusCode).toBe(200)
+    expect(res.statusCode).toBe(200);
     expect(res.body.queue).toEqual(
-      expect.arrayContaining([expect.objectContaining({ ownerId: 'fallback-owner' })]),
-    )
-    expect(res.body.diagnostics).toMatchObject({ roleFallbacks: 1 })
+      expect.arrayContaining([expect.objectContaining({ ownerId: 'fallback-owner' })])
+    );
+    expect(res.body.diagnostics).toMatchObject({ roleFallbacks: 1 });
 
     expect(rpcMock).toHaveBeenNthCalledWith(
       1,
       'fetch_rank_async_standin_pool',
-      expect.objectContaining({ p_role: '전략가' }),
-    )
+      expect.objectContaining({ p_role: '전략가' })
+    );
     expect(rpcMock).toHaveBeenNthCalledWith(
       2,
       'fetch_rank_async_standin_pool',
-      expect.objectContaining({ p_role: null }),
-    )
-  })
+      expect.objectContaining({ p_role: null })
+    );
+  });
 
   it('normalizes generic role labels to null before querying', async () => {
-    const rpcMock = jest.fn().mockResolvedValue({ data: [], error: null })
-    registerSupabaseAdminMock(jest.fn(), rpcMock)
+    const rpcMock = jest.fn().mockResolvedValue({ data: [], error: null });
+    registerSupabaseAdminMock(jest.fn(), rpcMock);
 
-    const handler = loadHandler()
+    const handler = loadHandler();
     const req = createApiRequest({
       method: 'POST',
       body: {
@@ -237,22 +240,20 @@ describe('POST /api/rank/async-standins', () => {
           { slotIndex: 3, role: 'ANY' },
         ],
       },
-    })
-    const res = createMockResponse()
+    });
+    const res = createMockResponse();
 
-    await handler(req, res)
+    await handler(req, res);
 
-    expect(res.statusCode).toBe(200)
-    expect(rpcMock).toHaveBeenCalled()
+    expect(res.statusCode).toBe(200);
+    expect(rpcMock).toHaveBeenCalled();
     rpcMock.mock.calls.forEach(([, params]) => {
-      expect(params.p_role).toBeNull()
-    })
-  })
+      expect(params.p_role).toBeNull();
+    });
+  });
 
   it('selects a random candidate within tolerance pool', async () => {
-    jest
-      .spyOn(Math, 'random')
-      .mockReturnValueOnce(0.8)
+    jest.spyOn(Math, 'random').mockReturnValueOnce(0.8);
 
     const rpcMock = jest.fn().mockResolvedValue({
       data: [
@@ -261,63 +262,59 @@ describe('POST /api/rank/async-standins', () => {
         { owner_id: 'candidate-3', score_gap: 9, rating_gap: 14 },
       ],
       error: null,
-    })
+    });
 
-    registerSupabaseAdminMock(jest.fn(), rpcMock)
+    registerSupabaseAdminMock(jest.fn(), rpcMock);
 
-    const handler = loadHandler()
+    const handler = loadHandler();
     const req = createApiRequest({
       method: 'POST',
       body: {
         game_id: 'game-async',
         seat_requests: [{ slotIndex: 3, role: '전략가', score: 1200, rating: 1500 }],
       },
-    })
-    const res = createMockResponse()
+    });
+    const res = createMockResponse();
 
-    await handler(req, res)
+    await handler(req, res);
 
-    expect(res.statusCode).toBe(200)
-    expect(res.body.queue).toHaveLength(1)
-    expect(res.body.queue[0]).toMatchObject({ ownerId: 'candidate-3' })
-    expect(res.body.diagnostics.randomizedAssignments).toBe(1)
-  })
+    expect(res.statusCode).toBe(200);
+    expect(res.body.queue).toHaveLength(1);
+    expect(res.body.queue[0]).toMatchObject({ ownerId: 'candidate-3' });
+    expect(res.body.diagnostics.randomizedAssignments).toBe(1);
+  });
 
   it('widens score tolerance before falling back to generic role', async () => {
-    jest.spyOn(Math, 'random').mockReturnValue(0.5)
+    jest.spyOn(Math, 'random').mockReturnValue(0.5);
 
     const rpcMock = jest
       .fn()
       .mockResolvedValueOnce({
-        data: [
-          { owner_id: 'tight-role', score_gap: 240, rating_gap: 300 },
-        ],
+        data: [{ owner_id: 'tight-role', score_gap: 240, rating_gap: 300 }],
         error: null,
       })
       .mockResolvedValueOnce({
-        data: [
-          { owner_id: 'fallback-role', score_gap: 20, rating_gap: 25 },
-        ],
+        data: [{ owner_id: 'fallback-role', score_gap: 20, rating_gap: 25 }],
         error: null,
-      })
+      });
 
-    registerSupabaseAdminMock(jest.fn(), rpcMock)
+    registerSupabaseAdminMock(jest.fn(), rpcMock);
 
-    const handler = loadHandler()
+    const handler = loadHandler();
     const req = createApiRequest({
       method: 'POST',
       body: {
         game_id: 'game-async',
         seat_requests: [{ slotIndex: 7, role: '전략가', score: 1180 }],
       },
-    })
-    const res = createMockResponse()
+    });
+    const res = createMockResponse();
 
-    await handler(req, res)
+    await handler(req, res);
 
-    expect(res.statusCode).toBe(200)
-    expect(res.body.queue[0]).toMatchObject({ ownerId: 'tight-role' })
-    expect(res.body.diagnostics.roleFallbacks).toBe(0)
-    expect(res.body.diagnostics.scoreToleranceExpansions).toBeGreaterThan(0)
-  })
-})
+    expect(res.statusCode).toBe(200);
+    expect(res.body.queue[0]).toMatchObject({ ownerId: 'tight-role' });
+    expect(res.body.diagnostics.roleFallbacks).toBe(0);
+    expect(res.body.diagnostics.scoreToleranceExpansions).toBeGreaterThan(0);
+  });
+});

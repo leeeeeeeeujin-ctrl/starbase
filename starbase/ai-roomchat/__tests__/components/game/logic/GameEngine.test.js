@@ -1,6 +1,6 @@
 /**
  * GameEngine Test Suite
- * 
+ *
  * Tests for game logic engine within UnifiedGameSystem
  * Focuses on:
  * - Game state management
@@ -102,7 +102,7 @@ describe('GameEngine - State Management', () => {
 
   test('should initialize with default game state', async () => {
     const { container } = render(<UnifiedGameSystem />);
-    
+
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });
@@ -115,7 +115,7 @@ describe('GameEngine - State Management', () => {
     };
 
     const { container } = render(<UnifiedGameSystem initialCharacter={mockCharacter} />);
-    
+
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });
@@ -123,7 +123,7 @@ describe('GameEngine - State Management', () => {
 
   test('should handle state transitions correctly', async () => {
     const { container } = render(<UnifiedGameSystem />);
-    
+
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });
@@ -148,7 +148,7 @@ describe('GameEngine - Variable System', () => {
     };
 
     const { container } = render(<UnifiedGameSystem initialCharacter={mockCharacter} />);
-    
+
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });
@@ -161,7 +161,7 @@ describe('GameEngine - Variable System', () => {
     };
 
     const { container } = render(<UnifiedGameSystem initialCharacter={mockCharacter} />);
-    
+
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });
@@ -173,7 +173,7 @@ describe('GameEngine - Variable System', () => {
     };
 
     const { container } = render(<UnifiedGameSystem initialCharacter={mockCharacter} />);
-    
+
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });
@@ -191,7 +191,7 @@ describe('GameEngine - Variable System', () => {
     };
 
     const { container } = render(<UnifiedGameSystem initialCharacter={mockCharacter} />);
-    
+
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });
@@ -200,13 +200,17 @@ describe('GameEngine - Variable System', () => {
 
 describe('GameEngine - Template Loading', () => {
   test('should load game template by ID', async () => {
-    const GameResourceManagerMock = require('../../../../services/GameResourceManager').GameResourceManager;
+    const GameResourceManagerMock =
+      require('../../../../services/GameResourceManager').GameResourceManager;
 
     const { container } = render(<UnifiedGameSystem gameTemplateId="test-template-123" />);
-    
-    await waitFor(() => {
-      expect(container).toBeInTheDocument();
-    }, { timeout: 2000 });
+
+    await waitFor(
+      () => {
+        expect(container).toBeInTheDocument();
+      },
+      { timeout: 2000 }
+    );
   });
 
   test('should merge template variables with character variables', async () => {
@@ -216,26 +220,27 @@ describe('GameEngine - Template Loading', () => {
     };
 
     const { container } = render(
-      <UnifiedGameSystem 
-        initialCharacter={mockCharacter}
-        gameTemplateId="test-template"
-      />
+      <UnifiedGameSystem initialCharacter={mockCharacter} gameTemplateId="test-template" />
     );
-    
-    await waitFor(() => {
-      expect(container).toBeInTheDocument();
-    }, { timeout: 2000 });
+
+    await waitFor(
+      () => {
+        expect(container).toBeInTheDocument();
+      },
+      { timeout: 2000 }
+    );
   });
 
   test('should handle template loading failure gracefully', async () => {
-    const GameResourceManagerMock = require('../../../../services/GameResourceManager').GameResourceManager;
+    const GameResourceManagerMock =
+      require('../../../../services/GameResourceManager').GameResourceManager;
     GameResourceManagerMock.mockImplementation(() => ({
       loadGameTemplate: jest.fn().mockRejectedValue(new Error('Template not found')),
       cleanup: jest.fn(),
     }));
 
     const { container } = render(<UnifiedGameSystem gameTemplateId="invalid-template" />);
-    
+
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });
@@ -253,11 +258,11 @@ describe('GameEngine - AI Response Handling', () => {
     });
 
     const { container } = render(<UnifiedGameSystem />);
-    
+
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });
-    
+
     // Component should be ready to handle AI responses
     expect(global.fetch).toBeDefined();
   });
@@ -276,7 +281,7 @@ describe('GameEngine - AI Response Handling', () => {
       });
 
     const { container } = render(<UnifiedGameSystem />);
-    
+
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });
@@ -284,19 +289,20 @@ describe('GameEngine - AI Response Handling', () => {
 
   test('should handle timeout with AbortController', async () => {
     // Mock slow response
-    global.fetch.mockImplementation(() => 
-      new Promise((resolve) => {
-        setTimeout(() => {
-          resolve({
-            ok: true,
-            json: async () => ({ response: 'Delayed response', success: true }),
-          });
-        }, 5000);
-      })
+    global.fetch.mockImplementation(
+      () =>
+        new Promise(resolve => {
+          setTimeout(() => {
+            resolve({
+              ok: true,
+              json: async () => ({ response: 'Delayed response', success: true }),
+            });
+          }, 5000);
+        })
     );
 
     const { container } = render(<UnifiedGameSystem />);
-    
+
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });
@@ -306,7 +312,7 @@ describe('GameEngine - AI Response Handling', () => {
     global.fetch.mockRejectedValue(new Error('AI service unavailable'));
 
     const { container } = render(<UnifiedGameSystem />);
-    
+
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });
@@ -320,7 +326,7 @@ describe('GameEngine - AI Response Handling', () => {
     });
 
     const { container } = render(<UnifiedGameSystem />);
-    
+
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });
@@ -330,7 +336,7 @@ describe('GameEngine - AI Response Handling', () => {
 describe('GameEngine - Error Recovery', () => {
   test('should recover from node execution errors', async () => {
     const { container } = render(<UnifiedGameSystem />);
-    
+
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });
@@ -340,7 +346,8 @@ describe('GameEngine - Error Recovery', () => {
   });
 
   test('should handle missing nodes gracefully', async () => {
-    const GameResourceManagerMock = require('../../../../services/GameResourceManager').GameResourceManager;
+    const GameResourceManagerMock =
+      require('../../../../services/GameResourceManager').GameResourceManager;
     GameResourceManagerMock.mockImplementation(() => ({
       loadGameTemplate: jest.fn().mockResolvedValue({
         nodes: [],
@@ -350,14 +357,15 @@ describe('GameEngine - Error Recovery', () => {
     }));
 
     const { container } = render(<UnifiedGameSystem gameTemplateId="empty-template" />);
-    
+
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });
   });
 
   test('should handle circular node connections', async () => {
-    const GameResourceManagerMock = require('../../../../services/GameResourceManager').GameResourceManager;
+    const GameResourceManagerMock =
+      require('../../../../services/GameResourceManager').GameResourceManager;
     GameResourceManagerMock.mockImplementation(() => ({
       loadGameTemplate: jest.fn().mockResolvedValue({
         nodes: [
@@ -380,7 +388,7 @@ describe('GameEngine - Error Recovery', () => {
     }));
 
     const { container } = render(<UnifiedGameSystem gameTemplateId="circular-template" />);
-    
+
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });
@@ -397,7 +405,7 @@ describe('GameEngine - Performance', () => {
     const startTime = performance.now();
 
     const { container } = render(<UnifiedGameSystem initialCharacter={largeCharacter} />);
-    
+
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });
@@ -411,7 +419,7 @@ describe('GameEngine - Performance', () => {
 
   test('should manage memory efficiently during game execution', async () => {
     const { container, rerender } = render(<UnifiedGameSystem />);
-    
+
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });
@@ -440,8 +448,11 @@ describe('GameEngine - Browser Compatibility', () => {
       },
     };
 
-    const CompatibilityManagerMock = require('../../../../utils/compatibilityManager').CompatibilityManager;
-    CompatibilityManagerMock.getCompatibilityInfo = jest.fn().mockReturnValue(mockCompatibilityInfo);
+    const CompatibilityManagerMock =
+      require('../../../../utils/compatibilityManager').CompatibilityManager;
+    CompatibilityManagerMock.getCompatibilityInfo = jest
+      .fn()
+      .mockReturnValue(mockCompatibilityInfo);
 
     global.fetch.mockResolvedValueOnce({
       ok: true,
@@ -452,7 +463,7 @@ describe('GameEngine - Browser Compatibility', () => {
     });
 
     const { container } = render(<UnifiedGameSystem />);
-    
+
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });
@@ -472,11 +483,14 @@ describe('GameEngine - Browser Compatibility', () => {
       },
     };
 
-    const CompatibilityManagerMock = require('../../../../utils/compatibilityManager').CompatibilityManager;
-    CompatibilityManagerMock.getCompatibilityInfo = jest.fn().mockReturnValue(mockCompatibilityInfo);
+    const CompatibilityManagerMock =
+      require('../../../../utils/compatibilityManager').CompatibilityManager;
+    CompatibilityManagerMock.getCompatibilityInfo = jest
+      .fn()
+      .mockReturnValue(mockCompatibilityInfo);
 
     const { container } = render(<UnifiedGameSystem />);
-    
+
     await waitFor(() => {
       expect(container).toBeInTheDocument();
     });
@@ -486,7 +500,7 @@ describe('GameEngine - Browser Compatibility', () => {
 describe('GameEngine - Cleanup', () => {
   test('should cleanup resources on unmount', async () => {
     const { unmount } = render(<UnifiedGameSystem />);
-    
+
     await waitFor(() => {
       expect(true).toBe(true);
     });
@@ -495,19 +509,20 @@ describe('GameEngine - Cleanup', () => {
   });
 
   test('should cancel pending operations on unmount', async () => {
-    global.fetch.mockImplementation(() => 
-      new Promise((resolve) => {
-        setTimeout(() => {
-          resolve({
-            ok: true,
-            json: async () => ({ response: 'Late response', success: true }),
-          });
-        }, 5000);
-      })
+    global.fetch.mockImplementation(
+      () =>
+        new Promise(resolve => {
+          setTimeout(() => {
+            resolve({
+              ok: true,
+              json: async () => ({ response: 'Late response', success: true }),
+            });
+          }, 5000);
+        })
     );
 
     const { unmount } = render(<UnifiedGameSystem />);
-    
+
     await waitFor(() => {
       expect(true).toBe(true);
     });
