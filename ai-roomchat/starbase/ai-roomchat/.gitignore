@@ -4,3 +4,14 @@ node_modules/
 !.env.local.example
 .next/
 reports/
+
+# Playwright
+test-results/
+playwright-report/
+playwright/.cache/
+e2e/.auth/
+.dev-server.pid
+
+# Logs
+*.log
+dev-*.log

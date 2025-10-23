@@ -41,7 +41,67 @@ npm run dev
 - `/roster` : 내 캐릭터 목록
 - `/chat` : 공개 채팅(옵션)
 
-## 4) 구조 메모 (요약)
+## 4) 테스팅
+
+### Unit Tests
+```bash
+npm test
+```
+
+### E2E Tests (Playwright)
+```bash
+# Install Playwright browsers (first time only)
+npx playwright install
+
+# Run all E2E tests
+npm run test:e2e
+
+# Run E2E tests in UI mode (for debugging)
+npx playwright test --ui
+
+# Run specific test file
+npx playwright test e2e/character-to-game.spec.ts
+
+# Run tests in headed mode (see browser)
+npx playwright test --headed
+
+# Run tests on specific project (browser)
+npx playwright test --project=chromium
+npx playwright test --project=firefox
+npx playwright test --project=webkit
+npx playwright test --project=mobile-chrome
+npx playwright test --project=mobile-safari
+```
+
+**E2E Test Coverage:**
+- `e2e/character-to-game.spec.ts` - Character creation and game flow
+- `e2e/rank-matching.spec.ts` - Rank matching and game management
+- `e2e/social-chat.spec.ts` - Chat functionality and real-time messaging
+- `e2e/auth.setup.ts` - Authentication setup for tests
+
+**E2E Test Configuration:**
+- Configuration: `playwright.config.ts`
+- Tests run against `http://localhost:3000` by default
+- Supports cross-browser testing (Chrome, Firefox, Safari)
+- Includes mobile device simulation (Pixel 5, iPhone 12)
+- Automatic retries on failure (2 retries)
+- Screenshots and videos captured on failure
+- Tests timeout after 30 seconds
+
+**Debugging E2E Tests:**
+```bash
+# Show test report
+npx playwright show-report
+
+# Debug specific test
+npx playwright test --debug e2e/character-to-game.spec.ts
+
+# Generate trace for failed tests
+npx playwright test --trace on
+npx playwright show-trace trace.zip
+```
+
+## 5) 구조 메모 (요약)
 - **테이블 자동 매핑** – `lib/supabaseTables.js`의 `withTable`이 논리 테이블 이름을 다중 후보로 시도하고, 성공한 물리 테이블을 캐시해 환경마다 다른 스키마(`heroes`, `rank_heroes` 등)를 투명하게 감싸줍니다.【F:lib/supabaseTables.js†L1-L64】
 - **랭킹 전투 준비 화면** – 2025년 3월부터 `StartClient`는 방에서 전달된 매칭 스냅샷을 검증하고 참가자·메타 정보를 보여 주는 간소화된 준비 UI로 동작합니다. 전투 엔진은 이후 단계에서 재도입될 예정이며, 현재 구조는 `lib/rank/matchFlow`와 함께 작동합니다.【F:components/rank/StartClient/index.js†L1-L188】【F:lib/rank/matchFlow.js†L1-L135】
 - **공용 채팅 페이지** – `/chat` 경로는 Supabase RPC로 불러온 최근 메시지를 보여주고 Postgres Realtime 구독으로 새 글을 반영합니다. 매칭/랭크 허브 상단 버튼과 동일한 페이지로 이동합니다.【F:pages/chat/index.js†L1-L240】
