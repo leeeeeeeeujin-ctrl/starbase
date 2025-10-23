@@ -172,13 +172,6 @@ function buildDropInMetaPayload({
 }
 import { isRealtimeEnabled, normalizeRealtimeMode } from '@/lib/rank/realtimeModes';
 import { fetchTurnStateEvents } from '@/lib/rank/sessionMetaClient';
-
-function toTrimmedString(value) {
-  if (value === null || value === undefined) return null;
-  const stringValue = String(value).trim();
-  return stringValue ? stringValue : null;
-}
-
 function deepClone(value) {
   if (value === null || value === undefined) return value;
   try {
