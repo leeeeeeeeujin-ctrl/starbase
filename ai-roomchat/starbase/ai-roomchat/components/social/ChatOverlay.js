@@ -1258,7 +1258,7 @@ function sanitizeExternalUrl(value = '') {
       return '';
     }
     return url.href;
-  } catch (error) {
+  } catch {
     return '';
   }
 }
@@ -1282,7 +1282,7 @@ function sanitizeYoutubeId(value = '') {
       const id = parsed.searchParams.get('v') || parsed.pathname.split('/').pop();
       return id && id.match(/^[a-zA-Z0-9_-]{6,15}$/) ? id : null;
     }
-  } catch (error) {
+  } catch {
     return null;
   }
   return null;
@@ -1420,7 +1420,7 @@ function stripAnnouncementPollHtml(html = '') {
     const doc = parser.parseFromString(`<!doctype html><body>${html}</body>`, 'text/html');
     doc.body.querySelectorAll('[data-announcement-poll]').forEach(node => node.remove());
     return doc.body.innerHTML;
-  } catch (error) {
+  } catch {
     return html;
   }
 }
@@ -1470,7 +1470,7 @@ function extractPollDefinitionsFromHtml(html = '') {
       }
     });
     return polls;
-  } catch (error) {
+  } catch {
     return [];
   }
 }
@@ -1488,7 +1488,7 @@ function sameMinute(a, b) {
       first.getHours() === second.getHours() &&
       first.getMinutes() === second.getMinutes()
     );
-  } catch (error) {
+  } catch {
     return false;
   }
 }
@@ -4239,7 +4239,7 @@ function formatTime(value) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return '';
     return date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
-  } catch (error) {
+  } catch {
     return '';
   }
 }
@@ -4285,7 +4285,7 @@ function formatRelativeLastActivity(value) {
     }
     const years = Math.max(1, Math.floor(diffDays / 365));
     return `${years}년 전 마지막 채팅`;
-  } catch (error) {
+  } catch {
     return '';
   }
 }
@@ -4301,7 +4301,7 @@ function formatDateLabel(value) {
       day: 'numeric',
       weekday: 'short',
     });
-  } catch (error) {
+  } catch {
     return '알 수 없는 날짜';
   }
 }
@@ -4503,7 +4503,7 @@ function getDayKey(value) {
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -7233,7 +7233,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       if (range && editor.contains(range.commonAncestorContainer)) {
         announcementSelectionRef.current = range.cloneRange();
       }
-    } catch (error) {
+    } catch {
       announcementSelectionRef.current = null;
     }
   }, []);
@@ -7268,7 +7268,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     selection.addRange(range);
     try {
       announcementSelectionRef.current = range.cloneRange();
-    } catch (error) {
+    } catch {
       announcementSelectionRef.current = range;
     }
   }, []);
@@ -7314,7 +7314,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         : escapeHtml(text || '').replace(/\n/g, '<br />');
       try {
         document.execCommand('insertHTML', false, snippet);
-      } catch (error) {
+      } catch {
         editor.insertAdjacentHTML('beforeend', snippet);
       }
       restoreAnnouncementSelection();
@@ -7353,7 +7353,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       restoreAnnouncementSelection();
       try {
         document.execCommand('insertHTML', false, html);
-      } catch (error) {
+      } catch {
         editor.insertAdjacentHTML('beforeend', html);
       }
       restoreAnnouncementSelection();
@@ -8030,7 +8030,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       };
       try {
         event.currentTarget.setPointerCapture(event.pointerId);
-      } catch (error) {
+      } catch {
         // ignore capture errors
       }
     },
@@ -8067,9 +8067,9 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     }
     try {
       event.currentTarget.releasePointerCapture(event.pointerId);
-    } catch (error) {
-      // ignore release errors
-    }
+      } catch {
+        // ignore release errors
+      }
     miniOverlayDragRef.current = { pointerId: null, originX: 0, originY: 0, startX: 0, startY: 0 };
   }, []);
 
@@ -8085,7 +8085,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       };
       try {
         event.currentTarget.setPointerCapture(event.pointerId);
-      } catch (error) {
+      } catch {
         // ignore capture errors
       }
     },
@@ -8135,7 +8135,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     }
     try {
       event.currentTarget.releasePointerCapture(event.pointerId);
-    } catch (error) {
+    } catch {
       // ignore release errors
     }
     miniOverlayResizeRef.current = {
