@@ -12,6 +12,9 @@ const mockWindow = {
   dispatchEvent: jest.fn(),
 };
 
+// Expose the mock window on a known global so handlers can detect it in tests
+global.__TEST_WINDOW__ = mockWindow;
+
 const mockDocument = {
   addEventListener: jest.fn(),
   removeEventListener: jest.fn(),

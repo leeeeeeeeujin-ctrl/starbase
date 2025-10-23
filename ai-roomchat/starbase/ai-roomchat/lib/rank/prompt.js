@@ -83,17 +83,11 @@ function findFallbackHero({ pools, key, excludeHeroId }) {
   return null
 }
 
-function placeholderLabels(slotNo) {
+function placeholderLabels(slotNo, useZeroBased = true) {
   const numeric = Number(slotNo)
   if (!Number.isFinite(numeric)) return []
-  // Mixed zero-based and one-based support:
-  // - slot0 = zero-based first (slotNo=0)
-  // - slot1 = one-based first (slotNo=0)
-  // - slot2 = one-based second (slotNo=1)
-  // For slotNo=0, support both slot0 and slot1
-  // For slotNo>0, support only one-based (slotN+1)
-  if (numeric === 0) {
-    return ['0', '1']
+  if (useZeroBased) {
+    return [String(numeric)]
   }
   return [String(numeric + 1)]
 }
@@ -109,13 +103,13 @@ function clearSlotPlaceholders(text, slotNo) {
   return out
 }
 
-function applyHeroPlaceholders(text, hero, slotNo) {
+function applyHeroPlaceholders(text, hero, slotNo, useZeroBased = true) {
   if (!hero) {
     return clearSlotPlaceholders(text, slotNo)
   }
 
   let out = text
-  const labels = placeholderLabels(slotNo)
+  const labels = placeholderLabels(slotNo, useZeroBased)
   const zeroBasedValue = Number(slotNo)
   const oneBasedValue = zeroBasedValue + 1
 
@@ -230,17 +224,29 @@ function resolveSlotHero({
 
 export function compileTemplate({ template, slotsMap = {}, historyText = '' }) {
   if (!template) return { text: '', meta: {} }
-
   let out = template
   const lines = (historyText || '').split(/\r?\n/)
   const last1 = lines.slice(-1).join('\n')
   const last2 = lines.slice(-2).join('\n')
   const pools = buildFallbackPools(slotsMap)
   const slotMeta = {}
+  // Pre-scan template to detect whether each slot placeholder is used in
+  // zero-based (slot0) or one-based (slot1) form. Prefer zero-based when
+  // both present. This prevents earlier replacements from accidentally
+  // overwriting placeholders intended for other slots.
+  const slotLabelUsage = new Map()
+  for (let s = 0; s < 12; s += 1) {
+    const zeroLabel = new RegExp(`\\{\\{slot${s}\\.[^}]+\\}\\}`)
+    const oneLabel = new RegExp(`\\{\\{slot${s + 1}\\.[^}]+\\}\\}`)
+    const usesZero = zeroLabel.test(out)
+    const usesOne = oneLabel.test(out)
+    slotLabelUsage.set(s, usesZero ? 'zero' : usesOne ? 'one' : 'zero')
+  }
 
   for (let s = 0; s < 12; s += 1) {
     const baseHero = slotsMap[s]
     const { hero, meta } = resolveSlotHero({ slotNo: s, baseHero, pools })
+
     if (meta) {
       slotMeta[s] = {
         ...meta,
@@ -254,7 +260,8 @@ export function compileTemplate({ template, slotsMap = {}, historyText = '' }) {
       continue
     }
 
-    out = applyHeroPlaceholders(out, hero, s)
+    const useZeroBased = slotLabelUsage.get(s) !== 'one'
+    out = applyHeroPlaceholders(out, hero, s, useZeroBased)
   }
 
   out = out.replaceAll('{{history.last1}}', last1)

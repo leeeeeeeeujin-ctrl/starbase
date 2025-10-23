@@ -501,7 +501,7 @@ export class TouchHandler {
     };
     
     // Start long press timer if gestures enabled
-    if (this.enableGestures && this.onLongPress) {
+    if (this.enableGestures) {
       this.longPressTimer = setTimeout(() => {
         if (this.touchState.isActive && !this.touchState.moved) {
           this.handleLongPress();
