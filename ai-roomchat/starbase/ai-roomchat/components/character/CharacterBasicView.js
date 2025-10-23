@@ -1990,7 +1990,7 @@ export default function CharacterBasicView({ hero }) {
     // tooling to reduce noise. Please review the surrounding effect body and
     // either add the minimal safe dependencies or keep the suppression with
     // an explanatory comment before removing this note.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
+     
     audioState.compressorDetail.threshold,
     audioState.compressorDetail.ratio,
     audioState.compressorDetail.release,
@@ -2115,7 +2115,7 @@ export default function CharacterBasicView({ hero }) {
   // tooling to reduce noise. Please review the surrounding effect body and
   // either add the minimal safe dependencies or keep the suppression with
   // an explanatory comment before removing this note.
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
+   
   const backgroundStyle = currentHero?.background_url
     ? pageStyles.withBackground(currentHero.background_url)
     : pageStyles.base;
