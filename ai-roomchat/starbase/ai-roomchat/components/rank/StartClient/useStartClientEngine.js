@@ -1045,7 +1045,6 @@ export function useStartClientEngine(gameId, options = {}) {
       }
     }
 // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [sessionInfo?.id, applyTurnStateChange])
   const patchEngineState = useCallback(
     (payload) => {
@@ -1986,7 +1985,6 @@ export function useStartClientEngine(gameId, options = {}) {
     [participants],
   )
 // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   const sharedTurnRoster = useMemo(() => {
     const roster = []
     ownerParticipantMap.forEach((participant, ownerId) => {
@@ -2117,7 +2115,6 @@ export function useStartClientEngine(gameId, options = {}) {
   useEffect(() => {
     if (!realtimeManagerRef.current) return
 // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
     if (!realtimeEnabled) {
       const snapshot = realtimeManagerRef.current.setManagedOwners([])
       applyRealtimeSnapshot(snapshot)
@@ -2184,7 +2181,6 @@ export function useStartClientEngine(gameId, options = {}) {
       if (!heroName) return
       const key = normalizeHeroName(heroName)
       if (!key) return
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
 // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
       const entry = {
         hero: participant.hero,
@@ -2319,7 +2315,6 @@ export function useStartClientEngine(gameId, options = {}) {
     if (preflight) {
       participantIdSetRef.current = new Set(
         participants.map((participant, index) =>
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
 // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
           String(participant?.id ?? participant?.hero_id ?? index),
         ),
@@ -2615,7 +2610,6 @@ export function useStartClientEngine(gameId, options = {}) {
     [
       gameId,
 // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
       sessionInfo?.id,
       game?.name,
       participants,
@@ -2901,7 +2895,6 @@ export function useStartClientEngine(gameId, options = {}) {
     [currentActorContext, isUserActionSlot],
   )
 // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
 
   const viewerParticipant = useMemo(() => {
     if (!viewerId) return null
@@ -3075,7 +3068,6 @@ export function useStartClientEngine(gameId, options = {}) {
     }
 
 // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
     setStartingSession(true)
     setStatusMessage('세션을 준비하는 중입니다…')
 
@@ -3229,7 +3221,6 @@ export function useStartClientEngine(gameId, options = {}) {
         return
       }
 
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
 // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
       const advanceReason =
         typeof options?.reason === 'string' && options.reason.trim()
@@ -4003,7 +3994,6 @@ export function useStartClientEngine(gameId, options = {}) {
     if (!trimmed) {
       return
 // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
     }
     advanceIntentRef.current = null
     clearConsensusVotes()
@@ -4251,7 +4241,6 @@ export function useStartClientEngine(gameId, options = {}) {
         lastTurnNumber: fallbackTurn,
         lastDropInAppliedTurn: fallbackDropInTurn,
 // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
       }
     }
 
@@ -4318,7 +4307,6 @@ export function useStartClientEngine(gameId, options = {}) {
     advanceWithManual,
     autoAdvance,
     turnTimerSeconds,
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
 // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
     timeRemaining,
     turnDeadline,

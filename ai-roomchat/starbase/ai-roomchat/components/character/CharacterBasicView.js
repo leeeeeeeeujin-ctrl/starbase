@@ -1954,7 +1954,6 @@ export default function CharacterBasicView({ hero }) {
     audioState.reverbDetail.decay,
     audioState.compressorEnabled,
 // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
     audioState.compressorDetail.threshold,
     audioState.compressorDetail.ratio,
     audioState.compressorDetail.release,
@@ -2009,7 +2008,6 @@ export default function CharacterBasicView({ hero }) {
   }, [selectedEntry])
 
   useEffect(() => {
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
 // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
     if (!carouselEntries.length) {
       setDetailOpen(false)
@@ -2082,7 +2080,6 @@ export default function CharacterBasicView({ hero }) {
     customBgmUrl,
   ])
 
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
 // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   const backgroundStyle = currentHero?.background_url
     ? pageStyles.withBackground(currentHero.background_url)
