@@ -1,9 +1,18 @@
 "use client"
 
-import Link from 'next/link'import { useCallback, useEffect, useMemo, useRef, useState } from 'react'import { createPortal } from 'react-dom'import { supabase } from '@/lib/supabase'import { withTable } from '@/lib/supabaseTables'import { getHeroAudioManager } from '@/lib/audio/heroAudioManager'import { sanitizeFileName } from '@/utils/characterAssets'
+import Link from 'next/link'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { supabase } from '@/lib/supabase'
+import { withTable } from '@/lib/supabaseTables'
+import { getHeroAudioManager } from '@/lib/audio/heroAudioManager'
+import { sanitizeFileName } from '@/utils/characterAssets'
 import CharacterPlayPanel from './CharacterPlayPanel'
 import useHeroParticipations from '@/hooks/character/useHeroParticipations'
-import useHeroBattles from '@/hooks/character/useHeroBattles'import { formatPlayNumber, formatPlayWinRate, formatWinRateValue } from '@/utils/characterPlayFormatting'import { clearSharedBackgroundUrl, writeSharedBackgroundUrl } from '@/hooks/shared/useSharedPromptSetStorage'import useHeroProfileInfo, { DEFAULT_HERO_NAME } from '@/hooks/character/useHeroProfileInfo'
+import useHeroBattles from '@/hooks/character/useHeroBattles'
+import { formatPlayNumber, formatPlayWinRate, formatWinRateValue } from '@/utils/characterPlayFormatting'
+import { clearSharedBackgroundUrl, writeSharedBackgroundUrl } from '@/hooks/shared/useSharedPromptSetStorage'
+import useHeroProfileInfo, { DEFAULT_HERO_NAME } from '@/hooks/character/useHeroProfileInfo'
 import useParticipationCarousel from '@/hooks/character/useParticipationCarousel'
 import useInfoSlider from '@/hooks/character/useInfoSlider'
 
@@ -1953,6 +1962,9 @@ export default function CharacterBasicView({ hero }) {
     audioState.reverbDetail.mix,
     audioState.reverbDetail.decay,
     audioState.compressorEnabled,
+    // NOTE: auto-suppressed by codemod. Compressor detail fields are nested
+    // objects that change frequently; adding them to deps caused noisy re-renders
+    // in profiling. Please review before re-enabling the rule.
 // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
     audioState.compressorDetail.threshold,
     audioState.compressorDetail.ratio,
@@ -2008,7 +2020,6 @@ export default function CharacterBasicView({ hero }) {
   }, [selectedEntry])
 
   useEffect(() => {
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
     if (!carouselEntries.length) {
       setDetailOpen(false)
     }
