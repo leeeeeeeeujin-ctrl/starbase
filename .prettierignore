@@ -1,0 +1,13 @@
+node_modules
+.next
+dist
+build
+reports
+coverage
+public/*
+*.min.js
+*.bundle.js
+*.png
+*.jpg
+*.jpeg
+*.gif
