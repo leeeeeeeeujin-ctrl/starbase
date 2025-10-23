@@ -34,6 +34,20 @@ jobs:
           name: npm-audit-report
           path: ai-roomchat/starbase/ai-roomchat/audit.json
 
+      - name: Summarize audit and comment PR
+        if: github.event_name == 'pull_request'
+        run: |
+          set -e
+          FILE=ai-roomchat/starbase/ai-roomchat/audit.json
+          if [ -f "$FILE" ]; then
+            CRITICAL=$(jq '.metadata.vulnerabilities.critical' $FILE)
+            HIGH=$(jq '.metadata.vulnerabilities.high' $FILE)
+            TOTAL=$(jq '.metadata.vulnerabilities.total' $FILE)
+            SUMMARY="**Security audit** ran for this PR. Vulnerabilities — critical: $CRITICAL, high: $HIGH, total: $TOTAL."
+          else
+            SUMMARY="**Security audit** ran for this PR. Audit file not found."
+          fi
+          echo "$SUMMARY" > audit-summary.txt
       - name: Comment PR with audit summary
         if: github.event_name == 'pull_request'
         uses: peter-evans/create-or-update-comment@v2
@@ -41,4 +55,4 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           issue-number: ${{ github.event.pull_request.number }}
           body: |
-            **Security audit** ran for this PR. The full audit JSON is uploaded as an artifact.
+            $(cat audit-summary.txt)
