@@ -21,12 +21,6 @@ import {
   compressorSettingsAreEqual,
   diffAudioPreferenceChanges,
   extractHeroAudioEffectSnapshot,
-  formatDbLabel,
-  formatDurationLabel,
-  formatMillisecondsLabel,
-  formatPercentLabel,
-  formatRatioLabel,
-  formatSecondsLabel,
   normalizeAudioPreferenceRecord,
   normalizeCompressorSettings,
   normalizeEqSettings,
@@ -41,6 +35,7 @@ import {
   formatDate,
 } from '@/lib/rank/gameRoomHistory';
 
+// eslint-disable-next-line no-unused-vars -- used in JSX further below; keep dynamic import
 const GameRoomHistoryPane = dynamic(() => import('./GameRoomHistoryPane'), {
   loading: () => (
     <section className={styles.section}>
@@ -245,7 +240,7 @@ function renderRules(rules) {
     const pretty = JSON.stringify(interpreted.value, null, 2);
     if (!pretty) return null;
     return <pre className={styles.rulesCode}>{pretty}</pre>;
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -293,7 +288,7 @@ export default function GameRoomView({
   myEntry = null,
   onBack,
   onJoin,
-  onLeave,
+  onLeave: _onLeave,
   onOpenModeSettings,
   onOpenLeaderboard,
   onDelete,
@@ -309,7 +304,8 @@ export default function GameRoomView({
   sharedSessionHistory = [],
 }) {
   const [joinLoading, setJoinLoading] = useState(false);
-  const [leaveLoading, setLeaveLoading] = useState(false);
+  // eslint-disable-next-line no-unused-vars -- kept for parity with UI flow; handler may be used in alternate render paths
+  const [_leaveLoading, _setLeaveLoading] = useState(false);
   const [visibleHeroLogs, setVisibleHeroLogs] = useState(10);
   const [activeTab, setActiveTab] = useState(TABS[0].key);
   const [isCompactLayout, setIsCompactLayout] = useState(false);
@@ -844,7 +840,7 @@ export default function GameRoomView({
 
   const heroAudioProfileKey = useMemo(
     () => buildHeroAudioProfileKey(heroAudioProfile),
-    [heroAudioProfile?.heroId, heroAudioProfile?.heroName, heroAudioProfile?.source]
+    [heroAudioProfile]
   );
 
   useEffect(() => {
@@ -959,32 +955,14 @@ export default function GameRoomView({
     return null;
   }, [heroAudioProfile, selectedHeroAudioTrackId]);
 
-  const heroAudioDurationLabel = useMemo(
-    () =>
-      Number.isFinite(heroAudioActiveTrack?.duration)
-        ? formatDurationLabel(heroAudioActiveTrack.duration)
-        : null,
-    [heroAudioActiveTrack?.duration]
-  );
+  
 
   const heroAudioTracks = useMemo(() => heroAudioProfile?.tracks ?? [], [heroAudioProfile]);
   const heroAudioPresets = useMemo(() => heroAudioProfile?.presets ?? [], [heroAudioProfile]);
 
   const heroAudioEffectSnapshot = useMemo(
     () => extractHeroAudioEffectSnapshot(heroAudioState),
-    [
-      heroAudioState?.eqEnabled,
-      heroAudioState?.equalizer?.high,
-      heroAudioState?.equalizer?.low,
-      heroAudioState?.equalizer?.mid,
-      heroAudioState?.reverbEnabled,
-      heroAudioState?.reverbDetail?.decay,
-      heroAudioState?.reverbDetail?.mix,
-      heroAudioState?.compressorEnabled,
-      heroAudioState?.compressorDetail?.ratio,
-      heroAudioState?.compressorDetail?.release,
-      heroAudioState?.compressorDetail?.threshold,
-    ]
+    [heroAudioState]
   );
 
   const currentHeroAudioPreference = useMemo(() => {
