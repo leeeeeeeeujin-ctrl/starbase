@@ -49,6 +49,9 @@ npm test
 ```
 
 ### E2E Tests (Playwright)
+
+For detailed E2E testing documentation, see [docs/e2e-testing.md](docs/e2e-testing.md).
+
 ```bash
 # Install Playwright browsers (first time only)
 npx playwright install
