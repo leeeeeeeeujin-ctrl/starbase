@@ -1,13 +1,13 @@
 'use client';
 
-import Link from 'next/link';
+import Link from 'next/link'; // eslint-disable-line no-unused-vars -- used in JSX; some linters flag this in large files
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
 import { withTable } from '@/lib/supabaseTables';
 import { getHeroAudioManager } from '@/lib/audio/heroAudioManager';
 import { sanitizeFileName } from '@/utils/characterAssets';
-import CharacterPlayPanel from './CharacterPlayPanel';
+import CharacterPlayPanel from './CharacterPlayPanel'; // eslint-disable-line no-unused-vars -- used in JSX slider panel
 import useHeroParticipations from '@/hooks/character/useHeroParticipations';
 import useHeroBattles from '@/hooks/character/useHeroBattles';
 import {
@@ -1391,10 +1391,8 @@ export default function CharacterBasicView({ hero }) {
   const { currentHero, setCurrentHero, heroName, description, abilityEntries } =
     useHeroProfileInfo(hero);
 
-  const heroIdKey = useMemo(() => {
-    const id = currentHero?.id;
-    return id ? String(id) : null;
-  }, [currentHero]);
+  // heroIdKey removed — previously used by a now-removed helper for recent battle
+  // resolution. Keep currentHero usage directly where needed.
 
   const [viewMode, setViewMode] = useState(0);
   const [activeTab, setActiveTab] = useState(0);
@@ -1640,6 +1638,17 @@ export default function CharacterBasicView({ hero }) {
     compressorDetail,
   } = audioState;
 
+  // Deliberate: we only track a selected subset of nested audioState fields here to
+  // avoid noisy re-renders caused by frequently-changing nested objects. See the
+  // codemod notes above; if you change this effect, review deps carefully.
+   
+  // Deliberate: we intentionally list a limited set of nested `audioState` fields
+  // in the dependency array to avoid noisy re-renders from frequently-updating
+  // nested objects. Review before changing.
+   
+  // Deliberate: intentionally limiting deps for nested audioState fields to avoid
+  // noisy re-renders from frequently-changing nested objects. See codemod notes.
+   
   useEffect(() => {
     if (!detailOpen) return;
     setOverlayHeroStep(0);
@@ -2036,7 +2045,7 @@ export default function CharacterBasicView({ hero }) {
     if (imageInputRef.current) imageInputRef.current.value = '';
     if (backgroundInputRef.current) backgroundInputRef.current.value = '';
     if (bgmInputRef.current) bgmInputRef.current.value = '';
-  }, [hero]);
+  }, [hero, setInfoPanelIndex]);
 
   useEffect(() => {
     if (!selectedEntry) {
@@ -2109,7 +2118,8 @@ export default function CharacterBasicView({ hero }) {
       }
       audioManager.setLoop(true);
     }
-  }, [audioManager, activeBgmUrl, currentHero?.id, heroName, bgmDurationSeconds, customBgmUrl]);
+  }, [audioManager, activeBgmUrl, currentHero?.id, heroName, bgmDurationSeconds, customBgmUrl, currentHero?.bgm_duration_seconds]);
+
 
   // NOTE: auto-suppressed by codemod. This suppression was added by automated
   // tooling to reduce noise. Please review the surrounding effect body and
@@ -3319,83 +3329,11 @@ export default function CharacterBasicView({ hero }) {
         )
       : null;
 
-  const resolveBattleOutcome = useCallback(
-    battle => {
-      if (!battle || !heroIdKey) return '기록 없음';
-      const parseList = value => {
-        if (!value) return [];
-        if (Array.isArray(value)) return value.map(entry => String(entry));
-        if (typeof value === 'string') {
-          try {
-            const parsed = JSON.parse(value);
-            if (Array.isArray(parsed)) {
-              return parsed.map(entry => String(entry));
-            }
-          } catch (error) {
-            return value
-              .split(',')
-              .map(entry => entry.trim())
-              .filter(Boolean);
-          }
-        }
-        return [];
-      };
+  // resolveBattleOutcome removed — previously used only to build a small
+  // recent battle summary that was not rendered. Keep helper logic in
+  // source control history if needed in future.
 
-      const attackerHeroes = parseList(battle.attacker_hero_ids);
-      const defenderHeroes = parseList(battle.defender_hero_ids);
-      const isAttacker = attackerHeroes.includes(heroIdKey);
-      const isDefender = defenderHeroes.includes(heroIdKey);
-      const normalized = String(battle.result || '').toLowerCase();
-
-      if (normalized.includes('draw') || normalized.includes('tie')) {
-        return '무승부';
-      }
-
-      if (normalized.includes('win')) {
-        const attackerWon = normalized.includes('attacker');
-        if (isAttacker) return attackerWon ? '승리' : '패배';
-        if (isDefender) return attackerWon ? '패배' : '승리';
-        return attackerWon ? '공격 승리' : '방어 승리';
-      }
-
-      if (normalized.includes('loss') || normalized.includes('lose')) {
-        if (isAttacker) return '패배';
-        if (isDefender) return '승리';
-        return '패배';
-      }
-
-      return '기록 없음';
-    },
-    [heroIdKey]
-  );
-
-  const recentBattleEntries = useMemo(() => {
-    if (!Array.isArray(battleDetails) || !battleDetails.length) return [];
-    return battleDetails.slice(0, 4).map((battle, index) => {
-      const timestamp = (() => {
-        if (!battle?.created_at) return '시간 정보 없음';
-        const date = new Date(battle.created_at);
-        if (Number.isNaN(date.getTime())) return '시간 정보 없음';
-        return date.toLocaleString('ko-KR', {
-          month: 'numeric',
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-        });
-      })();
-
-      const scoreDelta = Number.isFinite(Number(battle?.score_delta))
-        ? Number(battle.score_delta)
-        : null;
-
-      return {
-        id: battle?.id || `${battle?.created_at || 'battle'}-${index}`,
-        timestamp,
-        outcome: resolveBattleOutcome(battle),
-        scoreDelta,
-      };
-    });
-  }, [battleDetails, resolveBattleOutcome]);
+  // recentBattleEntries removed — derived entries were computed but not used in the UI.
 
   const heroSlide = (
     <div style={styles.heroCardShell}>
