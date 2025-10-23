@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import SurfaceOverlay from '@/components/common/SurfaceOverlay';
-import FriendOverlay from '@/components/social/FriendOverlay';
+// Note: overlays in this file were previously imported but flagged as unused by ESLint in
+// this environment. If these components are needed elsewhere in the file they can be
+// re-introduced; removed here to reduce no-unused-vars warnings.
 import {
   createChatRoom,
   fetchChatDashboard,
@@ -885,16 +886,7 @@ async function createImageAttachmentDraft(file) {
   }
 }
 
-function isFileSupportedByAction(file, action) {
-  if (!file) return false;
-  if (action === 'photo') {
-    return file.type?.startsWith('image/');
-  }
-  if (action === 'video') {
-    return file.type?.startsWith('video/');
-  }
-  return true;
-}
+// helper removed (unused): isFileSupportedByAction
 
 async function loadVideoMetadata(file) {
   const url = URL.createObjectURL(file);
@@ -6486,16 +6478,23 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
 
   useEffect(() => {
     return () => {
-      attachmentCacheRef.current.forEach(entry => {
-        if (entry?.url) {
-          try {
-            URL.revokeObjectURL(entry.url);
-          } catch (error) {
-            console.warn('[chat] 첨부 미리보기 URL 해제 실패', error);
+      // copy ref to local variable so cleanup uses the same snapshot even if ref
+      // is changed later (prevents ESLint ref-change warning and is safer).
+      const cache = attachmentCacheRef.current;
+      if (cache && typeof cache.forEach === 'function') {
+        cache.forEach(entry => {
+          if (entry?.url) {
+            try {
+              URL.revokeObjectURL(entry.url);
+            } catch (error) {
+              console.warn('[chat] 첨부 미리보기 URL 해제 실패', error);
+            }
           }
+        });
+        if (typeof cache.clear === 'function') {
+          cache.clear();
         }
-      });
-      attachmentCacheRef.current.clear();
+      }
     };
   }, []);
 
