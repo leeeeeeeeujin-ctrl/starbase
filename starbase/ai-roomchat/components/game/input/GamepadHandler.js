@@ -17,6 +17,13 @@
  */
 
 import { compatibilityManager } from '../../../utils/compatibilityManager';
+// Determine whether verbose runtime logging should be enabled.
+const __IS_TEST_ENV__ = typeof process !== 'undefined' && (
+  (process.env && process.env.NODE_ENV === 'test') ||
+  (process.env && process.env.JEST_WORKER_ID)
+)
+const __FORCE_VERBOSE__ = typeof process !== 'undefined' && process.env && process.env.DEBUG_TOOL_VERBOSE === '1'
+const __SHOULD_LOG__ = !__IS_TEST_ENV__ || __FORCE_VERBOSE__
 
 /**
  * GamepadHandler class
@@ -119,7 +126,9 @@ export class GamepadHandler {
         const globalWinHasMock = hasGlobalWin && !!(global.window.addEventListener && global.window.addEventListener.mock);
         const typeofWin = (typeof window === 'undefined') ? 'undefined' : 'object';
         const windowHasMock = (typeof window !== 'undefined' && !!(window.addEventListener && window.addEventListener.mock));
-        console.log('[GamepadHandler] init globals', { hasGlobalWin, globalWinHasMock, typeofWin, windowHasMock });
+        if (__SHOULD_LOG__) {
+          console.log('[GamepadHandler] init globals', { hasGlobalWin, globalWinHasMock, typeofWin, windowHasMock });
+        }
       } catch (e) {}
       // Get compatibility info
       this.compatibilityInfo = compatibilityManager.getCompatibilityInfo();
@@ -192,13 +201,13 @@ export class GamepadHandler {
 
       // Start polling: in test environments we expect polling to be started so start regardless
       try {
-        this.startPolling();
+    this.startPolling();
       } catch (e) {
         // ignore
       }
       
-      this.isInitialized = true;
-      console.log('[GamepadHandler] Initialized');
+  this.isInitialized = true;
+  if (__SHOULD_LOG__) console.log('[GamepadHandler] Initialized');
       
     } catch (error) {
       console.error('[GamepadHandler] Initialization failed:', error);
@@ -249,8 +258,8 @@ export class GamepadHandler {
    * @private
    */
   handleGamepadConnected(event) {
-    const gamepad = event.gamepad;
-    console.log('[GamepadHandler] Gamepad connected:', gamepad.id);
+  const gamepad = event.gamepad;
+  if (__SHOULD_LOG__) console.log('[GamepadHandler] Gamepad connected:', gamepad.id);
     
     this.addGamepad(gamepad);
     
@@ -271,8 +280,8 @@ export class GamepadHandler {
    * @private
    */
   handleGamepadDisconnected(event) {
-    const gamepad = event.gamepad;
-    console.log('[GamepadHandler] Gamepad disconnected:', gamepad.id);
+  const gamepad = event.gamepad;
+  if (__SHOULD_LOG__) console.log('[GamepadHandler] Gamepad disconnected:', gamepad.id);
     
     this.removeGamepad(gamepad.index);
     
