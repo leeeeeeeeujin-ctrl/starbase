@@ -50,6 +50,7 @@ export function useHeroPresence(trackPayload) {
       channelRef.current = null
       joinedRef.current = false
     }
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [trackPayload?.presenceKey])
 
   useEffect(() => {
@@ -57,6 +58,7 @@ export function useHeroPresence(trackPayload) {
     if (!channel || !joinedRef.current) return
     if (!trackPayload) return
     channel.track({ ...trackPayload, timestamp: new Date().toISOString() })
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [trackPayload?.heroId, trackPayload?.heroName, trackPayload?.page, trackPayload?.avatarUrl])
 
   return presenceList

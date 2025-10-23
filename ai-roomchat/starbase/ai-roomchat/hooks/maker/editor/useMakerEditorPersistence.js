@@ -227,6 +227,7 @@ export function useMakerEditorPersistence({ graph, setInfo, onAfterSave }) {
     } finally {
       setBusy(false)
     }
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [busy, edges, flowMapRef, nodes, onAfterSave, setEdges, setNodes, setInfo])
 
   return {

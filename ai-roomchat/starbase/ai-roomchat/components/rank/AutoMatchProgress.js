@@ -378,6 +378,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId, onClose
     }
 
     previousStatusRef.current = state.status
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [
     CONFIRMATION_WINDOW_SECONDS,
     clearConfirmationTimers,
@@ -604,6 +605,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId, onClose
       navigationLockedRef.current = true
       router.replace(`/rank/${gameId}`)
     }, FAILURE_REDIRECT_DELAY_MS)
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [
     cancelQueueWithCleanup,
     clearConfirmationTimers,
@@ -825,6 +827,7 @@ export default function AutoMatchProgress({ gameId, mode, initialHeroId, onClose
     } finally {
       setConfirming(false)
     }
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [
     cancelQueueWithCleanup,
     clearConfirmationTimers,

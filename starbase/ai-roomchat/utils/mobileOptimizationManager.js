@@ -145,7 +145,7 @@ export class MobileOptimizationManager {
         });
         window.addEventListener('testPassive', null, opts);
         window.removeEventListener('testPassive', null, opts);
-      } catch (e) {}
+  } catch (_e) {}
       return supportsPassive;
     })();
   }
@@ -205,7 +205,7 @@ export class MobileOptimizationManager {
     // Always attempt to set touchAction for modern engines; add msTouchAction as fallback
     try {
       style.touchAction = 'manipulation';
-    } catch (e) {
+  } catch (_e) {
       // If direct assignment fails, set msTouchAction as fallback
     }
     // IE10/11 legacy name
@@ -310,7 +310,7 @@ export class MobileOptimizationManager {
       if (j && typeof j.runOnlyPendingTimers === 'function') {
         j.runOnlyPendingTimers();
       }
-    } catch (e) {
+  } catch (_e) {
       // ignore in non-test environments
     }
     

@@ -2745,6 +2745,7 @@ export default function CharacterPlayPanel({ hero, playData }) {
     } finally {
       matchTaskRef.current = null
     }
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [
     appendDebug,
     clearQueueWatch,

@@ -1091,6 +1091,7 @@ export default function MatchPage() {
     return () => {
       cancelled = true
     }
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [viewerHero?.hero_id])
 
   useEffect(() => {

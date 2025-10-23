@@ -1,4 +1,3 @@
-import React from 'react'
 
 export default function BackgroundLayer({ backgroundUrl }) {
   if (!backgroundUrl) return null

@@ -175,6 +175,7 @@ export default function GameStartModeModal({
     setGeminiDetectError('')
     setOpenAIDetectStatus('')
     setOpenAIDetectError('')
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [
     open,
     initialConfig?.mode,

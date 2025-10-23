@@ -2,7 +2,6 @@
  * @jest-environment jsdom
  */
 
-import React from 'react'
 import { act, create } from 'react-test-renderer'
 
 import { success, failure } from '../../../lib/maker/promptSets/result'

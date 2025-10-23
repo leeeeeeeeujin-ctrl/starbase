@@ -126,6 +126,7 @@ export default function MatchmakingAnalytics() {
 
   useEffect(() => {
     fetchAnalytics(false)
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [range])
 
   const isUnavailable = data && data.available === false

@@ -1,4 +1,3 @@
-import { formatOwnerDisplayName } from './participants'
 
 export function formatRealtimeReason(reason) {
   if (!reason) return ''

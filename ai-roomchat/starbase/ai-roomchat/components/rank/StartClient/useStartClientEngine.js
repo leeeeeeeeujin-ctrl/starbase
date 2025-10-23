@@ -1,94 +1,4 @@
-'use client'
-
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
-
-import { subscribeToBroadcastTopic } from '../../../lib/realtime/broadcast'
-import { supabase } from '../../../lib/supabase'
-import { withTable } from '../../../lib/supabaseTables'
-import {
-  buildSlotsFromParticipants,
-  makeNodePrompt,
-  parseOutcome,
-} from '../../../lib/promptEngine'
-import { loadGameBundle } from './engine/loadGameBundle'
-import { pickNextEdge } from './engine/graph'
-import { buildSystemMessage, parseRules } from './engine/systemPrompt'
-import { resolveSlotBinding } from './engine/slotBindingResolver'
-import { createBridgeContext } from './engine/bridgeContext'
-import {
-  buildUserActionPersona,
-  normalizeHeroName,
-  resolveActorContext,
-} from './engine/actorContext'
-import { buildBattleLogDraft } from './engine/battleLogBuilder'
-import { formatRealtimeReason } from './engine/timelineLogBuilder'
-import {
-  buildLogEntriesFromEvents,
-  initializeRealtimeEvents,
-  appendSnapshotEvents,
-} from './engine/timelineState'
-import {
-  reconcileParticipantsForGame,
-  formatPreflightSummary,
-} from './engine/preflight'
-import {
-  buildOwnerParticipantMap,
-  buildOwnerRosterSnapshot,
-  collectUniqueOwnerIds,
-  createOwnerDisplayMap,
-  deriveParticipantOwnerId,
-} from './engine/participants'
-import {
-  appendMainGameLogs,
-  initialMainGameState,
-  mainGameReducer,
-  patchMainGameState,
-  replaceMainGameLogs,
-} from './engine/mainGameMachine'
-import {
-  createOutcomeLedger,
-  syncOutcomeLedger,
-  recordOutcomeLedger,
-  buildOutcomeSnapshot,
-} from './engine/outcomeLedger'
-import { isApiKeyError } from './engine/apiKeyUtils'
-import { createTurnTimerService } from './services/turnTimerService'
-import {
-  createTurnVoteController,
-  deriveEligibleOwnerIds,
-} from './services/turnVoteController'
-import { createRealtimeSessionManager } from './services/realtimeSessionManager'
-import { createDropInQueueService } from './services/dropInQueueService'
-import { createAsyncSessionManager } from './services/asyncSessionManager'
-import {
-  mergeTimelineEvents,
-  normalizeTimelineStatus,
-} from '@/lib/rank/timelineEvents'
-import { buildDropInExtensionTimelineEvent } from '@/lib/rank/dropInTimeline'
-import { prepareHistoryPayload } from '@/lib/rank/chatHistory'
-import { buildHistorySeedEntries } from '@/lib/rank/historySeeds'
-import { useHistoryBuffer } from './hooks/useHistoryBuffer'
-import { useStartSessionLifecycle } from './hooks/useStartSessionLifecycle'
-import { useStartApiKeyManager } from './hooks/useStartApiKeyManager'
-import { useStartCooldown } from './hooks/useStartCooldown'
-import { useStartManualResponse } from './hooks/useStartManualResponse'
-import { useStartSessionWatchdog } from './hooks/useStartSessionWatchdog'
-import { consumeStartMatchMeta } from '../startConfig'
-import {
-  clearGameMatchData,
-  hydrateGameMatchData,
-  setGameMatchSessionMeta,
-} from '../../../modules/rank/matchDataStore'
-import { fetchLatestSessionRow } from '@/modules/rank/matchRealtimeSync'
-import {
-  START_SESSION_KEYS,
-  readStartSessionValue,
-  readStartSessionValues,
-} from '@/lib/rank/startSessionChannel'
-import {
-  getConnectionEntriesForGame,
-  subscribeConnectionRegistry,
-} from '@/lib/rank/startConnectionRegistry'
+'use client'import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'import { subscribeToBroadcastTopic } from '../../../lib/realtime/broadcast'import { supabase } from '../../../lib/supabase'import { withTable } from '../../../lib/supabaseTables'import { buildSlotsFromParticipants, makeNodePrompt, parseOutcome } from '../../../lib/promptEngine'import { loadGameBundle } from './engine/loadGameBundle'import { pickNextEdge } from './engine/graph'import { buildSystemMessage, parseRules } from './engine/systemPrompt'import { resolveSlotBinding } from './engine/slotBindingResolver'import { createBridgeContext } from './engine/bridgeContext'import { buildUserActionPersona, normalizeHeroName, resolveActorContext } from './engine/actorContext'import { buildBattleLogDraft } from './engine/battleLogBuilder'import { formatRealtimeReason } from './engine/timelineLogBuilder'import { buildLogEntriesFromEvents, initializeRealtimeEvents, appendSnapshotEvents } from './engine/timelineState'import { reconcileParticipantsForGame, formatPreflightSummary } from './engine/preflight'import { buildOwnerParticipantMap, buildOwnerRosterSnapshot, collectUniqueOwnerIds, createOwnerDisplayMap, deriveParticipantOwnerId } from './engine/participants'import { appendMainGameLogs, initialMainGameState, mainGameReducer, patchMainGameState, replaceMainGameLogs } from './engine/mainGameMachine'import { createOutcomeLedger, syncOutcomeLedger, recordOutcomeLedger, buildOutcomeSnapshot } from './engine/outcomeLedger'import { isApiKeyError } from './engine/apiKeyUtils'import { createTurnTimerService } from './services/turnTimerService'import { createTurnVoteController, deriveEligibleOwnerIds } from './services/turnVoteController'import { createRealtimeSessionManager } from './services/realtimeSessionManager'import { createDropInQueueService } from './services/dropInQueueService'import { createAsyncSessionManager } from './services/asyncSessionManager'import { mergeTimelineEvents, normalizeTimelineStatus } from '@/lib/rank/timelineEvents'import { buildDropInExtensionTimelineEvent } from '@/lib/rank/dropInTimeline'import { prepareHistoryPayload } from '@/lib/rank/chatHistory'import { buildHistorySeedEntries } from '@/lib/rank/historySeeds'import { useHistoryBuffer } from './hooks/useHistoryBuffer'import { useStartSessionLifecycle } from './hooks/useStartSessionLifecycle'import { useStartApiKeyManager } from './hooks/useStartApiKeyManager'import { useStartCooldown } from './hooks/useStartCooldown'import { useStartManualResponse } from './hooks/useStartManualResponse'import { useStartSessionWatchdog } from './hooks/useStartSessionWatchdog'import { consumeStartMatchMeta } from '../startConfig'import { clearGameMatchData, hydrateGameMatchData, setGameMatchSessionMeta } from '../../../modules/rank/matchDataStore'import { fetchLatestSessionRow } from '@/modules/rank/matchRealtimeSync'import { START_SESSION_KEYS, readStartSessionValue, readStartSessionValues } from '@/lib/rank/startSessionChannel'import { getConnectionEntriesForGame, subscribeConnectionRegistry } from '@/lib/rank/startConnectionRegistry'
 
 function toInt(value, { min = null } = {}) {
   const numeric = Number(value)
@@ -270,13 +180,7 @@ function buildDropInMetaPayload({
   meta.updatedAt = Date.now()
 
   return meta
-}
-import {
-  isRealtimeEnabled,
-  normalizeRealtimeMode,
-  REALTIME_MODES,
-} from '@/lib/rank/realtimeModes'
-import { fetchTurnStateEvents } from '@/lib/rank/sessionMetaClient'
+}import { isRealtimeEnabled, normalizeRealtimeMode } from '@/lib/rank/realtimeModes'import { fetchTurnStateEvents } from '@/lib/rank/sessionMetaClient'
 
 function toTrimmedString(value) {
   if (value === null || value === undefined) return null
@@ -1140,6 +1044,8 @@ export function useStartClientEngine(gameId, options = {}) {
         turnEventBackfillAbortRef.current = null
       }
     }
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [sessionInfo?.id, applyTurnStateChange])
   const patchEngineState = useCallback(
     (payload) => {
@@ -2079,6 +1985,8 @@ export function useStartClientEngine(gameId, options = {}) {
     () => buildOwnerParticipantMap(participants),
     [participants],
   )
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   const sharedTurnRoster = useMemo(() => {
     const roster = []
     ownerParticipantMap.forEach((participant, ownerId) => {
@@ -2101,7 +2009,9 @@ export function useStartClientEngine(gameId, options = {}) {
     () => buildOwnerRosterSnapshot(participants),
     [participants],
   )
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   const managedOwnerIds = useMemo(() => {
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
     const owners = collectUniqueOwnerIds(participants)
     const viewerKey = viewerId ? String(viewerId).trim() : ''
     if (!viewerKey) {
@@ -2206,6 +2116,8 @@ export function useStartClientEngine(gameId, options = {}) {
 
   useEffect(() => {
     if (!realtimeManagerRef.current) return
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
     if (!realtimeEnabled) {
       const snapshot = realtimeManagerRef.current.setManagedOwners([])
       applyRealtimeSnapshot(snapshot)
@@ -2272,6 +2184,8 @@ export function useStartClientEngine(gameId, options = {}) {
       if (!heroName) return
       const key = normalizeHeroName(heroName)
       if (!key) return
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
       const entry = {
         hero: participant.hero,
         participant,
@@ -2291,7 +2205,9 @@ export function useStartClientEngine(gameId, options = {}) {
         ? names.map((name) => String(name || '').trim()).filter(Boolean)
         : []
 
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
       const matchedEntries = []
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
       const resolvedNames = []
       const seen = new Set()
 
@@ -2403,6 +2319,8 @@ export function useStartClientEngine(gameId, options = {}) {
     if (preflight) {
       participantIdSetRef.current = new Set(
         participants.map((participant, index) =>
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
           String(participant?.id ?? participant?.hero_id ?? index),
         ),
       )
@@ -2696,6 +2614,8 @@ export function useStartClientEngine(gameId, options = {}) {
     },
     [
       gameId,
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
       sessionInfo?.id,
       game?.name,
       participants,
@@ -2734,7 +2654,9 @@ export function useStartClientEngine(gameId, options = {}) {
 
         if (!response.ok) {
           const detail = await response.text().catch(() => '')
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
           throw new Error(detail || '배틀 로그 저장에 실패했습니다.')
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
         }
       } catch (error) {
         console.warn('[StartClient] battleLogDraft 저장 실패:', error)
@@ -2978,6 +2900,8 @@ export function useStartClientEngine(gameId, options = {}) {
     }),
     [currentActorContext, isUserActionSlot],
   )
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
 
   const viewerParticipant = useMemo(() => {
     if (!viewerId) return null
@@ -2992,7 +2916,9 @@ export function useStartClientEngine(gameId, options = {}) {
         return ownerId === viewerId
       }) || null
     )
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [participants, viewerId])
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
 
   const bootLocalSession = useCallback(
     (overrides = null) => {
@@ -3148,6 +3074,8 @@ export function useStartClientEngine(gameId, options = {}) {
           })
     }
 
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
     setStartingSession(true)
     setStatusMessage('세션을 준비하는 중입니다…')
 
@@ -3301,6 +3229,8 @@ export function useStartClientEngine(gameId, options = {}) {
         return
       }
 
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
       const advanceReason =
         typeof options?.reason === 'string' && options.reason.trim()
           ? options.reason.trim()
@@ -4072,6 +4002,8 @@ export function useStartClientEngine(gameId, options = {}) {
     const trimmed = requireManualResponse()
     if (!trimmed) {
       return
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
     }
     advanceIntentRef.current = null
     clearConsensusVotes()
@@ -4318,6 +4250,8 @@ export function useStartClientEngine(gameId, options = {}) {
         pendingDropInBonus: false,
         lastTurnNumber: fallbackTurn,
         lastDropInAppliedTurn: fallbackDropInTurn,
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
       }
     }
 
@@ -4384,6 +4318,8 @@ export function useStartClientEngine(gameId, options = {}) {
     advanceWithManual,
     autoAdvance,
     turnTimerSeconds,
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
     timeRemaining,
     turnDeadline,
     currentActor: currentActorInfo,

@@ -1,4 +1,3 @@
-import React from 'react'
 import SearchControls from '../GameSearchPanel/SearchControls'
 import GameList from '../GameSearchPanel/GameList'
 import GameManagementDetail from '../GameSearchPanel/GameManagementDetail'

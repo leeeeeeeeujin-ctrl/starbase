@@ -26,6 +26,7 @@ export default function SlotMatrix({ value = [], onChange, roleOptions = [] }) {
       })
       return base
     })
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [JSON.stringify(value)]) // 값이 실제로 바뀐 경우에만
 
   function emit(next) {

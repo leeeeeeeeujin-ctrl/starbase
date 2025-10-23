@@ -57,7 +57,7 @@ class InputManager {
           this.keyboardHandler = new KeyboardHandler({ element: this.targetElement })
           // initialize but don't fail the whole manager if a handler fails
           await this.keyboardHandler.initialize()
-        } catch (e) {
+        } catch (_e) {
           // If import or init fails, keep handler null
           this.keyboardHandler = null
         }
@@ -68,7 +68,7 @@ class InputManager {
           const TouchHandler = require('./TouchHandler').TouchHandler
           this.touchHandler = new TouchHandler({ element: this.targetElement })
           await this.touchHandler.initialize()
-        } catch (e) {
+        } catch (_e) {
           this.touchHandler = null
         }
       }
@@ -78,7 +78,7 @@ class InputManager {
           const GamepadHandler = require('./GamepadHandler').GamepadHandler
           this.gamepadHandler = new GamepadHandler()
           await this.gamepadHandler.initialize()
-        } catch (e) {
+        } catch (_e) {
           this.gamepadHandler = null
         }
       } else {
@@ -455,30 +455,30 @@ class InputManager {
    */
   cleanup() {
     // Call cleanup on sub-handlers if present
-    try { if (this.keyboardHandler && this.keyboardHandler.cleanup) this.keyboardHandler.cleanup(); } catch (e) {}
-    try { if (this.touchHandler && this.touchHandler.cleanup) this.touchHandler.cleanup(); } catch (e) {}
-    try { if (this.gamepadHandler && this.gamepadHandler.cleanup) this.gamepadHandler.cleanup(); } catch (e) {}
+  try { if (this.keyboardHandler && this.keyboardHandler.cleanup) this.keyboardHandler.cleanup(); } catch (_e) {}
+  try { if (this.touchHandler && this.touchHandler.cleanup) this.touchHandler.cleanup(); } catch (_e) {}
+  try { if (this.gamepadHandler && this.gamepadHandler.cleanup) this.gamepadHandler.cleanup(); } catch (_e) {}
 
     // Remove DOM event listeners
     if (this.eventHandlers.keydown) {
-      try { document.removeEventListener('keydown', this.eventHandlers.keydown); } catch (e) {}
+  try { document.removeEventListener('keydown', this.eventHandlers.keydown); } catch (_e) {}
     }
     if (this.eventHandlers.keyup) {
-      try { document.removeEventListener('keyup', this.eventHandlers.keyup); } catch (e) {}
+  try { document.removeEventListener('keyup', this.eventHandlers.keyup); } catch (_e) {}
     }
 
     if (this.eventHandlers.click && this.targetElement) {
-      try { this.targetElement.removeEventListener('click', this.eventHandlers.click); } catch (e) {}
+  try { this.targetElement.removeEventListener('click', this.eventHandlers.click); } catch (_e) {}
     }
     if (this.eventHandlers.mousemove && this.targetElement) {
-      try { this.targetElement.removeEventListener('mousemove', this.eventHandlers.mousemove); } catch (e) {}
+  try { this.targetElement.removeEventListener('mousemove', this.eventHandlers.mousemove); } catch (_e) {}
     }
 
     if (this.eventHandlers.touchstart && this.targetElement) {
-      try { this.targetElement.removeEventListener('touchstart', this.eventHandlers.touchstart); } catch (e) {}
+  try { this.targetElement.removeEventListener('touchstart', this.eventHandlers.touchstart); } catch (_e) {}
     }
     if (this.eventHandlers.touchend && this.targetElement) {
-      try { this.targetElement.removeEventListener('touchend', this.eventHandlers.touchend); } catch (e) {}
+  try { this.targetElement.removeEventListener('touchend', this.eventHandlers.touchend); } catch (_e) {}
     }
 
     // Nullify handler references
@@ -495,7 +495,7 @@ class InputManager {
 
     // Stop recording if active
     if (this.isRecording) {
-      try { this.stopRecording(); } catch (e) {}
+      try { this.stopRecording(); } catch (_e) {}
     }
   }
 }

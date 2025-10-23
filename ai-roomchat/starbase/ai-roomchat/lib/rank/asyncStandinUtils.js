@@ -43,7 +43,7 @@ export function createSyntheticStandinOwnerId(slotIndex = 0) {
   const template = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'
   let iteration = 0
   return template.replace(/[xy]/g, (char) => {
-    // eslint-disable-next-line no-bitwise
+     
     const random = Math.random() * 16 || ((slotIndex + iteration++) % 16)
     const value = char === 'x' ? random : (random & 0x3) | 0x8
     return Math.floor(value).toString(16)

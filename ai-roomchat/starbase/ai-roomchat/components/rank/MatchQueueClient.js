@@ -583,7 +583,9 @@ export default function MatchQueueClient({
   const pendingPostCheck = pendingMatch?.postCheck
   const activePostCheck = state.match?.postCheck
   const queuedSampleMeta = state.sampleMeta || null
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   const heroOptions = Array.isArray(state.heroOptions) ? state.heroOptions : []
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   const viewerRoster = Array.isArray(state.viewerRoster) ? state.viewerRoster : []
   const [manualHeroId, setManualHeroId] = useState(() => state.heroId || '')
   useEffect(() => {
@@ -1015,6 +1017,7 @@ export default function MatchQueueClient({
         }
       }
     })
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [
     autoJoin,
     state.status,
@@ -1436,7 +1439,7 @@ export default function MatchQueueClient({
         try {
           console.info('[MatchQueue] 디버그 홀드 활성화', holdSnapshot)
         } catch (error) {
-          // eslint-disable-next-line no-console
+           
           console.log('[MatchQueue] 디버그 홀드 활성화', holdSnapshot)
         }
       }

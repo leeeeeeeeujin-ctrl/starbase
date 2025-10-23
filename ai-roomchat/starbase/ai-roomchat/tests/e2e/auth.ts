@@ -1,4 +1,4 @@
-import { APIRequestContext, Page, request } from '@playwright/test'
+import { Page, request } from '@playwright/test'
 
 type Session = {
   access_token: string

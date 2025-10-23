@@ -129,7 +129,7 @@ export class GamepadHandler {
         if (__SHOULD_LOG__) {
           console.log('[GamepadHandler] init globals', { hasGlobalWin, globalWinHasMock, typeofWin, windowHasMock });
         }
-      } catch (e) {}
+  } catch (_e) {}
       // Get compatibility info
       this.compatibilityInfo = compatibilityManager.getCompatibilityInfo();
       
@@ -149,7 +149,7 @@ export class GamepadHandler {
         if (typeof global !== 'undefined' && global && global.__TEST_WINDOW__) {
           win = global.__TEST_WINDOW__;
         }
-      } catch (e) {}
+  } catch (_e) {}
 
       if (!win && this.hostWindow) {
         win = this.hostWindow;
@@ -180,10 +180,10 @@ export class GamepadHandler {
                 win = candidate;
                 break;
               }
-            } catch (e) {}
+            } catch (_e) {}
           }
         }
-      } catch (e) {}
+  } catch (_e) {}
 
       if (win && win.addEventListener) {
         // Call via direct reference and via call to satisfy different mock shapes

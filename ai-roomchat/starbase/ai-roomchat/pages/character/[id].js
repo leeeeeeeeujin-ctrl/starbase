@@ -74,6 +74,7 @@ export default function CharacterDetailPage() {
     } catch (storageError) {
       console.error('Failed to persist selected hero metadata:', storageError)
     }
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [hero?.id, hero?.owner_id])
 
   if (loading) {

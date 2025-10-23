@@ -1,4 +1,3 @@
-import React from 'react'
 
 import { useCharacterDashboardContext } from '../context'
 import InstantBattleSection from './right/InstantBattleSection'

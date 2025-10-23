@@ -8,11 +8,9 @@
  * 
  * This lets you test full game flows locally without affecting production data.
  */
-
 import { matchRankParticipants, matchCasualParticipants } from './rank/matching'
 import { buildSystemMessage, parseRules } from '../components/rank/StartClient/engine/systemPrompt'
-import { pickNextEdge } from '../components/rank/StartClient/engine/graph'
-import { makeNodePrompt, parseOutcome } from './promptEngine'
+import { parseOutcome } from './promptEngine'
 
 class RealGameSimulator {
   constructor() {

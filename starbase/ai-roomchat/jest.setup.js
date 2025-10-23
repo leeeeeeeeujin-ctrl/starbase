@@ -11,7 +11,7 @@ try {
 			global.navigator = Object.assign({}, global.navigator)
 		}
 	}
-} catch (e) {
+} catch (_e) {
 	// ignore
 }
 
@@ -48,7 +48,7 @@ try {
 			}
 		}
 	}
-} catch (e) {
+} catch (_e) {
 	// ignore polyfill errors
 }
 
@@ -58,4 +58,4 @@ try {
 		if (typeof global.window === 'undefined') global.window = {}
 		if (typeof global.document === 'undefined') global.document = { createElement: function() { return new HTMLCanvasElement() } }
 	}
-} catch (e) {}
+} catch (_e) {}

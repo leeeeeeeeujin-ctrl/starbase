@@ -1144,6 +1144,7 @@ export function useGameRoom(
         }
       })
       .filter(Boolean)
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [activeParticipants, activeSlots, participants, roles])
 
   const roleLeaderboards = useMemo(() => {

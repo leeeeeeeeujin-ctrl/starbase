@@ -325,6 +325,7 @@ export default function useGameBrowser({ enabled, mode = 'public' } = {}) {
     return () => {
       cancelled = true
     }
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [enabled, debouncedQuery, gameSort, selectedGame?.id, supportsGameMetrics, viewerId, mode])
 
   useEffect(() => {

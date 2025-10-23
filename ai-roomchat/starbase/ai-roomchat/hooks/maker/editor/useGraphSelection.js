@@ -1,13 +1,4 @@
-'use client'
-
-import { useCallback, useEffect, useMemo, useState } from 'react'
-
-import {
-  collectVariableNames,
-  sanitizeVariableRules,
-  variableRulesEqual,
-} from '../../../lib/variableRules'
-import { normalizeVisibleList } from './graphTransforms'
+'use client'import { useCallback, useMemo, useState } from 'react'import { collectVariableNames, sanitizeVariableRules, variableRulesEqual } from '../../../lib/variableRules'import { normalizeVisibleList } from './graphTransforms'
 
 const TAB_LABELS = { selection: '선택', guide: '가이드', history: '히스토리' }
 

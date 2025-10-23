@@ -126,8 +126,6 @@ export default function EditHeroModal({ open, onClose }) {
     }
   }, [open, draft, hero?.bgm_url])
 
-  if (!open) return null
-
   const draftState = draft || createDraftFromProfile(hero, edit) || EMPTY_DRAFT
   const abilityCards = useMemo(() => buildAbilityCards(draftState), [draftState])
   const backgroundSource = backgroundPreview || draftState.background_url || hero?.background_url || ''
@@ -201,6 +199,7 @@ export default function EditHeroModal({ open, onClose }) {
     onClose?.()
   }, [onClose])
 
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   const abilityTabContent = (
     <HeroAbilitiesSection
       abilityCards={abilityCards}

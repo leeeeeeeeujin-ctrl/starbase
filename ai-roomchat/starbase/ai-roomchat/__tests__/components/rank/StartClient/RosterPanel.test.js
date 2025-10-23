@@ -2,7 +2,6 @@
  * @jest-environment jsdom
  */
 
-import React from 'react'
 import TestRenderer from 'react-test-renderer'
 
 import RosterPanel from '@/components/rank/StartClient/RosterPanel'

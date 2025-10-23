@@ -1,9 +1,7 @@
 // components/maker/editor/CodeEditor.js
 // JavaScript 코드 실행 에디터 컴포넌트
 
-'use client'
-
-import { useState, useCallback, useRef, useEffect } from 'react'
+'use client'import { useState, useCallback, useRef } from 'react'
 
 export default function CodeEditor({ 
   onCodeRun, 

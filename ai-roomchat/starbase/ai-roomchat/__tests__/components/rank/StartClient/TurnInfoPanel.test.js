@@ -2,7 +2,6 @@
  * @jest-environment jsdom
  */
 
-import React from 'react'
 import TestRenderer, { act } from 'react-test-renderer'
 
 import TurnInfoPanel from '@/components/rank/StartClient/TurnInfoPanel'

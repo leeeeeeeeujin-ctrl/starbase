@@ -1,33 +1,5 @@
 // lib/rank/matchmakingService.js
-// Utilities that bridge the generic matching helpers with Supabase storage.
-
-import {
-  matchCasualParticipants,
-  matchRankParticipants,
-  matchSoloRankParticipants,
-} from './matching'
-import {
-  getDefaultPartySize,
-  getMatcherKey,
-  getQueueModes,
-} from './matchModes'
-import { withTable } from '../supabaseTables'
-import {
-  partitionQueueByHeartbeat,
-  QUEUE_STALE_THRESHOLD_MS,
-} from './queueHeartbeat'
-import {
-  buildOwnerParticipantIndex,
-  guessOwnerParticipant,
-  normalizeHeroIdValue,
-  resolveParticipantHeroId as deriveParticipantHeroId,
-} from './participantUtils'
-import {
-  loadActiveRoles as loadActiveRolesInternal,
-  loadRoleLayout as loadRoleLayoutInternal,
-} from './roleLayoutLoader'
-import { postCheckMatchAssignments as executePostCheck } from './matchPostCheck'
-import { isRealtimeEnabled, normalizeRealtimeMode } from './realtimeModes'
+// Utilities that bridge the generic matching helpers with Supabase storage.import { matchCasualParticipants, matchRankParticipants, matchSoloRankParticipants } from './matching'import { getMatcherKey, getQueueModes } from './matchModes'import { withTable } from '../supabaseTables'import { partitionQueueByHeartbeat, QUEUE_STALE_THRESHOLD_MS } from './queueHeartbeat'import { buildOwnerParticipantIndex, guessOwnerParticipant, normalizeHeroIdValue, resolveParticipantHeroId as deriveParticipantHeroId } from './participantUtils'import { loadActiveRoles as loadActiveRolesInternal, loadRoleLayout as loadRoleLayoutInternal } from './roleLayoutLoader'import { postCheckMatchAssignments as executePostCheck } from './matchPostCheck'import { isRealtimeEnabled, normalizeRealtimeMode } from './realtimeModes'
 
 const WAIT_THRESHOLD_SECONDS = 30
 

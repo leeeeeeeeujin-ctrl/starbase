@@ -79,7 +79,7 @@ function loadApiRoute(...segments) {
   const modulePath = path.join(__dirname, '..', '..', 'pages', 'api', ...segments)
   let module
   jest.isolateModules(() => {
-    // eslint-disable-next-line import/no-dynamic-require, global-require
+     
     module = require(modulePath)
   })
   return module.default

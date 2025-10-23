@@ -356,7 +356,7 @@ function emitUpdate(gameKey, snapshot) {
   try {
     const { logError, visualizeState } = require('../../lib/utils/debugTool')
     visualizeState(snapshot, `emitUpdate: 전달된 게임 상태 [${gameKey}]`)
-  } catch (e) {}
+  } catch (_e) {}
   listeners.forEach((listener) => {
     if (typeof listener !== 'function') return
     try {
@@ -376,7 +376,7 @@ function emitUpdate(gameKey, snapshot) {
       try {
         const { logError } = require('../../lib/utils/debugTool')
         logError(error, '[matchDataStore] 구독자 알림 실패')
-      } catch (e) {}
+      } catch (_e) {}
     }
   })
 }

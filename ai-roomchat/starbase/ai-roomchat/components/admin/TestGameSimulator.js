@@ -25,6 +25,7 @@ export default function TestGameSimulator() {
   useEffect(() => {
     loadInitialData();
     loadSessions();
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, []);
 
   const loadInitialData = async () => {

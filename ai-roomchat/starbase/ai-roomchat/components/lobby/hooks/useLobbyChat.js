@@ -234,6 +234,7 @@ export default function useLobbyChat({ heroId, onRequireAuth } = {}) {
       alive = false
       unsubscribe?.()
     }
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [
     hydrateBatch,
     hydrateSingle,

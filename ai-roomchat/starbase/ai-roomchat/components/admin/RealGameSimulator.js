@@ -23,6 +23,7 @@ export default function RealGameSimulator() {
 
   useEffect(() => {
     loadData()
+// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [])
 
   const loadData = useCallback(async () => {

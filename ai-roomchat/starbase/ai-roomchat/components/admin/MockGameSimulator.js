@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import styles from './CooldownDashboard.module.css'
 
 async function api(path, init) {

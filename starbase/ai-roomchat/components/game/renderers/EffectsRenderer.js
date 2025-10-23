@@ -260,7 +260,7 @@ export default class EffectsRenderer {
     if (!this.isAnimating) return
     this.isAnimating = false
     if (typeof window !== 'undefined' && window.cancelAnimationFrame && this.animationFrameId) {
-      try { window.cancelAnimationFrame(this.animationFrameId) } catch (e) {}
+      try { window.cancelAnimationFrame(this.animationFrameId) } catch (_e) {}
     }
     if (this.animationFrameId && typeof this.animationFrameId === 'number') {
       clearTimeout(this.animationFrameId)
