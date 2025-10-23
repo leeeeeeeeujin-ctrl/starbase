@@ -68,7 +68,6 @@ const MINI_OVERLAY_VISIBLE_MARGIN = 12;
 const PINCH_TRIGGER_RATIO = 0.7;
 const PINCH_MIN_DELTA = 28;
 const ROOM_BACKGROUND_FOLDER = 'room-backgrounds';
-const MEMBER_BACKGROUND_FOLDER = 'member-backgrounds';
 const ANNOUNCEMENT_TOOLBAR_SIZES = [
   { id: 'small', label: '작게', scale: 0.9, command: '3' },
   { id: 'normal', label: '보통', scale: 1, command: '4' },
@@ -4223,15 +4222,7 @@ function getAiMetadata(message) {
   };
 }
 
-function isAiPrompt(message) {
-  const aiMeta = getAiMetadata(message);
-  return Boolean(aiMeta && aiMeta.type === 'prompt');
-}
-
-function isAiResponse(message) {
-  const aiMeta = getAiMetadata(message);
-  return Boolean(aiMeta && aiMeta.type === 'response');
-}
+// AI metadata helpers removed (unused in this component).
 
 function formatTime(value) {
   if (!value) return '';
