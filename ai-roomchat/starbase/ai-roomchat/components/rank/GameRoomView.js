@@ -324,7 +324,6 @@ export default function GameRoomView({
   startError = '',
   recentBattles = [],
   roleOccupancy = [],
-  roleLeaderboards = [],
   sessionHistory = [],
   sharedSessionHistory = [],
 }) {
@@ -366,7 +365,7 @@ export default function GameRoomView({
   const [heroAudioState, setHeroAudioState] = useState(() =>
     audioManager ? audioManager.getState() : null
   );
-  const heroAudioVolumeInputId = useId();
+  
   const [selectedHeroAudioTrackId, setSelectedHeroAudioTrackId] = useState(null);
   const [selectedHeroAudioPresetId, setSelectedHeroAudioPresetId] = useState(null);
   const [heroAudioManualOverride, setHeroAudioManualOverride] = useState(false);
@@ -777,17 +776,7 @@ export default function GameRoomView({
     return map;
   }, [myHero, participants]);
 
-  const participantsByOwnerId = useMemo(() => {
-    const map = new Map();
-    participants.forEach(participant => {
-      const ownerId = participant?.owner_id || participant?.ownerId;
-      if (!ownerId) return;
-      if (!map.has(ownerId)) {
-        map.set(ownerId, participant);
-      }
-    });
-    return map;
-  }, [participants]);
+  
 
   const participantCountLabel = useMemo(() => {
     const count = Array.isArray(participants) ? participants.length : 0;
