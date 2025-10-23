@@ -1,0 +1,3 @@
+﻿#!/usr/bin/env sh
+\n npx --no -- lint-staged || exit 0
+
