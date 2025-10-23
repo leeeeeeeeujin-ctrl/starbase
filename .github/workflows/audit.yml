@@ -1,0 +1,44 @@
+name: Security Audit
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: |
+          cd ai-roomchat/starbase/ai-roomchat
+          npm ci
+
+      - name: Run npm audit
+        run: |
+          cd ai-roomchat/starbase/ai-roomchat
+          npm audit --json > audit.json || true
+
+      - name: Upload audit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-report
+          path: ai-roomchat/starbase/ai-roomchat/audit.json
+
+      - name: Comment PR with audit summary
+        if: github.event_name == 'pull_request'
+        uses: peter-evans/create-or-update-comment@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            **Security audit** ran for this PR. The full audit JSON is uploaded as an artifact.
