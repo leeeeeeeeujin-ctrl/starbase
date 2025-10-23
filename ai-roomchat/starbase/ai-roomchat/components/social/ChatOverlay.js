@@ -6779,36 +6779,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     [context, refreshRooms]
   );
 
-  const handleLeaveCurrentContext = useCallback(
-    async (options = {}) => {
-      if (!context) return false;
-      const isRoom = context.type === 'chat-room';
-      const isGlobal = context.type === 'global';
-      if (!isRoom && !isGlobal) {
-        return false;
-      }
-
-      const baseRoom =
-        currentRoom ||
-        (isRoom
-          ? {
-              id: context.chatRoomId,
-              visibility: context.visibility || 'private',
-              builtin: context.builtin,
-            }
-          : {
-              id: context.chatRoomId,
-              builtin: 'global',
-            });
-
-      const success = await handleLeaveRoom(baseRoom, options);
-      if (success) {
-        setDrawerOpen(false);
-      }
-      return success;
-    },
-    [context, currentRoom, handleLeaveRoom]
-  );
+  // unused: handleLeaveCurrentContext (removed to reduce lint noise)
 
   const handleOpenSearchOverlay = useCallback(() => {
     setSearchModalOpen(true);
@@ -11208,7 +11179,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     return text || '최근 메시지 없음';
   }, [miniOverlayLatest]);
 
-  const miniOverlayUnread = 0;
+  // miniOverlayUnread intentionally omitted — not used currently
 
   const focused = Boolean(context);
 
