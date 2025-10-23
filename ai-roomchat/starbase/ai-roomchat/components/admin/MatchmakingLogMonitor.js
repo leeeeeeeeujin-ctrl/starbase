@@ -123,7 +123,6 @@ export default function MatchmakingLogMonitor() {
 
   useEffect(() => {
     fetchLogs(false)
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [])
   
   const handleSearch = (e) => {

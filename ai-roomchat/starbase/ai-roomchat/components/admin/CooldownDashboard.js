@@ -1827,7 +1827,6 @@ export default function CooldownDashboard() {
 
   const overallStatus = telemetry?.alerts?.overall || { status: 'ok', issues: [] }
   const timelineUploadOverall = telemetry?.timelineUploads?.summary?.overall || null
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   const timelineUploadAlert = telemetry?.alerts?.timelineUploads || {
     status: 'ok',
     issues: [],

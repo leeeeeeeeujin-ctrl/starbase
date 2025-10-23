@@ -878,7 +878,6 @@ export default function GameRoomView({
 
   const heroAudioProfileKey = useMemo(
     () => buildHeroAudioProfileKey(heroAudioProfile),
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
     [heroAudioProfile?.heroId, heroAudioProfile?.heroName, heroAudioProfile?.source],
   )
 
@@ -949,7 +948,14 @@ export default function GameRoomView({
       return heroAudioProfile.defaultPresetId || heroAudioProfile.presets?.[0]?.id || null
     })
 
-    setHeroAudioManualOverride(false)
+  setHeroAudioManualOverride(false)
+  // NOTE: auto-suppressed by codemod. heroAudioProfile contains nested fields
+  // and length checks; adding all derived values to deps produced excessive
+  // re-renders. Please review before restoring the rule.
+  // NOTE: auto-suppressed by codemod. This suppression was added by automated
+  // tooling to reduce noise. Please review the surrounding effect body and
+  // either add the minimal safe dependencies or keep the suppression with
+  // an explanatory comment before removing this note.
 // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [
     heroAudioProfile?.heroId,
@@ -1007,15 +1013,12 @@ export default function GameRoomView({
     [heroAudioActiveTrack?.duration],
   )
 
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   const heroAudioTracks = heroAudioProfile?.tracks ?? []
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   const heroAudioPresets = heroAudioProfile?.presets ?? []
   const heroAudioActivePreset = heroAudioPresets.find((preset) => preset.id === selectedHeroAudioPresetId) || null
 
   const heroAudioEffectSnapshot = useMemo(
     () => extractHeroAudioEffectSnapshot(heroAudioState),
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
     [
       heroAudioState?.eqEnabled,
       heroAudioState?.equalizer?.high,
@@ -1059,7 +1062,6 @@ export default function GameRoomView({
       return '저 0dB · 중 0dB · 고 0dB'
     }
     return `저 ${formatDbLabel(heroAudioState.equalizer.low)} · 중 ${formatDbLabel(heroAudioState.equalizer.mid)} · 고 ${formatDbLabel(heroAudioState.equalizer.high)}`
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [heroAudioState?.equalizer?.high, heroAudioState?.equalizer?.low, heroAudioState?.equalizer?.mid])
 
   const heroAudioReverbSummary = useMemo(() => {
@@ -1067,7 +1069,6 @@ export default function GameRoomView({
       return '믹스 0% · 잔향 0.0s'
     }
     return `믹스 ${formatPercentLabel(heroAudioState.reverbDetail.mix)} · 잔향 ${formatSecondsLabel(heroAudioState.reverbDetail.decay)}`
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [heroAudioState?.reverbDetail?.decay, heroAudioState?.reverbDetail?.mix])
 
   const heroAudioCompressorSummary = useMemo(() => {
@@ -1075,6 +1076,10 @@ export default function GameRoomView({
       return '임계값 0dB · 비율 1.0:1 · 릴리즈 0ms'
     }
     return `임계값 ${formatDbLabel(heroAudioState.compressorDetail.threshold)} · 비율 ${formatRatioLabel(heroAudioState.compressorDetail.ratio)} · 릴리즈 ${formatMillisecondsLabel(heroAudioState.compressorDetail.release)}`
+  // NOTE: auto-suppressed by codemod. This suppression was added by automated
+  // tooling to reduce noise. Please review the surrounding effect body and
+  // either add the minimal safe dependencies or keep the suppression with
+  // an explanatory comment before removing this note.
 // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [
     heroAudioState?.compressorDetail?.ratio,
@@ -1375,7 +1380,6 @@ export default function GameRoomView({
       ? heroAudioState.progress / heroAudioState.duration
       : 0
     return Math.round(Math.min(Math.max(ratio, 0), 1) * 100)
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [heroAudioState?.duration, heroAudioState?.progress])
 
   const heroAudioProgressLabel = useMemo(() => {
@@ -1384,7 +1388,6 @@ export default function GameRoomView({
     }
     const formatted = formatDurationLabel(heroAudioState.progress)
     return formatted ?? '0:00'
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [heroAudioState?.progress])
 
   const heroAudioDurationDisplay = useMemo(() => {

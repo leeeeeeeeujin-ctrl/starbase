@@ -2049,6 +2049,10 @@ export function useStartClientEngine(gameId, options = {}) {
 // NOTE: auto-suppressed by codemod. This effect depends on derived collections
 // (managedOwnerIds) and viewerId; adding more dependencies caused repeated
 // re-runs in profiling. Please review manually before re-enabling the rule.
+  // NOTE: auto-suppressed by codemod. This suppression was added by automated
+  // tooling to reduce noise. Please review the surrounding effect body and
+  // either add the minimal safe dependencies or keep the suppression with
+  // an explanatory comment before removing this note.
 // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   const managedOwnerIds = useMemo(() => {
     const owners = collectUniqueOwnerIds(participants)
@@ -2352,6 +2356,10 @@ export function useStartClientEngine(gameId, options = {}) {
     if (preflight) {
       participantIdSetRef.current = new Set(
         participants.map((participant, index) =>
+  // NOTE: auto-suppressed by codemod. This suppression was added by automated
+  // tooling to reduce noise. Please review the surrounding effect body and
+  // either add the minimal safe dependencies or keep the suppression with
+  // an explanatory comment before removing this note.
 // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
           String(participant?.id ?? participant?.hero_id ?? index),
         ),
@@ -2646,6 +2654,10 @@ export function useStartClientEngine(gameId, options = {}) {
     },
     [
       gameId,
+  // NOTE: auto-suppressed by codemod. This suppression was added by automated
+  // tooling to reduce noise. Please review the surrounding effect body and
+  // either add the minimal safe dependencies or keep the suppression with
+  // an explanatory comment before removing this note.
 // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
       sessionInfo?.id,
       game?.name,
@@ -2929,6 +2941,10 @@ export function useStartClientEngine(gameId, options = {}) {
     }),
     [currentActorContext, isUserActionSlot],
   )
+  // NOTE: auto-suppressed by codemod. This suppression was added by automated
+  // tooling to reduce noise. Please review the surrounding effect body and
+  // either add the minimal safe dependencies or keep the suppression with
+  // an explanatory comment before removing this note.
 // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
 
   const viewerParticipant = useMemo(() => {
@@ -2945,6 +2961,10 @@ export function useStartClientEngine(gameId, options = {}) {
       }) || null
     )
   }, [participants, viewerId])
+  // NOTE: auto-suppressed by codemod. This suppression was added by automated
+  // tooling to reduce noise. Please review the surrounding effect body and
+  // either add the minimal safe dependencies or keep the suppression with
+  // an explanatory comment before removing this note.
 // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
 
   const bootLocalSession = useCallback(
@@ -3101,6 +3121,10 @@ export function useStartClientEngine(gameId, options = {}) {
           })
     }
 
+  // NOTE: auto-suppressed by codemod. This suppression was added by automated
+  // tooling to reduce noise. Please review the surrounding effect body and
+  // either add the minimal safe dependencies or keep the suppression with
+  // an explanatory comment before removing this note.
 // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
     setStartingSession(true)
     setStatusMessage('세션을 준비하는 중입니다…')
@@ -3255,6 +3279,10 @@ export function useStartClientEngine(gameId, options = {}) {
         return
       }
 
+  // NOTE: auto-suppressed by codemod. This suppression was added by automated
+  // tooling to reduce noise. Please review the surrounding effect body and
+  // either add the minimal safe dependencies or keep the suppression with
+  // an explanatory comment before removing this note.
 // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
       const advanceReason =
         typeof options?.reason === 'string' && options.reason.trim()
@@ -4273,6 +4301,10 @@ export function useStartClientEngine(gameId, options = {}) {
         pendingDropInBonus: false,
         lastTurnNumber: fallbackTurn,
         lastDropInAppliedTurn: fallbackDropInTurn,
+  // NOTE: auto-suppressed by codemod. This suppression was added by automated
+  // tooling to reduce noise. Please review the surrounding effect body and
+  // either add the minimal safe dependencies or keep the suppression with
+  // an explanatory comment before removing this note.
 // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
       }
     }
@@ -4340,6 +4372,10 @@ export function useStartClientEngine(gameId, options = {}) {
     advanceWithManual,
     autoAdvance,
     turnTimerSeconds,
+  // NOTE: auto-suppressed by codemod. This suppression was added by automated
+  // tooling to reduce noise. Please review the surrounding effect body and
+  // either add the minimal safe dependencies or keep the suppression with
+  // an explanatory comment before removing this note.
 // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
     timeRemaining,
     turnDeadline,

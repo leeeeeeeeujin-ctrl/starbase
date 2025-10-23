@@ -33,7 +33,6 @@ export default function AuthButton() {
     if (!pending) {
       signIn()
     }
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [pending])
 
   function handleMouseEnter(event) {

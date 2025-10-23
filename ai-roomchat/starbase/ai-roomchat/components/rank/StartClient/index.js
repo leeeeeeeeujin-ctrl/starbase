@@ -447,7 +447,6 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     return () => {
       cancelled = true
     }
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [gameId, matchState?.room?.realtimeMode, matchState?.sessionMeta, sessionInfo?.id])
 
   const realtimeLockNotice = useMemo(() => {
@@ -462,7 +461,6 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
   const sessionExtras = matchState?.sessionMeta?.extras || null
   const isAsyncMode = asyncFillInfo?.mode === 'off'
   const blindMode = Boolean(matchState?.room?.blindMode)
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   const rosterEntries = Array.isArray(matchState?.roster) ? matchState.roster : []
   const matchRosterForChat = useMemo(
     () => buildMatchRoster(matchState?.roster),

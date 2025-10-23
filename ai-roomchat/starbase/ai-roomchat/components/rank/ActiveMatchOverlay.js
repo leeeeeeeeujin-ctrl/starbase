@@ -166,7 +166,6 @@ export default function ActiveMatchOverlay() {
       window.removeEventListener('focus', handleFocus)
       document.removeEventListener('visibilitychange', handleVisibility)
     }
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [active?.gameId, active?.sessionId])
 
   useEffect(() => {

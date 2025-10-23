@@ -48,7 +48,6 @@ export default function Lobby() {
         setActiveTab(tab)
       }
     }
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [router.query?.tab])
 
   const handleBack = useCallback(() => {

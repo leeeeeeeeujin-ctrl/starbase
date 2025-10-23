@@ -1164,7 +1164,6 @@ export default function AudioEventMonitor() {
 
   const usingStackedTrend = !trendUnavailable && trendStackMode !== 'total' && trendStackData
   const trendChartBars = usingStackedTrend ? trendStackData?.bars || [] : totalTrendBars
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   const trendStackLegend = usingStackedTrend ? trendStackData?.legend || [] : []
 
   const trendStackLegendOverflowNote = useMemo(() => {

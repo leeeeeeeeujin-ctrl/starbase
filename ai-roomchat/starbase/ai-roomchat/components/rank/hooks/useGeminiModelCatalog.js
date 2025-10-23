@@ -62,7 +62,6 @@ export default function useGeminiModelCatalog({ apiKey, mode }) {
     setError('')
     lastSignatureRef.current = ''
     lastReloadTokenRef.current = reloadToken
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [normalizedMode])
 
   const reload = useCallback(() => {

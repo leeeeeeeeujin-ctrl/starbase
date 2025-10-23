@@ -583,9 +583,7 @@ export default function MatchQueueClient({
   const pendingPostCheck = pendingMatch?.postCheck
   const activePostCheck = state.match?.postCheck
   const queuedSampleMeta = state.sampleMeta || null
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   const heroOptions = Array.isArray(state.heroOptions) ? state.heroOptions : []
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   const viewerRoster = Array.isArray(state.viewerRoster) ? state.viewerRoster : []
   const [manualHeroId, setManualHeroId] = useState(() => state.heroId || '')
   useEffect(() => {
@@ -1017,6 +1015,10 @@ export default function MatchQueueClient({
         }
       }
     })
+  // NOTE: auto-suppressed by codemod. This suppression was added by automated
+  // tooling to reduce noise. Please review the surrounding effect body and
+  // either add the minimal safe dependencies or keep the suppression with
+  // an explanatory comment before removing this note.
 // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [
     autoJoin,

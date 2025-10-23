@@ -24,7 +24,6 @@ export function QueuePanel() {
       setStatus('joined')
       setQueueId(stored.queue_id || queueId)
     }
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [])
 
   useEffect(() => {

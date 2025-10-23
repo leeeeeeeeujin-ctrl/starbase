@@ -559,6 +559,10 @@ export default function useMatchQueue({
   }, [status])
   useEffect(() => {
     return () => {
+  // NOTE: auto-suppressed by codemod. This suppression was added by automated
+  // tooling to reduce noise. Please review the surrounding effect body and
+  // either add the minimal safe dependencies or keep the suppression with
+  // an explanatory comment before removing this note.
 // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
       const state = realtimeProbeRef.current
       if (state?.timer) {
@@ -700,7 +704,6 @@ export default function useMatchQueue({
 
     const normalized = String(initialHeroId)
     updateHeroSelection(normalized, { ownerId: viewerId || undefined })
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [enabled, initialHeroId])
 
   useEffect(() => {
@@ -742,7 +745,6 @@ export default function useMatchQueue({
     return () => {
       cancelled = true
     }
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [enabled, gameId, viewerId])
 
   useEffect(() => {
@@ -760,7 +762,6 @@ export default function useMatchQueue({
     return () => {
       cancelled = true
     }
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [enabled, viewerId, heroId])
 
   useEffect(() => {
@@ -959,7 +960,6 @@ export default function useMatchQueue({
     } catch (cause) {
       console.error('매칭 확인 실패:', cause)
     }
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [enabled, status, gameId, mode, viewerId, onApiKeyExpired])
 
   useEffect(() => {
@@ -1250,7 +1250,6 @@ export default function useMatchQueue({
         setLoading(false)
       }
     },
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
     [
       enabled,
       gameId,

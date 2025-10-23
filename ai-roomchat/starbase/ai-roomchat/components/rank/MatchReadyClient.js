@@ -737,7 +737,6 @@ export default function MatchReadyClient({ gameId }) {
   const readyReadyIds = Array.isArray(readyCheck?.readyOwnerIds)
     ? readyCheck.readyOwnerIds.map((id) => String(id))
     : []
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   const readyMissingIds = Array.isArray(readyCheck?.missingOwnerIds)
     ? readyCheck.missingOwnerIds.map((id) => String(id))
     : []

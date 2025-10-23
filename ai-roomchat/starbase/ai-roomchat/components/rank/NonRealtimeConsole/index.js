@@ -567,7 +567,6 @@ export default function NonRealtimeConsole({
 
   const historyText = useMemo(
     () => aiHistory.joinedText({ onlyPublic: false }),
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
     [aiHistory, historyVersion],
   )
 

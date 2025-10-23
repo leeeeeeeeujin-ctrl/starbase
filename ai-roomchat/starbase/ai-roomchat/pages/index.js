@@ -195,7 +195,6 @@ export default function Home() {
 
     const comparator = comparators[sortMode] || compareByPriority
     return base.sort(comparator)
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [sortMode, nextActions])
   const hasNextActions = sortedNextActions.length > 0
   useEffect(() => {
@@ -287,7 +286,6 @@ export default function Home() {
       relativeLabel,
       stale: diffDays >= 14,
     })
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [progressLastUpdatedISO])
 
   const heroStyle = useMemo(() => {

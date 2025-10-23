@@ -322,7 +322,6 @@ export default function useCharacterDashboard(heroId) {
         refresh: loadData,
       },
     }),
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
     [
       handleSelectGame,
       handleSetStatPageIndex,

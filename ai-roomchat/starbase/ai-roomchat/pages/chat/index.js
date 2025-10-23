@@ -888,7 +888,6 @@ export default function ChatPage() {
   useEffect(() => {
     return () => {
       if (viewportResizeStateRef.current?.teardown) {
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
         viewportResizeStateRef.current.teardown()
       }
     }

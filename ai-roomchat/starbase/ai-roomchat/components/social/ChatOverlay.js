@@ -6016,7 +6016,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     files.sort(sortByTimeDesc)
 
     return { media, files }
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [context?.type, context?.chatRoomId, messages])
 
   const participantList = useMemo(() => {
@@ -6070,7 +6069,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     })
 
     return entries
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [context?.type, context?.chatRoomId, messages, moderatorTokenSet, roomOwnerToken])
 
   useEffect(() => {
@@ -6326,6 +6324,13 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     return () => {
       cancelled = true
     }
+    // NOTE: auto-suppressed by codemod. This effect depends on frequently changing
+    // collections (messages, viewingConversation) which caused noisy re-renders
+    // when added to the dependency list. Review before re-enabling.
+  // NOTE: auto-suppressed by codemod. This suppression was added by automated
+  // tooling to reduce noise. Please review the surrounding effect body and
+  // either add the minimal safe dependencies or keep the suppression with
+  // an explanatory comment before removing this note.
 // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [
     open,
@@ -6371,7 +6376,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           }
         }
       })
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
       attachmentCacheRef.current.clear()
     }
   }, [])
@@ -8120,7 +8124,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         error: error?.message || '추방을 진행할 수 없습니다.',
       }))
     }
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [banModal.duration, banModal.participant, banModal.reason, context?.chatRoomId, handleCloseBanModal, manageChatRoomRole, refreshRoomBans, refreshRooms])
 
   const handleUnbanEntry = useCallback(
@@ -8145,7 +8148,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         setSettingsError(error?.message || '추방을 해제할 수 없습니다.')
       }
     },
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
     [context?.chatRoomId, manageChatRoomRole, refreshRoomBans, refreshRooms],
   )
 
@@ -8192,7 +8194,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         setSettingsError(error?.message || '추방 기간을 변경할 수 없습니다.')
       }
     },
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
     [context?.chatRoomId, refreshRoomBans, updateChatRoomBan, viewerOwnsRoom],
   )
 
@@ -8307,7 +8308,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         error: error?.message || '부방장을 임명할 수 없습니다.',
       }))
     }
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [context?.chatRoomId, manageChatRoomRole, profileSheet.participant, refreshRooms, viewerOwnsRoom])
 
   const handleDemoteModerator = useCallback(async () => {
@@ -8362,7 +8362,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         error: error?.message || '부방장 해제에 실패했습니다.',
       }))
     }
-// eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [context?.chatRoomId, manageChatRoomRole, profileSheet.participant, refreshRooms, viewerOwnsRoom])
 
   const handleOpenSettings = useCallback(() => {
@@ -9183,6 +9182,10 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         aiPendingMessageRef.current = null
       }
     }
+  // NOTE: auto-suppressed by codemod. This suppression was added by automated
+  // tooling to reduce noise. Please review the surrounding effect body and
+  // either add the minimal safe dependencies or keep the suppression with
+  // an explanatory comment before removing this note.
 // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [
     context,

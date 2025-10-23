@@ -1965,6 +1965,10 @@ export default function CharacterBasicView({ hero }) {
     // NOTE: auto-suppressed by codemod. Compressor detail fields are nested
     // objects that change frequently; adding them to deps caused noisy re-renders
     // in profiling. Please review before re-enabling the rule.
+  // NOTE: auto-suppressed by codemod. This suppression was added by automated
+  // tooling to reduce noise. Please review the surrounding effect body and
+  // either add the minimal safe dependencies or keep the suppression with
+  // an explanatory comment before removing this note.
 // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
     audioState.compressorDetail.threshold,
     audioState.compressorDetail.ratio,
@@ -2091,6 +2095,10 @@ export default function CharacterBasicView({ hero }) {
     customBgmUrl,
   ])
 
+  // NOTE: auto-suppressed by codemod. This suppression was added by automated
+  // tooling to reduce noise. Please review the surrounding effect body and
+  // either add the minimal safe dependencies or keep the suppression with
+  // an explanatory comment before removing this note.
 // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   const backgroundStyle = currentHero?.background_url
     ? pageStyles.withBackground(currentHero.background_url)

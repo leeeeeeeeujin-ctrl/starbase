@@ -234,6 +234,10 @@ export default function useLobbyChat({ heroId, onRequireAuth } = {}) {
       alive = false
       unsubscribe?.()
     }
+  // NOTE: auto-suppressed by codemod. This suppression was added by automated
+  // tooling to reduce noise. Please review the surrounding effect body and
+  // either add the minimal safe dependencies or keep the suppression with
+  // an explanatory comment before removing this note.
 // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [
     hydrateBatch,
