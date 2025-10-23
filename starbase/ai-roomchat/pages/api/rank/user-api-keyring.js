@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { createPagesServerClient } from '@supabase/auth-helpers-nextjs'
+import { createPagesServerClient } from '@supabase/ssr'
 
 import {
   USER_API_KEYRING_LIMIT,

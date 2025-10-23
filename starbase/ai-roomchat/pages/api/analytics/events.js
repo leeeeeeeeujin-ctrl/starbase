@@ -3,7 +3,7 @@
  * 이벤트 배치 처리, 성능 분석, 사용자 행동 추적
  */
 
-import { createServerSupabaseClient } from '@supabase/auth-helpers-nextjs'
+import { createServerSupabaseClient } from '@supabase/ssr'
 import crypto from 'crypto'
 
 export default async function handler(req, res) {
