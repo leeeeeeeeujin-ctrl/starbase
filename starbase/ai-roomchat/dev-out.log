@@ -1,8 +1,0 @@
-  ▲ Next.js 14.2.5
-  - Local:        http://localhost:3000
-  - Environments: .env.local
-
- ✓ Starting...
-   Disabled SWC as replacement for Babel because of custom Babel configuration "babel.config.js" https://nextjs.org/docs/messages/swc-disabled
- ✓ Ready in 2.6s
-[?25h
