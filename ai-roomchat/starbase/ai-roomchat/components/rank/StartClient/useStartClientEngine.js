@@ -2924,10 +2924,11 @@ export function useStartClientEngine(gameId, options = {}) {
         return;
       }
 
-      // NOTE: auto-suppressed by codemod. This suppression was added by automated
-      // tooling to reduce noise. Please review the surrounding effect body and
-      // either add the minimal safe dependencies or keep the suppression with
-      // an explanatory comment before removing this note.
+  // 주: advanceTurn은 많은 외부 상태와 콜백(graph, history, participants, API 등)에
+  // 의존합니다. 모든 참조를 deps에 추가하면 재생성이 폭발적으로 늘어나 성능/동작에
+  // 영향을 줄 수 있으므로 자동으로 억제했습니다. 리팩터링 시에는 내부 참조를
+  // 안정화(useMemo/useRef)하거나, 함수를 더 작은 단위로 분리한 뒤 최소 deps만
+  // 추가해 주세요. 변경 시 영향 범위를 반드시 검토하세요.
       const advanceReason =
         typeof options?.reason === 'string' && options.reason.trim()
           ? options.reason.trim()
@@ -3911,10 +3912,10 @@ export function useStartClientEngine(gameId, options = {}) {
       ? Math.floor(Number(lastDropInTurn))
       : 0;
 
-    // NOTE: auto-suppressed by codemod. This suppression was added by automated
-    // tooling to reduce noise. Please review the surrounding effect body and
-    // either add the minimal safe dependencies or keep the suppression with
-    // an explanatory comment before removing this note.
+  // 주: 이 계산은 `turnTimerServiceRef.current` 같은 서비스 인스턴스를 읽습니다.
+  // 서비스 내부 상태 변경이 렌더링을 트리거하지 않으므로 `service`를 deps로
+  // 추가하는 것은 적절하지 않습니다. 필요한 경우 서비스 접근을 안정화하거나
+  // 계산을 분리해 최소 deps만 명시하세요.
     const service = turnTimerServiceRef.current;
     if (!service) {
       return {
@@ -3991,10 +3992,9 @@ export function useStartClientEngine(gameId, options = {}) {
     advanceWithManual,
     autoAdvance,
     turnTimerSeconds,
-    // NOTE: auto-suppressed by codemod. This suppression was added by automated
-    // tooling to reduce noise. Please review the surrounding effect body and
-    // either add the minimal safe dependencies or keep the suppression with
-    // an explanatory comment before removing this note.
+  // 주: 아래 값들(`timeRemaining` 등)은 내부 타이머나 콜백에 의해 빈번히 변경됩니다.
+  // 모든 관련 값을 deps에 추가하면 과도한 리렌더가 발생할 수 있어 자동 억제했습니다.
+  // 필요 시 해당 값을 안정화(ref/memo)하거나 로직을 분리 후 최소 deps를 명시하세요.
     timeRemaining,
     timeRemaining,
     turnDeadline,
