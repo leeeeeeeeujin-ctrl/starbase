@@ -34,7 +34,6 @@ import {
   deriveParticipantOwnerId,
 } from './engine/participants';
 import {
-  appendMainGameLogs,
   initialMainGameState,
   mainGameReducer,
   patchMainGameState,
@@ -605,7 +604,7 @@ export function useStartClientEngine(gameId, options = {}) {
   useEffect(() => {
     remoteSessionAdoptedRef.current = false;
     remoteSessionFetchRef.current = { running: false, lastFetchedAt: 0 };
-  }, [gameId]);
+  }, [gameId, matchInstanceId, patchEngineState, rosterSnapshot, setPromptMetaWarning, slotLayoutSeed, stagedRoomId]);
 
   useEffect(() => {
     if (!sessionInfo?.id) {
@@ -808,7 +807,7 @@ export function useStartClientEngine(gameId, options = {}) {
       setConnectionRoster(getConnectionEntriesForGame(key));
     });
     return unsubscribe;
-  }, []);
+  }, [setViewerId]);
   useEffect(() => {
     return () => {
       if (gameId) {
@@ -825,12 +824,8 @@ export function useStartClientEngine(gameId, options = {}) {
     },
     [dispatchEngine]
   );
-  const appendEngineLogs = useCallback(
-    entries => {
-      dispatchEngine(appendMainGameLogs(entries));
-    },
-    [dispatchEngine]
-  );
+  // appendEngineLogs: 제거 — 정의는 되어 있었으나 내부에서 사용되지 않습니다.
+  // 필요 시 재도입하세요.
   const setStatusMessage = useCallback(
     value => {
       if (typeof value === 'function') {
@@ -1038,21 +1033,8 @@ export function useStartClientEngine(gameId, options = {}) {
     },
     [patchEngineState]
   );
-  const setParticipants = useCallback(
-    value => {
-      if (typeof value === 'function') {
-        const next = value(participantsRef.current);
-        patchEngineState({
-          participants: Array.isArray(next) ? next : [],
-        });
-      } else {
-        patchEngineState({
-          participants: Array.isArray(value) ? value : [],
-        });
-      }
-    },
-    [patchEngineState]
-  );
+  // setParticipants: 내부에서 사용되지 않으므로 제거했습니다.
+  // 필요 시 patchEngineState를 직접 호출하거나 이 함수를 복원하세요.
   const [turnTimerSeconds] = useState(() => {
     const timerFromMeta = Number(initialSessionMeta?.turnTimer?.baseSeconds);
     if (Number.isFinite(timerFromMeta) && timerFromMeta > 0) {
@@ -1150,7 +1132,7 @@ export function useStartClientEngine(gameId, options = {}) {
 
   useEffect(() => {
     turnDeadlineRef.current = turnDeadline ?? null;
-  }, [turnDeadline]);
+  }, [turnDeadline, setTimeRemaining]);
 
   useEffect(() => {
     timeRemainingRef.current = timeRemaining ?? null;
@@ -1479,7 +1461,7 @@ export function useStartClientEngine(gameId, options = {}) {
           } else if (entry.content != null) {
             try {
               content = JSON.stringify(entry.content);
-            } catch (error) {
+            } catch {
               content = String(entry.content);
             }
           }
@@ -1496,7 +1478,7 @@ export function useStartClientEngine(gameId, options = {}) {
               try {
                 summary = JSON.parse(JSON.stringify(candidate));
                 break;
-              } catch (error) {
+              } catch {
                 summary = null;
               }
             }
@@ -1584,7 +1566,7 @@ export function useStartClientEngine(gameId, options = {}) {
           let detail = null;
           try {
             detail = await response.json();
-          } catch (error) {
+          } catch {
             detail = null;
           }
           const message = detail?.error || '턴 기록에 실패했습니다.';
@@ -1666,7 +1648,7 @@ export function useStartClientEngine(gameId, options = {}) {
     return () => {
       alive = false;
     };
-  }, [gameId]);
+  }, [gameId, matchInstanceId, patchEngineState, rosterSnapshot, setPromptMetaWarning, slotLayoutSeed, stagedRoomId]);
 
   useEffect(() => {
     let alive = true;
@@ -1689,7 +1671,7 @@ export function useStartClientEngine(gameId, options = {}) {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [setViewerId]);
 
   const participantsStatus = useMemo(
     () =>
@@ -1786,7 +1768,7 @@ export function useStartClientEngine(gameId, options = {}) {
       lastScheduledTurnRef.current = turnNumber;
       lastBroadcastTurnStateRef.current = { turnNumber: numericTurn, deadline };
     },
-    [preflight, currentNodeId, gameId, recordTurnState]
+    [preflight, currentNodeId, gameId, recordTurnState, setTurnDeadline, setTimeRemaining]
   );
 
   useEffect(() => {
@@ -1854,7 +1836,7 @@ export function useStartClientEngine(gameId, options = {}) {
     if (!currentNodeId) {
       setLastDropInTurn(null);
     }
-  }, [currentNodeId]);
+  }, [currentNodeId, setLastDropInTurn]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -1874,7 +1856,7 @@ export function useStartClientEngine(gameId, options = {}) {
     return () => {
       window.clearInterval(timerId);
     };
-  }, [turnDeadline]);
+  }, [turnDeadline, setTimeRemaining]);
 
   const systemPrompt = useMemo(() => buildSystemMessage(game || {}), [game]);
   const parsedRules = useMemo(() => parseRules(game || {}), [game]);
@@ -1987,7 +1969,7 @@ export function useStartClientEngine(gameId, options = {}) {
       });
       setActiveActorNames(actorNames);
     },
-    [resolveHeroAssets]
+    [resolveHeroAssets, setActiveHeroAssets, setActiveActorNames]
   );
   const recordTimelineEvents = useCallback(
     (events, { turnNumber: overrideTurn, logEntries = null, buildLogs = true } = {}) => {
@@ -2277,7 +2259,7 @@ export function useStartClientEngine(gameId, options = {}) {
     if (timelineEvents.length) {
       recordTimelineEvents(timelineEvents, { turnNumber: turn });
     }
-  }, [participants, preflight, gameId, turnDeadline, turn, recordTimelineEvents, realtimeEnabled]);
+  }, [participants, preflight, gameId, turnDeadline, turn, recordTimelineEvents, realtimeEnabled, recordTurnState, setLastDropInTurn, setTimeRemaining, setTurnDeadline]);
 
   const captureBattleLog = useCallback(
     (outcome, { reason, turnNumber: overrideTurn } = {}) => {
@@ -2314,14 +2296,14 @@ export function useStartClientEngine(gameId, options = {}) {
   // 모든 참조를 deps에 추가하면 매우 많은 재생성이 발생할 수 있어 자동 억제했습니다.
   // 권장: 필요 시 함수 내부를 분리하거나, 읽는 값들을 안정화(useMemo/useRef)한 뒤
   // 최소한의 deps만 추가해 주세요. 변경 전에는 영향 범위를 꼭 검토하세요.
-      sessionInfo?.id,
-      sessionInfo?.id,
+  sessionInfo?.id,
       game?.name,
       participants,
       realtimePresence,
       winCount,
       history,
       turn,
+      setBattleLogDraft,
     ]
   );
 
@@ -2732,6 +2714,21 @@ export function useStartClientEngine(gameId, options = {}) {
       realtimeEnabled,
       viewerId,
       applyRealtimeSnapshot,
+      bumpHistoryVersion,
+      clearConsensusVotes,
+      patchEngineState,
+      setActiveGlobal,
+      setActiveLocal,
+      setBattleLogDraft,
+      setCurrentNodeId,
+      setLastDropInTurn,
+      setLogs,
+      setPreflight,
+      setStatusMessage,
+      setTimeRemaining,
+      setTurn,
+      setTurnDeadline,
+      setWinCount,
     ]
   );
   bootLocalSessionRef.current = bootLocalSession;
@@ -2900,6 +2897,7 @@ export function useStartClientEngine(gameId, options = {}) {
     slotLayout,
     matchingMetadata,
     setPromptMetaWarning,
+    setStatusMessage,
   ]);
 
   const advanceTurn = useCallback(
@@ -3227,7 +3225,7 @@ export function useStartClientEngine(gameId, options = {}) {
           let payload = {};
           try {
             payload = await res.json();
-          } catch (error) {
+          } catch {
             payload = {};
           }
 
@@ -3672,6 +3670,25 @@ export function useStartClientEngine(gameId, options = {}) {
       normalizedGeminiModel,
       applyRealtimeSnapshot,
       recordTurnState,
+  bumpHistoryVersion,
+  captureBattleLog,
+  clearManualResponse,
+  clearSessionRecord,
+  finalizeSessionRemotely,
+  gameId,
+  markSessionDefeated,
+  patchEngineState,
+  sessionInfo?.id,
+  setActiveGlobal,
+  setActiveLocal,
+  setCurrentNodeId,
+  setIsAdvancing,
+  setLogs,
+  setStatusMessage,
+  setTimeRemaining,
+  setTurn,
+  setTurnDeadline,
+  setWinCount,
     ]
   );
 
@@ -3887,7 +3904,7 @@ export function useStartClientEngine(gameId, options = {}) {
         unsubscribeTurnEvents();
       }
     };
-  }, [sessionInfo?.id, supabase, setRealtimeEvents, applyTurnStateChange, backfillTurnEvents]);
+  }, [sessionInfo?.id, setRealtimeEvents, applyTurnStateChange, backfillTurnEvents]);
 
   useEffect(() => {
     if (!needsConsensus) {
