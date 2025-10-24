@@ -9,6 +9,8 @@ const { pickNextEdge } = require('../engine/graph');
 const { resolveActorContext } = require('../engine/actorContext');
 const { resolveSlotBinding } = require('../engine/slotBindingResolver');
 const { deriveEligibleOwnerIds } = require('../services/turnVoteController');
+const { deriveParticipantOwnerId } = require('../engine/participants');
+const { formatRealtimeReason } = require('../engine/timelineLogBuilder');
 
 export default function useAdvanceTurn(deps) {
   const {
@@ -30,7 +32,6 @@ export default function useAdvanceTurn(deps) {
     ownerDisplayMap,
     realtimeEnabled,
     brawlEnabled,
-    endConditionVariable,
     winCount,
     lastDropInTurn,
     viewerId,
@@ -44,9 +45,7 @@ export default function useAdvanceTurn(deps) {
     normalizedGeminiModel,
     applyRealtimeSnapshot,
     recordTurnState,
-    bumpHistoryVersion,
-    captureBattleLog,
-    clearManualResponse,
+  captureBattleLog,
     clearSessionRecord,
     finalizeSessionRemotely,
     gameId,
@@ -65,23 +64,15 @@ export default function useAdvanceTurn(deps) {
     setWinCount,
     // refs / helpers used in body
     realtimeManagerRef,
-    deriveEligibleOwnerIds,
-    resolveActorContext,
-    resolveSlotBinding,
-    makeNodePrompt,
-    prepareHistoryPayload,
-    buildUserActionPersona,
-    pickNextEdge,
     recordOutcomeLedger,
-  outcomeLedgerRef,
-  buildOutcomeSnapshot,
+    outcomeLedgerRef,
+    buildOutcomeSnapshot,
     
     isApiKeyError,
   } = deps;
 
     // add missing deps used by the inlined helpers
-  const { deriveParticipantOwnerId, formatRealtimeReason, statusMessageRef } = deps;
-
+    const { statusMessageRef } = deps;
   return useCallback(
     async (overrideResponse = null, options = {}) => {
       // The implementation is copied verbatim from the original engine to keep the
@@ -430,9 +421,8 @@ export default function useAdvanceTurn(deps) {
       ownerDisplayMap,
       realtimeEnabled,
       brawlEnabled,
-      endConditionVariable,
-      winCount,
-      lastDropInTurn,
+  winCount,
+  lastDropInTurn,
       viewerId,
       updateHeroAssets,
       logTurnEntries,
@@ -442,12 +432,10 @@ export default function useAdvanceTurn(deps) {
       persistApiKeyOnServer,
       normalizedGeminiMode,
       normalizedGeminiModel,
-      applyRealtimeSnapshot,
-      recordTurnState,
-      bumpHistoryVersion,
-      captureBattleLog,
-      clearManualResponse,
-      clearSessionRecord,
+  applyRealtimeSnapshot,
+  recordTurnState,
+  captureBattleLog,
+  clearSessionRecord,
       finalizeSessionRemotely,
       gameId,
       markSessionDefeated,

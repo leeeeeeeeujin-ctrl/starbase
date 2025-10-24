@@ -109,7 +109,6 @@ import {
     applyRealtimeSnapshot,
     recordTurnState,
     captureBattleLog,
-    clearManualResponse,
     clearSessionRecord,
     finalizeSessionRemotely,
     patchEngineState,
@@ -124,8 +123,9 @@ import {
     setTurnDeadline,
     setWinCount,
 
-    // refs / helpers
+  // refs / helpers
     realtimeManagerRef,
+  statusMessageRef,
   // NOTE: several pure helpers (makeNodePrompt, prepareHistoryPayload,
   // buildUserActionPersona, pickNextEdge, resolveActorContext,
   // resolveSlotBinding, deriveEligibleOwnerIds) are imported directly
