@@ -76,7 +76,6 @@ export default function useAdvanceTurn(deps) {
   outcomeLedgerRef,
   buildOutcomeSnapshot,
     
-    ownerDisplayMapRef,
     isApiKeyError,
   } = deps;
 
