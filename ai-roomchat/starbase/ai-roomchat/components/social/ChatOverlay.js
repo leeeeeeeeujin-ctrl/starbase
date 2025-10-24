@@ -6122,7 +6122,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     files.sort(sortByTimeDesc);
 
     return { media, files };
-  }, [context?.type, context?.chatRoomId, messages]);
+  }, [context, messages]);
 
   const participantList = useMemo(() => {
     if (context?.type !== 'chat-room') {
@@ -6175,7 +6175,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     });
 
     return entries;
-  }, [context?.type, context?.chatRoomId, messages, moderatorTokenSet, roomOwnerToken]);
+  }, [context, messages, moderatorTokenSet, roomOwnerToken]);
 
   useEffect(() => {
     if (!open) {
@@ -6198,7 +6198,10 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       setSettingsOverlayOpen(false);
       setExpandedMessage(null);
       setViewerAttachment(null);
-      attachmentCacheRef.current.clear();
+      const cacheToClear = attachmentCacheRef.current;
+      if (cacheToClear && typeof cacheToClear.clear === 'function') {
+        cacheToClear.clear();
+      }
       if (longPressTimerRef.current) {
         clearTimeout(longPressTimerRef.current);
         longPressTimerRef.current = null;
@@ -6477,10 +6480,10 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   }, [context]);
 
   useEffect(() => {
+    // copy ref to local variable so cleanup uses the same snapshot even if ref
+    // is changed later (prevents ESLint ref-change warning and is safer).
+    const cache = attachmentCacheRef.current;
     return () => {
-      // copy ref to local variable so cleanup uses the same snapshot even if ref
-      // is changed later (prevents ESLint ref-change warning and is safer).
-      const cache = attachmentCacheRef.current;
       if (cache && typeof cache.forEach === 'function') {
         cache.forEach(entry => {
           if (entry?.url) {
@@ -8275,7 +8278,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     banModal.reason,
     context?.chatRoomId,
     handleCloseBanModal,
-    manageChatRoomRole,
     refreshRoomBans,
     refreshRooms,
   ]);
@@ -8302,7 +8304,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         setSettingsError(error?.message || '추방을 해제할 수 없습니다.');
       }
     },
-    [context?.chatRoomId, manageChatRoomRole, refreshRoomBans, refreshRooms]
+    [context?.chatRoomId, refreshRoomBans, refreshRooms]
   );
 
   const handleAdjustBanEntry = useCallback(
@@ -8348,7 +8350,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         setSettingsError(error?.message || '추방 기간을 변경할 수 없습니다.');
       }
     },
-    [context?.chatRoomId, refreshRoomBans, updateChatRoomBan, viewerOwnsRoom]
+    [context?.chatRoomId, refreshRoomBans, viewerOwnsRoom]
   );
 
   const handleOpenParticipantProfile = useCallback(participant => {
@@ -8472,13 +8474,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         error: error?.message || '부방장을 임명할 수 없습니다.',
       }));
     }
-  }, [
-    context?.chatRoomId,
-    manageChatRoomRole,
-    profileSheet.participant,
-    refreshRooms,
-    viewerOwnsRoom,
-  ]);
+  }, [context?.chatRoomId, profileSheet.participant, refreshRooms, viewerOwnsRoom]);
 
   const handleDemoteModerator = useCallback(async () => {
     const participant = profileSheet.participant;
@@ -8530,13 +8526,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         error: error?.message || '부방장 해제에 실패했습니다.',
       }));
     }
-  }, [
-    context?.chatRoomId,
-    manageChatRoomRole,
-    profileSheet.participant,
-    refreshRooms,
-    viewerOwnsRoom,
-  ]);
+  }, [context?.chatRoomId, profileSheet.participant, refreshRooms, viewerOwnsRoom]);
 
   const handleOpenSettings = useCallback(() => {
     setSettingsOverlayOpen(true);
