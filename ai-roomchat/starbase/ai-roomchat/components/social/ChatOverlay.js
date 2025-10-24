@@ -6438,14 +6438,14 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     return () => {
       cancelled = true;
     };
-    // NOTE: auto-suppressed by codemod. This effect depends on frequently changing
-    // collections (messages, viewingConversation) which caused noisy re-renders
-    // when added to the dependency list. Review before re-enabling.
-    // NOTE: auto-suppressed by codemod. This suppression was added by automated
-    // tooling to reduce noise. Please review the surrounding effect body and
-    // either add the minimal safe dependencies or keep the suppression with
-    // an explanatory comment before removing this note.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
+  // Suppressed: intentionally omitted some dependencies to avoid noisy re-runs.
+  // Rationale: this effect calls `markChatRoomRead` (a stable service function) and
+  // observes frequently-changing collections such as `messages` and
+  // `viewingConversation` which caused excessive re-execution when fully
+  // enumerated. If you change how `markChatRoomRead` is implemented or expose a
+  // new, non-stable function here, re-evaluate the dependency list and either
+  // add the minimal safe dependencies or wrap mutable handlers in refs.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [
     open,
     context?.type,
@@ -9351,11 +9351,13 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         aiPendingMessageRef.current = null;
       }
     }
-    // NOTE: auto-suppressed by codemod. This suppression was added by automated
-    // tooling to reduce noise. Please review the surrounding effect body and
-    // either add the minimal safe dependencies or keep the suppression with
-    // an explanatory comment before removing this note.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
+  // Suppressed: intentionally omitting some dependencies to avoid noisy re-runs.
+  // Rationale: this callback references `insertMessage` and the external
+  // `supabase` client; including these directly often forces unnecessary
+  // re-creation of the callback. If `insertMessage` or `supabase` become
+  // non-stable (e.g. re-created each render), migrate them to refs or add the
+  // minimal safe dependencies and re-run ESLint/test to confirm behavior.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [
     context,
     handleSendMessage,
