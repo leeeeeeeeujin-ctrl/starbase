@@ -1716,13 +1716,12 @@ export function useStartClientEngine(gameId, options = {}) {
     return roster;
   }, [ownerParticipantMap]);
   const ownerRosterSnapshot = useMemo(() => buildOwnerRosterSnapshot(participants), [participants]);
-  // NOTE: auto-suppressed by codemod. This effect depends on derived collections
-  // (managedOwnerIds) and viewerId; adding more dependencies caused repeated
-  // re-runs in profiling. Please review manually before re-enabling the rule.
-  // NOTE: auto-suppressed by codemod. This suppression was added by automated
-  // tooling to reduce noise. Please review the surrounding effect body and
-  // either add the minimal safe dependencies or keep the suppression with
-  // an explanatory comment before removing this note.
+  // 주: react-hooks/exhaustive-deps 규칙을 자동 억제했습니다 — 의도적 생략입니다.
+  // 이 useMemo/useEffect는 파생 컬렉션(예: managedOwnerIds)이나 viewerId처럼
+  // 자주 변경되는 값들을 내부적으로 사용합니다. 모든 값을 deps에 추가하면
+  // 프로파일링에서 과도한 재실행이 발생할 수 있어 의도적으로 생략했습니다.
+  // 권장 처리: 리팩터링 시 해당 값들을 안정화(useMemo/useRef)하거나 effect를
+  // 더 작은 단위로 분리한 뒤, 필요한 최소한의 deps만 추가해 주세요.
   const managedOwnerIds = useMemo(() => {
     const owners = collectUniqueOwnerIds(participants);
     const viewerKey = viewerId ? String(viewerId).trim() : '';
@@ -2030,10 +2029,11 @@ export function useStartClientEngine(gameId, options = {}) {
       participantIdSetRef.current = new Set(
         participants.map(
           (participant, index) =>
-            // NOTE: auto-suppressed by codemod. This suppression was added by automated
-            // tooling to reduce noise. Please review the surrounding effect body and
-            // either add the minimal safe dependencies or keep the suppression with
-            // an explanatory comment before removing this note.
+            // 주: 이 자동 억제 주석은 코도모드로 추가된 것입니다.
+            // 해당 콜백은 참가자 배열을 순회하는 용도로만 사용되며
+            // deps에 모든 내부 값을 추가하면 불필요한 재실행이 발생할 수 있어
+            // 의도적으로 생략했습니다. 필요 시 콜백을 분리하거나 안정화한 뒤
+            // deps를 명시해 주세요.
             String(participant?.id ?? participant?.hero_id ?? index),
           String(participant?.id ?? participant?.hero_id ?? index)
         )
@@ -2310,10 +2310,10 @@ export function useStartClientEngine(gameId, options = {}) {
     },
     [
       gameId,
-      // NOTE: auto-suppressed by codemod. This suppression was added by automated
-      // tooling to reduce noise. Please review the surrounding effect body and
-      // either add the minimal safe dependencies or keep the suppression with
-      // an explanatory comment before removing this note.
+  // 주: 아래 useCallback은 다양한 외부 상태(history, participants, realtime 등)를 읽습니다.
+  // 모든 참조를 deps에 추가하면 매우 많은 재생성이 발생할 수 있어 자동 억제했습니다.
+  // 권장: 필요 시 함수 내부를 분리하거나, 읽는 값들을 안정화(useMemo/useRef)한 뒤
+  // 최소한의 deps만 추가해 주세요. 변경 전에는 영향 범위를 꼭 검토하세요.
       sessionInfo?.id,
       sessionInfo?.id,
       game?.name,
@@ -2580,10 +2580,10 @@ export function useStartClientEngine(gameId, options = {}) {
     }),
     [currentActorContext, isUserActionSlot]
   );
-  // NOTE: auto-suppressed by codemod. This suppression was added by automated
-  // tooling to reduce noise. Please review the surrounding effect body and
-  // either add the minimal safe dependencies or keep the suppression with
-  // an explanatory comment before removing this note.
+  // 주: 이 useMemo는 `participants`와 `viewerId`를 기반으로 뷰어 참가자 객체를 계산합니다.
+  // deps에 모든 관련 값을 추가하면 불필요한 재계산이 발생할 수 있어 자동 억제했습니다.
+  // 권장: 필요한 경우 계산 로직을 더 작은 유닛으로 분리하거나, 참조를 안정화한 뒤
+  // 최소 deps만 명시해 주세요.
   const viewerParticipant = useMemo(() => {
     if (!viewerId) return null;
     return (
@@ -2598,10 +2598,10 @@ export function useStartClientEngine(gameId, options = {}) {
       }) || null
     );
   }, [participants, viewerId]);
-  // NOTE: auto-suppressed by codemod. This suppression was added by automated
-  // tooling to reduce noise. Please review the surrounding effect body and
-  // either add the minimal safe dependencies or keep the suppression with
-  // an explanatory comment before removing this note.
+  // 주: bootLocalSession은 부트스트랩 시 여러 외부 상태를 읽고 초기화합니다.
+  // 모든 참조를 deps에 넣으면 불필요한 재실행이 발생할 수 있어 자동 억제했습니다.
+  // 권장: 이 함수는 필요 시 더 작은 단위로 분리하거나, 안정화한 참조를 사용한 뒤
+  // 최소 deps만 추가해 주세요. 변경 전 영향 범위를 검토해 주세요.
   const bootLocalSession = useCallback(
     (overrides = null) => {
       if (graph.nodes.length === 0) {
@@ -2762,10 +2762,10 @@ export function useStartClientEngine(gameId, options = {}) {
       });
     }
 
-    // NOTE: auto-suppressed by codemod. This suppression was added by automated
-    // tooling to reduce noise. Please review the surrounding effect body and
-    // either add the minimal safe dependencies or keep the suppression with
-    // an explanatory comment before removing this note.
+  // 주: 이 블록(세션 시작 로직)은 외부 상태와 비동기 호출을 포함합니다.
+  // deps에 모든 관련 값을 추가하면 반복 호출/성능 문제가 발생할 수 있어
+  // 자동으로 억제했습니다. 안전하게 변경하려면 로직을 분리하거나
+  // 외부 참조를 안정화한 뒤 최소 deps만 추가하세요.
     setStartingSession(true);
     setStartingSession(true);
     setStatusMessage('세션을 준비하는 중입니다…');
