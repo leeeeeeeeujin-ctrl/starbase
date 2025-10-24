@@ -75,7 +75,6 @@ export default function useAdvanceTurn(deps) {
     recordOutcomeLedger,
   outcomeLedgerRef,
   buildOutcomeSnapshot,
-  historyRef,
     
     ownerDisplayMapRef,
     isApiKeyError,
@@ -380,8 +379,6 @@ export default function useAdvanceTurn(deps) {
           markSessionDefeated,
           participantsRef: participantsRefLocal,
           participantsStatus,
-          activeGlobalNamesRef,
-          activeLocalNamesRef,
           visitedSlotIdsRef: visitedSlotIdsRefLocal,
         });
 

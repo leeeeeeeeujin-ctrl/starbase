@@ -1,3 +1,6 @@
 ﻿#!/usr/bin/env sh
-\n npx --no -- lint-staged || exit 0
+npx --no -- lint-staged || exit 0
+
+#!/usr/bin/env sh
+npx --no -- lint-staged || exit 0
 
