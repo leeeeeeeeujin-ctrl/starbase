@@ -781,7 +781,7 @@ export function useStartClientEngine(gameId, options = {}) {
         turnEventBackfillAbortRef.current = null;
       }
     }
-  }, [sessionInfo?.id, applyTurnStateChange, fetchTurnStateEvents]);
+  }, [sessionInfo?.id, applyTurnStateChange]);
   const patchEngineState = useCallback(
     payload => {
       dispatchEngine(patchMainGameState(payload));
