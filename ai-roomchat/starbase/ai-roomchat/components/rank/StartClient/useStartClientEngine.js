@@ -61,6 +61,7 @@ import { useStartApiKeyManager } from './hooks/useStartApiKeyManager';
 import { useStartCooldown } from './hooks/useStartCooldown';
 import { useStartManualResponse } from './hooks/useStartManualResponse';
 import { useStartSessionWatchdog } from './hooks/useStartSessionWatchdog';
+import useTurnTimer from './hooks/useTurnTimer';
 import { consumeStartMatchMeta } from '../startConfig';
 import {
   clearGameMatchData,
@@ -1838,27 +1839,12 @@ export function useStartClientEngine(gameId, options = {}) {
     }
   }, [currentNodeId, setLastDropInTurn]);
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
-    if (!turnDeadline) {
-      setTimeRemaining(null);
-      return undefined;
-    }
-
-    const tick = () => {
-      const diff = Math.max(0, Math.ceil((turnDeadline - Date.now()) / 1000));
-      setTimeRemaining(diff);
-    };
-
-    tick();
-
-    const timerId = window.setInterval(tick, 1000);
-    return () => {
-      window.clearInterval(timerId);
-    };
-  }, [turnDeadline, setTimeRemaining]);
+  // 타이머 로직을 분리된 훅으로 이동했습니다 (useTurnTimer).
+  // 목적: effect의 캡처 범위를 줄이고 재사용/테스트를 쉽게 하기 위함입니다.
+  useTurnTimer(turnDeadline, setTimeRemaining);
 
   const systemPrompt = useMemo(() => buildSystemMessage(game || {}), [game]);
+  // useTurnTimer 훅을 통해 turnDeadline 기반 타이머를 분리했습니다.
   const parsedRules = useMemo(() => parseRules(game || {}), [game]);
   const brawlEnabled = parsedRules?.brawl_rule === 'allow-brawl';
   const endConditionVariable = useMemo(() => {
