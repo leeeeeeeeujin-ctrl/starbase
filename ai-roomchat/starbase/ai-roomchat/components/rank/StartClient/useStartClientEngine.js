@@ -2430,8 +2430,7 @@ export function useStartClientEngine(gameId, options = {}) {
     setGeminiModel,
     apiKeyCooldown,
     apiKeyWarning,
-    evaluateApiKeyCooldown,
-    normaliseApiKey,
+  evaluateApiKeyCooldown,
     effectiveApiKey,
     geminiModelOptions,
     geminiModelLoading,
@@ -2546,7 +2545,7 @@ export function useStartClientEngine(gameId, options = {}) {
     () => graph.nodes.find(node => node.id === currentNodeId) || null,
     [graph.nodes, currentNodeId]
   );
-  const aiMemory = useMemo(() => history.getAiMemory({ last: 24 }), [history, historyVersion]);
+  const aiMemory = useMemo(() => history.getAiMemory({ last: 24 }), [history]);
   const playerHistories = useMemo(
     () =>
       participants.map((participant, index) => ({
@@ -2560,7 +2559,7 @@ export function useStartClientEngine(gameId, options = {}) {
           '',
         entries: history.getVisibleForSlot(index, { onlyPublic: true, last: 10 }),
       })),
-    [participants, history, historyVersion]
+    [participants, history]
   );
   const currentActorContext = useMemo(
     () => resolveActorContext({ node: currentNode, slots, participants }),
@@ -2801,7 +2800,7 @@ export function useStartClientEngine(gameId, options = {}) {
       let payload = {};
       try {
         payload = await response.json();
-      } catch (error) {
+      } catch {
         payload = {};
       }
 
@@ -3262,13 +3261,13 @@ export function useStartClientEngine(gameId, options = {}) {
             }
             if (Array.isArray(payload?.entries)) {
               const responseEntry = payload.entries.find(entry => entry?.role === historyRole);
-              if (responseEntry?.summary_payload) {
-                try {
-                  serverSummary = JSON.parse(JSON.stringify(responseEntry.summary_payload));
-                } catch (error) {
-                  serverSummary = responseEntry.summary_payload;
-                }
-              }
+                  if (responseEntry?.summary_payload) {
+                    try {
+                      serverSummary = JSON.parse(JSON.stringify(responseEntry.summary_payload));
+                    } catch {
+                      serverSummary = responseEntry.summary_payload;
+                    }
+                  }
             }
           }
 
