@@ -61,7 +61,9 @@ import { useStartApiKeyManager } from './hooks/useStartApiKeyManager';
 import { useStartCooldown } from './hooks/useStartCooldown';
 import { useStartManualResponse } from './hooks/useStartManualResponse';
 import { useStartSessionWatchdog } from './hooks/useStartSessionWatchdog';
+import useBootLocalSession from './hooks/useBootLocalSession';
 import useTurnTimer from './hooks/useTurnTimer';
+import useAdvanceTurn from './hooks/useAdvanceTurn';
 import { consumeStartMatchMeta } from '../startConfig';
 import {
   clearGameMatchData,
@@ -74,774 +76,69 @@ import {
   readStartSessionValue,
   readStartSessionValues,
 } from '@/lib/rank/startSessionChannel';
-import {
-  getConnectionEntriesForGame,
-  subscribeConnectionRegistry,
-} from '@/lib/rank/startConnectionRegistry';
-
-import {
-  toInt,
-  toTrimmed,
-  toTrimmedString,
-  sanitizeDropInArrivals,
-  stripOutcomeFooter,
-  parseSlotIndex,
-  normalizeSlotLayoutEntries,
-  mergeSlotLayoutSeed,
-  buildParticipantsFromRoster,
-} from './utils';
-
-function buildOutcomeStatusMessage(snapshot) {
-  if (!snapshot) {
-    return '모든 역할군 결과가 확정되어 세션을 종료합니다.';
-  }
-  const summaries = Array.isArray(snapshot.roleSummaries) ? snapshot.roleSummaries : [];
-  const wins = summaries.filter(entry => entry.status === 'won').length;
-  const losses = summaries.filter(entry => entry.status === 'lost').length;
-  const baseLabel = (() => {
-    switch (snapshot.overallResult) {
-      case 'won':
-        return '승리';
-      case 'lost':
-        return '패배';
-      case 'draw':
-        return '무승부';
-      default:
-        return '종료';
-    }
-  })();
-  const pieces = [];
-  if (wins) pieces.push(`${wins}승`);
-  if (losses) pieces.push(`${losses}패`);
-  const summary = pieces.length ? ` (${pieces.join(' · ')})` : '';
-  return `모든 역할군 결과가 확정되어 세션을 ${baseLabel}로 마무리했습니다.${summary}`;
-}
-
-function buildDropInMetaPayload({
-  arrivals,
-  status,
-  bonusSeconds,
-  appliedAt,
-  turnNumber,
-  mode,
-  queueResult,
-  roomId,
-}) {
-  const sanitizedArrivals = sanitizeDropInArrivals(arrivals);
-  const meta = {};
-
-  const normalizedStatus = toTrimmed(status);
-  if (normalizedStatus) meta.status = normalizedStatus;
-
-  const normalizedMode = toTrimmed(mode);
-  if (normalizedMode) meta.mode = normalizedMode;
-
-  const normalizedBonus = toInt(bonusSeconds, { min: 0 });
-  if (normalizedBonus !== null) meta.bonusSeconds = normalizedBonus;
-
-  const normalizedAppliedAt = toInt(appliedAt, { min: 0 });
-  if (normalizedAppliedAt !== null) meta.appliedAt = normalizedAppliedAt;
-
-  const normalizedTurn = toInt(turnNumber, { min: 0 });
-  if (normalizedTurn !== null) meta.turnNumber = normalizedTurn;
-
-  const normalizedRoomId = toTrimmed(roomId);
-  if (normalizedRoomId) meta.targetRoomId = normalizedRoomId;
-
-  if (sanitizedArrivals.length) {
-    meta.arrivals = sanitizedArrivals;
-    const queueDepth = sanitizedArrivals.reduce((max, entry) => {
-      const depth = typeof entry.queueDepth === 'number' ? entry.queueDepth : 0;
-      return depth > max ? depth : max;
-    }, 0);
-    const replacements = sanitizedArrivals.reduce((max, entry) => {
-      const count = typeof entry.replacements === 'number' ? entry.replacements : 0;
-      return count > max ? count : max;
-    }, 0);
-    if (queueDepth > 0) meta.queueDepth = queueDepth;
-    if (replacements > 0) meta.replacements = replacements;
-  }
-
-  if (queueResult?.matching) {
-    meta.matching = queueResult.matching;
-  }
-
-  meta.updatedAt = Date.now();
-
-  return meta;
-}
-import { isRealtimeEnabled, normalizeRealtimeMode } from '@/lib/rank/realtimeModes';
-import { fetchTurnStateEvents } from '@/lib/rank/sessionMetaClient';
-function deepClone(value) {
-  if (value === null || value === undefined) return value;
-  try {
-    return JSON.parse(JSON.stringify(value));
-  } catch {
-    return null;
-  }
-}
-
-function buildRosterEntriesFromAssignments(assignments = []) {
-  if (!Array.isArray(assignments) || assignments.length === 0) return [];
-
-  const entries = [];
-  assignments.forEach(assignment => {
-    if (!assignment) return;
-    const roleName =
-      typeof assignment.role === 'string'
-        ? assignment.role.trim()
-        : typeof assignment.roleName === 'string'
-          ? assignment.roleName.trim()
-          : '';
-
-    const members = Array.isArray(assignment.members)
-      ? assignment.members
-      : Array.isArray(assignment.membership)
-        ? assignment.membership
-        : [];
-
-    members.forEach((member, index) => {
-      if (!member) return;
-      entries.push({
-        slotIndex:
-          member.slotIndex ?? member.slot_index ?? member.slotNo ?? member.slot_no ?? index,
-        role: roleName || null,
-        ownerId:
-          member.ownerId ?? member.owner_id ?? member.occupantOwnerId ?? member.ownerID ?? null,
-        heroId: member.heroId ?? member.hero_id ?? member.occupantHeroId ?? member.heroID ?? null,
-        heroName: member.heroName ?? member.hero_name ?? member.displayName ?? member.name ?? '',
-        ready: Boolean(member.ready ?? member.isReady ?? member.occupantReady),
-        joinedAt: member.joinedAt ?? member.joined_at ?? null,
-      });
-    });
-  });
-
-  return entries;
-}
-
-function deriveRosterFromMatchSnapshot(matchSnapshot) {
-  if (!matchSnapshot) return [];
-
-  const slotCandidates = [];
-  if (Array.isArray(matchSnapshot.slotLayout) && matchSnapshot.slotLayout.length) {
-    slotCandidates.push(matchSnapshot.slotLayout);
-  }
-  if (
-    matchSnapshot.roleStatus &&
-    Array.isArray(matchSnapshot.roleStatus.slotLayout) &&
-    matchSnapshot.roleStatus.slotLayout.length
-  ) {
-    slotCandidates.push(matchSnapshot.roleStatus.slotLayout);
-  }
-
-  for (const candidate of slotCandidates) {
-    const normalized = normalizeRosterEntries(candidate);
-    if (normalized.length) return normalized;
-  }
-
-  const assignmentEntries = buildRosterEntriesFromAssignments(matchSnapshot.assignments);
-  if (assignmentEntries.length) {
-    const normalizedAssignments = normalizeRosterEntries(assignmentEntries);
-    if (normalizedAssignments.length) return normalizedAssignments;
-  }
-
-  return [];
-}
-
-function buildSlotLayoutFromRosterSnapshot(roster = []) {
-  if (!Array.isArray(roster) || roster.length === 0) return [];
-
-  return roster.map(entry => {
-    const ownerId = toTrimmedString(entry.ownerId);
-    const heroId = toTrimmedString(entry.heroId);
-    return {
-      id: entry.slotId,
-      slot_index: entry.slotIndex,
-      slotIndex: entry.slotIndex,
-      role: entry.role || null,
-      active: true,
-      hero_id: heroId,
-      hero_owner_id: ownerId,
-      occupant_owner_id: ownerId,
-      occupant_hero_id: heroId,
-      occupant_ready: entry.ready || false,
-      occupant_joined_at: entry.joinedAt || null,
-    };
-  });
-}
-
-function hydrateParticipantsWithRoster(participants = [], roster = []) {
-  const participantList = Array.isArray(participants) ? participants : [];
-  const rosterList = Array.isArray(roster) ? roster : [];
-
-  if (rosterList.length === 0) {
-    return participantList;
-  }
-
-  if (participantList.length === 0) {
-    return buildParticipantsFromRoster(rosterList);
-  }
-
-  const compositeMap = new Map();
-  const heroMap = new Map();
-  const ownerMap = new Map();
-
-  rosterList.forEach(entry => {
-    const ownerId = toTrimmedString(entry.ownerId);
-    const heroId = toTrimmedString(entry.heroId);
-    if (ownerId && heroId) {
-      const compositeKey = `${ownerId}::${heroId}`;
-      if (!compositeMap.has(compositeKey)) {
-        compositeMap.set(compositeKey, entry);
-      }
-    }
-    if (heroId && !heroMap.has(heroId)) {
-      heroMap.set(heroId, entry);
-    }
-    if (ownerId && !ownerMap.has(ownerId)) {
-      ownerMap.set(ownerId, entry);
-    }
-  });
-
-  const decorated = participantList
-    .map((participant, index) => {
-      if (!participant) {
-        return null;
-      }
-
-      const ownerId = toTrimmedString(deriveParticipantOwnerId(participant));
-      const heroId = toTrimmedString(
-        participant?.hero?.id ?? participant?.hero_id ?? participant?.heroId
-      );
-
-      let rosterEntry = null;
-      if (ownerId && heroId) {
-        rosterEntry = compositeMap.get(`${ownerId}::${heroId}`) || null;
-      }
-      if (!rosterEntry && heroId) {
-        rosterEntry = heroMap.get(heroId) || null;
-      }
-      if (!rosterEntry && ownerId) {
-        rosterEntry = ownerMap.get(ownerId) || null;
-      }
-
-      if (!rosterEntry) {
-        return null;
-      }
-
-      const slotIndex =
-        rosterEntry.slotIndex ??
-        parseSlotIndex(participant.slot_no ?? participant.slotIndex ?? participant.slot_index);
-      const roleValue =
-        (typeof rosterEntry.role === 'string' && rosterEntry.role.trim()) ||
-        participant.role ||
-        null;
-
-      return {
-        participant: {
-          ...participant,
-          slot_no: slotIndex,
-          slotIndex,
-          slot_index: slotIndex,
-          role: roleValue,
-          occupant_ready: rosterEntry.ready ?? participant.occupant_ready ?? null,
-          occupant_joined_at:
-            rosterEntry.joinedAt ?? participant.occupant_joined_at ?? participant.joined_at ?? null,
-        },
-        index,
-      };
-    })
-    .filter(Boolean);
-
-  if (!decorated.length) {
-    return buildParticipantsFromRoster(rosterList);
-  }
-
-  decorated.sort((a, b) => {
-    const slotA = parseSlotIndex(
-      a.participant?.slot_no ?? a.participant?.slotIndex ?? a.participant?.slot_index
-    );
-    const slotB = parseSlotIndex(
-      b.participant?.slot_no ?? b.participant?.slotIndex ?? b.participant?.slot_index
-    );
-    if (slotA != null && slotB != null) {
-      if (slotA === slotB) return a.index - b.index;
-      return slotA - slotB;
-    }
-    if (slotA != null) return -1;
-    if (slotB != null) return 1;
-    return a.index - b.index;
-  });
-
-  return decorated.map(entry => entry.participant);
-}
-
-export function useStartClientEngine(gameId, options = {}) {
-  const hostOwnerIdOption = options?.hostOwnerId ?? '';
-  const normalizedHostOwnerId = useMemo(() => {
-    if (hostOwnerIdOption === null || hostOwnerIdOption === undefined) {
-      return '';
-    }
-    const trimmed = String(hostOwnerIdOption).trim();
-    return trimmed;
-  }, [hostOwnerIdOption]);
-  const storedStartConfig =
-    typeof window === 'undefined'
-      ? {}
-      : readStartSessionValues([
-          START_SESSION_KEYS.API_KEY,
-          START_SESSION_KEYS.API_VERSION,
-          START_SESSION_KEYS.GEMINI_MODE,
-          START_SESSION_KEYS.GEMINI_MODEL,
-          START_SESSION_KEYS.TURN_TIMER,
-        ]);
-  const initialStoredApiKey =
-    typeof window === 'undefined'
-      ? ''
-      : (storedStartConfig[START_SESSION_KEYS.API_KEY] || '').trim();
-  const initialFrontMatchData = typeof window === 'undefined' ? null : hydrateGameMatchData(gameId);
-  const initialSessionMeta =
-    initialFrontMatchData && typeof initialFrontMatchData.sessionMeta === 'object'
-      ? deepClone(initialFrontMatchData.sessionMeta) || initialFrontMatchData.sessionMeta
-      : null;
-  const initialSlotTemplate =
-    initialFrontMatchData && typeof initialFrontMatchData.slotTemplate === 'object'
-      ? deepClone(initialFrontMatchData.slotTemplate) || initialFrontMatchData.slotTemplate
-      : null;
-  const initialMatchMetaCandidate = consumeStartMatchMeta();
-  const baseMatchMeta =
-    initialMatchMetaCandidate || initialFrontMatchData?.matchSnapshot?.match || null;
-  const slotTemplateSlots =
-    initialSlotTemplate && Array.isArray(initialSlotTemplate.slots)
-      ? deepClone(initialSlotTemplate.slots) || initialSlotTemplate.slots
-      : null;
-  let initialMatchMeta = baseMatchMeta ? deepClone(baseMatchMeta) || baseMatchMeta : null;
-
-  if (slotTemplateSlots && slotTemplateSlots.length) {
-    if (initialMatchMeta) {
-      const roleStatusSource =
-        initialMatchMeta.roleStatus && typeof initialMatchMeta.roleStatus === 'object'
-          ? { ...initialMatchMeta.roleStatus }
-          : {};
-      if (!Array.isArray(initialMatchMeta.slotLayout) || !initialMatchMeta.slotLayout.length) {
-        initialMatchMeta = { ...initialMatchMeta, slotLayout: slotTemplateSlots };
-      }
-      if (!Array.isArray(roleStatusSource.slotLayout) || !roleStatusSource.slotLayout.length) {
-        roleStatusSource.slotLayout = slotTemplateSlots;
-      }
-      if (initialSlotTemplate.version && !roleStatusSource.version) {
-        roleStatusSource.version = initialSlotTemplate.version;
-      }
-      if (initialSlotTemplate.updatedAt && !roleStatusSource.updatedAt) {
-        roleStatusSource.updatedAt = initialSlotTemplate.updatedAt;
-      }
-      initialMatchMeta = { ...initialMatchMeta, roleStatus: roleStatusSource };
-    } else {
-      initialMatchMeta = {
-        slotLayout: slotTemplateSlots,
-        roleStatus: {
-          slotLayout: slotTemplateSlots,
-          version: initialSlotTemplate?.version || null,
-          updatedAt: initialSlotTemplate?.updatedAt || null,
-        },
-      };
-    }
-  }
-
-  if (initialSessionMeta?.turnTimer) {
-    const timerMeta = deepClone(initialSessionMeta.turnTimer) || initialSessionMeta.turnTimer;
-    if (initialMatchMeta) {
-      initialMatchMeta = { ...initialMatchMeta, turnTimer: timerMeta };
-    } else {
-      initialMatchMeta = { turnTimer: timerMeta };
-    }
-  }
-  const initialApiVersion =
-    typeof window === 'undefined'
-      ? 'gemini'
-      : storedStartConfig[START_SESSION_KEYS.API_VERSION] || 'gemini';
-  const initialGeminiConfig =
-    typeof window === 'undefined'
-      ? {}
-      : {
-          mode: storedStartConfig[START_SESSION_KEYS.GEMINI_MODE] || undefined,
-          model: storedStartConfig[START_SESSION_KEYS.GEMINI_MODEL] || undefined,
-        };
-  const startMatchMetaRef = useRef(initialMatchMeta);
-  const [startMatchMeta] = useState(initialMatchMeta);
-  const [frontMatchData] = useState(initialFrontMatchData);
-  const historySeeds = useMemo(
-    () => buildHistorySeedEntries(frontMatchData?.sessionHistory),
-    [frontMatchData]
-  );
-  const historySeedRef = useRef(historySeeds);
-  useEffect(() => {
-    historySeedRef.current = historySeeds;
-  }, [historySeeds]);
-  const matchSnapshotSeed = frontMatchData?.matchSnapshot?.match || null;
-  const matchInstanceId = useMemo(() => {
-    if (!matchSnapshotSeed) return '';
-    const direct =
-      matchSnapshotSeed.instanceId ||
-      matchSnapshotSeed.matchInstanceId ||
-      matchSnapshotSeed.match_instance_id ||
-      null;
-    if (direct && typeof direct === 'string') {
-      return direct.trim();
-    }
-    return '';
-  }, [matchSnapshotSeed]);
-  const stagedRoomId = useMemo(() => {
-    if (!matchSnapshotSeed) return '';
-    const rooms = Array.isArray(matchSnapshotSeed.rooms) ? matchSnapshotSeed.rooms : [];
-    if (rooms.length) {
-      const idValue = rooms[0]?.id;
-      if (idValue != null) {
-        const trimmed = String(idValue).trim();
-        if (trimmed) return trimmed;
-      }
-    }
-    return '';
-  }, [matchSnapshotSeed]);
-  const rosterSnapshot = useMemo(() => {
-    const normalized = normalizeRosterEntries(frontMatchData?.participation?.roster || []);
-    if (normalized.length) return normalized;
-    return deriveRosterFromMatchSnapshot(matchSnapshotSeed);
-  }, [frontMatchData, matchSnapshotSeed]);
-  const slotLayoutSeed = useMemo(() => {
-    if (Array.isArray(initialSlotTemplate?.slots) && initialSlotTemplate.slots.length) {
-      const fromTemplate = normalizeSlotLayoutEntries(initialSlotTemplate.slots);
-      if (fromTemplate.length) return fromTemplate;
-    }
-    if (!matchSnapshotSeed) return [];
-    const sources = [];
-    if (Array.isArray(matchSnapshotSeed.slotLayout) && matchSnapshotSeed.slotLayout.length) {
-      sources.push(matchSnapshotSeed.slotLayout);
-    }
-    if (
-      matchSnapshotSeed.roleStatus &&
-      Array.isArray(matchSnapshotSeed.roleStatus.slotLayout) &&
-      matchSnapshotSeed.roleStatus.slotLayout.length
-    ) {
-      sources.push(matchSnapshotSeed.roleStatus.slotLayout);
-    }
-    for (const candidate of sources) {
-      const normalized = normalizeSlotLayoutEntries(candidate);
-      if (normalized.length) return normalized;
-    }
-    return [];
-  }, [matchSnapshotSeed, initialSlotTemplate]);
-  const matchMetaLoggedRef = useRef(false);
-  const gameIdRef = useRef(gameId ? String(gameId) : '');
-  const [connectionRoster, setConnectionRoster] = useState(() =>
-    getConnectionEntriesForGame(gameId)
-  );
-
-  const { history, historyVersion, bumpHistoryVersion } = useHistoryBuffer();
-  const { manualResponse, setManualResponse, clearManualResponse, requireManualResponse } =
-    useStartManualResponse();
-
-  const [engineState, dispatchEngine] = useReducer(mainGameReducer, initialMainGameState);
-  const {
-    loading,
-    error,
-    game,
-    participants,
-    slotLayout,
-    graph,
+  // Delegate advanceTurn to the extracted hook to reduce local complexity.
+  // Use a minimal dependency object to keep the hook contract explicit and
+  // reduce coupling. If tests fail, we'll reintroduce missing deps iteratively.
+  const advanceTurnDeps = {
     preflight,
-    turn,
     currentNodeId,
+    graph,
+    slots,
+    history,
+    aiMemory,
     activeGlobal,
     activeLocal,
-    logs,
-    battleLogDraft,
-    statusMessage,
-    promptMetaWarning,
-    isAdvancing,
+    manualResponse,
+    effectiveApiKey,
+    apiVersion,
+    systemPrompt,
+    turn,
+    participants,
+    realtimeEnabled,
+    brawlEnabled,
     winCount,
-    lastDropInTurn,
     viewerId,
-    turnDeadline,
-    timeRemaining,
-    activeHeroAssets,
-    activeActorNames,
-  } = engineState;
-  const [startingSession, setStartingSession] = useState(false);
-  const [gameVoided, setGameVoided] = useState(false);
-  const [sessionInfo, setSessionInfo] = useState(null);
-  const remoteSessionAdoptedRef = useRef(false);
-  const bootLocalSessionRef = useRef(null);
-  const remoteSessionFetchRef = useRef({ running: false, lastFetchedAt: 0 });
-  const outcomeLedgerRef = useRef(createOutcomeLedger());
-  const [sessionOutcome, setSessionOutcome] = useState(() =>
-    buildOutcomeSnapshot(outcomeLedgerRef.current)
-  );
-  const sessionFinalizedRef = useRef(false);
+    gameId,
+    sessionInfo,
 
-  const realtimeMode = useMemo(
-    () => normalizeRealtimeMode(game?.realtime_match),
-    [game?.realtime_match]
-  );
-  const realtimeEnabled = isRealtimeEnabled(realtimeMode);
-  const logsRef = useRef([]);
-  const currentNodeIdRef = useRef(initialMainGameState.currentNodeId);
-  const participantsRef = useRef([]);
-  const statusMessageRef = useRef('');
-  const turnRef = useRef(initialMainGameState.turn);
-  const promptMetaWarningRef = useRef('');
-  const winCountRef = useRef(initialMainGameState.winCount);
-  const turnDeadlineRef = useRef(initialMainGameState.turnDeadline);
-  const timeRemainingRef = useRef(initialMainGameState.timeRemaining);
-  const lastBroadcastTurnStateRef = useRef({ turnNumber: 0, deadline: 0 });
-  const lastRealtimeTurnEventRef = useRef({ id: null, emittedAt: 0, turnNumber: 0 });
-  const turnEventBackfillAbortRef = useRef(null);
-  const lastBattleLogSignatureRef = useRef(null);
-  const setTurnCallbackRef = useRef(null);
-  const setTurnDeadlineCallbackRef = useRef(null);
-  const setTimeRemainingCallbackRef = useRef(null);
-  const setLastDropInTurnCallbackRef = useRef(null);
+    // setters / side-effect helpers
+    updateHeroAssets,
+    logTurnEntries,
+    ensureApiKeyReady,
+    persistApiKeyOnServer,
+    applyRealtimeSnapshot,
+    recordTurnState,
+    captureBattleLog,
+    clearManualResponse,
+    clearSessionRecord,
+    finalizeSessionRemotely,
+    patchEngineState,
+    setActiveGlobal,
+    setActiveLocal,
+    setCurrentNodeId,
+    setIsAdvancing,
+    setLogs,
+    setStatusMessage,
+    setTimeRemaining,
+    setTurn,
+    setTurnDeadline,
+    setWinCount,
 
-  useEffect(() => {
-    remoteSessionAdoptedRef.current = false;
-    remoteSessionFetchRef.current = { running: false, lastFetchedAt: 0 };
-  }, [gameId, matchInstanceId, patchEngineState, rosterSnapshot, setPromptMetaWarning, slotLayoutSeed, stagedRoomId]);
+    // refs / helpers
+    realtimeManagerRef,
+  // NOTE: several pure helpers (makeNodePrompt, prepareHistoryPayload,
+  // buildUserActionPersona, pickNextEdge, resolveActorContext,
+  // resolveSlotBinding, deriveEligibleOwnerIds) are imported directly
+  // inside `useAdvanceTurn` to shrink this call-site deps object.
+  outcomeLedgerRef,
+  recordOutcomeLedger,
+  buildOutcomeSnapshot,
 
-  useEffect(() => {
-    if (!sessionInfo?.id) {
-      remoteSessionAdoptedRef.current = false;
-    }
-  }, [sessionInfo?.id]);
-  const applyTurnStateChange = useCallback(
-    (change, { commitTimestamp } = {}) => {
-      if (!change || typeof change !== 'object') {
-        return;
-      }
+    // utils
+    isApiKeyError,
+  };
 
-      const sessionId = sessionInfo?.id;
-      if (!sessionId) {
-        return;
-      }
-
-      const targetSessionId = change.session_id || change.sessionId || sessionId;
-      if (!targetSessionId || targetSessionId !== sessionId) {
-        return;
-      }
-
-      const state = change.state || change.turn_state || null;
-      if (!state || typeof state !== 'object') {
-        return;
-      }
-
-      const eventId = (() => {
-        if (change.id !== undefined && change.id !== null) {
-          return String(change.id);
-        }
-        const turnValue = Number(state.turnNumber);
-        const normalizedTurn =
-          Number.isFinite(turnValue) && turnValue >= 0 ? Math.floor(turnValue) : 0;
-        const emittedToken =
-          change.emitted_at || change.emittedAt || commitTimestamp || state.updatedAt || Date.now();
-        return `${sessionId}:${normalizedTurn}:${emittedToken}`;
-      })();
-
-      const emittedAtValue = (() => {
-        const candidates = [change.emitted_at, change.emittedAt, commitTimestamp, state.updatedAt];
-        for (const candidate of candidates) {
-          if (candidate === null || candidate === undefined || candidate === '') continue;
-          const numeric = Number(candidate);
-          if (Number.isFinite(numeric) && numeric > 0) {
-            return Math.floor(numeric);
-          }
-          const timestamp = new Date(candidate).getTime();
-          if (!Number.isNaN(timestamp)) return timestamp;
-        }
-        return Date.now();
-      })();
-
-      const lastEvent = lastRealtimeTurnEventRef.current;
-      if (lastEvent?.id === eventId) {
-        return;
-      }
-      if (
-        lastEvent &&
-        lastEvent.emittedAt &&
-        emittedAtValue &&
-        emittedAtValue <= lastEvent.emittedAt &&
-        Number.isFinite(Number(state.turnNumber)) &&
-        lastEvent.turnNumber >= Math.floor(Number(state.turnNumber))
-      ) {
-        return;
-      }
-
-      lastRealtimeTurnEventRef.current = {
-        id: eventId,
-        emittedAt: emittedAtValue,
-        turnNumber: Number.isFinite(Number(state.turnNumber))
-          ? Math.floor(Number(state.turnNumber))
-          : 0,
-      };
-
-      if (gameId) {
-        setGameMatchSessionMeta(gameId, {
-          turnState: {
-            ...state,
-            source: state.source || change.source || 'realtime',
-            updatedAt: emittedAtValue,
-          },
-          extras: change.extras || undefined,
-          source: 'realtime/turn-state',
-        });
-      }
-
-      const numericTurn = Number.isFinite(Number(state.turnNumber))
-        ? Math.max(0, Math.floor(Number(state.turnNumber)))
-        : null;
-      if (numericTurn !== null) {
-        setTurnCallbackRef.current?.(numericTurn);
-      }
-
-      const resolvedDeadline = Number(state.deadline);
-      const deadlineMillis =
-        Number.isFinite(resolvedDeadline) && resolvedDeadline > 0
-          ? Math.floor(resolvedDeadline)
-          : 0;
-      if (deadlineMillis) {
-        setTurnDeadlineCallbackRef.current?.(deadlineMillis);
-      } else {
-        setTurnDeadlineCallbackRef.current?.(null);
-      }
-
-      const remainingFromState = Number(state.remainingSeconds);
-      let resolvedRemaining =
-        Number.isFinite(remainingFromState) && remainingFromState >= 0
-          ? Math.floor(remainingFromState)
-          : null;
-      if (deadlineMillis) {
-        const derived = Math.floor((deadlineMillis - Date.now()) / 1000);
-        if (!Number.isFinite(resolvedRemaining) || resolvedRemaining < 0) {
-          resolvedRemaining = derived;
-        }
-      }
-      if (Number.isFinite(resolvedRemaining)) {
-        setTimeRemainingCallbackRef.current?.(Math.max(0, resolvedRemaining));
-      } else {
-        setTimeRemainingCallbackRef.current?.(null);
-      }
-
-      const dropInTurn = Number(state.dropInBonusTurn);
-      if (Number.isFinite(dropInTurn) && dropInTurn > 0) {
-        setLastDropInTurnCallbackRef.current?.(Math.floor(dropInTurn));
-      }
-
-      lastBroadcastTurnStateRef.current = {
-        turnNumber: numericTurn || 0,
-        deadline: deadlineMillis,
-      };
-    },
-    [
-      sessionInfo?.id,
-      gameId,
-      setTurnCallbackRef,
-      setTurnDeadlineCallbackRef,
-      setTimeRemainingCallbackRef,
-      setLastDropInTurnCallbackRef,
-    ]
-  );
-  const backfillTurnEvents = useCallback(async () => {
-    if (!sessionInfo?.id) {
-      return;
-    }
-    const controller = new AbortController();
-    if (turnEventBackfillAbortRef.current) {
-      turnEventBackfillAbortRef.current.abort();
-    }
-    turnEventBackfillAbortRef.current = controller;
-    try {
-      const lastEvent = lastRealtimeTurnEventRef.current;
-      const since = lastEvent?.emittedAt ? Number(lastEvent.emittedAt) : null;
-      const events = await fetchTurnStateEvents({
-        sessionId: sessionInfo.id,
-        since,
-        limit: 50,
-        signal: controller.signal,
-      });
-      events.forEach(event => {
-        if (!event || typeof event !== 'object') return;
-        applyTurnStateChange(event, {
-          commitTimestamp: event.emitted_at || event.emittedAt || null,
-        });
-      });
-    } catch (error) {
-      if (!controller.signal.aborted) {
-        console.error('[StartClient] 턴 이벤트 백필 실패:', error);
-      }
-    } finally {
-      if (turnEventBackfillAbortRef.current === controller) {
-        turnEventBackfillAbortRef.current = null;
-      }
-    }
-  }, [sessionInfo?.id, applyTurnStateChange]);
-  const patchEngineState = useCallback(
-    payload => {
-      dispatchEngine(patchMainGameState(payload));
-    },
-    [dispatchEngine]
-  );
-  useEffect(() => {
-    gameIdRef.current = gameId ? String(gameId) : '';
-    setConnectionRoster(getConnectionEntriesForGame(gameId));
-  }, [gameId, rosterSnapshot, slotLayoutSeed]);
-  useEffect(() => {
-    if (!frontMatchData) return;
-    if (!startMatchMetaRef.current && frontMatchData.matchSnapshot?.match) {
-      startMatchMetaRef.current = frontMatchData.matchSnapshot.match;
-    }
-  }, [frontMatchData]);
-  useEffect(() => {
-    const unsubscribe = subscribeConnectionRegistry(() => {
-      const key = gameIdRef.current;
-      if (!key) {
-        setConnectionRoster([]);
-        return;
-      }
-      setConnectionRoster(getConnectionEntriesForGame(key));
-    });
-    return unsubscribe;
-  }, [setViewerId]);
-  useEffect(() => {
-    return () => {
-      if (gameId) {
-        clearGameMatchData(gameId);
-      }
-    };
-  }, [gameId]);
-  useEffect(() => {
-    patchEngineState({ connectionRoster });
-  }, [connectionRoster, patchEngineState]);
-  const replaceEngineLogs = useCallback(
-    entries => {
-      dispatchEngine(replaceMainGameLogs(entries));
-    },
-    [dispatchEngine]
-  );
-  // appendEngineLogs: 제거 — 정의는 되어 있었으나 내부에서 사용되지 않습니다.
-  // 필요 시 재도입하세요.
-  const setStatusMessage = useCallback(
-    value => {
-      if (typeof value === 'function') {
-        const next = value(statusMessageRef.current);
-        patchEngineState({ statusMessage: next });
-      } else {
-        patchEngineState({ statusMessage: value });
-      }
-    },
-    [patchEngineState]
-  );
-  const setCurrentNodeId = useCallback(
-    value => {
-      if (typeof value === 'function') {
-        const next = value(currentNodeIdRef.current);
+  const advanceTurn = useAdvanceTurn(advanceTurnDeps);
         patchEngineState({ currentNodeId: next ?? null });
       } else {
         patchEngineState({ currentNodeId: value ?? null });
@@ -2570,153 +1867,49 @@ export function useStartClientEngine(gameId, options = {}) {
   // 모든 참조를 deps에 넣으면 불필요한 재실행이 발생할 수 있어 자동 억제했습니다.
   // 권장: 이 함수는 필요 시 더 작은 단위로 분리하거나, 안정화한 참조를 사용한 뒤
   // 최소 deps만 추가해 주세요. 변경 전 영향 범위를 검토해 주세요.
-  const bootLocalSession = useCallback(
-    (overrides = null) => {
-      if (graph.nodes.length === 0) {
-        patchEngineState({
-          statusMessage: '시작할 프롬프트 세트를 찾을 수 없습니다.',
-        });
-        return;
-      }
-
-      const sessionParticipants = Array.isArray(overrides)
-        ? overrides.filter(Boolean)
-        : participants;
-
-      if (!sessionParticipants || sessionParticipants.length === 0) {
-        patchEngineState({
-          statusMessage: '참가자를 찾을 수 없어 게임을 시작할 수 없습니다.',
-        });
-        return;
-      }
-
-      if (overrides) {
-        patchEngineState({ participants: sessionParticipants });
-      }
-
-      const sessionSlots = buildSlotsFromParticipants(sessionParticipants);
-
-      const startNode = graph.nodes.find(node => node.is_start) || graph.nodes[0];
-      history.beginSession();
-      bumpHistoryVersion();
-      const seeds = Array.isArray(historySeedRef.current) ? historySeedRef.current : [];
-      if (seeds.length) {
-        const hasSystemSeed = seeds.some(entry => entry.role === 'system');
-        if (!hasSystemSeed && systemPrompt) {
-          history.push({
-            role: 'system',
-            content: systemPrompt,
-            public: false,
-            includeInAi: true,
-            meta: { seeded: true },
-          });
-        }
-        seeds.forEach(seed => history.push(seed));
-      } else if (systemPrompt) {
-        history.push({ role: 'system', content: systemPrompt, public: false });
-      }
-
-      const sessionOwnerIds = collectUniqueOwnerIds(sessionParticipants);
-      const viewerKey = viewerId ? String(viewerId).trim() : '';
-      const managedOwnersForSession = viewerKey
-        ? [viewerKey, ...sessionOwnerIds.filter(ownerId => ownerId !== viewerKey)]
-        : sessionOwnerIds;
-      const sessionRosterSnapshot = buildOwnerRosterSnapshot(sessionParticipants);
-
-      if (realtimeManagerRef.current) {
-        const manager = realtimeManagerRef.current;
-        manager.reset();
-        if (realtimeEnabled) {
-          manager.syncParticipants(sessionParticipants);
-          manager.setManagedOwners(managedOwnersForSession);
-          manager.beginTurn({
-            turnNumber: 1,
-            eligibleOwnerIds: deriveEligibleOwnerIds(sessionParticipants),
-          });
-        } else {
-          manager.setManagedOwners([]);
-        }
-        applyRealtimeSnapshot(manager.getSnapshot());
-      }
-
-      visitedSlotIds.current = new Set();
-      apiVersionLock.current = null;
-      turnTimerServiceRef.current?.configureBase(turnTimerSeconds);
-      turnTimerServiceRef.current?.reset();
-      dropInQueueRef.current?.reset();
-      processedDropInReleasesRef.current.clear();
-      asyncSessionManagerRef.current?.reset();
-      participantIdSetRef.current = new Set(
-        sessionParticipants.map((participant, index) =>
-          String(participant?.id ?? participant?.hero_id ?? index)
-        )
-      );
-      lastScheduledTurnRef.current = 0;
-      setPreflight(false);
-      setGameVoided(false);
-      setTurn(1);
-      setLogs(() => {
-        logsRef.current = [];
-        return [];
-      });
-      setBattleLogDraft(null);
-      setWinCount(0);
-      setLastDropInTurn(null);
-      setActiveGlobal([]);
-      setActiveLocal([]);
-      setStatusMessage('게임이 시작되었습니다.');
-      const startContext = resolveActorContext({
-        node: startNode,
-        slots: sessionSlots,
-        participants: sessionParticipants,
-      });
-      const startNames = startContext?.participant?.hero?.name
-        ? [startContext.participant.hero.name]
-        : startContext?.heroSlot?.name
-          ? [startContext.heroSlot.name]
-          : [];
-      updateHeroAssets(startNames, startContext);
-      rememberActiveSession({
-        turn: 1,
-        actorNames: startNames,
-        status: 'active',
-        defeated: false,
-        sharedOwners: managedOwnersForSession,
-        ownerRoster: sessionRosterSnapshot,
-      });
-      setTurnDeadline(null);
-      setTimeRemaining(null);
-      clearConsensusVotes();
-      setCurrentNodeId(startNode.id);
-    },
-    [
-      graph.nodes,
-      history,
-      systemPrompt,
-      participants,
-      updateHeroAssets,
-      rememberActiveSession,
-      turnTimerSeconds,
-      realtimeEnabled,
-      viewerId,
-      applyRealtimeSnapshot,
-      bumpHistoryVersion,
-      clearConsensusVotes,
-      patchEngineState,
-      setActiveGlobal,
-      setActiveLocal,
-      setBattleLogDraft,
-      setCurrentNodeId,
-      setLastDropInTurn,
-      setLogs,
-      setPreflight,
-      setStatusMessage,
-      setTimeRemaining,
-      setTurn,
-      setTurnDeadline,
-      setWinCount,
-    ]
-  );
+  const bootLocalSession = useBootLocalSession({
+    graph,
+    history,
+    historySeedRef,
+    systemPrompt,
+    participants,
+    updateHeroAssets,
+    rememberActiveSession,
+    turnTimerSeconds,
+    realtimeEnabled,
+    viewerId,
+    applyRealtimeSnapshot,
+    bumpHistoryVersion,
+    clearConsensusVotes,
+    patchEngineState,
+    setActiveGlobal,
+    setActiveLocal,
+    setBattleLogDraft,
+    setCurrentNodeId,
+    setLastDropInTurn,
+    setLogs,
+    setPreflight,
+    setStatusMessage,
+    setTimeRemaining,
+    setTurn,
+    setTurnDeadline,
+    setWinCount,
+    realtimeManagerRef,
+    visitedSlotIds,
+    apiVersionLock,
+    turnTimerServiceRef,
+    dropInQueueRef,
+    processedDropInReleasesRef,
+    asyncSessionManagerRef,
+    participantIdSetRef,
+    lastScheduledTurnRef,
+    logsRef,
+    buildSlotsFromParticipants,
+    deriveEligibleOwnerIds,
+    collectUniqueOwnerIds,
+    buildOwnerRosterSnapshot,
+    resolveActorContext,
+  });
   bootLocalSessionRef.current = bootLocalSession;
 
   const handleStart = useCallback(async () => {
