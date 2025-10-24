@@ -1,5 +1,5 @@
 // components/maker/PromptNode.js
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { Handle, Position } from 'reactflow';
 
 export default function PromptNode({ id, data, selected }) {

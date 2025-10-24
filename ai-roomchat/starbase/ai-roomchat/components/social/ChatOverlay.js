@@ -5486,7 +5486,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       textColor: palette.textColor,
       autoContrast: rawTheme.autoContrast !== false,
     });
-  }, [context?.type, context?.chatRoomId, currentRoom, settingsOverlayOpen]);
+  }, [context, currentRoom, settingsOverlayOpen]);
 
   const viewerOwnsRoom = useMemo(
     () =>
@@ -5496,14 +5496,14 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           viewerToken &&
           roomOwnerToken === viewerToken
       ),
-    [context?.type, roomOwnerToken, viewerToken]
+  [context, roomOwnerToken, viewerToken]
   );
 
   const viewerIsModerator = useMemo(
     () =>
       viewerOwnsRoom ||
       (context?.type === 'chat-room' && viewerToken && moderatorTokenSet.has(viewerToken)),
-    [context?.type, moderatorTokenSet, viewerOwnsRoom, viewerToken]
+  [context, moderatorTokenSet, viewerOwnsRoom, viewerToken]
   );
 
   useEffect(() => {
@@ -5561,7 +5561,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       autoContrast: activeThemeConfig.autoContrast !== false,
       metadata: roomPreferences?.metadata || {},
     });
-  }, [context?.type, currentRoom, roomPreferences]);
+  }, [context, currentRoom, roomPreferences]);
 
   const ownerThemeFallback = useMemo(
     () =>

@@ -1,7 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
-
+import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { logError } from '../lib/utils/debugTool';
 

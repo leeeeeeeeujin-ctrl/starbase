@@ -1,5 +1,4 @@
-import React, { useMemo, useState } from 'react';
-
+import { useMemo, useState } from 'react';
 export default function TokenPalette({ onInsert }) {
   const [slot, setSlot] = useState('1');
   const [prop, setProp] = useState('name');

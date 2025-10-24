@@ -1,6 +1,6 @@
 // pages/auth-callback.js  ← 방법 B를 선택한 예시
 'use client';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { handleOAuthCallback } from '../lib/auth';
 

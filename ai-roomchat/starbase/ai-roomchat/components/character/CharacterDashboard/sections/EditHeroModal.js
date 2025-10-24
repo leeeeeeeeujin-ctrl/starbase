@@ -1,5 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useCharacterDashboardContext } from '../context';
 import HeroDetailsForm from './editHero/HeroDetailsForm';
 import HeroBackgroundSection from './editHero/HeroBackgroundSection';

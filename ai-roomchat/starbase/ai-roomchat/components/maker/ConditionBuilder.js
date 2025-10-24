@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ConditionParameterFields } from './conditions/ConditionParameterFields';
 import { CONDITION_DEFINITIONS } from './conditions/definitions';
 import { buildEdgeLabel } from './conditions/edgeLabels';

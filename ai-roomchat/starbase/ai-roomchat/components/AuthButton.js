@@ -1,7 +1,6 @@
 'use client';
 
-import React, { useCallback, useState } from 'react';
-
+import { useCallback, useState } from 'react';
 import { startGoogleOAuth } from '../lib/auth';
 import { logError } from '../lib/utils/debugTool';
 
