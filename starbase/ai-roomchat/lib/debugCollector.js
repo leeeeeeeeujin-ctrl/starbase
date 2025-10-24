@@ -40,6 +40,28 @@ export function addDebugEvent(entry = {}) {
   }
 
   notify();
+
+  // 개발용: STARTCLIENT_DEBUG 환경변수가 설정된 경우 콘솔에 요약을 출력해
+  // 로컬 디버깅과 테스트 실행 시 로그를 바로 확인할 수 있게 합니다.
+  try {
+    const enabled =
+      (typeof process !== 'undefined' && process.env && (process.env.STARTCLIENT_DEBUG === '1' || String(process.env.STARTCLIENT_DEBUG).toLowerCase() === 'true')) ||
+      false;
+    if (enabled && typeof console !== 'undefined' && typeof console.debug === 'function') {
+      try {
+        const summary = `${event.timestamp} [${event.source}] ${event.level}: ${event.message}`;
+        console.debug(summary);
+        if (event.details || event.payload) {
+          console.debug('  details:', event.details || event.payload);
+        }
+      } catch (e) {
+        // swallow
+      }
+    }
+  } catch (e) {
+    // noop
+  }
+
   return event;
 }
 

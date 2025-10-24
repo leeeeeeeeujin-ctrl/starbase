@@ -11,6 +11,7 @@
     "check:blueprint-progress-freshness": "node scripts/check-rank-blueprint-progress-freshness.js",
     "check:blueprint-next-actions": "node scripts/check-rank-blueprint-next-actions.js",
     "test": "jest",
+  "test:debug": "node scripts/run-tests-debug.js",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint --ext .js,.jsx,.ts,.tsx .",
