@@ -1,5 +1,3 @@
-import React from 'react'
-
 export default function ChatPanel({
   displayName,
   avatarUrl,
@@ -23,7 +21,7 @@ export default function ChatPanel({
         </div>
       </div>
       <div ref={listRef} style={styles.messageList}>
-        {messages.map((message) => (
+        {messages.map(message => (
           <div key={message.id} style={styles.messageRow}>
             {message.avatar_url ? (
               <img src={message.avatar_url} alt="" style={styles.messageAvatar} />
@@ -33,7 +31,9 @@ export default function ChatPanel({
             <div>
               <div style={styles.messageHeader}>
                 <span style={styles.messageAuthor}>{message.username}</span>
-                <span style={styles.messageTime}>{new Date(message.created_at).toLocaleTimeString()}</span>
+                <span style={styles.messageTime}>
+                  {new Date(message.created_at).toLocaleTimeString()}
+                </span>
               </div>
               <p style={styles.messageBody}>{message.text}</p>
             </div>
@@ -43,11 +43,11 @@ export default function ChatPanel({
       <div style={styles.composerRow}>
         <input
           value={input}
-          onChange={(event) => onInputChange(event.target.value)}
-          onKeyDown={(event) => {
+          onChange={event => onInputChange(event.target.value)}
+          onKeyDown={event => {
             if (event.key === 'Enter' && !event.shiftKey) {
-              event.preventDefault()
-              onSend()
+              event.preventDefault();
+              onSend();
             }
           }}
           placeholder="메시지를 입력하세요…"
@@ -58,7 +58,7 @@ export default function ChatPanel({
         </button>
       </div>
     </div>
-  )
+  );
 }
 
 const styles = {
@@ -163,5 +163,5 @@ const styles = {
     fontWeight: 700,
     border: 'none',
   },
-}
+};
 //

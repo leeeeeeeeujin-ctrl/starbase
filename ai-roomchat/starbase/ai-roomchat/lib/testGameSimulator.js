@@ -94,16 +94,14 @@ export async function createTestSimulation(supabaseClient, options) {
   }
 
   // 7. 세션 메타 생성
-  await supabaseClient
-    .from('test_rank_session_meta')
-    .insert({
-      session_id: session.id,
-      turn_limit: turnLimit,
-      extras: {
-        simulation_config: config,
-        match_result: matchResult,
-      },
-    });
+  await supabaseClient.from('test_rank_session_meta').insert({
+    session_id: session.id,
+    turn_limit: turnLimit,
+    extras: {
+      simulation_config: config,
+      match_result: matchResult,
+    },
+  });
 
   // 8. 슬롯 생성 (첫 번째 방만 사용)
   const firstRoom = matchResult.assignments[0];
@@ -138,9 +136,7 @@ export async function createTestSimulation(supabaseClient, options) {
     status: 'active',
   }));
 
-  await supabaseClient
-    .from('test_rank_participants')
-    .insert(participants);
+  await supabaseClient.from('test_rank_participants').insert(participants);
 
   return {
     sessionId: session.id,
@@ -156,11 +152,13 @@ export async function createTestSimulation(supabaseClient, options) {
 export async function getTestSimulation(supabaseClient, sessionId) {
   const { data: session, error: sessionError } = await supabaseClient
     .from('test_rank_sessions')
-    .select(`
+    .select(
+      `
       *,
       test_rank_session_meta(*),
       test_rank_session_slots(*)
-    `)
+    `
+    )
     .eq('id', sessionId)
     .single();
 
@@ -171,10 +169,12 @@ export async function getTestSimulation(supabaseClient, sessionId) {
   // 배틀 로그 가져오기
   const { data: battles } = await supabaseClient
     .from('test_rank_battles')
-    .select(`
+    .select(
+      `
       *,
       test_rank_battle_logs(*)
-    `)
+    `
+    )
     .eq('game_id', session.game_id)
     .order('created_at', { ascending: true });
 
@@ -217,11 +217,13 @@ export async function advanceSimulationTurn(supabaseClient, sessionId, aiClient 
   // 1. 세션 정보 가져오기
   const { data: session } = await supabaseClient
     .from('test_rank_sessions')
-    .select(`
+    .select(
+      `
       *,
       test_rank_session_meta(*),
       test_rank_session_slots(*)
-    `)
+    `
+    )
     .eq('id', sessionId)
     .single();
 
@@ -252,7 +254,7 @@ export async function advanceSimulationTurn(supabaseClient, sessionId, aiClient 
   // 3. AI 응답 생성 (또는 더미 응답)
   let aiResponse = '자동 진행 중...';
   let outcome = Math.random() > 0.5 ? 'attacker_win' : 'defender_win';
-  
+
   if (aiClient) {
     try {
       const prompt = `턴 ${currentTurn}: ${attacker.role} vs ${defender.role}의 대결을 묘사해주세요.`;
@@ -284,16 +286,14 @@ export async function advanceSimulationTurn(supabaseClient, sessionId, aiClient 
 
   // 5. 배틀 로그 저장
   if (battle) {
-    await supabaseClient
-      .from('test_rank_battle_logs')
-      .insert({
-        game_id: session.game_id,
-        battle_id: battle.id,
-        turn_no: currentTurn,
-        prompt: `턴 ${currentTurn}`,
-        ai_response: aiResponse,
-        meta: { outcome },
-      });
+    await supabaseClient.from('test_rank_battle_logs').insert({
+      game_id: session.game_id,
+      battle_id: battle.id,
+      turn_no: currentTurn,
+      prompt: `턴 ${currentTurn}`,
+      ai_response: aiResponse,
+      meta: { outcome },
+    });
   }
 
   // 6. 세션 턴 증가
@@ -345,11 +345,13 @@ export async function advanceSimulationTurn(supabaseClient, sessionId, aiClient 
 export async function listTestSimulations(supabaseClient) {
   const { data: sessions } = await supabaseClient
     .from('test_rank_sessions')
-    .select(`
+    .select(
+      `
       *,
       test_rank_session_meta(*),
       rank_games(name)
-    `)
+    `
+    )
     .order('created_at', { ascending: false })
     .limit(50);
 
@@ -364,32 +366,22 @@ export async function deleteTestSimulation(supabaseClient, sessionId) {
   await supabaseClient
     .from('test_rank_battle_logs')
     .delete()
-    .in('battle_id', 
+    .in(
+      'battle_id',
       supabaseClient
         .from('test_rank_battles')
         .select('id')
-        .eq('game_id', 
-          supabaseClient
-            .from('test_rank_sessions')
-            .select('game_id')
-            .eq('id', sessionId)
+        .eq(
+          'game_id',
+          supabaseClient.from('test_rank_sessions').select('game_id').eq('id', sessionId)
         )
     );
 
-  await supabaseClient
-    .from('test_rank_session_slots')
-    .delete()
-    .eq('session_id', sessionId);
+  await supabaseClient.from('test_rank_session_slots').delete().eq('session_id', sessionId);
 
-  await supabaseClient
-    .from('test_rank_session_meta')
-    .delete()
-    .eq('session_id', sessionId);
+  await supabaseClient.from('test_rank_session_meta').delete().eq('session_id', sessionId);
 
-  await supabaseClient
-    .from('test_rank_sessions')
-    .delete()
-    .eq('id', sessionId);
+  await supabaseClient.from('test_rank_sessions').delete().eq('id', sessionId);
 }
 
 /**

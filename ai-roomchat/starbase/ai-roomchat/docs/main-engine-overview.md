@@ -3,6 +3,7 @@
 이 문서는 `StartClient` 메인 엔진의 상태 머신(`mainGameMachine.js`)과 이를 구동하는 훅(`useStartClientEngine.js`)의 상호 작용을 요약합니다.
 
 ## 1. 메인 상태 스냅샷
+
 `mainGameMachine.js`는 로딩 상태, 참가자 목록, 그래프, 현재 턴 메타, 로그 및 히어로 자산 등 경기 진행에 필요한 모든 정보를 `initialMainGameState`로 정의합니다. 각 필드는 다음과 같은 역할을 가집니다.
 
 - `loading`, `error`: 번들 로딩 및 서비스 초기화 여부를 추적합니다.
@@ -16,6 +17,7 @@
 - `activeHeroAssets`, `activeActorNames`: 현재 장면에 필요한 배경/음악/보이스 프로필과 연기자 명단을 포함합니다.
 
 ## 2. 리듀서 액션
+
 메인 엔진은 네 가지 액션으로 상태를 변환합니다.
 
 - `RESET`: 번들 재로딩 또는 매치 교체 시 기본 상태로 되돌립니다.
@@ -26,6 +28,7 @@
 이들 액션은 `useStartClientEngine` 훅에서 `dispatchEngine`을 통해 호출되며, 콜백 래퍼(`patchEngineState`, `replaceEngineLogs`, `appendEngineLogs`)로 캡슐화돼 UI·서비스 훅에서 안전하게 재사용됩니다.
 
 ## 3. 엔진 구동 흐름
+
 `useStartClientEngine` 훅은 다음 절차로 메인 상태를 갱신합니다.
 
 1. **번들 로딩**: `loadGameBundle`이 Supabase 데이터와 그래프를 가져오고, `patchEngineState`로 `game`, `participants`, `graph` 등을 채웁니다.

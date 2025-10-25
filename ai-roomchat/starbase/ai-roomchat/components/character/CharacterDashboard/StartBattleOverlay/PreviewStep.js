@@ -1,6 +1,4 @@
-import React from 'react'
-
-import { baseStyles, previewStyles } from './styles'
+import { baseStyles, previewStyles } from './styles';
 
 export default function PreviewStep({
   hero,
@@ -15,7 +13,11 @@ export default function PreviewStep({
         <div style={previewStyles.heroSummary}>
           <div style={previewStyles.heroPortrait}>
             {hero?.image_url ? (
-              <img src={hero.image_url} alt={hero?.name || '내 캐릭터'} style={previewStyles.heroImage} />
+              <img
+                src={hero.image_url}
+                alt={hero?.name || '내 캐릭터'}
+                style={previewStyles.heroImage}
+              />
             ) : (
               <div style={previewStyles.heroPlaceholder}>YOU</div>
             )}
@@ -28,19 +30,23 @@ export default function PreviewStep({
           </div>
         </div>
         <p style={previewStyles.heroHelp}>
-          선택한 게임에서 함께 싸울 다른 참가자들을 확인하세요. 능력과 역할을 검토한 뒤 다시 한번 “게임 시작”을 눌러 매칭을
-          진행합니다.
+          선택한 게임에서 함께 싸울 다른 참가자들을 확인하세요. 능력과 역할을 검토한 뒤 다시 한번
+          “게임 시작”을 눌러 매칭을 진행합니다.
         </p>
       </section>
 
       <section style={previewStyles.opponentList}>
         {opponentCards.length ? (
-          opponentCards.map((opponent) => (
+          opponentCards.map(opponent => (
             <article key={opponent.id} style={previewStyles.opponentCard}>
               <div style={previewStyles.opponentHeader}>
                 <div style={previewStyles.opponentPortrait}>
                   {opponent.portrait ? (
-                    <img src={opponent.portrait} alt={opponent.name} style={previewStyles.opponentImage} />
+                    <img
+                      src={opponent.portrait}
+                      alt={opponent.name}
+                      style={previewStyles.opponentImage}
+                    />
                   ) : (
                     <div style={previewStyles.opponentPlaceholder}>VS</div>
                   )}
@@ -65,7 +71,8 @@ export default function PreviewStep({
           ))
         ) : (
           <div style={previewStyles.emptyOpponents}>
-            아직 다른 참가자가 없습니다. 잠시 후 다시 시도하거나 게임 로비에서 새 전투를 만들어 보세요.
+            아직 다른 참가자가 없습니다. 잠시 후 다시 시도하거나 게임 로비에서 새 전투를 만들어
+            보세요.
           </div>
         )}
       </section>
@@ -79,7 +86,7 @@ export default function PreviewStep({
         </button>
       </div>
     </>
-  )
+  );
 }
 
 //

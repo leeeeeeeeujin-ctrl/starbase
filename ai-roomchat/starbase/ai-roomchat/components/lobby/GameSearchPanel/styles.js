@@ -508,6 +508,6 @@ export const styles = {
     border: 'none',
     cursor: 'pointer',
   },
-}
+};
 
-export default styles
+export default styles;

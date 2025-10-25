@@ -1,66 +1,71 @@
-"use client"
+'use client';
 
-import React, { useEffect, useRef, useState } from 'react'
-
-import { supabase } from '../lib/supabase'
-import { logError } from '../lib/utils/debugTool'
+import { useEffect, useRef, useState } from 'react';
+import { supabase } from '../lib/supabase';
+import { logError } from '../lib/utils/debugTool';
 
 function getInitials(name) {
-  if (!name) return '유'
-  const trimmed = name.trim()
-  if (!trimmed) return '유'
-  const firstChar = Array.from(trimmed)[0]
-  return firstChar ? firstChar.toUpperCase() : '유'
+  if (!name) return '유';
+  const trimmed = name.trim();
+  if (!trimmed) return '유';
+  const firstChar = Array.from(trimmed)[0];
+  return firstChar ? firstChar.toUpperCase() : '유';
 }
 
 export default function LogoutButton({ onAfter, avatarUrl, displayName }) {
-  const [open, setOpen] = useState(false)
-  const menuRef = useRef(null)
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef(null);
 
   useEffect(() => {
     function handleClickOutside(event) {
-      if (!menuRef.current) return
+      if (!menuRef.current) return;
       if (!menuRef.current.contains(event.target)) {
-        setOpen(false)
+        setOpen(false);
       }
     }
 
     if (open) {
-      document.addEventListener('mousedown', handleClickOutside)
+      document.addEventListener('mousedown', handleClickOutside);
     }
 
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [open])
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [open]);
 
   async function signOut() {
-    const { error } = await supabase.auth.signOut()
-      if (error) {
-        logError(error, 'LogoutButton: signOut error')
-        alert(error.message)
-        return
-      }
-    setOpen(false)
-    if (onAfter) onAfter()
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      logError(error, 'LogoutButton: signOut error');
+      alert(error.message);
+      return;
+    }
+    setOpen(false);
+    if (onAfter) onAfter();
   }
 
-  const initials = getInitials(displayName)
+  const initials = getInitials(displayName);
 
   return (
     <div
       ref={menuRef}
-      style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      style={{
+        position: 'relative',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
     >
       <button
         type="button"
-        onClick={() => setOpen((prev) => !prev)}
+        onClick={() => setOpen(prev => !prev)}
         style={{
           width: 42,
           height: 42,
           borderRadius: '50%',
           border: '1px solid rgba(148, 163, 184, 0.45)',
-          background: 'linear-gradient(135deg, rgba(30, 64, 175, 0.35) 0%, rgba(30, 41, 59, 0.9) 100%)',
+          background:
+            'linear-gradient(135deg, rgba(30, 64, 175, 0.35) 0%, rgba(30, 41, 59, 0.9) 100%)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -76,7 +81,6 @@ export default function LogoutButton({ onAfter, avatarUrl, displayName }) {
         aria-label="프로필 메뉴"
       >
         {avatarUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={avatarUrl}
             alt="프로필"
@@ -116,7 +120,8 @@ export default function LogoutButton({ onAfter, avatarUrl, displayName }) {
               padding: '10px 12px',
               borderRadius: 10,
               border: 'none',
-              background: 'linear-gradient(135deg, rgba(248, 113, 113, 0.18) 0%, rgba(239, 68, 68, 0.35) 100%)',
+              background:
+                'linear-gradient(135deg, rgba(248, 113, 113, 0.18) 0%, rgba(239, 68, 68, 0.35) 100%)',
               color: '#fee2e2',
               fontWeight: 700,
               cursor: 'pointer',
@@ -127,5 +132,5 @@ export default function LogoutButton({ onAfter, avatarUrl, displayName }) {
         </div>
       ) : null}
     </div>
-  )
+  );
 }

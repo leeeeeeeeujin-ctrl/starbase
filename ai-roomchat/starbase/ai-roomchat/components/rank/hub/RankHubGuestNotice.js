@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import Link from 'next/link';
 
 const styles = {
   root: { maxWidth: 980, margin: '40px auto', padding: 16 },
@@ -10,7 +10,7 @@ const styles = {
     textDecoration: 'none',
     color: '#0f172a',
   },
-}
+};
 
 export default function RankHubGuestNotice() {
   return (
@@ -21,5 +21,5 @@ export default function RankHubGuestNotice() {
         <a style={styles.button}>홈으로</a>
       </Link>
     </div>
-  )
+  );
 }

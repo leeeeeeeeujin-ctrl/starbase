@@ -23,7 +23,7 @@ const styles = {
     borderRadius: 8,
     overflow: 'auto',
   },
-}
+};
 
 export default function PlayTestPanel({ games, form, onSubmit }) {
   const {
@@ -34,16 +34,20 @@ export default function PlayTestPanel({ games, form, onSubmit }) {
     userApiKey,
     setUserApiKey,
     playResult,
-  } = form
+  } = form;
   return (
     <section style={styles.root}>
       <h3 style={{ margin: '4px 0' }}>플레이(테스트 호출)</h3>
       <div style={{ display: 'grid', gap: 8 }}>
         <label style={styles.label}>
           게임
-          <select value={playGameId} onChange={(event) => setPlayGameId(event.target.value)} style={styles.select}>
+          <select
+            value={playGameId}
+            onChange={event => setPlayGameId(event.target.value)}
+            style={styles.select}
+          >
             <option value="">선택</option>
-            {games.map((game) => (
+            {games.map(game => (
               <option key={game.id} value={game.id}>
                 {game.name}
               </option>
@@ -54,7 +58,7 @@ export default function PlayTestPanel({ games, form, onSubmit }) {
           Hero IDs (쉼표 구분, 슬롯 합계만큼)
           <input
             value={playHeroIdsCSV}
-            onChange={(event) => setPlayHeroIdsCSV(event.target.value)}
+            onChange={event => setPlayHeroIdsCSV(event.target.value)}
             placeholder="uuid1, uuid2, ..."
             style={styles.input}
           />
@@ -63,7 +67,7 @@ export default function PlayTestPanel({ games, form, onSubmit }) {
           OpenAI API Key
           <input
             value={userApiKey}
-            onChange={(event) => setUserApiKey(event.target.value)}
+            onChange={event => setUserApiKey(event.target.value)}
             placeholder="sk-..."
             style={styles.input}
           />
@@ -74,5 +78,5 @@ export default function PlayTestPanel({ games, form, onSubmit }) {
         <pre style={styles.result}>{playResult}</pre>
       </div>
     </section>
-  )
+  );
 }

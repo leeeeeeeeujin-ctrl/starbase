@@ -11,4 +11,5 @@ All notable changes to this repository are documented in this file.
 - Added GitHub Actions workflow `ci-jest.yml` to run Jest on PRs and pushes.
 
 Notes:
+
 - These changes were applied to stabilize unit tests and remove known vulnerable package versions. Please review the changelog before production deployments.

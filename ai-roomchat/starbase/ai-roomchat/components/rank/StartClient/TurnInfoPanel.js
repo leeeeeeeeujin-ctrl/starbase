@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react';
 
-import { GEMINI_MODE_OPTIONS } from '@/lib/rank/geminiConfig'
+import { GEMINI_MODE_OPTIONS } from '@/lib/rank/geminiConfig';
 
 export default function TurnInfoPanel({
   turn,
@@ -25,15 +25,15 @@ export default function TurnInfoPanel({
   timeRemaining,
   turnTimerSeconds,
 }) {
-  const actorName = currentActor?.name || '미지정'
-  const actorRole = currentActor?.role || '역할 미지정'
-  const actorLabel = `${actorName} · ${actorRole}`
+  const actorName = currentActor?.name || '미지정';
+  const actorRole = currentActor?.role || '역할 미지정';
+  const actorLabel = `${actorName} · ${actorRole}`;
   const isCriticalTimer =
-    typeof timeRemaining === 'number' && Number.isFinite(timeRemaining) && timeRemaining <= 10
+    typeof timeRemaining === 'number' && Number.isFinite(timeRemaining) && timeRemaining <= 10;
   const remainingText =
     typeof timeRemaining === 'number'
       ? `${timeRemaining.toString().padStart(2, '0')}초`
-      : '대기 중'
+      : '대기 중';
 
   const timerAccent = useMemo(() => {
     if (!isCriticalTimer) {
@@ -41,35 +41,35 @@ export default function TurnInfoPanel({
         color: 'rgba(226, 232, 240, 0.9)',
         background: 'rgba(148, 163, 184, 0.16)',
         fontWeight: 600,
-      }
+      };
     }
     return {
       color: '#fecaca',
       background: 'rgba(248, 113, 113, 0.28)',
       fontWeight: 700,
       boxShadow: '0 0 0 1px rgba(248, 113, 113, 0.35)',
-    }
-  }, [isCriticalTimer])
+    };
+  }, [isCriticalTimer]);
 
-  const lastVibrationRef = useRef(null)
+  const lastVibrationRef = useRef(null);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    if (!isCriticalTimer) return
-    if (typeof timeRemaining !== 'number' || timeRemaining < 0) return
-    const nav = typeof navigator !== 'undefined' ? navigator : undefined
-    if (!nav || typeof nav.vibrate !== 'function') return
+    if (typeof window === 'undefined') return;
+    if (!isCriticalTimer) return;
+    if (typeof timeRemaining !== 'number' || timeRemaining < 0) return;
+    const nav = typeof navigator !== 'undefined' ? navigator : undefined;
+    if (!nav || typeof nav.vibrate !== 'function') return;
 
-    const lastValue = lastVibrationRef.current
-    if (lastValue === timeRemaining) return
+    const lastValue = lastVibrationRef.current;
+    if (lastValue === timeRemaining) return;
 
     try {
-      nav.vibrate.call(nav, 200)
-      lastVibrationRef.current = timeRemaining
+      nav.vibrate.call(nav, 200);
+      lastVibrationRef.current = timeRemaining;
     } catch (error) {
-      console.warn('[TurnInfoPanel] 진동 알림 실패:', error)
+      console.warn('[TurnInfoPanel] 진동 알림 실패:', error);
     }
-  }, [isCriticalTimer, timeRemaining])
+  }, [isCriticalTimer, timeRemaining]);
 
   return (
     <section
@@ -102,28 +102,17 @@ export default function TurnInfoPanel({
       </div>
       <div style={{ fontSize: 13, display: 'grid', gap: 6, color: 'rgba(226, 232, 240, 0.85)' }}>
         <span>
-          현재 노드:{' '}
-          {currentNode
-            ? `#${currentNode.slot_no ?? '?'} (${currentNode.id})`
-            : '없음'}
+          현재 노드: {currentNode ? `#${currentNode.slot_no ?? '?'} (${currentNode.id})` : '없음'}
         </span>
         <span>현재 주역: {actorLabel}</span>
-        <span>
-          활성 전역 변수:{' '}
-          {activeGlobal.length ? activeGlobal.join(', ') : '없음'}
-        </span>
-        <span>
-          최근 로컬 변수:{' '}
-          {activeLocal.length ? activeLocal.join(', ') : '없음'}
-        </span>
+        <span>활성 전역 변수: {activeGlobal.length ? activeGlobal.join(', ') : '없음'}</span>
+        <span>최근 로컬 변수: {activeLocal.length ? activeLocal.join(', ') : '없음'}</span>
       </div>
       <label style={{ display: 'grid', gap: 6 }}>
         <span style={{ fontSize: 12, color: 'rgba(226, 232, 240, 0.7)' }}>AI API 키</span>
         <input
           value={apiKey}
-          onChange={(event) =>
-            onApiKeyChange(event.target.value, { source: 'user_input' })
-          }
+          onChange={event => onApiKeyChange(event.target.value, { source: 'user_input' })}
           placeholder="API 키를 입력하세요"
           style={{
             padding: '10px 12px',
@@ -138,7 +127,7 @@ export default function TurnInfoPanel({
         <span style={{ fontSize: 12, color: 'rgba(226, 232, 240, 0.7)' }}>API 버전</span>
         <select
           value={apiVersion}
-          onChange={(event) => onApiVersionChange(event.target.value)}
+          onChange={event => onApiVersionChange(event.target.value)}
           style={{
             padding: '10px 12px',
             borderRadius: 12,
@@ -156,10 +145,12 @@ export default function TurnInfoPanel({
       {apiVersion === 'gemini' && (
         <div style={{ display: 'grid', gap: 10 }}>
           <label style={{ display: 'grid', gap: 6 }}>
-            <span style={{ fontSize: 12, color: 'rgba(226, 232, 240, 0.7)' }}>Gemini 엔드포인트</span>
+            <span style={{ fontSize: 12, color: 'rgba(226, 232, 240, 0.7)' }}>
+              Gemini 엔드포인트
+            </span>
             <select
               value={geminiMode}
-              onChange={(event) => onGeminiModeChange(event.target.value)}
+              onChange={event => onGeminiModeChange(event.target.value)}
               style={{
                 padding: '10px 12px',
                 borderRadius: 12,
@@ -169,7 +160,7 @@ export default function TurnInfoPanel({
                 fontWeight: 600,
               }}
             >
-              {GEMINI_MODE_OPTIONS.map((option) => (
+              {GEMINI_MODE_OPTIONS.map(option => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
@@ -182,7 +173,7 @@ export default function TurnInfoPanel({
             <div style={{ display: 'flex', gap: 8 }}>
               <select
                 value={geminiModel}
-                onChange={(event) => onGeminiModelChange(event.target.value)}
+                onChange={event => onGeminiModelChange(event.target.value)}
                 disabled={!geminiModelOptions.length}
                 style={{
                   flex: 1,
@@ -194,7 +185,7 @@ export default function TurnInfoPanel({
                   fontWeight: 600,
                 }}
               >
-                {geminiModelOptions.map((option) => (
+                {geminiModelOptions.map(option => (
                   <option key={option.id} value={option.id}>
                     {option.label || option.id}
                   </option>
@@ -209,7 +200,9 @@ export default function TurnInfoPanel({
                     padding: '10px 12px',
                     borderRadius: 12,
                     border: '1px solid rgba(148, 163, 184, 0.4)',
-                    background: geminiModelLoading ? 'rgba(71, 85, 105, 0.6)' : 'rgba(30, 41, 59, 0.8)',
+                    background: geminiModelLoading
+                      ? 'rgba(71, 85, 105, 0.6)'
+                      : 'rgba(30, 41, 59, 0.8)',
                     color: '#f8fafc',
                     cursor: geminiModelLoading ? 'not-allowed' : 'pointer',
                     minWidth: 96,
@@ -238,7 +231,7 @@ export default function TurnInfoPanel({
         <p style={{ margin: 0, fontSize: 12, color: 'rgba(226, 232, 240, 0.7)' }}>{apiKeyNotice}</p>
       )}
     </section>
-  )
+  );
 }
 
 //

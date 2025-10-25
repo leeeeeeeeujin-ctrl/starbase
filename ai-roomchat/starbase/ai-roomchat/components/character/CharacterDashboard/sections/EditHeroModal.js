@@ -1,19 +1,34 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-
-import { useCharacterDashboardContext } from '../context'
-import HeroDetailsForm from './editHero/HeroDetailsForm'
-import HeroBackgroundSection from './editHero/HeroBackgroundSection'
-import HeroBgmSection from './editHero/HeroBgmSection'
-import HeroAbilitiesSection from './editHero/HeroAbilitiesSection'
-import { modalStyles } from './editHero/styles'
-import { ABILITY_KEYS, buildAbilityCards } from '../../../../utils/characterStats'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCharacterDashboardContext } from '../context';
+import HeroDetailsForm from './editHero/HeroDetailsForm';
+import HeroBackgroundSection from './editHero/HeroBackgroundSection';
+import HeroBgmSection from './editHero/HeroBgmSection';
+import HeroAbilitiesSection from './editHero/HeroAbilitiesSection';
+import { modalStyles } from './editHero/styles';
+import { ABILITY_KEYS, buildAbilityCards } from '../../../../utils/characterStats';
 
 const TABS = [
-  { id: 'details', label: '기본 정보', description: '이름과 소개를 손봐 플레이어에게 보일 내용을 정리하세요.' },
-  { id: 'background', label: '배경', description: '배경 이미지를 올려 캐릭터 페이지 분위기를 맞출 수 있어요.' },
-  { id: 'bgm', label: 'BGM', description: '배경 음악을 등록해 진입 시 재생될 사운드를 지정하세요.' },
-  { id: 'abilities', label: '능력', description: '스킬 설명과 순서를 손봐 플레이 스타일을 드러내 보세요.' },
-]
+  {
+    id: 'details',
+    label: '기본 정보',
+    description: '이름과 소개를 손봐 플레이어에게 보일 내용을 정리하세요.',
+  },
+  {
+    id: 'background',
+    label: '배경',
+    description: '배경 이미지를 올려 캐릭터 페이지 분위기를 맞출 수 있어요.',
+  },
+  {
+    id: 'bgm',
+    label: 'BGM',
+    description: '배경 음악을 등록해 진입 시 재생될 사운드를 지정하세요.',
+  },
+  {
+    id: 'abilities',
+    label: '능력',
+    description: '스킬 설명과 순서를 손봐 플레이 스타일을 드러내 보세요.',
+  },
+];
 
 const EMPTY_DRAFT = {
   name: '',
@@ -24,7 +39,7 @@ const EMPTY_DRAFT = {
   ability4: '',
   background_url: '',
   bgm_url: '',
-}
+};
 
 function createDraftFromProfile(hero, edit) {
   return {
@@ -36,7 +51,7 @@ function createDraftFromProfile(hero, edit) {
     ability4: hero?.ability4 || edit?.ability4 || '',
     background_url: hero?.background_url || edit?.background_url || '',
     bgm_url: hero?.bgm_url || edit?.bgm_url || '',
-  }
+  };
 }
 
 export default function EditHeroModal({ open, onClose }) {
@@ -57,150 +72,160 @@ export default function EditHeroModal({ open, onClose }) {
     onClearBgm,
     bgmInputRef,
     bgmError,
-  } = useCharacterDashboardContext()
+  } = useCharacterDashboardContext();
 
-  const [activeTab, setActiveTab] = useState(TABS[0].id)
-  const [isCompact, setIsCompact] = useState(false)
-  const [draft, setDraft] = useState(null)
-  const [localSaving, setLocalSaving] = useState(false)
-  const initializedRef = useRef(false)
+  const [activeTab, setActiveTab] = useState(TABS[0].id);
+  const [isCompact, setIsCompact] = useState(false);
+  const [draft, setDraft] = useState(null);
+  const [localSaving, setLocalSaving] = useState(false);
+  const initializedRef = useRef(false);
 
   useEffect(() => {
     if (!open) {
-      setDraft(null)
-      initializedRef.current = false
-      return
+      setDraft(null);
+      initializedRef.current = false;
+      return;
     }
 
-    setActiveTab(TABS[0].id)
+    setActiveTab(TABS[0].id);
 
     const updateCompact = () => {
-      if (typeof window === 'undefined') return
-      setIsCompact(window.innerWidth <= 860)
-    }
+      if (typeof window === 'undefined') return;
+      setIsCompact(window.innerWidth <= 860);
+    };
 
-    updateCompact()
-    window.addEventListener('resize', updateCompact)
+    updateCompact();
+    window.addEventListener('resize', updateCompact);
 
     return () => {
-      window.removeEventListener('resize', updateCompact)
-    }
-  }, [open])
+      window.removeEventListener('resize', updateCompact);
+    };
+  }, [open]);
 
   useEffect(() => {
-    if (!open) return
-    if (initializedRef.current) return
+    if (!open) return;
+    if (initializedRef.current) return;
 
-    const initialDraft = createDraftFromProfile(hero, edit)
-    setDraft(initialDraft)
-    initializedRef.current = true
-  }, [open, hero, edit])
+    const initialDraft = createDraftFromProfile(hero, edit);
+    setDraft(initialDraft);
+    initializedRef.current = true;
+  }, [open, hero, edit]);
 
   useEffect(() => {
-    if (!open || !draft) return
+    if (!open || !draft) return;
     if (edit?.background_url === '' && draft.background_url !== '') {
-      setDraft((prev) => (prev ? { ...prev, background_url: '' } : prev))
+      setDraft(prev => (prev ? { ...prev, background_url: '' } : prev));
     }
-  }, [open, draft, edit?.background_url])
+  }, [open, draft, edit?.background_url]);
 
   useEffect(() => {
-    if (!open || !draft) return
-    const currentHeroBackground = hero?.background_url || ''
+    if (!open || !draft) return;
+    const currentHeroBackground = hero?.background_url || '';
     if (currentHeroBackground && draft.background_url !== currentHeroBackground) {
-      setDraft((prev) => (prev ? { ...prev, background_url: currentHeroBackground } : prev))
+      setDraft(prev => (prev ? { ...prev, background_url: currentHeroBackground } : prev));
     }
-  }, [open, draft, hero?.background_url])
+  }, [open, draft, hero?.background_url]);
 
   useEffect(() => {
-    if (!open || !draft) return
+    if (!open || !draft) return;
     if (edit?.bgm_url === '' && draft.bgm_url !== '') {
-      setDraft((prev) => (prev ? { ...prev, bgm_url: '' } : prev))
+      setDraft(prev => (prev ? { ...prev, bgm_url: '' } : prev));
     }
-  }, [open, draft, edit?.bgm_url])
+  }, [open, draft, edit?.bgm_url]);
 
   useEffect(() => {
-    if (!open || !draft) return
-    const currentHeroBgm = hero?.bgm_url || ''
+    if (!open || !draft) return;
+    const currentHeroBgm = hero?.bgm_url || '';
     if (currentHeroBgm && draft.bgm_url !== currentHeroBgm) {
-      setDraft((prev) => (prev ? { ...prev, bgm_url: currentHeroBgm } : prev))
+      setDraft(prev => (prev ? { ...prev, bgm_url: currentHeroBgm } : prev));
     }
-  }, [open, draft, hero?.bgm_url])
+  }, [open, draft, hero?.bgm_url]);
 
-  if (!open) return null
-
-  const draftState = draft || createDraftFromProfile(hero, edit) || EMPTY_DRAFT
-  const abilityCards = useMemo(() => buildAbilityCards(draftState), [draftState])
-  const backgroundSource = backgroundPreview || draftState.background_url || hero?.background_url || ''
+  const draftState = draft || createDraftFromProfile(hero, edit) || EMPTY_DRAFT;
+  const abilityCards = useMemo(() => buildAbilityCards(draftState), [draftState]);
+  const backgroundSource =
+    backgroundPreview || draftState.background_url || hero?.background_url || '';
 
   const bodyStyle = useMemo(() => {
-    if (!isCompact) return modalStyles.body
-    return { ...modalStyles.body, gridTemplateColumns: '1fr' }
-  }, [isCompact])
+    if (!isCompact) return modalStyles.body;
+    return { ...modalStyles.body, gridTemplateColumns: '1fr' };
+  }, [isCompact]);
 
-  const tabsStyle = isCompact ? modalStyles.compactTabs : modalStyles.tabs
+  const tabsStyle = isCompact ? modalStyles.compactTabs : modalStyles.tabs;
   const panelViewportStyle = isCompact
     ? { ...modalStyles.panelViewport, ...modalStyles.compactPanelViewport }
-    : modalStyles.panelViewport
+    : modalStyles.panelViewport;
 
-  const handleChangeField = useCallback((key, value) => {
-    setDraft((prev) => ({ ...(prev || draftState), [key]: value }))
-  }, [draftState])
+  const handleChangeField = useCallback(
+    (key, value) => {
+      setDraft(prev => ({ ...(prev || draftState), [key]: value }));
+    },
+    [draftState]
+  );
 
   const handleAddAbility = useCallback(() => {
-    let added = false
-    setDraft((prev) => {
-      const base = prev || draftState
-      const next = { ...base }
+    let added = false;
+    setDraft(prev => {
+      const base = prev || draftState;
+      const next = { ...base };
       for (const key of ABILITY_KEYS) {
         if (!(next[key] && next[key].trim())) {
-          next[key] = next[key] || ''
-          added = true
-          break
+          next[key] = next[key] || '';
+          added = true;
+          break;
         }
       }
-      return next
-    })
+      return next;
+    });
     if (!added) {
-      alert('추가할 수 있는 빈 능력이 없습니다.')
+      alert('추가할 수 있는 빈 능력이 없습니다.');
     }
-  }, [draftState])
+  }, [draftState]);
 
   const handleReverseAbilities = useCallback(() => {
-    setDraft((prev) => {
-      const base = prev || draftState
-      const next = { ...base }
-      const values = ABILITY_KEYS.map((key) => next[key] || '')
-      values.reverse()
+    setDraft(prev => {
+      const base = prev || draftState;
+      const next = { ...base };
+      const values = ABILITY_KEYS.map(key => next[key] || '');
+      values.reverse();
       ABILITY_KEYS.forEach((key, index) => {
-        next[key] = values[index]
-      })
-      return next
-    })
-  }, [draftState])
+        next[key] = values[index];
+      });
+      return next;
+    });
+  }, [draftState]);
 
-  const handleClearAbility = useCallback((key) => {
-    setDraft((prev) => ({ ...(prev || draftState), [key]: '' }))
-  }, [draftState])
+  const handleClearAbility = useCallback(
+    key => {
+      setDraft(prev => ({ ...(prev || draftState), [key]: '' }));
+    },
+    [draftState]
+  );
 
   const handleSave = useCallback(async () => {
-    if (!draftState || saving || localSaving) return
-    setLocalSaving(true)
+    if (!draftState || saving || localSaving) return;
+    setLocalSaving(true);
     try {
-      await onSave(draftState)
-      setDraft(null)
-      initializedRef.current = false
-      onClose?.()
+      await onSave(draftState);
+      setDraft(null);
+      initializedRef.current = false;
+      onClose?.();
     } finally {
-      setLocalSaving(false)
+      setLocalSaving(false);
     }
-  }, [draftState, onSave, onClose, saving, localSaving])
+  }, [draftState, onSave, onClose, saving, localSaving]);
 
   const handleClose = useCallback(() => {
-    setDraft(null)
-    initializedRef.current = false
-    onClose?.()
-  }, [onClose])
+    setDraft(null);
+    initializedRef.current = false;
+    onClose?.();
+  }, [onClose]);
 
+  // NOTE: auto-suppressed by codemod. This suppression was added by automated
+  // tooling to reduce noise. Please review the surrounding effect body and
+  // either add the minimal safe dependencies or keep the suppression with
+  // an explanatory comment before removing this note.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   const abilityTabContent = (
     <HeroAbilitiesSection
       abilityCards={abilityCards}
@@ -209,7 +234,7 @@ export default function EditHeroModal({ open, onClose }) {
       onReverseAbilities={handleReverseAbilities}
       onClearAbility={handleClearAbility}
     />
-  )
+  );
 
   const tabContent = useMemo(() => {
     switch (activeTab) {
@@ -222,7 +247,7 @@ export default function EditHeroModal({ open, onClose }) {
             inputRef={backgroundInputRef}
             error={backgroundError}
           />
-        )
+        );
       case 'bgm':
         return (
           <HeroBgmSection
@@ -234,9 +259,9 @@ export default function EditHeroModal({ open, onClose }) {
             inputRef={bgmInputRef}
             error={bgmError}
           />
-        )
+        );
       case 'abilities':
-        return abilityTabContent
+        return abilityTabContent;
       case 'details':
       default:
         return (
@@ -245,7 +270,7 @@ export default function EditHeroModal({ open, onClose }) {
             description={draftState.description}
             onChange={handleChangeField}
           />
-        )
+        );
     }
   }, [
     activeTab,
@@ -265,12 +290,12 @@ export default function EditHeroModal({ open, onClose }) {
     backgroundInputRef,
     backgroundError,
     handleChangeField,
-  ])
+  ]);
 
-  const disabledSave = saving || localSaving
+  const disabledSave = saving || localSaving;
 
   if (!open) {
-    return null
+    return null;
   }
 
   return (
@@ -284,13 +309,13 @@ export default function EditHeroModal({ open, onClose }) {
         </header>
         <div style={bodyStyle}>
           <div style={tabsStyle}>
-            {TABS.map((tab) => {
-              const isActive = tab.id === activeTab
+            {TABS.map(tab => {
+              const isActive = tab.id === activeTab;
               const baseStyle = {
                 ...modalStyles.tabButton,
                 ...(isCompact ? modalStyles.compactTabButton : null),
                 ...(isActive ? modalStyles.activeTabButton : null),
-              }
+              };
               return (
                 <button
                   key={tab.id}
@@ -302,7 +327,7 @@ export default function EditHeroModal({ open, onClose }) {
                   <span>{tab.label}</span>
                   <span style={modalStyles.tabDescription}>{tab.description}</span>
                 </button>
-              )
+              );
             })}
           </div>
           <div style={panelViewportStyle}>
@@ -341,5 +366,5 @@ export default function EditHeroModal({ open, onClose }) {
         </footer>
       </div>
     </div>
-  )
+  );
 }

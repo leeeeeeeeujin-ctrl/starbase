@@ -1,5 +1,3 @@
-import React from 'react'
-
 const styles = {
   section: {
     borderRadius: 28,
@@ -41,7 +39,7 @@ const styles = {
     fontWeight: 800,
     transition: 'filter 0.2s ease',
   },
-}
+};
 
 export default function InstantBattleSection({
   selectedGameId,
@@ -88,7 +86,7 @@ export default function InstantBattleSection({
         전투 시작
       </button>
     </section>
-  )
+  );
 }
 
 function InfoTile({ label, value }) {
@@ -97,5 +95,5 @@ function InfoTile({ label, value }) {
       <span style={styles.tileLabel}>{label}</span>
       <strong style={styles.tileValue}>{value}</strong>
     </div>
-  )
+  );
 }

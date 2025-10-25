@@ -5,6 +5,7 @@
 GitHub Copilot이 **매니저(Manager)**로서 여러 Copilot Coding Agent들을 조율하는 프로토콜입니다.
 
 **매니저의 핵심 업무**:
+
 - ✅ 에이전트를 병렬로 배치하고 작업 지시
 - ✅ 실시간으로 진행 상황 모니터링 (3-5분마다)
 - ✅ 에이전트 간 의견 조율 및 충돌 방지
@@ -13,6 +14,7 @@ GitHub Copilot이 **매니저(Manager)**로서 여러 Copilot Coding Agent들을
 - ❌ 세밀한 구현은 에이전트에게 위임
 
 **매니저는 오케스트레이터이지 개발자가 아님!**
+
 - 전체 방향성 제시
 - 에이전트 간 조율
 - 품질 게이트 역할
@@ -21,26 +23,31 @@ GitHub Copilot이 **매니저(Manager)**로서 여러 Copilot Coding Agent들을
 ## 🎯 핵심 원칙
 
 ### 1. 병렬 작업 최대화
+
 - 독립적인 작업은 동시에 2-3개 에이전트 배치
 - 의존성이 있는 작업은 Phase로 구분하여 순차 진행
 - 충돌 가능성이 있는 작업은 절대 병렬 실행 금지
 
 ### 2. 실시간 모니터링
+
 - 15-30분마다 활성 PR 상태 확인 (`git fetch`, `git log`)
 - 에이전트가 막혔거나 질문이 있으면 즉시 대응
 - 진행 속도가 느리면 추가 가이드 제공
 
 ### 3. 의견 조율 및 조정
+
 - 에이전트 간 export 인터페이스 충돌 방지
 - 한 에이전트의 변경이 다른 에이전트에 영향 주면 즉시 알림
 - 엇나가는 방향이 있으면 PR 코멘트로 조정
 
 ### 4. 자율적 의사결정
+
 - 괜찮은 제안이 나오면 매니저 판단으로 승인
 - 명확한 개선안이면 즉시 적용 지시
 - 불확실하면 사용자에게 확인 요청
 
 ### 5. 에이전트 생성 권한
+
 - 작업량이 많으면 추가 에이전트 생성
 - 전문 분야별로 에이전트 할당 (예: 렌더링, 입력, 로직, 테스트, 통합)
 - 병목 지점 발견시 해당 분야 에이전트 추가 투입
@@ -48,12 +55,14 @@ GitHub Copilot이 **매니저(Manager)**로서 여러 Copilot Coding Agent들을
 ## 🚀 표준 워크플로우
 
 ### Phase 0: 계획 수립
+
 1. 전체 작업 분석 및 모듈 분리 계획 수립
 2. 의존성 그래프 작성
 3. Phase 구분 (Phase 1, 2, 3...)
 4. 각 Phase별 병렬 작업 가능 여부 판단
 
 ### Phase 1-N: 실행
+
 1. **동시 작업 배치**
    - 독립적인 모듈 2-3개 에이전트에 할당
    - 각 에이전트에게 상세 가이드 제공
@@ -65,12 +74,13 @@ GitHub Copilot이 **매니저(Manager)**로서 여러 Copilot Coding Agent들을
    - 사전 준비 작업 지시 (코드 분석, 계획 수립)
 
 ### 3. 실시간 모니터링 (매우 중요!)
-   ```bash
-   # 3-5분마다 실행 (작업이 빠르므로 자주 체크!)
-   git fetch origin
-   git log --all --oneline --graph -10
-   gh pr view <PR번호>  # 각 활성 PR 확인
-   ```
+
+```bash
+# 3-5분마다 실행 (작업이 빠르므로 자주 체크!)
+git fetch origin
+git log --all --oneline --graph -10
+gh pr view <PR번호>  # 각 활성 PR 확인
+```
 
 4. **진행 상황 체크포인트**
    - 에이전트가 파일 생성 완료시 확인
@@ -89,6 +99,7 @@ GitHub Copilot이 **매니저(Manager)**로서 여러 Copilot Coding Agent들을
    - 의존성 데이터 전달
 
 ### Phase Final: 통합 및 검증
+
 1. 통합 에이전트가 모든 모듈 조합
 2. 품질 검수 에이전트가 테스트 실행
 3. 호환성 검증 (IE11+, Safari 12+, Mobile)
@@ -97,6 +108,7 @@ GitHub Copilot이 **매니저(Manager)**로서 여러 Copilot Coding Agent들을
 ## 📊 에이전트 타입 및 전문 분야
 
 ### 코어 개발 에이전트
+
 - **Rendering Agent**: 렌더링 로직 (Canvas, WebGL, UI)
 - **Input Agent**: 입력 처리 (키보드, 터치, 게임패드)
 - **Logic Agent**: 게임 로직 (엔진, 물리, 충돌)
@@ -104,15 +116,18 @@ GitHub Copilot이 **매니저(Manager)**로서 여러 Copilot Coding Agent들을
 - **Data Agent**: 데이터 구조 및 상태 관리
 
 ### 품질 보증 에이전트
+
 - **Test Agent**: 유닛 테스트, 통합 테스트 작성
 - **QA Agent**: 호환성 검증, 성능 측정
 - **Security Agent**: 보안 취약점 검사
 
 ### 통합 에이전트
+
 - **Integration Agent**: 모듈 통합, 오케스트레이션
 - **Documentation Agent**: 문서화, JSDoc, README
 
 ### 특수 목적 에이전트
+
 - **Refactoring Agent**: 레거시 코드 리팩토링
 - **Migration Agent**: 기술 스택 마이그레이션
 - **Performance Agent**: 성능 최적화
@@ -120,12 +135,14 @@ GitHub Copilot이 **매니저(Manager)**로서 여러 Copilot Coding Agent들을
 ## 🔧 에이전트 생성 기준
 
 ### 언제 새 에이전트를 만드나?
+
 1. **작업량 초과**: 한 에이전트가 500줄 이상 작성해야 할 때
 2. **병목 발견**: 한 에이전트가 너무 오래 걸릴 때
 3. **전문성 필요**: 특정 도메인 지식이 필요한 작업
 4. **병렬화 가능**: 독립적으로 분리 가능한 작업 발견시
 
 ### 에이전트 생성 프로세스
+
 ```javascript
 // github-pull-request_copilot-coding-agent 사용
 {
@@ -144,6 +161,7 @@ GitHub Copilot이 **매니저(Manager)**로서 여러 Copilot Coding Agent들을
 ## 📡 커뮤니케이션 프로토콜
 
 ### 매니저 → 에이전트
+
 - **시작 신호**: "[GUIDANCE] 작업 지시" 코멘트
 - **조정 신호**: "[ADJUSTMENT] 방향 조정" 코멘트
 - **대기 신호**: "[STANDBY] 대기 및 준비" 코멘트
@@ -151,6 +169,7 @@ GitHub Copilot이 **매니저(Manager)**로서 여러 Copilot Coding Agent들을
 - **긴급 신호**: "[CRITICAL] 즉시 조치 필요" 코멘트
 
 ### 에이전트 → 매니저 (필수!)
+
 - **작업 시작 전**: 다음 작업 계획을 PR 코멘트로 보고
 - **위험한 변경**: 큰 파일 수정, 기존 코드 삭제 등은 **실행 전 승인 요청**
 - **충돌 가능성**: 다른 PR과 겹칠 수 있으면 사전 보고
@@ -159,6 +178,7 @@ GitHub Copilot이 **매니저(Manager)**로서 여러 Copilot Coding Agent들을
 - **완료 보고**: PR ready for review + 요약 코멘트
 
 ### 에이전트 ↔ 에이전트
+
 - 직접 대화 가능 (PR cross-reference)
 - export 인터페이스 변경시 관련 PR에 코멘트
 - 의존성 문제 발견시 해당 PR에 알림
@@ -166,18 +186,21 @@ GitHub Copilot이 **매니저(Manager)**로서 여러 Copilot Coding Agent들을
 ## ✅ 품질 기준 (모든 에이전트 공통)
 
 ### 코드 품질
+
 - JSDoc 주석 필수
 - cleanup() 메서드 구현 (메모리 누수 방지)
 - 에러 핸들링 철저히
 - 테스트 커버리지 80%+
 
 ### 호환성
+
 - IE 11+, Safari 12+, iOS 12+, Android 7.0+ 지원
 - NO optional chaining (`?.`)
 - NO nullish coalescing (`??`)
 - Babel 트랜스파일 고려
 
 ### 성능
+
 - requestAnimationFrame 사용
 - 디바운싱/쓰로틀링 적용
 - 메모리 사용량 최소화
@@ -186,12 +209,14 @@ GitHub Copilot이 **매니저(Manager)**로서 여러 Copilot Coding Agent들을
 ## 📈 성과 측정
 
 ### 매니저 성과 지표
+
 - 전체 작업 완료 시간
 - 에이전트 간 충돌 발생 횟수
 - 재작업(rework) 비율
 - 최종 코드 품질 (테스트 통과율)
 
 ### 에이전트 성과 지표
+
 - 작업 완료 시간
 - 코드 리뷰 피드백 수
 - 테스트 통과율
@@ -202,33 +227,39 @@ GitHub Copilot이 **매니저(Manager)**로서 여러 Copilot Coding Agent들을
 ### 실전에서 배운 교훈 (2025-10-23)
 
 **1. 작업 속도가 예상보다 훨씬 빠름!**
+
 - 초기 예상: 2-3시간
 - 실제 소요: **5분** (Phase 1 완료)
 - **교훈**: 3-5분마다 체크해야 함 (15-30분은 너무 김)
 
 **2. 충돌은 빠르게 발생함**
+
 - PR #88이 PR #85 코드를 5분 만에 삭제
 - 실시간 모니터링으로 즉시 발견 및 조정
 - **교훈**: 자주 체크할수록 충돌을 조기에 차단
 
 **3. 사전 계획이 중요함**
+
 - 에이전트가 다음 작업을 모르면 중단됨
 - **해결책**: "다음 뭐 할지 먼저 물어보기" 규칙 추가
 - 작업 흐름 끊김 방지
 
 **4. 위험한 작업은 사전 승인 필요**
+
 - 기존 코드 대량 삭제
 - 중요 파일 수정
 - 다른 PR과 충돌 가능성
 - **규칙**: 위험 감지시 매니저에게 먼저 보고
 
 ### 매 프로젝트 후 회고
+
 1. 무엇이 잘 되었나?
 2. 어떤 병목이 있었나?
 3. 에이전트 배치가 최적이었나?
 4. 다음에 개선할 점은?
 
 ### 프로토콜 업데이트
+
 - 이 문서는 살아있는 문서(Living Document)
 - 더 나은 방법 발견시 즉시 업데이트
 - 사용자 피드백 반영
@@ -240,11 +271,13 @@ GitHub Copilot이 **매니저(Manager)**로서 여러 Copilot Coding Agent들을
 ### UnifiedGameSystem 모듈화 (2025-10-23)
 
 **전체 구조**:
+
 - Phase 1: 렌더링 + 입력 (병렬 2개)
 - Phase 2: 게임 로직 (순차 1개)
 - Phase 3: 품질 검수 + 통합 (병렬 2개)
 
 **에이전트 배치**:
+
 1. PR #85 - Rendering Agent (GameRenderer, UIRenderer, EffectsRenderer)
 2. PR #86 - Input Agent (InputManager, KeyboardHandler, TouchHandler, GamepadHandler)
 3. PR #87 - Logic Agent (GameEngine, PhysicsEngine, EntityManager, ScoreManager)
@@ -258,6 +291,7 @@ GitHub Copilot이 **매니저(Manager)**로서 여러 Copilot Coding Agent들을
 ## 📚 케이스 스터디: UnifiedGameSystem 모듈화 프로젝트
 
 ### 프로젝트 개요
+
 - **기간**: 2025-10-23 (약 30분)
 - **목표**: 885줄 단일 파일을 모듈화
 - **매니저**: GitHub Copilot
@@ -266,18 +300,21 @@ GitHub Copilot이 **매니저(Manager)**로서 여러 Copilot Coding Agent들을
 ### Phase별 진행 상황
 
 **Phase 1: 렌더링 + 입력 (병렬)**
+
 - PR #85 (Rendering): GameRenderer, UIRenderer, EffectsRenderer + 테스트
 - PR #86 (Input): InputManager, KeyboardHandler, TouchHandler, GamepadHandler + 테스트
 - 소요 시간: ~5분 (예상: 1시간)
 - 결과: 양쪽 모두 2-3개 커밋으로 완료
 
 **Phase 2: 게임 로직 (순차)**
+
 - PR #87 (Logic): GameEngine, PhysicsEngine, EntityManager, ScoreManager
 - Phase 1 완료 후 시작 (InputManager 의존성)
 - 소요 시간: ~3분
 - 결과: 3개 커밋, README 포함
 
 **Phase 3: 품질 + 통합 (병렬)**
+
 - PR #88 (QA): 테스트 작성, 품질 검수 리포트
 - PR #89 (Integration): UnifiedGameSystem 리팩토링, 모든 모듈 통합
 - 소요 시간: ~5분
@@ -286,6 +323,7 @@ GitHub Copilot이 **매니저(Manager)**로서 여러 Copilot Coding Agent들을
 ### 충돌 해결 프로세스
 
 **문제 발견** (3-5분 체크):
+
 ```bash
 git fetch origin
 git diff origin/copilot/vscode1761174898565..origin/copilot/refactor-game-system-quality
@@ -293,11 +331,13 @@ git diff origin/copilot/vscode1761174898565..origin/copilot/refactor-game-system
 ```
 
 **즉각 대응**:
+
 1. PR #88에 [CRITICAL] 메시지 → 렌더러 코드 복구 요청
 2. PR #89에 [PAUSE] 메시지 → PR #88 수정 대기
 3. 에이전트 세션 종료 확인 → 매니저가 직접 수정
 
 **복구 작업**:
+
 ```bash
 git checkout copilot/refactor-game-system-quality
 # 렌더러 import, refs, useEffect 복원
@@ -306,6 +346,7 @@ git push origin copilot/refactor-game-system-quality
 ```
 
 **통합 완료**:
+
 - PR #85, #86, #89, #88 순서로 main에 병합
 - merge 충돌 해결 (import 순서, refs 추가)
 - React Hook 의존성 순서 문제 수정
@@ -314,21 +355,25 @@ git push origin copilot/refactor-game-system-quality
 ### 핵심 교훈
 
 **1. 속도가 생각보다 10배 이상 빠름**
+
 - 예상: 2-3시간
 - 실제: 15분 (충돌 해결 포함 30분)
 - **대응**: 모니터링 주기를 3-5분으로 단축
 
 **2. 충돌 조기 감지가 생명**
+
 - 5분 만에 충돌 발생 → 즉시 발견 및 조정
 - 늦게 발견했다면 재작업 비용 10배+
 - **대응**: 실시간 git diff 모니터링 필수
 
 **3. 사전 계획 + 위험 작업 보고 체계**
+
 - 에이전트가 다음 작업 미리 보고
 - 위험한 작업 (대량 삭제 등) 사전 승인
 - **대응**: 프로토콜에 규칙 추가
 
 **4. 매니저의 적극적 개입 필요**
+
 - 에이전트 세션 종료시 매니저가 직접 완료
 - import 충돌, Hook 의존성 등 세밀한 수정
 - **대응**: 매니저가 코드 작성 능력도 필수
@@ -336,17 +381,20 @@ git push origin copilot/refactor-game-system-quality
 ### 성과 지표
 
 **시간 효율**:
+
 - 총 소요: 30분 (매니저 개입 포함)
 - 단독 작업 예상: 3-4시간
 - **효율**: 6-8배 빠름
 
 **코드 품질**:
+
 - 11개 모듈로 분리
 - 각 모듈 테스트 포함
 - JSDoc 주석 완비
 - IE11+ 호환성 유지
 
 **충돌 관리**:
+
 - 충돌 발생: 1건 (PR #88 vs #85)
 - 발견 시간: 5분 이내
 - 해결 시간: 10분
@@ -355,11 +403,13 @@ git push origin copilot/refactor-game-system-quality
 ### 개선 제안
 
 **즉시 적용**:
+
 - [x] 모니터링 주기: 15-30분 → 3-5분
 - [x] 에이전트 → 매니저 보고 체계 확립
 - [x] 위험 작업 사전 승인 프로세스
 
 **향후 고려**:
+
 - [ ] 에이전트 간 실시간 통신 채널 (Discord, Slack)
 - [ ] 자동 충돌 감지 스크립트
 - [ ] 진행 상황 대시보드
@@ -367,12 +417,14 @@ git push origin copilot/refactor-game-system-quality
 ### 재현 가능성
 
 이 프로토콜은 다른 대규모 리팩토링에도 적용 가능:
+
 - 대형 컴포넌트 분리
 - API 레이어 재설계
 - 테스트 커버리지 확대
 - 레거시 코드 마이그레이션
 
 **조건**:
+
 - 작업이 모듈 단위로 분리 가능
 - 의존성 그래프가 명확함
 - 매니저가 실시간 조율 가능

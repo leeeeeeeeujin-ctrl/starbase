@@ -109,7 +109,9 @@
   font-weight: 700;
   padding: 0.85rem 1.5rem;
   cursor: pointer;
-  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
 }
 
 .button:disabled {
@@ -132,7 +134,9 @@
   font-weight: 600;
   padding: 0.8rem 1.4rem;
   cursor: pointer;
-  transition: border-color 0.18s ease, background 0.18s ease;
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease;
 }
 
 .secondaryButton:disabled {

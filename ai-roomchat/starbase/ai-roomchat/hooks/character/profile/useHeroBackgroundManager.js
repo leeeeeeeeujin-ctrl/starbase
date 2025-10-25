@@ -1,94 +1,94 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react';
 
-const MAX_BACKGROUND_SIZE = 8 * 1024 * 1024
+const MAX_BACKGROUND_SIZE = 8 * 1024 * 1024;
 
 export function useHeroBackgroundManager({ setEdit }) {
-  const backgroundInputRef = useRef(null)
-  const localPreviewUrlRef = useRef(null)
-  const [backgroundBlob, setBackgroundBlob] = useState(null)
-  const [backgroundPreview, setBackgroundPreview] = useState(null)
-  const [backgroundError, setBackgroundError] = useState('')
+  const backgroundInputRef = useRef(null);
+  const localPreviewUrlRef = useRef(null);
+  const [backgroundBlob, setBackgroundBlob] = useState(null);
+  const [backgroundPreview, setBackgroundPreview] = useState(null);
+  const [backgroundError, setBackgroundError] = useState('');
 
   const resetBackgroundPreview = useCallback(() => {
-    const localUrl = localPreviewUrlRef.current
+    const localUrl = localPreviewUrlRef.current;
     if (localUrl) {
-      URL.revokeObjectURL(localUrl)
-      localPreviewUrlRef.current = null
+      URL.revokeObjectURL(localUrl);
+      localPreviewUrlRef.current = null;
     }
-    setBackgroundPreview((prev) => (prev !== null ? null : prev))
-  }, [])
+    setBackgroundPreview(prev => (prev !== null ? null : prev));
+  }, []);
 
-  useEffect(() => () => resetBackgroundPreview(), [resetBackgroundPreview])
+  useEffect(() => () => resetBackgroundPreview(), [resetBackgroundPreview]);
 
   const syncFromHero = useCallback(
-    (hero) => {
-      resetBackgroundPreview()
-      setBackgroundBlob(null)
-      setBackgroundError('')
+    hero => {
+      resetBackgroundPreview();
+      setBackgroundBlob(null);
+      setBackgroundError('');
       if (backgroundInputRef.current) {
-        backgroundInputRef.current.value = ''
+        backgroundInputRef.current.value = '';
       }
       if (hero?.background_url) {
-        localPreviewUrlRef.current = null
-        setBackgroundPreview(hero.background_url)
+        localPreviewUrlRef.current = null;
+        setBackgroundPreview(hero.background_url);
       }
     },
-    [resetBackgroundPreview],
-  )
+    [resetBackgroundPreview]
+  );
 
   const handleBackgroundUpload = useCallback(
-    (file) => {
-      setBackgroundError('')
+    file => {
+      setBackgroundError('');
       if (!file) {
-        setBackgroundBlob(null)
-        resetBackgroundPreview()
-        setEdit((prev) => ({ ...prev, background_url: '' }))
-        return
+        setBackgroundBlob(null);
+        resetBackgroundPreview();
+        setEdit(prev => ({ ...prev, background_url: '' }));
+        return;
       }
       if (!file.type.startsWith('image/')) {
-        setBackgroundError('이미지 파일만 업로드할 수 있습니다.')
-        return
+        setBackgroundError('이미지 파일만 업로드할 수 있습니다.');
+        return;
       }
       if (file.size > MAX_BACKGROUND_SIZE) {
-        setBackgroundError('이미지 크기는 8MB를 넘을 수 없습니다.')
-        return
+        setBackgroundError('이미지 크기는 8MB를 넘을 수 없습니다.');
+        return;
       }
-      resetBackgroundPreview()
-      const blobFile = file.slice(0, file.size, file.type)
-      const objectUrl = URL.createObjectURL(blobFile)
-      localPreviewUrlRef.current = objectUrl
-      setBackgroundBlob(blobFile)
-      setBackgroundPreview(objectUrl)
-      setEdit((prev) => ({ ...prev, background_url: '' }))
+      resetBackgroundPreview();
+      const blobFile = file.slice(0, file.size, file.type);
+      const objectUrl = URL.createObjectURL(blobFile);
+      localPreviewUrlRef.current = objectUrl;
+      setBackgroundBlob(blobFile);
+      setBackgroundPreview(objectUrl);
+      setEdit(prev => ({ ...prev, background_url: '' }));
     },
-    [resetBackgroundPreview, setEdit],
-  )
+    [resetBackgroundPreview, setEdit]
+  );
 
   const handleClearBackground = useCallback(() => {
-    resetBackgroundPreview()
-    setBackgroundBlob(null)
-    setBackgroundError('')
-    setEdit((prev) => ({ ...prev, background_url: '' }))
+    resetBackgroundPreview();
+    setBackgroundBlob(null);
+    setBackgroundError('');
+    setEdit(prev => ({ ...prev, background_url: '' }));
     if (backgroundInputRef.current) {
-      backgroundInputRef.current.value = ''
+      backgroundInputRef.current.value = '';
     }
-  }, [resetBackgroundPreview, setEdit])
+  }, [resetBackgroundPreview, setEdit]);
 
   const handleSaveComplete = useCallback(
-    (nextUrl) => {
-      setBackgroundBlob(null)
-      setBackgroundError('')
+    nextUrl => {
+      setBackgroundBlob(null);
+      setBackgroundError('');
       if (backgroundInputRef.current) {
-        backgroundInputRef.current.value = ''
+        backgroundInputRef.current.value = '';
       }
-      resetBackgroundPreview()
+      resetBackgroundPreview();
       if (nextUrl) {
-        localPreviewUrlRef.current = null
-        setBackgroundPreview(nextUrl)
+        localPreviewUrlRef.current = null;
+        setBackgroundPreview(nextUrl);
       }
     },
-    [resetBackgroundPreview],
-  )
+    [resetBackgroundPreview]
+  );
 
   return {
     backgroundInputRef,
@@ -99,5 +99,5 @@ export function useHeroBackgroundManager({ setEdit }) {
     onClearBackground: handleClearBackground,
     onHeroChange: syncFromHero,
     onSaveComplete: handleSaveComplete,
-  }
+  };
 }

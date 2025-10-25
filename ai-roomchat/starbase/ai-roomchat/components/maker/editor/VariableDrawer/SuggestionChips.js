@@ -1,8 +1,8 @@
 function SuggestionChips({ suggestions, onSelect, prefix }) {
-  if (!suggestions.length) return null
+  if (!suggestions.length) return null;
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-      {suggestions.map((item) => (
+      {suggestions.map(item => (
         <button
           key={`${prefix}-${item.token}`}
           type="button"
@@ -21,9 +21,9 @@ function SuggestionChips({ suggestions, onSelect, prefix }) {
         </button>
       ))}
     </div>
-  )
+  );
 }
 
-export default SuggestionChips
+export default SuggestionChips;
 
 //

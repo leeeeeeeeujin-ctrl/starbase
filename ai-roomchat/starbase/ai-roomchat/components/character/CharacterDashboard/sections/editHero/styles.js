@@ -248,4 +248,4 @@ export const modalStyles = {
     fontWeight: 700,
     cursor: 'pointer',
   },
-}
+};

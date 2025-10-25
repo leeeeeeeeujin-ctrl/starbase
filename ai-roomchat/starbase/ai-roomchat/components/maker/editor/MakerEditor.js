@@ -1,22 +1,31 @@
-'use client'
+'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { useMakerEditor } from '../../../hooks/maker/useMakerEditor'
-import { exportSet, importSet } from './importExport'
-import MakerEditorCanvas from './MakerEditorCanvas'
-import MakerEditorHeader from './MakerEditorHeader'
-import MakerEditorPanel from './MakerEditorPanel'
-import VariableDrawer from './VariableDrawer'
-import AdvancedToolsPanel from './AdvancedToolsPanel'
+import { useMakerEditor } from '../../../hooks/maker/useMakerEditor';
+import { exportSet, importSet } from './importExport';
+import MakerEditorCanvas from './MakerEditorCanvas';
+import MakerEditorHeader from './MakerEditorHeader';
+import MakerEditorPanel from './MakerEditorPanel';
+import VariableDrawer from './VariableDrawer';
+import AdvancedToolsPanel from './AdvancedToolsPanel';
 
 export default function MakerEditor() {
-  const { status, graph, selection, variables, persistence, history, version } = useMakerEditor()
+  const { status, graph, selection, variables, persistence, history, version } = useMakerEditor();
 
-  const { isReady, loading, setInfo } = status
+  const { isReady, loading, setInfo } = status;
 
-  const { nodes, edges, onNodesChange, onEdgesChange, onConnect, onNodesDelete, onEdgesDelete, setNodes, setEdges } =
-    graph
+  const {
+    nodes,
+    edges,
+    onNodesChange,
+    onEdgesChange,
+    onConnect,
+    onNodesDelete,
+    onEdgesDelete,
+    setNodes,
+    setEdges,
+  } = graph;
 
   const {
     selectedNode,
@@ -31,7 +40,7 @@ export default function MakerEditor() {
     setActivePanelTab,
     markAsStart,
     appendTokenToSelected,
-  } = selection
+  } = selection;
 
   const {
     selectedGlobalRules,
@@ -44,9 +53,9 @@ export default function MakerEditor() {
     toggleInvisible,
     slotSuggestions,
     characterSuggestions,
-  } = variables
+  } = variables;
 
-  const { busy, saveAll, deletePrompt, addPromptNode, goToSetList, goToLobby } = persistence
+  const { busy, saveAll, deletePrompt, addPromptNode, goToSetList, goToLobby } = persistence;
 
   const {
     entries: saveHistory,
@@ -55,14 +64,14 @@ export default function MakerEditor() {
     clearEntries: clearHistory,
     receipt: saveReceipt,
     ackReceipt,
-  } = history
+  } = history;
 
-  const { alert: versionAlert, clearAlert: clearVersionAlert } = version
-  const [variableDrawerOpen, setVariableDrawerOpen] = useState(false)
-  const [headerCollapsed, setHeaderCollapsed] = useState(false)
-  const [inspectorOpen, setInspectorOpen] = useState(false)
-  const [advancedToolsOpen, setAdvancedToolsOpen] = useState(false)
-  const [receiptVisible, setReceiptVisible] = useState(null)
+  const { alert: versionAlert, clearAlert: clearVersionAlert } = version;
+  const [variableDrawerOpen, setVariableDrawerOpen] = useState(false);
+  const [headerCollapsed, setHeaderCollapsed] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [advancedToolsOpen, setAdvancedToolsOpen] = useState(false);
+  const [receiptVisible, setReceiptVisible] = useState(null);
 
   const collapsedQuickActions = useMemo(
     () => [
@@ -71,101 +80,103 @@ export default function MakerEditor() {
       { label: '+시스템', onClick: () => addPromptNode('system') },
       { label: busy ? '저장 중…' : '저장', onClick: saveAll, disabled: busy },
     ],
-    [addPromptNode, busy, saveAll],
-  )
+    [addPromptNode, busy, saveAll]
+  );
 
   const openInspector = useCallback(
-    (tabId) => {
+    tabId => {
       if (tabId) {
-        const hasTab = panelTabs?.some((tab) => tab.id === tabId)
+        const hasTab = panelTabs?.some(tab => tab.id === tabId);
         if (hasTab) {
-          setActivePanelTab(tabId)
+          setActivePanelTab(tabId);
           if (tabId === 'history') {
-            setAdvancedToolsOpen(true)
+            setAdvancedToolsOpen(true);
           }
         } else if (panelTabs?.length) {
-          setActivePanelTab(panelTabs[0].id)
+          setActivePanelTab(panelTabs[0].id);
         }
       } else if (panelTabs?.length) {
-        setActivePanelTab(panelTabs[0].id)
+        setActivePanelTab(panelTabs[0].id);
       }
 
-      setInspectorOpen(true)
+      setInspectorOpen(true);
     },
-    [panelTabs, setActivePanelTab, setAdvancedToolsOpen],
-  )
+    [panelTabs, setActivePanelTab, setAdvancedToolsOpen]
+  );
 
   const handleNodeDoubleClick = useCallback(
     (event, node) => {
       if (typeof onNodeClick === 'function') {
-        onNodeClick(event, node)
+        onNodeClick(event, node);
       }
-      openInspector('selection')
+      openInspector('selection');
     },
-    [onNodeClick, openInspector],
-  )
+    [onNodeClick, openInspector]
+  );
 
   const handleEdgeDoubleClick = useCallback(
     (event, edge) => {
       if (typeof onEdgeClick === 'function') {
-        onEdgeClick(event, edge)
+        onEdgeClick(event, edge);
       }
-      openInspector('selection')
+      openInspector('selection');
     },
-    [onEdgeClick, openInspector],
-  )
+    [onEdgeClick, openInspector]
+  );
 
   const handleAutoUpgrade = useCallback(async () => {
-    if (busy) return
+    if (busy) return;
     try {
-      await saveAll()
+      await saveAll();
     } catch (error) {
-      console.error(error)
+      console.error(error);
     }
-  }, [busy, saveAll])
+  }, [busy, saveAll]);
 
   const handleDismissVersionAlert = useCallback(() => {
-    clearVersionAlert()
-  }, [clearVersionAlert])
+    clearVersionAlert();
+  }, [clearVersionAlert]);
 
   useEffect(() => {
     if (!saveReceipt) {
-      setReceiptVisible(null)
-      return
+      setReceiptVisible(null);
+      return;
     }
 
-    setReceiptVisible(saveReceipt)
+    setReceiptVisible(saveReceipt);
 
     const timeout = window.setTimeout(() => {
-      ackReceipt(saveReceipt.id)
-    }, 6000)
+      ackReceipt(saveReceipt.id);
+    }, 6000);
 
     return () => {
-      window.clearTimeout(timeout)
-    }
-  }, [saveReceipt, ackReceipt])
+      window.clearTimeout(timeout);
+    };
+  }, [saveReceipt, ackReceipt]);
 
   useEffect(() => {
-    if (!receiptVisible) return
+    if (!receiptVisible) return;
 
-    const handleKeyDown = (event) => {
+    const handleKeyDown = event => {
       if (event.key === 'Escape') {
-        ackReceipt(receiptVisible.id)
+        ackReceipt(receiptVisible.id);
       }
-    }
+    };
 
-    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('keydown', handleKeyDown);
     return () => {
-      window.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [receiptVisible, ackReceipt])
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [receiptVisible, ackReceipt]);
 
   if (!isReady || loading) {
-    return <div style={{ padding: 20 }}>불러오는 중…</div>
+    return <div style={{ padding: 20 }}>불러오는 중…</div>;
   }
 
   return (
-    <div style={{ height: '100vh', background: '#f1f5f9', display: 'flex', flexDirection: 'column' }}>
+    <div
+      style={{ height: '100vh', background: '#f1f5f9', display: 'flex', flexDirection: 'column' }}
+    >
       <div
         style={{
           flex: '1 1 auto',
@@ -191,7 +202,7 @@ export default function MakerEditor() {
           onImport={importSet}
           onGoLobby={goToLobby}
           collapsed={headerCollapsed}
-          onToggleCollapse={() => setHeaderCollapsed((prev) => !prev)}
+          onToggleCollapse={() => setHeaderCollapsed(prev => !prev)}
           onOpenVariables={() => setVariableDrawerOpen(true)}
           quickActions={collapsedQuickActions}
         />
@@ -215,7 +226,7 @@ export default function MakerEditor() {
               <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6 }}>{versionAlert.summary}</p>
               {Array.isArray(versionAlert.details) && versionAlert.details.length > 0 && (
                 <ul style={{ margin: '0 0 0 18px', padding: 0, fontSize: 12, lineHeight: 1.5 }}>
-                  {versionAlert.details.map((detail) => (
+                  {versionAlert.details.map(detail => (
                     <li key={detail}>{detail}</li>
                   ))}
                 </ul>
@@ -276,9 +287,7 @@ export default function MakerEditor() {
       <button
         type="button"
         onClick={() =>
-          inspectorOpen
-            ? (setInspectorOpen(false), setAdvancedToolsOpen(false))
-            : openInspector()
+          inspectorOpen ? (setInspectorOpen(false), setAdvancedToolsOpen(false)) : openInspector()
         }
         style={{
           position: 'fixed',
@@ -344,8 +353,8 @@ export default function MakerEditor() {
               <button
                 type="button"
                 onClick={() => {
-                  setInspectorOpen(false)
-                  setAdvancedToolsOpen(false)
+                  setInspectorOpen(false);
+                  setAdvancedToolsOpen(false);
                 }}
                 style={{
                   padding: '4px 10px',
@@ -386,7 +395,7 @@ export default function MakerEditor() {
             />
             <AdvancedToolsPanel
               expanded={advancedToolsOpen}
-              onToggle={() => setAdvancedToolsOpen((prev) => !prev)}
+              onToggle={() => setAdvancedToolsOpen(prev => !prev)}
               storageKey={historyStorageKey}
               historyEntries={saveHistory}
               onExport={exportHistory}
@@ -453,7 +462,14 @@ export default function MakerEditor() {
             gap: 10,
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
             <strong style={{ fontSize: 14 }}>저장 완료</strong>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               <button
@@ -474,7 +490,7 @@ export default function MakerEditor() {
               </button>
               <button
                 type="button"
-              onClick={() => ackReceipt(receiptVisible.id)}
+                onClick={() => ackReceipt(receiptVisible.id)}
                 style={{
                   appearance: 'none',
                   border: '1px solid rgba(148, 163, 184, 0.45)',
@@ -493,7 +509,7 @@ export default function MakerEditor() {
           <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6 }}>{receiptVisible.message}</p>
           {Array.isArray(receiptVisible.details) && receiptVisible.details.length > 0 && (
             <ul style={{ margin: '0 0 0 18px', padding: 0, fontSize: 12, lineHeight: 1.5 }}>
-              {receiptVisible.details.map((detail) => (
+              {receiptVisible.details.map(detail => (
                 <li key={detail}>{detail}</li>
               ))}
             </ul>
@@ -501,5 +517,5 @@ export default function MakerEditor() {
         </div>
       )}
     </div>
-  )
+  );
 }

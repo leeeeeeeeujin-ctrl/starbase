@@ -1,4 +1,4 @@
-'use client'
+'use client';
 
 const baseButton = {
   padding: '5px 10px',
@@ -10,7 +10,7 @@ const baseButton = {
   display: 'inline-flex',
   alignItems: 'center',
   gap: 4,
-}
+};
 
 export default function MakerEditorHeader({
   setName,
@@ -56,9 +56,11 @@ export default function MakerEditorHeader({
         >
           ▼ 펼치기
         </button>
-        <strong style={{ fontSize: 14, color: '#0f172a', flex: '0 1 auto' }}>{setName || '이름 없는 세트'}</strong>
+        <strong style={{ fontSize: 14, color: '#0f172a', flex: '0 1 auto' }}>
+          {setName || '이름 없는 세트'}
+        </strong>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-          {quickActions.map((action) => (
+          {quickActions.map(action => (
             <button
               key={action.label}
               type="button"
@@ -78,7 +80,12 @@ export default function MakerEditorHeader({
           <button
             type="button"
             onClick={onOpenVariables}
-            style={{ ...baseButton, background: '#f8fafc', borderColor: '#cbd5f5', color: '#0f172a' }}
+            style={{
+              ...baseButton,
+              background: '#f8fafc',
+              borderColor: '#cbd5f5',
+              color: '#0f172a',
+            }}
           >
             변수
           </button>
@@ -91,7 +98,7 @@ export default function MakerEditorHeader({
           </button>
         </div>
       </header>
-    )
+    );
   }
 
   return (
@@ -112,7 +119,9 @@ export default function MakerEditorHeader({
         >
           ← 목록
         </button>
-        <strong style={{ fontSize: 18, color: '#0f172a', flex: '1 1 auto' }}>{setName || '이름 없는 세트'}</strong>
+        <strong style={{ fontSize: 18, color: '#0f172a', flex: '1 1 auto' }}>
+          {setName || '이름 없는 세트'}
+        </strong>
         <button
           type="button"
           onClick={onToggleCollapse}
@@ -178,15 +187,17 @@ export default function MakerEditorHeader({
           }}
         >
           가져오기
-          <input type="file" accept="application/json" onChange={onImport} style={{ display: 'none' }} />
+          <input
+            type="file"
+            accept="application/json"
+            onChange={onImport}
+            style={{ display: 'none' }}
+          />
         </label>
-        <button
-          onClick={onGoLobby}
-          style={{ ...baseButton, background: '#0f172a', color: '#fff' }}
-        >
+        <button onClick={onGoLobby} style={{ ...baseButton, background: '#0f172a', color: '#fff' }}>
           랭킹 허브
         </button>
       </div>
     </header>
-  )
+  );
 }

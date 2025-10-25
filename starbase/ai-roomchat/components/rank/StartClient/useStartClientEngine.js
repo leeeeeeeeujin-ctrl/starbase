@@ -1,221 +1,208 @@
-'use client'
+'use client';
 
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 
-import { subscribeToBroadcastTopic } from '../../../lib/realtime/broadcast'
-import { supabase } from '../../../lib/supabase'
-import { withTable } from '../../../lib/supabaseTables'
+import { subscribeToBroadcastTopic } from '../../../lib/realtime/broadcast';
+import { supabase } from '../../../lib/supabase';
+import { withTable } from '../../../lib/supabaseTables';
 import {
   buildSlotsFromParticipants,
   makeNodePrompt,
   parseOutcome,
-} from '../../../lib/promptEngine'
-import { loadGameBundle } from './engine/loadGameBundle'
-import { pickNextEdge } from './engine/graph'
-import { buildSystemMessage, parseRules } from './engine/systemPrompt'
-import { resolveSlotBinding } from './engine/slotBindingResolver'
-import { createBridgeContext } from './engine/bridgeContext'
+} from '../../../lib/promptEngine';
+import { loadGameBundle } from './engine/loadGameBundle';
+import { pickNextEdge } from './engine/graph';
+import { buildSystemMessage, parseRules } from './engine/systemPrompt';
+import { resolveSlotBinding } from './engine/slotBindingResolver';
+import { createBridgeContext } from './engine/bridgeContext';
 import {
   buildUserActionPersona,
   normalizeHeroName,
   resolveActorContext,
-} from './engine/actorContext'
-import { buildBattleLogDraft } from './engine/battleLogBuilder'
-import { formatRealtimeReason } from './engine/timelineLogBuilder'
+} from './engine/actorContext';
+import { buildBattleLogDraft } from './engine/battleLogBuilder';
+import { formatRealtimeReason } from './engine/timelineLogBuilder';
 import {
   buildLogEntriesFromEvents,
   initializeRealtimeEvents,
   appendSnapshotEvents,
-} from './engine/timelineState'
-import {
-  reconcileParticipantsForGame,
-  formatPreflightSummary,
-} from './engine/preflight'
+} from './engine/timelineState';
+import { reconcileParticipantsForGame, formatPreflightSummary } from './engine/preflight';
 import {
   buildOwnerParticipantMap,
   buildOwnerRosterSnapshot,
   collectUniqueOwnerIds,
   createOwnerDisplayMap,
   deriveParticipantOwnerId,
-} from './engine/participants'
+} from './engine/participants';
 import {
   appendMainGameLogs,
   initialMainGameState,
   mainGameReducer,
   patchMainGameState,
   replaceMainGameLogs,
-} from './engine/mainGameMachine'
+} from './engine/mainGameMachine';
 import {
   createOutcomeLedger,
   syncOutcomeLedger,
   recordOutcomeLedger,
   buildOutcomeSnapshot,
-} from './engine/outcomeLedger'
-import { isApiKeyError } from './engine/apiKeyUtils'
-import { createTurnTimerService } from './services/turnTimerService'
-import {
-  createTurnVoteController,
-  deriveEligibleOwnerIds,
-} from './services/turnVoteController'
-import { createRealtimeSessionManager } from './services/realtimeSessionManager'
-import { createDropInQueueService } from './services/dropInQueueService'
-import { createAsyncSessionManager } from './services/asyncSessionManager'
-import {
-  mergeTimelineEvents,
-  normalizeTimelineStatus,
-} from '@/lib/rank/timelineEvents'
-import { buildDropInExtensionTimelineEvent } from '@/lib/rank/dropInTimeline'
-import { prepareHistoryPayload } from '@/lib/rank/chatHistory'
-import { buildHistorySeedEntries } from '@/lib/rank/historySeeds'
-import { useHistoryBuffer } from './hooks/useHistoryBuffer'
-import { useStartSessionLifecycle } from './hooks/useStartSessionLifecycle'
-import { useStartApiKeyManager } from './hooks/useStartApiKeyManager'
-import { useStartCooldown } from './hooks/useStartCooldown'
-import { useStartManualResponse } from './hooks/useStartManualResponse'
-import { useStartSessionWatchdog } from './hooks/useStartSessionWatchdog'
-import { consumeStartMatchMeta } from '../startConfig'
+} from './engine/outcomeLedger';
+import { isApiKeyError } from './engine/apiKeyUtils';
+import { createTurnTimerService } from './services/turnTimerService';
+import { createTurnVoteController, deriveEligibleOwnerIds } from './services/turnVoteController';
+import { createRealtimeSessionManager } from './services/realtimeSessionManager';
+import { createDropInQueueService } from './services/dropInQueueService';
+import { createAsyncSessionManager } from './services/asyncSessionManager';
+import { mergeTimelineEvents, normalizeTimelineStatus } from '@/lib/rank/timelineEvents';
+import { buildDropInExtensionTimelineEvent } from '@/lib/rank/dropInTimeline';
+import { prepareHistoryPayload } from '@/lib/rank/chatHistory';
+import { buildHistorySeedEntries } from '@/lib/rank/historySeeds';
+import { useHistoryBuffer } from './hooks/useHistoryBuffer';
+import { useStartSessionLifecycle } from './hooks/useStartSessionLifecycle';
+import { useStartApiKeyManager } from './hooks/useStartApiKeyManager';
+import { useStartCooldown } from './hooks/useStartCooldown';
+import { useStartManualResponse } from './hooks/useStartManualResponse';
+import { useStartSessionWatchdog } from './hooks/useStartSessionWatchdog';
+import { consumeStartMatchMeta } from '../startConfig';
 import {
   clearGameMatchData,
   hydrateGameMatchData,
   setGameMatchSessionMeta,
-} from '../../../modules/rank/matchDataStore'
-import { fetchLatestSessionRow } from '@/modules/rank/matchRealtimeSync'
+} from '../../../modules/rank/matchDataStore';
+import { fetchLatestSessionRow } from '@/modules/rank/matchRealtimeSync';
 import {
   START_SESSION_KEYS,
   readStartSessionValue,
   readStartSessionValues,
-} from '@/lib/rank/startSessionChannel'
+} from '@/lib/rank/startSessionChannel';
 import {
   getConnectionEntriesForGame,
   subscribeConnectionRegistry,
-} from '@/lib/rank/startConnectionRegistry'
+} from '@/lib/rank/startConnectionRegistry';
+
+import { buildParticipantsFromRoster } from './utils';
+import { fetchTurnStateEvents } from '@/lib/rank/sessionMetaClient';
+import { useTurnStateSync } from './hooks/useTurnStateSync';
 
 function toInt(value, { min = null } = {}) {
-  const numeric = Number(value)
-  if (!Number.isFinite(numeric)) return null
-  const rounded = Math.floor(numeric)
-  if (min !== null && rounded < min) return null
-  return rounded
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  const rounded = Math.floor(numeric);
+  if (min !== null && rounded < min) return null;
+  return rounded;
 }
 
 function toTrimmed(value) {
-  if (value === null || value === undefined) return null
-  const trimmed = String(value).trim()
-  return trimmed || null
+  if (value === null || value === undefined) return null;
+  const trimmed = String(value).trim();
+  return trimmed || null;
 }
 
 function sanitizeDropInArrivals(arrivals) {
-  if (!Array.isArray(arrivals) || arrivals.length === 0) return []
+  if (!Array.isArray(arrivals) || arrivals.length === 0) return [];
   return arrivals
     .slice(0, 8)
-    .map((arrival) => {
-      if (!arrival || typeof arrival !== 'object') return null
-      const normalized = {}
+    .map(arrival => {
+      if (!arrival || typeof arrival !== 'object') return null;
+      const normalized = {};
       const ownerId =
-        arrival.ownerId ??
-        arrival.owner_id ??
-        arrival.ownerID ??
-        arrival?.owner?.id ??
-        null
-      const role = toTrimmed(arrival.role)
+        arrival.ownerId ?? arrival.owner_id ?? arrival.ownerID ?? arrival?.owner?.id ?? null;
+      const role = toTrimmed(arrival.role);
       const heroName =
-        arrival.heroName ??
-        arrival.hero_name ??
-        arrival.display_name ??
-        arrival.name ??
-        null
-      const slotIndex = toInt(arrival.slotIndex, { min: 0 })
-      const timestamp = toInt(arrival.timestamp, { min: 0 })
-      const queueDepth = toInt(arrival?.stats?.queueDepth, { min: 0 })
-      const replacements = toInt(arrival?.stats?.replacements, { min: 0 })
-      const arrivalOrder = toInt(arrival?.stats?.arrivalOrder, { min: 0 })
+        arrival.heroName ?? arrival.hero_name ?? arrival.display_name ?? arrival.name ?? null;
+      const slotIndex = toInt(arrival.slotIndex, { min: 0 });
+      const timestamp = toInt(arrival.timestamp, { min: 0 });
+      const queueDepth = toInt(arrival?.stats?.queueDepth, { min: 0 });
+      const replacements = toInt(arrival?.stats?.replacements, { min: 0 });
+      const arrivalOrder = toInt(arrival?.stats?.arrivalOrder, { min: 0 });
       const replacedOwner =
         arrival?.replaced?.ownerId ??
         arrival?.replaced?.owner_id ??
         arrival?.replacedOwnerId ??
-        null
+        null;
       const replacedHero =
         arrival?.replaced?.heroName ??
         arrival?.replaced?.hero_name ??
         arrival?.replacedHeroName ??
-        null
-      const status = toTrimmed(arrival.status)
+        null;
+      const status = toTrimmed(arrival.status);
 
-      if (toTrimmed(ownerId)) normalized.ownerId = toTrimmed(ownerId)
-      if (role) normalized.role = role
-      if (toTrimmed(heroName)) normalized.heroName = toTrimmed(heroName)
-      if (slotIndex !== null) normalized.slotIndex = slotIndex
-      if (timestamp !== null) normalized.timestamp = timestamp
-      if (queueDepth !== null) normalized.queueDepth = queueDepth
-      if (replacements !== null) normalized.replacements = replacements
-      if (arrivalOrder !== null) normalized.arrivalOrder = arrivalOrder
-      if (toTrimmed(replacedOwner)) normalized.replacedOwnerId = toTrimmed(replacedOwner)
-      if (toTrimmed(replacedHero)) normalized.replacedHeroName = toTrimmed(replacedHero)
-      if (status) normalized.status = status
+      if (toTrimmed(ownerId)) normalized.ownerId = toTrimmed(ownerId);
+      if (role) normalized.role = role;
+      if (toTrimmed(heroName)) normalized.heroName = toTrimmed(heroName);
+      if (slotIndex !== null) normalized.slotIndex = slotIndex;
+      if (timestamp !== null) normalized.timestamp = timestamp;
+      if (queueDepth !== null) normalized.queueDepth = queueDepth;
+      if (replacements !== null) normalized.replacements = replacements;
+      if (arrivalOrder !== null) normalized.arrivalOrder = arrivalOrder;
+      if (toTrimmed(replacedOwner)) normalized.replacedOwnerId = toTrimmed(replacedOwner);
+      if (toTrimmed(replacedHero)) normalized.replacedHeroName = toTrimmed(replacedHero);
+      if (status) normalized.status = status;
 
-      if (Object.keys(normalized).length === 0) return null
-      return normalized
+      if (Object.keys(normalized).length === 0) return null;
+      return normalized;
     })
-    .filter(Boolean)
+    .filter(Boolean);
 }
 
 function stripOutcomeFooter(text = '') {
-  if (!text) return { body: '', footer: [] }
-  const working = String(text).split(/\r?\n/)
-  const footer = []
-  let captured = 0
-  let index = working.length - 1
+  if (!text) return { body: '', footer: [] };
+  const working = String(text).split(/\r?\n/);
+  const footer = [];
+  let captured = 0;
+  let index = working.length - 1;
 
   while (index >= 0 && captured < 3) {
-    const candidate = working[index]
+    const candidate = working[index];
     if (!candidate.trim()) {
-      working.splice(index, 1)
-      index -= 1
-      continue
+      working.splice(index, 1);
+      index -= 1;
+      continue;
     }
-    footer.unshift(candidate)
-    working.splice(index, 1)
-    captured += 1
+    footer.unshift(candidate);
+    working.splice(index, 1);
+    captured += 1;
 
     while (index - 1 >= 0 && !working[index - 1].trim()) {
-      working.splice(index - 1, 1)
-      index -= 1
+      working.splice(index - 1, 1);
+      index -= 1;
     }
 
-    index = working.length - 1
+    index = working.length - 1;
   }
 
   while (working.length && !working[working.length - 1].trim()) {
-    working.pop()
+    working.pop();
   }
 
-  return { body: working.join('\n'), footer }
+  return { body: working.join('\n'), footer };
 }
 
 function buildOutcomeStatusMessage(snapshot) {
   if (!snapshot) {
-    return '모든 역할군 결과가 확정되어 세션을 종료합니다.'
+    return '모든 역할군 결과가 확정되어 세션을 종료합니다.';
   }
-  const summaries = Array.isArray(snapshot.roleSummaries) ? snapshot.roleSummaries : []
-  const wins = summaries.filter((entry) => entry.status === 'won').length
-  const losses = summaries.filter((entry) => entry.status === 'lost').length
+  const summaries = Array.isArray(snapshot.roleSummaries) ? snapshot.roleSummaries : [];
+  const wins = summaries.filter(entry => entry.status === 'won').length;
+  const losses = summaries.filter(entry => entry.status === 'lost').length;
   const baseLabel = (() => {
     switch (snapshot.overallResult) {
       case 'won':
-        return '승리'
+        return '승리';
       case 'lost':
-        return '패배'
+        return '패배';
       case 'draw':
-        return '무승부'
+        return '무승부';
       default:
-        return '종료'
+        return '종료';
     }
-  })()
-  const pieces = []
-  if (wins) pieces.push(`${wins}승`)
-  if (losses) pieces.push(`${losses}패`)
-  const summary = pieces.length ? ` (${pieces.join(' · ')})` : ''
-  return `모든 역할군 결과가 확정되어 세션을 ${baseLabel}로 마무리했습니다.${summary}`
+  })();
+  const pieces = [];
+  if (wins) pieces.push(`${wins}승`);
+  if (losses) pieces.push(`${losses}패`);
+  const summary = pieces.length ? ` (${pieces.join(' · ')})` : '';
+  return `모든 역할군 결과가 확정되어 세션을 ${baseLabel}로 마무리했습니다.${summary}`;
 }
 
 function buildDropInMetaPayload({
@@ -228,110 +215,103 @@ function buildDropInMetaPayload({
   queueResult,
   roomId,
 }) {
-  const sanitizedArrivals = sanitizeDropInArrivals(arrivals)
-  const meta = {}
+  const sanitizedArrivals = sanitizeDropInArrivals(arrivals);
+  const meta = {};
 
-  const normalizedStatus = toTrimmed(status)
-  if (normalizedStatus) meta.status = normalizedStatus
+  const normalizedStatus = toTrimmed(status);
+  if (normalizedStatus) meta.status = normalizedStatus;
 
-  const normalizedMode = toTrimmed(mode)
-  if (normalizedMode) meta.mode = normalizedMode
+  const normalizedMode = toTrimmed(mode);
+  if (normalizedMode) meta.mode = normalizedMode;
 
-  const normalizedBonus = toInt(bonusSeconds, { min: 0 })
-  if (normalizedBonus !== null) meta.bonusSeconds = normalizedBonus
+  const normalizedBonus = toInt(bonusSeconds, { min: 0 });
+  if (normalizedBonus !== null) meta.bonusSeconds = normalizedBonus;
 
-  const normalizedAppliedAt = toInt(appliedAt, { min: 0 })
-  if (normalizedAppliedAt !== null) meta.appliedAt = normalizedAppliedAt
+  const normalizedAppliedAt = toInt(appliedAt, { min: 0 });
+  if (normalizedAppliedAt !== null) meta.appliedAt = normalizedAppliedAt;
 
-  const normalizedTurn = toInt(turnNumber, { min: 0 })
-  if (normalizedTurn !== null) meta.turnNumber = normalizedTurn
+  const normalizedTurn = toInt(turnNumber, { min: 0 });
+  if (normalizedTurn !== null) meta.turnNumber = normalizedTurn;
 
-  const normalizedRoomId = toTrimmed(roomId)
-  if (normalizedRoomId) meta.targetRoomId = normalizedRoomId
+  const normalizedRoomId = toTrimmed(roomId);
+  if (normalizedRoomId) meta.targetRoomId = normalizedRoomId;
 
   if (sanitizedArrivals.length) {
-    meta.arrivals = sanitizedArrivals
+    meta.arrivals = sanitizedArrivals;
     const queueDepth = sanitizedArrivals.reduce((max, entry) => {
-      const depth = typeof entry.queueDepth === 'number' ? entry.queueDepth : 0
-      return depth > max ? depth : max
-    }, 0)
+      const depth = typeof entry.queueDepth === 'number' ? entry.queueDepth : 0;
+      return depth > max ? depth : max;
+    }, 0);
     const replacements = sanitizedArrivals.reduce((max, entry) => {
-      const count = typeof entry.replacements === 'number' ? entry.replacements : 0
-      return count > max ? count : max
-    }, 0)
-    if (queueDepth > 0) meta.queueDepth = queueDepth
-    if (replacements > 0) meta.replacements = replacements
+      const count = typeof entry.replacements === 'number' ? entry.replacements : 0;
+      return count > max ? count : max;
+    }, 0);
+    if (queueDepth > 0) meta.queueDepth = queueDepth;
+    if (replacements > 0) meta.replacements = replacements;
   }
 
   if (queueResult?.matching) {
-    meta.matching = queueResult.matching
+    meta.matching = queueResult.matching;
   }
 
-  meta.updatedAt = Date.now()
+  meta.updatedAt = Date.now();
 
-  return meta
+  return meta;
 }
-import {
-  isRealtimeEnabled,
-  normalizeRealtimeMode,
-  REALTIME_MODES,
-} from '@/lib/rank/realtimeModes'
-import { fetchTurnStateEvents } from '@/lib/rank/sessionMetaClient'
-
 function toTrimmedString(value) {
-  if (value === null || value === undefined) return null
-  const stringValue = String(value).trim()
-  return stringValue ? stringValue : null
+  if (value === null || value === undefined) return null;
+  const stringValue = String(value).trim();
+  return stringValue ? stringValue : null;
 }
 
 function deepClone(value) {
-  if (value === null || value === undefined) return value
+  if (value === null || value === undefined) return value;
   try {
-    return JSON.parse(JSON.stringify(value))
+    return JSON.parse(JSON.stringify(value));
   } catch (error) {
-    return null
+    return null;
   }
 }
 
 function parseSlotIndex(value, fallback = null) {
-  const numeric = Number(value)
-  if (!Number.isFinite(numeric)) return fallback
-  if (numeric < 0) return fallback
-  return numeric
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  if (numeric < 0) return fallback;
+  return numeric;
 }
 
 function normalizeRosterEntries(roster = []) {
-  if (!Array.isArray(roster) || roster.length === 0) return []
+  if (!Array.isArray(roster) || roster.length === 0) return [];
 
   return roster
     .map((entry, index) => {
-      if (!entry) return null
+      if (!entry) return null;
 
       const slotIndex = parseSlotIndex(
         entry.slotIndex ?? entry.slot_index ?? entry.slotNo ?? entry.slot_no,
-        index,
-      )
+        index
+      );
       const roleValue =
         typeof entry.role === 'string'
           ? entry.role.trim()
           : typeof entry.roleName === 'string'
-          ? entry.roleName.trim()
-          : ''
+            ? entry.roleName.trim()
+            : '';
       const ownerId = toTrimmedString(
-        entry.ownerId ?? entry.owner_id ?? entry.occupantOwnerId ?? entry.ownerID,
-      )
+        entry.ownerId ?? entry.owner_id ?? entry.occupantOwnerId ?? entry.ownerID
+      );
       const heroId = toTrimmedString(
-        entry.heroId ?? entry.hero_id ?? entry.occupantHeroId ?? entry.heroID,
-      )
-      const slotId = toTrimmedString(entry.slotId ?? entry.slot_id ?? entry.id)
-      const joinedAt = entry.joinedAt ?? entry.joined_at ?? null
-      const ready = Boolean(entry.ready ?? entry.isReady ?? entry.occupantReady)
+        entry.heroId ?? entry.hero_id ?? entry.occupantHeroId ?? entry.heroID
+      );
+      const slotId = toTrimmedString(entry.slotId ?? entry.slot_id ?? entry.id);
+      const joinedAt = entry.joinedAt ?? entry.joined_at ?? null;
+      const ready = Boolean(entry.ready ?? entry.isReady ?? entry.occupantReady);
       const heroNameValue =
         typeof entry.heroName === 'string'
           ? entry.heroName
           : typeof entry.hero_name === 'string'
-          ? entry.hero_name
-          : ''
+            ? entry.hero_name
+            : '';
 
       return {
         slotId,
@@ -342,87 +322,85 @@ function normalizeRosterEntries(roster = []) {
         heroName: heroNameValue,
         ready,
         joinedAt,
-      }
+      };
     })
     .filter(Boolean)
-    .sort((a, b) => a.slotIndex - b.slotIndex)
+    .sort((a, b) => a.slotIndex - b.slotIndex);
 }
 
 function buildRosterEntriesFromAssignments(assignments = []) {
-  if (!Array.isArray(assignments) || assignments.length === 0) return []
+  if (!Array.isArray(assignments) || assignments.length === 0) return [];
 
-  const entries = []
-  assignments.forEach((assignment) => {
-    if (!assignment) return
+  const entries = [];
+  assignments.forEach(assignment => {
+    if (!assignment) return;
     const roleName =
       typeof assignment.role === 'string'
         ? assignment.role.trim()
         : typeof assignment.roleName === 'string'
-        ? assignment.roleName.trim()
-        : ''
+          ? assignment.roleName.trim()
+          : '';
 
     const members = Array.isArray(assignment.members)
       ? assignment.members
       : Array.isArray(assignment.membership)
-      ? assignment.membership
-      : []
+        ? assignment.membership
+        : [];
 
     members.forEach((member, index) => {
-      if (!member) return
+      if (!member) return;
       entries.push({
         slotIndex:
           member.slotIndex ?? member.slot_index ?? member.slotNo ?? member.slot_no ?? index,
         role: roleName || null,
         ownerId:
           member.ownerId ?? member.owner_id ?? member.occupantOwnerId ?? member.ownerID ?? null,
-        heroId:
-          member.heroId ?? member.hero_id ?? member.occupantHeroId ?? member.heroID ?? null,
-        heroName:
-          member.heroName ?? member.hero_name ?? member.displayName ?? member.name ?? '',
+        heroId: member.heroId ?? member.hero_id ?? member.occupantHeroId ?? member.heroID ?? null,
+        heroName: member.heroName ?? member.hero_name ?? member.displayName ?? member.name ?? '',
         ready: Boolean(member.ready ?? member.isReady ?? member.occupantReady),
         joinedAt: member.joinedAt ?? member.joined_at ?? null,
-      })
-    })
-  })
+      });
+    });
+  });
 
-  return entries
+  return entries;
 }
 
 function deriveRosterFromMatchSnapshot(matchSnapshot) {
-  if (!matchSnapshot) return []
+  if (!matchSnapshot) return [];
 
-  const slotCandidates = []
+  const slotCandidates = [];
   if (Array.isArray(matchSnapshot.slotLayout) && matchSnapshot.slotLayout.length) {
-    slotCandidates.push(matchSnapshot.slotLayout)
+    slotCandidates.push(matchSnapshot.slotLayout);
   }
   if (
     matchSnapshot.roleStatus &&
     Array.isArray(matchSnapshot.roleStatus.slotLayout) &&
     matchSnapshot.roleStatus.slotLayout.length
   ) {
-    slotCandidates.push(matchSnapshot.roleStatus.slotLayout)
+    slotCandidates.push(matchSnapshot.roleStatus.slotLayout);
   }
 
   for (const candidate of slotCandidates) {
-    const normalized = normalizeRosterEntries(candidate)
-    if (normalized.length) return normalized
+    const normalized = normalizeRosterEntries(candidate);
+    if (normalized.length) return normalized;
   }
 
-  const assignmentEntries = buildRosterEntriesFromAssignments(matchSnapshot.assignments)
+  const assignmentEntries = buildRosterEntriesFromAssignments(matchSnapshot.assignments);
   if (assignmentEntries.length) {
-    const normalizedAssignments = normalizeRosterEntries(assignmentEntries)
-    if (normalizedAssignments.length) return normalizedAssignments
+    const normalizedAssignments = normalizeRosterEntries(assignmentEntries);
+    if (normalizedAssignments.length) return normalizedAssignments;
   }
 
-  return []
+  return [];
 }
 
 function buildSlotLayoutFromRosterSnapshot(roster = []) {
-  if (!Array.isArray(roster) || roster.length === 0) return []
+  if (!Array.isArray(roster) || roster.length === 0) return [];
 
-  return roster.map((entry) => {
-    const ownerId = toTrimmedString(entry.ownerId)
-    const heroId = toTrimmedString(entry.heroId)
+  return roster.map(entry => {
+    const ownerId = toTrimmedString(entry.ownerId);
+    const heroId = toTrimmedString(entry.heroId);
     return {
       id: entry.slotId,
       slot_index: entry.slotIndex,
@@ -435,39 +413,39 @@ function buildSlotLayoutFromRosterSnapshot(roster = []) {
       occupant_hero_id: heroId,
       occupant_ready: entry.ready || false,
       occupant_joined_at: entry.joinedAt || null,
-    }
-  })
+    };
+  });
 }
 
 function normalizeSlotLayoutEntries(list = []) {
-  if (!Array.isArray(list) || list.length === 0) return []
+  if (!Array.isArray(list) || list.length === 0) return [];
 
   return list
     .map((entry, index) => {
-      if (!entry) return null
+      if (!entry) return null;
       const slotIndex = parseSlotIndex(
         entry.slot_index ?? entry.slotIndex ?? entry.slotNo ?? entry.slot_no,
-        index,
-      )
-      if (slotIndex == null) return null
+        index
+      );
+      if (slotIndex == null) return null;
       const roleValue =
         typeof entry.role === 'string'
           ? entry.role.trim()
           : typeof entry.role_name === 'string'
-          ? entry.role_name.trim()
-          : ''
+            ? entry.role_name.trim()
+            : '';
       const ownerId = toTrimmedString(
-        entry.hero_owner_id ?? entry.heroOwnerId ?? entry.ownerId ?? entry.occupantOwnerId,
-      )
+        entry.hero_owner_id ?? entry.heroOwnerId ?? entry.ownerId ?? entry.occupantOwnerId
+      );
       const heroId = toTrimmedString(
-        entry.hero_id ?? entry.heroId ?? entry.occupantHeroId ?? entry.heroID,
-      )
+        entry.hero_id ?? entry.heroId ?? entry.occupantHeroId ?? entry.heroID
+      );
       const occupantOwner = toTrimmedString(
-        entry.occupant_owner_id ?? entry.occupantOwnerId ?? ownerId,
-      )
+        entry.occupant_owner_id ?? entry.occupantOwnerId ?? ownerId
+      );
       const occupantHero = toTrimmedString(
-        entry.occupant_hero_id ?? entry.occupantHeroId ?? heroId,
-      )
+        entry.occupant_hero_id ?? entry.occupantHeroId ?? heroId
+      );
 
       return {
         id: entry.id ?? entry.slotId ?? null,
@@ -479,51 +457,46 @@ function normalizeSlotLayoutEntries(list = []) {
         hero_owner_id: ownerId,
         occupant_owner_id: occupantOwner,
         occupant_hero_id: occupantHero,
-        occupant_ready:
-          entry.occupant_ready ?? entry.ready ?? entry.isReady ?? false,
+        occupant_ready: entry.occupant_ready ?? entry.ready ?? entry.isReady ?? false,
         occupant_joined_at: entry.occupant_joined_at ?? entry.joinedAt ?? null,
-      }
+      };
     })
     .filter(Boolean)
-    .sort((a, b) => a.slot_index - b.slot_index)
+    .sort((a, b) => a.slot_index - b.slot_index);
 }
 
 function mergeSlotLayoutSeed(primary = [], fallback = []) {
-  const primaryList = Array.isArray(primary)
-    ? primary.map((entry) => ({ ...entry }))
-    : []
-  const fallbackList = Array.isArray(fallback)
-    ? fallback.map((entry) => ({ ...entry }))
-    : []
+  const primaryList = Array.isArray(primary) ? primary.map(entry => ({ ...entry })) : [];
+  const fallbackList = Array.isArray(fallback) ? fallback.map(entry => ({ ...entry })) : [];
 
   if (primaryList.length === 0) {
-    return fallbackList
+    return fallbackList;
   }
 
-  const fallbackMap = new Map()
-  fallbackList.forEach((entry) => {
-    const slotIndex = parseSlotIndex(entry.slot_index ?? entry.slotIndex)
-    if (slotIndex == null) return
+  const fallbackMap = new Map();
+  fallbackList.forEach(entry => {
+    const slotIndex = parseSlotIndex(entry.slot_index ?? entry.slotIndex);
+    if (slotIndex == null) return;
     if (!fallbackMap.has(slotIndex)) {
       fallbackMap.set(slotIndex, {
         ...entry,
         slot_index: slotIndex,
         slotIndex,
-      })
+      });
     }
-  })
+  });
 
   const merged = primaryList
-    .map((entry) => {
-      const slotIndex = parseSlotIndex(entry.slot_index ?? entry.slotIndex)
-      if (slotIndex == null) return null
-      const fallbackEntry = fallbackMap.get(slotIndex)
+    .map(entry => {
+      const slotIndex = parseSlotIndex(entry.slot_index ?? entry.slotIndex);
+      if (slotIndex == null) return null;
+      const fallbackEntry = fallbackMap.get(slotIndex);
       if (fallbackEntry) {
-        fallbackMap.delete(slotIndex)
+        fallbackMap.delete(slotIndex);
         const roleValue =
           typeof entry.role === 'string' && entry.role.trim()
             ? entry.role.trim()
-            : fallbackEntry.role || null
+            : fallbackEntry.role || null;
         return {
           ...fallbackEntry,
           ...entry,
@@ -532,19 +505,13 @@ function mergeSlotLayoutSeed(primary = [], fallback = []) {
           slotIndex,
           role: roleValue,
           hero_id: entry.hero_id ?? fallbackEntry.hero_id ?? null,
-          hero_owner_id:
-            entry.hero_owner_id ?? fallbackEntry.hero_owner_id ?? null,
-          active:
-            entry.active !== undefined ? entry.active : fallbackEntry.active,
-          occupant_owner_id:
-            entry.occupant_owner_id ?? fallbackEntry.occupant_owner_id ?? null,
-          occupant_hero_id:
-            entry.occupant_hero_id ?? fallbackEntry.occupant_hero_id ?? null,
-          occupant_ready:
-            entry.occupant_ready ?? fallbackEntry.occupant_ready ?? false,
-          occupant_joined_at:
-            entry.occupant_joined_at ?? fallbackEntry.occupant_joined_at ?? null,
-        }
+          hero_owner_id: entry.hero_owner_id ?? fallbackEntry.hero_owner_id ?? null,
+          active: entry.active !== undefined ? entry.active : fallbackEntry.active,
+          occupant_owner_id: entry.occupant_owner_id ?? fallbackEntry.occupant_owner_id ?? null,
+          occupant_hero_id: entry.occupant_hero_id ?? fallbackEntry.occupant_hero_id ?? null,
+          occupant_ready: entry.occupant_ready ?? fallbackEntry.occupant_ready ?? false,
+          occupant_joined_at: entry.occupant_joined_at ?? fallbackEntry.occupant_joined_at ?? null,
+        };
       }
       return {
         ...entry,
@@ -552,85 +519,83 @@ function mergeSlotLayoutSeed(primary = [], fallback = []) {
         slotIndex,
         id: entry.id ?? null,
         active: entry.active !== false,
-      }
+      };
     })
-    .filter(Boolean)
+    .filter(Boolean);
 
-  fallbackMap.forEach((entry) => {
-    merged.push(entry)
-  })
+  fallbackMap.forEach(entry => {
+    merged.push(entry);
+  });
 
-  return merged.sort((a, b) => a.slot_index - b.slot_index)
+  return merged.sort((a, b) => a.slot_index - b.slot_index);
 }
 
 function hydrateParticipantsWithRoster(participants = [], roster = []) {
-  const participantList = Array.isArray(participants) ? participants : []
-  const rosterList = Array.isArray(roster) ? roster : []
+  const participantList = Array.isArray(participants) ? participants : [];
+  const rosterList = Array.isArray(roster) ? roster : [];
 
   if (rosterList.length === 0) {
-    return participantList
+    return participantList;
   }
 
   if (participantList.length === 0) {
-    return buildParticipantsFromRoster(rosterList)
+    return buildParticipantsFromRoster(rosterList);
   }
 
-  const compositeMap = new Map()
-  const heroMap = new Map()
-  const ownerMap = new Map()
+  const compositeMap = new Map();
+  const heroMap = new Map();
+  const ownerMap = new Map();
 
-  rosterList.forEach((entry) => {
-    const ownerId = toTrimmedString(entry.ownerId)
-    const heroId = toTrimmedString(entry.heroId)
+  rosterList.forEach(entry => {
+    const ownerId = toTrimmedString(entry.ownerId);
+    const heroId = toTrimmedString(entry.heroId);
     if (ownerId && heroId) {
-      const compositeKey = `${ownerId}::${heroId}`
+      const compositeKey = `${ownerId}::${heroId}`;
       if (!compositeMap.has(compositeKey)) {
-        compositeMap.set(compositeKey, entry)
+        compositeMap.set(compositeKey, entry);
       }
     }
     if (heroId && !heroMap.has(heroId)) {
-      heroMap.set(heroId, entry)
+      heroMap.set(heroId, entry);
     }
     if (ownerId && !ownerMap.has(ownerId)) {
-      ownerMap.set(ownerId, entry)
+      ownerMap.set(ownerId, entry);
     }
-  })
+  });
 
   const decorated = participantList
     .map((participant, index) => {
       if (!participant) {
-        return null
+        return null;
       }
 
-      const ownerId = toTrimmedString(deriveParticipantOwnerId(participant))
+      const ownerId = toTrimmedString(deriveParticipantOwnerId(participant));
       const heroId = toTrimmedString(
-        participant?.hero?.id ?? participant?.hero_id ?? participant?.heroId,
-      )
+        participant?.hero?.id ?? participant?.hero_id ?? participant?.heroId
+      );
 
-      let rosterEntry = null
+      let rosterEntry = null;
       if (ownerId && heroId) {
-        rosterEntry = compositeMap.get(`${ownerId}::${heroId}`) || null
+        rosterEntry = compositeMap.get(`${ownerId}::${heroId}`) || null;
       }
       if (!rosterEntry && heroId) {
-        rosterEntry = heroMap.get(heroId) || null
+        rosterEntry = heroMap.get(heroId) || null;
       }
       if (!rosterEntry && ownerId) {
-        rosterEntry = ownerMap.get(ownerId) || null
+        rosterEntry = ownerMap.get(ownerId) || null;
       }
 
       if (!rosterEntry) {
-        return null
+        return null;
       }
 
       const slotIndex =
         rosterEntry.slotIndex ??
-        parseSlotIndex(
-          participant.slot_no ?? participant.slotIndex ?? participant.slot_index,
-        )
+        parseSlotIndex(participant.slot_no ?? participant.slotIndex ?? participant.slot_index);
       const roleValue =
         (typeof rosterEntry.role === 'string' && rosterEntry.role.trim()) ||
         participant.role ||
-        null
+        null;
 
       return {
         participant: {
@@ -639,112 +604,47 @@ function hydrateParticipantsWithRoster(participants = [], roster = []) {
           slotIndex,
           slot_index: slotIndex,
           role: roleValue,
-          occupant_ready:
-            rosterEntry.ready ?? participant.occupant_ready ?? null,
+          occupant_ready: rosterEntry.ready ?? participant.occupant_ready ?? null,
           occupant_joined_at:
-            rosterEntry.joinedAt ??
-            participant.occupant_joined_at ??
-            participant.joined_at ??
-            null,
+            rosterEntry.joinedAt ?? participant.occupant_joined_at ?? participant.joined_at ?? null,
         },
         index,
-      }
+      };
     })
-    .filter(Boolean)
+    .filter(Boolean);
 
   if (!decorated.length) {
-    return buildParticipantsFromRoster(rosterList)
+    return buildParticipantsFromRoster(rosterList);
   }
 
   decorated.sort((a, b) => {
     const slotA = parseSlotIndex(
-      a.participant?.slot_no ?? a.participant?.slotIndex ?? a.participant?.slot_index,
-    )
+      a.participant?.slot_no ?? a.participant?.slotIndex ?? a.participant?.slot_index
+    );
     const slotB = parseSlotIndex(
-      b.participant?.slot_no ?? b.participant?.slotIndex ?? b.participant?.slot_index,
-    )
+      b.participant?.slot_no ?? b.participant?.slotIndex ?? b.participant?.slot_index
+    );
     if (slotA != null && slotB != null) {
-      if (slotA === slotB) return a.index - b.index
-      return slotA - slotB
+      if (slotA === slotB) return a.index - b.index;
+      return slotA - slotB;
     }
-    if (slotA != null) return -1
-    if (slotB != null) return 1
-    return a.index - b.index
-  })
+    if (slotA != null) return -1;
+    if (slotB != null) return 1;
+    return a.index - b.index;
+  });
 
-  return decorated.map((entry) => entry.participant)
-}
-
-function buildParticipantsFromRoster(roster = []) {
-  return roster
-    .map((entry, index) => {
-      if (!entry) return null
-      const slotIndex = parseSlotIndex(entry.slotIndex, index)
-      const ownerId = toTrimmedString(entry.ownerId)
-      const heroId = toTrimmedString(entry.heroId)
-      const heroName = normalizeHeroName(entry.heroName || '')
-      const ready = Boolean(entry.ready)
-
-      if (!ownerId || !heroId) {
-        return null
-      }
-
-      return {
-        id: `roster-${slotIndex != null ? slotIndex : index}-${ownerId}`,
-        owner_id: ownerId,
-        ownerId,
-        role: entry.role || '',
-        status: ready ? 'ready' : 'alive',
-        slot_no: slotIndex,
-        slotIndex,
-        slot_index: slotIndex,
-        score: 0,
-        rating: 0,
-        battles: 0,
-        win_rate: null,
-        hero_id: heroId,
-        match_source: 'room_roster',
-        standin: false,
-        occupant_ready: ready,
-        occupant_joined_at: entry.joinedAt || null,
-        hero: {
-          id: heroId,
-          name: heroName || (heroId ? `캐릭터 #${heroId}` : '알 수 없는 영웅'),
-          description: '',
-          image_url: '',
-          background_url: '',
-          bgm_url: '',
-          bgm_duration_seconds: null,
-          ability1: '',
-          ability2: '',
-          ability3: '',
-          ability4: '',
-        },
-      }
-    })
-    .filter(Boolean)
-    .sort((a, b) => {
-      const slotA = parseSlotIndex(a.slot_no, 0)
-      const slotB = parseSlotIndex(b.slot_no, 0)
-      if (slotA != null && slotB != null) {
-        if (slotA === slotB) return 0
-        return slotA - slotB
-      }
-      if (slotA != null) return -1
-      if (slotB != null) return 1
-      return 0
-    })
+  return decorated.map(entry => entry.participant);
 }
 
 export function useStartClientEngine(gameId, options = {}) {
-  const hostOwnerIdOption = options?.hostOwnerId ?? ''
+  const hostOwnerIdOption = options?.hostOwnerId ?? '';
   const normalizedHostOwnerId = useMemo(() => {
     if (hostOwnerIdOption === null || hostOwnerIdOption === undefined) {
-      return ''
+      return '';
     }
-    const trimmed = String(hostOwnerIdOption).trim()
-    return trimmed
-  }, [hostOwnerIdOption])
+    const trimmed = String(hostOwnerIdOption).trim();
+    return trimmed;
+  }, [hostOwnerIdOption]);
   const storedStartConfig =
     typeof window === 'undefined'
       ? {}
@@ -754,49 +654,48 @@ export function useStartClientEngine(gameId, options = {}) {
           START_SESSION_KEYS.GEMINI_MODE,
           START_SESSION_KEYS.GEMINI_MODEL,
           START_SESSION_KEYS.TURN_TIMER,
-        ])
+        ]);
   const initialStoredApiKey =
     typeof window === 'undefined'
       ? ''
-      : (storedStartConfig[START_SESSION_KEYS.API_KEY] || '').trim()
-  const initialFrontMatchData =
-    typeof window === 'undefined' ? null : hydrateGameMatchData(gameId)
+      : (storedStartConfig[START_SESSION_KEYS.API_KEY] || '').trim();
+  const initialFrontMatchData = typeof window === 'undefined' ? null : hydrateGameMatchData(gameId);
   const initialSessionMeta =
     initialFrontMatchData && typeof initialFrontMatchData.sessionMeta === 'object'
       ? deepClone(initialFrontMatchData.sessionMeta) || initialFrontMatchData.sessionMeta
-      : null
+      : null;
   const initialSlotTemplate =
     initialFrontMatchData && typeof initialFrontMatchData.slotTemplate === 'object'
       ? deepClone(initialFrontMatchData.slotTemplate) || initialFrontMatchData.slotTemplate
-      : null
-  const initialMatchMetaCandidate = consumeStartMatchMeta()
+      : null;
+  const initialMatchMetaCandidate = consumeStartMatchMeta();
   const baseMatchMeta =
-    initialMatchMetaCandidate || initialFrontMatchData?.matchSnapshot?.match || null
+    initialMatchMetaCandidate || initialFrontMatchData?.matchSnapshot?.match || null;
   const slotTemplateSlots =
     initialSlotTemplate && Array.isArray(initialSlotTemplate.slots)
       ? deepClone(initialSlotTemplate.slots) || initialSlotTemplate.slots
-      : null
-  let initialMatchMeta = baseMatchMeta ? deepClone(baseMatchMeta) || baseMatchMeta : null
+      : null;
+  let initialMatchMeta = baseMatchMeta ? deepClone(baseMatchMeta) || baseMatchMeta : null;
 
   if (slotTemplateSlots && slotTemplateSlots.length) {
     if (initialMatchMeta) {
       const roleStatusSource =
         initialMatchMeta.roleStatus && typeof initialMatchMeta.roleStatus === 'object'
           ? { ...initialMatchMeta.roleStatus }
-          : {}
+          : {};
       if (!Array.isArray(initialMatchMeta.slotLayout) || !initialMatchMeta.slotLayout.length) {
-        initialMatchMeta = { ...initialMatchMeta, slotLayout: slotTemplateSlots }
+        initialMatchMeta = { ...initialMatchMeta, slotLayout: slotTemplateSlots };
       }
       if (!Array.isArray(roleStatusSource.slotLayout) || !roleStatusSource.slotLayout.length) {
-        roleStatusSource.slotLayout = slotTemplateSlots
+        roleStatusSource.slotLayout = slotTemplateSlots;
       }
       if (initialSlotTemplate.version && !roleStatusSource.version) {
-        roleStatusSource.version = initialSlotTemplate.version
+        roleStatusSource.version = initialSlotTemplate.version;
       }
       if (initialSlotTemplate.updatedAt && !roleStatusSource.updatedAt) {
-        roleStatusSource.updatedAt = initialSlotTemplate.updatedAt
+        roleStatusSource.updatedAt = initialSlotTemplate.updatedAt;
       }
-      initialMatchMeta = { ...initialMatchMeta, roleStatus: roleStatusSource }
+      initialMatchMeta = { ...initialMatchMeta, roleStatus: roleStatusSource };
     } else {
       initialMatchMeta = {
         slotLayout: slotTemplateSlots,
@@ -805,108 +704,104 @@ export function useStartClientEngine(gameId, options = {}) {
           version: initialSlotTemplate?.version || null,
           updatedAt: initialSlotTemplate?.updatedAt || null,
         },
-      }
+      };
     }
   }
 
   if (initialSessionMeta?.turnTimer) {
-    const timerMeta = deepClone(initialSessionMeta.turnTimer) || initialSessionMeta.turnTimer
+    const timerMeta = deepClone(initialSessionMeta.turnTimer) || initialSessionMeta.turnTimer;
     if (initialMatchMeta) {
-      initialMatchMeta = { ...initialMatchMeta, turnTimer: timerMeta }
+      initialMatchMeta = { ...initialMatchMeta, turnTimer: timerMeta };
     } else {
-      initialMatchMeta = { turnTimer: timerMeta }
+      initialMatchMeta = { turnTimer: timerMeta };
     }
   }
   const initialApiVersion =
     typeof window === 'undefined'
       ? 'gemini'
-      : storedStartConfig[START_SESSION_KEYS.API_VERSION] || 'gemini'
+      : storedStartConfig[START_SESSION_KEYS.API_VERSION] || 'gemini';
   const initialGeminiConfig =
     typeof window === 'undefined'
       ? {}
       : {
           mode: storedStartConfig[START_SESSION_KEYS.GEMINI_MODE] || undefined,
           model: storedStartConfig[START_SESSION_KEYS.GEMINI_MODEL] || undefined,
-        }
-  const startMatchMetaRef = useRef(initialMatchMeta)
-  const [startMatchMeta] = useState(initialMatchMeta)
-  const [frontMatchData] = useState(initialFrontMatchData)
+        };
+  const startMatchMetaRef = useRef(initialMatchMeta);
+  const [startMatchMeta] = useState(initialMatchMeta);
+  const [frontMatchData] = useState(initialFrontMatchData);
   const historySeeds = useMemo(
     () => buildHistorySeedEntries(frontMatchData?.sessionHistory),
-    [frontMatchData],
-  )
-  const historySeedRef = useRef(historySeeds)
+    [frontMatchData]
+  );
+  const historySeedRef = useRef(historySeeds);
   useEffect(() => {
-    historySeedRef.current = historySeeds
-  }, [historySeeds])
-  const matchSnapshotSeed = frontMatchData?.matchSnapshot?.match || null
+    historySeedRef.current = historySeeds;
+  }, [historySeeds]);
+  const matchSnapshotSeed = frontMatchData?.matchSnapshot?.match || null;
   const matchInstanceId = useMemo(() => {
-    if (!matchSnapshotSeed) return ''
+    if (!matchSnapshotSeed) return '';
     const direct =
       matchSnapshotSeed.instanceId ||
       matchSnapshotSeed.matchInstanceId ||
       matchSnapshotSeed.match_instance_id ||
-      null
+      null;
     if (direct && typeof direct === 'string') {
-      return direct.trim()
+      return direct.trim();
     }
-    return ''
-  }, [matchSnapshotSeed])
+    return '';
+  }, [matchSnapshotSeed]);
   const stagedRoomId = useMemo(() => {
-    if (!matchSnapshotSeed) return ''
-    const rooms = Array.isArray(matchSnapshotSeed.rooms) ? matchSnapshotSeed.rooms : []
+    if (!matchSnapshotSeed) return '';
+    const rooms = Array.isArray(matchSnapshotSeed.rooms) ? matchSnapshotSeed.rooms : [];
     if (rooms.length) {
-      const idValue = rooms[0]?.id
+      const idValue = rooms[0]?.id;
       if (idValue != null) {
-        const trimmed = String(idValue).trim()
-        if (trimmed) return trimmed
+        const trimmed = String(idValue).trim();
+        if (trimmed) return trimmed;
       }
     }
-    return ''
-  }, [matchSnapshotSeed])
+    return '';
+  }, [matchSnapshotSeed]);
   const rosterSnapshot = useMemo(() => {
-    const normalized = normalizeRosterEntries(frontMatchData?.participation?.roster || [])
-    if (normalized.length) return normalized
-    return deriveRosterFromMatchSnapshot(matchSnapshotSeed)
-  }, [frontMatchData, matchSnapshotSeed])
+    const normalized = normalizeRosterEntries(frontMatchData?.participation?.roster || []);
+    if (normalized.length) return normalized;
+    return deriveRosterFromMatchSnapshot(matchSnapshotSeed);
+  }, [frontMatchData, matchSnapshotSeed]);
   const slotLayoutSeed = useMemo(() => {
     if (Array.isArray(initialSlotTemplate?.slots) && initialSlotTemplate.slots.length) {
-      const fromTemplate = normalizeSlotLayoutEntries(initialSlotTemplate.slots)
-      if (fromTemplate.length) return fromTemplate
+      const fromTemplate = normalizeSlotLayoutEntries(initialSlotTemplate.slots);
+      if (fromTemplate.length) return fromTemplate;
     }
-    if (!matchSnapshotSeed) return []
-    const sources = []
+    if (!matchSnapshotSeed) return [];
+    const sources = [];
     if (Array.isArray(matchSnapshotSeed.slotLayout) && matchSnapshotSeed.slotLayout.length) {
-      sources.push(matchSnapshotSeed.slotLayout)
+      sources.push(matchSnapshotSeed.slotLayout);
     }
     if (
       matchSnapshotSeed.roleStatus &&
       Array.isArray(matchSnapshotSeed.roleStatus.slotLayout) &&
       matchSnapshotSeed.roleStatus.slotLayout.length
     ) {
-      sources.push(matchSnapshotSeed.roleStatus.slotLayout)
+      sources.push(matchSnapshotSeed.roleStatus.slotLayout);
     }
     for (const candidate of sources) {
-      const normalized = normalizeSlotLayoutEntries(candidate)
-      if (normalized.length) return normalized
+      const normalized = normalizeSlotLayoutEntries(candidate);
+      if (normalized.length) return normalized;
     }
-    return []
-  }, [matchSnapshotSeed, initialSlotTemplate])
-  const matchMetaLoggedRef = useRef(false)
-  const gameIdRef = useRef(gameId ? String(gameId) : '')
+    return [];
+  }, [matchSnapshotSeed, initialSlotTemplate]);
+  const matchMetaLoggedRef = useRef(false);
+  const gameIdRef = useRef(gameId ? String(gameId) : '');
   const [connectionRoster, setConnectionRoster] = useState(() =>
-    getConnectionEntriesForGame(gameId),
-  )
+    getConnectionEntriesForGame(gameId)
+  );
 
-  const { history, historyVersion, bumpHistoryVersion } = useHistoryBuffer()
-  const {
-    manualResponse,
-    setManualResponse,
-    clearManualResponse,
-    requireManualResponse,
-  } = useStartManualResponse()
+  const { history, historyVersion, bumpHistoryVersion } = useHistoryBuffer();
+  const { manualResponse, setManualResponse, clearManualResponse, requireManualResponse } =
+    useStartManualResponse();
 
-  const [engineState, dispatchEngine] = useReducer(mainGameReducer, initialMainGameState)
+  const [engineState, dispatchEngine] = useReducer(mainGameReducer, initialMainGameState);
   const {
     loading,
     error,
@@ -931,608 +826,459 @@ export function useStartClientEngine(gameId, options = {}) {
     timeRemaining,
     activeHeroAssets,
     activeActorNames,
-  } = engineState
-  const [startingSession, setStartingSession] = useState(false)
-  const [gameVoided, setGameVoided] = useState(false)
-  const [sessionInfo, setSessionInfo] = useState(null)
-  const remoteSessionAdoptedRef = useRef(false)
-  const bootLocalSessionRef = useRef(null)
-  const remoteSessionFetchRef = useRef({ running: false, lastFetchedAt: 0 })
-  const outcomeLedgerRef = useRef(createOutcomeLedger())
+  } = engineState;
+  const [startingSession, setStartingSession] = useState(false);
+  const [gameVoided, setGameVoided] = useState(false);
+  const [sessionInfo, setSessionInfo] = useState(null);
+  const remoteSessionAdoptedRef = useRef(false);
+  const bootLocalSessionRef = useRef(null);
+  const remoteSessionFetchRef = useRef({ running: false, lastFetchedAt: 0 });
+  const outcomeLedgerRef = useRef(createOutcomeLedger());
   const [sessionOutcome, setSessionOutcome] = useState(() =>
-    buildOutcomeSnapshot(outcomeLedgerRef.current),
-  )
-  const sessionFinalizedRef = useRef(false)
+    buildOutcomeSnapshot(outcomeLedgerRef.current)
+  );
+  const sessionFinalizedRef = useRef(false);
 
   const realtimeMode = useMemo(
     () => normalizeRealtimeMode(game?.realtime_match),
-    [game?.realtime_match],
-  )
-  const realtimeEnabled = isRealtimeEnabled(realtimeMode)
-  const logsRef = useRef([])
-  const currentNodeIdRef = useRef(initialMainGameState.currentNodeId)
-  const participantsRef = useRef([])
-  const statusMessageRef = useRef('')
-  const turnRef = useRef(initialMainGameState.turn)
-  const promptMetaWarningRef = useRef('')
-  const winCountRef = useRef(initialMainGameState.winCount)
-  const turnDeadlineRef = useRef(initialMainGameState.turnDeadline)
-  const timeRemainingRef = useRef(initialMainGameState.timeRemaining)
-  const lastBroadcastTurnStateRef = useRef({ turnNumber: 0, deadline: 0 })
-  const lastRealtimeTurnEventRef = useRef({ id: null, emittedAt: 0, turnNumber: 0 })
-  const turnEventBackfillAbortRef = useRef(null)
-  const lastBattleLogSignatureRef = useRef(null)
-  const setTurnCallbackRef = useRef(null)
-  const setTurnDeadlineCallbackRef = useRef(null)
-  const setTimeRemainingCallbackRef = useRef(null)
-  const setLastDropInTurnCallbackRef = useRef(null)
+    [game?.realtime_match]
+  );
+  const realtimeEnabled = isRealtimeEnabled(realtimeMode);
+  const logsRef = useRef([]);
+  const currentNodeIdRef = useRef(initialMainGameState.currentNodeId);
+  const participantsRef = useRef([]);
+  const statusMessageRef = useRef('');
+  const turnRef = useRef(initialMainGameState.turn);
+  const promptMetaWarningRef = useRef('');
+  const winCountRef = useRef(initialMainGameState.winCount);
+  const turnDeadlineRef = useRef(initialMainGameState.turnDeadline);
+  const timeRemainingRef = useRef(initialMainGameState.timeRemaining);
+  const lastBroadcastTurnStateRef = useRef({ turnNumber: 0, deadline: 0 });
+  const lastRealtimeTurnEventRef = useRef({ id: null, emittedAt: 0, turnNumber: 0 });
+  const turnEventBackfillAbortRef = useRef(null);
+  const lastBattleLogSignatureRef = useRef(null);
+  const setTurnCallbackRef = useRef(null);
+  const setTurnDeadlineCallbackRef = useRef(null);
+  const setTimeRemainingCallbackRef = useRef(null);
+  const setLastDropInTurnCallbackRef = useRef(null);
 
   useEffect(() => {
-    remoteSessionAdoptedRef.current = false
-    remoteSessionFetchRef.current = { running: false, lastFetchedAt: 0 }
-  }, [gameId])
+    remoteSessionAdoptedRef.current = false;
+    remoteSessionFetchRef.current = { running: false, lastFetchedAt: 0 };
+  }, [gameId]);
 
   useEffect(() => {
     if (!sessionInfo?.id) {
-      remoteSessionAdoptedRef.current = false
+      remoteSessionAdoptedRef.current = false;
     }
-  }, [sessionInfo?.id])
-  const applyTurnStateChange = useCallback(
-    (change, { commitTimestamp } = {}) => {
-      if (!change || typeof change !== 'object') {
-        return
-      }
-
-      const sessionId = sessionInfo?.id
-      if (!sessionId) {
-        return
-      }
-
-      const targetSessionId = change.session_id || change.sessionId || sessionId
-      if (!targetSessionId || targetSessionId !== sessionId) {
-        return
-      }
-
-      const state = change.state || change.turn_state || null
-      if (!state || typeof state !== 'object') {
-        return
-      }
-
-      const eventId = (() => {
-        if (change.id !== undefined && change.id !== null) {
-          return String(change.id)
-        }
-        const turnValue = Number(state.turnNumber)
-        const normalizedTurn = Number.isFinite(turnValue) && turnValue >= 0 ? Math.floor(turnValue) : 0
-        const emittedToken =
-          change.emitted_at || change.emittedAt || commitTimestamp || state.updatedAt || Date.now()
-        return `${sessionId}:${normalizedTurn}:${emittedToken}`
-      })()
-
-      const emittedAtValue = (() => {
-        const candidates = [change.emitted_at, change.emittedAt, commitTimestamp, state.updatedAt]
-        for (const candidate of candidates) {
-          if (candidate === null || candidate === undefined || candidate === '') continue
-          const numeric = Number(candidate)
-          if (Number.isFinite(numeric) && numeric > 0) {
-            return Math.floor(numeric)
-          }
-          const timestamp = new Date(candidate).getTime()
-          if (!Number.isNaN(timestamp)) return timestamp
-        }
-        return Date.now()
-      })()
-
-      const lastEvent = lastRealtimeTurnEventRef.current
-      if (lastEvent?.id === eventId) {
-        return
-      }
-      if (
-        lastEvent &&
-        lastEvent.emittedAt &&
-        emittedAtValue &&
-        emittedAtValue <= lastEvent.emittedAt &&
-        Number.isFinite(Number(state.turnNumber)) &&
-        lastEvent.turnNumber >= Math.floor(Number(state.turnNumber))
-      ) {
-        return
-      }
-
-      lastRealtimeTurnEventRef.current = {
-        id: eventId,
-        emittedAt: emittedAtValue,
-        turnNumber: Number.isFinite(Number(state.turnNumber)) ? Math.floor(Number(state.turnNumber)) : 0,
-      }
-
-      if (gameId) {
-        setGameMatchSessionMeta(gameId, {
-          turnState: {
-            ...state,
-            source: state.source || change.source || 'realtime',
-            updatedAt: emittedAtValue,
-          },
-          extras: change.extras || undefined,
-          source: 'realtime/turn-state',
-        })
-      }
-
-      const numericTurn = Number.isFinite(Number(state.turnNumber))
-        ? Math.max(0, Math.floor(Number(state.turnNumber)))
-        : null
-      if (numericTurn !== null) {
-        setTurnCallbackRef.current?.(numericTurn)
-      }
-
-      const resolvedDeadline = Number(state.deadline)
-      const deadlineMillis =
-        Number.isFinite(resolvedDeadline) && resolvedDeadline > 0 ? Math.floor(resolvedDeadline) : 0
-      if (deadlineMillis) {
-        setTurnDeadlineCallbackRef.current?.(deadlineMillis)
-      } else {
-        setTurnDeadlineCallbackRef.current?.(null)
-      }
-
-      const remainingFromState = Number(state.remainingSeconds)
-      let resolvedRemaining =
-        Number.isFinite(remainingFromState) && remainingFromState >= 0
-          ? Math.floor(remainingFromState)
-          : null
-      if (deadlineMillis) {
-        const derived = Math.floor((deadlineMillis - Date.now()) / 1000)
-        if (!Number.isFinite(resolvedRemaining) || resolvedRemaining < 0) {
-          resolvedRemaining = derived
-        }
-      }
-      if (Number.isFinite(resolvedRemaining)) {
-        setTimeRemainingCallbackRef.current?.(Math.max(0, resolvedRemaining))
-      } else {
-        setTimeRemainingCallbackRef.current?.(null)
-      }
-
-      const dropInTurn = Number(state.dropInBonusTurn)
-      if (Number.isFinite(dropInTurn) && dropInTurn > 0) {
-        setLastDropInTurnCallbackRef.current?.(Math.floor(dropInTurn))
-      }
-
-      lastBroadcastTurnStateRef.current = {
-        turnNumber: numericTurn || 0,
-        deadline: deadlineMillis,
-      }
-    },
-    [
-      sessionInfo?.id,
-      gameId,
-      setGameMatchSessionMeta,
-      setTurnCallbackRef,
-      setTurnDeadlineCallbackRef,
-      setTimeRemainingCallbackRef,
-      setLastDropInTurnCallbackRef,
-    ],
-  )
-  const backfillTurnEvents = useCallback(async () => {
-    if (!sessionInfo?.id) {
-      return
-    }
-    const controller = new AbortController()
-    if (turnEventBackfillAbortRef.current) {
-      turnEventBackfillAbortRef.current.abort()
-    }
-    turnEventBackfillAbortRef.current = controller
-    try {
-      const lastEvent = lastRealtimeTurnEventRef.current
-      const since = lastEvent?.emittedAt ? Number(lastEvent.emittedAt) : null
-      const events = await fetchTurnStateEvents({
-        sessionId: sessionInfo.id,
-        since,
-        limit: 50,
-        signal: controller.signal,
-      })
-      events.forEach((event) => {
-        if (!event || typeof event !== 'object') return
-        applyTurnStateChange(event, { commitTimestamp: event.emitted_at || event.emittedAt || null })
-      })
-    } catch (error) {
-      if (!controller.signal.aborted) {
-        console.error('[StartClient] 턴 이벤트 백필 실패:', error)
-      }
-    } finally {
-      if (turnEventBackfillAbortRef.current === controller) {
-        turnEventBackfillAbortRef.current = null
-      }
-    }
-  }, [sessionInfo?.id, applyTurnStateChange])
+  }, [sessionInfo?.id]);
+  const { applyTurnStateChange, backfillTurnEvents } = useTurnStateSync({
+    sessionInfo,
+    gameId,
+    lastRealtimeTurnEventRef,
+    turnEventBackfillAbortRef,
+    lastBroadcastTurnStateRef,
+    setGameMatchSessionMeta,
+    setTurnCallbackRef,
+    setTurnDeadlineCallbackRef,
+    setTimeRemainingCallbackRef,
+    setLastDropInTurnCallbackRef,
+    fetchTurnStateEvents,
+  });
   const patchEngineState = useCallback(
-    (payload) => {
-      dispatchEngine(patchMainGameState(payload))
+    payload => {
+      dispatchEngine(patchMainGameState(payload));
     },
-    [dispatchEngine],
-  )
+    [dispatchEngine]
+  );
   useEffect(() => {
-    gameIdRef.current = gameId ? String(gameId) : ''
-    setConnectionRoster(getConnectionEntriesForGame(gameId))
-  }, [gameId, rosterSnapshot, slotLayoutSeed])
+    gameIdRef.current = gameId ? String(gameId) : '';
+    setConnectionRoster(getConnectionEntriesForGame(gameId));
+  }, [gameId, rosterSnapshot, slotLayoutSeed]);
   useEffect(() => {
-    if (!frontMatchData) return
+    if (!frontMatchData) return;
     if (!startMatchMetaRef.current && frontMatchData.matchSnapshot?.match) {
-      startMatchMetaRef.current = frontMatchData.matchSnapshot.match
+      startMatchMetaRef.current = frontMatchData.matchSnapshot.match;
     }
-  }, [frontMatchData])
+  }, [frontMatchData]);
   useEffect(() => {
     const unsubscribe = subscribeConnectionRegistry(() => {
-      const key = gameIdRef.current
+      const key = gameIdRef.current;
       if (!key) {
-        setConnectionRoster([])
-        return
+        setConnectionRoster([]);
+        return;
       }
-      setConnectionRoster(getConnectionEntriesForGame(key))
-    })
-    return unsubscribe
-  }, [])
+      setConnectionRoster(getConnectionEntriesForGame(key));
+    });
+    return unsubscribe;
+  }, []);
   useEffect(() => {
     return () => {
       if (gameId) {
-        clearGameMatchData(gameId)
+        clearGameMatchData(gameId);
       }
-    }
-  }, [gameId])
+    };
+  }, [gameId]);
   useEffect(() => {
-    patchEngineState({ connectionRoster })
-  }, [connectionRoster, patchEngineState])
+    patchEngineState({ connectionRoster });
+  }, [connectionRoster, patchEngineState]);
   const replaceEngineLogs = useCallback(
-    (entries) => {
-      dispatchEngine(replaceMainGameLogs(entries))
+    entries => {
+      dispatchEngine(replaceMainGameLogs(entries));
     },
-    [dispatchEngine],
-  )
+    [dispatchEngine]
+  );
   const appendEngineLogs = useCallback(
-    (entries) => {
-      dispatchEngine(appendMainGameLogs(entries))
+    entries => {
+      dispatchEngine(appendMainGameLogs(entries));
     },
-    [dispatchEngine],
-  )
+    [dispatchEngine]
+  );
   const setStatusMessage = useCallback(
-    (value) => {
+    value => {
       if (typeof value === 'function') {
-        const next = value(statusMessageRef.current)
-        patchEngineState({ statusMessage: next })
+        const next = value(statusMessageRef.current);
+        patchEngineState({ statusMessage: next });
       } else {
-        patchEngineState({ statusMessage: value })
+        patchEngineState({ statusMessage: value });
       }
     },
-    [patchEngineState],
-  )
+    [patchEngineState]
+  );
   const setCurrentNodeId = useCallback(
-    (value) => {
+    value => {
       if (typeof value === 'function') {
-        const next = value(currentNodeIdRef.current)
-        patchEngineState({ currentNodeId: next ?? null })
+        const next = value(currentNodeIdRef.current);
+        patchEngineState({ currentNodeId: next ?? null });
       } else {
-        patchEngineState({ currentNodeId: value ?? null })
+        patchEngineState({ currentNodeId: value ?? null });
       }
     },
-    [patchEngineState],
-  )
+    [patchEngineState]
+  );
   const setPreflight = useCallback(
-    (value) => {
-      patchEngineState({ preflight: !!value })
+    value => {
+      patchEngineState({ preflight: !!value });
     },
-    [patchEngineState],
-  )
+    [patchEngineState]
+  );
   const setTurn = useCallback(
-    (value) => {
+    value => {
       if (typeof value === 'function') {
-        const next = value(turnRef.current)
-        patchEngineState({ turn: next })
+        const next = value(turnRef.current);
+        patchEngineState({ turn: next });
       } else {
-        patchEngineState({ turn: value })
+        patchEngineState({ turn: value });
       }
     },
-    [patchEngineState],
-  )
+    [patchEngineState]
+  );
   useEffect(() => {
-    setTurnCallbackRef.current = setTurn
+    setTurnCallbackRef.current = setTurn;
     return () => {
       if (setTurnCallbackRef.current === setTurn) {
-        setTurnCallbackRef.current = null
+        setTurnCallbackRef.current = null;
       }
-    }
-  }, [setTurn])
+    };
+  }, [setTurn]);
   const setLogs = useCallback(
-    (value) => {
+    value => {
       if (typeof value === 'function') {
-        const next = value(logsRef.current)
-        replaceEngineLogs(Array.isArray(next) ? next : [])
+        const next = value(logsRef.current);
+        replaceEngineLogs(Array.isArray(next) ? next : []);
       } else {
-        replaceEngineLogs(Array.isArray(value) ? value : [])
+        replaceEngineLogs(Array.isArray(value) ? value : []);
       }
     },
-    [replaceEngineLogs],
-  )
+    [replaceEngineLogs]
+  );
   const setBattleLogDraft = useCallback(
-    (value) => {
-      patchEngineState({ battleLogDraft: value })
+    value => {
+      patchEngineState({ battleLogDraft: value });
     },
-    [patchEngineState],
-  )
+    [patchEngineState]
+  );
   const setPromptMetaWarning = useCallback(
-    (value) => {
+    value => {
       if (typeof value === 'function') {
-        const next = value(promptMetaWarningRef.current)
-        patchEngineState({ promptMetaWarning: next })
+        const next = value(promptMetaWarningRef.current);
+        patchEngineState({ promptMetaWarning: next });
       } else {
-        patchEngineState({ promptMetaWarning: value })
+        patchEngineState({ promptMetaWarning: value });
       }
     },
-    [patchEngineState],
-  )
+    [patchEngineState]
+  );
   const setIsAdvancing = useCallback(
-    (value) => {
-      patchEngineState({ isAdvancing: !!value })
+    value => {
+      patchEngineState({ isAdvancing: !!value });
     },
-    [patchEngineState],
-  )
+    [patchEngineState]
+  );
   const setWinCount = useCallback(
-    (value) => {
+    value => {
       if (typeof value === 'function') {
-        const next = value(winCountRef.current)
-        patchEngineState({ winCount: next })
+        const next = value(winCountRef.current);
+        patchEngineState({ winCount: next });
       } else {
-        patchEngineState({ winCount: value })
+        patchEngineState({ winCount: value });
       }
     },
-    [patchEngineState],
-  )
+    [patchEngineState]
+  );
   const setLastDropInTurn = useCallback(
-    (value) => {
-      patchEngineState({ lastDropInTurn: value })
+    value => {
+      patchEngineState({ lastDropInTurn: value });
     },
-    [patchEngineState],
-  )
+    [patchEngineState]
+  );
   useEffect(() => {
-    setLastDropInTurnCallbackRef.current = setLastDropInTurn
+    setLastDropInTurnCallbackRef.current = setLastDropInTurn;
     return () => {
       if (setLastDropInTurnCallbackRef.current === setLastDropInTurn) {
-        setLastDropInTurnCallbackRef.current = null
+        setLastDropInTurnCallbackRef.current = null;
       }
-    }
-  }, [setLastDropInTurn])
+    };
+  }, [setLastDropInTurn]);
   const setViewerId = useCallback(
-    (value) => {
-      patchEngineState({ viewerId: value })
+    value => {
+      patchEngineState({ viewerId: value });
     },
-    [patchEngineState],
-  )
+    [patchEngineState]
+  );
   const setTurnDeadline = useCallback(
-    (value) => {
+    value => {
       if (typeof value === 'function') {
-        const next = value(turnDeadlineRef.current)
-        patchEngineState({ turnDeadline: next })
+        const next = value(turnDeadlineRef.current);
+        patchEngineState({ turnDeadline: next });
       } else {
-        patchEngineState({ turnDeadline: value })
+        patchEngineState({ turnDeadline: value });
       }
     },
-    [patchEngineState],
-  )
+    [patchEngineState]
+  );
   useEffect(() => {
-    setTurnDeadlineCallbackRef.current = setTurnDeadline
+    setTurnDeadlineCallbackRef.current = setTurnDeadline;
     return () => {
       if (setTurnDeadlineCallbackRef.current === setTurnDeadline) {
-        setTurnDeadlineCallbackRef.current = null
+        setTurnDeadlineCallbackRef.current = null;
       }
-    }
-  }, [setTurnDeadline])
+    };
+  }, [setTurnDeadline]);
   const setTimeRemaining = useCallback(
-    (value) => {
+    value => {
       if (typeof value === 'function') {
-        const next = value(timeRemainingRef.current)
-        patchEngineState({ timeRemaining: next })
+        const next = value(timeRemainingRef.current);
+        patchEngineState({ timeRemaining: next });
       } else {
-        patchEngineState({ timeRemaining: value })
+        patchEngineState({ timeRemaining: value });
       }
     },
-    [patchEngineState],
-  )
+    [patchEngineState]
+  );
   useEffect(() => {
-    setTimeRemainingCallbackRef.current = setTimeRemaining
+    setTimeRemainingCallbackRef.current = setTimeRemaining;
     return () => {
       if (setTimeRemainingCallbackRef.current === setTimeRemaining) {
-        setTimeRemainingCallbackRef.current = null
+        setTimeRemainingCallbackRef.current = null;
       }
-    }
-  }, [setTimeRemaining])
+    };
+  }, [setTimeRemaining]);
   const recordTurnState = useCallback(
     (patch = {}, options = {}) => {
-      if (preflight) return
-      if (!gameId) return
+      if (preflight) return;
+      if (!gameId) return;
 
-      let turnStatePatch
+      let turnStatePatch;
       if (patch === null) {
-        turnStatePatch = null
+        turnStatePatch = null;
       } else if (typeof patch === 'object') {
-        turnStatePatch = { ...patch }
+        turnStatePatch = { ...patch };
         if (!turnStatePatch.source) {
-          turnStatePatch.source = 'start-client'
+          turnStatePatch.source = 'start-client';
         }
       } else {
-        return
+        return;
       }
 
       const metaPatch =
-        options && typeof options === 'object' && options.metaPatch && typeof options.metaPatch === 'object'
+        options &&
+        typeof options === 'object' &&
+        options.metaPatch &&
+        typeof options.metaPatch === 'object'
           ? options.metaPatch
-          : null
+          : null;
 
-      const payload = metaPatch ? { ...metaPatch } : {}
-      payload.turnState = turnStatePatch
-      payload.source = 'start-client/turn-state'
+      const payload = metaPatch ? { ...metaPatch } : {};
+      payload.turnState = turnStatePatch;
+      payload.source = 'start-client/turn-state';
 
-      setGameMatchSessionMeta(gameId, payload)
+      setGameMatchSessionMeta(gameId, payload);
     },
-    [gameId, preflight],
-  )
+    [gameId, preflight]
+  );
   const setActiveHeroAssets = useCallback(
-    (value) => {
-      patchEngineState({ activeHeroAssets: value })
+    value => {
+      patchEngineState({ activeHeroAssets: value });
     },
-    [patchEngineState],
-  )
+    [patchEngineState]
+  );
   const setActiveActorNames = useCallback(
-    (value) => {
-      patchEngineState({ activeActorNames: Array.isArray(value) ? value : [] })
+    value => {
+      patchEngineState({ activeActorNames: Array.isArray(value) ? value : [] });
     },
-    [patchEngineState],
-  )
+    [patchEngineState]
+  );
   const setActiveGlobal = useCallback(
-    (value) => {
-      patchEngineState({ activeGlobal: Array.isArray(value) ? value : [] })
+    value => {
+      patchEngineState({ activeGlobal: Array.isArray(value) ? value : [] });
     },
-    [patchEngineState],
-  )
+    [patchEngineState]
+  );
   const setActiveLocal = useCallback(
-    (value) => {
-      patchEngineState({ activeLocal: Array.isArray(value) ? value : [] })
+    value => {
+      patchEngineState({ activeLocal: Array.isArray(value) ? value : [] });
     },
-    [patchEngineState],
-  )
+    [patchEngineState]
+  );
   const setParticipants = useCallback(
-    (value) => {
+    value => {
       if (typeof value === 'function') {
-        const next = value(participantsRef.current)
+        const next = value(participantsRef.current);
         patchEngineState({
           participants: Array.isArray(next) ? next : [],
-        })
+        });
       } else {
         patchEngineState({
           participants: Array.isArray(value) ? value : [],
-        })
+        });
       }
     },
-    [patchEngineState],
-  )
+    [patchEngineState]
+  );
   const [turnTimerSeconds] = useState(() => {
-    const timerFromMeta = Number(initialSessionMeta?.turnTimer?.baseSeconds)
+    const timerFromMeta = Number(initialSessionMeta?.turnTimer?.baseSeconds);
     if (Number.isFinite(timerFromMeta) && timerFromMeta > 0) {
-      return timerFromMeta
+      return timerFromMeta;
     }
-    if (typeof window === 'undefined') return 60
-    const stored = Number(readStartSessionValue(START_SESSION_KEYS.TURN_TIMER))
-    if (Number.isFinite(stored) && stored > 0) return stored
-    return 60
-  })
-  const realtimeManagerRef = useRef(null)
+    if (typeof window === 'undefined') return 60;
+    const stored = Number(readStartSessionValue(START_SESSION_KEYS.TURN_TIMER));
+    if (Number.isFinite(stored) && stored > 0) return stored;
+    return 60;
+  });
+  const realtimeManagerRef = useRef(null);
   if (!realtimeManagerRef.current) {
-    realtimeManagerRef.current = createRealtimeSessionManager()
+    realtimeManagerRef.current = createRealtimeSessionManager();
   }
-  const dropInQueueRef = useRef(null)
+  const dropInQueueRef = useRef(null);
   if (!dropInQueueRef.current) {
-    dropInQueueRef.current = createDropInQueueService()
+    dropInQueueRef.current = createDropInQueueService();
   }
-  const processedDropInReleasesRef = useRef(new Set())
-  const asyncSessionManagerRef = useRef(null)
+  const processedDropInReleasesRef = useRef(new Set());
+  const asyncSessionManagerRef = useRef(null);
   if (!asyncSessionManagerRef.current) {
     asyncSessionManagerRef.current = createAsyncSessionManager({
       dropInQueue: dropInQueueRef.current,
-    })
+    });
   }
-  const turnTimerServiceRef = useRef(null)
+  const turnTimerServiceRef = useRef(null);
   if (!turnTimerServiceRef.current) {
     turnTimerServiceRef.current = createTurnTimerService({
       baseSeconds: turnTimerSeconds,
-    })
+    });
   } else {
-    turnTimerServiceRef.current.configureBase(turnTimerSeconds)
+    turnTimerServiceRef.current.configureBase(turnTimerSeconds);
   }
-  const turnVoteControllerRef = useRef(null)
+  const turnVoteControllerRef = useRef(null);
   if (!turnVoteControllerRef.current) {
-    turnVoteControllerRef.current = createTurnVoteController()
+    turnVoteControllerRef.current = createTurnVoteController();
   }
-  const initialRealtimeSnapshotRef = useRef(null)
+  const initialRealtimeSnapshotRef = useRef(null);
   if (!initialRealtimeSnapshotRef.current) {
     initialRealtimeSnapshotRef.current = realtimeManagerRef.current
       ? realtimeManagerRef.current.getSnapshot()
-      : null
+      : null;
   }
   const [consensusState, setConsensusState] = useState(() =>
-    turnVoteControllerRef.current.getSnapshot(),
-  )
-  const [realtimePresence, setRealtimePresence] = useState(
-    initialRealtimeSnapshotRef.current,
-  )
-  const [realtimeEvents, setRealtimeEvents] = useState(() =>
-    initializeRealtimeEvents(initialRealtimeSnapshotRef.current),
-  )
-  const realtimeEventsRef = useRef(realtimeEvents)
-  const [dropInSnapshot, setDropInSnapshot] = useState(null)
-  const dropInSnapshotRef = useRef(null)
+    turnVoteControllerRef.current.getSnapshot()
+  );
+
+  // Realtime state is managed by useRealtimeSync to keep the engine file smaller.
+  const {
+    realtimePresence,
+    realtimeEvents,
+    realtimeEventsRef,
+    setRealtimeEvents,
+    applyRealtimeSnapshot,
+    mergeEvents,
+  } = useRealtimeSync({
+    initialSnapshot: initialRealtimeSnapshotRef.current,
+    supabase,
+    sessionInfo,
+    applyTurnStateChange,
+    backfillTurnEvents,
+  });
+  const [dropInSnapshot, setDropInSnapshot] = useState(null);
+  const dropInSnapshotRef = useRef(null);
 
   useEffect(() => {
-    logsRef.current = Array.isArray(logs) ? logs : []
-  }, [logs])
+    logsRef.current = Array.isArray(logs) ? logs : [];
+  }, [logs]);
 
   useEffect(() => {
-    const list = Array.isArray(participants) ? participants : []
-    participantsRef.current = list
+    const list = Array.isArray(participants) ? participants : [];
+    participantsRef.current = list;
     if (outcomeLedgerRef.current) {
-      const changed = syncOutcomeLedger(outcomeLedgerRef.current, { participants: list })
+      const changed = syncOutcomeLedger(outcomeLedgerRef.current, { participants: list });
       if (changed) {
-        setSessionOutcome(buildOutcomeSnapshot(outcomeLedgerRef.current))
+        setSessionOutcome(buildOutcomeSnapshot(outcomeLedgerRef.current));
       }
     }
-  }, [participants])
+  }, [participants]);
 
   useEffect(() => {
-    outcomeLedgerRef.current = createOutcomeLedger({ participants: participantsRef.current })
-    setSessionOutcome(buildOutcomeSnapshot(outcomeLedgerRef.current))
-    sessionFinalizedRef.current = false
-  }, [gameId])
+    outcomeLedgerRef.current = createOutcomeLedger({ participants: participantsRef.current });
+    setSessionOutcome(buildOutcomeSnapshot(outcomeLedgerRef.current));
+    sessionFinalizedRef.current = false;
+  }, [gameId]);
 
   useEffect(() => {
-    currentNodeIdRef.current = currentNodeId ?? null
-  }, [currentNodeId])
+    currentNodeIdRef.current = currentNodeId ?? null;
+  }, [currentNodeId]);
 
   useEffect(() => {
-    statusMessageRef.current =
-      typeof statusMessage === 'string' ? statusMessage : ''
-  }, [statusMessage])
+    statusMessageRef.current = typeof statusMessage === 'string' ? statusMessage : '';
+  }, [statusMessage]);
 
   useEffect(() => {
-    turnRef.current = turn
-  }, [turn])
+    turnRef.current = turn;
+  }, [turn]);
 
   useEffect(() => {
-    promptMetaWarningRef.current =
-      typeof promptMetaWarning === 'string' ? promptMetaWarning : ''
-  }, [promptMetaWarning])
+    promptMetaWarningRef.current = typeof promptMetaWarning === 'string' ? promptMetaWarning : '';
+  }, [promptMetaWarning]);
 
   useEffect(() => {
-    winCountRef.current = Number.isFinite(Number(winCount))
-      ? Number(winCount)
-      : 0
-  }, [winCount])
+    winCountRef.current = Number.isFinite(Number(winCount)) ? Number(winCount) : 0;
+  }, [winCount]);
 
   useEffect(() => {
-    turnDeadlineRef.current = turnDeadline ?? null
-  }, [turnDeadline])
+    turnDeadlineRef.current = turnDeadline ?? null;
+  }, [turnDeadline]);
 
   useEffect(() => {
-    timeRemainingRef.current = timeRemaining ?? null
-  }, [timeRemaining])
+    timeRemainingRef.current = timeRemaining ?? null;
+  }, [timeRemaining]);
 
   useEffect(() => {
-    realtimeEventsRef.current = Array.isArray(realtimeEvents)
-      ? realtimeEvents
-      : []
-  }, [realtimeEvents])
+    dropInSnapshotRef.current = dropInSnapshot || null;
+  }, [dropInSnapshot]);
 
   useEffect(() => {
-    dropInSnapshotRef.current = dropInSnapshot || null
-  }, [dropInSnapshot])
-
-  useEffect(() => {
-    startMatchMetaRef.current = startMatchMeta
-  }, [startMatchMeta])
+    startMatchMetaRef.current = startMatchMeta;
+  }, [startMatchMeta]);
   const matchingMetadata = useMemo(() => {
-    if (!startMatchMeta) return null
+    if (!startMatchMeta) return null;
     try {
       return JSON.parse(
         JSON.stringify({
@@ -1543,12 +1289,8 @@ export function useStartClientEngine(gameId, options = {}) {
           dropInMeta: startMatchMeta.dropInMeta || null,
           sampleMeta: startMatchMeta.sampleMeta || null,
           roleStatus: startMatchMeta.roleStatus || null,
-          assignments: Array.isArray(startMatchMeta.assignments)
-            ? startMatchMeta.assignments
-            : [],
-          slotLayout: Array.isArray(startMatchMeta.slotLayout)
-            ? startMatchMeta.slotLayout
-            : [],
+          assignments: Array.isArray(startMatchMeta.assignments) ? startMatchMeta.assignments : [],
+          slotLayout: Array.isArray(startMatchMeta.slotLayout) ? startMatchMeta.slotLayout : [],
           heroMap:
             startMatchMeta.heroMap && typeof startMatchMeta.heroMap === 'object'
               ? startMatchMeta.heroMap
@@ -1556,220 +1298,113 @@ export function useStartClientEngine(gameId, options = {}) {
           storedAt: startMatchMeta.storedAt || null,
           mode: startMatchMeta.mode || null,
           turnTimer: startMatchMeta.turnTimer || null,
-        }),
-      )
+        })
+      );
     } catch (error) {
-      console.warn('[StartClient] 매칭 메타데이터 직렬화 실패:', error)
-      return null
+      console.warn('[StartClient] 매칭 메타데이터 직렬화 실패:', error);
+      return null;
     }
-  }, [startMatchMeta])
-  const lastScheduledTurnRef = useRef(0)
-  const participantIdSetRef = useRef(new Set())
+  }, [startMatchMeta]);
+  const lastScheduledTurnRef = useRef(0);
+  const participantIdSetRef = useRef(new Set());
 
-  const applyRealtimeSnapshot = useCallback((snapshot) => {
-    if (!snapshot) {
-      setRealtimePresence(null)
-      setRealtimeEvents([])
-      return
-    }
-    setRealtimePresence(snapshot)
-    setRealtimeEvents((prev) => appendSnapshotEvents(prev, snapshot))
-  }, [])
+  
 
   const clearConsensusVotes = useCallback(() => {
-    const controller = turnVoteControllerRef.current
-    if (!controller) return
-    const snapshot = controller.clear()
-    setConsensusState(snapshot)
-  }, [])
+    const controller = turnVoteControllerRef.current;
+    if (!controller) return;
+    const snapshot = controller.clear();
+    setConsensusState(snapshot);
+  }, []);
 
-  const {
-    rememberActiveSession,
-    updateSessionRecord,
-    clearSessionRecord,
-    markSessionDefeated,
-  } = useStartSessionLifecycle({
-    gameId,
-    game,
-    activeActorNames,
-    sessionInfo,
-    setSessionInfo,
-    realtimeManagerRef,
-    dropInQueueRef,
-    asyncSessionManagerRef,
-    applyRealtimeSnapshot,
-    setTurnDeadline,
-    setTimeRemaining,
-  })
-
-  const adoptRemoteSession = useCallback(
-    async (sessionRow) => {
-      if (!sessionRow || typeof sessionRow !== 'object') {
-        return false
-      }
-
-      const sessionId = sessionRow.id || sessionRow.session_id || sessionRow.sessionId
-      if (!sessionId) {
-        return false
-      }
-
-      if (remoteSessionAdoptedRef.current && sessionInfo?.id === sessionId) {
-        return false
-      }
-
-      const statusToken = sessionRow.status ? String(sessionRow.status).trim().toLowerCase() : 'active'
-      if (statusToken && statusToken !== 'active') {
-        return false
-      }
-
-      const ownerSource =
-        sessionRow.owner_id ??
-        sessionRow.ownerId ??
-        sessionRow.ownerID ??
-        (sessionRow.owner && typeof sessionRow.owner === 'object' ? sessionRow.owner.id : null)
-      const ownerToken = ownerSource !== null && ownerSource !== undefined ? String(ownerSource).trim() : ''
-      if (normalizedHostOwnerId && ownerToken && ownerToken !== normalizedHostOwnerId) {
-        return false
-      }
-
-      if (!preflight) {
-        if (!sessionInfo?.id) {
-          setSessionInfo({
-            id: sessionId,
-            status: sessionRow.status || 'active',
-            createdAt: sessionRow.created_at || sessionRow.createdAt || null,
-            reused: true,
-          })
-        }
-        return false
-      }
-
-      if (!participants || participants.length === 0) {
-        return false
-      }
-
-      setSessionInfo({
-        id: sessionId,
-        status: sessionRow.status || 'active',
-        createdAt: sessionRow.created_at || sessionRow.createdAt || null,
-        reused: true,
-      })
-
-      remoteSessionAdoptedRef.current = true
-
-      let sessionParticipants = participants
-      try {
-        const { participants: sanitized, removed } = reconcileParticipantsForGame({
-          participants,
-          slotLayout,
-          matchingMetadata,
-        })
-
-        if (!sanitized || sanitized.length === 0) {
-          remoteSessionAdoptedRef.current = false
-          setStatusMessage('참가자 구성이 유효하지 않아 게임에 참여할 수 없습니다.')
-          return false
-        }
-
-        sessionParticipants = sanitized
-
-        if (removed.length) {
-          const summary = formatPreflightSummary(removed)
-          if (summary) {
-            console.warn('[StartClient] 원격 후보정 제외 참가자:\n' + summary)
-            setPromptMetaWarning((prev) => {
-              const trimmed = prev ? String(prev).trim() : ''
-              const notice = `[후보정] 제외된 참가자:\n${summary}`
-              return trimmed ? `${trimmed}\n\n${notice}` : notice
-            })
-          }
-        }
-      } catch (error) {
-        remoteSessionAdoptedRef.current = false
-        console.error('[StartClient] 원격 세션 검증 실패:', error)
-        setStatusMessage('매칭 데이터를 검증하지 못했습니다. 잠시 후 다시 시도해 주세요.')
-        return false
-      }
-
-      setStatusMessage('호스트가 게임을 시작했습니다. 전투에 합류합니다.')
-      const bootSession =
-        typeof bootLocalSessionRef.current === 'function' ? bootLocalSessionRef.current : null
-      if (!bootSession) {
-        remoteSessionAdoptedRef.current = false
-        console.warn('[StartClient] 로컬 세션 부팅 콜백이 초기화되지 않았습니다.')
-        setStatusMessage('게임 화면을 초기화하는 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.')
-        return false
-      }
-
-      bootSession(sessionParticipants)
-      return true
-    },
-    [
-      preflight,
-      participants,
-      slotLayout,
-      matchingMetadata,
-      setPromptMetaWarning,
-      setStatusMessage,
-      sessionInfo?.id,
-      normalizedHostOwnerId,
+  const { rememberActiveSession, updateSessionRecord, clearSessionRecord, markSessionDefeated } =
+    useStartSessionLifecycle({
+      gameId,
+      game,
+      activeActorNames,
+      sessionInfo,
       setSessionInfo,
-    ],
-  )
+      realtimeManagerRef,
+      dropInQueueRef,
+      asyncSessionManagerRef,
+      applyRealtimeSnapshot,
+      setTurnDeadline,
+      setTimeRemaining,
+    });
+
+  // Remote session adoption and subscriptions are handled by useRemoteSessionAdoption
+  // which centralizes fetching latest session rows and listening on the
+  // `rank_sessions:game:${gameId}` broadcast topic. See hooks/useRemoteSessionAdoption.js
+  // for implementation. It returns an `adoptRemoteSession` helper if callers need it.
+  const { adoptRemoteSession } = useRemoteSessionAdoption({
+    gameId,
+    normalizedHostOwnerId,
+    preflight,
+    startingSession,
+    participants,
+    slotLayout,
+    matchingMetadata,
+    setPromptMetaWarning,
+    setStatusMessage,
+    bootLocalSessionRef,
+    setSessionInfo,
+    remoteSessionFetchRef,
+    remoteSessionAdoptedRef,
+    supabase,
+  });
 
   useEffect(() => {
-    if (!gameId) return undefined
-    if (sessionInfo?.id) return undefined
-    if (!preflight) return undefined
-    if (startingSession) return undefined
-    if (remoteSessionAdoptedRef.current) return undefined
-    if (!participants || participants.length === 0) return undefined
+    if (!gameId) return undefined;
+    if (sessionInfo?.id) return undefined;
+    if (!preflight) return undefined;
+    if (startingSession) return undefined;
+    if (remoteSessionAdoptedRef.current) return undefined;
+    if (!participants || participants.length === 0) return undefined;
 
-    const now = Date.now()
+    const now = Date.now();
     if (remoteSessionFetchRef.current.running) {
-      return undefined
+      return undefined;
     }
     if (now - remoteSessionFetchRef.current.lastFetchedAt < 2000) {
-      return undefined
+      return undefined;
     }
 
-    let cancelled = false
-    remoteSessionFetchRef.current.running = true
-
-    ;(async () => {
+    let cancelled = false;
+    remoteSessionFetchRef.current.running = true;
+    (async () => {
       try {
         let sessionRow = await fetchLatestSessionRow(supabase, gameId, {
           ownerId: normalizedHostOwnerId || null,
-        })
+        });
 
         if (cancelled) {
-          return
+          return;
         }
 
         if (!sessionRow && normalizedHostOwnerId) {
-          sessionRow = await fetchLatestSessionRow(supabase, gameId)
+          sessionRow = await fetchLatestSessionRow(supabase, gameId);
         }
 
         if (cancelled) {
-          return
+          return;
         }
 
         if (sessionRow) {
-          adoptRemoteSession(sessionRow)
+          adoptRemoteSession(sessionRow);
         }
       } catch (error) {
         if (!cancelled) {
-          console.warn('[StartClient] 원격 세션 조회 중 오류:', error)
+          console.warn('[StartClient] 원격 세션 조회 중 오류:', error);
         }
       } finally {
-        remoteSessionFetchRef.current.running = false
-        remoteSessionFetchRef.current.lastFetchedAt = Date.now()
+        remoteSessionFetchRef.current.running = false;
+        remoteSessionFetchRef.current.lastFetchedAt = Date.now();
       }
-    })()
+    })();
 
     return () => {
-      cancelled = true
-    }
+      cancelled = true;
+    };
   }, [
     gameId,
     sessionInfo?.id,
@@ -1778,165 +1413,165 @@ export function useStartClientEngine(gameId, options = {}) {
     participants,
     adoptRemoteSession,
     normalizedHostOwnerId,
-  ])
+  ]);
 
   useEffect(() => {
-    if (!gameId) return undefined
+    if (!gameId) return undefined;
 
     const unsubscribe = subscribeToBroadcastTopic(
       `rank_sessions:game:${gameId}`,
-      (change) => {
-        const eventType = change?.eventType || change?.event || ''
+      change => {
+        const eventType = change?.eventType || change?.event || '';
         if (eventType === 'DELETE') {
-          return
+          return;
         }
 
-        const record = change?.new || null
+        const record = change?.new || null;
         if (!record || typeof record !== 'object') {
-          return
+          return;
         }
 
-        const recordGameId = record.game_id ?? record.gameId ?? null
+        const recordGameId = record.game_id ?? record.gameId ?? null;
         if (recordGameId && String(recordGameId).trim() !== String(gameId).trim()) {
-          return
+          return;
         }
 
-        const statusToken = record.status ? String(record.status).trim().toLowerCase() : 'active'
+        const statusToken = record.status ? String(record.status).trim().toLowerCase() : 'active';
         if (statusToken && statusToken !== 'active') {
-          return
+          return;
         }
 
         const ownerSource =
           record.owner_id ??
           record.ownerId ??
           record.ownerID ??
-          (record.owner && typeof record.owner === 'object' ? record.owner.id : null)
-        const ownerToken = ownerSource !== null && ownerSource !== undefined ? String(ownerSource).trim() : ''
+          (record.owner && typeof record.owner === 'object' ? record.owner.id : null);
+        const ownerToken =
+          ownerSource !== null && ownerSource !== undefined ? String(ownerSource).trim() : '';
         if (normalizedHostOwnerId && ownerToken && ownerToken !== normalizedHostOwnerId) {
-          return
+          return;
         }
 
-        adoptRemoteSession(record)
+        adoptRemoteSession(record);
       },
-      { events: ['INSERT', 'UPDATE', 'DELETE'] },
-    )
+      { events: ['INSERT', 'UPDATE', 'DELETE'] }
+    );
 
     return () => {
       if (typeof unsubscribe === 'function') {
-        unsubscribe()
+        unsubscribe();
       }
-    }
-  }, [gameId, adoptRemoteSession, normalizedHostOwnerId])
-
+    };
+  }, [gameId, adoptRemoteSession, normalizedHostOwnerId]);
 
   const logTurnEntries = useCallback(
     async ({ entries, turnNumber }) => {
       if (!sessionInfo?.id) {
-        return
+        return;
       }
 
-      const normalized = []
+      const normalized = [];
       if (Array.isArray(entries)) {
-        entries.forEach((entry) => {
-          if (!entry) return
-          const rawRole = typeof entry.role === 'string' ? entry.role.trim() : ''
-          const role = rawRole || 'narration'
-          let content = ''
+        entries.forEach(entry => {
+          if (!entry) return;
+          const rawRole = typeof entry.role === 'string' ? entry.role.trim() : '';
+          const role = rawRole || 'narration';
+          let content = '';
           if (typeof entry.content === 'string') {
-            content = entry.content
+            content = entry.content;
           } else if (entry.content != null) {
             try {
-              content = JSON.stringify(entry.content)
+              content = JSON.stringify(entry.content);
             } catch (error) {
-              content = String(entry.content)
+              content = String(entry.content);
             }
           }
           if (!content || !content.trim()) {
-            return
+            return;
           }
           const visibilityValue =
-            typeof entry.visibility === 'string' ? entry.visibility.trim().toLowerCase() : ''
+            typeof entry.visibility === 'string' ? entry.visibility.trim().toLowerCase() : '';
 
-          let summary = null
-          const summaryCandidates = [entry.summary, entry.summary_payload, entry.summaryPayload]
+          let summary = null;
+          const summaryCandidates = [entry.summary, entry.summary_payload, entry.summaryPayload];
           for (const candidate of summaryCandidates) {
             if (candidate && typeof candidate === 'object') {
               try {
-                summary = JSON.parse(JSON.stringify(candidate))
-                break
+                summary = JSON.parse(JSON.stringify(candidate));
+                break;
               } catch (error) {
-                summary = null
+                summary = null;
               }
             }
           }
 
-          const prompt = typeof entry.prompt === 'string' ? entry.prompt : null
+          const prompt = typeof entry.prompt === 'string' ? entry.prompt : null;
           const actors = Array.isArray(entry.actors)
             ? entry.actors
-                .map((actor) => (typeof actor === 'string' ? actor.trim() : ''))
+                .map(actor => (typeof actor === 'string' ? actor.trim() : ''))
                 .filter(Boolean)
-            : null
+            : null;
           const extra =
             entry.extra && typeof entry.extra === 'object'
               ? JSON.parse(JSON.stringify(entry.extra))
-              : null
+              : null;
 
           const normalizedEntry = {
             role,
             content,
             public: entry.public !== false,
-          }
+          };
 
           if (typeof entry.isVisible === 'boolean') {
-            normalizedEntry.isVisible = entry.isVisible
+            normalizedEntry.isVisible = entry.isVisible;
           }
 
           if (visibilityValue) {
-            normalizedEntry.visibility = visibilityValue
+            normalizedEntry.visibility = visibilityValue;
           }
 
           if (summary) {
-            normalizedEntry.summary = summary
+            normalizedEntry.summary = summary;
           }
 
           if (prompt) {
-            normalizedEntry.prompt = prompt
+            normalizedEntry.prompt = prompt;
           }
 
           if (actors && actors.length) {
-            normalizedEntry.actors = actors
+            normalizedEntry.actors = actors;
           }
 
           if (extra) {
-            normalizedEntry.extra = extra
+            normalizedEntry.extra = extra;
           }
 
-          normalized.push(normalizedEntry)
-        })
+          normalized.push(normalizedEntry);
+        });
       }
 
       if (!normalized.length) {
-        return
+        return;
       }
 
       try {
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
         if (sessionError) {
-          throw sessionError
+          throw sessionError;
         }
-        const token = sessionData?.session?.access_token
+        const token = sessionData?.session?.access_token;
         if (!token) {
-          throw new Error('세션 토큰을 확인할 수 없습니다.')
+          throw new Error('세션 토큰을 확인할 수 없습니다.');
         }
 
         const payload = {
           session_id: sessionInfo.id,
           game_id: gameId,
           entries: normalized,
-        }
-        const numericTurn = Number(turnNumber)
+        };
+        const numericTurn = Number(turnNumber);
         if (Number.isFinite(numericTurn) && numericTurn > 0) {
-          payload.turn_number = numericTurn
+          payload.turn_number = numericTurn;
         }
 
         const response = await fetch('/api/rank/log-turn', {
@@ -1946,179 +1581,162 @@ export function useStartClientEngine(gameId, options = {}) {
             Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify(payload),
-        })
+        });
 
         if (!response.ok) {
-          let detail = null
+          let detail = null;
           try {
-            detail = await response.json()
+            detail = await response.json();
           } catch (error) {
-            detail = null
+            detail = null;
           }
-          const message = detail?.error || '턴 기록에 실패했습니다.'
-          throw new Error(message)
+          const message = detail?.error || '턴 기록에 실패했습니다.';
+          throw new Error(message);
         }
       } catch (err) {
-        console.error('턴 기록 실패:', err)
+        console.error('턴 기록 실패:', err);
       }
     },
-    [gameId, sessionInfo?.id],
-  )
-
+    [gameId, sessionInfo?.id]
+  );
 
   useEffect(() => {
-    if (!gameId) return
+    if (!gameId) return;
 
-    let alive = true
+    let alive = true;
 
     async function load() {
-      patchEngineState({ loading: true, error: '' })
+      patchEngineState({ loading: true, error: '' });
       try {
         const bundle = await loadGameBundle(supabase, gameId, {
           rosterSnapshot,
           matchInstanceId,
           roomId: stagedRoomId,
-        })
-        if (!alive) return
+        });
+        if (!alive) return;
 
         const participantsFromBundle = Array.isArray(bundle.participants)
-          ? bundle.participants.map((participant) => ({ ...participant }))
-          : []
+          ? bundle.participants.map(participant => ({ ...participant }))
+          : [];
         const slotLayoutFromBundle = Array.isArray(bundle.slotLayout)
-          ? bundle.slotLayout.map((slot) => ({ ...slot }))
-          : []
+          ? bundle.slotLayout.map(slot => ({ ...slot }))
+          : [];
 
         const hydratedParticipants = rosterSnapshot.length
           ? hydrateParticipantsWithRoster(participantsFromBundle, rosterSnapshot)
-          : participantsFromBundle
+          : participantsFromBundle;
 
         const baseSlotLayout = rosterSnapshot.length
           ? buildSlotLayoutFromRosterSnapshot(rosterSnapshot)
           : slotLayoutSeed.length
-          ? slotLayoutSeed
-          : []
+            ? slotLayoutSeed
+            : [];
 
-        const mergedSlotLayout = mergeSlotLayoutSeed(
-          baseSlotLayout,
-          slotLayoutFromBundle,
-        )
+        const mergedSlotLayout = mergeSlotLayoutSeed(baseSlotLayout, slotLayoutFromBundle);
 
         const finalSlotLayout =
-          mergedSlotLayout.length > 0 ? mergedSlotLayout : slotLayoutFromBundle
+          mergedSlotLayout.length > 0 ? mergedSlotLayout : slotLayoutFromBundle;
 
         patchEngineState({
           game: bundle.game,
           participants: hydratedParticipants,
           slotLayout: finalSlotLayout,
           graph: bundle.graph,
-        })
+        });
         if (Array.isArray(bundle.warnings) && bundle.warnings.length) {
-          bundle.warnings.forEach((warning) => {
-            if (warning) console.warn('[StartClient] 프롬프트 변수 경고:', warning)
-          })
-          setPromptMetaWarning(bundle.warnings.filter(Boolean).join('\n'))
+          bundle.warnings.forEach(warning => {
+            if (warning) console.warn('[StartClient] 프롬프트 변수 경고:', warning);
+          });
+          setPromptMetaWarning(bundle.warnings.filter(Boolean).join('\n'));
         } else {
-          setPromptMetaWarning('')
+          setPromptMetaWarning('');
         }
       } catch (err) {
-        if (!alive) return
-        console.error(err)
+        if (!alive) return;
+        console.error(err);
         patchEngineState({
           error: err?.message || '게임 데이터를 불러오지 못했습니다.',
           slotLayout: [],
-        })
-        setPromptMetaWarning('')
+        });
+        setPromptMetaWarning('');
       } finally {
-        if (alive) patchEngineState({ loading: false })
+        if (alive) patchEngineState({ loading: false });
       }
     }
 
-    load()
+    load();
 
     return () => {
-      alive = false
-    }
-  }, [gameId])
+      alive = false;
+    };
+  }, [gameId]);
 
   useEffect(() => {
-    let alive = true
-    ;(async () => {
+    let alive = true;
+    (async () => {
       try {
-        const { data, error } = await supabase.auth.getUser()
-        if (!alive) return
+        const { data, error } = await supabase.auth.getUser();
+        if (!alive) return;
         if (error) {
-          console.warn('뷰어 정보를 불러오지 못했습니다:', error)
-          setViewerId(null)
-          return
+          console.warn('뷰어 정보를 불러오지 못했습니다:', error);
+          setViewerId(null);
+          return;
         }
-        setViewerId(data?.user?.id || null)
+        setViewerId(data?.user?.id || null);
       } catch (err) {
-        if (!alive) return
-        console.warn('뷰어 정보를 확인하는 중 오류 발생:', err)
-        setViewerId(null)
+        if (!alive) return;
+        console.warn('뷰어 정보를 확인하는 중 오류 발생:', err);
+        setViewerId(null);
       }
-    })()
+    })();
     return () => {
-      alive = false
-    }
-  }, [])
+      alive = false;
+    };
+  }, []);
 
   const participantsStatus = useMemo(
     () =>
-      participants.map((participant) => ({
+      participants.map(participant => ({
         role: participant.role,
         status: participant.status,
       })),
-    [participants],
-  )
-  const ownerDisplayMap = useMemo(
-    () => createOwnerDisplayMap(participants),
-    [participants],
-  )
-  const ownerParticipantMap = useMemo(
-    () => buildOwnerParticipantMap(participants),
-    [participants],
-  )
+    [participants]
+  );
+  const ownerDisplayMap = useMemo(() => createOwnerDisplayMap(participants), [participants]);
+  const ownerParticipantMap = useMemo(() => buildOwnerParticipantMap(participants), [participants]);
   const sharedTurnRoster = useMemo(() => {
-    const roster = []
+    const roster = [];
     ownerParticipantMap.forEach((participant, ownerId) => {
       roster.push({
         ownerId,
         participant,
         hero: participant?.hero || null,
-        heroId:
-          participant?.hero?.id ??
-          participant?.hero_id ??
-          participant?.heroId ??
-          null,
+        heroId: participant?.hero?.id ?? participant?.hero_id ?? participant?.heroId ?? null,
         role: participant?.role || null,
         status: participant?.status || null,
-      })
-    })
-    return roster
-  }, [ownerParticipantMap])
-  const ownerRosterSnapshot = useMemo(
-    () => buildOwnerRosterSnapshot(participants),
-    [participants],
-  )
+      });
+    });
+    return roster;
+  }, [ownerParticipantMap]);
+  const ownerRosterSnapshot = useMemo(() => buildOwnerRosterSnapshot(participants), [participants]);
   const managedOwnerIds = useMemo(() => {
-    const owners = collectUniqueOwnerIds(participants)
-    const viewerKey = viewerId ? String(viewerId).trim() : ''
+    const owners = collectUniqueOwnerIds(participants);
+    const viewerKey = viewerId ? String(viewerId).trim() : '';
     if (!viewerKey) {
-      return owners
+      return owners;
     }
-    const filtered = owners.filter((ownerId) => ownerId !== viewerKey)
-    return [viewerKey, ...filtered]
-  }, [participants, viewerId])
+    const filtered = owners.filter(ownerId => ownerId !== viewerKey);
+    return [viewerKey, ...filtered];
+  }, [participants, viewerId]);
 
   useEffect(() => {
-    if (!gameId || preflight) return
+    if (!gameId || preflight) return;
     updateSessionRecord({
       turn,
       actorNames: activeActorNames,
       sharedOwners: managedOwnerIds,
       ownerRoster: ownerRosterSnapshot,
-    })
+    });
   }, [
     gameId,
     preflight,
@@ -2127,33 +1745,33 @@ export function useStartClientEngine(gameId, options = {}) {
     updateSessionRecord,
     managedOwnerIds,
     ownerRosterSnapshot,
-  ])
+  ]);
 
   const scheduleTurnTimer = useCallback(
-    (turnNumber) => {
-      if (preflight) return
-      if (!currentNodeId) return
-      if (!turnTimerServiceRef.current) return
-      if (!gameId) return
-      const durationSeconds = turnTimerServiceRef.current.nextTurnDuration(turnNumber)
-      const numericTurn = Number.isFinite(Number(turnNumber)) ? Math.floor(Number(turnNumber)) : 0
+    turnNumber => {
+      if (preflight) return;
+      if (!currentNodeId) return;
+      if (!turnTimerServiceRef.current) return;
+      if (!gameId) return;
+      const durationSeconds = turnTimerServiceRef.current.nextTurnDuration(turnNumber);
+      const numericTurn = Number.isFinite(Number(turnNumber)) ? Math.floor(Number(turnNumber)) : 0;
       if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
-        setTurnDeadline(null)
-        setTimeRemaining(null)
+        setTurnDeadline(null);
+        setTimeRemaining(null);
         recordTurnState({
           turnNumber: numericTurn,
           status: 'idle',
           deadline: 0,
           durationSeconds: 0,
           remainingSeconds: 0,
-        })
-        lastBroadcastTurnStateRef.current = { turnNumber: numericTurn, deadline: 0 }
-        return
+        });
+        lastBroadcastTurnStateRef.current = { turnNumber: numericTurn, deadline: 0 };
+        return;
       }
-      const scheduledAt = Date.now()
-      const deadline = scheduledAt + durationSeconds * 1000
-      setTurnDeadline(deadline)
-      setTimeRemaining(durationSeconds)
+      const scheduledAt = Date.now();
+      const deadline = scheduledAt + durationSeconds * 1000;
+      setTurnDeadline(deadline);
+      setTimeRemaining(durationSeconds);
       recordTurnState({
         turnNumber: numericTurn,
         scheduledAt,
@@ -2161,29 +1779,31 @@ export function useStartClientEngine(gameId, options = {}) {
         durationSeconds,
         remainingSeconds: durationSeconds,
         status: 'scheduled',
-      })
-      lastScheduledTurnRef.current = turnNumber
-      lastBroadcastTurnStateRef.current = { turnNumber: numericTurn, deadline }
+      });
+      lastScheduledTurnRef.current = turnNumber;
+      lastBroadcastTurnStateRef.current = { turnNumber: numericTurn, deadline };
     },
-    [preflight, currentNodeId, gameId, recordTurnState],
-  )
+    [preflight, currentNodeId, gameId, recordTurnState]
+  );
 
   useEffect(() => {
-    if (preflight) return
-    if (!currentNodeId) return
-    if (isAdvancing) return
-    if (!turn || turn <= 0) return
-    if (lastScheduledTurnRef.current === turn && turnDeadline) return
-    scheduleTurnTimer(turn)
-  }, [preflight, currentNodeId, turn, turnDeadline, isAdvancing, scheduleTurnTimer])
+    if (preflight) return;
+    if (!currentNodeId) return;
+    if (isAdvancing) return;
+    if (!turn || turn <= 0) return;
+    if (lastScheduledTurnRef.current === turn && turnDeadline) return;
+    scheduleTurnTimer(turn);
+  }, [preflight, currentNodeId, turn, turnDeadline, isAdvancing, scheduleTurnTimer]);
 
   useEffect(() => {
-    if (preflight) return
-    if (!gameId) return
+    if (preflight) return;
+    if (!gameId) return;
 
-    const previous = lastBroadcastTurnStateRef.current || { turnNumber: 0, deadline: 0 }
-    const currentDeadline = typeof turnDeadline === 'number' && turnDeadline > 0 ? turnDeadline : 0
-    const numericTurn = Number.isFinite(Number(turn)) ? Math.floor(Number(turn)) : previous.turnNumber || 0
+    const previous = lastBroadcastTurnStateRef.current || { turnNumber: 0, deadline: 0 };
+    const currentDeadline = typeof turnDeadline === 'number' && turnDeadline > 0 ? turnDeadline : 0;
+    const numericTurn = Number.isFinite(Number(turn))
+      ? Math.floor(Number(turn))
+      : previous.turnNumber || 0;
 
     if (previous.deadline && !currentDeadline && numericTurn > 0) {
       recordTurnState({
@@ -2191,141 +1811,141 @@ export function useStartClientEngine(gameId, options = {}) {
         deadline: 0,
         remainingSeconds: 0,
         status: 'idle',
-      })
-      lastBroadcastTurnStateRef.current = { turnNumber: numericTurn, deadline: 0 }
+      });
+      lastBroadcastTurnStateRef.current = { turnNumber: numericTurn, deadline: 0 };
     } else if (currentDeadline && currentDeadline !== previous.deadline) {
-      lastBroadcastTurnStateRef.current = { turnNumber: numericTurn, deadline: currentDeadline }
+      lastBroadcastTurnStateRef.current = { turnNumber: numericTurn, deadline: currentDeadline };
     }
-  }, [preflight, gameId, turnDeadline, turn, recordTurnState])
+  }, [preflight, gameId, turnDeadline, turn, recordTurnState]);
 
   useEffect(() => {
-    if (!realtimeManagerRef.current) return
-    const snapshot = realtimeManagerRef.current.syncParticipants(participants)
-    applyRealtimeSnapshot(snapshot)
-  }, [participants, applyRealtimeSnapshot])
+    if (!realtimeManagerRef.current) return;
+    const snapshot = realtimeManagerRef.current.syncParticipants(participants);
+    applyRealtimeSnapshot(snapshot);
+  }, [participants, applyRealtimeSnapshot]);
 
   useEffect(() => {
-    if (!realtimeManagerRef.current) return
+    if (!realtimeManagerRef.current) return;
     if (!realtimeEnabled) {
-      const snapshot = realtimeManagerRef.current.setManagedOwners([])
-      applyRealtimeSnapshot(snapshot)
-      return
+      const snapshot = realtimeManagerRef.current.setManagedOwners([]);
+      applyRealtimeSnapshot(snapshot);
+      return;
     }
-    const snapshot = realtimeManagerRef.current.setManagedOwners(managedOwnerIds)
-    applyRealtimeSnapshot(snapshot)
-  }, [managedOwnerIds, realtimeEnabled, applyRealtimeSnapshot])
+    const snapshot = realtimeManagerRef.current.setManagedOwners(managedOwnerIds);
+    applyRealtimeSnapshot(snapshot);
+  }, [managedOwnerIds, realtimeEnabled, applyRealtimeSnapshot]);
 
   useEffect(() => {
-    if (preflight) return
-    if (!realtimeEnabled) return
-    if (!turn || turn <= 0) return
-    if (!realtimeManagerRef.current) return
+    if (preflight) return;
+    if (!realtimeEnabled) return;
+    if (!turn || turn <= 0) return;
+    if (!realtimeManagerRef.current) return;
     const snapshot = realtimeManagerRef.current.beginTurn({
       turnNumber: turn,
       eligibleOwnerIds: deriveEligibleOwnerIds(participants),
-    })
-    applyRealtimeSnapshot(snapshot)
-  }, [preflight, realtimeEnabled, turn, participants, applyRealtimeSnapshot])
+    });
+    applyRealtimeSnapshot(snapshot);
+  }, [preflight, realtimeEnabled, turn, participants, applyRealtimeSnapshot]);
 
   useEffect(() => {
     if (!currentNodeId) {
-      setLastDropInTurn(null)
+      setLastDropInTurn(null);
     }
-  }, [currentNodeId])
+  }, [currentNodeId]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return undefined
+    if (typeof window === 'undefined') return undefined;
     if (!turnDeadline) {
-      setTimeRemaining(null)
-      return undefined
+      setTimeRemaining(null);
+      return undefined;
     }
 
     const tick = () => {
-      const diff = Math.max(0, Math.ceil((turnDeadline - Date.now()) / 1000))
-      setTimeRemaining(diff)
-    }
+      const diff = Math.max(0, Math.ceil((turnDeadline - Date.now()) / 1000));
+      setTimeRemaining(diff);
+    };
 
-    tick()
+    tick();
 
-    const timerId = window.setInterval(tick, 1000)
+    const timerId = window.setInterval(tick, 1000);
     return () => {
-      window.clearInterval(timerId)
-    }
-  }, [turnDeadline])
+      window.clearInterval(timerId);
+    };
+  }, [turnDeadline]);
 
-  const systemPrompt = useMemo(() => buildSystemMessage(game || {}), [game])
-  const parsedRules = useMemo(() => parseRules(game || {}), [game])
-  const brawlEnabled = parsedRules?.brawl_rule === 'allow-brawl'
+  const systemPrompt = useMemo(() => buildSystemMessage(game || {}), [game]);
+  const parsedRules = useMemo(() => parseRules(game || {}), [game]);
+  const brawlEnabled = parsedRules?.brawl_rule === 'allow-brawl';
   const endConditionVariable = useMemo(() => {
-    const raw = parsedRules?.end_condition_variable
+    const raw = parsedRules?.end_condition_variable;
     if (typeof raw === 'string') {
-      const trimmed = raw.trim()
-      return trimmed || null
+      const trimmed = raw.trim();
+      return trimmed || null;
     }
-    return null
-  }, [parsedRules])
-  const slots = useMemo(() => buildSlotsFromParticipants(participants), [participants])
+    return null;
+  }, [parsedRules]);
+  const slots = useMemo(() => buildSlotsFromParticipants(participants), [participants]);
   const heroLookup = useMemo(() => {
-    const map = new Map()
+    const map = new Map();
     participants.forEach((participant, index) => {
-      const heroName = participant?.hero?.name
-      if (!heroName) return
-      const key = normalizeHeroName(heroName)
-      if (!key) return
+      const heroName = participant?.hero?.name;
+      if (!heroName) return;
+      const key = normalizeHeroName(heroName);
+      if (!key) return;
       const entry = {
         hero: participant.hero,
         participant,
         slotIndex: index,
-      }
+      };
       if (!map.has(key)) {
-        map.set(key, [entry])
+        map.set(key, [entry]);
       } else {
-        map.get(key).push(entry)
+        map.get(key).push(entry);
       }
-    })
-    return map
-  }, [participants])
+    });
+    return map;
+  }, [participants]);
   const resolveHeroAssets = useCallback(
     (names, fallbackContext) => {
       const trimmed = Array.isArray(names)
-        ? names.map((name) => String(name || '').trim()).filter(Boolean)
-        : []
+        ? names.map(name => String(name || '').trim()).filter(Boolean)
+        : [];
 
-      const matchedEntries = []
-      const resolvedNames = []
-      const seen = new Set()
+      const matchedEntries = [];
+      const resolvedNames = [];
+      const seen = new Set();
 
       for (const raw of trimmed) {
-        const key = normalizeHeroName(raw)
-        if (!key || seen.has(key)) continue
-        const candidates = heroLookup.get(key)
+        const key = normalizeHeroName(raw);
+        if (!key || seen.has(key)) continue;
+        const candidates = heroLookup.get(key);
         if (candidates && candidates.length) {
-          seen.add(key)
-          resolvedNames.push(raw)
-          matchedEntries.push(candidates[0])
+          seen.add(key);
+          resolvedNames.push(raw);
+          matchedEntries.push(candidates[0]);
         }
       }
 
       if (!matchedEntries.length) {
-        const fallbackHero = fallbackContext?.participant?.hero || null
+        const fallbackHero = fallbackContext?.participant?.hero || null;
         if (fallbackHero) {
           matchedEntries.push({
             hero: fallbackHero,
             participant: fallbackContext?.participant || null,
             slotIndex: fallbackContext?.slotIndex ?? null,
-          })
+          });
           if (fallbackHero.name) {
-            resolvedNames.push(fallbackHero.name)
+            resolvedNames.push(fallbackHero.name);
           }
         } else if (fallbackContext?.heroSlot?.name) {
-          resolvedNames.push(fallbackContext.heroSlot.name)
+          resolvedNames.push(fallbackContext.heroSlot.name);
         }
       }
 
       const backgrounds = matchedEntries
-        .map((entry) => entry.hero?.background_url || entry.hero?.image_url || '')
-        .filter(Boolean)
-      const bgmSource = matchedEntries.find((entry) => entry.hero?.bgm_url)
+        .map(entry => entry.hero?.background_url || entry.hero?.image_url || '')
+        .filter(Boolean);
+      const bgmSource = matchedEntries.find(entry => entry.hero?.bgm_url);
 
       const audioProfile = bgmSource
         ? {
@@ -2337,7 +1957,7 @@ export function useStartClientEngine(gameId, options = {}) {
             reverb: null,
             compressor: null,
           }
-        : null
+        : null;
 
       return {
         backgrounds,
@@ -2345,43 +1965,45 @@ export function useStartClientEngine(gameId, options = {}) {
         bgmDuration: audioProfile?.bgmDuration || null,
         actorNames: resolvedNames,
         audioProfile,
-      }
+      };
     },
-    [heroLookup],
-  )
+    [heroLookup]
+  );
 
   const updateHeroAssets = useCallback(
     (names, fallbackContext) => {
-      const { backgrounds, bgmUrl, bgmDuration, actorNames, audioProfile } =
-        resolveHeroAssets(names, fallbackContext)
+      const { backgrounds, bgmUrl, bgmDuration, actorNames, audioProfile } = resolveHeroAssets(
+        names,
+        fallbackContext
+      );
       setActiveHeroAssets({
         backgrounds,
         bgmUrl,
         bgmDuration,
         audioProfile,
-      })
-      setActiveActorNames(actorNames)
+      });
+      setActiveActorNames(actorNames);
     },
-    [resolveHeroAssets],
-  )
+    [resolveHeroAssets]
+  );
   const recordTimelineEvents = useCallback(
     (events, { turnNumber: overrideTurn, logEntries = null, buildLogs = true } = {}) => {
-      if (!Array.isArray(events) || events.length === 0) return
-      setRealtimeEvents((prev) => mergeTimelineEvents(prev, events))
+      if (!Array.isArray(events) || events.length === 0) return;
+      setRealtimeEvents(prev => mergeTimelineEvents(prev, events));
 
-      let entries = logEntries
+      let entries = logEntries;
       if (!entries && buildLogs) {
         const defaultTurn =
           Number.isFinite(Number(overrideTurn)) && Number(overrideTurn) > 0
             ? Number(overrideTurn)
             : Number.isFinite(Number(turn)) && Number(turn) > 0
               ? Number(turn)
-              : null
+              : null;
         entries = buildLogEntriesFromEvents(events, {
           ownerDisplayMap,
           defaultTurn,
           defaultMode: realtimeEnabled ? 'realtime' : 'async',
-        })
+        });
       }
 
       if (Array.isArray(entries) && entries.length) {
@@ -2390,79 +2012,77 @@ export function useStartClientEngine(gameId, options = {}) {
             ? Number(overrideTurn)
             : Number.isFinite(Number(turn)) && Number(turn) > 0
               ? Number(turn)
-              : null
-        logTurnEntries({ entries, turnNumber: effectiveTurn }).catch((error) => {
-          console.error('[StartClient] 타임라인 이벤트 로그 실패:', error)
-        })
+              : null;
+        logTurnEntries({ entries, turnNumber: effectiveTurn }).catch(error => {
+          console.error('[StartClient] 타임라인 이벤트 로그 실패:', error);
+        });
       }
     },
-    [ownerDisplayMap, realtimeEnabled, turn, logTurnEntries],
-  )
+    [ownerDisplayMap, realtimeEnabled, turn, logTurnEntries]
+  );
 
   useEffect(() => {
     if (preflight) {
       participantIdSetRef.current = new Set(
         participants.map((participant, index) =>
-          String(participant?.id ?? participant?.hero_id ?? index),
-        ),
-      )
-      const resetSnapshot = dropInQueueRef.current?.reset?.()
+          String(participant?.id ?? participant?.hero_id ?? index)
+        )
+      );
+      const resetSnapshot = dropInQueueRef.current?.reset?.();
       if (resetSnapshot && typeof resetSnapshot === 'object') {
-        setDropInSnapshot(resetSnapshot)
+        setDropInSnapshot(resetSnapshot);
       } else {
-        setDropInSnapshot(null)
+        setDropInSnapshot(null);
       }
-      processedDropInReleasesRef.current.clear()
-      asyncSessionManagerRef.current?.reset()
-      return
+      processedDropInReleasesRef.current.clear();
+      asyncSessionManagerRef.current?.reset();
+      return;
     }
 
     participantIdSetRef.current = new Set(
       participants.map((participant, index) =>
-        String(participant?.id ?? participant?.hero_id ?? index),
-      ),
-    )
+        String(participant?.id ?? participant?.hero_id ?? index)
+      )
+    );
 
-    const queueService = dropInQueueRef.current
-    if (!queueService) return
+    const queueService = dropInQueueRef.current;
+    if (!queueService) return;
 
     const queueResult = queueService.syncParticipants(participants, {
       turnNumber: turn,
       mode: realtimeEnabled ? 'realtime' : 'async',
-    })
+    });
     if (queueResult && typeof queueResult === 'object') {
-      setDropInSnapshot(queueResult.snapshot || null)
+      setDropInSnapshot(queueResult.snapshot || null);
     }
 
-    const arrivals = Array.isArray(queueResult?.arrivals)
-      ? queueResult.arrivals
-      : []
+    const arrivals = Array.isArray(queueResult?.arrivals) ? queueResult.arrivals : [];
 
-    let dropInRoomId = ''
+    let dropInRoomId = '';
 
-    let timelineEvents = []
+    let timelineEvents = [];
 
     if (arrivals.length > 0) {
-      const dropInTarget = startMatchMetaRef.current?.dropInTarget || null
+      const dropInTarget = startMatchMetaRef.current?.dropInTarget || null;
       const dropInRoomIdRaw =
-        dropInTarget?.roomId ?? dropInTarget?.room_id ?? dropInTarget?.roomID ?? null
-      dropInRoomId = dropInRoomIdRaw ? String(dropInRoomIdRaw).trim() : ''
+        dropInTarget?.roomId ?? dropInTarget?.room_id ?? dropInTarget?.roomID ?? null;
+      dropInRoomId = dropInRoomIdRaw ? String(dropInRoomIdRaw).trim() : '';
 
-      const service = turnTimerServiceRef.current
+      const service = turnTimerServiceRef.current;
       if (service) {
-        const now = Date.now()
+        const now = Date.now();
         const deadlineRefValue =
           typeof turnDeadlineRef.current === 'number' && turnDeadlineRef.current > 0
             ? turnDeadlineRef.current
             : typeof turnDeadline === 'number'
-            ? turnDeadline
-            : 0
-        const hasActiveDeadline = deadlineRefValue && deadlineRefValue > now
-        const numericTurn = Number.isFinite(Number(turn)) ? Math.floor(Number(turn)) : 0
+              ? turnDeadline
+              : 0;
+        const hasActiveDeadline = deadlineRefValue && deadlineRefValue > now;
+        const numericTurn = Number.isFinite(Number(turn)) ? Math.floor(Number(turn)) : 0;
         const extraSeconds = service.registerDropInBonus({
           immediate: hasActiveDeadline,
           turnNumber: turn,
-        })
+        });
 
         const dropInMeta = buildDropInMetaPayload({
           arrivals,
@@ -2473,22 +2093,22 @@ export function useStartClientEngine(gameId, options = {}) {
           mode: realtimeEnabled ? 'realtime' : 'async',
           queueResult,
           roomId: dropInRoomId,
-        })
+        });
 
         if (extraSeconds > 0) {
           if (hasActiveDeadline) {
-            const baseDeadline = deadlineRefValue || now
-            const newDeadline = baseDeadline + extraSeconds * 1000
+            const baseDeadline = deadlineRefValue || now;
+            const newDeadline = baseDeadline + extraSeconds * 1000;
             const previousRemaining =
               typeof timeRemainingRef.current === 'number' && timeRemainingRef.current > 0
                 ? timeRemainingRef.current
-                : 0
-            const updatedRemaining = previousRemaining + extraSeconds
+                : 0;
+            const updatedRemaining = previousRemaining + extraSeconds;
 
-            setTurnDeadline((prev) => (prev ? prev + extraSeconds * 1000 : newDeadline))
-            setTimeRemaining((prev) =>
-              typeof prev === 'number' ? prev + extraSeconds : updatedRemaining,
-            )
+            setTurnDeadline(prev => (prev ? prev + extraSeconds * 1000 : newDeadline));
+            setTimeRemaining(prev =>
+              typeof prev === 'number' ? prev + extraSeconds : updatedRemaining
+            );
             recordTurnState(
               {
                 turnNumber: numericTurn,
@@ -2501,12 +2121,12 @@ export function useStartClientEngine(gameId, options = {}) {
               },
               {
                 metaPatch: dropInMeta ? { dropIn: dropInMeta } : null,
-              },
-            )
+              }
+            );
             lastBroadcastTurnStateRef.current = {
               turnNumber: numericTurn,
               deadline: newDeadline,
-            }
+            };
           } else {
             recordTurnState(
               {
@@ -2520,8 +2140,8 @@ export function useStartClientEngine(gameId, options = {}) {
               },
               {
                 metaPatch: dropInMeta ? { dropIn: dropInMeta } : null,
-              },
-            )
+              }
+            );
           }
 
           const extensionEvent = buildDropInExtensionTimelineEvent({
@@ -2532,25 +2152,24 @@ export function useStartClientEngine(gameId, options = {}) {
             arrivals,
             mode: realtimeEnabled ? 'realtime' : 'async',
             turnNumber: numericTurn,
-          })
+          });
           if (extensionEvent) {
-            timelineEvents.push(extensionEvent)
+            timelineEvents.push(extensionEvent);
           }
         } else if (dropInMeta) {
-          setGameMatchSessionMeta(gameId, { dropIn: dropInMeta })
+          setGameMatchSessionMeta(gameId, { dropIn: dropInMeta });
         }
       }
 
-      setLastDropInTurn(Number.isFinite(Number(turn)) ? Number(turn) : 0)
+      setLastDropInTurn(Number.isFinite(Number(turn)) ? Number(turn) : 0);
     }
 
     if (realtimeEnabled) {
       if (arrivals.length) {
         timelineEvents = timelineEvents.concat(
-          arrivals.map((arrival) => {
-            const status =
-              normalizeTimelineStatus(arrival.status) || 'active'
-            const cause = arrival.replaced ? 'realtime_drop_in' : 'realtime_joined'
+          arrivals.map(arrival => {
+            const status = normalizeTimelineStatus(arrival.status) || 'active';
+            const cause = arrival.replaced ? 'realtime_drop_in' : 'realtime_joined';
             return {
               type: 'drop_in_joined',
               ownerId: arrival.ownerId ? String(arrival.ownerId).trim() : null,
@@ -2573,58 +2192,53 @@ export function useStartClientEngine(gameId, options = {}) {
                   replacedOwnerId: arrival.replaced?.ownerId || null,
                   replacedHeroName: arrival.replaced?.heroName || null,
                   replacedParticipantId: arrival.replaced?.participantId || null,
-                  queueDepth:
-                    arrival.stats?.queueDepth ?? arrival.stats?.replacements ?? 0,
+                  queueDepth: arrival.stats?.queueDepth ?? arrival.stats?.replacements ?? 0,
                   arrivalOrder: arrival.stats?.arrivalOrder ?? null,
                   totalReplacements: arrival.stats?.replacements ?? 0,
                   lastDepartureCause: arrival.stats?.lastDepartureCause || null,
                 },
               },
-              metadata: queueResult?.matching
-                ? { matching: queueResult.matching }
-                : null,
-            }
-          }),
-        )
+              metadata: queueResult?.matching ? { matching: queueResult.matching } : null,
+            };
+          })
+        );
       }
     } else if (asyncSessionManagerRef.current) {
-      const { events } = asyncSessionManagerRef.current.processQueueResult(
-        queueResult,
-        { mode: 'async' },
-      )
+      const { events } = asyncSessionManagerRef.current.processQueueResult(queueResult, {
+        mode: 'async',
+      });
       if (Array.isArray(events) && events.length) {
         timelineEvents = timelineEvents.concat(
-          events.map((event) => ({
+          events.map(event => ({
             ...event,
             metadata:
-              event.metadata ||
-              (queueResult?.matching ? { matching: queueResult.matching } : null),
-          })),
-        )
+              event.metadata || (queueResult?.matching ? { matching: queueResult.matching } : null),
+          }))
+        );
       }
     }
 
     if (arrivals.length && dropInRoomId) {
-      const releaseTargets = []
-      arrivals.forEach((arrival) => {
-        const replaced = arrival?.replaced || null
-        if (!replaced) return
+      const releaseTargets = [];
+      arrivals.forEach(arrival => {
+        const replaced = arrival?.replaced || null;
+        if (!replaced) return;
         const ownerCandidate =
           replaced?.ownerId ??
           replaced?.ownerID ??
           replaced?.owner_id ??
-          (typeof replaced?.owner === 'object' ? replaced.owner?.id : null)
-        if (!ownerCandidate) return
-        const ownerId = String(ownerCandidate).trim()
-        if (!ownerId) return
-        const key = `${dropInRoomId}::${ownerId}`
-        if (processedDropInReleasesRef.current.has(key)) return
-        releaseTargets.push({ roomId: dropInRoomId, ownerId, key })
-      })
+          (typeof replaced?.owner === 'object' ? replaced.owner?.id : null);
+        if (!ownerCandidate) return;
+        const ownerId = String(ownerCandidate).trim();
+        if (!ownerId) return;
+        const key = `${dropInRoomId}::${ownerId}`;
+        if (processedDropInReleasesRef.current.has(key)) return;
+        releaseTargets.push({ roomId: dropInRoomId, ownerId, key });
+      });
 
       if (releaseTargets.length) {
         const tasks = releaseTargets.map(({ roomId, ownerId, key }) =>
-          withTable(supabase, 'rank_room_slots', (table) =>
+          withTable(supabase, 'rank_room_slots', table =>
             supabase
               .from(table)
               .update({
@@ -2634,36 +2248,26 @@ export function useStartClientEngine(gameId, options = {}) {
                 joined_at: null,
               })
               .eq('room_id', roomId)
-              .eq('occupant_owner_id', ownerId),
-          ).then((result) => {
+              .eq('occupant_owner_id', ownerId)
+          ).then(result => {
             if (result?.error && result.error.code !== 'PGRST116') {
-              throw result.error
+              throw result.error;
             }
-            processedDropInReleasesRef.current.add(key)
-          }),
-        )
+            processedDropInReleasesRef.current.add(key);
+          })
+        );
 
-        Promise.all(tasks).catch((error) => {
-          console.warn('[StartClient] Failed to release drop-in slot:', error)
-          releaseTargets.forEach(({ key }) =>
-            processedDropInReleasesRef.current.delete(key),
-          )
-        })
+        Promise.all(tasks).catch(error => {
+          console.warn('[StartClient] Failed to release drop-in slot:', error);
+          releaseTargets.forEach(({ key }) => processedDropInReleasesRef.current.delete(key));
+        });
       }
     }
 
     if (timelineEvents.length) {
-      recordTimelineEvents(timelineEvents, { turnNumber: turn })
+      recordTimelineEvents(timelineEvents, { turnNumber: turn });
     }
-  }, [
-    participants,
-    preflight,
-    gameId,
-    turnDeadline,
-    turn,
-    recordTimelineEvents,
-    realtimeEnabled,
-  ])
+  }, [participants, preflight, gameId, turnDeadline, turn, recordTimelineEvents, realtimeEnabled]);
 
   const captureBattleLog = useCallback(
     (outcome, { reason, turnNumber: overrideTurn } = {}) => {
@@ -2672,7 +2276,7 @@ export function useStartClientEngine(gameId, options = {}) {
           ? Number(overrideTurn)
           : Number.isFinite(Number(turn))
             ? Number(turn)
-            : null
+            : null;
         const draft = buildBattleLogDraft({
           gameId,
           sessionId: sessionInfo?.id || null,
@@ -2688,35 +2292,26 @@ export function useStartClientEngine(gameId, options = {}) {
           winCount,
           endTurn: finalTurn,
           endedAt: Date.now(),
-        })
-        setBattleLogDraft(draft)
+        });
+        setBattleLogDraft(draft);
       } catch (error) {
-        console.warn('[StartClient] 배틀 로그 캡처 실패:', error)
+        console.warn('[StartClient] 배틀 로그 캡처 실패:', error);
       }
     },
-    [
-      gameId,
-      sessionInfo?.id,
-      game?.name,
-      participants,
-      realtimePresence,
-      winCount,
-      history,
-      turn,
-    ],
-  )
+    [gameId, sessionInfo?.id, game?.name, participants, realtimePresence, winCount, history, turn]
+  );
 
   const persistBattleLogDraft = useCallback(
-    async (draft) => {
-      if (!draft || !sessionInfo?.id || !gameId) return
+    async draft => {
+      if (!draft || !sessionInfo?.id || !gameId) return;
       try {
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
         if (sessionError) {
-          throw sessionError
+          throw sessionError;
         }
-        const token = sessionData?.session?.access_token
+        const token = sessionData?.session?.access_token;
         if (!token) {
-          throw new Error('세션 토큰을 확인하지 못했습니다.')
+          throw new Error('세션 토큰을 확인하지 못했습니다.');
         }
 
         const response = await fetch('/api/rank/save-battle-log', {
@@ -2730,45 +2325,45 @@ export function useStartClientEngine(gameId, options = {}) {
             game_id: gameId,
             draft,
           }),
-        })
+        });
 
         if (!response.ok) {
-          const detail = await response.text().catch(() => '')
-          throw new Error(detail || '배틀 로그 저장에 실패했습니다.')
+          const detail = await response.text().catch(() => '');
+          throw new Error(detail || '배틀 로그 저장에 실패했습니다.');
         }
       } catch (error) {
-        console.warn('[StartClient] battleLogDraft 저장 실패:', error)
+        console.warn('[StartClient] battleLogDraft 저장 실패:', error);
       }
     },
-    [gameId, sessionInfo?.id],
-  )
+    [gameId, sessionInfo?.id]
+  );
 
   useEffect(() => {
-    if (!battleLogDraft) return
+    if (!battleLogDraft) return;
     const signature = JSON.stringify({
       session: sessionInfo?.id || null,
       generatedAt: battleLogDraft?.meta?.generatedAt || null,
       result: battleLogDraft?.meta?.result || null,
       endTurn: battleLogDraft?.meta?.endTurn ?? null,
-    })
+    });
     if (lastBattleLogSignatureRef.current === signature) {
-      return
+      return;
     }
-    lastBattleLogSignatureRef.current = signature
-    persistBattleLogDraft(battleLogDraft)
-  }, [battleLogDraft, persistBattleLogDraft, sessionInfo?.id])
+    lastBattleLogSignatureRef.current = signature;
+    persistBattleLogDraft(battleLogDraft);
+  }, [battleLogDraft, persistBattleLogDraft, sessionInfo?.id]);
 
   const finalizeSessionRemotely = useCallback(
     async ({ snapshot, reason, responseText, turnNumber }) => {
-      if (!sessionInfo?.id || !gameId) return
+      if (!sessionInfo?.id || !gameId) return;
       try {
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
         if (sessionError) {
-          throw sessionError
+          throw sessionError;
         }
-        const token = sessionData?.session?.access_token
+        const token = sessionData?.session?.access_token;
         if (!token) {
-          throw new Error('세션 토큰을 확인하지 못했습니다.')
+          throw new Error('세션 토큰을 확인하지 못했습니다.');
         }
 
         const payload = {
@@ -2778,7 +2373,7 @@ export function useStartClientEngine(gameId, options = {}) {
           reason: reason || 'roles_resolved',
           outcome: snapshot || buildOutcomeSnapshot(outcomeLedgerRef.current),
           finalResponse: responseText || '',
-        }
+        };
 
         const response = await fetch('/api/rank/complete-session', {
           method: 'POST',
@@ -2787,18 +2382,18 @@ export function useStartClientEngine(gameId, options = {}) {
             Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify(payload),
-        })
+        });
 
         if (!response.ok) {
-          const detail = await response.text().catch(() => '')
-          throw new Error(detail || '세션 결과 정산 요청에 실패했습니다.')
+          const detail = await response.text().catch(() => '');
+          throw new Error(detail || '세션 결과 정산 요청에 실패했습니다.');
         }
       } catch (error) {
-        console.warn('[StartClient] 세션 결과 정산 요청 실패:', error)
+        console.warn('[StartClient] 세션 결과 정산 요청 실패:', error);
       }
     },
-    [sessionInfo?.id, gameId],
-  )
+    [sessionInfo?.id, gameId]
+  );
 
   const {
     apiKey,
@@ -2829,7 +2424,7 @@ export function useStartClientEngine(gameId, options = {}) {
     viewerId,
     turn,
     recordTimelineEvents,
-  })
+  });
 
   const { ensureApiKeyReady, voidSession } = useStartCooldown({
     evaluateApiKeyCooldown,
@@ -2850,13 +2445,10 @@ export function useStartClientEngine(gameId, options = {}) {
     sessionInfo,
     onSessionVoided: (payload = {}) => {
       const reason =
-        payload?.options?.reason ||
-        payload?.reason ||
-        payload?.options?.message ||
-        'void'
-      captureBattleLog('void', { reason, turnNumber: turn })
+        payload?.options?.reason || payload?.reason || payload?.options?.message || 'void';
+      captureBattleLog('void', { reason, turnNumber: turn });
     },
-  })
+  });
 
   useStartSessionWatchdog({
     enabled: !preflight && !!sessionInfo?.id && !!currentNodeId && !gameVoided,
@@ -2873,19 +2465,17 @@ export function useStartClientEngine(gameId, options = {}) {
     recordTimelineEvents,
     sessionInfo,
     gameId,
-  })
+  });
 
-  const visitedSlotIds = useRef(new Set())
-  const apiVersionLock = useRef(null)
-  const advanceIntentRef = useRef(null)
-
-
+  const visitedSlotIds = useRef(new Set());
+  const apiVersionLock = useRef(null);
+  const advanceIntentRef = useRef(null);
 
   useEffect(() => {
-    if (matchMetaLoggedRef.current) return
-    const meta = startMatchMetaRef.current
-    if (!meta) return
-    if (preflight) return
+    if (matchMetaLoggedRef.current) return;
+    const meta = startMatchMetaRef.current;
+    if (!meta) return;
+    if (preflight) return;
     const metadata = {
       matching: {
         source: meta.source || 'client_start',
@@ -2900,7 +2490,7 @@ export function useStartClientEngine(gameId, options = {}) {
         mode: meta.mode || null,
         turnTimer: meta.turnTimer || null,
       },
-    }
+    };
     recordTimelineEvents(
       [
         {
@@ -2913,32 +2503,26 @@ export function useStartClientEngine(gameId, options = {}) {
           metadata,
         },
       ],
-      { turnNumber: 0 },
-    )
-    matchMetaLoggedRef.current = true
-  }, [preflight, recordTimelineEvents])
+      { turnNumber: 0 }
+    );
+    matchMetaLoggedRef.current = true;
+  }, [preflight, recordTimelineEvents]);
   const normalizedViewerId = useMemo(() => {
-    if (!viewerId) return ''
-    return String(viewerId).trim()
-  }, [viewerId])
-  const eligibleOwnerIds = consensusState?.eligibleOwnerIds || []
-  const consentedOwnerIds = consensusState?.consentedOwnerIds || []
-  const consensusCount = consensusState?.consensusCount || 0
-  const needsConsensus = !preflight && Boolean(consensusState?.needsConsensus)
+    if (!viewerId) return '';
+    return String(viewerId).trim();
+  }, [viewerId]);
+  const eligibleOwnerIds = consensusState?.eligibleOwnerIds || [];
+  const consentedOwnerIds = consensusState?.consentedOwnerIds || [];
+  const consensusCount = consensusState?.consensusCount || 0;
+  const needsConsensus = !preflight && Boolean(consensusState?.needsConsensus);
   const viewerCanConsent =
-    needsConsensus && normalizedViewerId
-      ? eligibleOwnerIds.includes(normalizedViewerId)
-      : false
-  const viewerHasConsented =
-    viewerCanConsent && consentedOwnerIds.includes(normalizedViewerId)
+    needsConsensus && normalizedViewerId ? eligibleOwnerIds.includes(normalizedViewerId) : false;
+  const viewerHasConsented = viewerCanConsent && consentedOwnerIds.includes(normalizedViewerId);
   const currentNode = useMemo(
-    () => graph.nodes.find((node) => node.id === currentNodeId) || null,
-    [graph.nodes, currentNodeId],
-  )
-  const aiMemory = useMemo(
-    () => history.getAiMemory({ last: 24 }),
-    [history, historyVersion],
-  )
+    () => graph.nodes.find(node => node.id === currentNodeId) || null,
+    [graph.nodes, currentNodeId]
+  );
+  const aiMemory = useMemo(() => history.getAiMemory({ last: 24 }), [history, historyVersion]);
   const playerHistories = useMemo(
     () =>
       participants.map((participant, index) => ({
@@ -2952,148 +2536,149 @@ export function useStartClientEngine(gameId, options = {}) {
           '',
         entries: history.getVisibleForSlot(index, { onlyPublic: true, last: 10 }),
       })),
-    [participants, history, historyVersion],
-  )
+    [participants, history, historyVersion]
+  );
   const currentActorContext = useMemo(
     () => resolveActorContext({ node: currentNode, slots, participants }),
-    [currentNode, slots, participants],
-  )
-  const slotType = currentNode?.slot_type || 'ai'
-  const isUserActionSlot = slotType === 'user_action' || slotType === 'manual'
+    [currentNode, slots, participants]
+  );
+  const slotType = currentNode?.slot_type || 'ai';
+  const isUserActionSlot = slotType === 'user_action' || slotType === 'manual';
   const viewerOwnsSlot =
-    isUserActionSlot && viewerId && currentActorContext?.participant?.owner_id === viewerId
-  const canSubmitAction = !isUserActionSlot || viewerOwnsSlot
+    isUserActionSlot && viewerId && currentActorContext?.participant?.owner_id === viewerId;
+  const canSubmitAction = !isUserActionSlot || viewerOwnsSlot;
   const currentActorInfo = useMemo(
     () => ({
       slotIndex: currentActorContext?.slotIndex ?? null,
-      role:
-        currentActorContext?.participant?.role ||
-        currentActorContext?.heroSlot?.role ||
-        '',
+      role: currentActorContext?.participant?.role || currentActorContext?.heroSlot?.role || '',
       name:
-        currentActorContext?.participant?.hero?.name ||
-        currentActorContext?.heroSlot?.name ||
-        '',
+        currentActorContext?.participant?.hero?.name || currentActorContext?.heroSlot?.name || '',
       isUserAction: isUserActionSlot,
     }),
-    [currentActorContext, isUserActionSlot],
-  )
+    [currentActorContext, isUserActionSlot]
+  );
 
   const viewerParticipant = useMemo(() => {
-    if (!viewerId) return null
+    if (!viewerId) return null;
     return (
-      participants.find((participant) => {
+      participants.find(participant => {
         const ownerId =
           participant?.owner_id ||
           participant?.ownerId ||
           participant?.ownerID ||
           participant?.owner?.id ||
-          null
-        return ownerId === viewerId
+          null;
+        return ownerId === viewerId;
       }) || null
-    )
-  }, [participants, viewerId])
+    );
+  }, [participants, viewerId]);
 
   const bootLocalSession = useCallback(
     (overrides = null) => {
       if (graph.nodes.length === 0) {
         patchEngineState({
           statusMessage: '시작할 프롬프트 세트를 찾을 수 없습니다.',
-        })
-        return
+        });
+        return;
       }
 
       const sessionParticipants = Array.isArray(overrides)
         ? overrides.filter(Boolean)
-        : participants
+        : participants;
 
       if (!sessionParticipants || sessionParticipants.length === 0) {
         patchEngineState({
           statusMessage: '참가자를 찾을 수 없어 게임을 시작할 수 없습니다.',
-        })
-        return
+        });
+        return;
       }
 
       if (overrides) {
-        patchEngineState({ participants: sessionParticipants })
+        patchEngineState({ participants: sessionParticipants });
       }
 
-      const sessionSlots = buildSlotsFromParticipants(sessionParticipants)
+      const sessionSlots = buildSlotsFromParticipants(sessionParticipants);
 
-      const startNode = graph.nodes.find((node) => node.is_start) || graph.nodes[0]
-      history.beginSession()
-      bumpHistoryVersion()
-      const seeds = Array.isArray(historySeedRef.current) ? historySeedRef.current : []
+      const startNode = graph.nodes.find(node => node.is_start) || graph.nodes[0];
+      history.beginSession();
+      bumpHistoryVersion();
+      const seeds = Array.isArray(historySeedRef.current) ? historySeedRef.current : [];
       if (seeds.length) {
-        const hasSystemSeed = seeds.some((entry) => entry.role === 'system')
+        const hasSystemSeed = seeds.some(entry => entry.role === 'system');
         if (!hasSystemSeed && systemPrompt) {
-          history.push({ role: 'system', content: systemPrompt, public: false, includeInAi: true, meta: { seeded: true } })
+          history.push({
+            role: 'system',
+            content: systemPrompt,
+            public: false,
+            includeInAi: true,
+            meta: { seeded: true },
+          });
         }
-        seeds.forEach((seed) => history.push(seed))
+        seeds.forEach(seed => history.push(seed));
       } else if (systemPrompt) {
-        history.push({ role: 'system', content: systemPrompt, public: false })
+        history.push({ role: 'system', content: systemPrompt, public: false });
       }
 
-      const sessionOwnerIds = collectUniqueOwnerIds(sessionParticipants)
-      const viewerKey = viewerId ? String(viewerId).trim() : ''
+      const sessionOwnerIds = collectUniqueOwnerIds(sessionParticipants);
+      const viewerKey = viewerId ? String(viewerId).trim() : '';
       const managedOwnersForSession = viewerKey
-        ? [viewerKey, ...sessionOwnerIds.filter((ownerId) => ownerId !== viewerKey)]
-        : sessionOwnerIds
-      const sessionRosterSnapshot = buildOwnerRosterSnapshot(sessionParticipants)
+        ? [viewerKey, ...sessionOwnerIds.filter(ownerId => ownerId !== viewerKey)]
+        : sessionOwnerIds;
+      const sessionRosterSnapshot = buildOwnerRosterSnapshot(sessionParticipants);
 
       if (realtimeManagerRef.current) {
-        const manager = realtimeManagerRef.current
-        manager.reset()
+        const manager = realtimeManagerRef.current;
+        manager.reset();
         if (realtimeEnabled) {
-          manager.syncParticipants(sessionParticipants)
-          manager.setManagedOwners(managedOwnersForSession)
+          manager.syncParticipants(sessionParticipants);
+          manager.setManagedOwners(managedOwnersForSession);
           manager.beginTurn({
             turnNumber: 1,
             eligibleOwnerIds: deriveEligibleOwnerIds(sessionParticipants),
-          })
+          });
         } else {
-          manager.setManagedOwners([])
+          manager.setManagedOwners([]);
         }
-        applyRealtimeSnapshot(manager.getSnapshot())
+        applyRealtimeSnapshot(manager.getSnapshot());
       }
 
-      visitedSlotIds.current = new Set()
-      apiVersionLock.current = null
-      turnTimerServiceRef.current?.configureBase(turnTimerSeconds)
-      turnTimerServiceRef.current?.reset()
-      dropInQueueRef.current?.reset()
-      processedDropInReleasesRef.current.clear()
-      asyncSessionManagerRef.current?.reset()
+      visitedSlotIds.current = new Set();
+      apiVersionLock.current = null;
+      turnTimerServiceRef.current?.configureBase(turnTimerSeconds);
+      turnTimerServiceRef.current?.reset();
+      dropInQueueRef.current?.reset();
+      processedDropInReleasesRef.current.clear();
+      asyncSessionManagerRef.current?.reset();
       participantIdSetRef.current = new Set(
         sessionParticipants.map((participant, index) =>
-          String(participant?.id ?? participant?.hero_id ?? index),
-        ),
-      )
-      lastScheduledTurnRef.current = 0
-      setPreflight(false)
-      setGameVoided(false)
-      setTurn(1)
+          String(participant?.id ?? participant?.hero_id ?? index)
+        )
+      );
+      lastScheduledTurnRef.current = 0;
+      setPreflight(false);
+      setGameVoided(false);
+      setTurn(1);
       setLogs(() => {
-        logsRef.current = []
-        return []
-      })
-      setBattleLogDraft(null)
-      setWinCount(0)
-      setLastDropInTurn(null)
-      setActiveGlobal([])
-      setActiveLocal([])
-      setStatusMessage('게임이 시작되었습니다.')
+        logsRef.current = [];
+        return [];
+      });
+      setBattleLogDraft(null);
+      setWinCount(0);
+      setLastDropInTurn(null);
+      setActiveGlobal([]);
+      setActiveLocal([]);
+      setStatusMessage('게임이 시작되었습니다.');
       const startContext = resolveActorContext({
         node: startNode,
         slots: sessionSlots,
         participants: sessionParticipants,
-      })
+      });
       const startNames = startContext?.participant?.hero?.name
         ? [startContext.participant.hero.name]
         : startContext?.heroSlot?.name
-        ? [startContext.heroSlot.name]
-        : []
-      updateHeroAssets(startNames, startContext)
+          ? [startContext.heroSlot.name]
+          : [];
+      updateHeroAssets(startNames, startContext);
       rememberActiveSession({
         turn: 1,
         actorNames: startNames,
@@ -3101,11 +2686,11 @@ export function useStartClientEngine(gameId, options = {}) {
         defeated: false,
         sharedOwners: managedOwnersForSession,
         ownerRoster: sessionRosterSnapshot,
-      })
-      setTurnDeadline(null)
-      setTimeRemaining(null)
-      clearConsensusVotes()
-      setCurrentNodeId(startNode.id)
+      });
+      setTurnDeadline(null);
+      setTimeRemaining(null);
+      clearConsensusVotes();
+      setCurrentNodeId(startNode.id);
     },
     [
       graph.nodes,
@@ -3118,50 +2703,50 @@ export function useStartClientEngine(gameId, options = {}) {
       realtimeEnabled,
       viewerId,
       applyRealtimeSnapshot,
-    ],
-  )
-  bootLocalSessionRef.current = bootLocalSession
+    ]
+  );
+  bootLocalSessionRef.current = bootLocalSession;
 
   const handleStart = useCallback(async () => {
     if (graph.nodes.length === 0) {
-      setStatusMessage('시작할 프롬프트 세트를 찾을 수 없습니다.')
-      return
+      setStatusMessage('시작할 프롬프트 세트를 찾을 수 없습니다.');
+      return;
     }
 
     if (startingSession) {
-      return
+      return;
     }
 
     if (!gameId) {
-      setStatusMessage('게임 정보를 찾을 수 없습니다.')
-      return
+      setStatusMessage('게임 정보를 찾을 수 없습니다.');
+      return;
     }
 
     if (effectiveApiKey) {
       if (!ensureApiKeyReady(effectiveApiKey)) {
-        return
+        return;
       }
 
-          await persistApiKeyOnServer(effectiveApiKey, apiVersion, {
-            geminiMode: normalizedGeminiMode,
-            geminiModel: normalizedGeminiModel,
-          })
+      await persistApiKeyOnServer(effectiveApiKey, apiVersion, {
+        geminiMode: normalizedGeminiMode,
+        geminiModel: normalizedGeminiModel,
+      });
     }
 
-    setStartingSession(true)
-    setStatusMessage('세션을 준비하는 중입니다…')
+    setStartingSession(true);
+    setStatusMessage('세션을 준비하는 중입니다…');
 
-    let sessionReady = false
+    let sessionReady = false;
 
     try {
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       if (sessionError) {
-        throw sessionError
+        throw sessionError;
       }
 
-      const token = sessionData?.session?.access_token
+      const token = sessionData?.session?.access_token;
       if (!token) {
-        throw new Error('세션 정보가 만료되었습니다. 다시 로그인해 주세요.')
+        throw new Error('세션 정보가 만료되었습니다. 다시 로그인해 주세요.');
       }
 
       const response = await fetch('/api/rank/start-session', {
@@ -3176,28 +2761,32 @@ export function useStartClientEngine(gameId, options = {}) {
           role: viewerParticipant?.role || null,
           match_code: null,
         }),
-      })
+      });
 
-      let payload = {}
+      let payload = {};
       try {
-        payload = await response.json()
+        payload = await response.json();
       } catch (error) {
-        payload = {}
+        payload = {};
       }
 
       if (!response.ok) {
-        const message = payload?.error || payload?.detail || '전투 세션을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.'
-        throw new Error(message)
+        const message =
+          payload?.error ||
+          payload?.detail ||
+          '전투 세션을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.';
+        throw new Error(message);
       }
 
       if (!payload?.ok) {
-        const message = payload?.error || '전투 세션을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.'
-        throw new Error(message)
+        const message =
+          payload?.error || '전투 세션을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.';
+        throw new Error(message);
       }
 
-      const sessionPayload = payload?.session || null
+      const sessionPayload = payload?.session || null;
       if (!sessionPayload?.id) {
-        throw new Error('세션 정보를 받지 못했습니다. 잠시 후 다시 시도해 주세요.')
+        throw new Error('세션 정보를 받지 못했습니다. 잠시 후 다시 시도해 주세요.');
       }
 
       setSessionInfo({
@@ -3205,61 +2794,61 @@ export function useStartClientEngine(gameId, options = {}) {
         status: sessionPayload.status || 'active',
         createdAt: sessionPayload.created_at || null,
         reused: Boolean(sessionPayload.reused),
-      })
+      });
 
-      sessionReady = true
+      sessionReady = true;
     } catch (error) {
-      console.error('세션 준비 실패:', error)
+      console.error('세션 준비 실패:', error);
       const message =
-        error?.message || '전투 세션을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.'
-      setStatusMessage(message)
+        error?.message || '전투 세션을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.';
+      setStatusMessage(message);
     } finally {
-      setStartingSession(false)
+      setStartingSession(false);
     }
 
     if (!sessionReady) {
-      return
+      return;
     }
 
-    setStatusMessage('매칭 데이터를 검증하는 중입니다…')
-    await new Promise((resolve) => setTimeout(resolve, 200))
+    setStatusMessage('매칭 데이터를 검증하는 중입니다…');
+    await new Promise(resolve => setTimeout(resolve, 200));
 
-    let sessionParticipants = participants
+    let sessionParticipants = participants;
     try {
       const { participants: sanitized, removed } = reconcileParticipantsForGame({
         participants,
         slotLayout,
         matchingMetadata,
-      })
+      });
 
       if (!sanitized || sanitized.length === 0) {
-        setStatusMessage('역할이 맞는 참가자를 찾을 수 없어 게임을 시작할 수 없습니다.')
-        return
+        setStatusMessage('역할이 맞는 참가자를 찾을 수 없어 게임을 시작할 수 없습니다.');
+        return;
       }
 
-      sessionParticipants = sanitized
+      sessionParticipants = sanitized;
 
       if (removed.length) {
-        const summary = formatPreflightSummary(removed)
+        const summary = formatPreflightSummary(removed);
         if (summary) {
-          console.warn('[StartClient] 후보정으로 제외된 참가자 목록:\n' + summary)
-          setPromptMetaWarning((prev) => {
-            const trimmed = prev ? String(prev).trim() : ''
-            const notice = `[후보정] 역할 검증에서 제외된 참가자:\n${summary}`
-            return trimmed ? `${trimmed}\n\n${notice}` : notice
-          })
+          console.warn('[StartClient] 후보정으로 제외된 참가자 목록:\n' + summary);
+          setPromptMetaWarning(prev => {
+            const trimmed = prev ? String(prev).trim() : '';
+            const notice = `[후보정] 역할 검증에서 제외된 참가자:\n${summary}`;
+            return trimmed ? `${trimmed}\n\n${notice}` : notice;
+          });
         }
-        setStatusMessage('역할이 맞지 않는 참가자를 제외하고 게임을 시작합니다.')
+        setStatusMessage('역할이 맞지 않는 참가자를 제외하고 게임을 시작합니다.');
       } else {
-        setStatusMessage('게임 준비가 완료되었습니다.')
+        setStatusMessage('게임 준비가 완료되었습니다.');
       }
     } catch (error) {
-      console.error('후보정 검증 실패:', error)
-      setStatusMessage('매칭 데이터를 검증하지 못했습니다. 잠시 후 다시 시도해 주세요.')
-      return
+      console.error('후보정 검증 실패:', error);
+      setStatusMessage('매칭 데이터를 검증하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+      return;
     }
 
-    bootLocalSession(sessionParticipants)
+    bootLocalSession(sessionParticipants);
   }, [
     apiVersion,
     bootLocalSession,
@@ -3277,93 +2866,93 @@ export function useStartClientEngine(gameId, options = {}) {
     slotLayout,
     matchingMetadata,
     setPromptMetaWarning,
-  ])
+  ]);
 
   const advanceTurn = useCallback(
     async (overrideResponse = null, options = {}) => {
       if (preflight) {
-        setStatusMessage('먼저 "게임 시작"을 눌러 주세요.')
-        return
+        setStatusMessage('먼저 "게임 시작"을 눌러 주세요.');
+        return;
       }
       if (!currentNodeId) {
-        setStatusMessage('진행 가능한 노드가 없습니다.')
-        return
+        setStatusMessage('진행 가능한 노드가 없습니다.');
+        return;
       }
 
-      const node = graph.nodes.find((entry) => entry.id === currentNodeId)
+      const node = graph.nodes.find(entry => entry.id === currentNodeId);
       if (!node) {
-        setStatusMessage('현재 노드 정보를 찾을 수 없습니다.')
-        return
+        setStatusMessage('현재 노드 정보를 찾을 수 없습니다.');
+        return;
       }
 
       if (gameVoided) {
-        setStatusMessage('게임이 무효 처리되어 더 이상 진행할 수 없습니다.')
-        return
+        setStatusMessage('게임이 무효 처리되어 더 이상 진행할 수 없습니다.');
+        return;
       }
 
       const advanceReason =
         typeof options?.reason === 'string' && options.reason.trim()
           ? options.reason.trim()
-          : 'unspecified'
+          : 'unspecified';
 
-      const actorContext = resolveActorContext({ node, slots, participants })
-      const slotBinding = resolveSlotBinding({ node, actorContext })
-      const slotTypeValue = node.slot_type || 'ai'
-      const isUserAction = slotTypeValue === 'user_action' || slotTypeValue === 'manual'
-      const historyRole = isUserAction ? 'user' : 'assistant'
-      const actingOwnerId = actorContext?.participant?.owner_id || null
+      const actorContext = resolveActorContext({ node, slots, participants });
+      const slotBinding = resolveSlotBinding({ node, actorContext });
+      const slotTypeValue = node.slot_type || 'ai';
+      const isUserAction = slotTypeValue === 'user_action' || slotTypeValue === 'manual';
+      const historyRole = isUserAction ? 'user' : 'assistant';
+      const actingOwnerId = actorContext?.participant?.owner_id || null;
 
-      const finalizeRealtimeTurn = (reason) => {
-        if (!realtimeEnabled) return
-        const manager = realtimeManagerRef.current
-        if (!manager) return
+      const finalizeRealtimeTurn = reason => {
+        if (!realtimeEnabled) return;
+        const manager = realtimeManagerRef.current;
+        if (!manager) return;
         const result = manager.completeTurn({
           turnNumber: turn,
           reason: reason || advanceReason,
           eligibleOwnerIds: deriveEligibleOwnerIds(participants),
-        })
-        if (!result) return
-        const numericTurn = Number.isFinite(Number(turn)) ? Math.floor(Number(turn)) : 0
+        });
+        if (!result) return;
+        const numericTurn = Number.isFinite(Number(turn)) ? Math.floor(Number(turn)) : 0;
         recordTurnState({
           turnNumber: numericTurn,
           status: reason ? `completed:${reason}` : `completed:${advanceReason}`,
           deadline: 0,
           remainingSeconds: 0,
-        })
-        lastBroadcastTurnStateRef.current = { turnNumber: numericTurn, deadline: 0 }
-        applyRealtimeSnapshot(result.snapshot)
+        });
+        lastBroadcastTurnStateRef.current = { turnNumber: numericTurn, deadline: 0 };
+        applyRealtimeSnapshot(result.snapshot);
 
-        const warningReasonMap = new Map()
-        const escalationReasonMap = new Map()
+        const warningReasonMap = new Map();
+        const escalationReasonMap = new Map();
 
         if (Array.isArray(result.events) && result.events.length) {
           const warningLimitValue = Number.isFinite(Number(result.snapshot?.warningLimit))
             ? Number(result.snapshot.warningLimit)
-            : undefined
-          const eventEntries = []
-          result.events.forEach((event) => {
-            if (!event) return
-            const ownerId = event.ownerId ? String(event.ownerId).trim() : ''
-            if (!ownerId) return
-            const info = ownerDisplayMap.get(ownerId)
-            const displayName = info?.displayName || `플레이어 ${ownerId.slice(0, 6)}`
+            : undefined;
+          const eventEntries = [];
+          result.events.forEach(event => {
+            if (!event) return;
+            const ownerId = event.ownerId ? String(event.ownerId).trim() : '';
+            if (!ownerId) return;
+            const info = ownerDisplayMap.get(ownerId);
+            const displayName = info?.displayName || `플레이어 ${ownerId.slice(0, 6)}`;
             const baseLimit = Number.isFinite(Number(event.limit))
               ? Number(event.limit)
-              : warningLimitValue
-            const reasonLabel = formatRealtimeReason(event.reason)
-            const eventId = event.id || event.eventId || null
+              : warningLimitValue;
+            const reasonLabel = formatRealtimeReason(event.reason);
+            const eventId = event.id || event.eventId || null;
             if (event.type === 'warning') {
               if (reasonLabel) {
-                warningReasonMap.set(ownerId, reasonLabel)
+                warningReasonMap.set(ownerId, reasonLabel);
               }
               const strikeText = Number.isFinite(Number(event.strike))
                 ? `${Number(event.strike)}회`
-                : '1회'
+                : '1회';
               const remainingText =
                 Number.isFinite(Number(event.remaining)) && Number(event.remaining) > 0
                   ? ` (남은 기회 ${Number(event.remaining)}회)`
-                  : ''
-              const reasonSuffix = reasonLabel ? ` – ${reasonLabel}` : ''
+                  : '';
+              const reasonSuffix = reasonLabel ? ` – ${reasonLabel}` : '';
               eventEntries.push({
                 role: 'system',
                 content: `⚠️ ${displayName} 경고 ${strikeText}${remainingText}${reasonSuffix}`,
@@ -3372,9 +2961,7 @@ export function useStartClientEngine(gameId, options = {}) {
                 extra: {
                   eventType: 'warning',
                   ownerId,
-                  strike: Number.isFinite(Number(event.strike))
-                    ? Number(event.strike)
-                    : null,
+                  strike: Number.isFinite(Number(event.strike)) ? Number(event.strike) : null,
                   remaining:
                     Number.isFinite(Number(event.remaining)) && Number(event.remaining) >= 0
                       ? Number(event.remaining)
@@ -3388,15 +2975,15 @@ export function useStartClientEngine(gameId, options = {}) {
                   eventId,
                   status: event.status || null,
                 },
-              })
+              });
             } else if (event.type === 'proxy_escalated') {
               if (reasonLabel) {
-                escalationReasonMap.set(ownerId, reasonLabel)
+                escalationReasonMap.set(ownerId, reasonLabel);
               }
               const strikeText = Number.isFinite(Number(event.strike))
                 ? ` (경고 ${Number(event.strike)}회 누적)`
-                : ''
-              const reasonSuffix = reasonLabel ? ` – ${reasonLabel}` : ''
+                : '';
+              const reasonSuffix = reasonLabel ? ` – ${reasonLabel}` : '';
               eventEntries.push({
                 role: 'system',
                 content: `🚨 ${displayName} 대역 전환${strikeText}${reasonSuffix}`,
@@ -3405,9 +2992,7 @@ export function useStartClientEngine(gameId, options = {}) {
                 extra: {
                   eventType: 'proxy_escalated',
                   ownerId,
-                  strike: Number.isFinite(Number(event.strike))
-                    ? Number(event.strike)
-                    : null,
+                  strike: Number.isFinite(Number(event.strike)) ? Number(event.strike) : null,
                   limit: Number.isFinite(baseLimit) ? Number(baseLimit) : null,
                   reason: event.reason || null,
                   turn: Number.isFinite(Number(event.turn)) ? Number(event.turn) : turn,
@@ -3417,100 +3002,97 @@ export function useStartClientEngine(gameId, options = {}) {
                   status: 'proxy',
                   eventId,
                 },
-              })
+              });
             }
-          })
+          });
           if (eventEntries.length) {
-            logTurnEntries({ entries: eventEntries, turnNumber: turn }).catch((error) => {
-              console.error('[StartClient] 경고/대역 이벤트 로그 실패:', error)
-            })
+            logTurnEntries({ entries: eventEntries, turnNumber: turn }).catch(error => {
+              console.error('[StartClient] 경고/대역 이벤트 로그 실패:', error);
+            });
           }
         }
 
         if (Array.isArray(result.warnings) && result.warnings.length) {
           const messages = result.warnings
             .map(({ ownerId, strike, remaining, reason }) => {
-              if (!ownerId) return null
-              const normalized = String(ownerId).trim()
-              if (!normalized) return null
-              const info = ownerDisplayMap.get(normalized)
-              const displayName = info?.displayName || `플레이어 ${normalized.slice(0, 6)}`
-              const remainText = remaining > 0 ? ` (남은 기회 ${remaining}회)` : ''
-              const reasonLabel =
-                warningReasonMap.get(normalized) || formatRealtimeReason(reason)
-              const reasonSuffix = reasonLabel ? ` – ${reasonLabel}` : ''
-              return `${displayName} 경고 ${strike}회${remainText}${reasonSuffix}`
+              if (!ownerId) return null;
+              const normalized = String(ownerId).trim();
+              if (!normalized) return null;
+              const info = ownerDisplayMap.get(normalized);
+              const displayName = info?.displayName || `플레이어 ${normalized.slice(0, 6)}`;
+              const remainText = remaining > 0 ? ` (남은 기회 ${remaining}회)` : '';
+              const reasonLabel = warningReasonMap.get(normalized) || formatRealtimeReason(reason);
+              const reasonSuffix = reasonLabel ? ` – ${reasonLabel}` : '';
+              return `${displayName} 경고 ${strike}회${remainText}${reasonSuffix}`;
             })
-            .filter(Boolean)
+            .filter(Boolean);
           if (messages.length) {
-            const notice = `경고: ${messages.join(', ')} - "다음" 버튼을 눌러 참여해 주세요.`
-            const prevMessage = statusMessageRef.current
+            const notice = `경고: ${messages.join(', ')} - "다음" 버튼을 눌러 참여해 주세요.`;
+            const prevMessage = statusMessageRef.current;
             const nextMessage = !prevMessage
               ? notice
               : prevMessage.includes(notice)
                 ? prevMessage
-                : `${prevMessage}\n${notice}`
-            patchEngineState({ statusMessage: nextMessage })
+                : `${prevMessage}\n${notice}`;
+            patchEngineState({ statusMessage: nextMessage });
           }
         }
 
         if (Array.isArray(result.escalated) && result.escalated.length) {
           const escalatedSet = new Set(
-            result.escalated
-              .map((ownerId) => (ownerId ? String(ownerId).trim() : ''))
-              .filter(Boolean),
-          )
+            result.escalated.map(ownerId => (ownerId ? String(ownerId).trim() : '')).filter(Boolean)
+          );
           if (escalatedSet.size) {
-            const updatedParticipants = participantsRef.current.map((participant) => {
-              const ownerId = deriveParticipantOwnerId(participant)
-              if (!ownerId) return participant
-              const normalized = String(ownerId).trim()
-              if (!escalatedSet.has(normalized)) return participant
-              const statusValue = String(participant?.status || '').toLowerCase()
-              if (statusValue === 'proxy') return participant
-              return { ...participant, status: 'proxy' }
-            })
-            patchEngineState({ participants: updatedParticipants })
-            const names = Array.from(escalatedSet).map((ownerId) => {
-              const info = ownerDisplayMap.get(ownerId)
-              const displayName = info?.displayName || `플레이어 ${ownerId.slice(0, 6)}`
-              const reasonLabel = escalationReasonMap.get(ownerId)
-              return reasonLabel ? `${displayName} (${reasonLabel})` : displayName
-            })
-            const notice = `대역 전환: ${names.join(', ')} – 3회 이상 응답하지 않아 대역으로 교체되었습니다.`
-            const prevMessage = statusMessageRef.current
+            const updatedParticipants = participantsRef.current.map(participant => {
+              const ownerId = deriveParticipantOwnerId(participant);
+              if (!ownerId) return participant;
+              const normalized = String(ownerId).trim();
+              if (!escalatedSet.has(normalized)) return participant;
+              const statusValue = String(participant?.status || '').toLowerCase();
+              if (statusValue === 'proxy') return participant;
+              return { ...participant, status: 'proxy' };
+            });
+            patchEngineState({ participants: updatedParticipants });
+            const names = Array.from(escalatedSet).map(ownerId => {
+              const info = ownerDisplayMap.get(ownerId);
+              const displayName = info?.displayName || `플레이어 ${ownerId.slice(0, 6)}`;
+              const reasonLabel = escalationReasonMap.get(ownerId);
+              return reasonLabel ? `${displayName} (${reasonLabel})` : displayName;
+            });
+            const notice = `대역 전환: ${names.join(', ')} – 3회 이상 응답하지 않아 대역으로 교체되었습니다.`;
+            const prevMessage = statusMessageRef.current;
             const nextMessage = !prevMessage
               ? notice
               : prevMessage.includes(notice)
                 ? prevMessage
-                : `${prevMessage}\n${notice}`
-            patchEngineState({ statusMessage: nextMessage })
+                : `${prevMessage}\n${notice}`;
+            patchEngineState({ statusMessage: nextMessage });
           }
         }
-      }
+      };
 
       const recordRealtimeParticipation = (ownerId, type) => {
-        if (!realtimeEnabled) return
-        if (!ownerId) return
-        const manager = realtimeManagerRef.current
-        if (!manager) return
-        const snapshot = manager.recordParticipation(ownerId, turn, { type })
-        applyRealtimeSnapshot(snapshot)
-      }
+        if (!realtimeEnabled) return;
+        if (!ownerId) return;
+        const manager = realtimeManagerRef.current;
+        if (!manager) return;
+        const snapshot = manager.recordParticipation(ownerId, turn, { type });
+        applyRealtimeSnapshot(snapshot);
+      };
 
       if (isUserAction && (!viewerId || actingOwnerId !== viewerId)) {
-        setStatusMessage('현재 차례의 플레이어만 행동을 제출할 수 있습니다.')
-        return
+        setStatusMessage('현재 차례의 플레이어만 행동을 제출할 수 있습니다.');
+        return;
       }
 
       if (isUserAction && actingOwnerId) {
-        recordRealtimeParticipation(actingOwnerId, 'action')
+        recordRealtimeParticipation(actingOwnerId, 'action');
       }
 
-      setIsAdvancing(true)
-      setStatusMessage('')
-      setTurnDeadline(null)
-      setTimeRemaining(null)
+      setIsAdvancing(true);
+      setStatusMessage('');
+      setTurnDeadline(null);
+      setTimeRemaining(null);
 
       try {
         const compiled = makeNodePrompt({
@@ -3520,72 +3102,65 @@ export function useStartClientEngine(gameId, options = {}) {
           activeGlobalNames: activeGlobal,
           activeLocalNames: activeLocal,
           currentSlot: slotBinding.templateSlotRef,
-        })
+        });
 
-        const promptText = compiled.text
-        const historyPayload = prepareHistoryPayload(aiMemory, { limit: 32 })
+        const promptText = compiled.text;
+        const historyPayload = prepareHistoryPayload(aiMemory, { limit: 32 });
         if (compiled.pickedSlot != null) {
-          visitedSlotIds.current.add(String(compiled.pickedSlot))
+          visitedSlotIds.current.add(String(compiled.pickedSlot));
         }
 
         let responseText =
-          typeof overrideResponse === 'string'
-            ? overrideResponse.trim()
-            : manualResponse.trim()
+          typeof overrideResponse === 'string' ? overrideResponse.trim() : manualResponse.trim();
 
-        let loggedByServer = false
-        let loggedTurnNumber = null
-        let serverSummary = null
+        let loggedByServer = false;
+        let loggedTurnNumber = null;
+        let serverSummary = null;
 
-        let effectiveSystemPrompt = systemPrompt
-        let effectivePrompt = promptText
+        let effectiveSystemPrompt = systemPrompt;
+        let effectivePrompt = promptText;
 
         if (!realtimeEnabled && isUserAction) {
-          const persona = buildUserActionPersona(actorContext)
-          effectiveSystemPrompt = [systemPrompt, persona.system]
-            .filter(Boolean)
-            .join('\n\n')
-          effectivePrompt = persona.prompt ? `${persona.prompt}\n\n${promptText}` : promptText
+          const persona = buildUserActionPersona(actorContext);
+          effectiveSystemPrompt = [systemPrompt, persona.system].filter(Boolean).join('\n\n');
+          effectivePrompt = persona.prompt ? `${persona.prompt}\n\n${promptText}` : promptText;
         }
 
         if (!responseText) {
           if (!effectiveApiKey) {
-            setStatusMessage('AI API 키가 입력되지 않았습니다. 왼쪽 패널에서 키를 입력한 뒤 다시 시도해 주세요.')
-            return
+            setStatusMessage(
+              'AI API 키가 입력되지 않았습니다. 왼쪽 패널에서 키를 입력한 뒤 다시 시도해 주세요.'
+            );
+            return;
           }
 
           if (realtimeEnabled) {
-            if (
-              apiVersionLock.current &&
-              apiVersionLock.current !== apiVersion
-            ) {
-              throw new Error(
-                '실시간 매칭에서는 처음 선택한 API 버전을 변경할 수 없습니다.',
-              )
+            if (apiVersionLock.current && apiVersionLock.current !== apiVersion) {
+              throw new Error('실시간 매칭에서는 처음 선택한 API 버전을 변경할 수 없습니다.');
             }
           }
 
           if (!sessionInfo?.id) {
-            throw new Error('세션 정보를 확인할 수 없습니다. 페이지를 새로고침해 주세요.')
+            throw new Error('세션 정보를 확인할 수 없습니다. 페이지를 새로고침해 주세요.');
           }
 
           if (!ensureApiKeyReady(effectiveApiKey)) {
-            return
+            return;
           }
 
           await persistApiKeyOnServer(effectiveApiKey, apiVersion, {
             geminiMode: normalizedGeminiMode,
             geminiModel: normalizedGeminiModel,
-          })
+          });
 
-          const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+          const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
           if (sessionError) {
-            throw sessionError
+            throw sessionError;
           }
 
-          const token = sessionData?.session?.access_token
+          const token = sessionData?.session?.access_token;
           if (!token) {
-            throw new Error('세션 토큰을 확인할 수 없습니다.')
+            throw new Error('세션 토큰을 확인할 수 없습니다.');
           }
 
           const res = await fetch('/api/rank/run-turn', {
@@ -3608,87 +3183,83 @@ export function useStartClientEngine(gameId, options = {}) {
               response_public: true,
               history: historyPayload,
             }),
-          })
+          });
 
-          let payload = {}
+          let payload = {};
           try {
-            payload = await res.json()
+            payload = await res.json();
           } catch (error) {
-            payload = {}
+            payload = {};
           }
 
           if (!res.ok) {
-            const error = new Error(
-              payload?.error || payload?.detail || 'AI 호출에 실패했습니다.',
-            )
+            const error = new Error(payload?.error || payload?.detail || 'AI 호출에 실패했습니다.');
             if (payload?.error) {
-              error.code = payload.error
+              error.code = payload.error;
             }
             if (typeof payload?.detail === 'string' && payload.detail.trim()) {
-              error.detail = payload.detail.trim()
+              error.detail = payload.detail.trim();
             }
-            throw error
+            throw error;
           }
 
           if (payload?.error) {
-            const error = new Error(payload.error)
-            error.code = payload.error
-            throw error
+            const error = new Error(payload.error);
+            error.code = payload.error;
+            throw error;
           }
 
           responseText =
             (typeof payload?.text === 'string' && payload.text.trim()) ||
             payload?.choices?.[0]?.message?.content ||
             payload?.content ||
-            ''
+            '';
 
           if (payload?.logged) {
-            loggedByServer = true
-            const numericTurn = Number(payload?.turn_number)
+            loggedByServer = true;
+            const numericTurn = Number(payload?.turn_number);
             if (Number.isFinite(numericTurn)) {
-              loggedTurnNumber = numericTurn
+              loggedTurnNumber = numericTurn;
             }
             if (Array.isArray(payload?.entries)) {
-              const responseEntry = payload.entries.find(
-                (entry) => entry?.role === historyRole,
-              )
+              const responseEntry = payload.entries.find(entry => entry?.role === historyRole);
               if (responseEntry?.summary_payload) {
                 try {
-                  serverSummary = JSON.parse(JSON.stringify(responseEntry.summary_payload))
+                  serverSummary = JSON.parse(JSON.stringify(responseEntry.summary_payload));
                 } catch (error) {
-                  serverSummary = responseEntry.summary_payload
+                  serverSummary = responseEntry.summary_payload;
                 }
               }
             }
           }
 
           if (realtimeEnabled && !apiVersionLock.current) {
-            apiVersionLock.current = apiVersion
+            apiVersionLock.current = apiVersion;
           }
         }
 
         if (!responseText) {
-          responseText = ['(샘플 응답)', '', '', '', '', '무승부'].join('\n')
+          responseText = ['(샘플 응답)', '', '', '', '', '무승부'].join('\n');
         }
 
-        const slotIndex = slotBinding.slotIndex
+        const slotIndex = slotBinding.slotIndex;
         const promptAudiencePayload =
           slotBinding.promptAudience.audience === 'slots'
             ? { audience: 'slots', slots: slotBinding.visibleSlots }
-            : { audience: 'all' }
+            : { audience: 'all' };
         const responseAudiencePayload =
           slotBinding.responseAudience.audience === 'slots'
             ? { audience: 'slots', slots: slotBinding.visibleSlots }
-            : { audience: 'all' }
-        const responseIsPublic = !slotBinding.hasLimitedAudience
-        const promptVisibility = slotBinding.hasLimitedAudience ? 'private' : 'hidden'
-        const responseVisibility = responseIsPublic ? 'public' : 'private'
+            : { audience: 'all' };
+        const responseIsPublic = !slotBinding.hasLimitedAudience;
+        const promptVisibility = slotBinding.hasLimitedAudience ? 'private' : 'hidden';
+        const responseVisibility = responseIsPublic ? 'public' : 'private';
 
-        const fallbackActorNames = []
+        const fallbackActorNames = [];
         if (actorContext?.participant?.hero?.name) {
-          fallbackActorNames.push(actorContext.participant.hero.name)
+          fallbackActorNames.push(actorContext.participant.hero.name);
         } else if (actorContext?.heroSlot?.name) {
-          fallbackActorNames.push(actorContext.heroSlot.name)
+          fallbackActorNames.push(actorContext.heroSlot.name);
         }
 
         const promptEntry = history.push({
@@ -3698,7 +3269,7 @@ export function useStartClientEngine(gameId, options = {}) {
           includeInAi: true,
           ...promptAudiencePayload,
           meta: { slotIndex },
-        })
+        });
         const responseEntry = history.push({
           role: historyRole,
           content: responseText,
@@ -3706,44 +3277,46 @@ export function useStartClientEngine(gameId, options = {}) {
           includeInAi: true,
           ...responseAudiencePayload,
           meta: { slotIndex },
-        })
-        bumpHistoryVersion()
+        });
+        bumpHistoryVersion();
 
-        const outcome = parseOutcome(responseText)
-        const outcomeVariables = outcome.variables || []
-        const { body: visibleResponse } = stripOutcomeFooter(responseText)
+        const outcome = parseOutcome(responseText);
+        const outcomeVariables = outcome.variables || [];
+        const { body: visibleResponse } = stripOutcomeFooter(responseText);
         const triggeredEnd = endConditionVariable
           ? outcomeVariables.includes(endConditionVariable)
-          : false
+          : false;
         const resolvedActorNames =
-          outcome.actors && outcome.actors.length ? outcome.actors : fallbackActorNames
-        updateHeroAssets(resolvedActorNames, actorContext)
+          outcome.actors && outcome.actors.length ? outcome.actors : fallbackActorNames;
+        updateHeroAssets(resolvedActorNames, actorContext);
         if (promptEntry?.meta) {
-          promptEntry.meta = { ...promptEntry.meta, actors: resolvedActorNames }
+          promptEntry.meta = { ...promptEntry.meta, actors: resolvedActorNames };
         }
         if (responseEntry?.meta) {
-          responseEntry.meta = { ...responseEntry.meta, actors: resolvedActorNames }
+          responseEntry.meta = { ...responseEntry.meta, actors: resolvedActorNames };
         }
         const nextActiveGlobal = Array.from(
-          new Set([...activeGlobal, ...(outcome.variables || [])]),
-        )
+          new Set([...activeGlobal, ...(outcome.variables || [])])
+        );
 
-        let fallbackSummary = null
+        let fallbackSummary = null;
         if (!loggedByServer) {
           fallbackSummary = {
             preview: visibleResponse.slice(0, 240),
             promptPreview: promptText.slice(0, 240),
             outcome: {
               lastLine: outcome.lastLine || undefined,
-              variables: outcome.variables && outcome.variables.length ? outcome.variables : undefined,
-              actors: resolvedActorNames && resolvedActorNames.length ? resolvedActorNames : undefined,
+              variables:
+                outcome.variables && outcome.variables.length ? outcome.variables : undefined,
+              actors:
+                resolvedActorNames && resolvedActorNames.length ? resolvedActorNames : undefined,
             },
             extra: {
               slotIndex,
               nodeId: node?.id ?? null,
               source: 'fallback-log',
             },
-          }
+          };
 
           await logTurnEntries({
             entries: [
@@ -3772,11 +3345,11 @@ export function useStartClientEngine(gameId, options = {}) {
               },
             ],
             turnNumber: loggedTurnNumber ?? turn,
-          })
+          });
         }
 
-        setActiveLocal(outcomeVariables)
-        setActiveGlobal(nextActiveGlobal)
+        setActiveLocal(outcomeVariables);
+        setActiveGlobal(nextActiveGlobal);
 
         const context = createBridgeContext({
           turn,
@@ -3786,8 +3359,7 @@ export function useStartClientEngine(gameId, options = {}) {
           participantsStatus,
           activeGlobalNames: nextActiveGlobal,
           activeLocalNames: outcomeVariables,
-          currentRole:
-            actorContext?.participant?.role || actorContext?.heroSlot?.role || null,
+          currentRole: actorContext?.participant?.role || actorContext?.heroSlot?.role || null,
           sessionFlags: {
             brawlEnabled,
             gameVoided,
@@ -3796,14 +3368,14 @@ export function useStartClientEngine(gameId, options = {}) {
             endTriggered: triggeredEnd,
             dropInGraceTurns: 0,
           },
-        })
+        });
 
         const outgoing = graph.edges.filter(
-          (edge) => edge.from === String(node.id) || edge.from === node.id,
-        )
-        const chosenEdge = pickNextEdge(outgoing, context)
+          edge => edge.from === String(node.id) || edge.from === node.id
+        );
+        const chosenEdge = pickNextEdge(outgoing, context);
 
-        setLogs((prev) => {
+        setLogs(prev => {
           const nextLogs = [
             ...prev,
             {
@@ -3822,12 +3394,12 @@ export function useStartClientEngine(gameId, options = {}) {
               actors: resolvedActorNames,
               summary: serverSummary || fallbackSummary || null,
             },
-          ]
-          logsRef.current = nextLogs
-          return nextLogs
-        })
+          ];
+          logsRef.current = nextLogs;
+          return nextLogs;
+        });
 
-        clearManualResponse()
+        clearManualResponse();
 
         if (outcomeLedgerRef.current) {
           const recordResult = recordOutcomeLedger(outcomeLedgerRef.current, {
@@ -3838,183 +3410,179 @@ export function useStartClientEngine(gameId, options = {}) {
             actors: resolvedActorNames,
             participantsSnapshot: participantsRef.current,
             brawlEnabled,
-          })
+          });
 
           if (recordResult.changed) {
-            const snapshot = buildOutcomeSnapshot(outcomeLedgerRef.current)
-            setSessionOutcome(snapshot)
+            const snapshot = buildOutcomeSnapshot(outcomeLedgerRef.current);
+            setSessionOutcome(snapshot);
 
             if (recordResult.completed && !sessionFinalizedRef.current) {
-              sessionFinalizedRef.current = true
-              const statusMessageText = buildOutcomeStatusMessage(snapshot)
-              setStatusMessage(statusMessageText)
-              finalizeRealtimeTurn('roles_resolved')
-              setCurrentNodeId(null)
-              setTurnDeadline(null)
-              setTimeRemaining(null)
+              sessionFinalizedRef.current = true;
+              const statusMessageText = buildOutcomeStatusMessage(snapshot);
+              setStatusMessage(statusMessageText);
+              finalizeRealtimeTurn('roles_resolved');
+              setCurrentNodeId(null);
+              setTurnDeadline(null);
+              setTimeRemaining(null);
               captureBattleLog(
                 snapshot.overallResult === 'won'
                   ? 'win'
                   : snapshot.overallResult === 'lost'
                     ? 'lose'
                     : 'draw',
-                { reason: 'roles_resolved', turnNumber: turn },
-              )
-              clearSessionRecord()
+                { reason: 'roles_resolved', turnNumber: turn }
+              );
+              clearSessionRecord();
               void finalizeSessionRemotely({
                 snapshot,
                 reason: 'roles_resolved',
                 responseText,
                 turnNumber: turn,
-              })
-              return
+              });
+              return;
             }
           }
         }
 
         if (!chosenEdge) {
-          finalizeRealtimeTurn('no-bridge')
-          setCurrentNodeId(null)
-          setStatusMessage('더 이상 진행할 경로가 없어 세션을 종료합니다.')
-          setTurnDeadline(null)
-          setTimeRemaining(null)
-          captureBattleLog('terminated', { reason: 'no_path', turnNumber: turn })
-          clearSessionRecord()
-          return
+          finalizeRealtimeTurn('no-bridge');
+          setCurrentNodeId(null);
+          setStatusMessage('더 이상 진행할 경로가 없어 세션을 종료합니다.');
+          setTurnDeadline(null);
+          setTimeRemaining(null);
+          captureBattleLog('terminated', { reason: 'no_path', turnNumber: turn });
+          clearSessionRecord();
+          return;
         }
 
-        const action = chosenEdge.data?.action || 'continue'
-        const nextNodeId = chosenEdge.to != null ? String(chosenEdge.to) : null
-
-
+        const action = chosenEdge.data?.action || 'continue';
+        const nextNodeId = chosenEdge.to != null ? String(chosenEdge.to) : null;
 
         if (action === 'win') {
-          const upcomingWin = winCount + 1
+          const upcomingWin = winCount + 1;
           if (brawlEnabled && !triggeredEnd) {
-            setWinCount((prev) => prev + 1)
-            setStatusMessage(`승리 ${upcomingWin}회 달성! 난입 허용 규칙으로 전투가 계속됩니다.`)
+            setWinCount(prev => prev + 1);
+            setStatusMessage(`승리 ${upcomingWin}회 달성! 난입 허용 규칙으로 전투가 계속됩니다.`);
           } else {
             if (brawlEnabled) {
-              setWinCount(() => upcomingWin)
+              setWinCount(() => upcomingWin);
             }
-            finalizeRealtimeTurn('win')
-            setCurrentNodeId(null)
-            const suffix = brawlEnabled
-              ? ` 누적 승리 ${upcomingWin}회를 기록했습니다.`
-              : ''
-            setStatusMessage(`승리 조건이 충족되었습니다!${suffix}`)
-            setTurnDeadline(null)
-            setTimeRemaining(null)
-            captureBattleLog('win', { reason: 'win', turnNumber: turn })
-            sessionFinalizedRef.current = true
+            finalizeRealtimeTurn('win');
+            setCurrentNodeId(null);
+            const suffix = brawlEnabled ? ` 누적 승리 ${upcomingWin}회를 기록했습니다.` : '';
+            setStatusMessage(`승리 조건이 충족되었습니다!${suffix}`);
+            setTurnDeadline(null);
+            setTimeRemaining(null);
+            captureBattleLog('win', { reason: 'win', turnNumber: turn });
+            sessionFinalizedRef.current = true;
             if (outcomeLedgerRef.current) {
-              const snapshot = buildOutcomeSnapshot(outcomeLedgerRef.current)
-              setSessionOutcome(snapshot)
+              const snapshot = buildOutcomeSnapshot(outcomeLedgerRef.current);
+              setSessionOutcome(snapshot);
               void finalizeSessionRemotely({
                 snapshot,
                 reason: 'win',
                 responseText,
                 turnNumber: turn,
-              })
+              });
             } else {
               void finalizeSessionRemotely({
                 snapshot: null,
                 reason: 'win',
                 responseText,
                 turnNumber: turn,
-              })
+              });
             }
-            clearSessionRecord()
-            return
+            clearSessionRecord();
+            return;
           }
         } else if (action === 'lose') {
-          finalizeRealtimeTurn('lose')
-          setCurrentNodeId(null)
+          finalizeRealtimeTurn('lose');
+          setCurrentNodeId(null);
           setStatusMessage(
             brawlEnabled
               ? '패배로 해당 역할군이 전장에서 추방되었습니다.'
-              : '패배 조건이 충족되었습니다.',
-          )
-          setTurnDeadline(null)
-          setTimeRemaining(null)
-          captureBattleLog('lose', { reason: 'lose', turnNumber: turn })
-          sessionFinalizedRef.current = true
+              : '패배 조건이 충족되었습니다.'
+          );
+          setTurnDeadline(null);
+          setTimeRemaining(null);
+          captureBattleLog('lose', { reason: 'lose', turnNumber: turn });
+          sessionFinalizedRef.current = true;
           if (outcomeLedgerRef.current) {
-            const snapshot = buildOutcomeSnapshot(outcomeLedgerRef.current)
-            setSessionOutcome(snapshot)
+            const snapshot = buildOutcomeSnapshot(outcomeLedgerRef.current);
+            setSessionOutcome(snapshot);
             void finalizeSessionRemotely({
               snapshot,
               reason: 'lose',
               responseText,
               turnNumber: turn,
-            })
+            });
           } else {
             void finalizeSessionRemotely({
               snapshot: null,
               reason: 'lose',
               responseText,
               turnNumber: turn,
-            })
+            });
           }
           if (viewerId && actingOwnerId === viewerId) {
-            markSessionDefeated()
+            markSessionDefeated();
           } else {
-            clearSessionRecord()
+            clearSessionRecord();
           }
-          return
+          return;
         } else if (action === 'draw') {
-          finalizeRealtimeTurn('draw')
-          setCurrentNodeId(null)
-          setStatusMessage('무승부로 종료되었습니다.')
-          setTurnDeadline(null)
-          setTimeRemaining(null)
-          captureBattleLog('draw', { reason: 'draw', turnNumber: turn })
-          sessionFinalizedRef.current = true
+          finalizeRealtimeTurn('draw');
+          setCurrentNodeId(null);
+          setStatusMessage('무승부로 종료되었습니다.');
+          setTurnDeadline(null);
+          setTimeRemaining(null);
+          captureBattleLog('draw', { reason: 'draw', turnNumber: turn });
+          sessionFinalizedRef.current = true;
           if (outcomeLedgerRef.current) {
-            const snapshot = buildOutcomeSnapshot(outcomeLedgerRef.current)
-            setSessionOutcome(snapshot)
+            const snapshot = buildOutcomeSnapshot(outcomeLedgerRef.current);
+            setSessionOutcome(snapshot);
             void finalizeSessionRemotely({
               snapshot,
               reason: 'draw',
               responseText,
               turnNumber: turn,
-            })
+            });
           } else {
             void finalizeSessionRemotely({
               snapshot: null,
               reason: 'draw',
               responseText,
               turnNumber: turn,
-            })
+            });
           }
-          clearSessionRecord()
-          return
+          clearSessionRecord();
+          return;
         }
 
         if (!nextNodeId) {
-          finalizeRealtimeTurn('missing-next')
-          setCurrentNodeId(null)
-          setStatusMessage('다음에 진행할 노드를 찾을 수 없습니다.')
-          setTurnDeadline(null)
-          setTimeRemaining(null)
-          captureBattleLog('terminated', { reason: 'missing_next', turnNumber: turn })
-          clearSessionRecord()
-          return
+          finalizeRealtimeTurn('missing-next');
+          setCurrentNodeId(null);
+          setStatusMessage('다음에 진행할 노드를 찾을 수 없습니다.');
+          setTurnDeadline(null);
+          setTimeRemaining(null);
+          captureBattleLog('terminated', { reason: 'missing_next', turnNumber: turn });
+          clearSessionRecord();
+          return;
         }
 
-        finalizeRealtimeTurn('continue')
-        setCurrentNodeId(nextNodeId)
-        setTurn((prev) => prev + 1)
+        finalizeRealtimeTurn('continue');
+        setCurrentNodeId(nextNodeId);
+        setTurn(prev => prev + 1);
       } catch (err) {
-        console.error(err)
+        console.error(err);
         if (isApiKeyError(err)) {
-          const reason = err?.code || 'api_key_error'
+          const reason = err?.code || 'api_key_error';
           const fallback =
             reason === 'quota_exhausted'
               ? '사용 중인 API 키 한도가 모두 소진되어 세션이 무효 처리되었습니다. 새 키를 등록해 주세요.'
               : reason === 'missing_user_api_key'
-              ? 'AI API 키가 입력되지 않아 세션이 중단되었습니다. 왼쪽 패널에서 키를 입력한 뒤 다시 시도해 주세요.'
-              : err?.message || 'API 키 오류로 세션이 무효 처리되었습니다.'
+                ? 'AI API 키가 입력되지 않아 세션이 중단되었습니다. 왼쪽 패널에서 키를 입력한 뒤 다시 시도해 주세요.'
+                : err?.message || 'API 키 오류로 세션이 무효 처리되었습니다.';
           voidSession(fallback, {
             apiKey: effectiveApiKey,
             reason,
@@ -4023,12 +3591,12 @@ export function useStartClientEngine(gameId, options = {}) {
             gameId,
             sessionId: sessionInfo?.id || null,
             note: err?.message || null,
-          })
+          });
         } else {
-          setStatusMessage(err?.message || '턴 진행 중 오류가 발생했습니다.')
+          setStatusMessage(err?.message || '턴 진행 중 오류가 발생했습니다.');
         }
       } finally {
-        setIsAdvancing(false)
+        setIsAdvancing(false);
       }
     },
     [
@@ -4065,64 +3633,64 @@ export function useStartClientEngine(gameId, options = {}) {
       normalizedGeminiModel,
       applyRealtimeSnapshot,
       recordTurnState,
-    ],
-  )
+    ]
+  );
 
   const advanceWithManual = useCallback(() => {
-    const trimmed = requireManualResponse()
+    const trimmed = requireManualResponse();
     if (!trimmed) {
-      return
+      return;
     }
-    advanceIntentRef.current = null
-    clearConsensusVotes()
-    advanceTurn(trimmed, { reason: 'manual' })
-  }, [advanceTurn, clearConsensusVotes, requireManualResponse])
+    advanceIntentRef.current = null;
+    clearConsensusVotes();
+    advanceTurn(trimmed, { reason: 'manual' });
+  }, [advanceTurn, clearConsensusVotes, requireManualResponse]);
 
   const advanceWithAi = useCallback(() => {
     if (!needsConsensus) {
       if (realtimeEnabled && normalizedViewerId) {
-        const manager = realtimeManagerRef.current
+        const manager = realtimeManagerRef.current;
         if (manager) {
           const snapshot = manager.recordParticipation(normalizedViewerId, turn, {
             type: 'vote',
-          })
+          });
           if (snapshot) {
-            applyRealtimeSnapshot(snapshot)
+            applyRealtimeSnapshot(snapshot);
           }
         }
       }
-      advanceIntentRef.current = null
-      clearConsensusVotes()
-      advanceTurn(null, { reason: 'ai' })
-      return
+      advanceIntentRef.current = null;
+      clearConsensusVotes();
+      advanceTurn(null, { reason: 'ai' });
+      return;
     }
     if (!viewerCanConsent) {
-      setStatusMessage('동의 대상인 참가자만 다음 턴 진행을 제안할 수 있습니다.')
-      return
+      setStatusMessage('동의 대상인 참가자만 다음 턴 진행을 제안할 수 있습니다.');
+      return;
     }
-    const controller = turnVoteControllerRef.current
+    const controller = turnVoteControllerRef.current;
     if (!controller) {
-      return
+      return;
     }
     if (realtimeEnabled && normalizedViewerId) {
-      const manager = realtimeManagerRef.current
+      const manager = realtimeManagerRef.current;
       if (manager) {
         const snapshot = manager.recordParticipation(normalizedViewerId, turn, {
           type: 'vote',
-        })
+        });
         if (snapshot) {
-          applyRealtimeSnapshot(snapshot)
+          applyRealtimeSnapshot(snapshot);
         }
       }
     }
-    advanceIntentRef.current = { override: null, reason: 'consensus' }
-    let snapshot = controller.getSnapshot()
+    advanceIntentRef.current = { override: null, reason: 'consensus' };
+    let snapshot = controller.getSnapshot();
     if (!controller.hasConsented(normalizedViewerId)) {
-      snapshot = controller.registerConsent(normalizedViewerId)
+      snapshot = controller.registerConsent(normalizedViewerId);
     }
-    setConsensusState(snapshot)
-    const { consensusCount: futureCount, threshold } = snapshot
-    setStatusMessage(`다음 턴 동의 ${futureCount}/${threshold}명`)
+    setConsensusState(snapshot);
+    const { consensusCount: futureCount, threshold } = snapshot;
+    setStatusMessage(`다음 턴 동의 ${futureCount}/${threshold}명`);
   }, [
     advanceTurn,
     clearConsensusVotes,
@@ -4133,12 +3701,12 @@ export function useStartClientEngine(gameId, options = {}) {
     realtimeEnabled,
     turn,
     applyRealtimeSnapshot,
-  ])
+  ]);
 
   const autoAdvance = useCallback(() => {
-    advanceIntentRef.current = null
-    clearConsensusVotes()
-    const turnNumber = Number.isFinite(Number(turn)) ? Number(turn) : null
+    advanceIntentRef.current = null;
+    clearConsensusVotes();
+    const turnNumber = Number.isFinite(Number(turn)) ? Number(turn) : null;
     recordTimelineEvents(
       [
         {
@@ -4151,16 +3719,16 @@ export function useStartClientEngine(gameId, options = {}) {
           },
         },
       ],
-      { turnNumber },
-    )
-    return advanceTurn(null, { reason: 'timeout' })
-  }, [advanceTurn, clearConsensusVotes, recordTimelineEvents, turn, realtimeEnabled])
+      { turnNumber }
+    );
+    return advanceTurn(null, { reason: 'timeout' });
+  }, [advanceTurn, clearConsensusVotes, recordTimelineEvents, turn, realtimeEnabled]);
 
   useEffect(() => {
-    if (!needsConsensus) return undefined
-    if (!advanceIntentRef.current) return undefined
-    if (!consensusState?.hasReachedThreshold) return undefined
-    const turnNumber = Number.isFinite(Number(turn)) ? Number(turn) : null
+    if (!needsConsensus) return undefined;
+    if (!advanceIntentRef.current) return undefined;
+    if (!consensusState?.hasReachedThreshold) return undefined;
+    const turnNumber = Number.isFinite(Number(turn)) ? Number(turn) : null;
     recordTimelineEvents(
       [
         {
@@ -4175,13 +3743,13 @@ export function useStartClientEngine(gameId, options = {}) {
           },
         },
       ],
-      { turnNumber },
-    )
-    const intent = advanceIntentRef.current
-    advanceIntentRef.current = null
-    clearConsensusVotes()
-    advanceTurn(intent?.override ?? null, { reason: intent?.reason || 'consensus' })
-    return undefined
+      { turnNumber }
+    );
+    const intent = advanceIntentRef.current;
+    advanceIntentRef.current = null;
+    clearConsensusVotes();
+    advanceTurn(intent?.override ?? null, { reason: intent?.reason || 'consensus' });
+    return undefined;
   }, [
     advanceTurn,
     consensusState?.hasReachedThreshold,
@@ -4192,123 +3760,62 @@ export function useStartClientEngine(gameId, options = {}) {
     consensusState?.threshold,
     realtimeEnabled,
     turn,
-  ])
+  ]);
 
   useEffect(() => {
     if (preflight || !realtimeEnabled) {
-      const snapshot = turnVoteControllerRef.current?.syncEligibleOwners([])
+      const snapshot = turnVoteControllerRef.current?.syncEligibleOwners([]);
       if (snapshot) {
-        setConsensusState(snapshot)
+        setConsensusState(snapshot);
       }
-      return
+      return;
     }
     const snapshot = turnVoteControllerRef.current?.syncEligibleOwners(
-      deriveEligibleOwnerIds(participants),
-    )
+      deriveEligibleOwnerIds(participants)
+    );
     if (snapshot) {
-      setConsensusState(snapshot)
+      setConsensusState(snapshot);
     }
-  }, [participants, realtimeEnabled, preflight])
+  }, [participants, realtimeEnabled, preflight]);
 
   useEffect(() => {
     if (preflight) {
-      advanceIntentRef.current = null
-      clearConsensusVotes()
+      advanceIntentRef.current = null;
+      clearConsensusVotes();
     }
-  }, [preflight, clearConsensusVotes])
+  }, [preflight, clearConsensusVotes]);
 
   useEffect(() => {
-    advanceIntentRef.current = null
-    clearConsensusVotes()
-  }, [turn, clearConsensusVotes])
+    advanceIntentRef.current = null;
+    clearConsensusVotes();
+  }, [turn, clearConsensusVotes]);
 
-  useEffect(() => {
-    const sessionId = sessionInfo?.id
-    if (!sessionId) return undefined
-
-    const channel = supabase.channel(`rank-session:${sessionId}`, {
-      config: { broadcast: { ack: true } },
-    })
-
-    const handleTimeline = (payload) => {
-      const raw = payload?.payload || payload || {}
-      const events = Array.isArray(raw.events) ? raw.events : []
-      if (!events.length) return
-      setRealtimeEvents((prev) => mergeTimelineEvents(prev, events))
-    }
-
-    channel.on('broadcast', { event: 'rank:timeline-event' }, handleTimeline)
-
-    channel.subscribe((status) => {
-      if (status === 'SUBSCRIBED') {
-        backfillTurnEvents()
-        return
-      }
-      if (status === 'CHANNEL_ERROR') {
-        console.error('[StartClient] 실시간 타임라인 채널 오류가 발생했습니다.')
-      }
-      if (status === 'TIMED_OUT') {
-        console.warn('[StartClient] 실시간 타임라인 채널 구독이 제한 시간 안에 완료되지 않았습니다.')
-      }
-    })
-
-    const unsubscribeTurnEvents = subscribeToBroadcastTopic(
-      `rank_turn_state_events:session:${sessionId}`,
-      (change) => {
-        const changePayload = change?.new || change?.payload || null
-        const commitTimestamp = change?.commit_timestamp || change?.payload?.commit_timestamp || null
-        applyTurnStateChange(changePayload, { commitTimestamp })
-      },
-      { events: ['INSERT', 'UPDATE', 'DELETE'] },
-    )
-
-    return () => {
-      try {
-        channel.unsubscribe()
-      } catch (error) {
-        console.warn('[StartClient] 실시간 타임라인 채널 해제 실패:', error)
-      }
-      if (turnEventBackfillAbortRef.current) {
-        turnEventBackfillAbortRef.current.abort()
-        turnEventBackfillAbortRef.current = null
-      }
-      supabase.removeChannel(channel)
-      if (typeof unsubscribeTurnEvents === 'function') {
-        unsubscribeTurnEvents()
-      }
-    }
-  }, [
-    sessionInfo?.id,
-    supabase,
-    setRealtimeEvents,
-    applyTurnStateChange,
-    backfillTurnEvents,
-  ])
+  // Realtime channel and turn-state broadcast subscription are handled by useRealtimeSync.
 
   useEffect(() => {
     if (!needsConsensus) {
-      const intent = advanceIntentRef.current
-      advanceIntentRef.current = null
+      const intent = advanceIntentRef.current;
+      advanceIntentRef.current = null;
       if (intent) {
-        clearConsensusVotes()
+        clearConsensusVotes();
         advanceTurn(intent?.override ?? null, {
           reason: intent?.reason || 'consensus',
-        })
+        });
       }
     }
-  }, [needsConsensus, advanceTurn, clearConsensusVotes])
+  }, [needsConsensus, advanceTurn, clearConsensusVotes]);
 
   const turnTimerSnapshot = useMemo(() => {
     const baseFromState = Number.isFinite(Number(turnTimerSeconds))
       ? Math.max(0, Math.floor(Number(turnTimerSeconds)))
-      : null
-    const fallbackBonus = 30
-    const fallbackTurn = Number.isFinite(Number(turn)) ? Math.floor(Number(turn)) : 0
+      : null;
+    const fallbackBonus = 30;
+    const fallbackTurn = Number.isFinite(Number(turn)) ? Math.floor(Number(turn)) : 0;
     const fallbackDropInTurn = Number.isFinite(Number(lastDropInTurn))
       ? Math.floor(Number(lastDropInTurn))
-      : 0
+      : 0;
 
-    const service = turnTimerServiceRef.current
+    const service = turnTimerServiceRef.current;
     if (!service) {
       return {
         baseSeconds: baseFromState,
@@ -4318,13 +3825,13 @@ export function useStartClientEngine(gameId, options = {}) {
         pendingDropInBonus: false,
         lastTurnNumber: fallbackTurn,
         lastDropInAppliedTurn: fallbackDropInTurn,
-      }
+      };
     }
 
-    const snapshot = service.getSnapshot() || {}
+    const snapshot = service.getSnapshot() || {};
     const resolvedBase = Number.isFinite(Number(snapshot.baseSeconds))
       ? Math.floor(Number(snapshot.baseSeconds))
-      : baseFromState
+      : baseFromState;
 
     return {
       baseSeconds: resolvedBase,
@@ -4342,8 +3849,8 @@ export function useStartClientEngine(gameId, options = {}) {
       lastDropInAppliedTurn: Number.isFinite(Number(snapshot.lastDropInAppliedTurn))
         ? Math.floor(Number(snapshot.lastDropInAppliedTurn))
         : fallbackDropInTurn,
-    }
-  }, [turnTimerSeconds, turn, lastDropInTurn, timeRemaining, turnDeadline])
+    };
+  }, [turnTimerSeconds, turn, lastDropInTurn, timeRemaining, turnDeadline]);
 
   return {
     loading,
@@ -4414,5 +3921,5 @@ export function useStartClientEngine(gameId, options = {}) {
       threshold: consensusState?.threshold ?? Math.max(1, Math.ceil(eligibleOwnerIds.length * 0.8)),
       reached: Boolean(consensusState?.hasReachedThreshold),
     },
-  }
+  };
 }

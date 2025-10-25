@@ -10,9 +10,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Supabase CLI
+      - name: Install Supabase CLI (official binary)
         run: |
-          sudo npm install -g supabase
+          set -e
+          # Download prebuilt supabase CLI for ubuntu (linux amd64) and install to /usr/local/bin
+          # Using the GitHub releases 'latest' download avoids the unsupported global npm install path.
+          echo "Downloading supabase CLI binary..."
+          curl -L -o /tmp/supabase.tar.gz https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.tar.gz
+          tar -xzf /tmp/supabase.tar.gz -C /tmp
+          sudo mv /tmp/supabase /usr/local/bin/supabase
+          sudo chmod +x /usr/local/bin/supabase
 
       - name: Show supabase version
         run: supabase --version
@@ -36,5 +43,5 @@ jobs:
           export SUPABASE_ACCESS_TOKEN="$SUPABASE_SERVICE_ROLE_KEY"
 
           # Try to run SQL file using supabase CLI. The exact command may vary by CLI version.
-          # We attempt `supabase db query` which runs a SQL file against the project's database.
-          supabase db query -f docs/sql/20251025_add_recompute_queue.sql --project-ref "$PROJECT_REF"
+          # We use `supabase db query --file` and pass the service role key for non-interactive execution.
+          supabase db query --file docs/sql/20251025_add_recompute_queue.sql --project-ref "$PROJECT_REF" --service-role-key "$SUPABASE_SERVICE_ROLE_KEY" --yes

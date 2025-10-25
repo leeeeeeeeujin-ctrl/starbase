@@ -1,16 +1,16 @@
-const RULE_MODES = ['auto', 'manual', 'active']
-const SUBJECT_OPTIONS = ['same', 'other', 'specific']
-const STATUS_OPTIONS = ['alive', 'dead', 'won', 'lost', 'flag_on']
-const OUTCOME_OPTIONS = ['win', 'lose', 'draw']
-const CMP_OPTIONS = ['gte', 'lte', 'eq']
+const RULE_MODES = ['auto', 'manual', 'active'];
+const SUBJECT_OPTIONS = ['same', 'other', 'specific'];
+const STATUS_OPTIONS = ['alive', 'dead', 'won', 'lost', 'flag_on'];
+const OUTCOME_OPTIONS = ['win', 'lose', 'draw'];
+const CMP_OPTIONS = ['gte', 'lte', 'eq'];
 
-export const VARIABLE_RULES_VERSION = 2
+export const VARIABLE_RULES_VERSION = 2;
 
 function makeId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID()
+    return crypto.randomUUID();
   }
-  return `vr_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`
+  return `vr_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
 }
 
 export function createAutoRule() {
@@ -24,7 +24,7 @@ export function createAutoRule() {
     count: 1,
     status: 'alive',
     flag: '',
-  }
+  };
 }
 
 export function createManualRule() {
@@ -32,7 +32,7 @@ export function createManualRule() {
     id: makeId(),
     variable: '',
     condition: '',
-  }
+  };
 }
 
 export function createActiveRule() {
@@ -40,7 +40,7 @@ export function createActiveRule() {
     id: makeId(),
     condition: '',
     directive: '',
-  }
+  };
 }
 
 export function makeEmptyVariableRules(mode = 'auto') {
@@ -50,52 +50,52 @@ export function makeEmptyVariableRules(mode = 'auto') {
     auto: [],
     manual: [],
     active: [],
-  }
+  };
 }
 
 function normalizeMode(rawMode) {
-  return RULE_MODES.includes(rawMode) ? rawMode : 'auto'
+  return RULE_MODES.includes(rawMode) ? rawMode : 'auto';
 }
 
 function normalizeSubject(subject) {
-  return SUBJECT_OPTIONS.includes(subject) ? subject : 'same'
+  return SUBJECT_OPTIONS.includes(subject) ? subject : 'same';
 }
 
 function normalizeStatus(status) {
-  return STATUS_OPTIONS.includes(status) ? status : 'alive'
+  return STATUS_OPTIONS.includes(status) ? status : 'alive';
 }
 
 function normalizeOutcome(outcome) {
-  return OUTCOME_OPTIONS.includes(outcome) ? outcome : 'win'
+  return OUTCOME_OPTIONS.includes(outcome) ? outcome : 'win';
 }
 
 function normalizeComparator(cmp) {
-  return CMP_OPTIONS.includes(cmp) ? cmp : 'gte'
+  return CMP_OPTIONS.includes(cmp) ? cmp : 'gte';
 }
 
 export function ensureVariableRules(raw) {
   if (!raw) {
-    return makeEmptyVariableRules()
+    return makeEmptyVariableRules();
   }
 
   if (Array.isArray(raw)) {
     return {
       ...makeEmptyVariableRules('manual'),
-      manual: raw.map((entry) => ({
+      manual: raw.map(entry => ({
         id: entry?.id || makeId(),
         variable: String(entry?.variable ?? entry?.name ?? ''),
         condition: String(entry?.condition ?? ''),
       })),
-    }
+    };
   }
 
   if (typeof raw !== 'object') {
-    return makeEmptyVariableRules()
+    return makeEmptyVariableRules();
   }
 
-  const mode = normalizeMode(raw.mode)
+  const mode = normalizeMode(raw.mode);
   const auto = Array.isArray(raw.auto)
-    ? raw.auto.map((entry) => ({
+    ? raw.auto.map(entry => ({
         ...createAutoRule(),
         ...entry,
         id: entry?.id || makeId(),
@@ -108,27 +108,27 @@ export function ensureVariableRules(raw) {
         status: normalizeStatus(entry?.status),
         flag: String(entry?.flag ?? ''),
       }))
-    : []
+    : [];
 
   const manual = Array.isArray(raw.manual)
-    ? raw.manual.map((entry) => ({
+    ? raw.manual.map(entry => ({
         ...createManualRule(),
         ...entry,
         id: entry?.id || makeId(),
         variable: String(entry?.variable ?? ''),
         condition: String(entry?.condition ?? ''),
       }))
-    : []
+    : [];
 
   const active = Array.isArray(raw.active)
-    ? raw.active.map((entry) => ({
+    ? raw.active.map(entry => ({
         ...createActiveRule(),
         ...entry,
         id: entry?.id || makeId(),
         condition: String(entry?.condition ?? ''),
         directive: String(entry?.directive ?? ''),
       }))
-    : []
+    : [];
 
   return {
     version: VARIABLE_RULES_VERSION,
@@ -136,13 +136,13 @@ export function ensureVariableRules(raw) {
     auto,
     manual,
     active,
-  }
+  };
 }
 
 export function sanitizeVariableRules(raw) {
-  const ensured = ensureVariableRules(raw)
+  const ensured = ensureVariableRules(raw);
 
-  const auto = ensured.auto.map((rule) => ({
+  const auto = ensured.auto.map(rule => ({
     ...createAutoRule(),
     ...rule,
     id: rule.id || makeId(),
@@ -154,23 +154,23 @@ export function sanitizeVariableRules(raw) {
     count: Number.isFinite(Number(rule.count)) ? Number(rule.count) : 1,
     status: normalizeStatus(rule.status),
     flag: rule.status === 'flag_on' ? rule.flag.trim() : '',
-  }))
+  }));
 
-  const manual = ensured.manual.map((rule) => ({
+  const manual = ensured.manual.map(rule => ({
     ...createManualRule(),
     ...rule,
     id: rule.id || makeId(),
     variable: rule.variable.trim(),
     condition: rule.condition.trim(),
-  }))
+  }));
 
-  const active = ensured.active.map((rule) => ({
+  const active = ensured.active.map(rule => ({
     ...createActiveRule(),
     ...rule,
     id: rule.id || makeId(),
     condition: rule.condition.trim(),
     directive: rule.directive.trim(),
-  }))
+  }));
 
   return {
     version: VARIABLE_RULES_VERSION,
@@ -178,26 +178,26 @@ export function sanitizeVariableRules(raw) {
     auto,
     manual,
     active,
-  }
+  };
 }
 
 export function variableRulesEqual(a, b) {
-  const left = JSON.stringify(sanitizeVariableRules(a))
-  const right = JSON.stringify(sanitizeVariableRules(b))
-  return left === right
+  const left = JSON.stringify(sanitizeVariableRules(a));
+  const right = JSON.stringify(sanitizeVariableRules(b));
+  return left === right;
 }
 
 export function collectVariableNames(rules) {
-  const sanitized = sanitizeVariableRules(rules)
-  const names = new Set()
-  sanitized.auto.forEach((rule) => {
-    if (rule.variable) names.add(rule.variable)
-    if (rule.status === 'flag_on' && rule.flag) names.add(rule.flag)
-  })
-  sanitized.manual.forEach((rule) => {
-    if (rule.variable) names.add(rule.variable)
-  })
-  return Array.from(names)
+  const sanitized = sanitizeVariableRules(rules);
+  const names = new Set();
+  sanitized.auto.forEach(rule => {
+    if (rule.variable) names.add(rule.variable);
+    if (rule.status === 'flag_on' && rule.flag) names.add(rule.flag);
+  });
+  sanitized.manual.forEach(rule => {
+    if (rule.variable) names.add(rule.variable);
+  });
+  return Array.from(names);
 }
 
 export function analyzeVariableRuleSource(raw) {
@@ -205,48 +205,48 @@ export function analyzeVariableRuleSource(raw) {
     hadEntries: false,
     legacyStructure: false,
     version: null,
-  }
+  };
 
   if (!raw) {
-    return info
+    return info;
   }
 
   if (Array.isArray(raw)) {
-    info.legacyStructure = true
-    info.hadEntries = raw.length > 0
-    return info
+    info.legacyStructure = true;
+    info.hadEntries = raw.length > 0;
+    return info;
   }
 
   if (typeof raw === 'object') {
-    const autoLength = Array.isArray(raw.auto) ? raw.auto.length : 0
-    const manualLength = Array.isArray(raw.manual) ? raw.manual.length : 0
-    const activeLength = Array.isArray(raw.active) ? raw.active.length : 0
+    const autoLength = Array.isArray(raw.auto) ? raw.auto.length : 0;
+    const manualLength = Array.isArray(raw.manual) ? raw.manual.length : 0;
+    const activeLength = Array.isArray(raw.active) ? raw.active.length : 0;
 
-    info.hadEntries = autoLength + manualLength + activeLength > 0
+    info.hadEntries = autoLength + manualLength + activeLength > 0;
 
-    const parsed = Number(raw.version)
+    const parsed = Number(raw.version);
     if (Number.isFinite(parsed)) {
-      info.version = parsed
+      info.version = parsed;
     } else if (info.hadEntries) {
-      info.legacyStructure = true
+      info.legacyStructure = true;
     }
 
-    return info
+    return info;
   }
 
-  return info
+  return info;
 }
 
 export function needsVariableRuleUpgrade(raw) {
-  const source = analyzeVariableRuleSource(raw)
-  if (!source.hadEntries) return false
-  if (source.legacyStructure) return true
-  if (source.version == null) return true
-  return source.version !== VARIABLE_RULES_VERSION
+  const source = analyzeVariableRuleSource(raw);
+  if (!source.hadEntries) return false;
+  if (source.legacyStructure) return true;
+  if (source.version == null) return true;
+  return source.version !== VARIABLE_RULES_VERSION;
 }
 
-export const VARIABLE_RULE_MODES = RULE_MODES
-export const VARIABLE_RULE_SUBJECTS = SUBJECT_OPTIONS
-export const VARIABLE_RULE_STATUS = STATUS_OPTIONS
-export const VARIABLE_RULE_OUTCOMES = OUTCOME_OPTIONS
-export const VARIABLE_RULE_COMPARATORS = CMP_OPTIONS
+export const VARIABLE_RULE_MODES = RULE_MODES;
+export const VARIABLE_RULE_SUBJECTS = SUBJECT_OPTIONS;
+export const VARIABLE_RULE_STATUS = STATUS_OPTIONS;
+export const VARIABLE_RULE_OUTCOMES = OUTCOME_OPTIONS;
+export const VARIABLE_RULE_COMPARATORS = CMP_OPTIONS;

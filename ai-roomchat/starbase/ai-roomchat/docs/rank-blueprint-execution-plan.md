@@ -6,17 +6,17 @@
 
 ## 1. 파일 구조 맵
 
-| 영역 | 주요 파일 | 역할 |
-| --- | --- | --- |
-| 페이지 진입 | `pages/rank/[id].js` | 게임 룸 데이터를 불러와 `GameRoomView`에 전달하고 모드 전환 라우팅을 담당한다. |
-| 매칭 페이지 | `pages/rank/[id]/solo.js`, `pages/rank/[id]/duo/index.js`, `pages/rank/[id]/duo/queue.js`, `pages/rank/[id]/casual.js` | 각 모드에서 `MatchQueueClient`/`AutoMatchProgress` 기반 자동 대기열 진입을 수행한다. |
-| 메인 룸 UI | `components/rank/GameRoomView.js`, `components/rank/GameRoomView.module.css` | 참가/시작 패널, 세션 히스토리, 안내 패널을 렌더링한다. |
-| 매칭 클라이언트 | `components/rank/MatchQueueClient.js`, `components/rank/AutoMatchProgress.js`, `components/rank/DuoMatchClient.js` | 자동 큐 합류, 재시도, 확인 카운트다운, 난입 처리 등 큐 전환 로직을 캡슐화한다. |
-| 전투 실행 | `components/rank/StartClient/*` | 세션 토큰 확보, 프롬프트 그래프 실행, 턴 동기화, 오디오 전환을 관리한다. |
-| 공유 훅 | `hooks/useGameRoom.js`, `components/rank/hooks/useMatchQueue.js` | 게임·슬롯·세션 데이터를 로드하고 자동 참가를 위한 상태를 제공한다. |
-| 서버 API | `pages/api/rank/*.js` | 참가(upsert), 매칭, 세션 생성, 턴 실행, 전투 기록 저장을 처리한다. |
-| 도메인 유틸 | `lib/rank/*.js` | 슬롯 계산(`roles.js`), 참가자 갱신(`participants.js`), 매칭 서비스(`matchmakingService.js`), 전투 영속화(`persist.js`), 프롬프트 컴파일(`prompt.js`) 등을 제공한다. |
-| 문서화 | `docs/rank-game-logic-plan.md`, `docs/match-mode-structure.md`, `docs/page_state_map.md` | 구현 가이드와 현재 진행 상황을 기록한다. |
+| 영역            | 주요 파일                                                                                                              | 역할                                                                                                                                                                |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 페이지 진입     | `pages/rank/[id].js`                                                                                                   | 게임 룸 데이터를 불러와 `GameRoomView`에 전달하고 모드 전환 라우팅을 담당한다.                                                                                      |
+| 매칭 페이지     | `pages/rank/[id]/solo.js`, `pages/rank/[id]/duo/index.js`, `pages/rank/[id]/duo/queue.js`, `pages/rank/[id]/casual.js` | 각 모드에서 `MatchQueueClient`/`AutoMatchProgress` 기반 자동 대기열 진입을 수행한다.                                                                                |
+| 메인 룸 UI      | `components/rank/GameRoomView.js`, `components/rank/GameRoomView.module.css`                                           | 참가/시작 패널, 세션 히스토리, 안내 패널을 렌더링한다.                                                                                                              |
+| 매칭 클라이언트 | `components/rank/MatchQueueClient.js`, `components/rank/AutoMatchProgress.js`, `components/rank/DuoMatchClient.js`     | 자동 큐 합류, 재시도, 확인 카운트다운, 난입 처리 등 큐 전환 로직을 캡슐화한다.                                                                                      |
+| 전투 실행       | `components/rank/StartClient/*`                                                                                        | 세션 토큰 확보, 프롬프트 그래프 실행, 턴 동기화, 오디오 전환을 관리한다.                                                                                            |
+| 공유 훅         | `hooks/useGameRoom.js`, `components/rank/hooks/useMatchQueue.js`                                                       | 게임·슬롯·세션 데이터를 로드하고 자동 참가를 위한 상태를 제공한다.                                                                                                  |
+| 서버 API        | `pages/api/rank/*.js`                                                                                                  | 참가(upsert), 매칭, 세션 생성, 턴 실행, 전투 기록 저장을 처리한다.                                                                                                  |
+| 도메인 유틸     | `lib/rank/*.js`                                                                                                        | 슬롯 계산(`roles.js`), 참가자 갱신(`participants.js`), 매칭 서비스(`matchmakingService.js`), 전투 영속화(`persist.js`), 프롬프트 컴파일(`prompt.js`) 등을 제공한다. |
+| 문서화          | `docs/rank-game-logic-plan.md`, `docs/match-mode-structure.md`, `docs/page_state_map.md`                               | 구현 가이드와 현재 진행 상황을 기록한다.                                                                                                                            |
 
 ## 2. 현재 파이프라인 이해
 
@@ -30,34 +30,39 @@
 ## 3. 남은 주요 구현 항목
 
 ### 3.1 매칭·세션 일관성
+
 - 듀오/캐주얼 모드도 `/api/rank/play` 파이프라인을 재사용하도록 메인 룸 트리거와 매칭 페이지 확인 단계를 통일한다.
 - 난입 슬롯 충원 후 세션 전환이 누락되지 않도록 `AutoMatchProgress` ↔ `useGameRoom` 사이의 상태 합의를 정리한다.
 
 ### 3.2 프롬프트 변수 해석 및 상태 갱신
+
 - 프롬프트 제작기의 변수 목록을 코드 상에서 파싱해 `prompt.js`가 슬롯→변수 매핑 테이블을 자동 생성하도록 확장한다.
 - 승리/패배/탈락·재참전 상태를 `recordBattle`와 매칭 서비스에 반영해 슬롯 교체, 난입 허용, 재진입 타이머 로직을 확정한다.
 
 ### 3.3 히스토리/가시성 기능
+
 - 메인 룸 상단 히스토리 탭과 AI 전용 히스토리를 `rank_turns` 기반으로 구현하고, 인비저블 라인을 사용자별로 필터링한다.
 - 새로 합류한 참가자에게 최근 히스토리를 요약해 60초 파악 시간을 부여하는 클라이언트 로직을 추가한다.
 
 ### 3.4 오디오·UI 연동 마무리
+
 - 주역 캐릭터 기반 배경/브금 전환을 실전 세션에 연결하고, 서로 다른 BGM 재생 시 기존 트랙을 일시 중단하는 오디오 매니저 작업을 완료한다.
 - 모바일 세로형 레이아웃에서 역할군 썸네일, 메인 전투 패널, 투표/동의 버튼 구역을 재배치한다.
 
 ### 3.5 운영/안정성 보강
+
 - API 키 고갈 감지 후 5시간 쿨다운, 대체 키 기록, 알림 발송 경로를 구현한다.
 - 큐 재시도/타임아웃 이벤트를 Supabase Edge Function 또는 사내 스케줄러로 감시해 `engaged` 상태가 풀리지 않는 문제를 예방한다.
 
 ## 4. 단계별 실행 계획
 
-| 단계 | 목표 | 필요한 작업 |
-| --- | --- | --- |
-| 1 | 매칭 트리거 통일 | 메인 룸 `onStart`와 모드별 페이지를 `/api/rank/play` → `/api/rank/start-session` 시퀀스로 일원화, 확인 UI 동기화 |
-| 2 | 세션/전투 동기화 | `recordBattle` 다중 방어자 처리, 승/패/탈락 상태 업데이트, `rank_turns` 히스토리 노출 |
-| 3 | 프롬프트 변수 자동화 | `prompt.js`에 슬롯/변수 매핑 로더 추가, 노드 전환 조건을 메타데이터화 |
-| 4 | UI·오디오 완성 | 메인 UI 레이아웃 재구성, 오디오 프리셋 적용/중단, 히스토리 탭/AI 뷰어 구현 |
-| 5 | 운영 가드 | API 키 고갈/대체 흐름, 큐 모니터링, 난입 후속 처리 자동화 |
+| 단계 | 목표                 | 필요한 작업                                                                                                      |
+| ---- | -------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| 1    | 매칭 트리거 통일     | 메인 룸 `onStart`와 모드별 페이지를 `/api/rank/play` → `/api/rank/start-session` 시퀀스로 일원화, 확인 UI 동기화 |
+| 2    | 세션/전투 동기화     | `recordBattle` 다중 방어자 처리, 승/패/탈락 상태 업데이트, `rank_turns` 히스토리 노출                            |
+| 3    | 프롬프트 변수 자동화 | `prompt.js`에 슬롯/변수 매핑 로더 추가, 노드 전환 조건을 메타데이터화                                            |
+| 4    | UI·오디오 완성       | 메인 UI 레이아웃 재구성, 오디오 프리셋 적용/중단, 히스토리 탭/AI 뷰어 구현                                       |
+| 5    | 운영 가드            | API 키 고갈/대체 흐름, 큐 모니터링, 난입 후속 처리 자동화                                                        |
 
 각 단계는 선행 단계의 데이터/상태 동기화가 완료된 뒤 진행해야 하며, 단계 2까지는 서버 API 확장이 핵심이다. 단계 3 이후에는 프런트엔드 UI/오디오, 운영 보강이 중심이 된다.
 
@@ -242,7 +247,7 @@
 
 느낀 점: 로컬에서만 보이던 쿨다운 정보가 서버 로그와 연결되니 운영팀이 즉시 반응할 수 있겠다는 든든함이 생겼습니다.
 추가로 필요한 점: Slack/Webhook 통지와 자동 키 교체 스크립트를 마련해 알림 이후의 대응 속도까지 끌어올려야 합니다.
- 진행사항: 쿨다운 이벤트를 서버에 보고하고, 수동/사내 스케줄러 다이제스트로 미처리 이벤트를 정리하는 경보 파이프라인을 완성했습니다.
+진행사항: 쿨다운 이벤트를 서버에 보고하고, 수동/사내 스케줄러 다이제스트로 미처리 이벤트를 정리하는 경보 파이프라인을 완성했습니다.
 
 ### 진행 현황 메모 (2025-11-07 보강)
 

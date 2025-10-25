@@ -1,6 +1,6 @@
-'use client'
+'use client';
 
-import { useCallback, useState } from 'react'
+import { useCallback, useState } from 'react';
 
 /**
  * 수동 응답 입력을 관리하고 트림된 값을 노출하는 훅입니다.
@@ -14,35 +14,35 @@ import { useCallback, useState } from 'react'
  * }}
  */
 export function useStartManualResponse({ onAlert } = {}) {
-  const [manualResponse, setManualResponse] = useState('')
+  const [manualResponse, setManualResponse] = useState('');
 
   const alertImpl = useCallback(() => {
     if (typeof onAlert === 'function') {
-      return onAlert
+      return onAlert;
     }
     if (typeof window !== 'undefined' && typeof window.alert === 'function') {
-      return window.alert.bind(window)
+      return window.alert.bind(window);
     }
-    return () => {}
-  }, [onAlert])
+    return () => {};
+  }, [onAlert]);
 
   const clearManualResponse = useCallback(() => {
-    setManualResponse('')
-  }, [])
+    setManualResponse('');
+  }, []);
 
   const requireManualResponse = useCallback(() => {
-    const trimmed = manualResponse.trim()
+    const trimmed = manualResponse.trim();
     if (!trimmed) {
-      alertImpl()('수동 응답을 입력하세요.')
-      return null
+      alertImpl()('수동 응답을 입력하세요.');
+      return null;
     }
-    return trimmed
-  }, [manualResponse, alertImpl])
+    return trimmed;
+  }, [manualResponse, alertImpl]);
 
   return {
     manualResponse,
     setManualResponse,
     clearManualResponse,
     requireManualResponse,
-  }
+  };
 }

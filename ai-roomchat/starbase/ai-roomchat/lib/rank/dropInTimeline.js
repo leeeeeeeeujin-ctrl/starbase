@@ -9,56 +9,54 @@ export function buildDropInExtensionTimelineEvent({
 } = {}) {
   const numericBonus = Number.isFinite(Number(extraSeconds))
     ? Math.floor(Number(extraSeconds))
-    : null
+    : null;
   if (!numericBonus || numericBonus <= 0) {
-    return null
+    return null;
   }
 
-  const timestamp = Number.isFinite(Number(appliedAt))
-    ? Math.floor(Number(appliedAt))
-    : Date.now()
+  const timestamp = Number.isFinite(Number(appliedAt)) ? Math.floor(Number(appliedAt)) : Date.now();
 
-  const normalizedMode = typeof mode === 'string' && mode.trim() ? mode.trim() : null
+  const normalizedMode = typeof mode === 'string' && mode.trim() ? mode.trim() : null;
   const normalizedTurn =
     turnNumber === null || turnNumber === undefined || turnNumber === ''
       ? null
       : Number.isFinite(Number(turnNumber))
         ? Math.floor(Number(turnNumber))
-        : null
+        : null;
 
-  const arrivalCount = Array.isArray(arrivals) ? arrivals.filter(Boolean).length : 0
+  const arrivalCount = Array.isArray(arrivals) ? arrivals.filter(Boolean).length : 0;
 
-  const context = { bonusSeconds: numericBonus }
+  const context = { bonusSeconds: numericBonus };
   if (normalizedMode) {
-    context.mode = normalizedMode
+    context.mode = normalizedMode;
   }
   if (arrivalCount > 0) {
-    context.arrivalCount = arrivalCount
+    context.arrivalCount = arrivalCount;
   }
 
   const queueDepth = Number.isFinite(Number(dropInMeta?.queueDepth))
     ? Math.floor(Number(dropInMeta.queueDepth))
-    : null
+    : null;
   if (queueDepth !== null) {
-    context.queueDepth = queueDepth
+    context.queueDepth = queueDepth;
   }
 
   const replacements = Number.isFinite(Number(dropInMeta?.replacements))
     ? Math.floor(Number(dropInMeta.replacements))
-    : null
+    : null;
   if (replacements !== null) {
-    context.replacements = replacements
+    context.replacements = replacements;
   }
 
-  const status = hasActiveDeadline ? 'drop_in_bonus_applied' : 'drop_in_bonus_queued'
-  const type = hasActiveDeadline ? 'turn_extended' : 'turn_bonus_pending'
+  const status = hasActiveDeadline ? 'drop_in_bonus_applied' : 'drop_in_bonus_queued';
+  const type = hasActiveDeadline ? 'turn_extended' : 'turn_bonus_pending';
 
-  let metadata = null
+  let metadata = null;
   if (dropInMeta && typeof dropInMeta === 'object') {
     try {
-      metadata = { dropIn: JSON.parse(JSON.stringify(dropInMeta)) }
+      metadata = { dropIn: JSON.parse(JSON.stringify(dropInMeta)) };
     } catch (error) {
-      metadata = { dropIn: dropInMeta }
+      metadata = { dropIn: dropInMeta };
     }
   }
 
@@ -69,5 +67,5 @@ export function buildDropInExtensionTimelineEvent({
     reason: status,
     context,
     metadata,
-  }
+  };
 }

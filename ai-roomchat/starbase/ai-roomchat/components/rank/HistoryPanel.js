@@ -1,7 +1,7 @@
 // components/rank/HistoryPanel.js
 export default function HistoryPanel({ text }) {
-  if (!text) return null
-  const lines = String(text).split('\n').filter(Boolean)
+  if (!text) return null;
+  const lines = String(text).split('\n').filter(Boolean);
   return (
     <div
       style={{
@@ -21,5 +21,5 @@ export default function HistoryPanel({ text }) {
         </div>
       ))}
     </div>
-  )
+  );
 }

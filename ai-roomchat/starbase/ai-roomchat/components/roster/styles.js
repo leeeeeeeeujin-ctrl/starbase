@@ -310,8 +310,7 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
-    background:
-      'radial-gradient(circle at top, rgba(96,165,250,0.18) 0%, rgba(15,23,42,0.96) 65%)',
+    background: 'radial-gradient(circle at top, rgba(96,165,250,0.18) 0%, rgba(15,23,42,0.96) 65%)',
     pointerEvents: 'none',
     zIndex: 0,
   },
@@ -594,6 +593,6 @@ const styles = {
     cursor: 'pointer',
     boxShadow: '0 16px 32px -24px rgba(14,165,233,0.85)',
   },
-}
+};
 
-export default styles
+export default styles;

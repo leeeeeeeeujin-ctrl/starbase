@@ -1,4 +1,4 @@
-'use client'
+'use client';
 
 export default function QuickActionsSheet({
   open,
@@ -9,14 +9,14 @@ export default function QuickActionsSheet({
   onExportSet,
 }) {
   if (!open) {
-    return null
+    return null;
   }
 
   return (
     <div
-      onClick={(event) => {
+      onClick={event => {
         if (event.target === event.currentTarget) {
-          onClose()
+          onClose();
         }
       }}
       style={{
@@ -91,12 +91,12 @@ export default function QuickActionsSheet({
           <input
             type="file"
             accept="application/json"
-            onChange={async (event) => {
-              const file = event.target.files?.[0]
+            onChange={async event => {
+              const file = event.target.files?.[0];
               try {
-                await onImportFile(file)
+                await onImportFile(file);
               } finally {
-                event.target.value = ''
+                event.target.value = '';
               }
             }}
             style={{ display: 'none' }}
@@ -134,12 +134,12 @@ export default function QuickActionsSheet({
                 overflowY: 'auto',
               }}
             >
-              {promptSets.map((row) => (
+              {promptSets.map(row => (
                 <button
                   key={row.id}
                   type="button"
                   onClick={() => {
-                    onExportSet?.(row.id)
+                    onExportSet?.(row.id);
                   }}
                   style={{
                     padding: '10px 12px',
@@ -159,5 +159,5 @@ export default function QuickActionsSheet({
         </div>
       </div>
     </div>
-  )
+  );
 }

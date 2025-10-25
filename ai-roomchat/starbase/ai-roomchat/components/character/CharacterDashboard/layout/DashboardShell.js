@@ -1,7 +1,5 @@
-import React from 'react'
-
-import BackgroundLayer from '../sections/BackgroundLayer'
-import { shellStyles, navigationStyles, quickActionStyles } from './styles'
+import BackgroundLayer from '../sections/BackgroundLayer';
+import { shellStyles, navigationStyles, quickActionStyles } from './styles';
 
 export default function DashboardShell({
   backgroundUrl,
@@ -36,11 +34,11 @@ export default function DashboardShell({
         {footer ? <div style={shellStyles.footer}>{footer}</div> : null}
       </div>
     </div>
-  )
+  );
 }
 
 function HeroSummary({ heroName, heroSubtitle, heroMeta }) {
-  if (!heroName) return null
+  if (!heroName) return null;
   return (
     <div style={shellStyles.heroCard}>
       <span style={shellStyles.heroLabel}>선택한 영웅</span>
@@ -48,34 +46,34 @@ function HeroSummary({ heroName, heroSubtitle, heroMeta }) {
       {heroSubtitle ? <p style={shellStyles.heroSubtitle}>{heroSubtitle}</p> : null}
       {heroMeta?.length ? (
         <dl style={shellStyles.heroMetaList}>
-          {heroMeta.map((meta) => {
-            if (!meta || (!meta.label && !meta.value)) return null
-            const key = meta.id || meta.label
+          {heroMeta.map(meta => {
+            if (!meta || (!meta.label && !meta.value)) return null;
+            const key = meta.id || meta.label;
             return (
               <div key={key} style={shellStyles.heroMetaRow}>
                 <dt style={shellStyles.heroMetaLabel}>{meta.label}</dt>
                 <dd style={shellStyles.heroMetaValue}>{meta.value}</dd>
               </div>
-            )
+            );
           })}
         </dl>
       ) : null}
     </div>
-  )
+  );
 }
 
 function SectionNavigation({ sections, activeSectionId, onSelectSection }) {
-  if (!sections?.length) return null
+  if (!sections?.length) return null;
   return (
     <nav style={navigationStyles.root}>
       <span style={navigationStyles.label}>대시보드 섹션</span>
       <div style={navigationStyles.list}>
-        {sections.map((section) => {
-          const active = section.id === activeSectionId
+        {sections.map(section => {
+          const active = section.id === activeSectionId;
           const style = {
             ...navigationStyles.buttonBase,
             ...(active ? navigationStyles.buttonActive : navigationStyles.buttonInactive),
-          }
+          };
           return (
             <button
               key={section.id}
@@ -88,23 +86,23 @@ function SectionNavigation({ sections, activeSectionId, onSelectSection }) {
                 <span style={navigationStyles.buttonDescription}>{section.description}</span>
               ) : null}
             </button>
-          )
+          );
         })}
       </div>
     </nav>
-  )
+  );
 }
 
 function QuickActionList({ actions }) {
-  if (!actions?.length) return null
+  if (!actions?.length) return null;
   return (
     <div style={quickActionStyles.root}>
       <span style={quickActionStyles.label}>빠른 작업</span>
       <div style={quickActionStyles.list}>
-        {actions.map((action) => {
-          if (!action) return null
-          const key = action.id || action.label
-          const isDisabled = Boolean(action.disabled)
+        {actions.map(action => {
+          if (!action) return null;
+          const key = action.id || action.label;
+          const isDisabled = Boolean(action.disabled);
           const style = {
             ...quickActionStyles.buttonBase,
             ...(action.tone === 'primary'
@@ -117,7 +115,7 @@ function QuickActionList({ actions }) {
                   boxShadow: 'none',
                 }
               : null),
-          }
+          };
           return (
             <button
               key={key}
@@ -131,9 +129,9 @@ function QuickActionList({ actions }) {
                 <span style={quickActionStyles.buttonDescription}>{action.description}</span>
               ) : null}
             </button>
-          )
+          );
         })}
       </div>
     </div>
-  )
+  );
 }

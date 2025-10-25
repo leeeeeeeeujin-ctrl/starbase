@@ -1,41 +1,41 @@
-import React, { useMemo, useState } from 'react'
-import { ConditionParameterFields } from './conditions/ConditionParameterFields'
-import { CONDITION_DEFINITIONS } from './conditions/definitions'
-import { buildEdgeLabel } from './conditions/edgeLabels'
+import { useMemo, useState } from 'react';
+import { ConditionParameterFields } from './conditions/ConditionParameterFields';
+import { CONDITION_DEFINITIONS } from './conditions/definitions';
+import { buildEdgeLabel } from './conditions/edgeLabels';
 
 export default function ConditionBuilder({ selectedEdge, setEdges, pushToForm }) {
-  const [typeIdx, setTypeIdx] = useState(0)
-  const [values, setValues] = useState({})
+  const [typeIdx, setTypeIdx] = useState(0);
+  const [values, setValues] = useState({});
 
   const definition = useMemo(
     () => CONDITION_DEFINITIONS[typeIdx] ?? CONDITION_DEFINITIONS[0],
-    [typeIdx],
-  )
+    [typeIdx]
+  );
 
   function handleValueChange(key, value) {
-    setValues((prev) => ({ ...prev, [key]: value }))
+    setValues(prev => ({ ...prev, [key]: value }));
   }
 
   function resetValues() {
-    setValues({})
+    setValues({});
   }
 
   function addCondition() {
-    if (!selectedEdge) return
-    const json = definition.toJSON(values)
+    if (!selectedEdge) return;
+    const json = definition.toJSON(values);
 
-    setEdges((edges) =>
-      edges.map((edge) => {
-        if (edge.id !== selectedEdge.id) return edge
-        const previous = edge.data?.conditions || []
-        const conditions = [...previous, json]
-        const data = { ...(edge.data || {}), conditions }
-        return { ...edge, data, label: buildEdgeLabel(data) }
-      }),
-    )
+    setEdges(edges =>
+      edges.map(edge => {
+        if (edge.id !== selectedEdge.id) return edge;
+        const previous = edge.data?.conditions || [];
+        const conditions = [...previous, json];
+        const data = { ...(edge.data || {}), conditions };
+        return { ...edge, data, label: buildEdgeLabel(data) };
+      })
+    );
 
-    if (pushToForm) pushToForm(json)
-    resetValues()
+    if (pushToForm) pushToForm(json);
+    resetValues();
   }
 
   return (
@@ -44,9 +44,9 @@ export default function ConditionBuilder({ selectedEdge, setEdges, pushToForm })
 
       <select
         value={String(typeIdx)}
-        onChange={(event) => {
-          setTypeIdx(Number(event.target.value))
-          resetValues()
+        onChange={event => {
+          setTypeIdx(Number(event.target.value));
+          resetValues();
         }}
       >
         {CONDITION_DEFINITIONS.map((def, index) => (
@@ -56,7 +56,11 @@ export default function ConditionBuilder({ selectedEdge, setEdges, pushToForm })
         ))}
       </select>
 
-      <ConditionParameterFields definition={definition} values={values} onChange={handleValueChange} />
+      <ConditionParameterFields
+        definition={definition}
+        values={values}
+        onChange={handleValueChange}
+      />
 
       <button
         type="button"
@@ -72,5 +76,5 @@ export default function ConditionBuilder({ selectedEdge, setEdges, pushToForm })
         조건 추가
       </button>
     </div>
-  )
+  );
 }

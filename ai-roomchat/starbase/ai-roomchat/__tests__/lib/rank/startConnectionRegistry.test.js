@@ -2,7 +2,7 @@ import {
   getConnectionEntriesForGame,
   registerMatchConnections,
   removeConnectionEntries,
-} from '@/lib/rank/startConnectionRegistry'
+} from '@/lib/rank/startConnectionRegistry';
 
 function createMatchPayload() {
   return {
@@ -59,39 +59,39 @@ function createMatchPayload() {
         },
       ],
     ]),
-  }
+  };
 }
 
 describe('startConnectionRegistry', () => {
   beforeEach(() => {
     if (typeof window !== 'undefined') {
-      window.sessionStorage.clear()
+      window.sessionStorage.clear();
     }
-  })
+  });
 
   test('registerMatchConnections stores roster entries for each assignment', () => {
-    const match = createMatchPayload()
-    registerMatchConnections({ gameId: 'game-1', match, viewerId: 'owner-1' })
+    const match = createMatchPayload();
+    registerMatchConnections({ gameId: 'game-1', match, viewerId: 'owner-1' });
 
-    const entries = getConnectionEntriesForGame('game-1')
-    expect(entries).toHaveLength(2)
+    const entries = getConnectionEntriesForGame('game-1');
+    expect(entries).toHaveLength(2);
 
-    const attacker = entries.find((entry) => entry.ownerId === 'owner-1')
-    expect(attacker).toBeTruthy()
-    expect(attacker.heroId).toBe('hero-1')
-    expect(attacker.role).toBe('attacker')
-    expect(attacker.slotIndex).toBe(0)
-    expect(attacker.viewerId).toBe('owner-1')
+    const attacker = entries.find(entry => entry.ownerId === 'owner-1');
+    expect(attacker).toBeTruthy();
+    expect(attacker.heroId).toBe('hero-1');
+    expect(attacker.role).toBe('attacker');
+    expect(attacker.slotIndex).toBe(0);
+    expect(attacker.viewerId).toBe('owner-1');
 
-    const defender = entries.find((entry) => entry.ownerId === 'owner-2')
-    expect(defender).toBeTruthy()
-    expect(defender.heroName).toBe('Beta Hero')
-    expect(defender.slotIndex).toBe(1)
-  })
+    const defender = entries.find(entry => entry.ownerId === 'owner-2');
+    expect(defender).toBeTruthy();
+    expect(defender.heroName).toBe('Beta Hero');
+    expect(defender.slotIndex).toBe(1);
+  });
 
   test('registerMatchConnections updates existing owner entry with latest hero and slot data', () => {
-    const match = createMatchPayload()
-    registerMatchConnections({ gameId: 'game-1', match, viewerId: 'owner-1' })
+    const match = createMatchPayload();
+    registerMatchConnections({ gameId: 'game-1', match, viewerId: 'owner-1' });
 
     const updatedMatch = {
       ...match,
@@ -117,25 +117,24 @@ describe('startConnectionRegistry', () => {
       heroMap: {
         'hero-9': { id: 'hero-9', name: 'Omega Hero' },
       },
-    }
+    };
 
-    registerMatchConnections({ gameId: 'game-1', match: updatedMatch, viewerId: 'owner-1' })
+    registerMatchConnections({ gameId: 'game-1', match: updatedMatch, viewerId: 'owner-1' });
 
-    const entries = getConnectionEntriesForGame('game-1')
-    expect(entries).toHaveLength(2)
-    const attacker = entries.find((entry) => entry.ownerId === 'owner-1')
-    expect(attacker.heroId).toBe('hero-9')
-    expect(attacker.heroName).toBe('Omega Hero')
-    expect(attacker.slotIndex).toBe(2)
-  })
+    const entries = getConnectionEntriesForGame('game-1');
+    expect(entries).toHaveLength(2);
+    const attacker = entries.find(entry => entry.ownerId === 'owner-1');
+    expect(attacker.heroId).toBe('hero-9');
+    expect(attacker.heroName).toBe('Omega Hero');
+    expect(attacker.slotIndex).toBe(2);
+  });
 
   test('removeConnectionEntries clears roster for the specified game', () => {
-    const match = createMatchPayload()
-    registerMatchConnections({ gameId: 'game-1', match, viewerId: 'owner-1' })
-    expect(getConnectionEntriesForGame('game-1')).toHaveLength(2)
+    const match = createMatchPayload();
+    registerMatchConnections({ gameId: 'game-1', match, viewerId: 'owner-1' });
+    expect(getConnectionEntriesForGame('game-1')).toHaveLength(2);
 
-    removeConnectionEntries({ gameId: 'game-1' })
-    expect(getConnectionEntriesForGame('game-1')).toHaveLength(0)
-  })
-})
-
+    removeConnectionEntries({ gameId: 'game-1' });
+    expect(getConnectionEntriesForGame('game-1')).toHaveLength(0);
+  });
+});

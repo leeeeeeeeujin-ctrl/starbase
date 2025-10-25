@@ -1,0 +1,101 @@
+{
+  "filesScanned": 2,
+  "autoFixed": [],
+  "recommendations": [
+    {
+      "file": "C:\\Users\\yujin\\Documents\\234423\\starbase\\ai-roomchat\\starbase\\ai-roomchat\\components\\character\\CharacterBasicView.js",
+      "line": 1956,
+      "reason": "deps not found"
+    },
+    {
+      "file": "C:\\Users\\yujin\\Documents\\234423\\starbase\\ai-roomchat\\starbase\\ai-roomchat\\components\\character\\CharacterBasicView.js",
+      "line": 2012,
+      "candidates": ["useEffect", "eslint", "disable", "next", "line"]
+    },
+    {
+      "file": "C:\\Users\\yujin\\Documents\\234423\\starbase\\ai-roomchat\\starbase\\ai-roomchat\\components\\character\\CharacterBasicView.js",
+      "line": 2085,
+      "reason": "deps not found"
+    },
+    {
+      "file": "C:\\Users\\yujin\\Documents\\234423\\starbase\\ai-roomchat\\starbase\\ai-roomchat\\components\\rank\\StartClient\\useStartClientEngine.js",
+      "line": 1047,
+      "candidates": ["backfillTurnEvents", "useCallback", "async", "sessionInfo", "id"]
+    },
+    {
+      "file": "C:\\Users\\yujin\\Documents\\234423\\starbase\\ai-roomchat\\starbase\\ai-roomchat\\components\\rank\\StartClient\\useStartClientEngine.js",
+      "line": 1988,
+      "candidates": ["sharedTurnRoster", "useMemo"]
+    },
+    {
+      "file": "C:\\Users\\yujin\\Documents\\234423\\starbase\\ai-roomchat\\starbase\\ai-roomchat\\components\\rank\\StartClient\\useStartClientEngine.js",
+      "line": 2011,
+      "reason": "deps not found"
+    },
+    {
+      "file": "C:\\Users\\yujin\\Documents\\234423\\starbase\\ai-roomchat\\starbase\\ai-roomchat\\components\\rank\\StartClient\\useStartClientEngine.js",
+      "line": 2119,
+      "candidates": ["useEffect", "realtimeManagerRef", "current", "eslint", "disable"]
+    },
+    {
+      "file": "C:\\Users\\yujin\\Documents\\234423\\starbase\\ai-roomchat\\starbase\\ai-roomchat\\components\\rank\\StartClient\\useStartClientEngine.js",
+      "line": 2187,
+      "reason": "deps not found"
+    },
+    {
+      "file": "C:\\Users\\yujin\\Documents\\234423\\starbase\\ai-roomchat\\starbase\\ai-roomchat\\components\\rank\\StartClient\\useStartClientEngine.js",
+      "line": 2207,
+      "candidates": ["resolveHeroAssets", "useCallback", "names", "fallbackContext", "trimmed"]
+    },
+    {
+      "file": "C:\\Users\\yujin\\Documents\\234423\\starbase\\ai-roomchat\\starbase\\ai-roomchat\\components\\rank\\StartClient\\useStartClientEngine.js",
+      "line": 2322,
+      "reason": "deps not found"
+    },
+    {
+      "file": "C:\\Users\\yujin\\Documents\\234423\\starbase\\ai-roomchat\\starbase\\ai-roomchat\\components\\rank\\StartClient\\useStartClientEngine.js",
+      "line": 2617,
+      "reason": "deps not found"
+    },
+    {
+      "file": "C:\\Users\\yujin\\Documents\\234423\\starbase\\ai-roomchat\\starbase\\ai-roomchat\\components\\rank\\StartClient\\useStartClientEngine.js",
+      "line": 2656,
+      "reason": "deps not found"
+    },
+    {
+      "file": "C:\\Users\\yujin\\Documents\\234423\\starbase\\ai-roomchat\\starbase\\ai-roomchat\\components\\rank\\StartClient\\useStartClientEngine.js",
+      "line": 2903,
+      "reason": "deps not found"
+    },
+    {
+      "file": "C:\\Users\\yujin\\Documents\\234423\\starbase\\ai-roomchat\\starbase\\ai-roomchat\\components\\rank\\StartClient\\useStartClientEngine.js",
+      "line": 2918,
+      "candidates": ["viewerParticipant", "useMemo", "null", "find", "participant"]
+    },
+    {
+      "file": "C:\\Users\\yujin\\Documents\\234423\\starbase\\ai-roomchat\\starbase\\ai-roomchat\\components\\rank\\StartClient\\useStartClientEngine.js",
+      "line": 3077,
+      "reason": "deps not found"
+    },
+    {
+      "file": "C:\\Users\\yujin\\Documents\\234423\\starbase\\ai-roomchat\\starbase\\ai-roomchat\\components\\rank\\StartClient\\useStartClientEngine.js",
+      "line": 3232,
+      "reason": "deps not found"
+    },
+    {
+      "file": "C:\\Users\\yujin\\Documents\\234423\\starbase\\ai-roomchat\\starbase\\ai-roomchat\\components\\rank\\StartClient\\useStartClientEngine.js",
+      "line": 4005,
+      "reason": "deps not found"
+    },
+    {
+      "file": "C:\\Users\\yujin\\Documents\\234423\\starbase\\ai-roomchat\\starbase\\ai-roomchat\\components\\rank\\StartClient\\useStartClientEngine.js",
+      "line": 4253,
+      "reason": "deps not found"
+    },
+    {
+      "file": "C:\\Users\\yujin\\Documents\\234423\\starbase\\ai-roomchat\\starbase\\ai-roomchat\\components\\rank\\StartClient\\useStartClientEngine.js",
+      "line": 4321,
+      "reason": "deps not found"
+    }
+  ]
+}

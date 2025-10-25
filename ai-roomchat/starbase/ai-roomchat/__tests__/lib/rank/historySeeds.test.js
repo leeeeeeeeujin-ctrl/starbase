@@ -1,10 +1,10 @@
-import { buildHistorySeedEntries } from '@/lib/rank/historySeeds'
+import { buildHistorySeedEntries } from '@/lib/rank/historySeeds';
 
 describe('buildHistorySeedEntries', () => {
   it('returns empty array for invalid payloads', () => {
-    expect(buildHistorySeedEntries(null)).toEqual([])
-    expect(buildHistorySeedEntries({})).toEqual([])
-  })
+    expect(buildHistorySeedEntries(null)).toEqual([]);
+    expect(buildHistorySeedEntries({})).toEqual([]);
+  });
 
   it('normalizes turns including hidden entries for AI memory', () => {
     const sessionHistory = {
@@ -18,10 +18,10 @@ describe('buildHistorySeedEntries', () => {
           createdAt: '2025-11-09T12:00:00Z',
         },
       ],
-    }
+    };
 
-    const result = buildHistorySeedEntries(sessionHistory)
-    expect(result).toHaveLength(1)
+    const result = buildHistorySeedEntries(sessionHistory);
+    expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({
       role: 'system',
       content: 'Hidden directive',
@@ -32,8 +32,8 @@ describe('buildHistorySeedEntries', () => {
         turnIdx: 5,
         createdAt: '2025-11-09T12:00:00Z',
       },
-    })
-  })
+    });
+  });
 
   it('respects suppression flags from metadata and summary payloads', () => {
     const sessionHistory = {
@@ -51,11 +51,11 @@ describe('buildHistorySeedEntries', () => {
           summaryPayload: { extra: { suppressAi: true } },
         },
       ],
-    }
+    };
 
-    const result = buildHistorySeedEntries(sessionHistory)
-    expect(result).toHaveLength(2)
-    expect(result[0].includeInAi).toBe(false)
-    expect(result[1].includeInAi).toBe(false)
-  })
-})
+    const result = buildHistorySeedEntries(sessionHistory);
+    expect(result).toHaveLength(2);
+    expect(result[0].includeInAi).toBe(false);
+    expect(result[1].includeInAi).toBe(false);
+  });
+});

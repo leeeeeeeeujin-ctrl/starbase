@@ -3,6 +3,7 @@
 모든 Rank Arcade 페이지와 `/api/rank/stage-room-match`가 사용하는 RPC 목록이다. 함수별 설명과 함께 SQL 정의를 제공하며, 전체를 한 번에 배포하려면 `docs/arena-supabase-migration-2025-11-12.md`의 통합 스크립트를 사용하면 된다.
 
 ## join_rank_queue
+
 ```sql
 create or replace function public.join_rank_queue(
   queue_id text,
@@ -33,6 +34,7 @@ grant execute on function public.join_rank_queue(text, jsonb)
 ```
 
 ## fetch_rank_queue_ticket
+
 ```sql
 create or replace function public.fetch_rank_queue_ticket(
   queue_ticket_id uuid
@@ -67,6 +69,7 @@ grant execute on function public.fetch_rank_queue_ticket(uuid)
 ```
 
 ## stage_rank_match
+
 ```sql
 create or replace function public.stage_rank_match(
   queue_ticket_id uuid
@@ -135,6 +138,7 @@ grant execute on function public.stage_rank_match(uuid)
 ```
 
 ## evict_unready_participant
+
 ```sql
 create or replace function public.evict_unready_participant(
   queue_ticket_id uuid,
@@ -163,6 +167,7 @@ grant execute on function public.evict_unready_participant(uuid, integer)
 ```
 
 ## fetch_rank_session_turns
+
 ```sql
 create or replace function public.fetch_rank_session_turns(
   p_session_id uuid,
@@ -213,6 +218,7 @@ grant execute on function public.fetch_rank_session_turns(uuid, integer)
 ```
 
 ## finalize_rank_session
+
 ```sql
 create or replace function public.finalize_rank_session(
   p_session_id uuid

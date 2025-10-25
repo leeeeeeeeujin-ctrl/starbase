@@ -1,16 +1,9 @@
-import HeroCard from './HeroCard'
-import styles from './styles'
+import HeroCard from './HeroCard';
+import styles from './styles';
 
-export default function HeroList({
-  loading,
-  error,
-  heroes,
-  onSelectHero,
-  onCreateHero,
-  onRetry,
-}) {
+export default function HeroList({ loading, error, heroes, onSelectHero, onCreateHero, onRetry }) {
   if (loading) {
-    return <div style={styles.statusBox}>로스터를 불러오는 중입니다…</div>
+    return <div style={styles.statusBox}>로스터를 불러오는 중입니다…</div>;
   }
 
   if (error) {
@@ -21,7 +14,7 @@ export default function HeroList({
           다시 시도
         </button>
       </div>
-    )
+    );
   }
 
   if (!heroes.length) {
@@ -34,17 +27,17 @@ export default function HeroList({
           영웅 만들기
         </button>
       </div>
-    )
+    );
   }
 
   return (
     <div style={styles.heroList}>
-      {heroes.map((hero) => (
+      {heroes.map(hero => (
         <HeroCard key={hero.id} hero={hero} onSelect={onSelectHero} />
       ))}
       <button type="button" onClick={onCreateHero} style={styles.createCard}>
         + 새 영웅 만들기
       </button>
     </div>
-  )
+  );
 }

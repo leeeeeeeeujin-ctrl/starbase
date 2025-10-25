@@ -1,8 +1,8 @@
-import { buildSessionMetaRequest } from '@/lib/rank/sessionMetaClient'
+import { buildSessionMetaRequest } from '@/lib/rank/sessionMetaClient';
 
 describe('buildSessionMetaRequest', () => {
   it('includes sanitized drop-in metadata in turn state events', () => {
-    const now = Date.now()
+    const now = Date.now();
     const { turnStateEvent, turnStateSignature } = buildSessionMetaRequest({
       state: {
         sessionMeta: {
@@ -35,9 +35,9 @@ describe('buildSessionMetaRequest', () => {
         },
         room: { realtimeMode: 'standard' },
       },
-    })
+    });
 
-    expect(turnStateEvent?.extras?.dropInBonusSeconds).toBe(30)
+    expect(turnStateEvent?.extras?.dropInBonusSeconds).toBe(30);
     expect(turnStateEvent?.extras?.dropIn).toMatchObject({
       status: 'BONUS_APPLIED',
       bonusSeconds: 30,
@@ -48,9 +48,9 @@ describe('buildSessionMetaRequest', () => {
           replacedOwnerId: 'prev-1',
         }),
       ],
-    })
-    expect(turnStateSignature).toContain('"dropIn"')
-  })
+    });
+    expect(turnStateSignature).toContain('"dropIn"');
+  });
 
   it('passes extras from session meta into the meta payload', () => {
     const { metaPayload } = buildSessionMetaRequest({
@@ -62,8 +62,8 @@ describe('buildSessionMetaRequest', () => {
           },
         },
       },
-    })
+    });
 
-    expect(metaPayload?.extras).toEqual({ betaFeature: true, nested: { difficulty: 'hard' } })
-  })
-})
+    expect(metaPayload?.extras).toEqual({ betaFeature: true, nested: { difficulty: 'hard' } });
+  });
+});

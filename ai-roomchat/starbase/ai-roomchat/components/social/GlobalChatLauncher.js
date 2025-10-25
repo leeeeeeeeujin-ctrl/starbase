@@ -1,8 +1,8 @@
-'use client'
+'use client';
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo } from 'react';
 
-import ChatOverlay from '@/components/social/ChatOverlay'
+import ChatOverlay from '@/components/social/ChatOverlay';
 
 const launcherStyles = {
   wrapper: {
@@ -15,7 +15,7 @@ const launcherStyles = {
     gap: 8,
     alignItems: 'flex-end',
   },
-  button: (open) => ({
+  button: open => ({
     width: 48,
     height: 48,
     borderRadius: 24,
@@ -50,17 +50,17 @@ const launcherStyles = {
     alignItems: 'center',
     justifyContent: 'center',
   },
-}
+};
 
 export default function GlobalChatLauncher() {
-  const [open, setOpen] = useState(false)
-  const [unread, setUnread] = useState(0)
+  const [open, setOpen] = useState(false);
+  const [unread, setUnread] = useState(0);
 
   const badge = useMemo(() => {
-    if (!unread) return null
-    if (unread > 99) return '99+'
-    return String(unread)
-  }, [unread])
+    if (!unread) return null;
+    if (unread > 99) return '99+';
+    return String(unread);
+  }, [unread]);
 
   return (
     <>
@@ -75,11 +75,7 @@ export default function GlobalChatLauncher() {
           {badge ? <span style={launcherStyles.badge}>{badge}</span> : null}
         </button>
       </div>
-      <ChatOverlay
-        open={open}
-        onClose={() => setOpen(false)}
-        onUnreadChange={setUnread}
-      />
+      <ChatOverlay open={open} onClose={() => setOpen(false)} onUnreadChange={setUnread} />
     </>
-  )
+  );
 }

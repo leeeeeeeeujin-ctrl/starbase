@@ -1,10 +1,10 @@
-'use client'
+'use client';
 
 function formatTimestamp(value) {
-  if (!value) return '기록 없음'
-  const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) return '기록 없음'
-  return parsed.toLocaleString()
+  if (!value) return '기록 없음';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '기록 없음';
+  return parsed.toLocaleString();
 }
 
 export default function PromptSetCard({
@@ -20,7 +20,7 @@ export default function PromptSetCard({
   onDeleteSet,
   savingRename,
 }) {
-  const timestamp = formatTimestamp(row.updated_at ?? row.created_at)
+  const timestamp = formatTimestamp(row.updated_at ?? row.created_at);
 
   if (isEditing) {
     return (
@@ -39,7 +39,7 @@ export default function PromptSetCard({
           <span style={{ fontSize: 13, color: '#475569', fontWeight: 600 }}>세트 이름</span>
           <input
             value={editingName}
-            onChange={(event) => onEditingNameChange(event.target.value)}
+            onChange={event => onEditingNameChange(event.target.value)}
             placeholder="세트 이름"
             style={{
               padding: '12px 14px',
@@ -82,7 +82,7 @@ export default function PromptSetCard({
           </button>
         </div>
       </form>
-    )
+    );
   }
 
   return (
@@ -96,10 +96,14 @@ export default function PromptSetCard({
         background: '#fff',
       }}
     >
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+      <div
+        style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}
+      >
         <div style={{ display: 'grid', gap: 4 }}>
           <strong style={{ fontSize: 18, color: '#0f172a' }}>{row.name || '이름 없는 세트'}</strong>
-          <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>최근 수정: {timestamp}</span>
+          <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>
+            최근 수정: {timestamp}
+          </span>
         </div>
         <button
           type="button"
@@ -165,5 +169,5 @@ export default function PromptSetCard({
         </button>
       </div>
     </div>
-  )
+  );
 }

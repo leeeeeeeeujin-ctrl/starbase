@@ -1,44 +1,44 @@
-import { supabaseAdmin } from '@/lib/supabaseAdmin'
-import { buildCooldownTelemetry } from '@/lib/rank/cooldownTelemetry'
+import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { buildCooldownTelemetry } from '@/lib/rank/cooldownTelemetry';
 import {
   evaluateCooldownAlerts,
   loadCooldownAlertThresholds,
-} from '@/lib/rank/cooldownAlertThresholds'
+} from '@/lib/rank/cooldownAlertThresholds';
 import {
   getCooldownThresholdAuditTrail,
   summarizeCooldownThresholdAuditTrail,
-} from '@/lib/rank/cooldownAlertThresholdAuditTrail'
-import { fetchTimelineUploadSummary } from '@/lib/rank/cooldownTimelineUploads'
-import { isMissingSupabaseTable } from '@/lib/server/supabaseErrors'
+} from '@/lib/rank/cooldownAlertThresholdAuditTrail';
+import { fetchTimelineUploadSummary } from '@/lib/rank/cooldownTimelineUploads';
+import { isMissingSupabaseTable } from '@/lib/server/supabaseErrors';
 
 function toCsvValue(value) {
   if (value === null || value === undefined) {
-    return ''
+    return '';
   }
 
-  let stringValue = value
+  let stringValue = value;
 
   if (value instanceof Date) {
-    stringValue = value.toISOString()
+    stringValue = value.toISOString();
   } else if (typeof value === 'object') {
     try {
-      stringValue = JSON.stringify(value)
+      stringValue = JSON.stringify(value);
     } catch (error) {
-      stringValue = String(value)
+      stringValue = String(value);
     }
   } else if (typeof value === 'boolean') {
-    stringValue = value ? 'true' : 'false'
+    stringValue = value ? 'true' : 'false';
   }
 
-  const normalized = String(stringValue).replace(/"/g, '""')
+  const normalized = String(stringValue).replace(/"/g, '""');
   if (/[",\n]/.test(normalized)) {
-    return `"${normalized}"`
+    return `"${normalized}"`;
   }
-  return normalized
+  return normalized;
 }
 
 function toCsv(rows) {
-  return rows.map((row) => row.map((value) => toCsvValue(value)).join(',')).join('\r\n')
+  return rows.map(row => row.map(value => toCsvValue(value)).join(',')).join('\r\n');
 }
 
 function buildProviderCsv(report, alerts) {
@@ -62,24 +62,27 @@ function buildProviderCsv(report, alerts) {
     'next_retry_eta',
     'last_attempt_at',
     'issues',
-  ]
+  ];
 
-  const providerAlerts = new Map()
+  const providerAlerts = new Map();
   if (Array.isArray(alerts?.providers)) {
     for (const entry of alerts.providers) {
-      providerAlerts.set(entry.provider, entry)
+      providerAlerts.set(entry.provider, entry);
     }
   }
 
   const rows = Array.isArray(report?.providers)
-    ? report.providers.map((provider) => {
-        const alert = providerAlerts.get(provider.provider) || {}
+    ? report.providers.map(provider => {
+        const alert = providerAlerts.get(provider.provider) || {};
         const issues = Array.isArray(alert.issues)
-          ? alert.issues.map((issue) => issue.message).filter(Boolean).join(' | ')
-          : ''
+          ? alert.issues
+              .map(issue => issue.message)
+              .filter(Boolean)
+              .join(' | ')
+          : '';
         const triggeredRatio = provider.trackedKeys
           ? provider.currentlyTriggered / provider.trackedKeys
-          : 0
+          : 0;
         return [
           report.generatedAt || new Date().toISOString(),
           provider.provider || 'unknown',
@@ -100,11 +103,11 @@ function buildProviderCsv(report, alerts) {
           provider.nextRetryEta || null,
           provider.lastAttemptAt || null,
           issues,
-        ]
+        ];
       })
-    : []
+    : [];
 
-  return toCsv([header, ...rows])
+  return toCsv([header, ...rows]);
 }
 
 function buildAttemptsCsv(report, alerts) {
@@ -131,29 +134,32 @@ function buildAttemptsCsv(report, alerts) {
     'rotation_duration_ms',
     'rotation_http_status',
     'rotation_error',
-  ]
+  ];
 
-  const attemptAlerts = new Map()
+  const attemptAlerts = new Map();
   if (Array.isArray(alerts?.attempts)) {
     for (const entry of alerts.attempts) {
-      attemptAlerts.set(`${entry.keyHash ?? 'unknown'}::${entry.attemptedAt ?? ''}`, entry)
+      attemptAlerts.set(`${entry.keyHash ?? 'unknown'}::${entry.attemptedAt ?? ''}`, entry);
     }
   }
 
   const rows = Array.isArray(report?.latestAttempts)
-    ? report.latestAttempts.map((attempt) => {
-        const alertKey = `${attempt.keyHash ?? 'unknown'}::${attempt.attemptedAt ?? ''}`
-        const evaluation = attemptAlerts.get(alertKey) || {}
+    ? report.latestAttempts.map(attempt => {
+        const alertKey = `${attempt.keyHash ?? 'unknown'}::${attempt.attemptedAt ?? ''}`;
+        const evaluation = attemptAlerts.get(alertKey) || {};
         const issues = Array.isArray(evaluation.issues)
-          ? evaluation.issues.map((issue) => issue.message).filter(Boolean).join(' | ')
-          : ''
+          ? evaluation.issues
+              .map(issue => issue.message)
+              .filter(Boolean)
+              .join(' | ')
+          : '';
 
-        const alert = attempt.alert || {}
-        const alertResponse = alert.response || {}
-        const alertError = alert.error || {}
-        const rotation = attempt.rotation || {}
-        const rotationResponse = rotation.response || {}
-        const rotationError = rotation.error || {}
+        const alert = attempt.alert || {};
+        const alertResponse = alert.response || {};
+        const alertError = alert.error || {};
+        const rotation = attempt.rotation || {};
+        const rotationResponse = rotation.response || {};
+        const rotationError = rotation.error || {};
 
         return [
           report.generatedAt || new Date().toISOString(),
@@ -178,16 +184,16 @@ function buildAttemptsCsv(report, alerts) {
           rotation.durationMs ?? null,
           rotationResponse.status ?? null,
           rotationError.message || null,
-        ]
+        ];
       })
-    : []
+    : [];
 
-  return toCsv([header, ...rows])
+  return toCsv([header, ...rows]);
 }
 
 function buildAuditTimelineCsv(timeline, mode) {
   if (!timeline || !Array.isArray(timeline.buckets)) {
-    return null
+    return null;
   }
 
   const header = [
@@ -199,10 +205,10 @@ function buildAuditTimelineCsv(timeline, mode) {
     'bucket_end',
     'count',
     'is_current',
-  ]
+  ];
 
-  const windowLabel = timeline.windowLabel || ''
-  const rows = timeline.buckets.map((bucket) => [
+  const windowLabel = timeline.windowLabel || '';
+  const rows = timeline.buckets.map(bucket => [
     mode,
     windowLabel,
     bucket.label || '',
@@ -211,91 +217,94 @@ function buildAuditTimelineCsv(timeline, mode) {
     bucket.end || '',
     bucket.count ?? 0,
     bucket.isCurrent ? 'true' : 'false',
-  ])
+  ]);
 
-  return toCsv([header, ...rows])
+  return toCsv([header, ...rows]);
 }
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
-    res.setHeader('Allow', ['GET'])
-    return res.status(405).json({ error: 'method_not_allowed' })
+    res.setHeader('Allow', ['GET']);
+    return res.status(405).json({ error: 'method_not_allowed' });
   }
 
   const latestLimitParam = Array.isArray(req.query.latestLimit)
     ? req.query.latestLimit[0]
-    : req.query.latestLimit
+    : req.query.latestLimit;
 
-  const latestLimit = Number(latestLimitParam)
-  const normalizedLimit = Number.isFinite(latestLimit) && latestLimit > 0 ? Math.min(latestLimit, 50) : 15
+  const latestLimit = Number(latestLimitParam);
+  const normalizedLimit =
+    Number.isFinite(latestLimit) && latestLimit > 0 ? Math.min(latestLimit, 50) : 15;
 
   try {
     const { data, error } = await supabaseAdmin
       .from('rank_api_key_cooldowns')
       .select(
-        `id, key_hash, key_sample, provider, reason, metadata, notified_at, reported_at, updated_at`,
-      )
+        `id, key_hash, key_sample, provider, reason, metadata, notified_at, reported_at, updated_at`
+      );
 
-    const missingTable = Boolean(error && isMissingSupabaseTable(error))
+    const missingTable = Boolean(error && isMissingSupabaseTable(error));
 
     if (error && !missingTable) {
-      console.error('[cooldown-telemetry] select failed', error)
-      return res.status(500).json({ error: 'cooldown_telemetry_failed' })
+      console.error('[cooldown-telemetry] select failed', error);
+      return res.status(500).json({ error: 'cooldown_telemetry_failed' });
     }
 
-    const rows = !error && Array.isArray(data) ? data : []
-    const report = buildCooldownTelemetry(rows, { latestLimit: normalizedLimit })
-    const thresholdOverrides = loadCooldownAlertThresholds()
-    const thresholdAuditTrail = getCooldownThresholdAuditTrail()
-    const now = new Date()
+    const rows = !error && Array.isArray(data) ? data : [];
+    const report = buildCooldownTelemetry(rows, { latestLimit: normalizedLimit });
+    const thresholdOverrides = loadCooldownAlertThresholds();
+    const thresholdAuditTrail = getCooldownThresholdAuditTrail();
+    const now = new Date();
     const thresholdAudit = summarizeCooldownThresholdAuditTrail(thresholdAuditTrail, {
       now,
       limit: 8,
       timelineDays: 14,
       timelineWeeks: 12,
       timelineMonths: 12,
-    })
-    const timelineUploads = await fetchTimelineUploadSummary({ limit: 40, now })
+    });
+    const timelineUploads = await fetchTimelineUploadSummary({ limit: 40, now });
     const alerts = evaluateCooldownAlerts(report, thresholdOverrides, {
       timelineUploads,
       now,
-    })
+    });
 
-    const formatParam = Array.isArray(req.query.format) ? req.query.format[0] : req.query.format
-    const format = typeof formatParam === 'string' ? formatParam.toLowerCase() : null
+    const formatParam = Array.isArray(req.query.format) ? req.query.format[0] : req.query.format;
+    const format = typeof formatParam === 'string' ? formatParam.toLowerCase() : null;
 
     if (format === 'csv') {
-      const sectionParam = Array.isArray(req.query.section) ? req.query.section[0] : req.query.section
-      const section = typeof sectionParam === 'string' ? sectionParam.toLowerCase() : 'providers'
+      const sectionParam = Array.isArray(req.query.section)
+        ? req.query.section[0]
+        : req.query.section;
+      const section = typeof sectionParam === 'string' ? sectionParam.toLowerCase() : 'providers';
 
-      let csvContent = null
+      let csvContent = null;
       if (section === 'providers') {
-        csvContent = buildProviderCsv(report, alerts)
+        csvContent = buildProviderCsv(report, alerts);
       } else if (section === 'attempts') {
-        csvContent = buildAttemptsCsv(report, alerts)
+        csvContent = buildAttemptsCsv(report, alerts);
       } else if (section === 'audit-timeline') {
-        const modeParam = Array.isArray(req.query.mode) ? req.query.mode[0] : req.query.mode
-        const requestedMode = typeof modeParam === 'string' ? modeParam.toLowerCase() : 'daily'
-        const availableTimelines = thresholdAudit?.timelines || {}
-        const timeline = availableTimelines[requestedMode]
+        const modeParam = Array.isArray(req.query.mode) ? req.query.mode[0] : req.query.mode;
+        const requestedMode = typeof modeParam === 'string' ? modeParam.toLowerCase() : 'daily';
+        const availableTimelines = thresholdAudit?.timelines || {};
+        const timeline = availableTimelines[requestedMode];
         if (!timeline) {
-          return res.status(400).json({ error: 'unsupported_timeline_mode' })
+          return res.status(400).json({ error: 'unsupported_timeline_mode' });
         }
-        csvContent = buildAuditTimelineCsv(timeline, requestedMode)
+        csvContent = buildAuditTimelineCsv(timeline, requestedMode);
       }
 
       if (!csvContent) {
-        return res.status(400).json({ error: 'unsupported_csv_section' })
+        return res.status(400).json({ error: 'unsupported_csv_section' });
       }
 
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
-      res.setHeader('Content-Type', 'text/csv; charset=utf-8')
-      const normalizedSection = section.replace(/[^a-z0-9-]/gi, '') || 'export'
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      const normalizedSection = section.replace(/[^a-z0-9-]/gi, '') || 'export';
       res.setHeader(
         'Content-Disposition',
-        `attachment; filename="cooldown-${normalizedSection}-${timestamp}.csv"`,
-      )
-      return res.status(200).send(`\uFEFF${csvContent}`)
+        `attachment; filename="cooldown-${normalizedSection}-${timestamp}.csv"`
+      );
+      return res.status(200).send(`\uFEFF${csvContent}`);
     }
 
     const payload = {
@@ -303,16 +312,15 @@ export default async function handler(req, res) {
       alerts,
       thresholdAudit,
       timelineUploads,
-    }
+    };
 
     if (missingTable) {
-      payload.meta = { missingTable: true }
+      payload.meta = { missingTable: true };
     }
 
-    return res.status(200).json(payload)
+    return res.status(200).json(payload);
   } catch (error) {
-    console.error('[cooldown-telemetry] unexpected failure', error)
-    return res.status(500).json({ error: 'cooldown_telemetry_failed' })
+    console.error('[cooldown-telemetry] unexpected failure', error);
+    return res.status(500).json({ error: 'cooldown_telemetry_failed' });
   }
 }
-

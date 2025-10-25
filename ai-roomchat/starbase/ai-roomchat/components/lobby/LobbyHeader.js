@@ -1,5 +1,4 @@
-import React from 'react'
-import Link from 'next/link'
+import Link from 'next/link';
 
 export default function LobbyHeader({ onBack, navLinks = [] }) {
   return (
@@ -10,20 +9,22 @@ export default function LobbyHeader({ onBack, navLinks = [] }) {
         </button>
         <div style={styles.headingGroup}>
           <h1 style={styles.heading}>로비</h1>
-          <p style={styles.caption}>실시간 채팅으로 소통하고, 바로 아래 탭에서 원하는 게임을 찾아 참여하세요.</p>
+          <p style={styles.caption}>
+            실시간 채팅으로 소통하고, 바로 아래 탭에서 원하는 게임을 찾아 참여하세요.
+          </p>
         </div>
       </div>
       {navLinks.length ? (
         <nav style={styles.nav}>
-          {navLinks.map((item) => (
-              <Link key={item.href} href={item.href} style={styles.navLink}>
-                {item.label}
-              </Link>
+          {navLinks.map(item => (
+            <Link key={item.href} href={item.href} style={styles.navLink}>
+              {item.label}
+            </Link>
           ))}
         </nav>
       ) : null}
     </header>
-  )
+  );
 }
 
 const styles = {
@@ -77,5 +78,5 @@ const styles = {
     textDecoration: 'none',
     fontWeight: 600,
   },
-}
+};
 //

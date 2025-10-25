@@ -1,6 +1,4 @@
-import React from 'react'
-
-import { baseStyles, readyStyles } from './styles'
+import { baseStyles, readyStyles } from './styles';
 
 export default function ReadyStep({ onBack, onConfirm }) {
   return (
@@ -8,8 +6,8 @@ export default function ReadyStep({ onBack, onConfirm }) {
       <div style={readyStyles.card}>
         <strong style={readyStyles.title}>모든 참가자가 준비되었습니다!</strong>
         <p style={readyStyles.copy}>
-          전투 준비가 끝났습니다. 아래 버튼을 눌러 게임 방으로 이동하세요. 로딩 화면에서는 각 참가자의 초상화가 표시되며 게임이
-          곧 시작됩니다.
+          전투 준비가 끝났습니다. 아래 버튼을 눌러 게임 방으로 이동하세요. 로딩 화면에서는 각
+          참가자의 초상화가 표시되며 게임이 곧 시작됩니다.
         </p>
       </div>
       <div style={baseStyles.actionRow}>
@@ -21,7 +19,7 @@ export default function ReadyStep({ onBack, onConfirm }) {
         </button>
       </div>
     </section>
-  )
+  );
 }
 
 //

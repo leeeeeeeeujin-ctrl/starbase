@@ -5,6 +5,7 @@
 > ⚠️ **주의**: 배열 타입, 정밀도가 붙은 숫자 타입 등은 단순화되어 출력됩니다. 이후 수동 보정이 필요할 수 있습니다.
 
 ## 1. 테이블 + 컬럼 정의 (PK 포함)
+
 ```sql
 with cols as (
   select
@@ -81,6 +82,7 @@ order by cl.table_name;
 ```
 
 ## 2. 추가 제약조건 (UNIQUE / CHECK / FK)
+
 ```sql
 select
   format(
@@ -96,6 +98,7 @@ order by conrelid::regclass::text, conname;
 ```
 
 ## 3. 인덱스 정의
+
 ```sql
 select indexdef || ';' as create_index_ddl
 from pg_indexes
@@ -104,6 +107,7 @@ order by tablename, indexname;
 ```
 
 ## 4. RLS 정책 정의 (선택)
+
 ```sql
 with role_names as (
   select oid, rolname from pg_roles
@@ -260,6 +264,7 @@ comment on column public.rank_cooldown_timeline_uploads.strategy is
 ```
 
 ## 실행 팁
+
 - Supabase SQL Editor에서 결과를 복사해 `.sql` 파일로 저장하면 백업 스크립트를 빠르게 만들 수 있습니다.
 - `psql`을 사용할 때는 `\gset`을 이용해 결과를 변수에 담은 뒤, `\echo :create_table_ddl` 형태로 출력하는 방법도 있습니다.
 - 대용량 스키마일 경우 스키마명을 필터링하거나 `and table_name in (...)` 조건을 추가해 필요한 테이블만 추출하세요.

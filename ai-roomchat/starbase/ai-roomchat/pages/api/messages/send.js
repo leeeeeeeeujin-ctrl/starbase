@@ -1,13 +1,13 @@
-import { supabase } from '@/lib/rank/db'
+import { supabase } from '@/lib/rank/db';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
-    res.setHeader('Allow', ['POST'])
-    res.status(405).json({ error: 'Method Not Allowed' })
-    return
+    res.setHeader('Allow', ['POST']);
+    res.status(405).json({ error: 'Method Not Allowed' });
+    return;
   }
 
-  const payload = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body
+  const payload = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body;
 
   const {
     text,
@@ -21,11 +21,11 @@ export default async function handler(req, res) {
     target_role,
     metadata,
     user_id,
-  } = payload || {}
+  } = payload || {};
 
   if (!text || typeof text !== 'string' || !text.trim()) {
-    res.status(400).json({ error: 'Missing required fields' })
-    return
+    res.status(400).json({ error: 'Missing required fields' });
+    return;
   }
 
   const { data, error } = await supabase.rpc('send_rank_chat_message', {
@@ -40,14 +40,14 @@ export default async function handler(req, res) {
     p_target_role: target_role || null,
     p_metadata: metadata || null,
     p_user_id: user_id || null,
-  })
+  });
 
   if (error) {
-    res.status(500).json({ error: error.message })
-    return
+    res.status(500).json({ error: error.message });
+    return;
   }
 
-  res.status(200).json({ data })
+  res.status(200).json({ data });
 }
 
-// 
+//

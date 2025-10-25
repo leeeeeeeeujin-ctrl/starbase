@@ -1,77 +1,77 @@
-'use client'
+'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import RoleOccupancySummary from './RoleOccupancySummary'
-import styles from './CasualPrivateClient.module.css'
+import RoleOccupancySummary from './RoleOccupancySummary';
+import styles from './CasualPrivateClient.module.css';
 
-const STORAGE_PREFIX = 'casualPrivateRooms:'
+const STORAGE_PREFIX = 'casualPrivateRooms:';
 
 function generateCode(existingCodes) {
-  const codes = new Set(existingCodes)
+  const codes = new Set(existingCodes);
   while (true) {
-    const value = Math.floor(100000 + Math.random() * 900000).toString()
+    const value = Math.floor(100000 + Math.random() * 900000).toString();
     if (!codes.has(value)) {
-      return value
+      return value;
     }
   }
 }
 
 function cloneRooms(list) {
-  if (!Array.isArray(list)) return []
-  return list.map((room) => ({
+  if (!Array.isArray(list)) return [];
+  return list.map(room => ({
     ...room,
     slots: Array.isArray(room.slots)
-      ? room.slots.map((slot) => ({
+      ? room.slots.map(slot => ({
           ...slot,
           occupant: slot.occupant ? { ...slot.occupant } : null,
         }))
       : [],
-  }))
+  }));
 }
 
 function buildSlotTemplates(roleDetails, fallbackRoles) {
-  const templates = []
+  const templates = [];
   if (Array.isArray(roleDetails) && roleDetails.length) {
-    roleDetails.forEach((role) => {
-      const name = role?.name || '슬롯'
-      const count = Math.max(1, Number(role?.slot_count ?? role?.slotCount) || 1)
+    roleDetails.forEach(role => {
+      const name = role?.name || '슬롯';
+      const count = Math.max(1, Number(role?.slot_count ?? role?.slotCount) || 1);
       for (let index = 0; index < count; index += 1) {
-        templates.push({ id: `${name}-${index}`, role: name, index })
+        templates.push({ id: `${name}-${index}`, role: name, index });
       }
-    })
+    });
   } else if (Array.isArray(fallbackRoles) && fallbackRoles.length) {
-    fallbackRoles.forEach((role) => {
+    fallbackRoles.forEach(role => {
       const name =
         typeof role === 'string'
           ? role.trim()
           : typeof role?.name === 'string'
             ? role.name.trim()
-            : ''
-      if (!name) return
-      templates.push({ id: `${name}-0`, role: name, index: 0 })
-    })
+            : '';
+      if (!name) return;
+      templates.push({ id: `${name}-0`, role: name, index: 0 });
+    });
   }
 
   if (!templates.length) {
-    templates.push({ id: '참가자-0', role: '참가자', index: 0 })
+    templates.push({ id: '참가자-0', role: '참가자', index: 0 });
   }
 
-  return templates
+  return templates;
 }
 
 function normalizeRoom(room, templates, usedCodes) {
-  if (!room || typeof room !== 'object') return null
-  const slotMap = new Map()
+  if (!room || typeof room !== 'object') return null;
+  const slotMap = new Map();
   if (Array.isArray(room.slots)) {
-    room.slots.forEach((slot) => {
-      if (!slot || typeof slot !== 'object') return
-      slotMap.set(slot.id, slot)
-    })
+    room.slots.forEach(slot => {
+      if (!slot || typeof slot !== 'object') return;
+      slotMap.set(slot.id, slot);
+    });
   }
 
-  const slots = templates.map((template) => {
-    const existing = slotMap.get(template.id)
+  const slots = templates.map(template => {
+    const existing = slotMap.get(template.id);
     if (existing?.occupant && typeof existing.occupant === 'object' && existing.occupant.userId) {
       return {
         id: template.id,
@@ -85,7 +85,7 @@ function normalizeRoom(room, templates, usedCodes) {
           ready: Boolean(existing.occupant.ready),
           isHost: Boolean(existing.occupant.isHost),
         },
-      }
+      };
     }
 
     return {
@@ -93,37 +93,37 @@ function normalizeRoom(room, templates, usedCodes) {
       role: template.role,
       index: template.index,
       occupant: null,
-    }
-  })
+    };
+  });
 
-  const occupants = slots.filter((slot) => slot.occupant)
+  const occupants = slots.filter(slot => slot.occupant);
   if (!occupants.length) {
-    return null
+    return null;
   }
 
-  let hostId = room.hostId
-  if (!hostId || !occupants.some((slot) => slot.occupant.userId === hostId)) {
-    hostId = occupants[0].occupant.userId
+  let hostId = room.hostId;
+  if (!hostId || !occupants.some(slot => slot.occupant.userId === hostId)) {
+    hostId = occupants[0].occupant.userId;
   }
 
-  const slotsWithHost = slots.map((slot) => {
-    if (!slot.occupant) return slot
+  const slotsWithHost = slots.map(slot => {
+    if (!slot.occupant) return slot;
     return {
       ...slot,
       occupant: {
         ...slot.occupant,
         isHost: slot.occupant.userId === hostId,
       },
-    }
-  })
+    };
+  });
 
-  let code = typeof room.code === 'string' ? room.code.trim() : ''
+  let code = typeof room.code === 'string' ? room.code.trim() : '';
   while (!code || usedCodes.has(code)) {
-    code = generateCode(usedCodes)
+    code = generateCode(usedCodes);
   }
 
-  const name = typeof room.name === 'string' && room.name.trim().length ? room.name : '사설 방'
-  const createdAt = Number.isFinite(room.createdAt) ? room.createdAt : Date.now()
+  const name = typeof room.name === 'string' && room.name.trim().length ? room.name : '사설 방';
+  const createdAt = Number.isFinite(room.createdAt) ? room.createdAt : Date.now();
 
   return {
     id: room.id || `room-${Math.random().toString(36).slice(2, 9)}`,
@@ -132,51 +132,51 @@ function normalizeRoom(room, templates, usedCodes) {
     createdAt,
     hostId,
     slots: slotsWithHost,
-  }
+  };
 }
 
 function normalizeRooms(list, templates) {
-  const usedCodes = new Set()
-  if (!Array.isArray(list)) return []
-  const normalized = []
-  list.forEach((room) => {
-    const value = normalizeRoom(room, templates, usedCodes)
+  const usedCodes = new Set();
+  if (!Array.isArray(list)) return [];
+  const normalized = [];
+  list.forEach(room => {
+    const value = normalizeRoom(room, templates, usedCodes);
     if (value) {
-      usedCodes.add(value.code)
-      normalized.push(value)
+      usedCodes.add(value.code);
+      normalized.push(value);
     }
-  })
-  return normalized
+  });
+  return normalized;
 }
 
 function loadRooms(gameId, templates) {
-  if (!gameId || typeof window === 'undefined') return []
+  if (!gameId || typeof window === 'undefined') return [];
   try {
-    const raw = window.sessionStorage.getItem(`${STORAGE_PREFIX}${gameId}`)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    return normalizeRooms(parsed, templates)
+    const raw = window.sessionStorage.getItem(`${STORAGE_PREFIX}${gameId}`);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return normalizeRooms(parsed, templates);
   } catch (error) {
-    console.warn('사설 방 정보를 불러오지 못했습니다:', error)
-    return []
+    console.warn('사설 방 정보를 불러오지 못했습니다:', error);
+    return [];
   }
 }
 
 function saveRooms(gameId, rooms) {
-  if (!gameId || typeof window === 'undefined') return
+  if (!gameId || typeof window === 'undefined') return;
   try {
-    window.sessionStorage.setItem(`${STORAGE_PREFIX}${gameId}`, JSON.stringify(rooms))
+    window.sessionStorage.setItem(`${STORAGE_PREFIX}${gameId}`, JSON.stringify(rooms));
   } catch (error) {
-    console.warn('사설 방 정보를 저장하지 못했습니다:', error)
+    console.warn('사설 방 정보를 저장하지 못했습니다:', error);
   }
 }
 
 function clearRooms(gameId) {
-  if (!gameId || typeof window === 'undefined') return
+  if (!gameId || typeof window === 'undefined') return;
   try {
-    window.sessionStorage.removeItem(`${STORAGE_PREFIX}${gameId}`)
+    window.sessionStorage.removeItem(`${STORAGE_PREFIX}${gameId}`);
   } catch (error) {
-    console.warn('사설 방 정보를 초기화하지 못했습니다:', error)
+    console.warn('사설 방 정보를 초기화하지 못했습니다:', error);
   }
 }
 
@@ -188,23 +188,23 @@ function makeOccupant({ user, hero, isHost = false }) {
     heroImage: hero?.image_url || hero?.imageUrl || '',
     ready: false,
     isHost,
-  }
+  };
 }
 
 function formatMemberLabel(occupant) {
-  if (!occupant) return '비어 있음'
-  if (occupant.heroName) return occupant.heroName
-  if (occupant.userId) return `사용자 ${occupant.userId.slice(0, 6)}`
-  return '미지정 플레이어'
+  if (!occupant) return '비어 있음';
+  if (occupant.heroName) return occupant.heroName;
+  if (occupant.userId) return `사용자 ${occupant.userId.slice(0, 6)}`;
+  return '미지정 플레이어';
 }
 
 function formatRoomStatus(room) {
-  const filled = room.slots.filter((slot) => slot.occupant).length
-  return `${filled}/${room.slots.length}명 참여 중`
+  const filled = room.slots.filter(slot => slot.occupant).length;
+  return `${filled}/${room.slots.length}명 참여 중`;
 }
 
 function SlotPicker({ open, title, slots, onSelect, onClose }) {
-  if (!open) return null
+  if (!open) return null;
   return (
     <div className={styles.slotPickerBackdrop} role="dialog" aria-modal="true">
       <div className={styles.slotPicker}>
@@ -215,7 +215,7 @@ function SlotPicker({ open, title, slots, onSelect, onClose }) {
           </button>
         </header>
         <div className={styles.slotPickerGrid}>
-          {slots.map((slot) => (
+          {slots.map(slot => (
             <button
               key={slot.id}
               type="button"
@@ -229,7 +229,7 @@ function SlotPicker({ open, title, slots, onSelect, onClose }) {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 export default function CasualPrivateClient({
@@ -242,284 +242,294 @@ export default function CasualPrivateClient({
   onExit,
   onLaunch,
 }) {
-  const gameId = game?.id || ''
-  const slotTemplates = useMemo(() => buildSlotTemplates(roleDetails, roles), [roleDetails, roles])
-  const templateKey = useMemo(() => slotTemplates.map((slot) => slot.id).join('|'), [slotTemplates])
+  const gameId = game?.id || '';
+  const slotTemplates = useMemo(() => buildSlotTemplates(roleDetails, roles), [roleDetails, roles]);
+  const templateKey = useMemo(() => slotTemplates.map(slot => slot.id).join('|'), [slotTemplates]);
 
-  const [rooms, setRooms] = useState([])
-  const [error, setError] = useState('')
-  const [slotPicker, setSlotPicker] = useState({ open: false, kind: null, roomId: '' })
-
-  useEffect(() => {
-    if (!gameId) return
-    const initial = loadRooms(gameId, slotTemplates)
-    setRooms(initial)
-  }, [gameId, templateKey, slotTemplates])
+  const [rooms, setRooms] = useState([]);
+  const [error, setError] = useState('');
+  const [slotPicker, setSlotPicker] = useState({ open: false, kind: null, roomId: '' });
 
   useEffect(() => {
-    if (!gameId) return () => {}
+    if (!gameId) return;
+    const initial = loadRooms(gameId, slotTemplates);
+    setRooms(initial);
+  }, [gameId, templateKey, slotTemplates]);
+
+  useEffect(() => {
+    if (!gameId) return () => {};
     return () => {
-      clearRooms(gameId)
-    }
-  }, [gameId])
+      clearRooms(gameId);
+    };
+  }, [gameId]);
 
   const updateRooms = useCallback(
-    (mutator) => {
-      setRooms((prev) => {
-        const base = cloneRooms(prev)
-        const mutated = mutator(base)
-        const normalized = normalizeRooms(Array.isArray(mutated) ? mutated : [], slotTemplates)
-        saveRooms(gameId, normalized)
-        return normalized
-      })
+    mutator => {
+      setRooms(prev => {
+        const base = cloneRooms(prev);
+        const mutated = mutator(base);
+        const normalized = normalizeRooms(Array.isArray(mutated) ? mutated : [], slotTemplates);
+        saveRooms(gameId, normalized);
+        return normalized;
+      });
     },
-    [gameId, slotTemplates],
-  )
+    [gameId, slotTemplates]
+  );
 
   const viewerRoom = useMemo(() => {
-    if (!user?.id) return null
-    return rooms.find((room) =>
-      room.slots.some((slot) => slot.occupant && slot.occupant.userId === user.id),
-    )
-  }, [rooms, user?.id])
+    if (!user?.id) return null;
+    return rooms.find(room =>
+      room.slots.some(slot => slot.occupant && slot.occupant.userId === user.id)
+    );
+  }, [rooms, user?.id]);
 
   const viewerSlot = useMemo(() => {
-    if (!viewerRoom || !user?.id) return null
-    return viewerRoom.slots.find((slot) => slot.occupant?.userId === user.id) || null
-  }, [viewerRoom, user?.id])
+    if (!viewerRoom || !user?.id) return null;
+    return viewerRoom.slots.find(slot => slot.occupant?.userId === user.id) || null;
+  }, [viewerRoom, user?.id]);
 
-  const allFilled = viewerRoom ? viewerRoom.slots.every((slot) => slot.occupant) : false
+  const allFilled = viewerRoom ? viewerRoom.slots.every(slot => slot.occupant) : false;
   const allReady = viewerRoom
-    ? viewerRoom.slots.every((slot) => slot.occupant && slot.occupant.ready)
-    : false
-  const canStart = viewerRoom && user?.id && viewerRoom.hostId === user.id && allFilled && allReady
+    ? viewerRoom.slots.every(slot => slot.occupant && slot.occupant.ready)
+    : false;
+  const canStart = viewerRoom && user?.id && viewerRoom.hostId === user.id && allFilled && allReady;
 
   const availableRooms = useMemo(() => {
-    if (!rooms.length) return []
+    if (!rooms.length) return [];
     return rooms
-      .map((room) => ({
+      .map(room => ({
         ...room,
-        openSlots: room.slots.filter((slot) => !slot.occupant),
+        openSlots: room.slots.filter(slot => !slot.occupant),
       }))
-      .filter((room) => room.openSlots.length > 0)
-  }, [rooms])
+      .filter(room => room.openSlots.length > 0);
+  }, [rooms]);
 
   const handleRequireHero = useCallback(() => {
     if (!user?.id) {
-      setError('로그인이 필요합니다.')
-      return false
+      setError('로그인이 필요합니다.');
+      return false;
     }
     if (!myHero?.id) {
-      setError('먼저 사용할 캐릭터를 선택해 주세요.')
-      return false
+      setError('먼저 사용할 캐릭터를 선택해 주세요.');
+      return false;
     }
-    setError('')
-    return true
-  }, [myHero?.id, user?.id])
+    setError('');
+    return true;
+  }, [myHero?.id, user?.id]);
 
   const handleCreateRoom = useCallback(() => {
-    if (!handleRequireHero()) return
-    setSlotPicker({ open: true, kind: 'create', roomId: '' })
-  }, [handleRequireHero])
+    if (!handleRequireHero()) return;
+    setSlotPicker({ open: true, kind: 'create', roomId: '' });
+  }, [handleRequireHero]);
 
   const handleJoinRoom = useCallback(
-    (roomId) => {
-      if (!handleRequireHero()) return
-      const target = rooms.find((room) => room.id === roomId)
-      if (!target || target.slots.every((slot) => slot.occupant)) {
-        setError('참여할 수 있는 슬롯이 없습니다.')
-        return
+    roomId => {
+      if (!handleRequireHero()) return;
+      const target = rooms.find(room => room.id === roomId);
+      if (!target || target.slots.every(slot => slot.occupant)) {
+        setError('참여할 수 있는 슬롯이 없습니다.');
+        return;
       }
-      setError('')
-      setSlotPicker({ open: true, kind: 'join', roomId })
+      setError('');
+      setSlotPicker({ open: true, kind: 'join', roomId });
     },
-    [handleRequireHero, rooms],
-  )
+    [handleRequireHero, rooms]
+  );
 
   const handleSwitchSlot = useCallback(() => {
-    if (!viewerRoom) return
-    const empties = viewerRoom.slots.filter((slot) => !slot.occupant)
+    if (!viewerRoom) return;
+    const empties = viewerRoom.slots.filter(slot => !slot.occupant);
     if (!empties.length) {
-      setError('이동할 수 있는 빈 슬롯이 없습니다.')
-      return
+      setError('이동할 수 있는 빈 슬롯이 없습니다.');
+      return;
     }
-    setError('')
-    setSlotPicker({ open: true, kind: 'switch', roomId: viewerRoom.id })
-  }, [viewerRoom])
+    setError('');
+    setSlotPicker({ open: true, kind: 'switch', roomId: viewerRoom.id });
+  }, [viewerRoom]);
 
   const closeSlotPicker = useCallback(() => {
-    setSlotPicker({ open: false, kind: null, roomId: '' })
-  }, [])
+    setSlotPicker({ open: false, kind: null, roomId: '' });
+  }, []);
 
   const handleLeaveRoom = useCallback(() => {
-    if (!viewerRoom || !user?.id) return
-    updateRooms((prev) =>
+    if (!viewerRoom || !user?.id) return;
+    updateRooms(prev =>
       prev
-        .map((room) => ({
+        .map(room => ({
           ...room,
-          slots: room.slots.map((slot) =>
-            slot.occupant?.userId === user.id ? { ...slot, occupant: null } : slot,
+          slots: room.slots.map(slot =>
+            slot.occupant?.userId === user.id ? { ...slot, occupant: null } : slot
           ),
         }))
-        .filter((room) => room.slots.some((slot) => slot.occupant)),
-    )
-  }, [updateRooms, user?.id, viewerRoom])
+        .filter(room => room.slots.some(slot => slot.occupant))
+    );
+  }, [updateRooms, user?.id, viewerRoom]);
 
   const handleToggleReady = useCallback(() => {
-    if (!viewerRoom || !user?.id) return
-    updateRooms((prev) =>
-      prev.map((room) => {
-        if (room.id !== viewerRoom.id) return room
+    if (!viewerRoom || !user?.id) return;
+    updateRooms(prev =>
+      prev.map(room => {
+        if (room.id !== viewerRoom.id) return room;
         return {
           ...room,
-          slots: room.slots.map((slot) => {
-            if (!slot.occupant || slot.occupant.userId !== user.id) return slot
+          slots: room.slots.map(slot => {
+            if (!slot.occupant || slot.occupant.userId !== user.id) return slot;
             return {
               ...slot,
               occupant: { ...slot.occupant, ready: !slot.occupant.ready },
-            }
+            };
           }),
-        }
-      }),
-    )
-  }, [updateRooms, user?.id, viewerRoom])
+        };
+      })
+    );
+  }, [updateRooms, user?.id, viewerRoom]);
 
   const handleKick = useCallback(
-    (targetId) => {
-      if (!viewerRoom || viewerRoom.hostId !== user?.id) return
-      updateRooms((prev) =>
+    targetId => {
+      if (!viewerRoom || viewerRoom.hostId !== user?.id) return;
+      updateRooms(prev =>
         prev
-          .map((room) => {
-            if (room.id !== viewerRoom.id) return room
+          .map(room => {
+            if (room.id !== viewerRoom.id) return room;
             return {
               ...room,
-              slots: room.slots.map((slot) =>
-                slot.occupant?.userId === targetId ? { ...slot, occupant: null } : slot,
+              slots: room.slots.map(slot =>
+                slot.occupant?.userId === targetId ? { ...slot, occupant: null } : slot
               ),
-            }
+            };
           })
-          .filter((room) => room.slots.some((slot) => slot.occupant)),
-      )
+          .filter(room => room.slots.some(slot => slot.occupant))
+      );
     },
-    [updateRooms, user?.id, viewerRoom],
-  )
+    [updateRooms, user?.id, viewerRoom]
+  );
 
   const handleStart = useCallback(() => {
-    if (!viewerRoom || !canStart) return
-    onLaunch?.({ room: viewerRoom })
-    updateRooms((prev) => prev.filter((room) => room.id !== viewerRoom.id))
-    clearRooms(gameId)
-  }, [canStart, gameId, onLaunch, updateRooms, viewerRoom])
+    if (!viewerRoom || !canStart) return;
+    onLaunch?.({ room: viewerRoom });
+    updateRooms(prev => prev.filter(room => room.id !== viewerRoom.id));
+    clearRooms(gameId);
+  }, [canStart, gameId, onLaunch, updateRooms, viewerRoom]);
 
   const handleExitClick = useCallback(() => {
-    clearRooms(gameId)
-    onExit?.()
-  }, [gameId, onExit])
+    clearRooms(gameId);
+    onExit?.();
+  }, [gameId, onExit]);
 
   const handleSelectSlot = useCallback(
-    (slotId) => {
-      closeSlotPicker()
-      if (!user?.id || !myHero?.id) return
+    slotId => {
+      closeSlotPicker();
+      if (!user?.id || !myHero?.id) return;
       if (slotPicker.kind === 'create') {
-        updateRooms((prev) => {
-          const base = cloneRooms(prev).map((room) => ({
+        updateRooms(prev => {
+          const base = cloneRooms(prev).map(room => ({
             ...room,
-            slots: room.slots.map((slot) =>
-              slot.occupant?.userId === user.id ? { ...slot, occupant: null } : slot,
+            slots: room.slots.map(slot =>
+              slot.occupant?.userId === user.id ? { ...slot, occupant: null } : slot
             ),
-          }))
-          const codes = base.map((room) => room.code)
-          const roomId = `casual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+          }));
+          const codes = base.map(room => room.code);
+          const roomId = `casual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
           const newRoom = {
             id: roomId,
             code: generateCode(codes),
             name: `${game?.name || '사설 방'} 팀`,
             createdAt: Date.now(),
             hostId: user.id,
-            slots: slotTemplates.map((template) => {
+            slots: slotTemplates.map(template => {
               if (template.id === slotId) {
                 return {
                   ...template,
                   occupant: makeOccupant({ user, hero: myHero, isHost: true }),
-                }
+                };
               }
-              return { ...template, occupant: null }
+              return { ...template, occupant: null };
             }),
-          }
-          return [...base, newRoom]
-        })
-        return
+          };
+          return [...base, newRoom];
+        });
+        return;
       }
 
       if (slotPicker.kind === 'join') {
-        updateRooms((prev) => {
-          const base = cloneRooms(prev).map((room) => ({
+        updateRooms(prev => {
+          const base = cloneRooms(prev).map(room => ({
             ...room,
-            slots: room.slots.map((slot) =>
-              slot.occupant?.userId === user.id ? { ...slot, occupant: null } : slot,
+            slots: room.slots.map(slot =>
+              slot.occupant?.userId === user.id ? { ...slot, occupant: null } : slot
             ),
-          }))
-          return base.map((room) => {
-            if (room.id !== slotPicker.roomId) return room
+          }));
+          return base.map(room => {
+            if (room.id !== slotPicker.roomId) return room;
             return {
               ...room,
-              slots: room.slots.map((slot) => {
-                if (slot.id !== slotId || slot.occupant) return slot
+              slots: room.slots.map(slot => {
+                if (slot.id !== slotId || slot.occupant) return slot;
                 return {
                   ...slot,
                   occupant: makeOccupant({ user, hero: myHero, isHost: false }),
-                }
+                };
               }),
-            }
-          })
-        })
-        return
+            };
+          });
+        });
+        return;
       }
 
       if (slotPicker.kind === 'switch') {
-        if (!viewerRoom) return
-        updateRooms((prev) =>
-          prev.map((room) => {
-            if (room.id !== viewerRoom.id) return room
-            const currentSlot = room.slots.find((slot) => slot.occupant?.userId === user.id)
-            if (!currentSlot) return room
+        if (!viewerRoom) return;
+        updateRooms(prev =>
+          prev.map(room => {
+            if (room.id !== viewerRoom.id) return room;
+            const currentSlot = room.slots.find(slot => slot.occupant?.userId === user.id);
+            if (!currentSlot) return room;
             return {
               ...room,
-              slots: room.slots.map((slot) => {
+              slots: room.slots.map(slot => {
                 if (slot.id === currentSlot.id) {
-                  return { ...slot, occupant: null }
+                  return { ...slot, occupant: null };
                 }
                 if (slot.id === slotId && !slot.occupant) {
                   return {
                     ...slot,
                     occupant: { ...currentSlot.occupant, ready: false },
-                  }
+                  };
                 }
-                return slot
+                return slot;
               }),
-            }
-          }),
-        )
+            };
+          })
+        );
       }
     },
-    [closeSlotPicker, game?.name, myHero, slotPicker.kind, slotPicker.roomId, slotTemplates, updateRooms, user, viewerRoom],
-  )
+    [
+      closeSlotPicker,
+      game?.name,
+      myHero,
+      slotPicker.kind,
+      slotPicker.roomId,
+      slotTemplates,
+      updateRooms,
+      user,
+      viewerRoom,
+    ]
+  );
 
   const slotPickerSlots = useMemo(() => {
-    if (!slotPicker.open) return []
+    if (!slotPicker.open) return [];
     if (slotPicker.kind === 'create') {
-      return slotTemplates
+      return slotTemplates;
     }
     if (slotPicker.kind === 'join') {
-      const room = rooms.find((value) => value.id === slotPicker.roomId)
-      if (!room) return []
-      return room.slots.filter((slot) => !slot.occupant)
+      const room = rooms.find(value => value.id === slotPicker.roomId);
+      if (!room) return [];
+      return room.slots.filter(slot => !slot.occupant);
     }
     if (slotPicker.kind === 'switch' && viewerRoom) {
-      return viewerRoom.slots.filter((slot) => !slot.occupant)
+      return viewerRoom.slots.filter(slot => !slot.occupant);
     }
-    return []
-  }, [rooms, slotPicker.kind, slotPicker.open, slotPicker.roomId, slotTemplates, viewerRoom])
+    return [];
+  }, [rooms, slotPicker.kind, slotPicker.open, slotPicker.roomId, slotTemplates, viewerRoom]);
 
   return (
     <div className={styles.page}>
@@ -558,10 +568,12 @@ export default function CasualPrivateClient({
           <section className={styles.card}>
             <h2 className={styles.sectionTitle}>열린 방 목록</h2>
             {availableRooms.length === 0 ? (
-              <p className={styles.emptyText}>참여 가능한 사설 방이 없습니다. 새로 만들어 보세요.</p>
+              <p className={styles.emptyText}>
+                참여 가능한 사설 방이 없습니다. 새로 만들어 보세요.
+              </p>
             ) : (
               <ul className={styles.roomList}>
-                {availableRooms.map((room) => (
+                {availableRooms.map(room => (
                   <li key={room.id} className={styles.roomItem}>
                     <div>
                       <p className={styles.roomName}>{room.name}</p>
@@ -600,9 +612,9 @@ export default function CasualPrivateClient({
           </header>
 
           <div className={styles.slotGrid}>
-            {viewerRoom.slots.map((slot) => {
-              const occupant = slot.occupant
-              const isViewer = occupant?.userId === user?.id
+            {viewerRoom.slots.map(slot => {
+              const occupant = slot.occupant;
+              const isViewer = occupant?.userId === user?.id;
               return (
                 <div
                   key={slot.id}
@@ -615,9 +627,7 @@ export default function CasualPrivateClient({
                       <span className={styles.slotStatus}>
                         {occupant.ready ? '준비 완료' : '대기 중'}
                       </span>
-                      {occupant.isHost ? (
-                        <span className={styles.slotBadge}>방장</span>
-                      ) : null}
+                      {occupant.isHost ? <span className={styles.slotBadge}>방장</span> : null}
                       {viewerRoom.hostId === user?.id && occupant.userId !== user?.id ? (
                         <button
                           type="button"
@@ -641,7 +651,7 @@ export default function CasualPrivateClient({
                     </button>
                   ) : null}
                 </div>
-              )
+              );
             })}
           </div>
 
@@ -649,7 +659,12 @@ export default function CasualPrivateClient({
             <p className={styles.footerHint}>
               모든 슬롯이 채워지고 모두 준비 상태가 되어야 전투를 시작할 수 있습니다.
             </p>
-            <button type="button" className={styles.primaryButton} onClick={handleStart} disabled={!canStart}>
+            <button
+              type="button"
+              className={styles.primaryButton}
+              onClick={handleStart}
+              disabled={!canStart}
+            >
               게임 시작
             </button>
           </footer>
@@ -664,5 +679,5 @@ export default function CasualPrivateClient({
         onClose={closeSlotPicker}
       />
     </div>
-  )
+  );
 }

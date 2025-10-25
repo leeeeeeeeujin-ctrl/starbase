@@ -1,7 +1,7 @@
-'use client'
+'use client';
 
-import RosterContainer from '../components/roster/RosterContainer'
+import RosterContainer from '../components/roster/RosterContainer';
 
 export default function RosterPage() {
-  return <RosterContainer />
+  return <RosterContainer />;
 }

@@ -37,12 +37,12 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: '세션 ID가 필요합니다.' });
     }
 
-  const data = await getTestSimulation(supabaseAdmin, sessionId);
+    const data = await getTestSimulation(supabaseAdmin, sessionId);
     return res.status(200).json(data);
   } catch (error) {
     console.error('시뮬레이션 조회 오류:', error);
-    return res.status(500).json({ 
-      error: error.message || '조회 실패' 
+    return res.status(500).json({
+      error: error.message || '조회 실패',
     });
   }
 }

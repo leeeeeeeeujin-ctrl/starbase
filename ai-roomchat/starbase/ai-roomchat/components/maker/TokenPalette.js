@@ -1,22 +1,29 @@
-import React, { useMemo, useState } from 'react'
-
+import { useMemo, useState } from 'react';
 export default function TokenPalette({ onInsert }) {
-  const [slot, setSlot] = useState('1')
-  const [prop, setProp] = useState('name')
-  const [ability, setAbility] = useState('1')
+  const [slot, setSlot] = useState('1');
+  const [prop, setProp] = useState('name');
+  const [ability, setAbility] = useState('1');
 
   const token = useMemo(() => {
     if (prop === 'ability') {
-      return `{{slot${slot}.ability${ability}}}`
+      return `{{slot${slot}.ability${ability}}}`;
     }
-    return `{{slot${slot}.${prop}}}`
-  }, [slot, prop, ability])
+    return `{{slot${slot}.${prop}}}`;
+  }, [slot, prop, ability]);
 
   return (
-    <div style={{ display: 'grid', gap: 8, borderTop: '1px solid #e5e7eb', marginTop: 12, paddingTop: 12 }}>
+    <div
+      style={{
+        display: 'grid',
+        gap: 8,
+        borderTop: '1px solid #e5e7eb',
+        marginTop: 12,
+        paddingTop: 12,
+      }}
+    >
       <div style={{ fontWeight: 700 }}>토큰 팔레트</div>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-        <select value={slot} onChange={(event) => setSlot(event.target.value)}>
+        <select value={slot} onChange={event => setSlot(event.target.value)}>
           {Array.from({ length: 12 }, (_, index) => (
             <option key={index + 1} value={index + 1}>
               슬롯
@@ -24,13 +31,13 @@ export default function TokenPalette({ onInsert }) {
             </option>
           ))}
         </select>
-        <select value={prop} onChange={(event) => setProp(event.target.value)}>
+        <select value={prop} onChange={event => setProp(event.target.value)}>
           <option value="name">이름</option>
           <option value="description">설명</option>
           <option value="ability">능력</option>
         </select>
         {prop === 'ability' && (
-          <select value={ability} onChange={(event) => setAbility(event.target.value)}>
+          <select value={ability} onChange={event => setAbility(event.target.value)}>
             {Array.from({ length: 12 }, (_, index) => (
               <option key={index + 1} value={index + 1}>
                 능력
@@ -64,5 +71,5 @@ export default function TokenPalette({ onInsert }) {
         </button>
       </div>
     </div>
-  )
+  );
 }

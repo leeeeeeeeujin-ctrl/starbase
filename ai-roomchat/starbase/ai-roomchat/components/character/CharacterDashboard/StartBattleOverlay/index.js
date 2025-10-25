@@ -1,11 +1,10 @@
-import React, { useMemo } from 'react'
-
-import { createOpponentCards } from '../../../../utils/characterStats'
-import { baseStyles } from './styles'
-import MatchingStep from './MatchingStep'
-import PreviewStep from './PreviewStep'
-import ReadyStep from './ReadyStep'
-import { useOverlaySteps } from './useOverlaySteps'
+import { useMemo } from 'react';
+import { createOpponentCards } from '../../../../utils/characterStats';
+import { baseStyles } from './styles';
+import MatchingStep from './MatchingStep';
+import PreviewStep from './PreviewStep';
+import ReadyStep from './ReadyStep';
+import { useOverlaySteps } from './useOverlaySteps';
 
 export default function StartBattleOverlay({
   open,
@@ -18,39 +17,39 @@ export default function StartBattleOverlay({
   onClose,
   onBeginSession,
 }) {
-  const { step, setStep, progress, reset } = useOverlaySteps(open)
+  const { step, setStep, progress, reset } = useOverlaySteps(open);
 
   const opponentCards = useMemo(
     () => createOpponentCards(scoreboardRows, heroLookup, hero?.id),
-    [scoreboardRows, heroLookup, hero?.id],
-  )
+    [scoreboardRows, heroLookup, hero?.id]
+  );
 
-  if (!open) return null
+  if (!open) return null;
 
-  const gameName = selectedGame?.name || selectedEntry?.game?.name || '참여 게임'
+  const gameName = selectedGame?.name || selectedEntry?.game?.name || '참여 게임';
 
   const handleCancel = () => {
-    onClose?.()
-    reset()
-  }
+    onClose?.();
+    reset();
+  };
 
   const handleStart = () => {
     if (!selectedGameId) {
-      alert('먼저 게임을 선택하세요.')
-      return
+      alert('먼저 게임을 선택하세요.');
+      return;
     }
-    setStep('matching')
-  }
+    setStep('matching');
+  };
 
   const handleReadyBack = () => {
-    onClose?.()
-    reset()
-  }
+    onClose?.();
+    reset();
+  };
 
   const handleBegin = () => {
-    onBeginSession?.()
-    reset()
-  }
+    onBeginSession?.();
+    reset();
+  };
 
   return (
     <div style={baseStyles.overlay}>
@@ -58,7 +57,11 @@ export default function StartBattleOverlay({
         <header style={baseStyles.header}>
           <div>
             <h2 style={baseStyles.title}>
-              {step === 'preview' ? '매칭 준비' : step === 'matching' ? '참가자 매칭 중' : '모두 준비 완료'}
+              {step === 'preview'
+                ? '매칭 준비'
+                : step === 'matching'
+                  ? '참가자 매칭 중'
+                  : '모두 준비 완료'}
             </h2>
             <p style={baseStyles.subtitle}>{gameName}</p>
           </div>
@@ -84,7 +87,7 @@ export default function StartBattleOverlay({
         {step === 'ready' ? <ReadyStep onBack={handleReadyBack} onConfirm={handleBegin} /> : null}
       </div>
     </div>
-  )
+  );
 }
 
 // Overlay shell that walks the player through preview, matching, and ready steps before battle.

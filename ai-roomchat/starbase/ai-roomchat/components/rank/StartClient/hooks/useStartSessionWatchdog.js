@@ -1,11 +1,11 @@
-'use client'
+'use client';
 
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react';
 
-const CHECK_INTERVAL_MS = 15 * 1000
-const DEADLINE_GRACE_MS = 15 * 1000
-const MIN_IDLE_MS = 4 * 60 * 1000
-const DEFAULT_BASE_SECONDS = 60
+const CHECK_INTERVAL_MS = 15 * 1000;
+const DEADLINE_GRACE_MS = 15 * 1000;
+const MIN_IDLE_MS = 4 * 60 * 1000;
+const DEFAULT_BASE_SECONDS = 60;
 
 /**
  * 세션이 장시간 정체되거나 비정상 상태에 빠졌는지 감시해 자동으로 무효 처리합니다.
@@ -41,8 +41,8 @@ export function useStartSessionWatchdog({
   sessionInfo,
   gameId,
 }) {
-  const lastProgressRef = useRef(Date.now())
-  const triggeredRef = useRef(false)
+  const lastProgressRef = useRef(Date.now());
+  const triggeredRef = useRef(false);
   const stateRef = useRef({
     turn,
     turnDeadline,
@@ -50,14 +50,14 @@ export function useStartSessionWatchdog({
     gameVoided,
     currentNodeId,
     sessionId: sessionInfo?.id || null,
-  })
+  });
 
   const idleThresholdMs = useMemo(() => {
     const baseSeconds = Number.isFinite(Number(turnTimerSeconds))
       ? Math.max(10, Number(turnTimerSeconds))
-      : DEFAULT_BASE_SECONDS
-    return Math.max(MIN_IDLE_MS, baseSeconds * 4 * 1000)
-  }, [turnTimerSeconds])
+      : DEFAULT_BASE_SECONDS;
+    return Math.max(MIN_IDLE_MS, baseSeconds * 4 * 1000);
+  }, [turnTimerSeconds]);
 
   useEffect(() => {
     stateRef.current = {
@@ -67,43 +67,43 @@ export function useStartSessionWatchdog({
       gameVoided,
       currentNodeId,
       sessionId: sessionInfo?.id || null,
-    }
-  }, [turn, turnDeadline, isAdvancing, gameVoided, currentNodeId, sessionInfo?.id])
+    };
+  }, [turn, turnDeadline, isAdvancing, gameVoided, currentNodeId, sessionInfo?.id]);
 
   useEffect(() => {
-    if (!enabled) return
-    lastProgressRef.current = Date.now()
-    triggeredRef.current = false
-  }, [enabled, turn, historyVersion, logsLength, timelineVersion])
+    if (!enabled) return;
+    lastProgressRef.current = Date.now();
+    triggeredRef.current = false;
+  }, [enabled, turn, historyVersion, logsLength, timelineVersion]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return undefined
-    if (!enabled) return undefined
+    if (typeof window === 'undefined') return undefined;
+    if (!enabled) return undefined;
 
     const check = () => {
-      const state = stateRef.current
+      const state = stateRef.current;
       if (state.gameVoided || !state.currentNodeId) {
-        return
+        return;
       }
       if (state.isAdvancing) {
-        return
+        return;
       }
 
-      const now = Date.now()
-      const idleFor = now - lastProgressRef.current
+      const now = Date.now();
+      const idleFor = now - lastProgressRef.current;
       if (idleFor < idleThresholdMs) {
-        return
+        return;
       }
 
-      const deadline = state.turnDeadline
+      const deadline = state.turnDeadline;
       if (deadline && now <= deadline + DEADLINE_GRACE_MS) {
-        return
+        return;
       }
 
       if (triggeredRef.current) {
-        return
+        return;
       }
-      triggeredRef.current = true
+      triggeredRef.current = true;
 
       try {
         if (typeof recordTimelineEvents === 'function') {
@@ -127,11 +127,11 @@ export function useStartSessionWatchdog({
                 },
               },
             ],
-            { turnNumber: state.turn },
-          )
+            { turnNumber: state.turn }
+          );
         }
       } catch (error) {
-        console.warn('[useStartSessionWatchdog] timeline logging failed:', error)
+        console.warn('[useStartSessionWatchdog] timeline logging failed:', error);
       }
 
       voidSession('진행이 장시간 멈춰 세션이 무효 처리되었습니다.', {
@@ -139,14 +139,14 @@ export function useStartSessionWatchdog({
         sessionId: state.sessionId,
         gameId,
         note: `idle_ms=${idleFor}`,
-      })
-    }
+      });
+    };
 
-    const intervalId = window.setInterval(check, CHECK_INTERVAL_MS)
+    const intervalId = window.setInterval(check, CHECK_INTERVAL_MS);
     return () => {
-      window.clearInterval(intervalId)
-    }
-  }, [enabled, idleThresholdMs, voidSession, recordTimelineEvents, gameId])
+      window.clearInterval(intervalId);
+    };
+  }, [enabled, idleThresholdMs, voidSession, recordTimelineEvents, gameId]);
 }
 
-export default useStartSessionWatchdog
+export default useStartSessionWatchdog;

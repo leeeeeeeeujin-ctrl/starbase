@@ -1,71 +1,71 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { useRouter } from 'next/router'
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/router';
 
-import LobbyLayout from '../components/lobby/LobbyLayout'
-import LobbyHeader from '../components/lobby/LobbyHeader'
-import TabBar from '../components/lobby/TabBar'
-import GameSearchPanel from '../components/lobby/GameSearchPanel'
-import MyGamesPanel from '../components/lobby/MyGamesPanel'
-import CharacterStatsPanel from '../components/lobby/CharacterStatsPanel'
-import useGameBrowser from '../components/lobby/hooks/useGameBrowser'
-import { LOBBY_TABS, NAV_LINKS } from '../components/lobby/constants'
-import useLobbyStats from '../components/lobby/hooks/useLobbyStats'
-import { readHeroSelection } from '../lib/heroes/selectedHeroStorage'
+import LobbyLayout from '../components/lobby/LobbyLayout';
+import LobbyHeader from '../components/lobby/LobbyHeader';
+import TabBar from '../components/lobby/TabBar';
+import GameSearchPanel from '../components/lobby/GameSearchPanel';
+import MyGamesPanel from '../components/lobby/MyGamesPanel';
+import CharacterStatsPanel from '../components/lobby/CharacterStatsPanel';
+import useGameBrowser from '../components/lobby/hooks/useGameBrowser';
+import { LOBBY_TABS, NAV_LINKS } from '../components/lobby/constants';
+import useLobbyStats from '../components/lobby/hooks/useLobbyStats';
+import { readHeroSelection } from '../lib/heroes/selectedHeroStorage';
 
 export default function Lobby() {
-  const router = useRouter()
-  const { heroId: heroIdParam } = router.query
-  const [activeTab, setActiveTab] = useState('games')
-  const [storedHeroId, setStoredHeroId] = useState('')
-  const [backgroundUrl, setBackgroundUrl] = useState('')
+  const router = useRouter();
+  const { heroId: heroIdParam } = router.query;
+  const [activeTab, setActiveTab] = useState('games');
+  const [storedHeroId, setStoredHeroId] = useState('');
+  const [backgroundUrl, setBackgroundUrl] = useState('');
 
   const heroId = useMemo(() => {
-    if (Array.isArray(heroIdParam)) return heroIdParam[0] || ''
-    return heroIdParam || ''
-  }, [heroIdParam])
+    if (Array.isArray(heroIdParam)) return heroIdParam[0] || '';
+    return heroIdParam || '';
+  }, [heroIdParam]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    const selection = readHeroSelection()
-    setStoredHeroId(selection?.heroId || '')
+    if (typeof window === 'undefined') return;
+    const selection = readHeroSelection();
+    setStoredHeroId(selection?.heroId || '');
     try {
-      const savedBackground = window.localStorage.getItem('selectedHeroBackgroundUrl') || ''
-      setBackgroundUrl(savedBackground)
+      const savedBackground = window.localStorage.getItem('selectedHeroBackgroundUrl') || '';
+      setBackgroundUrl(savedBackground);
     } catch (error) {
-      console.error('로비 배경 정보를 불러오지 못했습니다:', error)
+      console.error('로비 배경 정보를 불러오지 못했습니다:', error);
     }
-  }, [])
+  }, []);
 
-  const returnHeroId = heroId || storedHeroId
+  const returnHeroId = heroId || storedHeroId;
 
-  const gameBrowser = useGameBrowser({ enabled: activeTab === 'games', mode: 'public' })
-  const myGamesBrowser = useGameBrowser({ enabled: activeTab === 'my-games', mode: 'owned' })
-  const stats = useLobbyStats({ heroId, enabled: activeTab === 'stats' })
+  const gameBrowser = useGameBrowser({ enabled: activeTab === 'games', mode: 'public' });
+  const myGamesBrowser = useGameBrowser({ enabled: activeTab === 'my-games', mode: 'owned' });
+  const stats = useLobbyStats({ heroId, enabled: activeTab === 'stats' });
   useEffect(() => {
-    const { tab } = router.query || {}
+    const { tab } = router.query || {};
     if (typeof tab === 'string') {
       if (tab === 'games' || tab === 'my-games' || tab === 'stats') {
-        setActiveTab(tab)
+        setActiveTab(tab);
       }
     }
-  }, [router.query?.tab])
+  }, [router.query?.tab]);
 
   const handleBack = useCallback(() => {
     if (returnHeroId) {
-      router.replace(`/character/${returnHeroId}`)
+      router.replace(`/character/${returnHeroId}`);
     } else {
-      router.replace('/roster')
+      router.replace('/roster');
     }
-  }, [returnHeroId, router])
+  }, [returnHeroId, router]);
 
   const handleEnterGame = useCallback(
     (game, role) => {
-      if (!game) return
-      const target = role ? `${game.id}?role=${encodeURIComponent(role)}` : game.id
-      router.push(`/rank/${target}`)
+      if (!game) return;
+      const target = role ? `${game.id}?role=${encodeURIComponent(role)}` : game.id;
+      router.push(`/rank/${target}`);
     },
-    [router],
-  )
+    [router]
+  );
 
   return (
     <LobbyLayout
@@ -143,6 +143,6 @@ export default function Lobby() {
         />
       )}
     </LobbyLayout>
-  )
+  );
 }
 //

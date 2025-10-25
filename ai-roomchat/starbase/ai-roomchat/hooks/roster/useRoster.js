@@ -1,18 +1,18 @@
-'use client'
+'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { useRouter } from 'next/router'
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/router';
 
-import { supabase } from '../../lib/supabase'
-import { withTable } from '../../lib/supabaseTables'
+import { supabase } from '../../lib/supabase';
+import { withTable } from '../../lib/supabaseTables';
 import {
   clearHeroSelection,
   persistHeroOwner,
   readHeroSelection,
-} from '../../lib/heroes/selectedHeroStorage'
+} from '../../lib/heroes/selectedHeroStorage';
 
-const DEFAULT_PROFILE_NAME = '사용자'
-const DEFAULT_HERO_NAME = '이름 없는 영웅'
+const DEFAULT_PROFILE_NAME = '사용자';
+const DEFAULT_HERO_NAME = '이름 없는 영웅';
 
 function normalizeHero(row) {
   if (!row || typeof row !== 'object') {
@@ -22,10 +22,10 @@ function normalizeHero(row) {
       image_url: null,
       created_at: null,
       owner_id: null,
-    }
+    };
   }
 
-  const rawName = typeof row.name === 'string' ? row.name.trim() : ''
+  const rawName = typeof row.name === 'string' ? row.name.trim() : '';
 
   return {
     ...row,
@@ -34,7 +34,7 @@ function normalizeHero(row) {
     image_url: row.image_url || null,
     created_at: row.created_at || null,
     owner_id: row.owner_id || null,
-  }
+  };
 }
 
 function deriveProfile(user) {
@@ -42,160 +42,157 @@ function deriveProfile(user) {
     return {
       displayName: DEFAULT_PROFILE_NAME,
       avatarUrl: null,
-    }
+    };
   }
 
-  const metadata = user.user_metadata || {}
+  const metadata = user.user_metadata || {};
   const displayName =
     metadata.full_name ||
     metadata.name ||
     metadata.nickname ||
     (typeof user.email === 'string' ? user.email.split('@')[0] : '') ||
-    DEFAULT_PROFILE_NAME
-  const avatarUrl = metadata.avatar_url || metadata.picture || metadata.avatar || null
+    DEFAULT_PROFILE_NAME;
+  const avatarUrl = metadata.avatar_url || metadata.picture || metadata.avatar || null;
 
-  const trimmed = typeof displayName === 'string' ? displayName.trim() : ''
+  const trimmed = typeof displayName === 'string' ? displayName.trim() : '';
 
   return {
     displayName: trimmed || DEFAULT_PROFILE_NAME,
     avatarUrl,
-  }
+  };
 }
 
 export function useRoster({ onUnauthorized } = {}) {
-  const router = useRouter()
-  const isMounted = useRef(true)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [heroes, setHeroes] = useState([])
+  const router = useRouter();
+  const isMounted = useRef(true);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [heroes, setHeroes] = useState([]);
   const [{ displayName, avatarUrl }, setProfile] = useState({
     displayName: DEFAULT_PROFILE_NAME,
     avatarUrl: null,
-  })
+  });
 
   useEffect(() => {
     return () => {
-      isMounted.current = false
-    }
-  }, [])
+      isMounted.current = false;
+    };
+  }, []);
 
   const loadRoster = useCallback(async () => {
-    if (!isMounted.current) return
+    if (!isMounted.current) return;
 
-    setLoading(true)
-    setError('')
+    setLoading(true);
+    setError('');
 
     try {
-      const href = typeof window !== 'undefined' ? window.location.href : ''
+      const href = typeof window !== 'undefined' ? window.location.href : '';
 
       if (href.includes('code=')) {
         try {
-          const currentUrl = new URL(href)
-          const authCode = currentUrl.searchParams.get('code')
+          const currentUrl = new URL(href);
+          const authCode = currentUrl.searchParams.get('code');
           if (authCode) {
-            const result = await supabase.auth.exchangeCodeForSession({ authCode })
+            const result = await supabase.auth.exchangeCodeForSession({ authCode });
             if (result?.error) {
-              throw result.error
+              throw result.error;
             }
           }
           if (typeof window !== 'undefined') {
-            const cleanUrl = href.split('?')[0]
-            window.history.replaceState({}, document.title, cleanUrl)
+            const cleanUrl = href.split('?')[0];
+            window.history.replaceState({}, document.title, cleanUrl);
           }
         } catch (exchangeError) {
-          console.error('Failed to process auth callback for roster:', exchangeError)
-          if (!isMounted.current) return
-          setError('로그인 세션을 복구하지 못했습니다. 다시 시도해 주세요.')
-          setLoading(false)
-          return
+          console.error('Failed to process auth callback for roster:', exchangeError);
+          if (!isMounted.current) return;
+          setError('로그인 세션을 복구하지 못했습니다. 다시 시도해 주세요.');
+          setLoading(false);
+          return;
         }
       }
 
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
-      if (!isMounted.current) return
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (!isMounted.current) return;
 
       if (sessionError) {
-        setError(sessionError.message)
-        setLoading(false)
-        return
+        setError(sessionError.message);
+        setLoading(false);
+        return;
       }
 
-      let user = sessionData?.session?.user || null
+      let user = sessionData?.session?.user || null;
 
       if (!user) {
         const {
           data: { user: fetchedUser },
           error: authError,
-        } = await supabase.auth.getUser()
+        } = await supabase.auth.getUser();
 
-        if (!isMounted.current) return
+        if (!isMounted.current) return;
 
         if (authError) {
-          setError(authError.message)
-          setLoading(false)
-          return
+          setError(authError.message);
+          setLoading(false);
+          return;
         }
 
-        user = fetchedUser || null
+        user = fetchedUser || null;
       }
 
       if (!user) {
-        setLoading(false)
+        setLoading(false);
         if (typeof onUnauthorized === 'function') {
-          onUnauthorized()
+          onUnauthorized();
         } else {
-          router.replace('/')
+          router.replace('/');
         }
-        return
+        return;
       }
 
-      setProfile(deriveProfile(user))
+      setProfile(deriveProfile(user));
 
-      persistHeroOwner(user.id)
+      persistHeroOwner(user.id);
 
-      const { data, error: heroesError } = await withTable(
-        supabase,
-        'heroes',
-        (table) =>
-          supabase
-            .from(table)
-            .select('id,name,image_url,created_at,owner_id')
-            .eq('owner_id', user.id)
-            .order('created_at', { ascending: false })
-      )
+      const { data, error: heroesError } = await withTable(supabase, 'heroes', table =>
+        supabase
+          .from(table)
+          .select('id,name,image_url,created_at,owner_id')
+          .eq('owner_id', user.id)
+          .order('created_at', { ascending: false })
+      );
 
-      if (!isMounted.current) return
+      if (!isMounted.current) return;
 
       if (heroesError) {
-        setError(heroesError.message)
-        setHeroes([])
+        setError(heroesError.message);
+        setHeroes([]);
       } else {
-        const normalizedHeroes = (data || []).map(normalizeHero)
-        setHeroes(normalizedHeroes)
-        const selection = readHeroSelection()
-        if (selection?.heroId && !normalizedHeroes.some((hero) => hero.id === selection.heroId)) {
-          clearHeroSelection()
-          persistHeroOwner(user.id)
+        const normalizedHeroes = (data || []).map(normalizeHero);
+        setHeroes(normalizedHeroes);
+        const selection = readHeroSelection();
+        if (selection?.heroId && !normalizedHeroes.some(hero => hero.id === selection.heroId)) {
+          clearHeroSelection();
+          persistHeroOwner(user.id);
         }
       }
 
-      setLoading(false)
+      setLoading(false);
     } catch (err) {
-      console.error(err)
-      if (!isMounted.current) return
-      setError('로스터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.')
-      setLoading(false)
+      console.error(err);
+      if (!isMounted.current) return;
+      setError('로스터를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');
+      setLoading(false);
     }
-  }, [onUnauthorized, router])
+  }, [onUnauthorized, router]);
 
   useEffect(() => {
-    loadRoster()
-  }, [loadRoster])
+    loadRoster();
+  }, [loadRoster]);
 
   const resetError = useCallback(() => {
-    if (!isMounted.current) return
-    setError('')
-  }, [])
+    if (!isMounted.current) return;
+    setError('');
+  }, []);
 
   return {
     loading,
@@ -205,5 +202,5 @@ export function useRoster({ onUnauthorized } = {}) {
     avatarUrl,
     resetError,
     reload: loadRoster,
-  }
+  };
 }

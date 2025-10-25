@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
-import RankHubGuestNotice from './RankHubGuestNotice'
-import RankHubHeader from './RankHubHeader'
-import RegisterGamePanel from './RegisterGamePanel'
-import JoinGamePanel from './JoinGamePanel'
-import PlayTestPanel from './PlayTestPanel'
-import ParticipantLeaderboard from './ParticipantLeaderboard'
-import { useRankHub } from '../../../hooks/rank/useRankHub'
+import { useEffect, useMemo, useState } from 'react';
+import RankHubGuestNotice from './RankHubGuestNotice';
+import RankHubHeader from './RankHubHeader';
+import RegisterGamePanel from './RegisterGamePanel';
+import JoinGamePanel from './JoinGamePanel';
+import PlayTestPanel from './PlayTestPanel';
+import ParticipantLeaderboard from './ParticipantLeaderboard';
+import { useRankHub } from '../../../hooks/rank/useRankHub';
 
 const containerStyle = {
   maxWidth: 1100,
@@ -13,27 +13,27 @@ const containerStyle = {
   padding: 12,
   display: 'grid',
   gap: 16,
-}
+};
 
 const loadingStyle = {
   maxWidth: 980,
   margin: '40px auto',
   padding: 16,
-}
+};
 
 export default function RankHubScreen() {
-  const hub = useRankHub()
-  const [backgroundImage, setBackgroundImage] = useState('')
+  const hub = useRankHub();
+  const [backgroundImage, setBackgroundImage] = useState('');
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
+    if (typeof window === 'undefined') return;
     try {
-      const stored = window.localStorage.getItem('selectedHeroBackgroundUrl') || ''
-      setBackgroundImage(stored)
+      const stored = window.localStorage.getItem('selectedHeroBackgroundUrl') || '';
+      setBackgroundImage(stored);
     } catch (error) {
-      console.error('Failed to hydrate rank hub background:', error)
+      console.error('Failed to hydrate rank hub background:', error);
     }
-  }, [])
+  }, []);
 
   const pageStyle = useMemo(() => {
     if (backgroundImage) {
@@ -43,13 +43,13 @@ export default function RankHubScreen() {
         backgroundSize: 'cover',
         backgroundPosition: 'center',
         backgroundAttachment: 'fixed',
-      }
+      };
     }
     return {
       minHeight: '100vh',
       background: 'linear-gradient(180deg, #0f172a 0%, #1e293b 100%)',
-    }
-  }, [backgroundImage])
+    };
+  }, [backgroundImage]);
 
   if (!hub.initialized) {
     return (
@@ -57,15 +57,15 @@ export default function RankHubScreen() {
         <h2>랭킹 허브</h2>
         <p>정보를 불러오는 중입니다…</p>
       </div>
-    )
+    );
   }
 
   if (!hub.user) {
-    return <RankHubGuestNotice />
+    return <RankHubGuestNotice />;
   }
 
-  const { createForm, joinForm, playForm } = hub.forms
-  const { onCreateGame, onJoin, onPlay } = hub.actions
+  const { createForm, joinForm, playForm } = hub.forms;
+  const { onCreateGame, onJoin, onPlay } = hub.actions;
 
   return (
     <div style={pageStyle}>
@@ -77,5 +77,5 @@ export default function RankHubScreen() {
         <ParticipantLeaderboard participants={hub.participants} onRefresh={hub.refreshLists} />
       </div>
     </div>
-  )
+  );
 }

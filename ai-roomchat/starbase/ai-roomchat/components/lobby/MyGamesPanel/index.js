@@ -1,8 +1,7 @@
-import React from 'react'
-import SearchControls from '../GameSearchPanel/SearchControls'
-import GameList from '../GameSearchPanel/GameList'
-import GameManagementDetail from '../GameSearchPanel/GameManagementDetail'
-import { styles } from '../GameSearchPanel/styles'
+import SearchControls from '../GameSearchPanel/SearchControls';
+import GameList from '../GameSearchPanel/GameList';
+import GameManagementDetail from '../GameSearchPanel/GameManagementDetail';
+import { styles } from '../GameSearchPanel/styles';
 
 export default function MyGamesPanel({
   query,
@@ -33,7 +32,7 @@ export default function MyGamesPanel({
   onRefreshDetail,
   onDeleteGame,
 }) {
-  const isSignedIn = Boolean(viewerId)
+  const isSignedIn = Boolean(viewerId);
 
   return (
     <div style={styles.root}>
@@ -78,5 +77,5 @@ export default function MyGamesPanel({
         onDeleteGame={onDeleteGame}
       />
     </div>
-  )
+  );
 }

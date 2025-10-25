@@ -1,203 +1,203 @@
-import React from 'react'
+import React from 'react';
 
-const URL_REGEX = /https?:\/\/[^\s]+/gi
-const MENTION_REGEX = /@([0-9A-Za-z_가-힣]+)/g
-const HASHTAG_REGEX = /#([0-9A-Za-z_가-힣]+)/g
+const URL_REGEX = /https?:\/\/[^\s]+/gi;
+const MENTION_REGEX = /@([0-9A-Za-z_가-힣]+)/g;
+const HASHTAG_REGEX = /#([0-9A-Za-z_가-힣]+)/g;
 
 function normaliseNumber(value, fallback = 0) {
   if (typeof value !== 'number' || Number.isNaN(value)) {
-    return fallback
+    return fallback;
   }
-  return value
+  return value;
 }
 
 function markRange(registry, start, length) {
-  if (!registry || length <= 0) return
+  if (!registry || length <= 0) return;
   for (let offset = 0; offset < length; offset += 1) {
-    registry[start + offset] = true
+    registry[start + offset] = true;
   }
 }
 
 function isRangeFree(registry, start, length) {
-  if (!registry || length <= 0) return true
+  if (!registry || length <= 0) return true;
   for (let offset = 0; offset < length; offset += 1) {
     if (registry[start + offset]) {
-      return false
+      return false;
     }
   }
-  return true
+  return true;
 }
 
 export function normalizeDrafty(raw) {
-  if (!raw) return null
+  if (!raw) return null;
   if (typeof raw === 'string') {
     return {
       txt: raw,
       fmt: [],
       ent: [],
-    }
+    };
   }
   if (typeof raw === 'object') {
-    const txt = typeof raw.txt === 'string' ? raw.txt : ''
-    const fmt = Array.isArray(raw.fmt) ? raw.fmt.slice() : []
-    const ent = Array.isArray(raw.ent) ? raw.ent.slice() : []
-    return { txt, fmt, ent }
+    const txt = typeof raw.txt === 'string' ? raw.txt : '';
+    const fmt = Array.isArray(raw.fmt) ? raw.fmt.slice() : [];
+    const ent = Array.isArray(raw.ent) ? raw.ent.slice() : [];
+    return { txt, fmt, ent };
   }
-  return null
+  return null;
 }
 
 export function createDraftyFromText(input) {
-  const text = typeof input === 'string' ? input : ''
+  const text = typeof input === 'string' ? input : '';
   const doc = {
     txt: text,
     fmt: [],
     ent: [],
-  }
+  };
   if (!text) {
-    return doc
+    return doc;
   }
 
-  const occupancy = []
+  const occupancy = [];
 
-  let match
+  let match;
   while ((match = URL_REGEX.exec(text)) !== null) {
-    const token = match[0]
-    const start = match.index
-    const length = token.length
-    if (!token || !length) continue
+    const token = match[0];
+    const start = match.index;
+    const length = token.length;
+    if (!token || !length) continue;
 
-    const key = doc.ent.length
-    doc.ent.push({ tp: 'LN', data: { url: token } })
-    doc.fmt.push({ at: start, len: length, key })
-    markRange(occupancy, start, length)
+    const key = doc.ent.length;
+    doc.ent.push({ tp: 'LN', data: { url: token } });
+    doc.fmt.push({ at: start, len: length, key });
+    markRange(occupancy, start, length);
   }
 
-  MENTION_REGEX.lastIndex = 0
+  MENTION_REGEX.lastIndex = 0;
   while ((match = MENTION_REGEX.exec(text)) !== null) {
-    const token = match[0]
-    const value = match[1]
-    const start = match.index
-    const length = token.length
-    if (!token || !value || !length) continue
-    if (!isRangeFree(occupancy, start, length)) continue
+    const token = match[0];
+    const value = match[1];
+    const start = match.index;
+    const length = token.length;
+    if (!token || !value || !length) continue;
+    if (!isRangeFree(occupancy, start, length)) continue;
 
-    const key = doc.ent.length
-    doc.ent.push({ tp: 'MN', data: { val: value } })
-    doc.fmt.push({ at: start, len: length, key })
-    markRange(occupancy, start, length)
+    const key = doc.ent.length;
+    doc.ent.push({ tp: 'MN', data: { val: value } });
+    doc.fmt.push({ at: start, len: length, key });
+    markRange(occupancy, start, length);
   }
 
-  HASHTAG_REGEX.lastIndex = 0
+  HASHTAG_REGEX.lastIndex = 0;
   while ((match = HASHTAG_REGEX.exec(text)) !== null) {
-    const token = match[0]
-    const value = match[1]
-    const start = match.index
-    const length = token.length
-    if (!token || !value || !length) continue
-    if (!isRangeFree(occupancy, start, length)) continue
+    const token = match[0];
+    const value = match[1];
+    const start = match.index;
+    const length = token.length;
+    if (!token || !value || !length) continue;
+    if (!isRangeFree(occupancy, start, length)) continue;
 
-    const key = doc.ent.length
-    doc.ent.push({ tp: 'HT', data: { val: value } })
-    doc.fmt.push({ at: start, len: length, key })
-    markRange(occupancy, start, length)
+    const key = doc.ent.length;
+    doc.ent.push({ tp: 'HT', data: { val: value } });
+    doc.fmt.push({ at: start, len: length, key });
+    markRange(occupancy, start, length);
   }
 
-  return doc
+  return doc;
 }
 
 export function extractPlainText(raw) {
-  const doc = normalizeDrafty(raw)
-  if (!doc) return ''
-  return typeof doc.txt === 'string' ? doc.txt : ''
+  const doc = normalizeDrafty(raw);
+  if (!doc) return '';
+  return typeof doc.txt === 'string' ? doc.txt : '';
 }
 
 function resolveEntryType(entry, entities) {
-  if (!entry) return null
-  if (entry.tp) return String(entry.tp).toUpperCase()
+  if (!entry) return null;
+  if (entry.tp) return String(entry.tp).toUpperCase();
   if (typeof entry.key === 'number' && Array.isArray(entities)) {
-    const entity = entities[entry.key]
+    const entity = entities[entry.key];
     if (entity && entity.tp) {
-      return String(entity.tp).toUpperCase()
+      return String(entity.tp).toUpperCase();
     }
   }
-  return null
+  return null;
 }
 
 function resolveEntryData(entry, entities) {
-  if (!entry) return {}
+  if (!entry) return {};
   if (typeof entry.key === 'number' && Array.isArray(entities)) {
-    const entity = entities[entry.key]
+    const entity = entities[entry.key];
     if (entity && entity.data && typeof entity.data === 'object') {
-      return entity.data
+      return entity.data;
     }
   }
-  return {}
+  return {};
 }
 
 function sameOps(a, b) {
-  if (a === b) return true
-  if (!Array.isArray(a) || !Array.isArray(b)) return false
-  if (a.length !== b.length) return false
+  if (a === b) return true;
+  if (!Array.isArray(a) || !Array.isArray(b)) return false;
+  if (a.length !== b.length) return false;
   for (let index = 0; index < a.length; index += 1) {
     if (a[index] !== b[index]) {
-      return false
+      return false;
     }
   }
-  return true
+  return true;
 }
 
 export function draftyToSegments(raw) {
-  const doc = normalizeDrafty(raw)
-  if (!doc) return []
+  const doc = normalizeDrafty(raw);
+  if (!doc) return [];
 
-  const textArray = Array.from(doc.txt || '')
-  const inlineOps = []
-  const breakMap = new Map()
-  const entityOps = []
-  const length = textArray.length
+  const textArray = Array.from(doc.txt || '');
+  const inlineOps = [];
+  const breakMap = new Map();
+  const entityOps = [];
+  const length = textArray.length;
 
   for (const entry of doc.fmt || []) {
-    const type = resolveEntryType(entry, doc.ent)
-    if (!type) continue
+    const type = resolveEntryType(entry, doc.ent);
+    if (!type) continue;
 
-    const at = Math.max(0, Math.min(normaliseNumber(entry.at, 0), length))
-    const len = Math.max(0, normaliseNumber(entry.len, length))
-    const data = resolveEntryData(entry, doc.ent)
+    const at = Math.max(0, Math.min(normaliseNumber(entry.at, 0), length));
+    const len = Math.max(0, normaliseNumber(entry.len, length));
+    const data = resolveEntryData(entry, doc.ent);
 
     if (type === 'BR') {
-      const bucket = breakMap.get(at) || []
-      bucket.push({ type, data })
-      breakMap.set(at, bucket)
-      continue
+      const bucket = breakMap.get(at) || [];
+      bucket.push({ type, data });
+      breakMap.set(at, bucket);
+      continue;
     }
 
     if (len <= 0) {
-      entityOps.push({ type, data, index: at, entry })
-      continue
+      entityOps.push({ type, data, index: at, entry });
+      continue;
     }
 
-    const end = Math.max(at, Math.min(at + len, length))
-    inlineOps.push({ type, data, start: at, end, entry })
+    const end = Math.max(at, Math.min(at + len, length));
+    inlineOps.push({ type, data, start: at, end, entry });
   }
 
   inlineOps.sort((a, b) => {
     if (a.start === b.start) {
-      return b.end - a.end
+      return b.end - a.end;
     }
-    return a.start - b.start
-  })
+    return a.start - b.start;
+  });
 
-  entityOps.sort((a, b) => a.index - b.index)
+  entityOps.sort((a, b) => a.index - b.index);
 
-  const segments = []
-  let currentOps = []
-  let buffer = ''
-  let bufferStart = 0
+  const segments = [];
+  let currentOps = [];
+  let buffer = '';
+  let bufferStart = 0;
 
-  const flush = (atIndex) => {
+  const flush = atIndex => {
     if (!buffer) {
-      bufferStart = atIndex
-      return
+      bufferStart = atIndex;
+      return;
     }
     segments.push({
       type: 'text',
@@ -205,67 +205,67 @@ export function draftyToSegments(raw) {
       marks: currentOps.slice(),
       start: bufferStart,
       end: atIndex,
-    })
-    buffer = ''
-    bufferStart = atIndex
-  }
+    });
+    buffer = '';
+    bufferStart = atIndex;
+  };
 
   for (let index = 0; index < length; index += 1) {
     if (breakMap.has(index)) {
-      flush(index)
-      const entries = breakMap.get(index) || []
+      flush(index);
+      const entries = breakMap.get(index) || [];
       for (const br of entries) {
-        segments.push({ type: 'break', start: index, data: br.data })
+        segments.push({ type: 'break', start: index, data: br.data });
       }
     }
 
-    const nextOps = inlineOps.filter((op) => index >= op.start && index < op.end)
+    const nextOps = inlineOps.filter(op => index >= op.start && index < op.end);
     if (!sameOps(currentOps, nextOps)) {
-      flush(index)
-      currentOps = nextOps
+      flush(index);
+      currentOps = nextOps;
     }
 
     if (!buffer) {
-      bufferStart = index
+      bufferStart = index;
     }
-    buffer += textArray[index]
+    buffer += textArray[index];
   }
 
-  flush(length)
+  flush(length);
 
   if (breakMap.has(length)) {
-    const entries = breakMap.get(length) || []
+    const entries = breakMap.get(length) || [];
     for (const br of entries) {
-      segments.push({ type: 'break', start: length, data: br.data })
+      segments.push({ type: 'break', start: length, data: br.data });
     }
   }
 
   if (entityOps.length) {
-    const merged = []
-    let entityCursor = 0
+    const merged = [];
+    let entityCursor = 0;
 
     for (const segment of segments) {
-      const boundary = segment?.start ?? 0
+      const boundary = segment?.start ?? 0;
       while (entityCursor < entityOps.length && entityOps[entityCursor].index <= boundary) {
-        merged.push({ type: 'entity', entity: entityOps[entityCursor] })
-        entityCursor += 1
+        merged.push({ type: 'entity', entity: entityOps[entityCursor] });
+        entityCursor += 1;
       }
-      merged.push(segment)
+      merged.push(segment);
     }
 
     while (entityCursor < entityOps.length) {
-      merged.push({ type: 'entity', entity: entityOps[entityCursor] })
-      entityCursor += 1
+      merged.push({ type: 'entity', entity: entityOps[entityCursor] });
+      entityCursor += 1;
     }
 
-    return merged
+    return merged;
   }
 
-  return segments
+  return segments;
 }
 
 export function inspectDrafty(raw) {
-  const doc = normalizeDrafty(raw)
+  const doc = normalizeDrafty(raw);
   if (!doc) {
     return {
       doc: null,
@@ -273,19 +273,19 @@ export function inspectDrafty(raw) {
       hasLinks: false,
       hasMentions: false,
       hasHashtags: false,
-    }
+    };
   }
 
-  let hasLinks = false
-  let hasMentions = false
-  let hasHashtags = false
+  let hasLinks = false;
+  let hasMentions = false;
+  let hasHashtags = false;
 
   for (const entry of doc.fmt || []) {
-    const type = resolveEntryType(entry, doc.ent)
-    if (!type) continue
-    if (type === 'LN') hasLinks = true
-    if (type === 'MN') hasMentions = true
-    if (type === 'HT') hasHashtags = true
+    const type = resolveEntryType(entry, doc.ent);
+    if (!type) continue;
+    if (type === 'LN') hasLinks = true;
+    if (type === 'MN') hasMentions = true;
+    if (type === 'HT') hasHashtags = true;
   }
 
   return {
@@ -294,26 +294,26 @@ export function inspectDrafty(raw) {
     hasLinks,
     hasMentions,
     hasHashtags,
-  }
+  };
 }
 
 export function renderDraftySegments(raw, { keyPrefix = 'drafty' } = {}) {
-  const segments = draftyToSegments(raw)
-  const rendered = []
-  let counter = 0
+  const segments = draftyToSegments(raw);
+  const rendered = [];
+  let counter = 0;
 
   const wrapWithMark = (children, mark) => {
-    const key = `${keyPrefix}-mark-${counter}`
-    counter += 1
-    const data = mark?.data || {}
-    const normalizedType = mark?.type || ''
-    const childArray = React.Children.toArray(children)
+    const key = `${keyPrefix}-mark-${counter}`;
+    counter += 1;
+    const data = mark?.data || {};
+    const normalizedType = mark?.type || '';
+    const childArray = React.Children.toArray(children);
 
     switch (normalizedType) {
       case 'ST':
-        return React.createElement('strong', { key }, ...childArray)
+        return React.createElement('strong', { key }, ...childArray);
       case 'EM':
-        return React.createElement('em', { key }, ...childArray)
+        return React.createElement('em', { key }, ...childArray);
       case 'CO':
         return React.createElement(
           'code',
@@ -327,8 +327,8 @@ export function renderDraftySegments(raw, { keyPrefix = 'drafty' } = {}) {
               fontSize: '0.85em',
             },
           },
-          ...childArray,
-        )
+          ...childArray
+        );
       case 'HL':
         return React.createElement(
           'span',
@@ -340,8 +340,8 @@ export function renderDraftySegments(raw, { keyPrefix = 'drafty' } = {}) {
               borderRadius: 4,
             },
           },
-          ...childArray,
-        )
+          ...childArray
+        );
       case 'DL':
         return React.createElement(
           'span',
@@ -349,8 +349,8 @@ export function renderDraftySegments(raw, { keyPrefix = 'drafty' } = {}) {
             key,
             style: { textDecoration: 'line-through' },
           },
-          ...childArray,
-        )
+          ...childArray
+        );
       case 'MN':
         return React.createElement(
           'span',
@@ -358,8 +358,8 @@ export function renderDraftySegments(raw, { keyPrefix = 'drafty' } = {}) {
             key,
             style: { color: '#2563eb', fontWeight: 600 },
           },
-          ...childArray,
-        )
+          ...childArray
+        );
       case 'HT':
         return React.createElement(
           'span',
@@ -367,10 +367,10 @@ export function renderDraftySegments(raw, { keyPrefix = 'drafty' } = {}) {
             key,
             style: { color: '#0f766e', fontWeight: 600 },
           },
-          ...childArray,
-        )
+          ...childArray
+        );
       case 'LN': {
-        const url = typeof data.url === 'string' && data.url.trim().length ? data.url : undefined
+        const url = typeof data.url === 'string' && data.url.trim().length ? data.url : undefined;
         return React.createElement(
           'a',
           {
@@ -380,42 +380,44 @@ export function renderDraftySegments(raw, { keyPrefix = 'drafty' } = {}) {
             rel: 'noopener noreferrer',
             style: { color: '#2563eb', textDecoration: 'underline' },
           },
-          ...childArray,
-        )
+          ...childArray
+        );
       }
       default:
-        return React.createElement('span', { key }, ...childArray)
+        return React.createElement('span', { key }, ...childArray);
     }
-  }
+  };
 
-  const renderText = (text) => {
+  const renderText = text => {
     if (text.includes('\n')) {
-      const parts = text.split('\n')
-      const nodes = []
+      const parts = text.split('\n');
+      const nodes = [];
       parts.forEach((part, index) => {
-        nodes.push(React.createElement(React.Fragment, { key: `${keyPrefix}-part-${counter}` }, part))
-        counter += 1
+        nodes.push(
+          React.createElement(React.Fragment, { key: `${keyPrefix}-part-${counter}` }, part)
+        );
+        counter += 1;
         if (index < parts.length - 1) {
-          nodes.push(React.createElement('br', { key: `${keyPrefix}-br-${counter}` }))
-          counter += 1
+          nodes.push(React.createElement('br', { key: `${keyPrefix}-br-${counter}` }));
+          counter += 1;
         }
-      })
-      return nodes
+      });
+      return nodes;
     }
-    return [text]
-  }
+    return [text];
+  };
 
   segments.forEach((segment, index) => {
     if (segment.type === 'break') {
-      rendered.push(React.createElement('br', { key: `${keyPrefix}-line-${counter}` }))
-      counter += 1
-      return
+      rendered.push(React.createElement('br', { key: `${keyPrefix}-line-${counter}` }));
+      counter += 1;
+      return;
     }
 
     if (segment.type === 'entity') {
-      const entity = segment.entity || {}
-      const entityType = entity.type
-      const entityData = entity.data || {}
+      const entity = segment.entity || {};
+      const entityType = entity.type;
+      const entityData = entity.data || {};
       rendered.push(
         React.createElement(
           'span',
@@ -433,18 +435,18 @@ export function renderDraftySegments(raw, { keyPrefix = 'drafty' } = {}) {
             },
           },
           `${entityType || 'ENTITY'}`,
-          entityData?.url ? ` · ${entityData.url}` : '',
-        ),
-      )
-      counter += 1
-      return
+          entityData?.url ? ` · ${entityData.url}` : ''
+        )
+      );
+      counter += 1;
+      return;
     }
 
-    const key = `${keyPrefix}-segment-${index}`
-    const base = renderText(segment.text || '')
-    const content = (segment.marks || []).reduce((acc, mark) => wrapWithMark(acc, mark), base)
-    rendered.push(React.createElement(React.Fragment, { key }, ...React.Children.toArray(content)))
-  })
+    const key = `${keyPrefix}-segment-${index}`;
+    const base = renderText(segment.text || '');
+    const content = (segment.marks || []).reduce((acc, mark) => wrapWithMark(acc, mark), base);
+    rendered.push(React.createElement(React.Fragment, { key }, ...React.Children.toArray(content)));
+  });
 
-  return rendered
+  return rendered;
 }

@@ -1,6 +1,7 @@
 # 방 스테이징 RPC 보강 실행 계획 (2025-11-10)
 
 ## 1. 왜 필요한가?
+
 방 → 매칭 → 메인게임 전환 과정에서 클라이언트가 수행하는 준비 체크, 세션 생성, 난입 메타 보관을 **서버 RPC로 강제**하지 않으면 다음과 같은 문제가 재발합니다.
 
 1. 직접 API 호출이나 경쟁 탭이 준비 투표를 건너뛰고 `stage-room-match`를 실행할 수 있음.
@@ -24,8 +25,10 @@
      1. 기존 로직 시작부에 `select public.assert_room_ready(room_id);` 추가.
      2. 매치 스테이징 성공 후 `ensure_rank_session_for_room`를 호출해 세션 ID를 확보하고 응답 페이로드에 포함.
      3. 난입 자동 채움 메타가 존재하면 `upsert_rank_session_async_fill`을 호출.
- - `/api/rank/ready-check`
-   - 세션 ID 미존재 시 반환하던 `missing_session_id` 에러를, 위에서 채운 세션 ID로 대체하여 정상 진행.
+
+- `/api/rank/ready-check`
+  - 세션 ID 미존재 시 반환하던 `missing_session_id` 에러를, 위에서 채운 세션 ID로 대체하여 정상 진행.
+
 4. **클라이언트 업데이트**:
    - `stageMatch` 호출 이후 응답으로 받은 `sessionId`를 `MatchReadyClient`에 전달.
    - 난입 메타(`asyncFillMeta`)를 서버 호출로 동시에 전송하도록 수정.
@@ -37,6 +40,7 @@
 ## 3. SQL 스니펫
 
 ### 3.1 준비 상태 검증
+
 ```sql
 create or replace function public.assert_room_ready(p_room_id uuid)
 returns void
@@ -72,6 +76,7 @@ $$;
 ```
 
 ### 3.2 세션 생성/보강
+
 ```sql
 create or replace function public.ensure_rank_session_for_room(
   p_room_id uuid,
@@ -163,6 +168,7 @@ $$;
 ```
 
 ### 3.3 대기열 슬롯 재조정
+
 ```sql
 drop function if exists public.reconcile_rank_queue_for_roster(uuid, text, jsonb);
 
@@ -389,6 +395,7 @@ grant execute on function public.reconcile_rank_queue_for_roster(
 ```
 
 ### 3.4 난입 메타 영속화
+
 ```sql
 create or replace function public.upsert_rank_session_async_fill(
   p_session_id uuid,
@@ -420,6 +427,7 @@ $$;
 ```
 
 ### 3.5 권한 부여
+
 ```sql
 grant execute on function public.assert_room_ready(uuid) to authenticated, service_role;
 grant execute on function public.ensure_rank_session_for_room(uuid, uuid, uuid, text, jsonb)
@@ -445,11 +453,13 @@ grant execute on function public.prepare_rank_match_session(
 ---
 
 ## 4. 현재 구현 상태 체크
+
 - `/api/rank/stage-room-match`는 `prepare_rank_match_session` 단일 RPC를 호출해 준비 검증·대기열 정리·로스터 싱크·세션 보강·난입 메타까지 트랜잭션으로 처리합니다. 함수가 배포되어 있지 않으면 `missing_prepare_rank_match_session` 오류를 반환합니다.【F:pages/api/rank/stage-room-match.js†L1-L118】【F:services/rank/matchSupabase.js†L191-L216】
 - 방 상세 화면은 스테이징 응답으로 전달받은 `session_id`를 즉시 `matchDataStore`에 기록해 Match Ready가 세션 ID 없이 열리지 않도록 했습니다.【F:pages/rooms/[id].js†L3048-L3073】
 - Match Ready 클라이언트는 로컬 스냅샷에서도 세션 ID를 회수하고, 세션 ID가 없으면 `allowStart`를 비활성화합니다.【F:components/rank/MatchReadyClient.js†L140-L210】【F:components/rank/MatchReadyClient.js†L500-L520】
 
 ### 3.5 세션 채팅 조회 RPC (신규)
+
 메인 게임 공용 채팅이 `rank_turns` 테이블에서 세션별 히스토리를 스트리밍할 수 있도록, 뷰어 가시성 필터와 숨김 슬롯 정보를 함께 반환하는 RPC를 추가합니다. StartClient는 더 이상 테이블 쿼리로 폴백하지 않으므로, 아래 함수를 배포하지 않으면 세션 채팅이 곧바로 오류를 표시합니다.
 
 ```sql
@@ -520,7 +530,7 @@ grant execute on function public.fetch_rank_session_turns(uuid, integer) to auth
 ---
 
 ## 5. 추가 참고
+
 - 마이그레이션 파일에 위 SQL을 포함한 뒤, CI/CD에서 Supabase에 자동 반영되도록 구성하세요.
 - 함수는 모두 `security definer`로 작성했으므로 소유자가 `supabase_admin` 등 충분한 권한을 가진 계정인지 확인해야 합니다.
 - 운영 반영 후 `select * from pg_publication_tables where pubname = 'supabase_realtime';`로 테이블 게시 상태를 재확인하세요.
-

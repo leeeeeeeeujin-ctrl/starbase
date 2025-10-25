@@ -1,7 +1,7 @@
-import Link from 'next/link'
+import Link from 'next/link';
 
-import { isRealtimeEnabled } from '@/lib/rank/realtimeModes'
-import { RoomRefreshIndicator } from './RoomRefreshIndicator'
+import { isRealtimeEnabled } from '@/lib/rank/realtimeModes';
+import { RoomRefreshIndicator } from './RoomRefreshIndicator';
 
 const styles = {
   card: {
@@ -47,7 +47,7 @@ const styles = {
     display: 'grid',
     gap: 10,
   },
-  noticeCard: (type) => ({
+  noticeCard: type => ({
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -59,10 +59,7 @@ const styles = {
       type === 'error'
         ? '1px solid rgba(248, 113, 113, 0.5)'
         : '1px solid rgba(148, 163, 184, 0.35)',
-    background:
-      type === 'error'
-        ? 'rgba(248, 113, 113, 0.08)'
-        : 'rgba(148, 163, 184, 0.12)',
+    background: type === 'error' ? 'rgba(248, 113, 113, 0.08)' : 'rgba(148, 163, 184, 0.12)',
     color: type === 'error' ? '#fecaca' : '#cbd5f5',
     fontSize: 13,
     lineHeight: 1.6,
@@ -159,14 +156,14 @@ const styles = {
     fontWeight: 700,
     fontSize: 12,
   },
-}
+};
 
 function resolveStatusLabel(status) {
-  const normalized = typeof status === 'string' ? status.trim() : ''
-  if (normalized === 'brawl') return '난전'
-  if (normalized === 'in_progress' || normalized === 'battle') return '게임중'
-  if (normalized === 'open') return '대기'
-  return normalized || '상태 미지정'
+  const normalized = typeof status === 'string' ? status.trim() : '';
+  if (normalized === 'brawl') return '난전';
+  if (normalized === 'in_progress' || normalized === 'battle') return '게임중';
+  if (normalized === 'open') return '대기';
+  return normalized || '상태 미지정';
 }
 
 /**
@@ -194,14 +191,14 @@ export function RoomResultsSection({
   notices,
   formatRelativeTime,
 }) {
-  const hasRealtimeRooms = filteredRooms.some((room) => isRealtimeEnabled(room.realtimeMode))
+  const hasRealtimeRooms = filteredRooms.some(room => isRealtimeEnabled(room.realtimeMode));
 
   return (
     <section style={styles.card}>
       <h2 style={styles.title}>검색 결과</h2>
       {Array.isArray(notices) && notices.length ? (
         <div style={styles.noticeList}>
-          {notices.map((notice) => (
+          {notices.map(notice => (
             <div
               key={notice.id}
               role={notice.type === 'error' ? 'alert' : undefined}
@@ -243,26 +240,29 @@ export function RoomResultsSection({
         <div style={styles.empty}>조건에 맞는 방을 찾지 못했습니다.</div>
       ) : (
         <div style={styles.grid}>
-          {filteredRooms.map((room) => {
+          {filteredRooms.map(room => {
             const href = effectiveHeroId
               ? { pathname: `/rooms/${room.id}`, query: { hero: effectiveHeroId } }
-              : { pathname: `/rooms/${room.id}` }
-            const scoreWindowLabel = room.scoreWindow === null ? '제한 없음' : `±${room.scoreWindow}`
-            const hostRatingText = Number.isFinite(room.hostRating) ? `${room.hostRating}점` : '정보 없음'
+              : { pathname: `/rooms/${room.id}` };
+            const scoreWindowLabel =
+              room.scoreWindow === null ? '제한 없음' : `±${room.scoreWindow}`;
+            const hostRatingText = Number.isFinite(room.hostRating)
+              ? `${room.hostRating}점`
+              : '정보 없음';
             const realtimeLabel = isRealtimeEnabled(room.realtimeMode)
               ? room.realtimeMode === 'pulse'
                 ? 'Pulse 실시간'
                 : '실시간'
-              : '비실시간'
-            const statusLabel = resolveStatusLabel(room.status)
+              : '비실시간';
+            const statusLabel = resolveStatusLabel(room.status);
             const hostLimitLabel =
               room.realtimeMode === 'pulse' && Number.isFinite(room.hostRoleLimit)
                 ? `같은 역할 최대 ${room.hostRoleLimit}명`
-                : null
+                : null;
             const heroDelta =
               heroRatingForSelection && Number.isFinite(room.hostRating)
                 ? Math.abs(heroRatingForSelection - room.hostRating)
-                : null
+                : null;
 
             return (
               <Link key={room.id} href={href} style={styles.link} prefetch>
@@ -295,7 +295,7 @@ export function RoomResultsSection({
                   </div>
                   {room.roles.length ? (
                     <div style={styles.roles}>
-                      {room.roles.map((role) => (
+                      {room.roles.map(role => (
                         <div key={role.role}>
                           {role.role}: {role.occupied}/{role.total} (준비 {role.ready})
                         </div>
@@ -314,12 +314,12 @@ export function RoomResultsSection({
                   </div>
                 </article>
               </Link>
-            )
+            );
           })}
         </div>
       )}
     </section>
-  )
+  );
 }
 
 RoomResultsSection.defaultProps = {
@@ -327,6 +327,6 @@ RoomResultsSection.defaultProps = {
   heroRatingForSelection: null,
   autoRefreshCountdown: null,
   notices: [],
-}
+};
 
-export default RoomResultsSection
+export default RoomResultsSection;

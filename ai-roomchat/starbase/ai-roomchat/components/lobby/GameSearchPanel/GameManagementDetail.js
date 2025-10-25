@@ -1,23 +1,23 @@
-import React, { useMemo, useState } from 'react'
-import { styles } from './styles'
+import { useMemo, useState } from 'react';
+import { styles } from './styles';
 
 function formatNumber(value) {
-  if (value === null || value === undefined) return '-'
-  return new Intl.NumberFormat('ko-KR').format(value)
+  if (value === null || value === undefined) return '-';
+  return new Intl.NumberFormat('ko-KR').format(value);
 }
 
 function formatWinRate(value) {
-  if (value === null || value === undefined) return '-'
-  const ratio = value > 1 ? value : value * 100
-  return `${Math.round(ratio * 10) / 10}%`
+  if (value === null || value === undefined) return '-';
+  const ratio = value > 1 ? value : value * 100;
+  return `${Math.round(ratio * 10) / 10}%`;
 }
 
 function formatDate(value) {
-  if (!value) return '-'
+  if (!value) return '-';
   try {
-    return new Date(value).toLocaleString('ko-KR')
+    return new Date(value).toLocaleString('ko-KR');
   } catch (error) {
-    return value
+    return value;
   }
 }
 
@@ -42,109 +42,111 @@ export default function GameManagementDetail({
   onRefreshDetail,
   onDeleteGame,
 }) {
-  const [tagInput, setTagInput] = useState('')
+  const [tagInput, setTagInput] = useState('');
 
   const activeSeason = useMemo(
-    () => seasons.find((season) => (season.status || '').toLowerCase() === 'active'),
-    [seasons],
-  )
+    () => seasons.find(season => (season.status || '').toLowerCase() === 'active'),
+    [seasons]
+  );
 
   const archivedSeasons = useMemo(
-    () => seasons.filter((season) => (season.status || '').toLowerCase() !== 'active'),
-    [seasons],
-  )
+    () => seasons.filter(season => (season.status || '').toLowerCase() !== 'active'),
+    [seasons]
+  );
 
-  const hasGame = Boolean(game)
+  const hasGame = Boolean(game);
 
   const roleSummaries = useMemo(
     () =>
-      roles.map((role) => {
-        const slot = roleSlots.get(role.name) || { capacity: role.slot_count ?? 1, occupied: 0 }
-        const capacity = Number.isFinite(Number(slot.capacity)) ? Number(slot.capacity) : 0
-        const occupied = slot.occupied ?? 0
-        const minimum = Math.max(0, capacity)
+      roles.map(role => {
+        const slot = roleSlots.get(role.name) || { capacity: role.slot_count ?? 1, occupied: 0 };
+        const capacity = Number.isFinite(Number(slot.capacity)) ? Number(slot.capacity) : 0;
+        const occupied = slot.occupied ?? 0;
+        const minimum = Math.max(0, capacity);
         return {
           ...role,
           capacity,
           occupied,
           minimum,
-        }
+        };
       }),
-    [roles, roleSlots],
-  )
+    [roles, roleSlots]
+  );
 
   if (!hasGame) {
-    return <div style={styles.detailPlaceholder}>게임을 선택하면 상세 정보가 표시됩니다.</div>
+    return <div style={styles.detailPlaceholder}>게임을 선택하면 상세 정보가 표시됩니다.</div>;
   }
 
-  const isOwner = Boolean(viewerId && game?.owner_id && viewerId === game.owner_id)
+  const isOwner = Boolean(viewerId && game?.owner_id && viewerId === game.owner_id);
 
   const handleEnter = () => {
-    onEnterGame(game, roleChoice)
-  }
+    onEnterGame(game, roleChoice);
+  };
 
-  const handleAddTag = async (event) => {
-    event.preventDefault()
-    if (!onAddTag) return
-    const value = tagInput.trim()
-    if (!value) return
-    const result = await onAddTag(value)
+  const handleAddTag = async event => {
+    event.preventDefault();
+    if (!onAddTag) return;
+    const value = tagInput.trim();
+    if (!value) return;
+    const result = await onAddTag(value);
     if (result?.error) {
-      alert(result.error)
-      return
+      alert(result.error);
+      return;
     }
-    setTagInput('')
-  }
+    setTagInput('');
+  };
 
-  const handleRemoveTag = async (tagId) => {
-    if (!onRemoveTag) return
-    const result = await onRemoveTag(tagId)
+  const handleRemoveTag = async tagId => {
+    if (!onRemoveTag) return;
+    const result = await onRemoveTag(tagId);
     if (result?.error) {
-      alert(result.error)
+      alert(result.error);
     }
-  }
+  };
 
   const handleStartSeason = async () => {
-    if (!onStartSeason) return
+    if (!onStartSeason) return;
     if (activeSeason) {
-      alert('이미 진행 중인 시즌이 있어 새 시즌을 시작할 수 없습니다.')
-      return
+      alert('이미 진행 중인 시즌이 있어 새 시즌을 시작할 수 없습니다.');
+      return;
     }
-    const result = await onStartSeason()
+    const result = await onStartSeason();
     if (result?.error) {
-      alert(result.error)
+      alert(result.error);
     }
-  }
+  };
 
-  const handleFinishSeason = async (seasonId) => {
-    if (!onFinishSeason) return
-    const targetId = seasonId || activeSeason?.id
-    if (!targetId) return
-    const confirmEnd = window.confirm('현재 시즌을 종료하고 랭킹을 보관할까요?')
-    if (!confirmEnd) return
-    const result = await onFinishSeason(targetId)
+  const handleFinishSeason = async seasonId => {
+    if (!onFinishSeason) return;
+    const targetId = seasonId || activeSeason?.id;
+    if (!targetId) return;
+    const confirmEnd = window.confirm('현재 시즌을 종료하고 랭킹을 보관할까요?');
+    if (!confirmEnd) return;
+    const result = await onFinishSeason(targetId);
     if (result?.error) {
-      alert(result.error)
+      alert(result.error);
     }
-  }
+  };
 
   const handleRefresh = () => {
     if (typeof onRefreshDetail === 'function') {
-      onRefreshDetail()
+      onRefreshDetail();
     }
-  }
+  };
 
   const handleDelete = async () => {
-    if (!onDeleteGame) return
-    const confirmDelete = window.confirm('게임을 삭제하면 모든 참가 기록이 사라집니다. 계속할까요?')
-    if (!confirmDelete) return
-    const result = await onDeleteGame()
+    if (!onDeleteGame) return;
+    const confirmDelete = window.confirm(
+      '게임을 삭제하면 모든 참가 기록이 사라집니다. 계속할까요?'
+    );
+    if (!confirmDelete) return;
+    const result = await onDeleteGame();
     if (result?.error) {
-      alert(result.error)
+      alert(result.error);
     }
-  }
+  };
 
-  const topPlayers = stats?.topPlayers || []
+  const topPlayers = stats?.topPlayers || [];
 
   return (
     <div style={styles.detailBox}>
@@ -171,11 +173,15 @@ export default function GameManagementDetail({
         </div>
         <div style={styles.tagList}>
           {tags.length === 0 ? <span style={styles.tagEmpty}>태그가 없습니다.</span> : null}
-          {tags.map((tag) => (
+          {tags.map(tag => (
             <span key={tag.id} style={styles.tagChip}>
               #{tag.tag}
               {isOwner ? (
-                <button type="button" style={styles.tagRemove} onClick={() => handleRemoveTag(tag.id)}>
+                <button
+                  type="button"
+                  style={styles.tagRemove}
+                  onClick={() => handleRemoveTag(tag.id)}
+                >
                   ×
                 </button>
               ) : null}
@@ -186,7 +192,7 @@ export default function GameManagementDetail({
           <form style={styles.tagInputRow} onSubmit={handleAddTag}>
             <input
               value={tagInput}
-              onChange={(event) => setTagInput(event.target.value)}
+              onChange={event => setTagInput(event.target.value)}
               placeholder="새 태그 입력"
               style={styles.tagInput}
             />
@@ -215,11 +221,19 @@ export default function GameManagementDetail({
             새 시즌 시작
           </button>
           {activeSeason ? (
-            <button type="button" style={styles.ownerButton} onClick={() => handleFinishSeason(activeSeason.id)}>
+            <button
+              type="button"
+              style={styles.ownerButton}
+              onClick={() => handleFinishSeason(activeSeason.id)}
+            >
               시즌 종료
             </button>
           ) : null}
-          <button type="button" style={{ ...styles.ownerButton, ...styles.dangerButton }} onClick={handleDelete}>
+          <button
+            type="button"
+            style={{ ...styles.ownerButton, ...styles.dangerButton }}
+            onClick={handleDelete}
+          >
             게임 삭제
           </button>
         </div>
@@ -248,13 +262,14 @@ export default function GameManagementDetail({
           </div>
           {topPlayers.length ? (
             <div style={styles.topPlayerList}>
-              {topPlayers.map((entry) => (
+              {topPlayers.map(entry => (
                 <div key={`${entry.rank}-${entry.heroId}`} style={styles.topPlayerRow}>
                   <span>
                     {entry.rank}. {entry.heroName}
                   </span>
                   <span>
-                    레이팅 {formatNumber(entry.rating)} / 전투 {formatNumber(entry.battles)} / 승률 {formatWinRate(entry.winRate)}
+                    레이팅 {formatNumber(entry.rating)} / 전투 {formatNumber(entry.battles)} / 승률{' '}
+                    {formatWinRate(entry.winRate)}
                   </span>
                 </div>
               ))}
@@ -266,8 +281,8 @@ export default function GameManagementDetail({
       <div style={styles.roleSection}>
         <span style={styles.roleLabel}>역할 선택</span>
         <div style={styles.roleGrid}>
-          {roleSummaries.map((role) => {
-            const active = roleChoice === role.name
+          {roleSummaries.map(role => {
+            const active = roleChoice === role.name;
             return (
               <button
                 key={role.id || role.name}
@@ -282,7 +297,7 @@ export default function GameManagementDetail({
                   최소 {role.minimum}명 필요 · 현재 {role.occupied}명 참가
                 </span>
               </button>
-            )
+            );
           })}
         </div>
       </div>
@@ -291,8 +306,10 @@ export default function GameManagementDetail({
         <span style={styles.participantLabel}>참여 중</span>
         <div style={styles.participantList}>
           {detailLoading && <div style={styles.emptyState}>참여 정보를 불러오는 중…</div>}
-          {!detailLoading && participants.length === 0 && <div style={styles.emptyState}>아직 참여한 사람이 없습니다.</div>}
-          {participants.map((row) => (
+          {!detailLoading && participants.length === 0 && (
+            <div style={styles.emptyState}>아직 참여한 사람이 없습니다.</div>
+          )}
+          {participants.map(row => (
             <div key={row.id} style={styles.participantRow}>
               <span style={styles.participantName}>{row.name || row.hero_name || row.hero_id}</span>
               <span style={styles.participantRole}>{row.role || '미지정'}</span>
@@ -317,16 +334,24 @@ export default function GameManagementDetail({
             </div>
             {Array.isArray(activeSeason.leaderboard) && activeSeason.leaderboard.length ? (
               <div style={styles.topPlayerList}>
-                {activeSeason.leaderboard.slice(0, 5).map((entry) => (
-                  <div key={`${activeSeason.id}-${entry.rank}-${entry.hero_id}`} style={styles.topPlayerRow}>
-                    {entry.rank}. {entry.name || entry.hero_name || entry.hero_id} — 레이팅 {formatNumber(entry.rating)}
+                {activeSeason.leaderboard.slice(0, 5).map(entry => (
+                  <div
+                    key={`${activeSeason.id}-${entry.rank}-${entry.hero_id}`}
+                    style={styles.topPlayerRow}
+                  >
+                    {entry.rank}. {entry.name || entry.hero_name || entry.hero_id} — 레이팅{' '}
+                    {formatNumber(entry.rating)}
                   </div>
                 ))}
               </div>
             ) : null}
             {isOwner ? (
               <div style={styles.seasonActions}>
-                <button type="button" style={styles.ownerButton} onClick={() => handleFinishSeason(activeSeason.id)}>
+                <button
+                  type="button"
+                  style={styles.ownerButton}
+                  onClick={() => handleFinishSeason(activeSeason.id)}
+                >
                   시즌 종료
                 </button>
               </div>
@@ -338,7 +363,7 @@ export default function GameManagementDetail({
 
         {archivedSeasons.length ? (
           <div style={styles.seasonArchive}>
-            {archivedSeasons.map((season) => (
+            {archivedSeasons.map(season => (
               <div key={season.id} style={styles.seasonCard}>
                 <div style={styles.seasonHeader}>
                   <strong>{season.name}</strong>
@@ -352,9 +377,13 @@ export default function GameManagementDetail({
                 </div>
                 {Array.isArray(season.leaderboard) && season.leaderboard.length ? (
                   <div style={styles.topPlayerList}>
-                    {season.leaderboard.slice(0, 5).map((entry) => (
-                      <div key={`${season.id}-${entry.rank}-${entry.hero_id}`} style={styles.topPlayerRow}>
-                        {entry.rank}. {entry.name || entry.hero_name || entry.hero_id} — 레이팅 {formatNumber(entry.rating)}
+                    {season.leaderboard.slice(0, 5).map(entry => (
+                      <div
+                        key={`${season.id}-${entry.rank}-${entry.hero_id}`}
+                        style={styles.topPlayerRow}
+                      >
+                        {entry.rank}. {entry.name || entry.hero_name || entry.hero_id} — 레이팅{' '}
+                        {formatNumber(entry.rating)}
                       </div>
                     ))}
                   </div>
@@ -371,11 +400,13 @@ export default function GameManagementDetail({
           <div style={styles.emptyState}>아직 기록된 베틀로그가 없습니다.</div>
         ) : (
           <div style={styles.logList}>
-            {battleLogs.slice(0, 12).map((log) => (
+            {battleLogs.slice(0, 12).map(log => (
               <div key={log.id} style={styles.logItem}>
                 <div style={styles.logMeta}>
                   <span>{formatDate(log.createdAt || log.created_at)}</span>
-                  {log.battle?.score_delta ? <span>점수 변동 {formatNumber(log.battle.score_delta)}</span> : null}
+                  {log.battle?.score_delta ? (
+                    <span>점수 변동 {formatNumber(log.battle.score_delta)}</span>
+                  ) : null}
                   {log.battle?.result ? <span>결과 {log.battle.result}</span> : null}
                 </div>
                 {log.prompt ? <p style={styles.logText}>프롬프트: {log.prompt}</p> : null}
@@ -390,5 +421,5 @@ export default function GameManagementDetail({
         선택한 역할로 입장
       </button>
     </div>
-  )
+  );
 }

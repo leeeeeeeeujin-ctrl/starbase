@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import styles from './CooldownAnalyticsBoard.module.css'
+import { useEffect, useMemo, useState } from 'react';
+import styles from './CooldownAnalyticsBoard.module.css';
 
 const RANGE_OPTIONS = [
   { value: '30d', label: '최근 30일' },
@@ -7,44 +7,44 @@ const RANGE_OPTIONS = [
   { value: '90d', label: '최근 90일' },
   { value: '180d', label: '최근 180일' },
   { value: '365d', label: '최근 1년' },
-]
+];
 
 const GROUPING_OPTIONS = [
   { value: 'week', label: '주간 집계' },
   { value: 'month', label: '월간 집계' },
   { value: 'day', label: '일간 집계' },
-]
+];
 
 function formatNumber(value, { style = 'decimal', digits = 0 } = {}) {
-  if (value === null || value === undefined) return '—'
+  if (value === null || value === undefined) return '—';
   return new Intl.NumberFormat('ko-KR', {
     style,
     maximumFractionDigits: digits,
     minimumFractionDigits: digits,
-  }).format(value)
+  }).format(value);
 }
 
 function formatPercent(value) {
-  if (value === null || value === undefined) return '—'
-  return formatNumber(value * 100, { digits: 1, style: 'decimal' }) + '%'
+  if (value === null || value === undefined) return '—';
+  return formatNumber(value * 100, { digits: 1, style: 'decimal' }) + '%';
 }
 
 function formatDuration(ms) {
-  if (!ms && ms !== 0) return '—'
-  if (ms < 1000) return `${ms}ms`
-  const seconds = Math.round(ms / 1000)
-  if (seconds < 60) return `${seconds}초`
-  const minutes = Math.floor(seconds / 60)
-  const remaining = seconds % 60
+  if (!ms && ms !== 0) return '—';
+  if (ms < 1000) return `${ms}ms`;
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return `${seconds}초`;
+  const minutes = Math.floor(seconds / 60);
+  const remaining = seconds % 60;
   if (!remaining) {
-    return `${minutes}분`
+    return `${minutes}분`;
   }
-  return `${minutes}분 ${remaining}초`
+  return `${minutes}분 ${remaining}초`;
 }
 
 function TrendTable({ items }) {
   if (!items?.length) {
-    return <p className={styles.emptyMessage}>선택한 구간에 해당하는 기록이 없습니다.</p>
+    return <p className={styles.emptyMessage}>선택한 구간에 해당하는 기록이 없습니다.</p>;
   }
 
   return (
@@ -63,7 +63,7 @@ function TrendTable({ items }) {
           </tr>
         </thead>
         <tbody>
-          {items.map((item) => (
+          {items.map(item => (
             <tr key={item.bucketStart}>
               <td>{item.label}</td>
               <td>{formatNumber(item.records)}</td>
@@ -78,12 +78,12 @@ function TrendTable({ items }) {
         </tbody>
       </table>
     </div>
-  )
+  );
 }
 
 function BreakdownTable({ title, items, emptyLabel }) {
   if (!items?.length) {
-    return <p className={styles.emptyMessage}>{emptyLabel}</p>
+    return <p className={styles.emptyMessage}>{emptyLabel}</p>;
   }
 
   return (
@@ -104,7 +104,7 @@ function BreakdownTable({ title, items, emptyLabel }) {
             </tr>
           </thead>
           <tbody>
-            {items.map((item) => (
+            {items.map(item => (
               <tr key={item.provider || item.reason}>
                 <td>{item.provider || item.reason}</td>
                 <td>{formatNumber(item.records)}</td>
@@ -120,12 +120,12 @@ function BreakdownTable({ title, items, emptyLabel }) {
         </table>
       </div>
     </div>
-  )
+  );
 }
 
 function RecentList({ items }) {
   if (!items?.length) {
-    return <p className={styles.emptyMessage}>최근 기록이 없습니다.</p>
+    return <p className={styles.emptyMessage}>최근 기록이 없습니다.</p>;
   }
 
   return (
@@ -134,7 +134,9 @@ function RecentList({ items }) {
         <li key={`${item.keyHash || 'unknown'}-${index}`} className={styles.recentItem}>
           <header className={styles.recentHeader}>
             <h4>{item.provider || 'unknown'}</h4>
-            <p>{item.recordedAt ? new Date(item.recordedAt).toLocaleString('ko-KR') : '시각 미기록'}</p>
+            <p>
+              {item.recordedAt ? new Date(item.recordedAt).toLocaleString('ko-KR') : '시각 미기록'}
+            </p>
           </header>
           <dl className={styles.recentMeta}>
             <div>
@@ -169,70 +171,72 @@ function RecentList({ items }) {
         </li>
       ))}
     </ul>
-  )
+  );
 }
 
 export default function CooldownAnalyticsBoard() {
-  const [range, setRange] = useState('90d')
-  const [grouping, setGrouping] = useState('week')
-  const [provider, setProvider] = useState('all')
-  const [reason, setReason] = useState('all')
-  const [analytics, setAnalytics] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [refreshToken, setRefreshToken] = useState(0)
+  const [range, setRange] = useState('90d');
+  const [grouping, setGrouping] = useState('week');
+  const [provider, setProvider] = useState('all');
+  const [reason, setReason] = useState('all');
+  const [analytics, setAnalytics] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [refreshToken, setRefreshToken] = useState(0);
 
-  const missingTable = analytics?.meta?.missingTable
+  const missingTable = analytics?.meta?.missingTable;
 
   useEffect(() => {
-    const controller = new AbortController()
+    const controller = new AbortController();
     async function loadAnalytics() {
-      setLoading(true)
-      setError(null)
+      setLoading(true);
+      setError(null);
       try {
-        const params = new URLSearchParams()
-        if (range) params.set('range', range)
-        if (grouping) params.set('grouping', grouping)
-        if (provider && provider !== 'all') params.set('provider', provider)
-        if (reason && reason !== 'all') params.set('reason', reason)
+        const params = new URLSearchParams();
+        if (range) params.set('range', range);
+        if (grouping) params.set('grouping', grouping);
+        if (provider && provider !== 'all') params.set('provider', provider);
+        if (reason && reason !== 'all') params.set('reason', reason);
 
         const response = await fetch(`/api/rank/cooldown-analytics?${params.toString()}`, {
           signal: controller.signal,
-        })
+        });
 
         if (!response.ok) {
-          const payload = await response.json().catch(() => ({ error: '분석 보드를 불러오지 못했습니다.' }))
-          throw new Error(payload.error || '분석 보드를 불러오지 못했습니다.')
+          const payload = await response
+            .json()
+            .catch(() => ({ error: '분석 보드를 불러오지 못했습니다.' }));
+          throw new Error(payload.error || '분석 보드를 불러오지 못했습니다.');
         }
 
-        const payload = await response.json()
-        setAnalytics(payload)
+        const payload = await response.json();
+        setAnalytics(payload);
       } catch (fetchError) {
-        if (fetchError.name === 'AbortError') return
-        setError(fetchError.message || '분석 보드를 불러오지 못했습니다.')
+        if (fetchError.name === 'AbortError') return;
+        setError(fetchError.message || '분석 보드를 불러오지 못했습니다.');
       } finally {
-        setLoading(false)
+        setLoading(false);
       }
     }
 
-    loadAnalytics()
+    loadAnalytics();
 
-    return () => controller.abort()
-  }, [range, grouping, provider, reason, refreshToken])
+    return () => controller.abort();
+  }, [range, grouping, provider, reason, refreshToken]);
 
   const providerOptions = useMemo(() => {
-    const base = analytics?.filters?.providers || []
-    return ['all', ...base]
-  }, [analytics])
+    const base = analytics?.filters?.providers || [];
+    return ['all', ...base];
+  }, [analytics]);
 
   const reasonOptions = useMemo(() => {
-    const base = analytics?.filters?.reasons || []
-    return ['all', ...base]
-  }, [analytics])
+    const base = analytics?.filters?.reasons || [];
+    return ['all', ...base];
+  }, [analytics]);
 
   const summaryCards = useMemo(() => {
     if (!analytics?.summary) {
-      return []
+      return [];
     }
 
     return [
@@ -271,20 +275,22 @@ export default function CooldownAnalyticsBoard() {
         value: formatDuration(analytics.summary.avgRotationDurationMs),
         helper: '자동 키 교체까지 걸린 평균 시간',
       },
-    ]
-  }, [analytics])
+    ];
+  }, [analytics]);
 
   return (
     <section className={styles.section}>
       <header className={styles.header}>
         <div>
           <h2 className={styles.title}>쿨다운 장기 분석 보드</h2>
-          <p className={styles.subtitle}>기간·제공자·사유별 필터를 적용해 주간·월간 추세를 살펴보세요.</p>
+          <p className={styles.subtitle}>
+            기간·제공자·사유별 필터를 적용해 주간·월간 추세를 살펴보세요.
+          </p>
         </div>
         <button
           type="button"
           className={styles.refreshButton}
-          onClick={() => setRefreshToken((value) => value + 1)}
+          onClick={() => setRefreshToken(value => value + 1)}
           disabled={loading}
         >
           {loading ? '불러오는 중…' : '새로고침'}
@@ -294,8 +300,8 @@ export default function CooldownAnalyticsBoard() {
       <div className={styles.filterRow}>
         <label className={styles.filterControl}>
           <span>기간</span>
-          <select value={range} onChange={(event) => setRange(event.target.value)}>
-            {RANGE_OPTIONS.map((option) => (
+          <select value={range} onChange={event => setRange(event.target.value)}>
+            {RANGE_OPTIONS.map(option => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
@@ -304,8 +310,8 @@ export default function CooldownAnalyticsBoard() {
         </label>
         <label className={styles.filterControl}>
           <span>집계</span>
-          <select value={grouping} onChange={(event) => setGrouping(event.target.value)}>
-            {GROUPING_OPTIONS.map((option) => (
+          <select value={grouping} onChange={event => setGrouping(event.target.value)}>
+            {GROUPING_OPTIONS.map(option => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
@@ -314,8 +320,8 @@ export default function CooldownAnalyticsBoard() {
         </label>
         <label className={styles.filterControl}>
           <span>제공자</span>
-          <select value={provider} onChange={(event) => setProvider(event.target.value)}>
-            {providerOptions.map((value) => (
+          <select value={provider} onChange={event => setProvider(event.target.value)}>
+            {providerOptions.map(value => (
               <option key={value} value={value}>
                 {value === 'all' ? '전체' : value}
               </option>
@@ -324,8 +330,8 @@ export default function CooldownAnalyticsBoard() {
         </label>
         <label className={styles.filterControl}>
           <span>사유</span>
-          <select value={reason} onChange={(event) => setReason(event.target.value)}>
-            {reasonOptions.map((value) => (
+          <select value={reason} onChange={event => setReason(event.target.value)}>
+            {reasonOptions.map(value => (
               <option key={value} value={value}>
                 {value === 'all' ? '전체' : value}
               </option>
@@ -338,13 +344,13 @@ export default function CooldownAnalyticsBoard() {
 
       {missingTable && (
         <p className={styles.notice}>
-          <code>rank_api_key_cooldowns</code> 테이블이 아직 배포 환경에 생성되지 않아 빈 결과를 표시합니다. Supabase
-          마이그레이션을 적용해 테이블을 만든 뒤 새로고침해 주세요.
+          <code>rank_api_key_cooldowns</code> 테이블이 아직 배포 환경에 생성되지 않아 빈 결과를
+          표시합니다. Supabase 마이그레이션을 적용해 테이블을 만든 뒤 새로고침해 주세요.
         </p>
       )}
 
       <div className={styles.summaryGrid}>
-        {summaryCards.map((card) => (
+        {summaryCards.map(card => (
           <article key={card.title} className={styles.summaryCard}>
             <h3>{card.title}</h3>
             <p className={styles.summaryValue}>{card.value}</p>
@@ -355,7 +361,11 @@ export default function CooldownAnalyticsBoard() {
 
       <section className={styles.trendSection}>
         <h3 className={styles.tableTitle}>기간별 추세</h3>
-        {loading ? <p className={styles.muted}>불러오는 중…</p> : <TrendTable items={analytics?.trend} />}
+        {loading ? (
+          <p className={styles.muted}>불러오는 중…</p>
+        ) : (
+          <TrendTable items={analytics?.trend} />
+        )}
       </section>
 
       <div className={styles.breakdownGrid}>
@@ -377,9 +387,12 @@ export default function CooldownAnalyticsBoard() {
 
       <section>
         <h3 className={styles.tableTitle}>최근 관측된 이벤트</h3>
-        {loading ? <p className={styles.muted}>불러오는 중…</p> : <RecentList items={analytics?.recent} />}
+        {loading ? (
+          <p className={styles.muted}>불러오는 중…</p>
+        ) : (
+          <RecentList items={analytics?.recent} />
+        )}
       </section>
     </section>
-  )
+  );
 }
-

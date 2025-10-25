@@ -1,8 +1,0 @@
-roles/compute.viewer
-roles/iam.serviceAccountUser
-roles/logging.bucketWriter
-roles/redis.admin
-roles/run.developer
-roles/storage.admin
-roles/vpcaccess.admin
-roles/monitoring.metricWriter

@@ -1,4 +1,4 @@
-import { compileTemplate } from '@/lib/rank/prompt'
+import { compileTemplate } from '@/lib/rank/prompt';
 
 describe('rank prompt compileTemplate', () => {
   const buildHero = (name, slotNo) => ({
@@ -14,43 +14,42 @@ describe('rank prompt compileTemplate', () => {
     slot_number: slotNo + 1,
     slotIndex: slotNo,
     slot_index: slotNo,
-  })
+  });
 
   it('supports zero-based slot placeholders', () => {
     const slotsMap = {
       0: buildHero('Alpha', 0),
       1: buildHero('Beta', 1),
-    }
+    };
 
     const { text } = compileTemplate({
       template: '{{slot0.name}} vs {{slot1.name}}',
       slotsMap,
-    })
+    });
 
-    expect(text).toBe('Alpha vs Beta')
-  })
+    expect(text).toBe('Alpha vs Beta');
+  });
 
   it('fills slot metadata for zero-based placeholders', () => {
     const slotsMap = {
       0: buildHero('Gamma', 0),
-    }
+    };
 
     const { text } = compileTemplate({
-      template:
-        '{{slot0.slotNo}}/{{slot0.slotNumber}}/{{slot0.slotIndex}}/{{slot0.role}}',
+      template: '{{slot0.slotNo}}/{{slot0.slotNumber}}/{{slot0.slotIndex}}/{{slot0.role}}',
       slotsMap,
-    })
+    });
 
-    expect(text).toBe('0/1/0/attack')
-  })
+    expect(text).toBe('0/1/0/attack');
+  });
 
   it('produces zero-based random slot index', () => {
-    const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5)
+    const randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
     const { text } = compileTemplate({
       template: '{{slot.random}}',
       slotsMap: {},
-    })
-    expect(text).toBe('6')
-    randomSpy.mockRestore()
-  })
-})
+    });
+    expect(text).toBe('6');
+    randomSpy.mockRestore();
+  });
+});

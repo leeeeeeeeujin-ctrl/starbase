@@ -1,13 +1,13 @@
-'use client'
+'use client';
 
-import { useCallback } from 'react'
+import { useCallback } from 'react';
 
 import {
   clearActiveSessionRecord,
   markActiveSessionDefeated,
   storeActiveSessionRecord,
   updateActiveSessionRecord,
-} from '../../../../lib/rank/activeSessionStorage'
+} from '../../../../lib/rank/activeSessionStorage';
 
 /**
  * 스타트 세션의 로컬 저장소 상태와 런타임 리셋을 관리하는 훅입니다.
@@ -45,50 +45,46 @@ export function useStartSessionLifecycle({
 }) {
   const rememberActiveSession = useCallback(
     (payload = {}) => {
-      if (!gameId || !game) return
-      const actorNames = Array.isArray(payload.actorNames)
-        ? payload.actorNames
-        : activeActorNames
+      if (!gameId || !game) return;
+      const actorNames = Array.isArray(payload.actorNames) ? payload.actorNames : activeActorNames;
       storeActiveSessionRecord(gameId, {
         gameName: game.name || '',
         description: game.description || '',
         actorNames,
         sessionId: payload.sessionId ?? sessionInfo?.id ?? null,
         ...payload,
-      })
+      });
     },
-    [gameId, game, activeActorNames, sessionInfo?.id],
-  )
+    [gameId, game, activeActorNames, sessionInfo?.id]
+  );
 
   const updateSessionRecord = useCallback(
     (payload = {}) => {
-      if (!gameId) return
-      const actorNames = Array.isArray(payload.actorNames)
-        ? payload.actorNames
-        : activeActorNames
+      if (!gameId) return;
+      const actorNames = Array.isArray(payload.actorNames) ? payload.actorNames : activeActorNames;
       updateActiveSessionRecord(gameId, {
         actorNames,
         gameName: game?.name || '',
         description: game?.description || '',
         sessionId: payload.sessionId ?? sessionInfo?.id ?? null,
         ...payload,
-      })
+      });
     },
-    [gameId, game, activeActorNames, sessionInfo?.id],
-  )
+    [gameId, game, activeActorNames, sessionInfo?.id]
+  );
 
   const resetRuntimeState = useCallback(() => {
     if (realtimeManagerRef?.current) {
-      const snapshot = realtimeManagerRef.current.reset()
-      applyRealtimeSnapshot(snapshot)
+      const snapshot = realtimeManagerRef.current.reset();
+      applyRealtimeSnapshot(snapshot);
     } else {
-      applyRealtimeSnapshot(null)
+      applyRealtimeSnapshot(null);
     }
-    dropInQueueRef?.current?.reset?.()
-    asyncSessionManagerRef?.current?.reset?.()
-    setSessionInfo(null)
-    setTurnDeadline(null)
-    setTimeRemaining(null)
+    dropInQueueRef?.current?.reset?.();
+    asyncSessionManagerRef?.current?.reset?.();
+    setSessionInfo(null);
+    setTurnDeadline(null);
+    setTimeRemaining(null);
   }, [
     realtimeManagerRef,
     applyRealtimeSnapshot,
@@ -97,26 +93,26 @@ export function useStartSessionLifecycle({
     setSessionInfo,
     setTurnDeadline,
     setTimeRemaining,
-  ])
+  ]);
 
   const clearSessionRecord = useCallback(() => {
     if (gameId) {
-      clearActiveSessionRecord(gameId)
+      clearActiveSessionRecord(gameId);
     }
-    resetRuntimeState()
-  }, [gameId, resetRuntimeState])
+    resetRuntimeState();
+  }, [gameId, resetRuntimeState]);
 
   const markSessionDefeated = useCallback(() => {
     if (gameId) {
-      markActiveSessionDefeated(gameId)
+      markActiveSessionDefeated(gameId);
     }
-    resetRuntimeState()
-  }, [gameId, resetRuntimeState])
+    resetRuntimeState();
+  }, [gameId, resetRuntimeState]);
 
   return {
     rememberActiveSession,
     updateSessionRecord,
     clearSessionRecord,
     markSessionDefeated,
-  }
+  };
 }

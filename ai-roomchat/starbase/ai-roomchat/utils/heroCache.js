@@ -1,32 +1,32 @@
-const HERO_CACHE_PREFIX = 'starbase:hero-cache:'
+const HERO_CACHE_PREFIX = 'starbase:hero-cache:';
 
 function buildKey(heroId) {
-  if (!heroId) return null
-  return `${HERO_CACHE_PREFIX}${heroId}`
+  if (!heroId) return null;
+  return `${HERO_CACHE_PREFIX}${heroId}`;
 }
 
 export function readHeroCache(heroId) {
-  if (typeof window === 'undefined') return null
-  const key = buildKey(heroId)
-  if (!key) return null
+  if (typeof window === 'undefined') return null;
+  const key = buildKey(heroId);
+  if (!key) return null;
   try {
-    const raw = window.localStorage.getItem(key)
-    if (!raw) return null
-    const parsed = JSON.parse(raw)
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === 'object') {
-      return parsed
+      return parsed;
     }
   } catch (error) {
-    console.error('Failed to read hero cache:', error)
+    console.error('Failed to read hero cache:', error);
   }
-  return null
+  return null;
 }
 
 export function writeHeroCache(hero) {
-  if (typeof window === 'undefined') return
-  if (!hero || !hero.id) return
-  const key = buildKey(hero.id)
-  if (!key) return
+  if (typeof window === 'undefined') return;
+  if (!hero || !hero.id) return;
+  const key = buildKey(hero.id);
+  if (!key) return;
   try {
     const payload = {
       id: hero.id,
@@ -43,20 +43,20 @@ export function writeHeroCache(hero) {
       bgm_mime: hero.bgm_mime || null,
       owner_id: hero.owner_id || null,
       created_at: hero.created_at || null,
-    }
-    window.localStorage.setItem(key, JSON.stringify(payload))
+    };
+    window.localStorage.setItem(key, JSON.stringify(payload));
   } catch (error) {
-    console.error('Failed to write hero cache:', error)
+    console.error('Failed to write hero cache:', error);
   }
 }
 
 export function clearHeroCache(heroId) {
-  if (typeof window === 'undefined') return
-  const key = buildKey(heroId)
-  if (!key) return
+  if (typeof window === 'undefined') return;
+  const key = buildKey(heroId);
+  if (!key) return;
   try {
-    window.localStorage.removeItem(key)
+    window.localStorage.removeItem(key);
   } catch (error) {
-    console.error('Failed to clear hero cache:', error)
+    console.error('Failed to clear hero cache:', error);
   }
 }

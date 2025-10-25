@@ -1,9 +1,9 @@
-'use client'
+'use client';
 
-import { useRef } from 'react'
+import { useRef } from 'react';
 
 export default function HeroImageUploadCard({ preview, onSelect }) {
-  const inputRef = useRef(null)
+  const inputRef = useRef(null);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
@@ -48,10 +48,10 @@ export default function HeroImageUploadCard({ preview, onSelect }) {
           ref={inputRef}
           type="file"
           accept="image/*"
-          onChange={(event) => {
-            const file = event.target.files?.[0]
+          onChange={event => {
+            const file = event.target.files?.[0];
             if (file) {
-              onSelect(file)
+              onSelect(file);
             }
           }}
           style={{ display: 'none' }}
@@ -59,7 +59,7 @@ export default function HeroImageUploadCard({ preview, onSelect }) {
         <span style={{ fontSize: 12, color: '#cbd5f5' }}>정사각형 이미지가 가장 잘 어울려요.</span>
       </div>
     </div>
-  )
+  );
 }
 
 //

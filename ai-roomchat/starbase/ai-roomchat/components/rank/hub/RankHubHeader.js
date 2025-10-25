@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import Link from 'next/link';
 
 const styles = {
   root: {
@@ -16,17 +16,23 @@ const styles = {
     textDecoration: 'none',
     color: '#0f172a',
   },
-}
+};
 
 export default function RankHubHeader() {
   return (
     <header style={styles.root}>
       <h2 style={styles.title}>랭킹 허브</h2>
       <div style={styles.links}>
-        <Link href="/roster" style={styles.linkButton}>로스터</Link>
-        <Link href="/maker" style={styles.linkButton}>게임 제작</Link>
-        <Link href="/rank/new" style={styles.linkButton}>게임 등록</Link>
+        <Link href="/roster" style={styles.linkButton}>
+          로스터
+        </Link>
+        <Link href="/maker" style={styles.linkButton}>
+          게임 제작
+        </Link>
+        <Link href="/rank/new" style={styles.linkButton}>
+          게임 등록
+        </Link>
       </div>
     </header>
-  )
+  );
 }

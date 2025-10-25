@@ -1,55 +1,55 @@
-'use client'
+'use client';
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react';
 
-import TimelineSection from '../Timeline/TimelineSection'
-import styles from './LogsPanel.module.css'
-import { normalizeTurnSummaryPayload } from '../../../lib/rank/turnSummary'
+import TimelineSection from '../Timeline/TimelineSection';
+import styles from './LogsPanel.module.css';
+import { normalizeTurnSummaryPayload } from '../../../lib/rank/turnSummary';
 
 function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function highlightText(text, tokens) {
-  if (typeof text !== 'string' || !tokens.length) return text
+  if (typeof text !== 'string' || !tokens.length) return text;
 
-  const escaped = tokens.map(escapeRegExp).join('|')
-  if (!escaped) return text
-  const regex = new RegExp(`(${escaped})`, 'gi')
-  const segments = text.split(regex)
+  const escaped = tokens.map(escapeRegExp).join('|');
+  if (!escaped) return text;
+  const regex = new RegExp(`(${escaped})`, 'gi');
+  const segments = text.split(regex);
 
   return segments.map((segment, index) => {
-    if (!segment) return null
-    const match = tokens.some((token) => segment.toLowerCase() === token.toLowerCase())
+    if (!segment) return null;
+    const match = tokens.some(token => segment.toLowerCase() === token.toLowerCase());
     if (match) {
       return (
         <mark key={`mark-${index}`} className={styles.highlight}>
           {segment}
         </mark>
-      )
+      );
     }
-    return <span key={`plain-${index}`}>{segment}</span>
-  })
+    return <span key={`plain-${index}`}>{segment}</span>;
+  });
 }
 
 function dedupeStrings(value) {
-  if (!Array.isArray(value)) return []
-  const seen = new Set()
-  const result = []
-  value.forEach((item) => {
-    if (typeof item !== 'string') return
-    const trimmed = item.trim()
-    if (!trimmed) return
-    const lower = trimmed.toLowerCase()
-    if (seen.has(lower)) return
-    seen.add(lower)
-    result.push(trimmed)
-  })
-  return result
+  if (!Array.isArray(value)) return [];
+  const seen = new Set();
+  const result = [];
+  value.forEach(item => {
+    if (typeof item !== 'string') return;
+    const trimmed = item.trim();
+    if (!trimmed) return;
+    const lower = trimmed.toLowerCase();
+    if (seen.has(lower)) return;
+    seen.add(lower);
+    result.push(trimmed);
+  });
+  return result;
 }
 
 function formatActionLabel(action) {
-  const normalized = typeof action === 'string' ? action.trim().toLowerCase() : ''
+  const normalized = typeof action === 'string' ? action.trim().toLowerCase() : '';
   const ACTION_LABELS = {
     continue: '계속',
     win: '승리',
@@ -57,30 +57,30 @@ function formatActionLabel(action) {
     draw: '무승부',
     retry: '재시도',
     halt: '중단',
-  }
-  return ACTION_LABELS[normalized] || (normalized ? normalized : '')
+  };
+  return ACTION_LABELS[normalized] || (normalized ? normalized : '');
 }
 
 function formatRoleLabel(role) {
-  const normalized = typeof role === 'string' ? role.trim().toLowerCase() : ''
-  if (!normalized) return '내레이션'
-  if (normalized === 'assistant') return 'AI 응답'
-  if (normalized === 'user') return '플레이어 행동'
-  if (normalized === 'system') return '시스템'
-  return role
+  const normalized = typeof role === 'string' ? role.trim().toLowerCase() : '';
+  if (!normalized) return '내레이션';
+  if (normalized === 'assistant') return 'AI 응답';
+  if (normalized === 'user') return '플레이어 행동';
+  if (normalized === 'system') return '시스템';
+  return role;
 }
 
 function normalizeLogEntry(entry, index) {
-  if (!entry) return null
-  const turn = Number(entry.turn)
-  const nodeId = entry.nodeId ?? entry.node_id ?? null
-  const summary = normalizeTurnSummaryPayload(entry.summary)
-  const actors = dedupeStrings(entry.actors)
-  const variables = dedupeStrings(entry.variables)
-  const next = entry.next ?? entry.nextNode ?? null
-  const actionLabel = formatActionLabel(entry.action)
-  const actionKey = typeof entry.action === 'string' ? entry.action.trim().toLowerCase() : ''
-  const outcome = typeof entry.outcome === 'string' ? entry.outcome.trim() : ''
+  if (!entry) return null;
+  const turn = Number(entry.turn);
+  const nodeId = entry.nodeId ?? entry.node_id ?? null;
+  const summary = normalizeTurnSummaryPayload(entry.summary);
+  const actors = dedupeStrings(entry.actors);
+  const variables = dedupeStrings(entry.variables);
+  const next = entry.next ?? entry.nextNode ?? null;
+  const actionLabel = formatActionLabel(entry.action);
+  const actionKey = typeof entry.action === 'string' ? entry.action.trim().toLowerCase() : '';
+  const outcome = typeof entry.outcome === 'string' ? entry.outcome.trim() : '';
   const visibleResponse =
     typeof entry.visibleResponse === 'string'
       ? entry.visibleResponse
@@ -88,12 +88,12 @@ function normalizeLogEntry(entry, index) {
         ? entry.displayResponse
         : typeof entry.response === 'string'
           ? entry.response
-          : ''
-  const response = typeof entry.response === 'string' ? entry.response : visibleResponse
-  const prompt = typeof entry.prompt === 'string' ? entry.prompt : ''
+          : '';
+  const response = typeof entry.response === 'string' ? entry.response : visibleResponse;
+  const prompt = typeof entry.prompt === 'string' ? entry.prompt : '';
   const key = Number.isFinite(turn)
     ? `log-${turn}-${nodeId ?? index}`
-    : `log-${index}-${nodeId ?? 'unknown'}`
+    : `log-${index}-${nodeId ?? 'unknown'}`;
 
   return {
     key,
@@ -109,39 +109,38 @@ function normalizeLogEntry(entry, index) {
     response,
     visibleResponse,
     prompt,
-  }
+  };
 }
 
 function normalizeMemoryEntry(entry, index) {
-  if (!entry) return null
-  const roleLabel = formatRoleLabel(entry.role)
-  const content = typeof entry.content === 'string' ? entry.content : ''
-  const actors = dedupeStrings(entry.meta?.actors)
+  if (!entry) return null;
+  const roleLabel = formatRoleLabel(entry.role);
+  const content = typeof entry.content === 'string' ? entry.content : '';
+  const actors = dedupeStrings(entry.meta?.actors);
   return {
     key: `memory-${entry.index ?? index}`,
     roleLabel,
     content,
     actors,
-  }
+  };
 }
 
-
 function formatTimelineReason(reason) {
-  if (!reason) return ''
-  const normalized = String(reason).trim().toLowerCase()
+  if (!reason) return '';
+  const normalized = String(reason).trim().toLowerCase();
   switch (normalized) {
     case 'timeout':
-      return '시간 초과'
+      return '시간 초과';
     case 'consensus':
-      return '합의 미응답'
+      return '합의 미응답';
     case 'manual':
-      return '수동 진행 미완료'
+      return '수동 진행 미완료';
     case 'ai':
-      return '자동 진행'
+      return '자동 진행';
     case 'inactivity':
-      return '응답 없음'
+      return '응답 없음';
     default:
-      return reason
+      return reason;
   }
 }
 
@@ -151,25 +150,22 @@ export default function LogsPanel({
   playerHistories = [],
   realtimeEvents = [],
 }) {
-  const normalizedLogs = useMemo(
-    () => logs.map(normalizeLogEntry).filter(Boolean),
-    [logs],
-  )
+  const normalizedLogs = useMemo(() => logs.map(normalizeLogEntry).filter(Boolean), [logs]);
 
   const normalizedMemory = useMemo(
     () => aiMemory.map(normalizeMemoryEntry).filter(Boolean),
-    [aiMemory],
-  )
+    [aiMemory]
+  );
 
   const normalizedPlayers = useMemo(() => {
     if (!Array.isArray(playerHistories) || playerHistories.length === 0) {
-      return []
+      return [];
     }
 
     return playerHistories
       .map((player, index) => {
         if (!player || typeof player !== 'object') {
-          return null
+          return null;
         }
 
         const name =
@@ -177,152 +173,152 @@ export default function LogsPanel({
           player.hero_name ||
           player.name ||
           player.hero?.name ||
-          `슬롯 ${index + 1}`
-        const role = player.role || ''
-        const entries = Array.isArray(player.entries) ? player.entries.slice(-4) : []
+          `슬롯 ${index + 1}`;
+        const role = player.role || '';
+        const entries = Array.isArray(player.entries) ? player.entries.slice(-4) : [];
         const normalizedEntries = entries
           .map((entry, entryIndex) => {
             if (!entry || typeof entry !== 'object') {
-              return null
+              return null;
             }
 
-            const roleLabel = formatRoleLabel(entry.role)
-            const content = typeof entry.content === 'string' ? entry.content : ''
-            const actors = dedupeStrings(entry.meta?.actors)
+            const roleLabel = formatRoleLabel(entry.role);
+            const content = typeof entry.content === 'string' ? entry.content : '';
+            const actors = dedupeStrings(entry.meta?.actors);
 
             return {
               key: `player-${index}-${entry.index ?? entryIndex}`,
               roleLabel,
               content,
               actors,
-            }
+            };
           })
-          .filter(Boolean)
+          .filter(Boolean);
 
         return {
           key: `player-${index}`,
           name,
           role,
           entries: normalizedEntries,
-        }
+        };
       })
-      .filter(Boolean)
-  }, [playerHistories])
+      .filter(Boolean);
+  }, [playerHistories]);
 
   const timelineEvents = useMemo(() => {
-    if (!Array.isArray(realtimeEvents)) return []
+    if (!Array.isArray(realtimeEvents)) return [];
     return realtimeEvents
-      .map((event) => {
-        if (!event || typeof event !== 'object') return null
-        const formattedReason = formatTimelineReason(event.reason)
+      .map(event => {
+        if (!event || typeof event !== 'object') return null;
+        const formattedReason = formatTimelineReason(event.reason);
         if (formattedReason !== (event.reason || '')) {
-          return { ...event, reason: formattedReason }
+          return { ...event, reason: formattedReason };
         }
-        return event
+        return event;
       })
-      .filter(Boolean)
-  }, [realtimeEvents])
-  const getTimelineOwnerLabel = useCallback((event) => {
-    if (!event || typeof event !== 'object') return '알 수 없는 참가자'
-    const ownerId = event.ownerId ? String(event.ownerId).trim() : ''
+      .filter(Boolean);
+  }, [realtimeEvents]);
+  const getTimelineOwnerLabel = useCallback(event => {
+    if (!event || typeof event !== 'object') return '알 수 없는 참가자';
+    const ownerId = event.ownerId ? String(event.ownerId).trim() : '';
     if (ownerId) {
-      return `플레이어 ${ownerId.slice(0, 6)}`
+      return `플레이어 ${ownerId.slice(0, 6)}`;
     }
-    const context = event.context && typeof event.context === 'object' ? event.context : {}
+    const context = event.context && typeof event.context === 'object' ? event.context : {};
     if (context.heroName) {
-      return context.heroName
+      return context.heroName;
     }
-    return '알 수 없는 참가자'
-  }, [])
+    return '알 수 없는 참가자';
+  }, []);
 
-  const [searchTerm, setSearchTerm] = useState('')
+  const [searchTerm, setSearchTerm] = useState('');
   const [collapsedSections, setCollapsedSections] = useState({
     logs: false,
     memory: false,
     players: false,
     timeline: false,
-  })
+  });
 
-  const trimmedSearch = searchTerm.trim().toLowerCase()
+  const trimmedSearch = searchTerm.trim().toLowerCase();
   const searchTokens = useMemo(
     () => (trimmedSearch ? trimmedSearch.split(/\s+/).filter(Boolean) : []),
-    [trimmedSearch],
-  )
+    [trimmedSearch]
+  );
 
-  const [activeActions, setActiveActions] = useState([])
-  const [activeActors, setActiveActors] = useState([])
-  const [activeTags, setActiveTags] = useState([])
+  const [activeActions, setActiveActions] = useState([]);
+  const [activeActors, setActiveActors] = useState([]);
+  const [activeTags, setActiveTags] = useState([]);
 
   const availableActions = useMemo(() => {
-    const unique = new Map()
-    normalizedLogs.forEach((entry) => {
-      if (!entry.actionKey) return
-      if (unique.has(entry.actionKey)) return
-      unique.set(entry.actionKey, entry.actionLabel || entry.actionKey)
-    })
-    return Array.from(unique.entries()).map(([key, label]) => ({ key, label }))
-  }, [normalizedLogs])
+    const unique = new Map();
+    normalizedLogs.forEach(entry => {
+      if (!entry.actionKey) return;
+      if (unique.has(entry.actionKey)) return;
+      unique.set(entry.actionKey, entry.actionLabel || entry.actionKey);
+    });
+    return Array.from(unique.entries()).map(([key, label]) => ({ key, label }));
+  }, [normalizedLogs]);
 
   const availableActors = useMemo(() => {
-    const seen = new Map()
-    normalizedLogs.forEach((entry) => {
-      entry.actors.forEach((actor) => {
-        const lower = actor.toLowerCase()
-        if (seen.has(lower)) return
-        seen.set(lower, actor)
-      })
+    const seen = new Map();
+    normalizedLogs.forEach(entry => {
+      entry.actors.forEach(actor => {
+        const lower = actor.toLowerCase();
+        if (seen.has(lower)) return;
+        seen.set(lower, actor);
+      });
       if (entry.summary?.actors?.length) {
-        entry.summary.actors.forEach((actor) => {
-          const lower = actor.toLowerCase()
-          if (seen.has(lower)) return
-          seen.set(lower, actor)
-        })
+        entry.summary.actors.forEach(actor => {
+          const lower = actor.toLowerCase();
+          if (seen.has(lower)) return;
+          seen.set(lower, actor);
+        });
       }
-    })
+    });
     return Array.from(seen.entries())
       .map(([key, label]) => ({ key, label }))
-      .sort((a, b) => a.label.localeCompare(b.label))
-  }, [normalizedLogs])
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [normalizedLogs]);
 
   const availableTags = useMemo(() => {
-    const seen = new Map()
-    normalizedLogs.forEach((entry) => {
-      ;(entry.summary?.tags || []).forEach((tag) => {
-        const lower = tag.toLowerCase()
-        if (seen.has(lower)) return
-        seen.set(lower, tag)
-      })
-    })
+    const seen = new Map();
+    normalizedLogs.forEach(entry => {
+      (entry.summary?.tags || []).forEach(tag => {
+        const lower = tag.toLowerCase();
+        if (seen.has(lower)) return;
+        seen.set(lower, tag);
+      });
+    });
     return Array.from(seen.entries())
       .map(([key, label]) => ({ key, label: `#${label}` }))
-      .sort((a, b) => a.label.localeCompare(b.label))
-  }, [normalizedLogs])
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [normalizedLogs]);
 
   const filteredLogs = useMemo(() => {
-    const actionSet = new Set(activeActions)
-    const actorSet = new Set(activeActors)
-    const tagSet = new Set(activeTags)
+    const actionSet = new Set(activeActions);
+    const actorSet = new Set(activeActors);
+    const tagSet = new Set(activeTags);
 
-    return normalizedLogs.filter((entry) => {
+    return normalizedLogs.filter(entry => {
       if (actionSet.size && (!entry.actionKey || !actionSet.has(entry.actionKey))) {
-        return false
+        return false;
       }
 
       if (actorSet.size) {
-        const summaryActors = entry.summary?.actors?.map((actor) => actor.toLowerCase()) || []
-        const entryActors = entry.actors.map((actor) => actor.toLowerCase())
-        const combined = new Set([...summaryActors, ...entryActors])
-        const matchesActor = Array.from(actorSet).some((actor) => combined.has(actor))
-        if (!matchesActor) return false
+        const summaryActors = entry.summary?.actors?.map(actor => actor.toLowerCase()) || [];
+        const entryActors = entry.actors.map(actor => actor.toLowerCase());
+        const combined = new Set([...summaryActors, ...entryActors]);
+        const matchesActor = Array.from(actorSet).some(actor => combined.has(actor));
+        if (!matchesActor) return false;
       }
 
       if (tagSet.size) {
-        const tags = (entry.summary?.tags || []).map((tag) => tag.toLowerCase())
-        const matchesTag = Array.from(tagSet).some((tag) => tags.includes(tag))
-        if (!matchesTag) return false
+        const tags = (entry.summary?.tags || []).map(tag => tag.toLowerCase());
+        const matchesTag = Array.from(tagSet).some(tag => tags.includes(tag));
+        if (!matchesTag) return false;
       }
 
-      if (!trimmedSearch) return true
+      if (!trimmedSearch) return true;
 
       const haystacks = [
         entry.summary?.preview,
@@ -336,44 +332,45 @@ export default function LogsPanel({
         entry.actors.join(' '),
         entry.variables.join(' '),
         (entry.summary?.tags || []).join(' '),
-      ]
+      ];
 
-      return haystacks.some((value) =>
-        typeof value === 'string' ? value.toLowerCase().includes(trimmedSearch) : false,
-      )
-    })
-  }, [activeActions, activeActors, activeTags, normalizedLogs, trimmedSearch])
+      return haystacks.some(value =>
+        typeof value === 'string' ? value.toLowerCase().includes(trimmedSearch) : false
+      );
+    });
+  }, [activeActions, activeActors, activeTags, normalizedLogs, trimmedSearch]);
 
-  const handleToggle = useCallback((section) => {
-    setCollapsedSections((prev) => ({
+  const handleToggle = useCallback(section => {
+    setCollapsedSections(prev => ({
       ...prev,
       [section]: !prev[section],
-    }))
-  }, [])
+    }));
+  }, []);
 
-  const handleSearchChange = useCallback((event) => {
-    setSearchTerm(event.target.value)
-  }, [])
+  const handleSearchChange = useCallback(event => {
+    setSearchTerm(event.target.value);
+  }, []);
 
   const handleFilterToggle = useCallback((type, value) => {
-    const updater = type === 'action' ? setActiveActions : type === 'actor' ? setActiveActors : setActiveTags
-    updater((prev) => {
-      const next = new Set(prev)
+    const updater =
+      type === 'action' ? setActiveActions : type === 'actor' ? setActiveActors : setActiveTags;
+    updater(prev => {
+      const next = new Set(prev);
       if (next.has(value)) {
-        next.delete(value)
+        next.delete(value);
       } else {
-        next.add(value)
+        next.add(value);
       }
-      return Array.from(next)
-    })
-  }, [])
+      return Array.from(next);
+    });
+  }, []);
 
   const handleClearFilters = useCallback(() => {
-    setActiveActions([])
-    setActiveActors([])
-    setActiveTags([])
-    setSearchTerm('')
-  }, [])
+    setActiveActions([]);
+    setActiveActors([]);
+    setActiveTags([]);
+    setSearchTerm('');
+  }, []);
 
   return (
     <section className={styles.panel}>
@@ -404,7 +401,9 @@ export default function LogsPanel({
           </div>
 
           {collapsedSections.logs ? (
-            <p className={styles.collapsedNotice}>턴 로그 카드를 축약했습니다. 펼치면 다시 확인할 수 있어요.</p>
+            <p className={styles.collapsedNotice}>
+              턴 로그 카드를 축약했습니다. 펼치면 다시 확인할 수 있어요.
+            </p>
           ) : (
             <>
               <div className={styles.sectionControls}>
@@ -418,7 +417,10 @@ export default function LogsPanel({
                     className={styles.searchInput}
                   />
                 </label>
-                {(trimmedSearch || activeActions.length || activeActors.length || activeTags.length) && (
+                {(trimmedSearch ||
+                  activeActions.length ||
+                  activeActors.length ||
+                  activeTags.length) && (
                   <div className={styles.activeSummary}>
                     <span className={styles.filterBadge}>
                       {filteredLogs.length ? `${filteredLogs.length}개 일치` : '일치 항목 없음'}
@@ -440,8 +442,8 @@ export default function LogsPanel({
                     <div className={styles.filterGroup}>
                       <span className={styles.filterLabel}>액션</span>
                       <div className={styles.filterOptions}>
-                        {availableActions.map((action) => {
-                          const isActive = activeActions.includes(action.key)
+                        {availableActions.map(action => {
+                          const isActive = activeActions.includes(action.key);
                           return (
                             <button
                               key={action.key}
@@ -452,7 +454,7 @@ export default function LogsPanel({
                             >
                               {action.label}
                             </button>
-                          )
+                          );
                         })}
                       </div>
                     </div>
@@ -462,8 +464,8 @@ export default function LogsPanel({
                     <div className={styles.filterGroup}>
                       <span className={styles.filterLabel}>주역</span>
                       <div className={styles.filterOptions}>
-                        {availableActors.map((actor) => {
-                          const isActive = activeActors.includes(actor.key)
+                        {availableActors.map(actor => {
+                          const isActive = activeActors.includes(actor.key);
                           return (
                             <button
                               key={actor.key}
@@ -474,7 +476,7 @@ export default function LogsPanel({
                             >
                               {actor.label}
                             </button>
-                          )
+                          );
                         })}
                       </div>
                     </div>
@@ -484,8 +486,8 @@ export default function LogsPanel({
                     <div className={styles.filterGroup}>
                       <span className={styles.filterLabel}>태그</span>
                       <div className={styles.filterOptions}>
-                        {availableTags.map((tag) => {
-                          const isActive = activeTags.includes(tag.key)
+                        {availableTags.map(tag => {
+                          const isActive = activeTags.includes(tag.key);
                           return (
                             <button
                               key={tag.key}
@@ -496,7 +498,7 @@ export default function LogsPanel({
                             >
                               {tag.label}
                             </button>
-                          )
+                          );
                         })}
                       </div>
                     </div>
@@ -506,24 +508,24 @@ export default function LogsPanel({
 
               {filteredLogs.length ? (
                 <ul className={styles.logList}>
-                  {filteredLogs.map((entry) => (
+                  {filteredLogs.map(entry => (
                     <li key={entry.key} className={styles.logCard}>
                       <div className={styles.logHeader}>
                         {entry.turn != null ? (
                           <span className={styles.turnBadge}>턴 {entry.turn}</span>
                         ) : (
-                      <span className={styles.turnBadge}>턴</span>
-                    )}
-                    {entry.nodeId ? (
-                      <span className={styles.nodeTag}>노드 {entry.nodeId}</span>
-                    ) : null}
-                    {entry.next ? (
-                      <span className={styles.nodeTag}>다음 노드 {entry.next}</span>
-                    ) : null}
-                    {entry.actionLabel ? (
-                      <span className={styles.actionTag}>{entry.actionLabel}</span>
-                    ) : null}
-                  </div>
+                          <span className={styles.turnBadge}>턴</span>
+                        )}
+                        {entry.nodeId ? (
+                          <span className={styles.nodeTag}>노드 {entry.nodeId}</span>
+                        ) : null}
+                        {entry.next ? (
+                          <span className={styles.nodeTag}>다음 노드 {entry.next}</span>
+                        ) : null}
+                        {entry.actionLabel ? (
+                          <span className={styles.actionTag}>{entry.actionLabel}</span>
+                        ) : null}
+                      </div>
 
                       {entry.summary ? (
                         <div className={styles.summary}>
@@ -537,62 +539,73 @@ export default function LogsPanel({
                                 {highlightText(entry.summary.actors.join(', '), searchTokens)}
                               </span>
                             ) : null}
-                      </div>
-                      {entry.summary.preview ? (
-                        <p className={styles.summaryText}>{highlightText(entry.summary.preview, searchTokens)}</p>
-                      ) : null}
-                      {entry.summary.promptPreview ? (
-                        <p className={styles.summaryHint}>
-                          프롬프트: {highlightText(entry.summary.promptPreview, searchTokens)}
-                        </p>
-                      ) : null}
-                      {entry.summary.outcomeLine ? (
-                        <p className={styles.summaryHint}>
-                          결론: {highlightText(entry.summary.outcomeLine, searchTokens)}
-                        </p>
-                      ) : null}
-                      {entry.summary.tags?.length ? (
-                        <div className={styles.tagRow}>
-                          {entry.summary.tags.map((tag, tagIndex) => (
-                            <span key={`${entry.key}-tag-${tagIndex}`} className={styles.tagChip}>
-                              #{tag}
-                            </span>
-                          ))}
+                          </div>
+                          {entry.summary.preview ? (
+                            <p className={styles.summaryText}>
+                              {highlightText(entry.summary.preview, searchTokens)}
+                            </p>
+                          ) : null}
+                          {entry.summary.promptPreview ? (
+                            <p className={styles.summaryHint}>
+                              프롬프트: {highlightText(entry.summary.promptPreview, searchTokens)}
+                            </p>
+                          ) : null}
+                          {entry.summary.outcomeLine ? (
+                            <p className={styles.summaryHint}>
+                              결론: {highlightText(entry.summary.outcomeLine, searchTokens)}
+                            </p>
+                          ) : null}
+                          {entry.summary.tags?.length ? (
+                            <div className={styles.tagRow}>
+                              {entry.summary.tags.map((tag, tagIndex) => (
+                                <span
+                                  key={`${entry.key}-tag-${tagIndex}`}
+                                  className={styles.tagChip}
+                                >
+                                  #{tag}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
                       ) : null}
-                    </div>
-                  ) : null}
 
-                  <div className={styles.logBody}>
-                    {(entry.visibleResponse || entry.response) ? (
-                      <div>
-                        <div className={styles.bodyLabel}>응답</div>
-                        <p className={styles.bodyText}>
-                          {highlightText(entry.visibleResponse || entry.response, searchTokens)}
-                        </p>
+                      <div className={styles.logBody}>
+                        {entry.visibleResponse || entry.response ? (
+                          <div>
+                            <div className={styles.bodyLabel}>응답</div>
+                            <p className={styles.bodyText}>
+                              {highlightText(entry.visibleResponse || entry.response, searchTokens)}
+                            </p>
+                          </div>
+                        ) : null}
+                        {entry.prompt ? (
+                          <div>
+                            <div className={styles.bodyLabel}>사용된 프롬프트</div>
+                            <p className={styles.bodyText}>
+                              {highlightText(entry.prompt, searchTokens)}
+                            </p>
+                          </div>
+                        ) : null}
+                        <div className={styles.bodyMetaRow}>
+                          {entry.actors.length ? (
+                            <span>
+                              {highlightText(`주역: ${entry.actors.join(', ')}`, searchTokens)}
+                            </span>
+                          ) : null}
+                          {entry.variables.length ? (
+                            <span>
+                              {highlightText(`변수: ${entry.variables.join(', ')}`, searchTokens)}
+                            </span>
+                          ) : null}
+                          {entry.outcome ? (
+                            <span>{highlightText(`결과: ${entry.outcome}`, searchTokens)}</span>
+                          ) : null}
+                        </div>
                       </div>
-                    ) : null}
-                    {entry.prompt ? (
-                      <div>
-                        <div className={styles.bodyLabel}>사용된 프롬프트</div>
-                        <p className={styles.bodyText}>{highlightText(entry.prompt, searchTokens)}</p>
-                      </div>
-                    ) : null}
-                    <div className={styles.bodyMetaRow}>
-                      {entry.actors.length ? (
-                        <span>{highlightText(`주역: ${entry.actors.join(', ')}`, searchTokens)}</span>
-                      ) : null}
-                      {entry.variables.length ? (
-                        <span>{highlightText(`변수: ${entry.variables.join(', ')}`, searchTokens)}</span>
-                      ) : null}
-                      {entry.outcome ? (
-                        <span>{highlightText(`결과: ${entry.outcome}`, searchTokens)}</span>
-                      ) : null}
-                    </div>
-                  </div>
-                </li>
-              ))}
-              </ul>
+                    </li>
+                  ))}
+                </ul>
               ) : trimmedSearch ? (
                 <p className={styles.empty}>검색어와 일치하는 로그가 없습니다.</p>
               ) : (
@@ -632,10 +645,12 @@ export default function LogsPanel({
             </div>
 
             {collapsedSections.memory ? (
-              <p className={styles.collapsedNotice}>AI 히스토리를 숨겼습니다. 펼쳐서 다시 확인하세요.</p>
+              <p className={styles.collapsedNotice}>
+                AI 히스토리를 숨겼습니다. 펼쳐서 다시 확인하세요.
+              </p>
             ) : normalizedMemory.length ? (
               <div className={styles.memoryList}>
-                {normalizedMemory.map((entry) => (
+                {normalizedMemory.map(entry => (
                   <div key={entry.key} className={styles.memoryItem}>
                     <span className={styles.memoryRole}>{entry.roleLabel}</span>
                     {entry.actors.length ? (
@@ -643,7 +658,9 @@ export default function LogsPanel({
                         {highlightText(`주역: ${entry.actors.join(', ')}`, searchTokens)}
                       </span>
                     ) : null}
-                    <p className={styles.memoryContent}>{highlightText(entry.content, searchTokens)}</p>
+                    <p className={styles.memoryContent}>
+                      {highlightText(entry.content, searchTokens)}
+                    </p>
                   </div>
                 ))}
               </div>
@@ -671,10 +688,12 @@ export default function LogsPanel({
             </div>
 
             {collapsedSections.players ? (
-              <p className={styles.collapsedNotice}>플레이어 히스토리를 숨겼습니다. 펼쳐서 카드별 기록을 살펴보세요.</p>
+              <p className={styles.collapsedNotice}>
+                플레이어 히스토리를 숨겼습니다. 펼쳐서 카드별 기록을 살펴보세요.
+              </p>
             ) : normalizedPlayers.length ? (
               <div className={styles.playerList}>
-                {normalizedPlayers.map((player) => (
+                {normalizedPlayers.map(player => (
                   <div key={player.key} className={styles.playerCard}>
                     <div className={styles.playerHeader}>
                       <span className={styles.playerName}>{player.name}</span>
@@ -686,7 +705,7 @@ export default function LogsPanel({
                     </div>
                     <div className={styles.playerEntries}>
                       {player.entries.length ? (
-                        player.entries.map((entry) => (
+                        player.entries.map(entry => (
                           <div key={entry.key} className={styles.playerEntry}>
                             <span className={styles.playerEntryRole}>{entry.roleLabel}</span>
                             {entry.actors.length ? (
@@ -713,5 +732,5 @@ export default function LogsPanel({
         </div>
       </div>
     </section>
-  )
+  );
 }

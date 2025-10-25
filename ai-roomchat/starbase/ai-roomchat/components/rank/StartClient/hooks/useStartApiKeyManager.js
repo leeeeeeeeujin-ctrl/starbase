@@ -1,46 +1,40 @@
-'use client'
+'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { supabase } from '../../../../lib/supabase'
+import { supabase } from '../../../../lib/supabase';
 import {
   DEFAULT_GEMINI_MODE,
   DEFAULT_GEMINI_MODEL,
   normalizeGeminiMode,
   normalizeGeminiModelId,
-} from '../../../../lib/rank/geminiConfig'
-import {
-  getApiKeyCooldown,
-  purgeExpiredCooldowns,
-} from '../../../../lib/rank/apiKeyCooldown'
-import {
-  buildKeySample,
-  formatCooldownMessage,
-} from '../engine/apiKeyUtils'
-import useGeminiModelCatalog from '../../hooks/useGeminiModelCatalog'
+} from '../../../../lib/rank/geminiConfig';
+import { getApiKeyCooldown, purgeExpiredCooldowns } from '../../../../lib/rank/apiKeyCooldown';
+import { buildKeySample, formatCooldownMessage } from '../engine/apiKeyUtils';
+import useGeminiModelCatalog from '../../hooks/useGeminiModelCatalog';
 import {
   START_SESSION_KEYS,
   readStartSessionValue,
   writeStartSessionValue,
-} from '../../../../lib/rank/startSessionChannel'
+} from '../../../../lib/rank/startSessionChannel';
 
 function initializeCooldown(initialApiKey) {
   if (typeof window === 'undefined') {
-    return { info: null, warning: '' }
+    return { info: null, warning: '' };
   }
   try {
-    purgeExpiredCooldowns()
+    purgeExpiredCooldowns();
     if (!initialApiKey) {
-      return { info: null, warning: '' }
+      return { info: null, warning: '' };
     }
-    const info = getApiKeyCooldown(initialApiKey)
+    const info = getApiKeyCooldown(initialApiKey);
     if (info?.active) {
-      return { info, warning: formatCooldownMessage(info) }
+      return { info, warning: formatCooldownMessage(info) };
     }
   } catch (error) {
-    console.warn('[StartClient] API 키 쿨다운 초기화 실패:', error)
+    console.warn('[StartClient] API 키 쿨다운 초기화 실패:', error);
   }
-  return { info: null, warning: '' }
+  return { info: null, warning: '' };
 }
 
 /**
@@ -84,64 +78,64 @@ export function useStartApiKeyManager({
   turn,
   recordTimelineEvents,
 }) {
-  const normalizedInitialApiKey = typeof initialApiKey === 'string' ? initialApiKey.trim() : ''
-  const [apiKey, setApiKeyState] = useState(normalizedInitialApiKey)
-  const [apiVersion, setApiVersionState] = useState(initialApiVersion || 'gemini')
+  const normalizedInitialApiKey = typeof initialApiKey === 'string' ? initialApiKey.trim() : '';
+  const [apiKey, setApiKeyState] = useState(normalizedInitialApiKey);
+  const [apiVersion, setApiVersionState] = useState(initialApiVersion || 'gemini');
   const [geminiMode, setGeminiModeState] = useState(
-    initialGeminiConfig.mode || DEFAULT_GEMINI_MODE,
-  )
+    initialGeminiConfig.mode || DEFAULT_GEMINI_MODE
+  );
   const [geminiModel, setGeminiModelState] = useState(
-    initialGeminiConfig.model || DEFAULT_GEMINI_MODEL,
-  )
+    initialGeminiConfig.model || DEFAULT_GEMINI_MODEL
+  );
 
   const { info: initialCooldownInfo, warning: initialWarning } = useMemo(
     () => initializeCooldown(normalizedInitialApiKey),
-    [normalizedInitialApiKey],
-  )
-  const [apiKeyCooldown, setApiKeyCooldownState] = useState(initialCooldownInfo)
-  const [apiKeyWarning, setApiKeyWarning] = useState(initialWarning)
-  const apiKeyChangeMetaRef = useRef(new Map())
-  const lastRecordedApiKeyRef = useRef('')
-  const lastStoredApiSignatureRef = useRef('')
+    [normalizedInitialApiKey]
+  );
+  const [apiKeyCooldown, setApiKeyCooldownState] = useState(initialCooldownInfo);
+  const [apiKeyWarning, setApiKeyWarning] = useState(initialWarning);
+  const apiKeyChangeMetaRef = useRef(new Map());
+  const lastRecordedApiKeyRef = useRef('');
+  const lastStoredApiSignatureRef = useRef('');
 
-  const normaliseApiKey = useCallback((value) => {
-    if (typeof value !== 'string') return ''
-    return value.trim()
-  }, [])
+  const normaliseApiKey = useCallback(value => {
+    if (typeof value !== 'string') return '';
+    return value.trim();
+  }, []);
 
-  const applyCooldownInfo = useCallback((info) => {
+  const applyCooldownInfo = useCallback(info => {
     if (info?.active) {
-      setApiKeyCooldownState(info)
-      setApiKeyWarning(formatCooldownMessage(info))
-      return info
+      setApiKeyCooldownState(info);
+      setApiKeyWarning(formatCooldownMessage(info));
+      return info;
     }
-    setApiKeyCooldownState(info || null)
-    setApiKeyWarning('')
-    return null
-  }, [])
+    setApiKeyCooldownState(info || null);
+    setApiKeyWarning('');
+    return null;
+  }, []);
 
   const evaluateApiKeyCooldown = useCallback(
-    (value) => {
+    value => {
       if (typeof window === 'undefined') {
-        return applyCooldownInfo(null)
+        return applyCooldownInfo(null);
       }
-      const trimmed = normaliseApiKey(value)
+      const trimmed = normaliseApiKey(value);
       if (!trimmed) {
-        return applyCooldownInfo(null)
+        return applyCooldownInfo(null);
       }
-      const info = getApiKeyCooldown(trimmed)
+      const info = getApiKeyCooldown(trimmed);
       if (info?.active) {
-        return applyCooldownInfo(info)
+        return applyCooldownInfo(info);
       }
-      return applyCooldownInfo(null)
+      return applyCooldownInfo(null);
     },
-    [applyCooldownInfo, normaliseApiKey],
-  )
+    [applyCooldownInfo, normaliseApiKey]
+  );
 
   const setApiKey = useCallback(
     (value, options = {}) => {
-      setApiKeyState(value)
-      const trimmed = normaliseApiKey(value)
+      setApiKeyState(value);
+      const trimmed = normaliseApiKey(value);
       if (trimmed && !options.silent) {
         apiKeyChangeMetaRef.current.set(trimmed, {
           source: options.source || 'unknown',
@@ -152,140 +146,134 @@ export function useStartApiKeyManager({
           note: options.note || null,
           replacedSample: options.replacedSample || null,
           viewerId: options.viewerId || viewerId || null,
-        })
+        });
       }
       if (typeof window !== 'undefined') {
         writeStartSessionValue(START_SESSION_KEYS.API_KEY, trimmed || null, {
           source: 'start-client',
-        })
+        });
       }
-      evaluateApiKeyCooldown(value)
+      evaluateApiKeyCooldown(value);
     },
-    [apiVersion, evaluateApiKeyCooldown, normaliseApiKey, viewerId],
-  )
+    [apiVersion, evaluateApiKeyCooldown, normaliseApiKey, viewerId]
+  );
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    if (typeof apiKey === 'string' && apiKey.trim()) return
+    if (typeof window === 'undefined') return;
+    if (typeof apiKey === 'string' && apiKey.trim()) return;
     try {
-      const stored = readStartSessionValue(START_SESSION_KEYS.API_KEY) || ''
-      const trimmed = normaliseApiKey(stored)
+      const stored = readStartSessionValue(START_SESSION_KEYS.API_KEY) || '';
+      const trimmed = normaliseApiKey(stored);
       if (trimmed) {
-        setApiKey(trimmed, { silent: true })
+        setApiKey(trimmed, { silent: true });
       }
     } catch (error) {
-      console.warn('[StartClient] API 키를 불러오지 못했습니다:', error)
+      console.warn('[StartClient] API 키를 불러오지 못했습니다:', error);
     }
-  }, [apiKey, normaliseApiKey, setApiKey])
+  }, [apiKey, normaliseApiKey, setApiKey]);
 
-  const setApiVersion = useCallback((value) => {
-    setApiVersionState(value)
+  const setApiVersion = useCallback(value => {
+    setApiVersionState(value);
     if (typeof window !== 'undefined') {
       writeStartSessionValue(START_SESSION_KEYS.API_VERSION, value || null, {
         source: 'start-client',
-      })
+      });
     }
-  }, [])
+  }, []);
 
-  const setGeminiMode = useCallback((value) => {
-    const normalized = normalizeGeminiMode(value)
-    setGeminiModeState(normalized)
+  const setGeminiMode = useCallback(value => {
+    const normalized = normalizeGeminiMode(value);
+    setGeminiModeState(normalized);
     if (typeof window !== 'undefined') {
       try {
         writeStartSessionValue(START_SESSION_KEYS.GEMINI_MODE, normalized, {
           source: 'start-client',
-        })
+        });
       } catch (error) {
-        console.warn('[StartClient] Gemini 모드 저장 실패:', error)
+        console.warn('[StartClient] Gemini 모드 저장 실패:', error);
       }
     }
-  }, [])
+  }, []);
 
-  const setGeminiModel = useCallback((value) => {
-    const normalized = normalizeGeminiModelId(value) || DEFAULT_GEMINI_MODEL
-    setGeminiModelState(normalized)
+  const setGeminiModel = useCallback(value => {
+    const normalized = normalizeGeminiModelId(value) || DEFAULT_GEMINI_MODEL;
+    setGeminiModelState(normalized);
     if (typeof window !== 'undefined') {
       try {
         writeStartSessionValue(START_SESSION_KEYS.GEMINI_MODEL, normalized, {
           source: 'start-client',
-        })
+        });
       } catch (error) {
-        console.warn('[StartClient] Gemini 모델 저장 실패:', error)
+        console.warn('[StartClient] Gemini 모델 저장 실패:', error);
       }
     }
-  }, [])
+  }, []);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    if (typeof apiKey === 'string' && apiKey.trim()) return
+    if (typeof window === 'undefined') return;
+    if (typeof apiKey === 'string' && apiKey.trim()) return;
 
-    let cancelled = false
+    let cancelled = false;
 
     async function loadStoredKey() {
       try {
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
         if (sessionError) {
-          throw sessionError
+          throw sessionError;
         }
-        const token = sessionData?.session?.access_token
+        const token = sessionData?.session?.access_token;
         if (!token) {
-          return
+          return;
         }
         const response = await fetch('/api/rank/user-api-key', {
           method: 'GET',
           headers: {
             Authorization: `Bearer ${token}`,
           },
-        })
+        });
         if (!response.ok) {
-          return
+          return;
         }
-        const payload = await response.json().catch(() => ({}))
+        const payload = await response.json().catch(() => ({}));
         if (!payload?.ok) {
-          return
+          return;
         }
         if (cancelled) {
-          return
+          return;
         }
-        const fetchedKey = typeof payload.apiKey === 'string' ? payload.apiKey.trim() : ''
+        const fetchedKey = typeof payload.apiKey === 'string' ? payload.apiKey.trim() : '';
         if (fetchedKey) {
-          setApiKey(fetchedKey, { silent: true, source: 'stored_profile' })
+          setApiKey(fetchedKey, { silent: true, source: 'stored_profile' });
         }
         if (typeof payload.apiVersion === 'string' && payload.apiVersion.trim()) {
-          setApiVersion(payload.apiVersion.trim())
+          setApiVersion(payload.apiVersion.trim());
         }
         if (typeof payload.geminiMode === 'string' && payload.geminiMode.trim()) {
-          setGeminiMode(payload.geminiMode.trim())
+          setGeminiMode(payload.geminiMode.trim());
         }
         if (typeof payload.geminiModel === 'string' && payload.geminiModel.trim()) {
-          setGeminiModel(payload.geminiModel.trim())
+          setGeminiModel(payload.geminiModel.trim());
         }
       } catch (error) {
-        console.warn('[StartClient] 저장된 API 키를 불러오지 못했습니다:', error)
+        console.warn('[StartClient] 저장된 API 키를 불러오지 못했습니다:', error);
       }
     }
 
-    loadStoredKey()
+    loadStoredKey();
 
     return () => {
-      cancelled = true
-    }
-  }, [apiKey, setApiKey, setApiVersion, setGeminiMode, setGeminiModel])
+      cancelled = true;
+    };
+  }, [apiKey, setApiKey, setApiVersion, setGeminiMode, setGeminiModel]);
 
-  const effectiveApiKey = useMemo(
-    () => normaliseApiKey(apiKey),
-    [apiKey, normaliseApiKey],
-  )
+  const effectiveApiKey = useMemo(() => normaliseApiKey(apiKey), [apiKey, normaliseApiKey]);
 
-  const normalizedGeminiMode = useMemo(
-    () => normalizeGeminiMode(geminiMode),
-    [geminiMode],
-  )
+  const normalizedGeminiMode = useMemo(() => normalizeGeminiMode(geminiMode), [geminiMode]);
 
   const normalizedGeminiModel = useMemo(
     () => normalizeGeminiModelId(geminiModel) || DEFAULT_GEMINI_MODEL,
-    [geminiModel],
-  )
+    [geminiModel]
+  );
 
   const {
     options: rawGeminiModelOptions,
@@ -295,50 +283,48 @@ export function useStartApiKeyManager({
   } = useGeminiModelCatalog({
     apiKey: apiVersion === 'gemini' ? effectiveApiKey : '',
     mode: normalizedGeminiMode,
-  })
+  });
 
   const geminiModelOptions = useMemo(() => {
-    const base = Array.isArray(rawGeminiModelOptions) ? rawGeminiModelOptions : []
+    const base = Array.isArray(rawGeminiModelOptions) ? rawGeminiModelOptions : [];
     const exists = base.some(
-      (option) => normalizeGeminiModelId(option?.id || option?.name) === normalizedGeminiModel,
-    )
+      option => normalizeGeminiModelId(option?.id || option?.name) === normalizedGeminiModel
+    );
     if (exists || !normalizedGeminiModel) {
-      return base
+      return base;
     }
-    return [{ id: normalizedGeminiModel, label: normalizedGeminiModel }, ...base]
-  }, [rawGeminiModelOptions, normalizedGeminiModel])
+    return [{ id: normalizedGeminiModel, label: normalizedGeminiModel }, ...base];
+  }, [rawGeminiModelOptions, normalizedGeminiModel]);
 
   const persistApiKeyOnServer = useCallback(
     async (value, version, options = {}) => {
-      const trimmed = normaliseApiKey(value)
+      const trimmed = normaliseApiKey(value);
       if (!trimmed) {
-        return false
+        return false;
       }
 
-      const normalizedVersion = typeof version === 'string' ? version : ''
-      const normalizedMode = options.geminiMode
-        ? normalizeGeminiMode(options.geminiMode)
-        : null
+      const normalizedVersion = typeof version === 'string' ? version : '';
+      const normalizedMode = options.geminiMode ? normalizeGeminiMode(options.geminiMode) : null;
       const normalizedModel = options.geminiModel
         ? normalizeGeminiModelId(options.geminiModel)
-        : null
+        : null;
       const signature = `${trimmed}::${normalizedVersion}::${normalizedMode || ''}::${
         normalizedModel || ''
-      }`
+      }`;
 
       if (lastStoredApiSignatureRef.current === signature) {
-        return true
+        return true;
       }
 
       try {
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
         if (sessionError) {
-          throw sessionError
+          throw sessionError;
         }
 
-        const token = sessionData?.session?.access_token
+        const token = sessionData?.session?.access_token;
         if (!token) {
-          throw new Error('세션 토큰을 확인할 수 없습니다.')
+          throw new Error('세션 토큰을 확인할 수 없습니다.');
         }
 
         const response = await fetch('/api/rank/user-api-key', {
@@ -350,38 +336,36 @@ export function useStartApiKeyManager({
           body: JSON.stringify({
             apiKey: trimmed,
             apiVersion: normalizedVersion || undefined,
-            geminiMode:
-              normalizedVersion === 'gemini' ? normalizedMode || undefined : undefined,
-            geminiModel:
-              normalizedVersion === 'gemini' ? normalizedModel || undefined : undefined,
+            geminiMode: normalizedVersion === 'gemini' ? normalizedMode || undefined : undefined,
+            geminiModel: normalizedVersion === 'gemini' ? normalizedModel || undefined : undefined,
           }),
-        })
+        });
 
         if (!response.ok) {
-          const payload = await response.json().catch(() => ({}))
-          const message = payload?.error || 'API 키를 저장하지 못했습니다.'
-          throw new Error(message)
+          const payload = await response.json().catch(() => ({}));
+          const message = payload?.error || 'API 키를 저장하지 못했습니다.';
+          throw new Error(message);
         }
 
-        lastStoredApiSignatureRef.current = signature
-        return true
+        lastStoredApiSignatureRef.current = signature;
+        return true;
       } catch (error) {
-        console.warn('[StartClient] API 키 저장 실패:', error)
-        return false
+        console.warn('[StartClient] API 키 저장 실패:', error);
+        return false;
       }
     },
-    [normaliseApiKey],
-  )
+    [normaliseApiKey]
+  );
 
   useEffect(() => {
     if (!effectiveApiKey) {
-      lastStoredApiSignatureRef.current = ''
+      lastStoredApiSignatureRef.current = '';
     }
-  }, [effectiveApiKey])
+  }, [effectiveApiKey]);
 
   useEffect(() => {
-    if (typeof recordTimelineEvents !== 'function') return
-    const trimmed = normaliseApiKey(apiKey)
+    if (typeof recordTimelineEvents !== 'function') return;
+    const trimmed = normaliseApiKey(apiKey);
     if (!trimmed) {
       if (lastRecordedApiKeyRef.current) {
         recordTimelineEvents(
@@ -404,17 +388,17 @@ export function useStartApiKeyManager({
               },
             },
           ],
-          { turnNumber: turn },
-        )
+          { turnNumber: turn }
+        );
       }
-      lastRecordedApiKeyRef.current = ''
-      return
+      lastRecordedApiKeyRef.current = '';
+      return;
     }
-    if (lastRecordedApiKeyRef.current === trimmed) return
-    lastRecordedApiKeyRef.current = trimmed
-    const meta = apiKeyChangeMetaRef.current.get(trimmed)
-    if (!meta) return
-    apiKeyChangeMetaRef.current.delete(trimmed)
+    if (lastRecordedApiKeyRef.current === trimmed) return;
+    lastRecordedApiKeyRef.current = trimmed;
+    const meta = apiKeyChangeMetaRef.current.get(trimmed);
+    if (!meta) return;
+    apiKeyChangeMetaRef.current.delete(trimmed);
     const metadata = {
       apiKeyPool: {
         source: meta.source || 'unknown',
@@ -427,7 +411,7 @@ export function useStartApiKeyManager({
         replacedSample: meta.replacedSample || null,
         viewerId: meta.viewerId || viewerId || null,
       },
-    }
+    };
     recordTimelineEvents(
       [
         {
@@ -440,9 +424,9 @@ export function useStartApiKeyManager({
           metadata,
         },
       ],
-      { turnNumber: turn },
-    )
-  }, [apiKey, apiVersion, normaliseApiKey, recordTimelineEvents, turn, viewerId])
+      { turnNumber: turn }
+    );
+  }, [apiKey, apiVersion, normaliseApiKey, recordTimelineEvents, turn, viewerId]);
 
   return {
     apiKey,
@@ -466,5 +450,5 @@ export function useStartApiKeyManager({
     normalizedGeminiModel,
     persistApiKeyOnServer,
     applyCooldownInfo,
-  }
+  };
 }

@@ -15,7 +15,9 @@ TNPG solves this problem by letting Tinode LLC (the company behind Tinode) to se
 2. Get the TPNG token from the _Self hosting_ &rarr; _Push Gateway_ section by following the instructions there.
 
 ### Configure the server
+
 Update the server config [`tinode.conf`](../../tinode.conf#L413), section `"push"` -> `"name": "tnpg"`:
+
 ```js
 {
   "enabled": true,
@@ -23,4 +25,5 @@ Update the server config [`tinode.conf`](../../tinode.conf#L413), section `"push
   "token": "SoMe_LonG.RaNDoM-StRiNg.12345" // authentication token obtained from console.tinode.co
 }
 ```
+
 Make sure the `fcm` section is disabled `"enabled": false` or removed altogether.

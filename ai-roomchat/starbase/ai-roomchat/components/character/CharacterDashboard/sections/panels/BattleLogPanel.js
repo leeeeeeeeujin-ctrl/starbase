@@ -1,11 +1,9 @@
-import React from 'react'
-
-import { useCharacterDashboardContext } from '../../context'
-import BattleLogSection from '../right/BattleLogSection'
+import { useCharacterDashboardContext } from '../../context';
+import BattleLogSection from '../right/BattleLogSection';
 
 export default function BattleLogPanel() {
   const { battleDetails, visibleBattles, onShowMoreBattles, battleLoading, battleError } =
-    useCharacterDashboardContext()
+    useCharacterDashboardContext();
 
   return (
     <BattleLogSection
@@ -15,5 +13,5 @@ export default function BattleLogPanel() {
       battleLoading={battleLoading}
       battleError={battleError}
     />
-  )
+  );
 }

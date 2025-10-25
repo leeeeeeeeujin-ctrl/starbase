@@ -1,16 +1,16 @@
-const CSV_SEPARATOR = ','
+const CSV_SEPARATOR = ',';
 
 export function parseHeroIdCsv(value) {
   if (!value) {
-    return []
+    return [];
   }
 
   return value
     .split(CSV_SEPARATOR)
-    .map((item) => item.trim())
-    .filter(Boolean)
+    .map(item => item.trim())
+    .filter(Boolean);
 }
 
 export function stringifyHeroIds(ids) {
-  return ids.join(`${CSV_SEPARATOR} `)
+  return ids.join(`${CSV_SEPARATOR} `);
 }

@@ -1,6 +1,6 @@
-import Head from 'next/head'
-import { ArcadeLayout } from '@/components/arena/ArcadeLayout'
-import { QueuePanel } from '@/components/arena/QueuePanel'
+import Head from 'next/head';
+import { ArcadeLayout } from '@/components/arena/ArcadeLayout';
+import { QueuePanel } from '@/components/arena/QueuePanel';
 
 export default function QueuePage() {
   return (
@@ -12,5 +12,5 @@ export default function QueuePage() {
         <QueuePanel />
       </ArcadeLayout>
     </>
-  )
+  );
 }

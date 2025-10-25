@@ -36,13 +36,13 @@ For production environments, Redis is used as the ticket replication mechanism b
 
 OM2's configuration system has been entirely reworked to be simpler, more discoverable, and more aligned with modern cloud-native principles. It fully embraces a **12-factor app methodology**, where all configuration is managed through environment variables.
 
-This approach eliminates the need to manage configuration through layered YAML files applied in opaque ways by complicated Helm charts. More importantly, all configuration has been centralized into a single Go code module (`internal/config`). This module serves as the single source of truth where every configuration variable: its default value and purpose are defined and documented directly in the code. When the `om-core` service starts, it logs all the values it is using at the `debug` log level. This makes exploring and understanding the available settings significantly simpler than in OM1, as developers can go to one place in the code to see every possible configuration option without hunting through Helm charts or external documentation.  Updating a value is as simple as making a new `om-core` deployment with the adjusted environment variable values, which is well supported by cloud-native platforms such as GKE and Cloud Run.
+This approach eliminates the need to manage configuration through layered YAML files applied in opaque ways by complicated Helm charts. More importantly, all configuration has been centralized into a single Go code module (`internal/config`). This module serves as the single source of truth where every configuration variable: its default value and purpose are defined and documented directly in the code. When the `om-core` service starts, it logs all the values it is using at the `debug` log level. This makes exploring and understanding the available settings significantly simpler than in OM1, as developers can go to one place in the code to see every possible configuration option without hunting through Helm charts or external documentation. Updating a value is as simple as making a new `om-core` deployment with the adjusted environment variable values, which is well supported by cloud-native platforms such as GKE and Cloud Run.
 
 ## **Match Resolution and Ticket Collision Handling**
 
 One of the most fundamental architectural changes in Open Match 2 is the complete redesign of the match resolution process and the handling of ticket collisions. This change marks a philosophical shift away from a framework-managed resolution process toward a more performant and explicit developer-managed model. The new approach removes significant internal complexity from Open Match, giving developers greater flexibility and clearer ownership over the final state of their matches.
 
-In Open Match 1, the framework was deeply involved in ensuring match uniqueness through a multi-stage process involving a `synchronizer` and an `evaluator`. Matchmaking Functions (MMFs) did not produce final matches; they produced *match proposals*. These proposals were funneled into a "synchronization window," a period during which the `synchronizer` component collected all proposals from concurrently running MMFs. Once this window closed, the collected set was passed to the `evaluator`. The `evaluator` was a mandatory service where developers were expected to inject their own logic to resolve "ticket collisions"—instances where multiple proposals contained the same ticket.
+In Open Match 1, the framework was deeply involved in ensuring match uniqueness through a multi-stage process involving a `synchronizer` and an `evaluator`. Matchmaking Functions (MMFs) did not produce final matches; they produced _match proposals_. These proposals were funneled into a "synchronization window," a period during which the `synchronizer` component collected all proposals from concurrently running MMFs. Once this window closed, the collected set was passed to the `evaluator`. The `evaluator` was a mandatory service where developers were expected to inject their own logic to resolve "ticket collisions"—instances where multiple proposals contained the same ticket.
 
 While powerful in theory, this design created a high barrier to entry. Developers had to deeply understand the complex internal loop to write an effective evaluator. In practice, this complexity led most to avoid writing a custom evaluator, instead defaulting to the basic example provided. This anti-pattern meant many developers were entirely unaware that ticket collisions were happening or that their resolution was critical for the performance and correctness of a highly-concurrent matchmaker, invalidating the core assumptions of the OM1 design.
 
@@ -56,7 +56,7 @@ In OM1, after creating a ticket, each game client was responsible for calling `G
 
 To ease the transition from the previous version, Open Match 2 provides legacy endpoints that replicate OM1's assignment responsibilities. However, these methods are marked as **deprecated** and are included only to lower the initial migration burden. **Developers should consider these a temporary compatibility layer and plan to move away from them as soon as convenient.**
 
-The recommended and forward-looking approach in OM2 is for the **Matchmaker** to handle all assignment logic. The Matchmaker (aka 'director') has always been responsible for determining which game server a match would be assigned to.  With the move to OM2, the path for your matchmaker to send assignments out to game clients should no longer use OM as an intermediate; **instead it is responsible for sending the assignment to your client notification mechanism directly**.  This centralized model is vastly more scalable, moving from thousands of polling clients to a single, authoritative service receiving match data. It simplifies game client logic and fosters a cleaner architecture by decoupling the client from the assignment-retrieval process. It also integrates more cleanly with typical game online service suites, many of which already have a performant client notification mechanism.
+The recommended and forward-looking approach in OM2 is for the **Matchmaker** to handle all assignment logic. The Matchmaker (aka 'director') has always been responsible for determining which game server a match would be assigned to. With the move to OM2, the path for your matchmaker to send assignments out to game clients should no longer use OM as an intermediate; **instead it is responsible for sending the assignment to your client notification mechanism directly**. This centralized model is vastly more scalable, moving from thousands of polling clients to a single, authoritative service receiving match data. It simplifies game client logic and fosters a cleaner architecture by decoupling the client from the assignment-retrieval process. It also integrates more cleanly with typical game online service suites, many of which already have a performant client notification mechanism.
 
 ## **Migrating Your Open Match Ticket Client from v1 to v2**
 
@@ -66,25 +66,25 @@ This section explains how to update your game client code—the part of your app
 
 The most significant infrastructural change is the shift from a direct gRPC connection to an HTTP-based one that leverages the built-in gRPC-Gateway for simplicity and robust load balancing.
 
-* **In OM1 (client.go),** your client connected directly to the om-frontend service using a **pure gRPC client**.
-* **In OM2 (omclient.go),** the recommended pattern is to use a **standard HTTP client**. Your protobuf request is marshaled to JSON and sent over HTTP to the om-core service, which handles the transcoding to gRPC on the server side.
-* **Why the change?** This was done to simplify client-side infrastructure. While gRPC is highly performant, its client-side load balancing can be complex. By offering an HTTP interface, OM2 allows you to use robust, industry-standard, server-side HTTP load balancers from cloud providers, simplifying your deployment and improving reliability.
+- **In OM1 (client.go),** your client connected directly to the om-frontend service using a **pure gRPC client**.
+- **In OM2 (omclient.go),** the recommended pattern is to use a **standard HTTP client**. Your protobuf request is marshaled to JSON and sent over HTTP to the om-core service, which handles the transcoding to gRPC on the server side.
+- **Why the change?** This was done to simplify client-side infrastructure. While gRPC is highly performant, its client-side load balancing can be complex. By offering an HTTP interface, OM2 allows you to use robust, industry-standard, server-side HTTP load balancers from cloud providers, simplifying your deployment and improving reliability.
 
 #### **2\. The New Assignment Flow**
 
 The method for retrieving match assignments has been completely redesigned to improve scalability. The client-side polling model from OM1 is now an explicit anti-pattern.
 
-* **In OM1 (frontend.txt),** clients would call the GetAssignments RPC and enter a long-polling loop, repeatedly querying the om-frontend service until a match was found.
-* In OM2, this model is deprecated. The api.txt definition for the OpenMatchService has comments to make this clear.
-* The assignment logic is now handled by your **matchmaker**, which receives the complete Match object. The client should expect a push notification from your game's own backend services, not from Open Match.
+- **In OM1 (frontend.txt),** clients would call the GetAssignments RPC and enter a long-polling loop, repeatedly querying the om-frontend service until a match was found.
+- In OM2, this model is deprecated. The api.txt definition for the OpenMatchService has comments to make this clear.
+- The assignment logic is now handled by your **matchmaker**, which receives the complete Match object. The client should expect a push notification from your game's own backend services, not from Open Match.
 
 #### **3\. Ticket Protobuf Definition Changes**
 
-| Open Match 1 (messages (om1).txt) | Open Match 2 (messages (om2).txt) | Analysis of Change |
-| :---- | :---- | :---- |
-| Assignment assignment | *Field removed* | The Assignment is no longer part of the Ticket state, reinforcing that it is the client's responsibility to get ticket assignments from whatever part of your Matchmaker is allocating game servers to matches. |
-| SearchFields search\_fields | Attributes attributes | Renamed for clarity. This field still holds the searchable tags and key/value data for filtering but is now more logically named. |
-| google.protobuf.Timestamp create\_time | *Field removed from proto, expiration\_time added* | The create\_time field is no longer part of the Ticket message definition. This timestamp is now automatically generated by the underlying state replication layer (Redis Streams) when the ticket is persisted. The new expiration\_time field has been added to the message to give developers explicit control over the ticket's lifecycle and time-to-live (TTL) in the cache. |
+| Open Match 1 (messages (om1).txt)     | Open Match 2 (messages (om2).txt)                 | Analysis of Change                                                                                                                                                                                                                                                                                                                                                               |
+| :------------------------------------ | :------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Assignment assignment                 | _Field removed_                                   | The Assignment is no longer part of the Ticket state, reinforcing that it is the client's responsibility to get ticket assignments from whatever part of your Matchmaker is allocating game servers to matches.                                                                                                                                                                  |
+| SearchFields search_fields            | Attributes attributes                             | Renamed for clarity. This field still holds the searchable tags and key/value data for filtering but is now more logically named.                                                                                                                                                                                                                                                |
+| google.protobuf.Timestamp create_time | _Field removed from proto, expiration_time added_ | The create_time field is no longer part of the Ticket message definition. This timestamp is now automatically generated by the underlying state replication layer (Redis Streams) when the ticket is persisted. The new expiration_time field has been added to the message to give developers explicit control over the ticket's lifecycle and time-to-live (TTL) in the cache. |
 
 The Ticket message itself has evolved between versions, reflecting the larger architectural shifts.
 
@@ -120,7 +120,7 @@ First, a note on terminology: going forward, we will refer to the developer-writ
 
 The most significant infrastructural change for your matchmaker is the move from a direct gRPC connection to an HTTP-based one that leverages gRPC-Gateway for transcoding.
 
-* **In OM1 (director.go),** your matchmaker connected directly to the om-backend service using a pure gRPC client.
+- **In OM1 (director.go),** your matchmaker connected directly to the om-backend service using a pure gRPC client.
 
 ```go
 // OM1: Direct gRPC connection
@@ -128,25 +128,25 @@ conn, err := grpc.Dial("om-backend.open-match.svc.cluster.local:50505", ...)
 be := pb.NewBackendClient(conn)
 ```
 
-* **In OM2 (omclient.go & gsdirector.go),** the recommended pattern is to use a standard HTTP client to communicate with om-core's RESTful endpoint. This endpoint is a **gRPC-Gateway**, which translates the incoming HTTP/JSON requests into gRPC calls on the server side. The omclient.go file provides a reference implementation for this, handling details like authentication and marshaling protobufs to JSON.
+- **In OM2 (omclient.go & gsdirector.go),** the recommended pattern is to use a standard HTTP client to communicate with om-core's RESTful endpoint. This endpoint is a **gRPC-Gateway**, which translates the incoming HTTP/JSON requests into gRPC calls on the server side. The omclient.go file provides a reference implementation for this, handling details like authentication and marshaling protobufs to JSON.
 
-* **Why the change?** This was done to simplify client-side infrastructure. While gRPC is highly performant, client-side load balancing can be complex to implement correctly. By offering an HTTP interface, OM2 allows you to use robust, industry-standard, server-side HTTP load balancers from cloud providers, simplifying your deployment and improving reliability.
+- **Why the change?** This was done to simplify client-side infrastructure. While gRPC is highly performant, client-side load balancing can be complex to implement correctly. By offering an HTTP interface, OM2 allows you to use robust, industry-standard, server-side HTTP load balancers from cloud providers, simplifying your deployment and improving reliability.
 
 #### **2\. From FetchMatches to the InvokeMatchmakingFunctions Stream**
 
 The core matchmaking RPC has evolved from a simple request-stream to a more powerful bi-directional stream, enabling more dynamic and continuous matchmaking logic.
 
-* **OM1 Flow:** The FetchMatches RPC involved sending a single request containing all match profiles and then entering a simple loop to drain the response stream of all resulting matches.
+- **OM1 Flow:** The FetchMatches RPC involved sending a single request containing all match profiles and then entering a simple loop to drain the response stream of all resulting matches.
 
-* **OM2 Flow:** The new InvokeMatchmakingFunctions RPC is a long-lived, **bi-directional stream**. This allows a matchmaker to send new or updated profiles and receive completed matches concurrently on the same stream without having to initiate new requests.
+- **OM2 Flow:** The new InvokeMatchmakingFunctions RPC is a long-lived, **bi-directional stream**. This allows a matchmaker to send new or updated profiles and receive completed matches concurrently on the same stream without having to initiate new requests.
 
 #### **3\. The New Assignment Flow: AssignTickets is Deprecated**
 
 A critical simplification in OM2 is the removal of the explicit AssignTickets step from the matchmaker's workflow.
 
-* **In OM1,** after receiving matches from FetchMatches, the director had to make a separate AssignTickets RPC call to associate game server connection details with the tickets in each match.
+- **In OM1,** after receiving matches from FetchMatches, the director had to make a separate AssignTickets RPC call to associate game server connection details with the tickets in each match.
 
-* **In OM2,** this two-step process is eliminated. Your matchmaker receives this match from the InvokeMatchmakingFunctions stream and no longer needs to make a separate call to OM2 to make an assignment; **instead it is responsible for sending the assignment to your online services suite's client notification mechanism directly**. The AssignTickets RPC is now **deprecated**.
+- **In OM2,** this two-step process is eliminated. Your matchmaker receives this match from the InvokeMatchmakingFunctions stream and no longer needs to make a separate call to OM2 to make an assignment; **instead it is responsible for sending the assignment to your online services suite's client notification mechanism directly**. The AssignTickets RPC is now **deprecated**.
 
 While OM2 provides legacy assignment endpoints on the om-core service to ease the initial migration burden, these are intended only as a temporary compatibility layer. You should plan to move away from them as soon as is convenient.
 
@@ -158,11 +158,11 @@ This guide explains how to update your Matchmaking Function (MMF) from the Open 
 
 The fundamental gRPC contract for the MMF has evolved from a simple request-stream to a more flexible bi-directional stream. This requires changing the signature and core loop of your Run function.
 
-* In OM1 (matchfunction.proto), the Run RPC was a request-response stream:
+- In OM1 (matchfunction.proto), the Run RPC was a request-response stream:
   rpc Run(RunRequest) returns (stream RunResponse)
   Your MMF received a single RunRequest and then streamed back one or more RunResponse messages containing match proposals.
 
-* In OM2 (mmf.proto), the Run RPC is now a bi-directional stream:
+- In OM2 (mmf.proto), the Run RPC is now a bi-directional stream:
   rpc Run(stream ChunkedMmfRunRequest) returns (stream StreamedMmfResponse)
   This means your MMF's Run function will now concurrently receive requests and send responses on the same stream, allowing for more efficient interaction with om-core.
 
@@ -170,14 +170,14 @@ The fundamental gRPC contract for the MMF has evolved from a simple request-stre
 
 A major simplification is that the MMF is no longer responsible for fetching its own tickets. om-core now handles this and streams the tickets to you.
 
-* **In OM1 (mmf.go),** your MMF had to actively query for tickets. The first step in your Run function was to call a helper like matchfunction.QueryPools, which made a separate RPC call to the Open Match Query Service to get the ticket pool.
+- **In OM1 (mmf.go),** your MMF had to actively query for tickets. The first step in your Run function was to call a helper like matchfunction.QueryPools, which made a separate RPC call to the Open Match Query Service to get the ticket pool.
 
-* **In OM2 (fifo.go),** your MMF is now a **passive recipient of tickets**. om-core queries for tickets based on the profile sent by the matchmaker and streams them *to* your MMF. Your Run function's logic will now start with a loop that calls stream.Recv() to receive ChunkedMmfRunRequest messages and populate its local ticket pools before starting its matchmaking logic. This removes the need for your MMF to contain any ticket querying code.
+- **In OM2 (fifo.go),** your MMF is now a **passive recipient of tickets**. om-core queries for tickets based on the profile sent by the matchmaker and streams them _to_ your MMF. Your Run function's logic will now start with a loop that calls stream.Recv() to receive ChunkedMmfRunRequest messages and populate its local ticket pools before starting its matchmaking logic. This removes the need for your MMF to contain any ticket querying code.
 
 #### **3\. Creating Final Matches (Not Proposals)**
 
 The most critical conceptual change is that the MMF's role is no longer to suggest proposals but to create the final, authoritative matches.
 
-* **In OM1,** the RunResponse message contained a Match object that was considered a proposal. This proposal was then sent to a separate Evaluator service to resolve conflicts and make the final decision.
+- **In OM1,** the RunResponse message contained a Match object that was considered a proposal. This proposal was then sent to a separate Evaluator service to resolve conflicts and make the final decision.
 
-* **In OM2,** with the removal of the Evaluator, the Match your MMF creates is **the final, definitive match**. This means your matchmaking logic must be robust enough to be the source of truth.
+- **In OM2,** with the removal of the Evaluator, the Match your MMF creates is **the final, definitive match**. This means your matchmaking logic must be robust enough to be the source of truth.
