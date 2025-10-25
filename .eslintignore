@@ -1,0 +1,11 @@
+node_modules/
+.next/
+build/
+dist/
+coverage/
+reports/
+logs/
+public/static/
+
+# Ignore temp files from scripts
+*.tmp

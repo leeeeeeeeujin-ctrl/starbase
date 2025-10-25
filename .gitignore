@@ -1,0 +1,2 @@
+# Ignore archived snapshot directories (local archives, large files, etc.)
+archived/

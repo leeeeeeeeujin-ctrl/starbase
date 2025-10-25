@@ -1,0 +1,32 @@
+name: Optimize Caches
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  cache-node-modules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: starbase/ai-roomchat/node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('starbase/ai-roomchat/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-modules-
+
+  cache-playwright-browsers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('starbase/ai-roomchat/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-

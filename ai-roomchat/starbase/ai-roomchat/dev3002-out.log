@@ -1,0 +1,188 @@
+  ▲ Next.js 14.2.5
+  - Local:        http://localhost:3002
+  - Environments: .env.local
+
+ ✓ Starting...
+   Disabled SWC as replacement for Babel because of custom Babel configuration "babel.config.js" https://nextjs.org/docs/messages/swc-disabled
+ ✓ Ready in 2.4s
+   Using external babel configuration from C:\Users\yujin\Documents\234423\starbase\ai-roomchat\starbase\ai-roomchat\babel.config.js
+ ○ Compiling /api/admin/mock-game-real/list ...
+ ✓ Compiled /api/admin/mock-game-real/list in 6.7s (170 modules)
+ GET /api/admin/mock-game-real/list 401 in 6754ms
+ ✓ Compiled /api/admin/login in 270ms (172 modules)
+ POST /api/admin/login 200 in 364ms
+ GET /api/admin/mock-game-real/list 200 in 14ms
+ ✓ Compiled /api/rank/list-games in 318ms (178 modules)
+ GET /api/rank/list-games 200 in 1584ms
+ ○ Compiling /api/rank/match ...
+ ✓ Compiled /api/rank/match in 929ms (192 modules)
+ POST /api/rank/match 200 in 1844ms
+ ✓ Compiled /api/rank/drop-in in 206ms (171 modules)
+ POST /api/rank/drop-in 200 in 753ms
+ ✓ Compiled /api/admin/login in 101ms (175 modules)
+ POST /api/admin/login 200 in 110ms
+ ✓ Compiled /api/admin/matchmaking-logs in 143ms (177 modules)
+ GET /api/admin/matchmaking-logs?limit=10 500 in 517ms
+ GET /api/admin/matchmaking-logs?limit=5 500 in 842ms
+ ✓ Compiled in 155ms (162 modules)
+ ✓ Compiled in 158ms (162 modules)
+ GET /api/admin/matchmaking-logs?limit=5&simple=1 500 in 502ms
+ ✓ Compiled in 349ms (140 modules)
+ ✓ Compiled /api/admin/matchmaking-logs in 211ms (158 modules)
+ GET /api/admin/matchmaking-logs?limit=5&simple=1 500 in 749ms
+ ✓ Compiled in 135ms (158 modules)
+ ✓ Compiled in 55ms (140 modules)
+ ✓ Compiled /api/admin/matchmaking-logs in 183ms (158 modules)
+ GET /api/admin/matchmaking-logs?limit=5&simple=1 500 in 364ms
+ ✓ Compiled in 246ms (158 modules)
+ ✓ Compiled in 123ms (158 modules)
+ ✓ Compiled in 108ms (158 modules)
+ ✓ Compiled in 232ms (158 modules)
+ ✓ Compiled in 155ms (158 modules)
+ GET /api/admin/matchmaking-logs?limit=5&simple=1 500 in 419ms
+ ○ Compiling /api/rank/drop-in ...
+ ✓ Compiled /api/rank/drop-in in 529ms (168 modules)
+ POST /api/rank/drop-in 200 in 1234ms
+ ✓ Compiled /api/admin/matchmaking-logs in 66ms (158 modules)
+ GET /api/admin/matchmaking-logs?limit=5&simple=1 500 in 477ms
+ ✓ Compiled in 228ms (158 modules)
+ ✓ Compiled in 178ms (158 modules)
+ GET /api/admin/matchmaking-logs?limit=5&simple=1 500 in 141ms
+ ✓ Compiled in 246ms (158 modules)
+ ✓ Compiled in 131ms (158 modules)
+ GET /api/admin/matchmaking-logs?limit=5&simple=1 200 in 373ms
+ ✓ Compiled in 190ms (158 modules)
+ ✓ Compiled in 397ms (140 modules)
+ ✓ Compiled /api/admin/matchmaking-logs in 115ms (158 modules)
+ GET /api/admin/matchmaking-logs?limit=3&simple=1 200 in 1113ms
+ ✓ Compiled /api/rank/list-games in 308ms (162 modules)
+ GET /api/rank/list-games 200 in 634ms
+ GET /api/rank/list-games 200 in 284ms
+ ✓ Compiled /api/rank/match in 388ms (173 modules)
+ POST /api/rank/match 200 in 1110ms
+ ✓ Compiled /api/rank/drop-in in 137ms (171 modules)
+ POST /api/rank/drop-in 200 in 1047ms
+ ✓ Compiled /api/admin/matchmaking-logs in 71ms (170 modules)
+ GET /api/admin/matchmaking-logs?limit=10&requestId=dropin_mgzui6e5_87q9 500 in 443ms
+ GET /api/admin/matchmaking-logs?limit=3&simple=1 200 in 146ms
+ ○ Compiling /admin/portal ...
+ ✓ Compiled /admin/portal in 3.5s (496 modules)
+ GET /admin/portal 200 in 3956ms
+ ✓ Compiled /api/admin/mock-game-real/list in 342ms (181 modules)
+ GET /api/admin/matchmaking-logs?limit=80 200 in 539ms
+ ✓ Compiled (204 modules)
+ GET /api/admin/mock-game/list 200 in 644ms
+ GET /api/admin/mock-game-real/list 200 in 633ms
+ GET /api/admin/title-settings 500 in 793ms
+ GET /api/admin/announcements 200 in 815ms
+ ✓ Compiled /api/admin/sessions/list in 177ms (207 modules)
+ ✓ Compiled (209 modules)
+ GET /api/admin/mock-game-real/data 200 in 976ms
+ GET /api/admin/real-sim/list 200 in 517ms
+ GET /api/admin/sessions/list 200 in 493ms
+ GET /api/admin/mock-game-real/data 304 in 183ms
+ GET /api/admin/mock-game-real/list 304 in 35ms
+ GET /api/admin/mock-game-real/list 304 in 11ms
+ GET /api/admin/mock-game-real/list 304 in 7ms
+ GET /api/admin/mock-game-real/list 304 in 12ms
+ GET /api/admin/mock-game-real/list 304 in 9ms
+ GET /api/admin/mock-game-real/list 304 in 11ms
+ GET /api/admin/mock-game-real/list 304 in 4ms
+ GET /api/admin/mock-game-real/list 304 in 7ms
+ GET /api/admin/mock-game-real/list 304 in 4ms
+ GET /api/admin/mock-game-real/list 304 in 3ms
+ GET /api/admin/mock-game-real/list 304 in 13ms
+ ✓ Compiled in 977ms (507 modules)
+ ✓ Compiled in 440ms (507 modules)
+ ✓ Compiled in 995ms (478 modules)
+ ✓ Compiled in 800ms (478 modules)
+ GET /admin/portal 200 in 234ms
+ ○ Compiling /api/admin/matchmaking-logs ...
+ ✓ Compiled /api/admin/matchmaking-logs in 607ms (176 modules)
+ GET /api/admin/matchmaking-logs?limit=80 200 in 1739ms
+ ✓ Compiled /api/admin/sessions/list in 169ms (181 modules)
+ GET /api/admin/sessions/list 304 in 505ms
+ ✓ Compiled /api/admin/real-sim/list in 139ms (184 modules)
+ ✓ Compiled (205 modules)
+ GET /api/admin/mock-game-real/list 304 in 311ms
+ GET /api/admin/mock-game/list 304 in 313ms
+ GET /api/admin/real-sim/list 304 in 392ms
+ GET /api/admin/mock-game-real/data 304 in 541ms
+ GET /api/admin/mock-game-real/data 304 in 163ms
+ ✓ Compiled /api/admin/announcements in 106ms (207 modules)
+ ✓ Compiled (209 modules)
+ GET /api/admin/title-settings 500 in 313ms
+ GET /api/admin/announcements 304 in 314ms
+ GET /admin/portal 200 in 253ms
+ GET /api/admin/matchmaking-logs?limit=5&simple=1 200 in 372ms
+ ○ Compiling /api/rank/match ...
+ ✓ Compiled /api/rank/match in 619ms (189 modules)
+ POST /api/rank/match 200 in 1146ms
+ ✓ Compiled /api/rank/drop-in in 157ms (189 modules)
+ POST /api/rank/drop-in 200 in 684ms
+ POST /api/rank/drop-in 200 in 391ms
+ POST /api/rank/drop-in 200 in 361ms
+ POST /api/rank/drop-in 200 in 347ms
+ ✓ Compiled /api/admin/matchmaking-logs in 56ms (188 modules)
+ GET /api/admin/matchmaking-logs?limit=10&simple=1 200 in 415ms
+ ✓ Compiled /api/admin/mock-game-real/create in 212ms (195 modules)
+ POST /api/admin/mock-game-real/create 401 in 235ms
+ GET /admin/portal?id=526b9cb1-e900-479e-9bba-41a3a37f0fd5&vscodeBrowserReqId=1761008462281 200 in 245ms
+ ✓ Compiled in 2.4s (483 modules)
+ ✓ Compiled in 483ms (483 modules)
+ ✓ Compiled in 346ms (483 modules)
+ ✓ Compiled in 398ms (483 modules)
+ ✓ Compiled in 458ms (483 modules)
+ ✓ Compiled in 468ms (483 modules)
+ ○ Compiling /api/admin/matchmaking-analytics ...
+ ✓ Compiled /api/admin/matchmaking-analytics in 614ms (179 modules)
+ GET /api/admin/matchmaking-analytics?range=24h 401 in 647ms
+ GET /api/admin/matchmaking-analytics?range=24h 401 in 7ms
+ ✓ Compiled /api/admin/matchmaking-logs in 399ms (181 modules)
+ GET /api/admin/matchmaking-logs?limit=1&simple=1 200 in 1548ms
+ ✓ Compiled in 102ms (178 modules)
+ ✓ Compiled /api/admin/matchmaking-analytics in 111ms (181 modules)
+ GET /api/admin/matchmaking-analytics?range=24h 500 in 451ms
+ ✓ Compiled in 105ms (181 modules)
+ ✓ Compiled in 123ms (179 modules)
+ GET /api/admin/matchmaking-analytics?range=24h 200 in 498ms
+ ✓ Compiled in 295ms (160 modules)
+ ✓ Compiled /api/admin/matchmaking-logs in 61ms (178 modules)
+ GET /api/admin/matchmaking-logs?limit=1 200 in 1331ms
+ GET /api/admin/matchmaking-logs?limit=5 200 in 1064ms
+ ○ Compiling /api/rank/match ...
+ ✓ Compiled /api/rank/match in 514ms (189 modules)
+ POST /api/rank/match 200 in 1404ms
+ ✓ Compiled /api/admin/matchmaking-logs in 66ms (191 modules)
+ GET /api/admin/matchmaking-logs?limit=3 200 in 530ms
+ GET /api/admin/matchmaking-logs?limit=10&simple=false 200 in 2188ms
+ ✓ Compiled in 132ms (178 modules)
+ ✓ Compiled in 130ms (178 modules)
+ GET /api/admin/matchmaking-logs?limit=5&simple=false 200 in 1154ms
+ GET /api/admin/matchmaking-logs?limit=5&simple=true 500 in 322ms
+ ✓ Compiled in 155ms (178 modules)
+ ✓ Compiled in 577ms (160 modules)
+ ✓ Compiled /api/admin/matchmaking-logs in 171ms (178 modules)
+ GET /api/admin/matchmaking-logs?limit=5&simple=true 500 in 777ms
+ ✓ Compiled in 173ms (178 modules)
+ ✓ Compiled in 120ms (178 modules)
+ GET /api/admin/matchmaking-logs?limit=5&simple=true 500 in 431ms
+ GET /api/admin/matchmaking-logs?limit=5&simple=true 500 in 200ms
+ ✓ Compiled in 246ms (178 modules)
+ ✓ Compiled in 129ms (178 modules)
+ GET /api/admin/matchmaking-logs?limit=5&simple=true 500 in 400ms
+ ✓ Compiled in 138ms (178 modules)
+ ✓ Compiled in 167ms (178 modules)
+ GET /api/admin/matchmaking-logs?limit=5&simple=true 200 in 851ms
+ ✓ Compiled in 219ms (178 modules)
+ ✓ Compiled in 151ms (178 modules)
+ ✓ Compiled in 93ms (178 modules)
+ GET /api/admin/matchmaking-logs?limit=5&simple=true 200 in 585ms
+ ○ Compiling /api/admin/matchmaking-analytics ...
+ ✓ Compiled /api/admin/matchmaking-analytics in 684ms (181 modules)
+ GET /api/admin/matchmaking-analytics?range=24h 200 in 914ms
+ ✓ Compiled in 377ms (160 modules)
+ ✓ Compiled /api/admin/matchmaking-analytics in 173ms (179 modules)
+ GET /api/admin/matchmaking-analytics?range=24h 500 in 600ms
+ ✓ Compiled in 139ms (179 modules)
+[?25h

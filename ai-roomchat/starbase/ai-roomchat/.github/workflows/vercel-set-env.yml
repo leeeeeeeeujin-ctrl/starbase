@@ -1,0 +1,83 @@
+name: Vercel Set Env (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      project:
+        description: 'Vercel project name or ID (default: starbase)'
+        required: false
+        default: 'starbase'
+      targets:
+        description: 'Comma-separated targets: preview,production,development (default: preview)'
+        required: false
+        default: 'preview'
+      enable_test_endpoint:
+        description: 'ENABLE_TEST_ENDPOINT value (true/false)'
+        required: false
+        default: 'true'
+      test_user_email:
+        description: 'TEST_USER_EMAIL (optional)'
+        required: false
+      test_user_password:
+        description: 'TEST_USER_PASSWORD (optional)'
+        required: false
+      supabase_service_role:
+        description: 'SUPABASE_SERVICE_ROLE (optional)'
+        required: false
+
+jobs:
+  set-env:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate token
+        run: |
+          if [ -z "${{ secrets.VERCEL_TOKEN }}" ]; then
+            echo "Error: VERCEL_TOKEN secret is missing. Add it to repository secrets and re-run." >&2
+            exit 1
+          fi
+
+      - name: Add environment variables to Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          PROJECT: ${{ github.event.inputs.project }}
+          TARGETS_CSV: ${{ github.event.inputs.targets }}
+          ENABLE_TEST_ENDPOINT: ${{ github.event.inputs.enable_test_endpoint }}
+          TEST_USER_EMAIL: ${{ github.event.inputs.test_user_email }}
+          TEST_USER_PASSWORD: ${{ github.event.inputs.test_user_password }}
+          SUPABASE_SERVICE_ROLE: ${{ github.event.inputs.supabase_service_role }}
+        run: |
+          set -euo pipefail
+          TARGETS_CSV=${TARGETS_CSV:-preview}
+          IFS=',' read -r -a TARGETS <<< "$TARGETS_CSV"
+
+          post_env() {
+            key="$1"
+            value="$2"
+            if [ -z "$value" ]; then
+              echo "Skipping $key (empty)"
+              return
+            fi
+            # Build JSON for targets array
+            targets_json=""
+            first=true
+            for t in "${TARGETS[@]}"; do
+              if [ "$first" = true ]; then
+                targets_json="\"$t\""
+                first=false
+              else
+                targets_json=",\"$t\""
+              fi
+            done
+            json=$(printf '{"key":"%s","value":"%s","target":[%s],"type":"encrypted"}' "$key" "$value" "$targets_json")
+            echo "Posting $key to Vercel project '$PROJECT' for targets: ${TARGETS_CSV}"
+            resp=$(curl -s -X POST "https://api.vercel.com/v9/projects/$PROJECT/env" -H "Authorization: Bearer $VERCEL_TOKEN" -H "Content-Type: application/json" -d "$json")
+            echo "$resp" | jq -r '.message // .id // .key' || true
+          }
+
+          post_env "ENABLE_TEST_ENDPOINT" "${ENABLE_TEST_ENDPOINT:-}"
+          post_env "TEST_USER_EMAIL" "${TEST_USER_EMAIL:-}"
+          post_env "TEST_USER_PASSWORD" "${TEST_USER_PASSWORD:-}"
+          post_env "SUPABASE_SERVICE_ROLE" "${SUPABASE_SERVICE_ROLE:-}"
+
+      - name: Summary
+        run: echo "Done. Check Vercel dashboard or re-run with different inputs if needed."
