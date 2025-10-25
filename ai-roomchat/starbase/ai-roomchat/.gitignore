@@ -13,3 +13,6 @@ junit.xml
 
 # Local runtime logs
 logs/
+
+# Reference data used only for local development (do not commit)
+docs/reference_data/
