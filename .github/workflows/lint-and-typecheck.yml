@@ -1,3 +1,4 @@
+﻿---
 name: Lint and Type Check
 
 on:
@@ -53,3 +54,4 @@ jobs:
           else
             echo "TypeScript not installed. Skipping type check."
           fi
+

@@ -1,3 +1,4 @@
+﻿---
 name: Build Dev Docker Image
 
 on:
@@ -22,3 +23,6 @@ jobs:
         with:
           name: starbase-dev-latest
           path: starbase-dev-latest.tar.gz
+          if-no-files-found: warn
+          retention-days: 7
+

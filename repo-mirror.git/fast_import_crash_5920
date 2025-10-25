@@ -1,0 +1,61 @@
+fast-import crash report:
+    fast-import process: 5920
+    parent process     : 1
+    at 2025-10-25 21:10:07 +0000
+
+fatal: invalid path 'starbase/ai-roomchat/pages/private/index.js '
+
+Most Recent Commands Before Crash
+---------------------------------
+  feature done
+  reset refs/heads/codex/review-database-schema-for-coding-collaboration
+  commit refs/heads/codex/review-database-schema-for-coding-collaboration
+  mark :1
+  author leeeeeeeeujin-ctrl <leeeeeeeeujin@gmail.com> 1758318173 +0000
+  committer leeeeeeeeujin-ctrl <leeeeeeeeujin@gmail.com> 1758318173 +0000
+  data 42
+  M 100644 8ac6c66c7ffff528797b42053efb5f49e1fb6ced starbase/ai-roomchat/.env.example
+  M 100644 c2658d7d1b31848c3b71960543cb0368e56cd4c7 starbase/ai-roomchat/.gitignore
+  M 100644 452576f935ade3420cfe5269c8a2cdc5acbd4cb0 starbase/ai-roomchat/README.md
+  M 100644 3da3f2d369aefc1fcc0b71ca29b8e33a7ec2cd30 starbase/ai-roomchat/components/AuthButton.js
+  M 100644 c41a964c51b75f14b6d50fb12567728dbd0ae5dd starbase/ai-roomchat/components/LogoutButton.js
+  M 100644 df83de409ab7b91d0d54008ddc03d801fa7a69da starbase/ai-roomchat/jsconfig.json
+  M 100644 e64ac212cf7f97fcc70319e89f483918d7237f18 starbase/ai-roomchat/lib/promptEngine.js
+  M 100644 247acb8000d2e7b9f1954e00b16df6c6ac19a88c starbase/ai-roomchat/lib/supabase.js
+  M 100644 4be6a15e3668e899339aaec0c296911aef80556e starbase/ai-roomchat/package-lock.json
+  M 100644 72e31e6e29bba3a7267f3b2a6c3cad1fa71fc446 starbase/ai-roomchat/package.json
+  M 100644 feb2f8b9e3e61cfd7129bb4a7f8e788c77335b02 starbase/ai-roomchat/pages/_app.js
+  M 100644 5fb25f2be97275db6ff821cec1e699c9b092e0b2 starbase/ai-roomchat/pages/auth-callback.js
+  M 100644 fb0a06b6c129f146c94cf3d18e07555889086ef2 starbase/ai-roomchat/pages/character/[id].js
+  M 100644 ff664cd5abc8780db1b5cbda3d40f12cff5d4ea0 starbase/ai-roomchat/pages/create.js
+  M 100644 23b409f254dcf77f5a64e83fb7be465a07e09868 starbase/ai-roomchat/pages/index.js
+  M 100644 6c451c99def4a394d0cd714a20dff818a7fae289 starbase/ai-roomchat/pages/lobby.js
+  M 100644 0d58c949fd339f2713a4e0c2786cec4439a67f1b starbase/ai-roomchat/pages/maker/[id].js
+  M 100644 3672216f3aa93bac1c5bacb06205ffc6d4e8d737 starbase/ai-roomchat/pages/maker/index.js
+  M 100644 6afc691ae91c70e0995d119e63e9e584122ab692 starbase/ai-roomchat/pages/play/index.js
+* M 100644 a4c312b87509fb01bd054f2f9264563599ea1270 starbase/ai-roomchat/pages/private/index.js 
+
+Active Branch LRU
+-----------------
+    active_branches = 1 cur, 5 max
+
+  pos  clock name
+  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   1)      0 refs/heads/codex/review-database-schema-for-coding-collaboration
+
+Inactive Branches
+-----------------
+refs/heads/codex/review-database-schema-for-coding-collaboration:
+  status      : active loaded dirty
+  tip commit  : 0000000000000000000000000000000000000000
+  old tree    : 0000000000000000000000000000000000000000
+  cur tree    : 0000000000000000000000000000000000000000
+  commit clock: 0
+  last pack   : 
+
+
+Marks
+-----
+
+-------------------
+END OF CRASH REPORT

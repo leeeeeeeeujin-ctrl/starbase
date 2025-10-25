@@ -49,3 +49,5 @@ jobs:
         with:
           name: scheduled-jest-report
           path: reports/junit/junit.xml
+          if-no-files-found: warn
+          retention-days: 7

@@ -1,3 +1,4 @@
+﻿---
 name: run-ad-hoc-command
 
 on:
@@ -33,7 +34,10 @@ jobs:
         if: ${{ inputs.shell == 'bash' }}
         working-directory: ai-roomchat/starbase/ai-roomchat
         env:
-          ADMIN_PORTAL_PASSWORD: localdev
+          # Do NOT hardcode a development password here. Use a repository or environment
+          # secret named ADMIN_PORTAL_PASSWORD for CI runs if needed. If the secret is not
+          # set the application should fall back to a safer default or fail explicitly.
+          ADMIN_PORTAL_PASSWORD: ${{ secrets.ADMIN_PORTAL_PASSWORD }}
         run: |
           echo ">>> ${{ inputs.command }}"
           ${{ inputs.command }}
@@ -42,7 +46,8 @@ jobs:
         shell: pwsh
         working-directory: ai-roomchat/starbase/ai-roomchat
         env:
-          ADMIN_PORTAL_PASSWORD: localdev
+          ADMIN_PORTAL_PASSWORD: ${{ secrets.ADMIN_PORTAL_PASSWORD }}
         run: |
           Write-Host ">>> ${{ inputs.command }}"
           Invoke-Expression "${{ inputs.command }}"
+

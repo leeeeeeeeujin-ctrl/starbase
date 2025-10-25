@@ -1,3 +1,4 @@
+﻿---
 name: Security Audit
 
 on:
@@ -16,7 +17,7 @@ jobs:
       - name: Use Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '18'
 
       - name: Install dependencies
         run: |
@@ -33,6 +34,8 @@ jobs:
         with:
           name: npm-audit-report
           path: ai-roomchat/starbase/ai-roomchat/audit.json
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Summarize audit and comment PR
         if: github.event_name == 'pull_request'
@@ -43,7 +46,7 @@ jobs:
             CRITICAL=$(jq '.metadata.vulnerabilities.critical' $FILE)
             HIGH=$(jq '.metadata.vulnerabilities.high' $FILE)
             TOTAL=$(jq '.metadata.vulnerabilities.total' $FILE)
-            SUMMARY="**Security audit** ran for this PR. Vulnerabilities — critical: $CRITICAL, high: $HIGH, total: $TOTAL."
+            SUMMARY="**Security audit** ran for this PR. Vulnerabilities ??critical: $CRITICAL, high: $HIGH, total: $TOTAL."
           else
             SUMMARY="**Security audit** ran for this PR. Audit file not found."
           fi
@@ -56,3 +59,4 @@ jobs:
           issue-number: ${{ github.event.pull_request.number }}
           body: |
             $(cat audit-summary.txt)
+

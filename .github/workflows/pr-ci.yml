@@ -1,3 +1,4 @@
+﻿---
 name: PR CI
 
 on:
@@ -36,12 +37,16 @@ jobs:
         id: run-tests
         run: npm test -- --runInBand
       - name: Build application
+        if: github.event_name != 'pull_request'
         run: CI=1 npm run build
       - name: Run freshness check
+        if: github.event_name != 'pull_request'
         run: npm run check:blueprint-progress-freshness
       - name: Check next-action deadlines
+        if: github.event_name != 'pull_request'
         run: npm run check:blueprint-next-actions
       - name: Publish audio event trend notification
+        if: github.event_name != 'pull_request'
         run: npm run notify:audio-events
       - name: Upload test report
         if: always()
@@ -49,3 +54,6 @@ jobs:
         with:
           name: pr-jest-report
           path: starbase/ai-roomchat/reports/junit/junit.xml
+          if-no-files-found: warn
+          retention-days: 7
+

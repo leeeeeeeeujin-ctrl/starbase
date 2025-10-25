@@ -1,0 +1,13 @@
+extends: default
+rules:
+  # Relax line-length checks for generated/long workflow lines (paths, keys, commands).
+  line-length:
+    max: 1000
+    level: warning
+  # Allow non-boolean truthy values in workflow files used by GH Actions.
+  truthy: disable
+  # Allow up to 3 consecutive empty lines to avoid noisy warnings when files are auto-generated/edited.
+  # Disable empty-lines checks to reduce noisy warnings across many workflows.
+  empty-lines: disable
+  # Disable comment spacing warnings for workflow files which often contain long/inline comments.
+  comments: disable

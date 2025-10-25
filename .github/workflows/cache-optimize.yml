@@ -1,3 +1,4 @@
+﻿---
 name: Optimize Caches
 
 on:
@@ -30,3 +31,4 @@ jobs:
           key: ${{ runner.os }}-playwright-${{ hashFiles('starbase/ai-roomchat/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-playwright-
+
