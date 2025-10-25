@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import SurfaceOverlay from '../common/SurfaceOverlay';
+import FriendOverlay from './FriendOverlay';
 
 // Note: overlays in this file were previously imported but flagged as unused by ESLint in
 // this environment. If these components are needed elsewhere in the file they can be
