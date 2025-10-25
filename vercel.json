@@ -1,7 +1,7 @@
 {
   "builds": [
     {
-      "src": "ai-roomchat/starbase/ai-roomchat/package.json",
+      "src": "ai-roomchat/package.json",
       "use": "@vercel/next"
     }
   ],
