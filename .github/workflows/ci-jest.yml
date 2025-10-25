@@ -20,11 +20,11 @@ jobs:
           node-version: '18'
 
       - name: Install dependencies (ai-roomchat)
-        working-directory: ai-roomchat/starbase/ai-roomchat
+        working-directory: ai-roomchat
         run: npm ci
 
       - name: Run Jest
-        working-directory: ai-roomchat/starbase/ai-roomchat
+        working-directory: ai-roomchat
         run: npm test --silent -- --reporters=default
 
       - name: Upload test results
@@ -32,7 +32,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: jest-results
-          path: ai-roomchat/starbase/ai-roomchat/junit.xml
+          path: ai-roomchat/junit.xml
           if-no-files-found: warn
           retention-days: 7
 
@@ -52,7 +52,7 @@ jobs:
           body: |
             **CI Jest (ai-roomchat)** ran for this PR.
 
-            - Repository: `ai-roomchat/starbase/ai-roomchat`
+            - Repository: `ai-roomchat`
             - Command: `npm test` (silent)
 
             If you need a full log or junit artifact, check the Actions run artifacts.

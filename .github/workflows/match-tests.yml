@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ai-roomchat/starbase/ai-roomchat
+        working-directory: ai-roomchat
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -23,7 +23,7 @@ jobs:
         with:
           node-version: '18'
           cache: 'npm'
-          cache-dependency-path: ai-roomchat/starbase/ai-roomchat/package.json
+          cache-dependency-path: ai-roomchat/package.json
 
       - name: Install
         run: npm ci

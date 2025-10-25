@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ai-roomchat/starbase/ai-roomchat
+        working-directory: ai-roomchat
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,7 +32,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: fuzz-report
-          path: ai-roomchat/starbase/ai-roomchat/reports/fuzzer
+          path: ai-roomchat/reports/fuzzer
           if-no-files-found: warn
           retention-days: 14
 

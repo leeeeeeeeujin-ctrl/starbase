@@ -6,7 +6,7 @@
       "type": "npm",
       "script": "dev",
       "options": {
-        "cwd": "${workspaceFolder}/ai-roomchat/starbase/ai-roomchat",
+  "cwd": "${workspaceFolder}/ai-roomchat",
         "env": {
           "ADMIN_PORTAL_PASSWORD": "localdev",
           "HOST": "0.0.0.0",
@@ -24,7 +24,7 @@
       "type": "npm",
       "script": "dev",
       "options": {
-        "cwd": "${workspaceFolder}/ai-roomchat/starbase/ai-roomchat",
+  "cwd": "${workspaceFolder}/ai-roomchat",
         "env": {
           "ADMIN_PORTAL_PASSWORD": "localdev",
           "HOST": "0.0.0.0",
@@ -55,7 +55,7 @@
       "type": "npm",
       "script": "test",
       "options": {
-        "cwd": "${workspaceFolder}/ai-roomchat/starbase/ai-roomchat"
+        "cwd": "${workspaceFolder}/ai-roomchat"
       },
       "group": "build"
     },
@@ -93,10 +93,10 @@
       "label": "node-run-matching-samples",
       "type": "shell",
       "command": "cmd",
-      "args": [
+        "args": [
         "/d",
         "/c",
-        "cd C:\\Users\\yujin\\Documents\\234423\\starbase\\ai-roomchat\\starbase\\ai-roomchat && node scripts\\run-matching-samples.js"
+        "cd C:\\Users\\yujin\\Documents\\234423\\starbase\\ai-roomchat && node scripts\\run-matching-samples.js"
       ],
       "isBackground": false,
       "problemMatcher": [],
@@ -106,10 +106,10 @@
       "label": "node-run-matching-samples",
       "type": "shell",
       "command": "cmd",
-      "args": [
+        "args": [
         "/d",
         "/c",
-        "cd C:\\Users\\yujin\\Documents\\234423\\starbase\\ai-roomchat\\starbase\\ai-roomchat && node scripts\\run-matching-samples.js && type reports\\matching-samples.json"
+        "cd C:\\Users\\yujin\\Documents\\234423\\starbase\\ai-roomchat && node scripts\\run-matching-samples.js && type reports\\matching-samples.json"
       ],
       "isBackground": false,
       "problemMatcher": [],

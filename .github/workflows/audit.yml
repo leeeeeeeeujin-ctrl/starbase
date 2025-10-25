@@ -21,19 +21,19 @@ jobs:
 
       - name: Install dependencies
         run: |
-          cd ai-roomchat/starbase/ai-roomchat
+          cd ai-roomchat
           npm ci
 
       - name: Run npm audit
         run: |
-          cd ai-roomchat/starbase/ai-roomchat
+          cd ai-roomchat
           npm audit --json > audit.json || true
 
       - name: Upload audit report
         uses: actions/upload-artifact@v4
         with:
           name: npm-audit-report
-          path: ai-roomchat/starbase/ai-roomchat/audit.json
+          path: ai-roomchat/audit.json
           if-no-files-found: warn
           retention-days: 14
 
@@ -41,7 +41,7 @@ jobs:
         if: github.event_name == 'pull_request'
         run: |
           set -e
-          FILE=ai-roomchat/starbase/ai-roomchat/audit.json
+          FILE=ai-roomchat/audit.json
           if [ -f "$FILE" ]; then
             CRITICAL=$(jq '.metadata.vulnerabilities.critical' $FILE)
             HIGH=$(jq '.metadata.vulnerabilities.high' $FILE)

@@ -4,10 +4,10 @@
 
 ## Quick start (개발용)
 
-1. 저장소 루트에서 `ai-roomchat/starbase/ai-roomchat/.env.local.example`을 `ai-roomchat/starbase/ai-roomchat/.env.local`로 복사해 환경변수를 채웁니다.
+1. 저장소 루트에서 `ai-roomchat/.env.local.example`을 `ai-roomchat/.env.local`로 복사해 환경변수를 채웁니다.
 
 ```powershell
-cd ai-roomchat/starbase/ai-roomchat
+cd ai-roomchat
 copy .env.local.example .env.local
 npm install
 npm run dev

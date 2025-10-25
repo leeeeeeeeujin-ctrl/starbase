@@ -8,4 +8,4 @@ archived/
 *.Local
 
 # Ignore runtime and log directories created by local runs
-ai-roomchat/starbase/ai-roomchat/logs/
+ai-roomchat/logs/

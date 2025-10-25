@@ -26,13 +26,13 @@ jobs:
         with:
           node-version: 18
           cache: 'npm'
-          cache-dependency-path: ai-roomchat/starbase/ai-roomchat/package-lock.json
+          cache-dependency-path: ai-roomchat/package-lock.json
       - name: Install deps
-        working-directory: ai-roomchat/starbase/ai-roomchat
+        working-directory: ai-roomchat
         run: npm ci
       - name: Run command (bash)
         if: ${{ inputs.shell == 'bash' }}
-        working-directory: ai-roomchat/starbase/ai-roomchat
+        working-directory: ai-roomchat
         env:
           # Do NOT hardcode a development password here. Use a repository or environment
           # secret named ADMIN_PORTAL_PASSWORD for CI runs if needed. If the secret is not
@@ -44,7 +44,7 @@ jobs:
       - name: Run command (PowerShell)
         if: ${{ inputs.shell == 'pwsh' }}
         shell: pwsh
-        working-directory: ai-roomchat/starbase/ai-roomchat
+        working-directory: ai-roomchat
         env:
           ADMIN_PORTAL_PASSWORD: ${{ secrets.ADMIN_PORTAL_PASSWORD }}
         run: |
