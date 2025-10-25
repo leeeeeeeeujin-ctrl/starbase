@@ -1,0 +1,40 @@
+name: Apply SQL migration (supabase-cli)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  apply-sql-cli:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Supabase CLI
+        run: |
+          sudo npm install -g supabase
+
+      - name: Show supabase version
+        run: supabase --version
+
+      - name: Run SQL via Supabase CLI
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_PROJECT_URL: ${{ secrets.SUPABASE_PROJECT_URL }}
+        run: |
+          set -e
+          if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ] || [ -z "$SUPABASE_PROJECT_URL" ]; then
+            echo "Missing SUPABASE_SERVICE_ROLE_KEY or SUPABASE_PROJECT_URL secret" >&2
+            exit 1
+          fi
+
+          # Derive project ref from project URL (strip https:// and .supabase.co)
+          PROJECT_REF=$(echo "$SUPABASE_PROJECT_URL" | sed -E 's#https?://([^.]*)\..*#\1#')
+          echo "Project ref: $PROJECT_REF"
+
+          # Set access token for supabase CLI
+          export SUPABASE_ACCESS_TOKEN="$SUPABASE_SERVICE_ROLE_KEY"
+
+          # Try to run SQL file using supabase CLI. The exact command may vary by CLI version.
+          # We attempt `supabase db query` which runs a SQL file against the project's database.
+          supabase db query -f docs/sql/20251025_add_recompute_queue.sql --project-ref "$PROJECT_REF"
