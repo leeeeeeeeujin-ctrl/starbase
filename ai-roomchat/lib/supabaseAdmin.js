@@ -22,3 +22,6 @@ export const supabaseAdmin = createClient(url, key, {
     fetch: serviceAuthConfig.fetch,
   },
 });
+
+// Backwards-compatible named export expected by some modules
+export const supabase = supabaseAdmin;

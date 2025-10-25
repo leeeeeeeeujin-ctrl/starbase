@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import React, { useMemo } from 'react';
+
 import { createOpponentCards } from '../../../../utils/characterStats';
 import { baseStyles } from './styles';
 import MatchingStep from './MatchingStep';

@@ -1,209 +1,151 @@
 // pages/api/ai-workers/generate-game.js
-// 스타베이스 AI 게임 생성 API (AI Worker Pool 호환)
+// AI Worker Pool을 통한 게임 생성 API 엔드포인트
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { prompt, task, context } = req.body;
-
   try {
-    console.log(`🤖 AI 게임 생성 요청: "${prompt}"`);
+    const { prompt, type = 'game-generation' } = req.body;
 
-    // AI 게임 생성 로직 (OpenAI API 호출 시뮬레이션)
-    const gameResult = await generateGameFromPrompt(prompt);
+    if (!prompt || typeof prompt !== 'string') {
+      return res.status(400).json({ error: 'Invalid prompt' });
+    }
 
-    res.status(200).json({
+    console.log('🎮 게임 생성 요청:', prompt);
+
+    // 실제 AI Worker Pool 연결 시도 (향후 구현)
+    // const aiResult = await callAIWorkerPool(prompt)
+
+    // 현재는 로컬 생성으로 대체
+    const gameResult = generateGameLocally(prompt);
+
+    console.log('✅ 게임 생성 완료:', gameResult.gameName);
+
+    return res.status(200).json({
       success: true,
-      gameName: gameResult.gameName,
-      gameNodes: gameResult.gameNodes,
-      theme: gameResult.theme,
+      ...gameResult,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    console.error('AI 게임 생성 실패:', error);
-    res.status(500).json({
-      error: 'AI 게임 생성에 실패했습니다.',
-      details: error.message,
+    console.error('❌ 게임 생성 실패:', error);
+
+    return res.status(500).json({
+      success: false,
+      error: error.message || '게임 생성 중 오류가 발생했습니다',
     });
   }
 }
 
 /**
- * 자연어 프롬프트로부터 게임 생성
+ * 로컬에서 게임을 생성하는 함수
  */
-async function generateGameFromPrompt(prompt) {
-  // 게임 테마 분석
-  const theme = analyzeGameTheme(prompt);
+function generateGameLocally(prompt) {
+  const keywords = prompt.toLowerCase();
 
-  // 테마별 게임 노드 생성
-  const gameNodes = await createGameNodes(theme, prompt);
+  // 키워드 분석 기반 게임 생성
+  if (
+    keywords.includes('중세') ||
+    keywords.includes('기사') ||
+    keywords.includes('용') ||
+    keywords.includes('마법')
+  ) {
+    return {
+      gameName: '중세 판타지 모험',
+      description: '용맹한 기사가 되어 용을 물리치고 왕국을 구하는 모험',
+      gameNodes: [
+        {
+          type: 'ai',
+          template:
+            '🏰 당신은 아서 왕국의 기사입니다. 악한 용 "블랙드래곤"이 공주를 납치했다는 소식이 들려왔습니다. 왕으로부터 구출 임무를 받은 당신, 어떻게 하시겠습니까?',
+        },
+        {
+          type: 'user_action',
+          template:
+            '행동을 선택하세요:\\n• ⚔️ 즉시 용의 동굴로 향한다\\n• 🛡️ 먼저 더 좋은 장비를 구한다\\n• 🤝 다른 기사들과 팀을 꾸린다\\n• 📚 용에 대한 정보를 수집한다',
+        },
+        {
+          type: 'system',
+          template:
+            '⚔️ 기사 스탯:\\n• HP: 100/100\\n• 공격력: 25\\n• 방어력: 20\\n• 마나: 50/50\\n\\n🎒 장비: 철검, 사슬갑옷, 방패\\n💰 소지금: 100 골드',
+        },
+      ],
+    };
+  }
 
-  // 게임 이름 생성
-  const gameName = generateGameName(theme, prompt);
+  if (
+    keywords.includes('우주') ||
+    keywords.includes('외계인') ||
+    keywords.includes('로봇') ||
+    keywords.includes('스타')
+  ) {
+    return {
+      gameName: '스타 크루세이더',
+      description: '우주 해적선의 선장이 되어 은하계를 탐험하는 SF 어드벤처',
+      gameNodes: [
+        {
+          type: 'ai',
+          template:
+            '🚀 서기 2387년, 당신은 우주선 "스타크루저"의 선장입니다. 신비한 에너지 신호가 미지의 행성에서 포착되었습니다. 이 신호는 전설의 "코스믹 크리스탈"과 관련이 있을 수 있습니다.',
+        },
+        {
+          type: 'user_action',
+          template:
+            '선택하세요:\\n• 🛸 즉시 해당 행성으로 워프한다\\n• 🔍 먼저 스캔으로 행성을 조사한다\\n• 📡 다른 우주선과 정보를 공유한다\\n• ⚡ 무기 시스템을 점검한다',
+        },
+        {
+          type: 'system',
+          template:
+            '🛸 우주선 상태:\\n• 선체 HP: 200/200\\n• 에너지: 150/150\\n• 승무원: 5명\\n• 화물칸: 빈 공간 75%\\n\\n⚔️ 무장: 레이저 캐논, 프로톤 어뢰\\n🗺️ 현재 위치: 알파 센타우리 근처',
+        },
+      ],
+    };
+  }
 
+  if (keywords.includes('좀비') || keywords.includes('생존') || keywords.includes('아포칼립스')) {
+    return {
+      gameName: '최후의 생존자',
+      description: '좀비 아포칼립스에서 살아남아 안전지대를 찾는 서바이벌 게임',
+      gameNodes: [
+        {
+          type: 'ai',
+          template:
+            '🧟 바이러스 창궐 후 30일째. 당신은 폐허가 된 도시에서 홀로 생존하고 있습니다. 라디오에서 "안전지대가 북쪽에 있다"는 방송이 들려왔습니다. 하지만 그곳까지 가려면 좀비들이 우글거리는 시가지를 통과해야 합니다.',
+        },
+        {
+          type: 'user_action',
+          template:
+            '생존 전략:\\n• 🏃 빠르게 달려서 돌파한다\\n• 🤫 조용히 숨어서 이동한다\\n• 🔥 폭발물로 길을 뚫는다\\n• 🚗 차량을 찾아서 이용한다',
+        },
+        {
+          type: 'system',
+          template:
+            '👤 생존자 상태:\\n• HP: 85/100\\n• 스태미나: 70/100\\n• 정신력: 60/100\\n\\n🎒 인벤토리:\\n• 야구방망이, 권총(탄약 8발)\\n• 통조림 3개, 물 1.5L\\n• 구급상자, 손전등',
+        },
+      ],
+    };
+  }
+
+  // 기본 어드벤처 게임
   return {
-    gameName,
-    gameNodes,
-    theme,
-    generatedAt: new Date().toISOString(),
-  };
-}
-
-/**
- * 게임 테마 분석
- */
-function analyzeGameTheme(prompt) {
-  const lowerPrompt = prompt.toLowerCase();
-
-  if (
-    lowerPrompt.includes('중세') ||
-    lowerPrompt.includes('기사') ||
-    lowerPrompt.includes('용') ||
-    lowerPrompt.includes('마법')
-  ) {
-    return 'medieval-fantasy';
-  }
-
-  if (
-    lowerPrompt.includes('우주') ||
-    lowerPrompt.includes('외계인') ||
-    lowerPrompt.includes('로봇') ||
-    lowerPrompt.includes('sf')
-  ) {
-    return 'sci-fi';
-  }
-
-  if (
-    lowerPrompt.includes('좀비') ||
-    lowerPrompt.includes('생존') ||
-    lowerPrompt.includes('아포칼립스')
-  ) {
-    return 'survival-horror';
-  }
-
-  if (
-    lowerPrompt.includes('현대') ||
-    lowerPrompt.includes('도시') ||
-    lowerPrompt.includes('범죄') ||
-    lowerPrompt.includes('경찰')
-  ) {
-    return 'modern-action';
-  }
-
-  if (
-    lowerPrompt.includes('판타지') ||
-    lowerPrompt.includes('모험') ||
-    lowerPrompt.includes('던전')
-  ) {
-    return 'fantasy-adventure';
-  }
-
-  return 'generic-adventure';
-}
-
-/**
- * 테마별 게임 노드 생성
- */
-async function createGameNodes(theme, prompt) {
-  const gameTemplates = {
-    'medieval-fantasy': [
+    gameName: '신비한 모험',
+    description: `"${prompt}"를 테마로 한 특별한 어드벤처 게임`,
+    gameNodes: [
       {
         type: 'ai',
-        template:
-          '당신은 중세 판타지 세계의 용맹한 모험가입니다. 마법과 검술을 자유롭게 사용할 수 있으며, 정의를 위해 싸웁니다. 당신의 목표는 고대 용을 처치하고 왕국을 구하는 것입니다.',
+        template: `🌟 "${prompt}"의 세계에 오신 것을 환영합니다! 당신은 특별한 운명을 가진 모험가입니다. 신비로운 힘이 당신을 이 곳으로 이끌었습니다. 무엇부터 시작하시겠습니까?`,
       },
       {
         type: 'user_action',
         template:
-          '어떤 행동을 하시겠습니까? 선택지: [⚔️ 공격] [🛡️ 방어] [🔮 마법시전] [🏃 회피] [💬 대화시도]',
+          '첫 행동을 선택하세요:\\n• 🚀 모험을 시작한다\\n• 🎒 소지품을 확인한다\\n• 🗺️ 주변을 둘러본다\\n• 💭 상황을 정리한다',
       },
       {
         type: 'system',
         template:
-          '🐉 고대 드래곤이 나타났습니다!\n━━━━━━━━━━━━━━━━━━\n🔥 드래곤 HP: 150/150\n⚡ 마나: 100/100\n🏰 위치: 고대 성의 왕좌의 방\n━━━━━━━━━━━━━━━━━━\n드래곤이 불꽃을 내뿜을 준비를 합니다!',
-      },
-    ],
-
-    'sci-fi': [
-      {
-        type: 'ai',
-        template:
-          '당신은 2157년 우주 연방의 엘리트 파일럿입니다. 최첨단 우주선을 조종하며 은하계를 지키는 임무를 수행합니다. 외계 침입자들이 지구를 위협하고 있습니다.',
-      },
-      {
-        type: 'user_action',
-        template:
-          '전투 명령을 내리세요: [🚀 레이저 발사] [🛡️ 실드 활성화] [⚡ 플라즈마 미사일] [🔧 시스템 수리] [📡 스캔]',
-      },
-      {
-        type: 'system',
-        template:
-          '👽 외계인 모함이 접근 중!\n━━━━━━━━━━━━━━━━━━\n🛸 적 모함 HP: 200/200\n⚡ 우주선 에너지: 100/100\n📍 위치: 화성 궤도\n━━━━━━━━━━━━━━━━━━\n경고: 적이 차징 빔을 준비하고 있습니다!',
-      },
-    ],
-
-    'survival-horror': [
-      {
-        type: 'ai',
-        template:
-          '좀비 아포칼립스가 시작된 지 30일이 지났습니다. 당신은 몇 안 되는 생존자 중 하나입니다. 제한된 자원으로 살아남고, 다른 생존자들을 구해야 합니다.',
-      },
-      {
-        type: 'user_action',
-        template:
-          '생존 행동을 선택하세요: [🔍 수색] [🔨 바리케이드 구축] [💊 치료] [🥫 자원 수집] [👥 생존자 구조]',
-      },
-      {
-        type: 'system',
-        template:
-          '🧟 좀비 무리 접근 중!\n━━━━━━━━━━━━━━━━━━\n❤️ 생존자 HP: 85/100\n🥫 식량: 3일분\n💊 의료용품: 2개\n🔫 탄약: 12발\n━━━━━━━━━━━━━━━━━━\n⚠️ 15마리의 좀비가 500m 거리에 있습니다!',
-      },
-    ],
-
-    'generic-adventure': [
-      {
-        type: 'ai',
-        template: `${prompt}을 주제로 한 흥미진진한 모험이 시작됩니다! 당신은 이 세계의 주인공이 되어 다양한 도전과 모험을 겪게 됩니다.`,
-      },
-      {
-        type: 'user_action',
-        template:
-          '어떤 행동을 하시겠습니까? [🎯 행동1] [🔍 탐색] [💬 대화] [⚡ 특별행동] [🤔 생각하기]',
-      },
-      {
-        type: 'system',
-        template:
-          '🌟 모험이 시작되었습니다!\n━━━━━━━━━━━━━━━━━━\n❤️ 체력: 100/100\n✨ 경험치: 0/100\n🎒 인벤토리: 비어있음\n━━━━━━━━━━━━━━━━━━\n새로운 세계가 당신을 기다리고 있습니다!',
+          '🎮 모험가 정보:\\n• 레벨: 1\\n• HP: 100/100\\n• MP: 50/50\\n• 경험치: 0/100\\n\\n✨ 특수 능력: 미각성 상태\\n🎯 목표: 운명을 찾아 여정을 떠나라!',
       },
     ],
   };
-
-  return gameTemplates[theme] || gameTemplates['generic-adventure'];
-}
-
-/**
- * 게임 이름 생성
- */
-function generateGameName(theme, prompt) {
-  const gameNames = {
-    'medieval-fantasy': [
-      '드래곤 슬레이어의 전설',
-      '마법사의 모험',
-      '기사단의 영광',
-      '고대 마법의 비밀',
-    ],
-    'sci-fi': [
-      '우주 전쟁: 지구의 마지막 희망',
-      '은하계 수호자',
-      '스타 파일럿의 귀환',
-      '외계 침입자와의 전쟁',
-    ],
-    'survival-horror': ['좀비 아포칼립스: 생존자', '마지막 30일', '데드 시티 탈출', '생존의 법칙'],
-    'generic-adventure': ['무한 모험의 시작', '새로운 세계 탐험', '운명의 여행', '전설의 시작'],
-  };
-
-  const names = gameNames[theme] || gameNames['generic-adventure'];
-  return names[Math.floor(Math.random() * names.length)];
 }

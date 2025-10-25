@@ -64,7 +64,6 @@ import { useStartApiKeyManager } from './hooks/useStartApiKeyManager';
 import { useStartCooldown } from './hooks/useStartCooldown';
 import { useStartManualResponse } from './hooks/useStartManualResponse';
 import { useStartSessionWatchdog } from './hooks/useStartSessionWatchdog';
-import useAdvanceTurn from './hooks/useAdvanceTurn';
 import { consumeStartMatchMeta } from '../startConfig';
 import {
   clearGameMatchData,
@@ -3125,78 +3124,6 @@ export function useStartClientEngine(gameId, options = {}) {
     setPromptMetaWarning,
   ]);
 
-  // Prepare a compact dependency object and grouped setters to pass to the
-  // new `useAdvanceTurn` hook. This is wired in parallel to the existing inline
-  // `advanceTurn` implementation so the refactor remains non-destructive.
-  const advanceTurnDeps = {
-    // state/read-only
-    preflight,
-    currentNodeId,
-    graph,
-    slots,
-    history,
-    aiMemory,
-    activeGlobal,
-    activeLocal,
-    manualResponse,
-    effectiveApiKey,
-    apiVersion,
-    systemPrompt,
-    turn,
-    participants,
-    participantsStatus,
-    ownerDisplayMap,
-    realtimeEnabled,
-    brawlEnabled,
-    winCount,
-    lastDropInTurn,
-    viewerId,
-    gameId,
-    sessionInfo,
-    // actions/helpers
-    voidSession,
-    gameVoided,
-    ensureApiKeyReady,
-    persistApiKeyOnServer,
-    normalizedGeminiMode,
-    normalizedGeminiModel,
-    updateHeroAssets,
-    logTurnEntries,
-    captureBattleLog,
-    clearSessionRecord,
-    finalizeSessionRemotely,
-    patchEngineState,
-    markSessionDefeated,
-    // refs / ledger
-    realtimeManagerRef,
-    recordOutcomeLedger,
-    outcomeLedgerRef,
-    buildOutcomeSnapshot,
-    statusMessageRef,
-    // utils
-    isApiKeyError,
-    applyRealtimeSnapshot,
-    recordTurnState,
-    // grouped setters (compact interface)
-    setters: {
-      setActiveGlobal,
-      setActiveLocal,
-      setCurrentNodeId,
-      setIsAdvancing,
-      setLogs,
-      setStatusMessage,
-      setTimeRemaining,
-      setTurn,
-      setTurnDeadline,
-      setWinCount,
-    },
-  };
-
-  // Wire the hook in parallel; we keep the existing inline advanceTurn as the
-  // canonical implementation for now. Later steps will migrate callers to
-  // `advanceTurnHook` incrementally.
-  const advanceTurnHook = useAdvanceTurn(advanceTurnDeps);
-
   const advanceTurn = useCallback(
     async (overrideResponse = null, options = {}) => {
       if (preflight) {
@@ -3972,8 +3899,8 @@ export function useStartClientEngine(gameId, options = {}) {
     }
     advanceIntentRef.current = null;
     clearConsensusVotes();
-    (typeof advanceTurnHook === 'function' ? advanceTurnHook : advanceTurn)(trimmed, { reason: 'manual' });
-  }, [advanceTurnHook, advanceTurn, clearConsensusVotes, requireManualResponse]);
+    advanceTurn(trimmed, { reason: 'manual' });
+  }, [advanceTurn, clearConsensusVotes, requireManualResponse]);
 
   const advanceWithAi = useCallback(() => {
     if (!needsConsensus) {
@@ -3990,9 +3917,7 @@ export function useStartClientEngine(gameId, options = {}) {
       }
       advanceIntentRef.current = null;
       clearConsensusVotes();
-      // Use the new hook-backed advanceTurn implementation for this path.
-      // Falls back to the inline advanceTurn if the hook is not provided.
-      (typeof advanceTurnHook === 'function' ? advanceTurnHook : advanceTurn)(null, { reason: 'ai' });
+      advanceTurn(null, { reason: 'ai' });
       return;
     }
     if (!viewerCanConsent) {
@@ -4023,8 +3948,7 @@ export function useStartClientEngine(gameId, options = {}) {
     const { consensusCount: futureCount, threshold } = snapshot;
     setStatusMessage(`다음 턴 동의 ${futureCount}/${threshold}명`);
   }, [
-    // migrated to use advanceTurnHook where possible
-    advanceTurnHook,
+    advanceTurn,
     clearConsensusVotes,
     needsConsensus,
     setStatusMessage,
@@ -4053,8 +3977,8 @@ export function useStartClientEngine(gameId, options = {}) {
       ],
       { turnNumber }
     );
-    return (typeof advanceTurnHook === 'function' ? advanceTurnHook : advanceTurn)(null, { reason: 'timeout' });
-  }, [advanceTurnHook, advanceTurn, clearConsensusVotes, recordTimelineEvents, turn, realtimeEnabled]);
+    return advanceTurn(null, { reason: 'timeout' });
+  }, [advanceTurn, clearConsensusVotes, recordTimelineEvents, turn, realtimeEnabled]);
 
   useEffect(() => {
     if (!needsConsensus) return undefined;
@@ -4080,13 +4004,9 @@ export function useStartClientEngine(gameId, options = {}) {
     const intent = advanceIntentRef.current;
     advanceIntentRef.current = null;
     clearConsensusVotes();
-    (typeof advanceTurnHook === 'function' ? advanceTurnHook : advanceTurn)(
-      intent?.override ?? null,
-      { reason: intent?.reason || 'consensus' }
-    );
+    advanceTurn(intent?.override ?? null, { reason: intent?.reason || 'consensus' });
     return undefined;
   }, [
-    advanceTurnHook,
     advanceTurn,
     consensusState?.hasReachedThreshold,
     needsConsensus,
@@ -4192,15 +4112,12 @@ export function useStartClientEngine(gameId, options = {}) {
       advanceIntentRef.current = null;
       if (intent) {
         clearConsensusVotes();
-        (typeof advanceTurnHook === 'function' ? advanceTurnHook : advanceTurn)(
-          intent?.override ?? null,
-          {
-            reason: intent?.reason || 'consensus',
-          }
-        );
+        advanceTurn(intent?.override ?? null, {
+          reason: intent?.reason || 'consensus',
+        });
       }
     }
-  }, [needsConsensus, advanceTurnHook, clearConsensusVotes]);
+  }, [needsConsensus, advanceTurn, clearConsensusVotes]);
 
   const turnTimerSnapshot = useMemo(() => {
     const baseFromState = Number.isFinite(Number(turnTimerSeconds))

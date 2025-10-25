@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+
 import { supabase } from '../lib/supabase';
 import { logError } from '../lib/utils/debugTool';
 
@@ -81,6 +82,7 @@ export default function LogoutButton({ onAfter, avatarUrl, displayName }) {
         aria-label="프로필 메뉴"
       >
         {avatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={avatarUrl}
             alt="프로필"

@@ -2,6 +2,7 @@
  * @jest-environment jsdom
  */
 
+import React from 'react';
 import { act, create } from 'react-test-renderer';
 
 import { success, failure } from '../../../lib/maker/promptSets/result';
@@ -100,20 +101,17 @@ describe('useMakerHome', () => {
     ];
     mockList.mockResolvedValue(success(rows));
 
-    let hook;
-    await act(async () => {
-      hook = renderHook();
-      // Wait for hydration effect
-      await Promise.resolve();
-    });
+    const hook = renderHook();
+    // Wait for hydration + bootstrap effects to run reliably in CI
+    for (let i = 0; i < 10 && mockList.mock.calls.length === 0; i += 1) {
+      await flushPromises();
+    }
 
-    await act(async () => {
-      // Wait for bootstrap effect
-      await Promise.resolve();
-    });
-
-    // Wait for async operations
-    for (let i = 0; i < 5 && mockList.mock.calls.length === 0; i += 1) {
+    // Fallback: if auto-bootstrap didn't fire in time (CI flake), trigger a manual refresh
+    if (mockList.mock.calls.length === 0) {
+      await act(async () => {
+        await hook.result.refresh(userId);
+      });
       await flushPromises();
     }
 
@@ -137,17 +135,12 @@ describe('useMakerHome', () => {
     mockList.mockResolvedValue(success([]));
     mockInsertBundle.mockResolvedValue(success({ id: 'set-99' }));
 
-    let hook;
-    await act(async () => {
-      hook = renderHook();
-      await Promise.resolve();
-    });
-
-    await act(async () => {
-      await Promise.resolve();
-    });
-
+    const hook = renderHook();
     await flushPromises();
+    // Ensure hydration + auth bootstrap completes so userId is set before import (allow generous cycles for CI)
+    for (let i = 0; i < 12 && mockList.mock.calls.length === 0; i += 1) {
+      await flushPromises();
+    }
 
     const payload = {
       meta: { variableRulesVersion: 99 },

@@ -1,13 +1,14 @@
 'use client';
 
-import Link from 'next/link'; // eslint-disable-line no-unused-vars -- used in JSX; some linters flag this in large files
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+
 import { supabase } from '@/lib/supabase';
 import { withTable } from '@/lib/supabaseTables';
 import { getHeroAudioManager } from '@/lib/audio/heroAudioManager';
 import { sanitizeFileName } from '@/utils/characterAssets';
-import CharacterPlayPanel from './CharacterPlayPanel'; // eslint-disable-line no-unused-vars -- used in JSX slider panel
+import CharacterPlayPanel from './CharacterPlayPanel';
 import useHeroParticipations from '@/hooks/character/useHeroParticipations';
 import useHeroBattles from '@/hooks/character/useHeroBattles';
 import {
@@ -19,7 +20,10 @@ import {
   clearSharedBackgroundUrl,
   writeSharedBackgroundUrl,
 } from '@/hooks/shared/useSharedPromptSetStorage';
-import useHeroProfileInfo, { DEFAULT_HERO_NAME } from '@/hooks/character/useHeroProfileInfo';
+import useHeroProfileInfo, {
+  DEFAULT_DESCRIPTION,
+  DEFAULT_HERO_NAME,
+} from '@/hooks/character/useHeroProfileInfo';
 import useParticipationCarousel from '@/hooks/character/useParticipationCarousel';
 import useInfoSlider from '@/hooks/character/useInfoSlider';
 
@@ -1391,8 +1395,10 @@ export default function CharacterBasicView({ hero }) {
   const { currentHero, setCurrentHero, heroName, description, abilityEntries } =
     useHeroProfileInfo(hero);
 
-  // heroIdKey removed — previously used by a now-removed helper for recent battle
-  // resolution. Keep currentHero usage directly where needed.
+  const heroIdKey = useMemo(() => {
+    const id = currentHero?.id;
+    return id ? String(id) : null;
+  }, [currentHero]);
 
   const [viewMode, setViewMode] = useState(0);
   const [activeTab, setActiveTab] = useState(0);
@@ -1638,17 +1644,6 @@ export default function CharacterBasicView({ hero }) {
     compressorDetail,
   } = audioState;
 
-  // Deliberate: we only track a selected subset of nested audioState fields here to
-  // avoid noisy re-renders caused by frequently-changing nested objects. See the
-  // codemod notes above; if you change this effect, review deps carefully.
-   
-  // Deliberate: we intentionally list a limited set of nested `audioState` fields
-  // in the dependency array to avoid noisy re-renders from frequently-updating
-  // nested objects. Review before changing.
-   
-  // Deliberate: intentionally limiting deps for nested audioState fields to avoid
-  // noisy re-renders from frequently-changing nested objects. See codemod notes.
-   
   useEffect(() => {
     if (!detailOpen) return;
     setOverlayHeroStep(0);
@@ -1992,14 +1987,6 @@ export default function CharacterBasicView({ hero }) {
     audioState.reverbDetail.mix,
     audioState.reverbDetail.decay,
     audioState.compressorEnabled,
-    // NOTE: auto-suppressed by codemod. Compressor detail fields are nested
-    // objects that change frequently; adding them to deps caused noisy re-renders
-    // in profiling. Please review before re-enabling the rule.
-    // NOTE: auto-suppressed by codemod. This suppression was added by automated
-    // tooling to reduce noise. Please review the surrounding effect body and
-    // either add the minimal safe dependencies or keep the suppression with
-    // an explanatory comment before removing this note.
-     
     audioState.compressorDetail.threshold,
     audioState.compressorDetail.ratio,
     audioState.compressorDetail.release,
@@ -2045,7 +2032,7 @@ export default function CharacterBasicView({ hero }) {
     if (imageInputRef.current) imageInputRef.current.value = '';
     if (backgroundInputRef.current) backgroundInputRef.current.value = '';
     if (bgmInputRef.current) bgmInputRef.current.value = '';
-  }, [hero, setInfoPanelIndex]);
+  }, [hero]);
 
   useEffect(() => {
     if (!selectedEntry) {
@@ -2118,14 +2105,8 @@ export default function CharacterBasicView({ hero }) {
       }
       audioManager.setLoop(true);
     }
-  }, [audioManager, activeBgmUrl, currentHero?.id, heroName, bgmDurationSeconds, customBgmUrl, currentHero?.bgm_duration_seconds]);
+  }, [audioManager, activeBgmUrl, currentHero?.id, heroName, bgmDurationSeconds, customBgmUrl]);
 
-
-  // NOTE: auto-suppressed by codemod. This suppression was added by automated
-  // tooling to reduce noise. Please review the surrounding effect body and
-  // either add the minimal safe dependencies or keep the suppression with
-  // an explanatory comment before removing this note.
-   
   const backgroundStyle = currentHero?.background_url
     ? pageStyles.withBackground(currentHero.background_url)
     : pageStyles.base;
@@ -2186,13 +2167,13 @@ export default function CharacterBasicView({ hero }) {
     if (!file) return;
     if (!file.type.startsWith('image/')) {
       alert('이미지 파일만 업로드할 수 있습니다.');
-
+      // eslint-disable-next-line no-param-reassign
       event.target.value = '';
       return;
     }
     if (file.size > MAX_IMAGE_SIZE) {
       alert('이미지는 5MB를 넘을 수 없습니다.');
-
+      // eslint-disable-next-line no-param-reassign
       event.target.value = '';
       return;
     }
@@ -2203,7 +2184,7 @@ export default function CharacterBasicView({ hero }) {
     imageObjectUrlRef.current = objectUrl;
     setImagePreview(objectUrl);
     setImageFile(file);
-
+    // eslint-disable-next-line no-param-reassign
     event.target.value = '';
   };
 
@@ -2212,13 +2193,13 @@ export default function CharacterBasicView({ hero }) {
     if (!file) return;
     if (!file.type.startsWith('image/')) {
       alert('배경은 이미지 파일만 업로드할 수 있습니다.');
-
+      // eslint-disable-next-line no-param-reassign
       event.target.value = '';
       return;
     }
     if (file.size > MAX_BACKGROUND_SIZE) {
       alert('배경 이미지는 8MB를 넘을 수 없습니다.');
-
+      // eslint-disable-next-line no-param-reassign
       event.target.value = '';
       return;
     }
@@ -2229,7 +2210,7 @@ export default function CharacterBasicView({ hero }) {
     backgroundObjectUrlRef.current = objectUrl;
     setBackgroundPreview(objectUrl);
     setBackgroundFile(file);
-
+    // eslint-disable-next-line no-param-reassign
     event.target.value = '';
   };
 
@@ -2241,13 +2222,13 @@ export default function CharacterBasicView({ hero }) {
 
     if (!file.type.startsWith('audio/')) {
       setBgmError('오디오 파일만 업로드할 수 있습니다.');
-
+      // eslint-disable-next-line no-param-reassign
       event.target.value = '';
       return;
     }
     if (file.size > MAX_AUDIO_SIZE) {
       setBgmError('오디오는 12MB 이하만 업로드할 수 있습니다.');
-
+      // eslint-disable-next-line no-param-reassign
       event.target.value = '';
       return;
     }
@@ -2299,6 +2280,7 @@ export default function CharacterBasicView({ hero }) {
       audioManager.setEnabled(Boolean(currentHero?.bgm_url));
     }
 
+    // eslint-disable-next-line no-param-reassign
     event.target.value = '';
   };
 
@@ -2912,6 +2894,7 @@ export default function CharacterBasicView({ hero }) {
                 <div style={styles.uploadSection}>
                   <div style={styles.previewFrame}>
                     {imagePreview ? (
+                      // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={imagePreview}
                         alt="캐릭터 이미지 미리보기"
@@ -2933,6 +2916,7 @@ export default function CharacterBasicView({ hero }) {
                 <div style={styles.uploadSection}>
                   <div style={styles.previewFrame}>
                     {backgroundPreview ? (
+                      // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={backgroundPreview}
                         alt="배경 미리보기"
@@ -3235,6 +3219,7 @@ export default function CharacterBasicView({ hero }) {
                       aria-label={`${overlayHeroName} 카드 전환`}
                     >
                       {topRankingHero.image_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={topRankingHero.image_url}
                           alt={`${overlayHeroName} 이미지`}
@@ -3262,7 +3247,7 @@ export default function CharacterBasicView({ hero }) {
                 </section>
                 {selectedEntry?.game?.image_url ? (
                   <figure style={styles.playDetailGameFigure}>
-                    {}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={selectedEntry.game.image_url}
                       alt={`${selectedEntry.game?.name || '게임'} 이미지`}
@@ -3329,11 +3314,83 @@ export default function CharacterBasicView({ hero }) {
         )
       : null;
 
-  // resolveBattleOutcome removed — previously used only to build a small
-  // recent battle summary that was not rendered. Keep helper logic in
-  // source control history if needed in future.
+  const resolveBattleOutcome = useCallback(
+    battle => {
+      if (!battle || !heroIdKey) return '기록 없음';
+      const parseList = value => {
+        if (!value) return [];
+        if (Array.isArray(value)) return value.map(entry => String(entry));
+        if (typeof value === 'string') {
+          try {
+            const parsed = JSON.parse(value);
+            if (Array.isArray(parsed)) {
+              return parsed.map(entry => String(entry));
+            }
+          } catch (error) {
+            return value
+              .split(',')
+              .map(entry => entry.trim())
+              .filter(Boolean);
+          }
+        }
+        return [];
+      };
 
-  // recentBattleEntries removed — derived entries were computed but not used in the UI.
+      const attackerHeroes = parseList(battle.attacker_hero_ids);
+      const defenderHeroes = parseList(battle.defender_hero_ids);
+      const isAttacker = attackerHeroes.includes(heroIdKey);
+      const isDefender = defenderHeroes.includes(heroIdKey);
+      const normalized = String(battle.result || '').toLowerCase();
+
+      if (normalized.includes('draw') || normalized.includes('tie')) {
+        return '무승부';
+      }
+
+      if (normalized.includes('win')) {
+        const attackerWon = normalized.includes('attacker');
+        if (isAttacker) return attackerWon ? '승리' : '패배';
+        if (isDefender) return attackerWon ? '패배' : '승리';
+        return attackerWon ? '공격 승리' : '방어 승리';
+      }
+
+      if (normalized.includes('loss') || normalized.includes('lose')) {
+        if (isAttacker) return '패배';
+        if (isDefender) return '승리';
+        return '패배';
+      }
+
+      return '기록 없음';
+    },
+    [heroIdKey]
+  );
+
+  const recentBattleEntries = useMemo(() => {
+    if (!Array.isArray(battleDetails) || !battleDetails.length) return [];
+    return battleDetails.slice(0, 4).map((battle, index) => {
+      const timestamp = (() => {
+        if (!battle?.created_at) return '시간 정보 없음';
+        const date = new Date(battle.created_at);
+        if (Number.isNaN(date.getTime())) return '시간 정보 없음';
+        return date.toLocaleString('ko-KR', {
+          month: 'numeric',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+      })();
+
+      const scoreDelta = Number.isFinite(Number(battle?.score_delta))
+        ? Number(battle.score_delta)
+        : null;
+
+      return {
+        id: battle?.id || `${battle?.created_at || 'battle'}-${index}`,
+        timestamp,
+        outcome: resolveBattleOutcome(battle),
+        scoreDelta,
+      };
+    });
+  }, [battleDetails, resolveBattleOutcome]);
 
   const heroSlide = (
     <div style={styles.heroCardShell}>
@@ -3356,6 +3413,7 @@ export default function CharacterBasicView({ hero }) {
         </div>
 
         {hero?.image_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
           <img src={hero.image_url} alt={heroName} style={imageStyle} />
         ) : (
           <div style={styles.heroFallback}>{heroName.slice(0, 2)}</div>

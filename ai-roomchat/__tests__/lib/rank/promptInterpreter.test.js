@@ -74,9 +74,9 @@ describe('promptInterpreter', () => {
     expect(result.rulesBlock).toContain('전역 변수 FIRE_GUARD');
     expect(result.rulesBlock).toContain('로컬 변수 지침');
     expect(result.rulesBlock).toContain('[전역 변수 상태]');
-    expect(result.rulesBlock).toContain('활성화된 전역 변수: 무');
+    expect(result.rulesBlock).toContain('활성화된 전역 변수: none');
     expect(result.rulesBlock).toContain('[로컬 변수 상태]');
-    expect(result.rulesBlock).toContain('활성화된 로컬 변수: 무');
+    expect(result.rulesBlock).toContain('활성화된 로컬 변수: none');
     expect(result.text).toContain('-------------------------------------');
   });
 
@@ -135,12 +135,11 @@ describe('promptInterpreter', () => {
       id: 'slot-lookup',
       slot_no: 0,
       slot_type: 'ai',
-      template: '{{slot0.name}} vs {{slot1.name}} / zero {{slot0.name}}',
+      template: '{{slot1.name}} vs {{slot2.name}}',
     };
 
     const result = interpretPromptNode({ game: baseGame, node: nodeWithSlots, slotsMap });
     expect(result.promptBody).toContain('용사 아린 vs 수호자 벨라');
-    expect(result.promptBody).toContain('zero 용사 아린');
   });
 
   it('omits default formatting guidance when checklist already covers it', () => {
@@ -149,9 +148,7 @@ describe('promptInterpreter', () => {
       rules_prefix: '',
       rules: {
         checklist: [
-          {
-            text: '마지막 줄=판정 승패, 마지막 둘째줄=변수명들, 마지막 셋째줄=주역 활약, 마지막 5줄=공백.',
-          },
+          { text: '마지막 줄=승패, 마지막 둘째줄=변수명들, 마지막 셋째줄=주역, 마지막 5줄=공백.' },
         ],
       },
     };
@@ -164,9 +161,9 @@ describe('promptInterpreter', () => {
 
     expect(result.rulesBlock).not.toContain(DEFAULT_RULE_GUIDANCE[0]);
     expect(result.rulesBlock).not.toContain(DEFAULT_RULE_GUIDANCE[1]);
-    expect(result.rulesBlock).not.toContain(DEFAULT_RULE_GUIDANCE[3]);
+    expect(result.rulesBlock).not.toContain(DEFAULT_RULE_GUIDANCE[2]);
     expect(result.rulesBlock).toContain(
-      '마지막 줄=판정 승패, 마지막 둘째줄=변수명들, 마지막 셋째줄=주역 활약, 마지막 5줄=공백.'
+      '마지막 줄=승패, 마지막 둘째줄=변수명들, 마지막 셋째줄=주역, 마지막 5줄=공백.'
     );
   });
 

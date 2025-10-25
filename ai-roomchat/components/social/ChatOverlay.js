@@ -2,12 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import SurfaceOverlay from '../common/SurfaceOverlay';
-import FriendOverlay from './FriendOverlay';
-
-// Note: overlays in this file were previously imported but flagged as unused by ESLint in
-// this environment. If these components are needed elsewhere in the file they can be
-// re-introduced; removed here to reduce no-unused-vars warnings.
+import SurfaceOverlay from '@/components/common/SurfaceOverlay';
+import FriendOverlay from '@/components/social/FriendOverlay';
 import {
   createChatRoom,
   fetchChatDashboard,
@@ -72,6 +68,7 @@ const MINI_OVERLAY_VISIBLE_MARGIN = 12;
 const PINCH_TRIGGER_RATIO = 0.7;
 const PINCH_MIN_DELTA = 28;
 const ROOM_BACKGROUND_FOLDER = 'room-backgrounds';
+const MEMBER_BACKGROUND_FOLDER = 'member-backgrounds';
 const ANNOUNCEMENT_TOOLBAR_SIZES = [
   { id: 'small', label: '작게', scale: 0.9, command: '3' },
   { id: 'normal', label: '보통', scale: 1, command: '4' },
@@ -889,7 +886,16 @@ async function createImageAttachmentDraft(file) {
   }
 }
 
-// helper removed (unused): isFileSupportedByAction
+function isFileSupportedByAction(file, action) {
+  if (!file) return false;
+  if (action === 'photo') {
+    return file.type?.startsWith('image/');
+  }
+  if (action === 'video') {
+    return file.type?.startsWith('video/');
+  }
+  return true;
+}
 
 async function loadVideoMetadata(file) {
   const url = URL.createObjectURL(file);
@@ -1252,7 +1258,7 @@ function sanitizeExternalUrl(value = '') {
       return '';
     }
     return url.href;
-  } catch {
+  } catch (error) {
     return '';
   }
 }
@@ -1276,7 +1282,7 @@ function sanitizeYoutubeId(value = '') {
       const id = parsed.searchParams.get('v') || parsed.pathname.split('/').pop();
       return id && id.match(/^[a-zA-Z0-9_-]{6,15}$/) ? id : null;
     }
-  } catch {
+  } catch (error) {
     return null;
   }
   return null;
@@ -1414,7 +1420,7 @@ function stripAnnouncementPollHtml(html = '') {
     const doc = parser.parseFromString(`<!doctype html><body>${html}</body>`, 'text/html');
     doc.body.querySelectorAll('[data-announcement-poll]').forEach(node => node.remove());
     return doc.body.innerHTML;
-  } catch {
+  } catch (error) {
     return html;
   }
 }
@@ -1464,7 +1470,7 @@ function extractPollDefinitionsFromHtml(html = '') {
       }
     });
     return polls;
-  } catch {
+  } catch (error) {
     return [];
   }
 }
@@ -1482,7 +1488,7 @@ function sameMinute(a, b) {
       first.getHours() === second.getHours() &&
       first.getMinutes() === second.getMinutes()
     );
-  } catch {
+  } catch (error) {
     return false;
   }
 }
@@ -4217,7 +4223,15 @@ function getAiMetadata(message) {
   };
 }
 
-// AI metadata helpers removed (unused in this component).
+function isAiPrompt(message) {
+  const aiMeta = getAiMetadata(message);
+  return Boolean(aiMeta && aiMeta.type === 'prompt');
+}
+
+function isAiResponse(message) {
+  const aiMeta = getAiMetadata(message);
+  return Boolean(aiMeta && aiMeta.type === 'response');
+}
 
 function formatTime(value) {
   if (!value) return '';
@@ -4225,7 +4239,7 @@ function formatTime(value) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return '';
     return date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
-  } catch {
+  } catch (error) {
     return '';
   }
 }
@@ -4271,7 +4285,7 @@ function formatRelativeLastActivity(value) {
     }
     const years = Math.max(1, Math.floor(diffDays / 365));
     return `${years}년 전 마지막 채팅`;
-  } catch {
+  } catch (error) {
     return '';
   }
 }
@@ -4287,7 +4301,7 @@ function formatDateLabel(value) {
       day: 'numeric',
       weekday: 'short',
     });
-  } catch {
+  } catch (error) {
     return '알 수 없는 날짜';
   }
 }
@@ -4489,7 +4503,7 @@ function getDayKey(value) {
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
-  } catch {
+  } catch (error) {
     return null;
   }
 }
@@ -5489,7 +5503,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       textColor: palette.textColor,
       autoContrast: rawTheme.autoContrast !== false,
     });
-  }, [context, currentRoom, settingsOverlayOpen]);
+  }, [context?.type, context?.chatRoomId, currentRoom, settingsOverlayOpen]);
 
   const viewerOwnsRoom = useMemo(
     () =>
@@ -5499,14 +5513,14 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           viewerToken &&
           roomOwnerToken === viewerToken
       ),
-  [context, roomOwnerToken, viewerToken]
+    [context?.type, roomOwnerToken, viewerToken]
   );
 
   const viewerIsModerator = useMemo(
     () =>
       viewerOwnsRoom ||
       (context?.type === 'chat-room' && viewerToken && moderatorTokenSet.has(viewerToken)),
-  [context, moderatorTokenSet, viewerOwnsRoom, viewerToken]
+    [context?.type, moderatorTokenSet, viewerOwnsRoom, viewerToken]
   );
 
   useEffect(() => {
@@ -5564,7 +5578,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       autoContrast: activeThemeConfig.autoContrast !== false,
       metadata: roomPreferences?.metadata || {},
     });
-  }, [context, currentRoom, roomPreferences]);
+  }, [context?.type, currentRoom, roomPreferences]);
 
   const ownerThemeFallback = useMemo(
     () =>
@@ -6125,7 +6139,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     files.sort(sortByTimeDesc);
 
     return { media, files };
-  }, [context, messages]);
+  }, [context?.type, context?.chatRoomId, messages]);
 
   const participantList = useMemo(() => {
     if (context?.type !== 'chat-room') {
@@ -6178,7 +6192,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     });
 
     return entries;
-  }, [context, messages, moderatorTokenSet, roomOwnerToken]);
+  }, [context?.type, context?.chatRoomId, messages, moderatorTokenSet, roomOwnerToken]);
 
   useEffect(() => {
     if (!open) {
@@ -6201,10 +6215,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       setSettingsOverlayOpen(false);
       setExpandedMessage(null);
       setViewerAttachment(null);
-      const cacheToClear = attachmentCacheRef.current;
-      if (cacheToClear && typeof cacheToClear.clear === 'function') {
-        cacheToClear.clear();
-      }
+      attachmentCacheRef.current.clear();
       if (longPressTimerRef.current) {
         clearTimeout(longPressTimerRef.current);
         longPressTimerRef.current = null;
@@ -6441,14 +6452,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     return () => {
       cancelled = true;
     };
-  // Suppressed: intentionally omitted some dependencies to avoid noisy re-runs.
-  // Rationale: this effect calls `markChatRoomRead` (a stable service function) and
-  // observes frequently-changing collections such as `messages` and
-  // `viewingConversation` which caused excessive re-execution when fully
-  // enumerated. If you change how `markChatRoomRead` is implemented or expose a
-  // new, non-stable function here, re-evaluate the dependency list and either
-  // add the minimal safe dependencies or wrap mutable handlers in refs.
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [
     open,
     context?.type,
@@ -6483,24 +6486,17 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   }, [context]);
 
   useEffect(() => {
-    // copy ref to local variable so cleanup uses the same snapshot even if ref
-    // is changed later (prevents ESLint ref-change warning and is safer).
-    const cache = attachmentCacheRef.current;
     return () => {
-      if (cache && typeof cache.forEach === 'function') {
-        cache.forEach(entry => {
-          if (entry?.url) {
-            try {
-              URL.revokeObjectURL(entry.url);
-            } catch (error) {
-              console.warn('[chat] 첨부 미리보기 URL 해제 실패', error);
-            }
+      attachmentCacheRef.current.forEach(entry => {
+        if (entry?.url) {
+          try {
+            URL.revokeObjectURL(entry.url);
+          } catch (error) {
+            console.warn('[chat] 첨부 미리보기 URL 해제 실패', error);
           }
-        });
-        if (typeof cache.clear === 'function') {
-          cache.clear();
         }
-      }
+      });
+      attachmentCacheRef.current.clear();
     };
   }, []);
 
@@ -6785,7 +6781,36 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     [context, refreshRooms]
   );
 
-  // unused: handleLeaveCurrentContext (removed to reduce lint noise)
+  const handleLeaveCurrentContext = useCallback(
+    async (options = {}) => {
+      if (!context) return false;
+      const isRoom = context.type === 'chat-room';
+      const isGlobal = context.type === 'global';
+      if (!isRoom && !isGlobal) {
+        return false;
+      }
+
+      const baseRoom =
+        currentRoom ||
+        (isRoom
+          ? {
+              id: context.chatRoomId,
+              visibility: context.visibility || 'private',
+              builtin: context.builtin,
+            }
+          : {
+              id: context.chatRoomId,
+              builtin: 'global',
+            });
+
+      const success = await handleLeaveRoom(baseRoom, options);
+      if (success) {
+        setDrawerOpen(false);
+      }
+      return success;
+    },
+    [context, currentRoom, handleLeaveRoom]
+  );
 
   const handleOpenSearchOverlay = useCallback(() => {
     setSearchModalOpen(true);
@@ -7200,7 +7225,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       if (range && editor.contains(range.commonAncestorContainer)) {
         announcementSelectionRef.current = range.cloneRange();
       }
-    } catch {
+    } catch (error) {
       announcementSelectionRef.current = null;
     }
   }, []);
@@ -7235,7 +7260,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     selection.addRange(range);
     try {
       announcementSelectionRef.current = range.cloneRange();
-    } catch {
+    } catch (error) {
       announcementSelectionRef.current = range;
     }
   }, []);
@@ -7281,7 +7306,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         : escapeHtml(text || '').replace(/\n/g, '<br />');
       try {
         document.execCommand('insertHTML', false, snippet);
-      } catch {
+      } catch (error) {
         editor.insertAdjacentHTML('beforeend', snippet);
       }
       restoreAnnouncementSelection();
@@ -7320,7 +7345,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       restoreAnnouncementSelection();
       try {
         document.execCommand('insertHTML', false, html);
-      } catch {
+      } catch (error) {
         editor.insertAdjacentHTML('beforeend', html);
       }
       restoreAnnouncementSelection();
@@ -7997,7 +8022,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       };
       try {
         event.currentTarget.setPointerCapture(event.pointerId);
-      } catch {
+      } catch (error) {
         // ignore capture errors
       }
     },
@@ -8034,9 +8059,9 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     }
     try {
       event.currentTarget.releasePointerCapture(event.pointerId);
-      } catch {
-        // ignore release errors
-      }
+    } catch (error) {
+      // ignore release errors
+    }
     miniOverlayDragRef.current = { pointerId: null, originX: 0, originY: 0, startX: 0, startY: 0 };
   }, []);
 
@@ -8052,7 +8077,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
       };
       try {
         event.currentTarget.setPointerCapture(event.pointerId);
-      } catch {
+      } catch (error) {
         // ignore capture errors
       }
     },
@@ -8102,7 +8127,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     }
     try {
       event.currentTarget.releasePointerCapture(event.pointerId);
-    } catch {
+    } catch (error) {
       // ignore release errors
     }
     miniOverlayResizeRef.current = {
@@ -8281,6 +8306,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     banModal.reason,
     context?.chatRoomId,
     handleCloseBanModal,
+    manageChatRoomRole,
     refreshRoomBans,
     refreshRooms,
   ]);
@@ -8307,7 +8333,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         setSettingsError(error?.message || '추방을 해제할 수 없습니다.');
       }
     },
-    [context?.chatRoomId, refreshRoomBans, refreshRooms]
+    [context?.chatRoomId, manageChatRoomRole, refreshRoomBans, refreshRooms]
   );
 
   const handleAdjustBanEntry = useCallback(
@@ -8353,7 +8379,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         setSettingsError(error?.message || '추방 기간을 변경할 수 없습니다.');
       }
     },
-    [context?.chatRoomId, refreshRoomBans, viewerOwnsRoom]
+    [context?.chatRoomId, refreshRoomBans, updateChatRoomBan, viewerOwnsRoom]
   );
 
   const handleOpenParticipantProfile = useCallback(participant => {
@@ -8477,7 +8503,13 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         error: error?.message || '부방장을 임명할 수 없습니다.',
       }));
     }
-  }, [context?.chatRoomId, profileSheet.participant, refreshRooms, viewerOwnsRoom]);
+  }, [
+    context?.chatRoomId,
+    manageChatRoomRole,
+    profileSheet.participant,
+    refreshRooms,
+    viewerOwnsRoom,
+  ]);
 
   const handleDemoteModerator = useCallback(async () => {
     const participant = profileSheet.participant;
@@ -8529,7 +8561,13 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         error: error?.message || '부방장 해제에 실패했습니다.',
       }));
     }
-  }, [context?.chatRoomId, profileSheet.participant, refreshRooms, viewerOwnsRoom]);
+  }, [
+    context?.chatRoomId,
+    manageChatRoomRole,
+    profileSheet.participant,
+    refreshRooms,
+    viewerOwnsRoom,
+  ]);
 
   const handleOpenSettings = useCallback(() => {
     setSettingsOverlayOpen(true);
@@ -9354,13 +9392,6 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         aiPendingMessageRef.current = null;
       }
     }
-  // Suppressed: intentionally omitting some dependencies to avoid noisy re-runs.
-  // Rationale: this callback references `insertMessage` and the external
-  // `supabase` client; including these directly often forces unnecessary
-  // re-creation of the callback. If `insertMessage` or `supabase` become
-  // non-stable (e.g. re-created each render), migrate them to refs or add the
-  // minimal safe dependencies and re-run ESLint/test to confirm behavior.
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [
     context,
     handleSendMessage,
@@ -11174,7 +11205,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     return text || '최근 메시지 없음';
   }, [miniOverlayLatest]);
 
-  // miniOverlayUnread intentionally omitted — not used currently
+  const miniOverlayUnread = 0;
 
   const focused = Boolean(context);
 

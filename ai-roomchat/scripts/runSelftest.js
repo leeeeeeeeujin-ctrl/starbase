@@ -2,10 +2,6 @@
 /**
  * 셀프테스트를 직접 실행하고 결과를 출력/저장하는 스크립트
  * 사용법: node scripts/runSelftest.js
- *
- * SECURITY NOTE:
- * This script requires a Supabase service-role key in environment
- * (SUPABASE_SERVICE_ROLE_KEY). Run only in trusted server environments.
  */
 
 const path = require('path');

@@ -4,15 +4,5 @@ node_modules/
 !.env.local.example
 .next/
 reports/
-
-# Playwright / test artifacts
-playwright-report/
-test-results/
-jest-output.json
-junit.xml
-
-# Local runtime logs
-logs/
-
-# Reference data used only for local development (do not commit)
-docs/reference_data/
+.vercel
+.env*.local

@@ -558,11 +558,6 @@ export default function useMatchQueue({ gameId, mode, enabled, initialHeroId, on
   }, [status]);
   useEffect(() => {
     return () => {
-      // NOTE: auto-suppressed by codemod. This suppression was added by automated
-      // tooling to reduce noise. Please review the surrounding effect body and
-      // either add the minimal safe dependencies or keep the suppression with
-      // an explanatory comment before removing this note.
-      // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
       const state = realtimeProbeRef.current;
       if (state?.timer) {
         clearTimeout(state.timer);

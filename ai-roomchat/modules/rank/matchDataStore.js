@@ -288,21 +288,10 @@ const listenerStore = new Map();
 const SESSION_TTL_MS = 1000 * 60 * 60 * 6;
 const SESSION_CLEANUP_INTERVAL_MS = 1000 * 60 * 5;
 
-function isTestEnv() {
-  try {
-    // Jest sets NODE_ENV to 'test'; also JEST_WORKER_ID is commonly defined
-    if (typeof process !== 'undefined' && process?.env?.NODE_ENV === 'test') return true;
-    if (typeof process !== 'undefined' && process?.env?.JEST_WORKER_ID) return true;
-  } catch (_) {}
-  return false;
-}
-
 let cleanupTimerId = null;
 let lastCleanupAt = 0;
 
 function canUseSessionStorage() {
-  // Avoid using sessionStorage and timers in test environment to prevent act() warnings
-  if (isTestEnv()) return false;
   return (
     typeof window !== 'undefined' &&
     typeof window.sessionStorage !== 'undefined' &&
@@ -312,8 +301,7 @@ function canUseSessionStorage() {
 }
 
 function cleanupExpiredEntries({ now = Date.now(), ttlMs = SESSION_TTL_MS, force = false } = {}) {
-  if (!force && isTestEnv()) return;
-  if (!force && !canUseSessionStorage()) return;
+  if (!canUseSessionStorage()) return;
 
   const effectiveTtl = Math.max(0, ttlMs);
   if (!force && effectiveTtl === 0) {
@@ -341,7 +329,6 @@ function cleanupExpiredEntries({ now = Date.now(), ttlMs = SESSION_TTL_MS, force
 }
 
 function ensureCleanupTimer() {
-  if (isTestEnv()) return;
   if (!canUseSessionStorage()) return;
   if (cleanupTimerId != null) return;
   cleanupExpiredEntries({ force: true });
@@ -358,7 +345,7 @@ function emitUpdate(gameKey, snapshot) {
   try {
     const { logError, visualizeState } = require('../../lib/utils/debugTool');
     visualizeState(snapshot, `emitUpdate: 전달된 게임 상태 [${gameKey}]`);
-  } catch (_e) {}
+  } catch (e) {}
   listeners.forEach(listener => {
     if (typeof listener !== 'function') return;
     try {
@@ -378,7 +365,7 @@ function emitUpdate(gameKey, snapshot) {
       try {
         const { logError } = require('../../lib/utils/debugTool');
         logError(error, '[matchDataStore] 구독자 알림 실패');
-      } catch (_e) {}
+      } catch (e) {}
     }
   });
 }

@@ -152,17 +152,6 @@ export async function createRealSimulation(supabase, options) {
     slots,
   };
 
-  // 보수적 가드: 매칭이 확정된 경우, 준비 확인 타임아웃을 15초로 설정한다.
-  // 실제 운영에서는 match 서비스가 세션 생성 시 readyExpiresAt을 설정하지만
-  // 시뮬레이터 레벨에서는 이 정책을 모방하여 테스트/운영 시나리오를 검증한다.
-  if (matchResult && matchResult.ready) {
-    try {
-      extras.ready_expires_at = new Date(Date.now() + 15 * 1000).toISOString();
-    } catch (e) {
-      // ignore
-    }
-  }
-
   const { error: metaError } = await supabase
     .from('rank_session_meta')
     .insert({ session_id: session.id, turn_limit: turnLimit, extras });
@@ -178,9 +167,7 @@ export async function createRealSimulation(supabase, options) {
 export async function getRealSimulation(supabase, sessionId) {
   const { data: session, error: sessionError } = await supabase
     .from('rank_sessions')
-    // Avoid embedding rank_games here; some schemas have multiple relationships
-    // between rank_sessions and rank_games which can confuse PostgREST.
-    .select('*, rank_session_meta(*)')
+    .select(`*, rank_session_meta(*), rank_games(name)`) // for UI list consistency
     .eq('id', sessionId)
     .single();
   if (sessionError || !session)

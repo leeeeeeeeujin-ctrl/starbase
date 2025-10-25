@@ -2,20 +2,6 @@
 
 **코드는 0, Supabase만 남았다** 가정으로 최소 재구축용 스타터.
 
-## Quick start (개발용)
-
-1. 저장소 루트에서 `ai-roomchat/.env.local.example`을 `ai-roomchat/.env.local`로 복사해 환경변수를 채웁니다.
-
-```powershell
-cd ai-roomchat
-copy .env.local.example .env.local
-npm install
-npm run dev
-```
-
-로컬에서 테스트하려면 위 명령으로 dev 서버를 띄우고 http://localhost:3000 에 접속하세요.
-
-
 - Pages Router + JavaScript (TS/앱 라우터 관련 에러 회피)
 - 로그인(OAuth), 히어로 생성/조회, 공개 채팅(옵션)
 

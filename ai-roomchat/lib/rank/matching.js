@@ -29,160 +29,66 @@ function matchRankParticipants({
   roles = [],
   queue = [],
   scoreWindows = DEFAULT_SCORE_WINDOWS,
-  // If the client explicitly requests a relaxed score window (user pressed
-  // the "widen window" button), supply it here as a number. It will only be
-  // used as an explicit override for the final relaxed attempt and will be
-  // subject to conservative caps inside the recombiner.
-  userRequestedWindow = null,
 } = {}) {
   const template = buildRoomTemplate(roles);
-  const totalSlots = template.totalSlots || 0;
-
-  // No active slots configured -> nothing to do
+  const totalSlots = template.totalSlots;
   if (!totalSlots) {
     return buildResult({
       ready: false,
-      assignments: [],
-      rooms: [],
       totalSlots: 0,
-      maxWindow: 0,
       error: { type: 'no_active_slots' },
     });
   }
 
+  const groups = buildQueueGroups(queue);
+  if (!groups.length) {
+    return buildResult({
+      ready: false,
+      assignments: [],
+      rooms: [],
+      totalSlots,
+      maxWindow: 0,
+    });
+  }
+
   const maxWindowAllowed = normaliseWindowThreshold(scoreWindows);
-
-  // Build groups and role pools from the provided queue
-  const groups = buildQueueGroups(queue || []);
   const { pools: rolePools, skipped } = buildRolePools({ template, groups });
+  const { rooms, unplaced } = allocateRoomsFromPools({
+    template,
+    rolePools,
+    maxWindowAllowed,
+  });
+  const combinedUnplaced = skipped.concat(unplaced);
 
-  // Greedy allocation from role pools
-  const allocation = allocateRoomsFromPools({ template, rolePools, maxWindowAllowed });
-  let rooms = Array.isArray(allocation.rooms) ? allocation.rooms : [];
-  const combinedUnplaced = Array.isArray(allocation.unplaced) ? allocation.unplaced : [];
-
-  // Finalize rooms and build assignments
-  rooms.forEach(r => finalizeRoom(r));
   const assignments = [];
   let ready = false;
   let maxWindowUsed = 0;
 
-  for (const room of rooms) {
-    if (!room) continue;
+  rooms.forEach(room => {
+    finalizeRoom(room);
+    if (room.maxScoreGap > maxWindowUsed) {
+      maxWindowUsed = room.maxScoreGap;
+    }
+    if (room.ready) {
+      ready = true;
+    }
     assignments.push(buildRoomAssignment(room, template));
-    if (room.ready) ready = true;
-    maxWindowUsed = Math.max(maxWindowUsed, room.maxScoreGap || 0);
-  }
+  });
 
   const serializedRooms = rooms.map(room => serializeRoom(room, template));
-  // If nothing was marked ready, try a conservative recombination pass:
-  // attempt to form a single complete room by reassigning groups from the
-  // existing rooms + unplaced groups. This helps recover cases where the
-  // greedy placement created multiple partial rooms but a different grouping
-  // could produce one full room. The search is intentionally bounded.
-  if (!ready) {
-    try {
-      const recombined = tryFormFullRoomFromGroups({ template, rooms, combinedUnplaced, maxWindowAllowed, userRequestedWindow });
-      if (recombined) {
-        // replace rooms with recombined primary room + any leftover minimal rooms
-        rooms.unshift(recombined);
-        // recompute serializedRooms and assignments to reflect the new primary room
-        // note: keep existing rooms after the newly formed room
-        maxWindowUsed = Math.max(maxWindowUsed || 0, recombined.maxScoreGap || 0);
-        ready = true;
-      }
-    } catch (e) {
-      // swallow errors from the optional pass to keep matching deterministic
-      // eslint-disable-next-line no-console
-      console.error('[matching-recombine] failed', e && e.stack ? e.stack : e);
-    }
-  }
   let error = null;
-  let suggestion = null;
   if (!ready) {
-    // If there are unplaced groups, this often means specific score-bands
-    // are missing; detect whether a small, local window relaxation could
-    // allow placement and surface a conservative suggestion the UI can
-    // present to the user (e.g., "relax window and retry (with penalty)".)
     if (combinedUnplaced.length) {
-      // basic error payload describing which groups remained
       error = {
         type: 'insufficient_candidates',
         groups: combinedUnplaced.map(entry => ({
-          role: entry.role,
+          role: entry.group.role,
           reason: entry.reason,
-          size: entry.group?.size || (entry.group && entry.group.members ? entry.group.members.length : 0),
+          size: entry.group.size,
         })),
       };
-
-      try {
-        // compute minimal relax needed to place any unplaced group into an
-        // existing partial room (respecting role capacity). We'll suggest
-        // only conservative relax amounts and include a penalty estimate.
-        const SUGGEST_MAX_FACTOR = 3;
-        const SUGGEST_RELAX_CAP = 400;
-        let minNeeded = Number.POSITIVE_INFINITY;
-        for (const u of combinedUnplaced) {
-          const g = u && (u.group || u);
-          if (!g) continue;
-          const gScore = Number.isFinite(Number(g.score)) ? Number(g.score) : FALLBACK_SCORE;
-          for (const r of rooms) {
-            if (!r || !r.slots) continue;
-            // only consider rooms that have capacity for this role
-            if (!roomHasRoleCapacity(r, g.role, g.size || (Array.isArray(g.members) ? g.members.length : 0))) continue;
-            const roomAnchor = Number.isFinite(r.anchorScore) ? Number(r.anchorScore) : null;
-            const gap = roomAnchor != null ? Math.abs(gScore - roomAnchor) : 0;
-            if (gap > maxWindowAllowed) {
-              const needed = gap - maxWindowAllowed;
-              if (needed < minNeeded) minNeeded = needed;
-            }
-          }
-        }
-
-        if (Number.isFinite(minNeeded) && minNeeded > 0 && minNeeded <= SUGGEST_RELAX_CAP) {
-          // propose a relax window that is capped and factor-limited
-          const propose = Math.min(maxWindowAllowed + minNeeded, Math.min(maxWindowAllowed * SUGGEST_MAX_FACTOR, SUGGEST_RELAX_CAP));
-          suggestion = {
-            type: 'relax_window',
-            reason: 'candidate_score_gap',
-            currentWindow: maxWindowAllowed,
-            suggestedWindow: Math.round(propose),
-            minimalIncrease: Math.round(minNeeded),
-            penaltyEstimate: Math.round(minNeeded), // simple heuristic: penalty ~= extra window
-          };
-        }
-      } catch (e) {
-        // ignore suggestion failures
-      }
     } else if (!assignments.length) {
       error = { type: 'no_candidates' };
-    }
-  }
-
-  // Optional debug logging for intermittent matching failures. Set DEBUG_MATCHING=1
-  // in the environment when running `node scripts/runSelftest.js` to get detailed
-  // information about groups, role pools, rooms, assignments and unplaced entries.
-  if (process && process.env && process.env.DEBUG_MATCHING === '1') {
-    try {
-      const debug = {
-        template: { totalSlots: template.totalSlots, signature: template.signature },
-        groups: groups.map(g => ({ role: g.role, size: g.size, score: g.score, joinedAt: g.joinedAt })),
-        skipped: skipped.map(s => ({ role: s.group.role, reason: s.reason, size: s.group.size })),
-        rolePools: Array.from(rolePools.entries()).reduce((acc, [k, v]) => {
-          acc[k] = { capacity: v.capacity, groups: v.groups.map(g => ({ role: g.role, size: g.size, score: g.score })) };
-          return acc;
-        }, {}),
-        rooms: rooms.map(r => ({ id: r.id, filledSlots: r.filledSlots, missingSlots: r.missingSlots, ready: r.ready, maxScoreGap: r.maxScoreGap })),
-        assignmentsCount: assignments.length,
-        combinedUnplaced: combinedUnplaced.map(u => ({ role: u.role, reason: u.reason, size: u.group?.size })),
-        maxWindowUsed,
-      };
-        if (suggestion) debug.suggestion = suggestion;
-        // eslint-disable-next-line no-console
-        console.log('[matching-debug]', JSON.stringify(debug, null, 2));
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.error('[matching-debug] failed to serialize debug info', e && e.stack ? e.stack : e);
     }
   }
 
@@ -192,11 +98,9 @@ function matchRankParticipants({
     rooms: serializedRooms,
     totalSlots,
     maxWindow: maxWindowUsed,
-      error,
-      suggestion,
+    error,
   });
 }
-
 
 function buildRoomTemplate(rawRoles) {
   const normalized = normalizeRoles(rawRoles);
@@ -473,9 +377,7 @@ function normaliseQueueMember(candidate) {
     entry.owner_id ?? entry.ownerId ?? entry.user_id ?? entry.userId
   );
   const heroId = normalizeHeroId(entry.hero_id ?? entry.heroId ?? entry.hero?.id);
-  // ownerId may legitimately be null for simulated/anonymous queue entries.
-  // Require heroId (or a fallback like ownerId) but allow ownerId to be absent.
-  if (!heroId && !ownerId) {
+  if (!ownerId || !heroId) {
     return null;
   }
 
@@ -1746,616 +1648,6 @@ function coerceInteger(value, fallback) {
   return Math.max(0, Math.trunc(parsed));
 }
 
-// Try to form a single complete room by recombining groups collected from
-// existing partial rooms and unplaced groups. This performs a bounded DFS to
-// find a set of groups that exactly fill the template's slot capacities while
-// respecting hero/owner conflicts and window constraints. Returns a room
-// object (same shape as createRoomFromTemplate) or null if not found.
-function tryFormFullRoomFromGroups({ template, rooms, combinedUnplaced, maxWindowAllowed, userRequestedWindow = null }) {
-  if (!template || !template.roles) return null;
-
-  // Collect candidate groups from existing rooms and unplaced buckets.
-  const candidates = [];
-  (rooms || []).forEach(r => {
-    if (!Array.isArray(r.groups)) return;
-    r.groups.forEach(g => {
-      if (!g) return;
-      candidates.push({
-        role: g.role,
-        size: Number(g.size) || (Array.isArray(g.members) ? g.members.length : 0),
-        score: g.score ?? 0,
-        groupKey: g.groupKey || null,
-        partyKey: g.partyKey || null,
-        members: Array.isArray(g.members) ? g.members.map(m => ({ ...(m.entry || m), ...m })) : [],
-        heroIds: Array.isArray(g.heroIds) ? g.heroIds.slice() : Array.isArray(g.members) ? collectGroupHeroIds(g.members) : [],
-        ownerIds: Array.isArray(g.ownerIds) ? g.ownerIds.slice() : [],
-        joinedAt: g.joinedAt || Date.now(),
-        source: 'room',
-      });
-    });
-  });
-
-  (combinedUnplaced || []).forEach(u => {
-    const g = u && (u.group || u);
-    if (!g) return;
-    candidates.push({
-      role: g.role,
-      size: Number(g.size) || (Array.isArray(g.members) ? g.members.length : 0),
-      score: g.score ?? 0,
-      groupKey: g.groupKey || null,
-      partyKey: g.partyKey || null,
-      members: Array.isArray(g.members) ? g.members.map(m => ({ ...(m.entry || m), ...m })) : [],
-      heroIds: Array.isArray(g.heroIds) ? g.heroIds.slice() : Array.isArray(g.members) ? collectGroupHeroIds(g.members) : [],
-      ownerIds: Array.isArray(g.ownerIds) ? g.ownerIds.slice() : [],
-      joinedAt: g.joinedAt || Date.now(),
-      source: 'unplaced',
-    });
-  });
-
-  // Sort candidates by useful heuristics to prioritize larger, older, lower-score groups
-  candidates.sort((a, b) => {
-    if ((b.size || 0) !== (a.size || 0)) return (b.size || 0) - (a.size || 0);
-    if ((a.joinedAt || 0) !== (b.joinedAt || 0)) return (a.joinedAt || 0) - (b.joinedAt || 0);
-    return (a.score || 0) - (b.score || 0);
-  });
-
-  // Iterative deepening over candidate-set sizes to keep search bounded while
-  // giving the recombiner a chance to find a solution in smaller reduced spaces.
-  const MAX_CANDIDATES_GLOBAL = 48;
-  if (candidates.length === 0) return null;
-  if (candidates.length > MAX_CANDIDATES_GLOBAL) {
-    // keep top candidates by heuristic
-    candidates = candidates.slice(0, MAX_CANDIDATES_GLOBAL);
-  }
-
-  // Quick pairwise (and triple) partial-room merge attempts: often the greedy
-  // allocator creates two or three partial rooms that together can form a
-  // complete room. Try small combinatorial merges first with a low budget.
-  // Cheap greedy merge: try to greedily assemble a room from all available
-  // partial-room groups + unplaced groups. This is a deterministic, low-cost
-  // pass intended to catch common 2-3 group recombination cases without
-  // invoking the heavier DFS. It preserves window semantics by using
-  // assignGroupToRoom checks.
-  function tryGreedyMerge(partialRoomsList) {
-    const combined = [];
-    partialRoomsList.forEach(r => {
-      r.groups.forEach(g => combined.push({ role: g.role, size: Number(g.size) || (Array.isArray(g.members)?g.members.length:0), score: g.score, groupKey: g.groupKey || null, partyKey: g.partyKey || null, members: Array.isArray(g.members)? g.members.map(m => ({ ...(m.entry || m), ...m })) : [], heroIds: Array.isArray(g.heroIds)? g.heroIds.slice():Array.isArray(g.members)? collectGroupHeroIds(g.members):[], ownerIds: Array.isArray(g.ownerIds)? g.ownerIds.slice():[], joinedAt: g.joinedAt || Date.now(), source: 'room' }));
-    });
-    (combinedUnplaced || []).forEach(u => {
-      const g = u && (u.group || u);
-      if (!g) return;
-      combined.push({ role: g.role, size: Number(g.size) || (Array.isArray(g.members)?g.members.length:0), score: g.score ?? 0, groupKey: g.groupKey || null, partyKey: g.partyKey || null, members: Array.isArray(g.members)? g.members.map(m => ({ ...(m.entry || m), ...m })) : [], heroIds: Array.isArray(g.heroIds) ? g.heroIds.slice() : Array.isArray(g.members) ? collectGroupHeroIds(g.members) : [], ownerIds: Array.isArray(g.ownerIds) ? g.ownerIds.slice() : [], joinedAt: g.joinedAt || Date.now(), source: 'unplaced' });
-    });
-
-    // sort by size desc, joinedAt asc
-    combined.sort((a, b) => { if ((b.size||0) !== (a.size||0)) return (b.size||0) - (a.size||0); if ((a.joinedAt||0) !== (b.joinedAt||0)) return (a.joinedAt||0) - (b.joinedAt||0); return (a.score||0) - (b.score||0); });
-
-    // helper to run greedy placement over a given ordering of candidates
-    function runGreedy(ordering) {
-      const roomLocal = createRoomFromTemplate(template);
-      if (process && process.env && process.env.DEBUG_MATCHING === '1') {
-        try { console.log('[matching-recombine-debug] tryGreedyMerge attempt ordering', JSON.stringify(ordering.map(c=>({role:c.role,size:c.size,score:c.score,joinedAt:c.joinedAt})))) } catch(e){}
-      }
-      for (const c of ordering) {
-        const group = { role: c.role, members: c.members || [], groupKey: c.groupKey || null, partyKey: c.partyKey || null, size: c.size, score: c.score, joinedAt: c.joinedAt };
-        group.heroIds = Array.isArray(c.heroIds) ? c.heroIds.slice() : collectGroupHeroIds(group.members || []);
-        group.ownerIds = Array.isArray(c.ownerIds) ? c.ownerIds.slice() : collectGroupOwnerIds(group.members || []);
-        // try to place; respect maxWindowAllowed
-        const placed = assignGroupToRoom({ room: roomLocal, group, template, maxWindowAllowed });
-        if (process && process.env && process.env.DEBUG_MATCHING === '1') {
-          try { console.log('[matching-recombine-debug] tryGreedyMerge place', JSON.stringify({ group: { role: group.role, size: group.size, score: group.score }, placed, room: { filledSlots: roomLocal.filledSlots, missingSlots: roomLocal.slots.length - roomLocal.filledSlots, anchorScore: roomLocal.anchorScore, maxScoreGap: roomLocal.maxScoreGap } })); } catch(e){}
-        }
-        if (!placed) continue;
-        if (roomLocal.filledSlots >= roomLocal.slots.length) {
-          finalizeRoom(roomLocal);
-          return roomLocal.ready ? roomLocal : null;
-        }
-      }
-      return null;
-    }
-
-    // first try the natural heuristic ordering
-    const firstPass = runGreedy(combined);
-    if (firstPass) return firstPass;
-
-    // If greedy failed and the combined set is small, try anchor-first variants:
-    // attempt each candidate as the anchor (place it first) and then the rest
-    // in the heuristic order. This is cheap for small sets and fixes cases
-    // where an early anchor choice blocks valid placements later.
-    const ANCHOR_TRY_LIMIT = 6;
-    if (combined.length > 0 && combined.length <= ANCHOR_TRY_LIMIT) {
-      for (let i = 0; i < combined.length; i += 1) {
-        const anchor = combined[i];
-        const rest = combined.slice(0, i).concat(combined.slice(i + 1));
-        const ordering = [anchor].concat(rest);
-        const r = runGreedy(ordering);
-        if (r) return r;
-      }
-    }
-
-    return null;
-  }
-
-  const partialRooms = (rooms || []).filter(r => r && r.missingSlots > 0 && Array.isArray(r.groups) && r.groups.length);
-  // try cheap greedy merge first
-  if (partialRooms.length > 0) {
-    const greedy = tryGreedyMerge(partialRooms);
-    if (greedy) return greedy;
-  }
-  const PAIR_BUDGET = 5000;
-  // try pairs
-  for (let a = 0; a < partialRooms.length; a += 1) {
-    for (let b = a + 1; b < partialRooms.length; b += 1) {
-      const combined = [];
-      partialRooms[a].groups.forEach(g => combined.push({ role: g.role, size: Number(g.size) || (Array.isArray(g.members)?g.members.length:0), score: g.score, groupKey: g.groupKey || null, partyKey: g.partyKey || null, members: Array.isArray(g.members)? g.members.map(m => ({ ...(m.entry || m), ...m })) : [], heroIds: Array.isArray(g.heroIds)? g.heroIds.slice():Array.isArray(g.members)? collectGroupHeroIds(g.members):[], ownerIds: Array.isArray(g.ownerIds)? g.ownerIds.slice():[], joinedAt: g.joinedAt || Date.now() }));
-  partialRooms[b].groups.forEach(g => combined.push({ role: g.role, size: Number(g.size) || (Array.isArray(g.members)?g.members.length:0), score: g.score, groupKey: g.groupKey || null, partyKey: g.partyKey || null, members: Array.isArray(g.members)? g.members.map(m => ({ ...(m.entry || m), ...m })) : [], heroIds: Array.isArray(g.heroIds)? g.heroIds.slice():Array.isArray(g.members)? collectGroupHeroIds(g.members):[], ownerIds: Array.isArray(g.ownerIds)? g.ownerIds.slice():[], joinedAt: g.joinedAt || Date.now(), source: 'room' }));
-      (combinedUnplaced || []).forEach(u => {
-        const g = u && (u.group || u);
-        if (!g) return;
-        combined.push({ role: g.role, size: Number(g.size) || (Array.isArray(g.members)?g.members.length:0), score: g.score ?? 0, groupKey: g.groupKey || null, partyKey: g.partyKey || null, members: Array.isArray(g.members)? g.members.map(m => ({ ...(m.entry || m), ...m })) : [], heroIds: Array.isArray(g.heroIds) ? g.heroIds.slice() : Array.isArray(g.members) ? collectGroupHeroIds(g.members) : [], ownerIds: Array.isArray(g.ownerIds) ? g.ownerIds.slice() : [], joinedAt: g.joinedAt || Date.now() });
-      });
-      // small local attempt
-      const tryLocal = trySearchWithCandidates(combined, PAIR_BUDGET);
-      if (tryLocal) return tryLocal;
-    }
-  }
-  // try triples (if needed) with slightly higher budget
-  const TRIPLE_BUDGET = 15000;
-  for (let a = 0; a < partialRooms.length; a += 1) {
-    for (let b = a + 1; b < partialRooms.length; b += 1) {
-      for (let c = b + 1; c < partialRooms.length; c += 1) {
-        const combined = [];
-        partialRooms[a].groups.forEach(g => combined.push({ role: g.role, size: Number(g.size) || (Array.isArray(g.members)?g.members.length:0), score: g.score, groupKey: g.groupKey || null, partyKey: g.partyKey || null, members: Array.isArray(g.members)? g.members.map(m => ({ ...(m.entry || m), ...m })) : [], heroIds: Array.isArray(g.heroIds)? g.heroIds.slice():Array.isArray(g.members)? collectGroupHeroIds(g.members):[], ownerIds: Array.isArray(g.ownerIds)? g.ownerIds.slice():[], joinedAt: g.joinedAt || Date.now() }));
-  partialRooms[b].groups.forEach(g => combined.push({ role: g.role, size: Number(g.size) || (Array.isArray(g.members)?g.members.length:0), score: g.score, groupKey: g.groupKey || null, partyKey: g.partyKey || null, members: Array.isArray(g.members)? g.members.map(m => ({ ...(m.entry || m), ...m })) : [], heroIds: Array.isArray(g.heroIds)? g.heroIds.slice():Array.isArray(g.members)? collectGroupHeroIds(g.members):[], ownerIds: Array.isArray(g.ownerIds)? g.ownerIds.slice():[], joinedAt: g.joinedAt || Date.now(), source: 'room' }));
-  partialRooms[c].groups.forEach(g => combined.push({ role: g.role, size: Number(g.size) || (Array.isArray(g.members)?g.members.length:0), score: g.score, groupKey: g.groupKey || null, partyKey: g.partyKey || null, members: Array.isArray(g.members)? g.members.map(m => ({ ...(m.entry || m), ...m })) : [], heroIds: Array.isArray(g.heroIds)? g.heroIds.slice():Array.isArray(g.members)? collectGroupHeroIds(g.members):[], ownerIds: Array.isArray(g.ownerIds)? g.ownerIds.slice():[], joinedAt: g.joinedAt || Date.now(), source: 'room' }));
-        (combinedUnplaced || []).forEach(u => {
-          const g = u && (u.group || u);
-          if (!g) return;
-          combined.push({ role: g.role, size: Number(g.size) || (Array.isArray(g.members)?g.members.length:0), score: g.score ?? 0, groupKey: g.groupKey || null, partyKey: g.partyKey || null, members: Array.isArray(g.members)? g.members.map(m => ({ ...(m.entry || m), ...m })) : [], heroIds: Array.isArray(g.heroIds) ? g.heroIds.slice() : Array.isArray(g.members) ? collectGroupHeroIds(g.members) : [], ownerIds: Array.isArray(g.ownerIds) ? g.ownerIds.slice() : [], joinedAt: g.joinedAt || Date.now(), source: 'unplaced' });
-        });
-        const tryLocal = trySearchWithCandidates(combined, TRIPLE_BUDGET);
-        if (tryLocal) return tryLocal;
-      }
-    }
-  }
-
-  // Build remaining slots map from template
-  // Quick exhaustive attempt when candidate count is small and total sizes
-  // exactly match totalSlots: try all permutations deterministically. This
-  // addresses small pathological cases (e.g., three 1-slot groups filling a
-  // 3-slot template) where DFS anchoring or pruning may miss a valid
-  // arrangement.
-  try {
-    const smallPermLimit = 8;
-    const sumSizesCandidates = candidates.reduce((s, c) => s + (Number(c.size) || 0), 0);
-    if (candidates.length > 0 && candidates.length <= smallPermLimit && sumSizesCandidates === Array.from(template.roles.values()).reduce((s, m) => s + (Number(m?.capacity)||0), 0)) {
-      // generate permutations using Heap's algorithm over candidate indices
-      const perm = [];
-      for (let i = 0; i < candidates.length; i += 1) perm.push(i);
-      const results = [];
-      function heap(n) {
-        if (n === 1) { results.push(perm.slice()); return; }
-        for (let i = 0; i < n; i += 1) {
-          heap(n - 1);
-          const j = n % 2 === 0 ? i : 0;
-          const tmp = perm[n - 1]; perm[n - 1] = perm[j]; perm[j] = tmp;
-        }
-      }
-      heap(candidates.length);
-      for (const ordering of results) {
-        const room = createRoomFromTemplate(template);
-        let ok = true;
-        for (const idx of ordering) {
-          const g = candidates[idx];
-          const group = { role: g.role, members: g.members || [], groupKey: g.groupKey || null, partyKey: g.partyKey || null, size: g.size, score: g.score, joinedAt: g.joinedAt };
-          group.heroIds = Array.isArray(g.heroIds) ? g.heroIds.slice() : collectGroupHeroIds(group.members || []);
-          group.ownerIds = Array.isArray(g.ownerIds) ? g.ownerIds.slice() : collectGroupOwnerIds(group.members || []);
-          const placed = assignGroupToRoom({ room, group, template, maxWindowAllowed });
-          if (!placed) {
-            if (process && process.env && process.env.DEBUG_MATCHING === '1') {
-              try {
-                console.log('[matching-recombine-debug] permutation place failed', JSON.stringify({ group: { role: group.role, size: group.size, score: group.score, joinedAt: group.joinedAt }, room: { filledSlots: room.filledSlots, missingSlots: room.slots.length - room.filledSlots, anchorScore: room.anchorScore, maxScoreGap: room.maxScoreGap }, effectiveMaxWindow }));
-              } catch (e) {}
-            }
-            ok = false; break;
-          }
-        }
-        if (ok) { finalizeRoom(room); if (room.ready) return room; }
-      }
-    }
-  } catch (e) {
-    // ignore
-  }
-
-  const remaining = new Map();
-  let totalSlots = 0;
-  for (const [roleName, meta] of template.roles.entries()) {
-    const capacity = Number(meta?.capacity) || 0;
-    remaining.set(roleName, capacity);
-    totalSlots += capacity;
-  }
-  if (totalSlots === 0) return null;
-
-  // quick prune: sum of candidate sizes must be >= totalSlots
-  const sumSizes = candidates.reduce((s, c) => s + (Number(c.size) || 0), 0);
-  if (sumSizes < totalSlots) return null;
-
-  // DFS search helper which operates on a given candidate subset.
-  function trySearchWithCandidates(localCandidates, maxSteps, baseRemaining, maxWindowOverride) {
-    if (process && process.env && process.env.DEBUG_MATCHING === '1') {
-      try {
-        console.log('[matching-recombine-debug] trySearchWithCandidates start', JSON.stringify({
-          candidateCount: localCandidates.length,
-          maxSteps: Number(maxSteps) || 0,
-          baseRemaining: baseRemaining && typeof baseRemaining.entries === 'function' ? Array.from(baseRemaining.entries()) : null,
-        }));
-      } catch (e) {}
-    }
-
-  const usedLocal = new Array(localCandidates.length).fill(false);
-    const heroSetLocal = new Set();
-    const ownerSetLocal = new Set();
-    let stepsLocal = 0;
-
-  const effectiveMaxWindow = Number.isFinite(maxWindowOverride) ? Number(maxWindowOverride) : maxWindowAllowed;
-
-  // Quick deterministic permutation try for small candidate sets. DFS can
-  // miss valid placements due to anchoring order or early pruning in some
-  // pathological scoring arrangements. Try all permutations up to a small
-  // limit (factorial grows fast) and attempt to place groups in that order.
-  // Only attempt permutations when the local candidate set includes at
-  // least one group originating from an existing room. We avoid permutation
-  // for pure-queue candidate sets because reordering pure queue entries can
-  // change strict score-window semantics and cause unintended matches.
-    const PERM_LIMIT = 6;
-  const hasRoomLocal = localCandidates.some(c => c && c.source === 'room');
-    if (localCandidates.length > 0 && localCandidates.length <= PERM_LIMIT && hasRoomLocal) {
-      if (process && process.env && process.env.DEBUG_MATCHING === '1') {
-        try { console.log('[matching-recombine-debug] trySearchWithCandidates: attempting permutations', { count: localCandidates.length }); } catch (e) {}
-      }
-
-      // If the span of candidate scores already exceeds the allowed window
-      // there's no point in permuting — any ordering will still violate the
-      // configured window. Skip permutations in that case to avoid creating
-      // matches that break strict-window semantics.
-      const scores = localCandidates.map(c => Number(c && Number.isFinite(Number(c.score)) ? Number(c.score) : 0));
-      const minScore = Math.min(...scores);
-      const maxScore = Math.max(...scores);
-      // Compute average and maximum deviation from that average. Using the
-      // average (room anchor) is a more accurate predictor of whether the
-      // candidate set can fit within the window after placement; max-min is
-      // overly conservative because anchor can sit between extremes.
-      const avgScore = Math.round(scores.reduce((a, b) => a + b, 0) / (scores.length || 1));
-      const maxDev = Math.max(...scores.map(s => Math.abs(s - avgScore)));
-      if (Number.isFinite(minScore) && Number.isFinite(maxScore) && maxDev > effectiveMaxWindow) {
-        if (process && process.env && process.env.DEBUG_MATCHING === '1') {
-          try { console.log('[matching-recombine-debug] skipping permutations: score span/deviation exceeds window', { minScore, maxScore, span: maxScore - minScore, avgScore, maxDev, window: effectiveMaxWindow }); } catch (e) {}
-        }
-      } else {
-
-      // generate simple permutations using Heap's algorithm
-      const perm = [];
-      for (let i = 0; i < localCandidates.length; i += 1) perm.push(i);
-      const results = [];
-
-      function heap(n) {
-        if (n === 1) {
-          results.push(perm.slice());
-          return;
-        }
-        for (let i = 0; i < n; i += 1) {
-          heap(n - 1);
-          const j = n % 2 === 0 ? i : 0;
-          const tmp = perm[n - 1];
-          perm[n - 1] = perm[j];
-          perm[j] = tmp;
-        }
-      }
-
-      heap(localCandidates.length);
-
-  for (const ordering of results) {
-        const room = createRoomFromTemplate(template);
-        let ok = true;
-        for (const idx of ordering) {
-          const c = localCandidates[idx];
-          if (!c) { ok = false; break; }
-          const group = {
-            role: c.role,
-            members: c.members || [],
-            groupKey: c.groupKey || null,
-            partyKey: c.partyKey || null,
-            size: c.size,
-            score: c.score,
-            joinedAt: c.joinedAt,
-          };
-          group.heroIds = Array.isArray(c.heroIds) ? c.heroIds.slice() : collectGroupHeroIds(group.members || []);
-          group.ownerIds = Array.isArray(c.ownerIds) ? c.ownerIds.slice() : collectGroupOwnerIds(group.members || []);
-          // fast pre-check: avoid calling assignGroupToRoom when the score gap
-          // to the room anchor would exceed the effective max window. This
-          // prevents permutations from building rooms that violate the
-          // configured window even if assignGroupToRoom were to be
-          // inconsistently permissive in some edge cases.
-          if (room.groupCount > 0 && Number.isFinite(room.anchorScore)) {
-            const gap = Math.abs((group.score ?? 0) - room.anchorScore);
-            if (gap > effectiveMaxWindow) { ok = false; break; }
-          }
-          const placed = assignGroupToRoom({ room, group, template, maxWindowAllowed: effectiveMaxWindow });
-          if (!placed) {
-            if (process && process.env && process.env.DEBUG_MATCHING === '1') {
-              try {
-                console.log('[matching-recombine-debug] permutation place failed (effective)', JSON.stringify({ group: { role: group.role, size: group.size, score: group.score }, room: { filledSlots: room.filledSlots, anchorScore: room.anchorScore, missingSlots: room.slots.length - room.filledSlots, maxScoreGap: room.maxScoreGap }, effectiveMaxWindow }));
-              } catch (e) {}
-            }
-            ok = false; break;
-          }
-        }
-        if (ok) {
-          finalizeRoom(room);
-          if (room.ready) {
-            if (process && process.env && process.env.DEBUG_MATCHING === '1') {
-              try { console.log('[matching-recombine-debug] permutation success'); } catch (e) {}
-            }
-            return room;
-          }
-        }
-      }
-    }
-
-    function dfsLocal(picked, remainingMap) {
-      if (++stepsLocal > maxSteps) {
-        if (process && process.env && process.env.DEBUG_MATCHING === '1') {
-          try {
-            console.log('[matching-recombine-debug] trySearchWithCandidates aborted: budget_exhausted', JSON.stringify({ stepsLocal, maxSteps }));
-          } catch (e) {}
-        }
-        return null;
-      }
-      const needed = Array.from(remainingMap.values()).reduce((s, v) => s + (Number(v) || 0), 0);
-      if (needed === 0) {
-        // success: build room
-        const room = createRoomFromTemplate(template);
-        for (const idx of picked) {
-          const g = localCandidates[idx];
-          const group = {
-            role: g.role,
-            members: g.members || [],
-            groupKey: g.groupKey || null,
-            partyKey: g.partyKey || null,
-            size: g.size,
-            score: g.score,
-            joinedAt: g.joinedAt,
-          };
-          group.heroIds = collectGroupHeroIds(group.members || []);
-          group.ownerIds = collectGroupOwnerIds(group.members || []);
-          const placed = assignGroupToRoom({ room, group, template, maxWindowAllowed: effectiveMaxWindow });
-          if (!placed) return null;
-        }
-        finalizeRoom(room);
-        if (process && process.env && process.env.DEBUG_MATCHING === '1') {
-          try { console.log('[matching-recombine-debug] trySearchWithCandidates success', JSON.stringify({ stepsLocal })); } catch (e) {}
-        }
-        return room;
-      }
-
-      for (let i = 0; i < localCandidates.length; i += 1) {
-        if (usedLocal[i]) continue;
-        const c = localCandidates[i];
-        if (!c || !c.role) continue;
-        const cap = remainingMap.get(c.role) || 0;
-        if (c.size > cap) continue;
-        // conflict checks
-        let conflict = false;
-        if (Array.isArray(c.heroIds)) {
-          for (const h of c.heroIds) { if (!h) continue; if (heroSetLocal.has(h)) { conflict = true; break; } }
-        }
-        if (conflict) continue;
-        if (Array.isArray(c.ownerIds)) {
-          for (const o of c.ownerIds) { if (!o) continue; if (ownerSetLocal.has(o)) { conflict = true; break; } }
-        }
-        if (conflict) continue;
-
-        // choose
-        usedLocal[i] = true;
-        const oldCap = remainingMap.get(c.role) || 0;
-        remainingMap.set(c.role, Math.max(0, oldCap - Number(c.size)));
-        const addedHeroes = [];
-        const addedOwners = [];
-        if (Array.isArray(c.heroIds)) {
-          for (const h of c.heroIds) { if (h && !heroSetLocal.has(h)) { heroSetLocal.add(h); addedHeroes.push(h); } }
-        }
-        if (Array.isArray(c.ownerIds)) {
-          for (const o of c.ownerIds) { if (o && !ownerSetLocal.has(o)) { ownerSetLocal.add(o); addedOwners.push(o); } }
-        }
-
-        const result = dfsLocal(picked.concat(i), remainingMap);
-        if (result) return result;
-
-        // undo
-        usedLocal[i] = false;
-        remainingMap.set(c.role, oldCap);
-        for (const h of addedHeroes) heroSetLocal.delete(h);
-        for (const o of addedOwners) ownerSetLocal.delete(o);
-      }
-
-      return null;
-    }
-
-    // start DFS with a shallow clone of provided remaining map or build one
-    // from the template roles if none was supplied. We must NOT reference
-    // the outer `remaining` variable here because this helper is called
-    // earlier in the function (pair/triple quick attempts) before that
-    // outer variable is initialized, which causes a TDZ when accessed.
-    const remClone = new Map();
-    if (baseRemaining && typeof baseRemaining.entries === 'function') {
-      for (const [k, v] of baseRemaining.entries()) remClone.set(k, v);
-    } else {
-      for (const [roleName, meta] of template.roles.entries()) {
-        remClone.set(roleName, Number(meta?.capacity) || 0);
-      }
-    }
-    return dfsLocal([], remClone);
-  }
-
-  function remainingSlotsSum(map) {
-    let s = 0;
-    for (const v of map.values()) s += Number(v) || 0;
-    return s;
-  }
-
-  function dfs(picked) {
-    if (++steps > MAX_STEPS) return null;
-    const needed = remainingSlotsSum(remaining);
-    if (needed === 0) {
-      // success: build room
-      const room = createRoomFromTemplate(template);
-      // place groups in the room using assignGroupToRoom to leverage existing checks
-      for (const idx of picked) {
-        const g = candidates[idx];
-        // reconstruct a minimal group structure expected by assignGroupToRoom
-        const group = {
-          role: g.role,
-          members: g.members || [],
-          groupKey: g.groupKey || null,
-          partyKey: g.partyKey || null,
-          size: g.size,
-          score: g.score,
-          joinedAt: g.joinedAt,
-        };
-        // ensure heroIds/ownerIds are present as assignGroupToRoom expects them
-        group.heroIds = collectGroupHeroIds(group.members || []);
-        group.ownerIds = collectGroupOwnerIds(group.members || []);
-        const placed = assignGroupToRoom({ room, group, template, maxWindowAllowed });
-        if (!placed) {
-          return null; // fail this combination
-        }
-      }
-      finalizeRoom(room);
-      return room;
-    }
-
-    // Try each unused candidate
-    for (let i = 0; i < candidates.length; i += 1) {
-      if (used[i]) continue;
-      const c = candidates[i];
-      if (!c || !c.role) continue;
-      const cap = remaining.get(c.role) || 0;
-      if (c.size > cap) continue;
-      // hero/owner conflict checks
-      let conflict = false;
-      if (Array.isArray(c.heroIds)) {
-        for (const h of c.heroIds) {
-          if (!h) continue;
-          if (heroSet.has(h)) {
-            conflict = true; break;
-          }
-        }
-      }
-      if (conflict) continue;
-      if (Array.isArray(c.ownerIds)) {
-        for (const o of c.ownerIds) {
-          if (!o) continue;
-          if (ownerSet.has(o)) { conflict = true; break; }
-        }
-      }
-      if (conflict) continue;
-
-      // choose
-      used[i] = true;
-      // mutate remaining and sets
-      const oldCap = remaining.get(c.role) || 0;
-      remaining.set(c.role, Math.max(0, oldCap - Number(c.size)));
-      const addedHeroes = [];
-      const addedOwners = [];
-      if (Array.isArray(c.heroIds)) {
-        for (const h of c.heroIds) { if (h && !heroSet.has(h)) { heroSet.add(h); addedHeroes.push(h); } }
-      }
-      if (Array.isArray(c.ownerIds)) {
-        for (const o of c.ownerIds) { if (o && !ownerSet.has(o)) { ownerSet.add(o); addedOwners.push(o); } }
-      }
-
-      const result = dfs(picked.concat(i));
-      if (result) return result;
-
-      // undo
-      used[i] = false;
-      remaining.set(c.role, oldCap);
-      for (const h of addedHeroes) heroSet.delete(h);
-      for (const o of addedOwners) ownerSet.delete(o);
-    }
-
-    return null;
-  }
-
-  // Iteratively increase candidate set size. Each attempt has a per-attempt step cap to
-  // keep worst-case CPU bounded. We stop at the first successful recombination.
-  const attemptSizes = [8, 12, 16, 24, 32].map(n => Math.min(n, candidates.length));
-  const tried = new Set();
-  const PER_ATTEMPT_MAX_STEPS = 40000;
-
-  for (const size of attemptSizes) {
-    if (tried.has(size)) continue;
-    tried.add(size);
-    const local = candidates.slice(0, size);
-    // quick prune on local set
-    const sumLocal = local.reduce((s, c) => s + (Number(c.size) || 0), 0);
-    if (sumLocal < totalSlots) continue;
-    const found = trySearchWithCandidates(local, PER_ATTEMPT_MAX_STEPS, remaining);
-    if (found) return found;
-  }
-
-  // final attempt: try entire candidate set with a larger budget
-  const FINAL_MAX_STEPS = 200000;
-  const fallback = trySearchWithCandidates(candidates, FINAL_MAX_STEPS, remaining);
-  if (fallback) return fallback;
-  if (process && process.env && process.env.DEBUG_MATCHING === '1') {
-    try { console.log('[matching-recombine-debug] tryFormFullRoomFromGroups: main attempts exhausted, proceeding to relaxed final attempt'); } catch (e) {}
-  }
-  // Final relaxed attempt: as a last resort, try widening the effective
-  // score window to the observed span of candidate scores (capped). This
-  // is intentionally conservative: only allow when the candidate set is
-  // small, and cap the relaxation to avoid creating wildly permissive
-  // matches. This restores a narrowly-scoped fallback that recovers a
-  // few historical borderline cases while keeping the default strict
-  // semantics for larger searches.
-  try {
-    const scores = candidates.map(c => Number.isFinite(Number(c && c.score)) ? Number(c.score) : 0);
-    const minScore = Math.min(...scores);
-    const maxScore = Math.max(...scores);
-    const span = Number.isFinite(minScore) && Number.isFinite(maxScore) ? (maxScore - minScore) : 0;
-    const MAX_RELAX_FACTOR = 3; // don't relax window more than this factor
-    const RELAX_CAP = 1000; // absolute cap
-    // If the user explicitly requested a wider window (via UI action), we
-    // allow a guarded override here. The requested value is still subject to
-    // the configured caps to prevent abuse or very permissive matching.
-    if (Number.isFinite(userRequestedWindow) && userRequestedWindow > 0) {
-      const allowed = Math.min(Number(userRequestedWindow), Math.min(maxWindowAllowed * MAX_RELAX_FACTOR, RELAX_CAP));
-      if (allowed > maxWindowAllowed) {
-        if (process && process.env && process.env.DEBUG_MATCHING === '1') {
-          try { console.log('[matching-recombine-debug] user-requested relaxed attempt', { requested: userRequestedWindow, allowed, maxWindowAllowed, span, candidateCount: candidates.length }); } catch (e) {}
-        }
-        const relaxedUser = trySearchWithCandidates(candidates, FINAL_MAX_STEPS, remaining, allowed);
-        if (relaxedUser) return relaxedUser;
-      }
-    }
-
-    if (candidates.length > 0 && candidates.length <= 6 && span > maxWindowAllowed) {
-      const relaxWindow = Math.min(Math.max(span, maxWindowAllowed), Math.min(maxWindowAllowed * MAX_RELAX_FACTOR, RELAX_CAP));
-      if (process && process.env && process.env.DEBUG_MATCHING === '1') {
-        try { console.log('[matching-recombine-debug] final relaxed attempt', { span, maxWindowAllowed, relaxWindow, candidateCount: candidates.length }); } catch (e) {}
-      }
-      const relaxed = trySearchWithCandidates(candidates, FINAL_MAX_STEPS, remaining, relaxWindow);
-      if (relaxed) return relaxed;
-    }
-  } catch (e) {
-    // ignore
-  }
-
-  return null;
-}
-}
-// End of recombination helpers.
-
 function buildResult({
   ready,
   assignments = [],
@@ -2363,9 +1655,8 @@ function buildResult({
   totalSlots = 0,
   maxWindow = 0,
   error = null,
-  suggestion = null,
 }) {
-  const out = {
+  return {
     ready: Boolean(ready),
     assignments,
     rooms,
@@ -2373,8 +1664,6 @@ function buildResult({
     maxWindow,
     error,
   };
-  if (suggestion) out.suggestion = suggestion;
-  return out;
 }
 
 // CommonJS exports for Node scripts (e.g., scripts/run-matching-samples.js)
@@ -2386,6 +1675,4 @@ if (typeof module !== 'undefined' && module.exports) {
     matchDuoRankParticipants,
     matchCasualParticipants,
   };
-  try { console.log('[matching.js] module.exports keys after assign', Object.keys(module.exports)); } catch (e) {}
 }
-

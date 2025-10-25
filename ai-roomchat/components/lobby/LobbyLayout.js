@@ -1,3 +1,5 @@
+import React from 'react';
+
 export default function LobbyLayout({ header, tabs, children, backgroundUrl }) {
   const pageStyle = backgroundUrl ? styles.pageWithBackground(backgroundUrl) : styles.page;
 

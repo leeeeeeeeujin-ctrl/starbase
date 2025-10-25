@@ -1,11 +1,12 @@
 // lib/rank/matchmakingService.js
 // Utilities that bridge the generic matching helpers with Supabase storage.
+
 import {
   matchCasualParticipants,
   matchRankParticipants,
   matchSoloRankParticipants,
 } from './matching';
-import { getMatcherKey, getQueueModes } from './matchModes';
+import { getDefaultPartySize, getMatcherKey, getQueueModes } from './matchModes';
 import { withTable } from '../supabaseTables';
 import { partitionQueueByHeartbeat, QUEUE_STALE_THRESHOLD_MS } from './queueHeartbeat';
 import {

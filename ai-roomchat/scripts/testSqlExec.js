@@ -1,11 +1,6 @@
 #!/usr/bin/env node
 /**
  * SQL 실행 테스트 - RPC 함수 확인
- *
- * SECURITY NOTE:
- * This script calls RPC functions using a Supabase service-role key
- * (SUPABASE_SERVICE_ROLE_KEY). Ensure this runs only in secure, server-side
- * contexts and never exposes the key in CI logs or browser code.
  */
 
 const path = require('path');

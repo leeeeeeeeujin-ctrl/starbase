@@ -19,11 +19,6 @@ jest.mock('@/lib/debugCollector', () => ({
   addDebugEvent: jest.fn(),
 }));
 
-// Prevent realtime subscriptions from scheduling timer-based refreshes during tests
-jest.mock('@/lib/realtime/broadcast', () => ({
-  subscribeToBroadcastTopic: jest.fn(() => () => {}),
-}));
-
 import MatchReadyClient from '@/components/rank/MatchReadyClient';
 import {
   clearGameMatchData,
@@ -69,16 +64,6 @@ beforeEach(() => {
     }
     originalConsoleWarn.call(console, message, ...args);
   });
-});
-
-// Use fake timers so interval/setTimeout effects in the component don't trigger
-// background updates outside of React act during tests
-beforeEach(() => {
-  jest.useFakeTimers();
-});
-
-afterEach(() => {
-  jest.useRealTimers();
 });
 
 function collectText(node) {
@@ -202,9 +187,7 @@ describe('MatchReadyClient store integration', () => {
     if (console.warn && typeof console.warn.mockRestore === 'function') {
       console.warn.mockRestore();
     }
-    act(() => {
-      clearGameMatchData(gameId);
-    });
+    clearGameMatchData(gameId);
   });
 
   it('refreshes the applied turn timer when session meta updates in the store', async () => {

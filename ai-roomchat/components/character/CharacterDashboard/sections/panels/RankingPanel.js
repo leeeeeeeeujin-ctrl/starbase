@@ -1,3 +1,5 @@
+import React from 'react';
+
 import { useCharacterDashboardContext } from '../../context';
 import RankingSection from '../right/RankingSection';
 

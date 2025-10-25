@@ -1,3 +1,5 @@
+import React from 'react';
+
 import { baseStyles, readyStyles } from './styles';
 
 export default function ReadyStep({ onBack, onConfirm }) {

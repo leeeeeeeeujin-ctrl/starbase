@@ -1,3 +1,5 @@
+import React from 'react';
+
 export function ConditionParameterFields({ definition, values, onChange }) {
   if (!definition) return null;
 

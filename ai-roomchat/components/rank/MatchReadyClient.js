@@ -658,8 +658,6 @@ export default function MatchReadyClient({ gameId }) {
   const [readyError, setReadyError] = useState('');
   const [readyCountdownMs, setReadyCountdownMs] = useState(null);
   const [readyTimeoutBusy, setReadyTimeoutBusy] = useState(false);
-  const [suggestionBusy, setSuggestionBusy] = useState(false);
-  const [suggestionError, setSuggestionError] = useState('');
   const readySignalControllerRef = useRef(null);
   const readyTimeoutTriggeredRef = useRef(false);
   const autoOpenRef = useRef(false);
@@ -734,10 +732,6 @@ export default function MatchReadyClient({ gameId }) {
   ]);
 
   const readyCheck = state?.sessionMeta?.extras?.readyCheck || null;
-  const suggestionPayload =
-    (state?.sessionMeta && state.sessionMeta.extras && state.sessionMeta.extras.suggestion) ||
-    (state?.snapshot && state.snapshot.match && state.snapshot.match.suggestion) ||
-    null;
   const readyStatus = typeof readyCheck?.status === 'string' ? readyCheck.status : 'idle';
   const readyWindowActive = readyStatus === 'pending' || readyStatus === 'ready';
   const readyExpiresAtMsRaw = Number(readyCheck?.expiresAtMs);
@@ -1047,50 +1041,6 @@ export default function MatchReadyClient({ gameId }) {
     }
     handleReadySignal();
   }, [gameId, readyStatus, viewerReady, handleReadySignal]);
-
-  const handleAcceptSuggestion = useCallback(async () => {
-    if (!suggestionPayload || !matchInstanceId) return;
-    if (suggestionBusy) return;
-    setSuggestionBusy(true);
-    setSuggestionError('');
-    try {
-      const token = await resolveAccessToken();
-      if (!token) {
-        setSuggestionError('세션 인증이 필요합니다. 페이지를 새로고침해 주세요.');
-        setSuggestionBusy(false);
-        return;
-      }
-
-      const response = await fetch('/api/rank/user-request-window', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          match_instance_id: matchInstanceId,
-          suggested_window: suggestionPayload.suggestedWindow || suggestionPayload.suggested_window,
-        }),
-      });
-
-      const text = await response.text().catch(() => '');
-      const data = safeJsonParse(text) || {};
-
-      if (!response.ok) {
-        setSuggestionError(data?.error || 'suggestion_request_failed');
-        setSuggestionBusy(false);
-        return;
-      }
-
-      // refresh snapshot so clients pick up the new session meta extras
-      refresh().catch(() => {});
-      setSuggestionBusy(false);
-    } catch (error) {
-      console.error('[MatchReadyClient] accept suggestion failed', error);
-      setSuggestionError('제안 수락 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.');
-      setSuggestionBusy(false);
-    }
-  }, [suggestionPayload, matchInstanceId, suggestionBusy, resolveAccessToken, refresh]);
 
   useEffect(() => {
     if (showGame) {
@@ -1514,46 +1464,6 @@ export default function MatchReadyClient({ gameId }) {
             {voteNotice ? <p className={styles.voteNotice}>{voteNotice}</p> : null}
           </div>
         </section>
-
-        {suggestionPayload ? (
-          <section className={styles.suggestionBanner}>
-            <h2 className={styles.sectionTitle}>윈도우 확대 제안</h2>
-            <p className={styles.suggestionText}>
-              매칭을 위해 보수적인 점수 범위를 약간 넓히는 것을 제안합니다. 제안된 범위: ±{Number(
-              suggestionPayload.suggestedWindow || suggestionPayload.suggested_window || 0
-            )} 점
-            </p>
-            {suggestionPayload?.penaltyEstimate ? (
-              <p className={styles.suggestionHint}>
-                예상 페널티: {Number(suggestionPayload.penaltyEstimate)} 점
-              </p>
-            ) : null}
-            <div className={styles.suggestionActions}>
-              <button
-                type="button"
-                className={styles.primaryButton}
-                onClick={handleAcceptSuggestion}
-                disabled={suggestionBusy}
-              >
-                {suggestionBusy ? '요청 중…' : '제안 수락하고 재시도'}
-              </button>
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={() => {
-                  // dismiss client-side view by clearing sessionMeta extras locally
-                  const currentExtras = state?.sessionMeta?.extras || {};
-                  const merged = { ...currentExtras };
-                  delete merged.suggestion;
-                  setGameMatchSessionMeta(gameId, { extras: merged, source: 'match-ready-dismiss-suggestion' });
-                }}
-              >
-                무시
-              </button>
-            </div>
-            {suggestionError ? <p className={styles.readyHintError}>{suggestionError}</p> : null}
-          </section>
-        ) : null}
 
         <section className={styles.rosterSection}>
           <h2 className={styles.sectionTitle}>참가자 구성</h2>

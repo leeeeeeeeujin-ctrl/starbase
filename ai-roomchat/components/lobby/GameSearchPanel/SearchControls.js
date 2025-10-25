@@ -1,3 +1,4 @@
+import React from 'react';
 import { styles } from './styles';
 
 export default function SearchControls({ query, onQueryChange, sort, onSortChange, sortOptions }) {

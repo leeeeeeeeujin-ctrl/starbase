@@ -1,3 +1,5 @@
+import React from 'react';
+
 import { matchingStyles } from './styles';
 
 export default function MatchingStep({ hero, opponentCards, progress }) {

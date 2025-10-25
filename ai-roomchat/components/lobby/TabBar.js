@@ -1,3 +1,5 @@
+import React from 'react';
+
 export default function TabBar({ tabs, activeTab, onChange }) {
   return (
     <div style={{ ...styles.root, gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>

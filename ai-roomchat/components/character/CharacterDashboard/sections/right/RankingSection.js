@@ -1,3 +1,5 @@
+import React from 'react';
+
 const styles = {
   section: {
     borderRadius: 28,

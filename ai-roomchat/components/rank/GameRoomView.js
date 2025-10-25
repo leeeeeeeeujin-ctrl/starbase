@@ -4,6 +4,7 @@ import dynamic from 'next/dynamic';
 
 import styles from './GameRoomView.module.css';
 import { getHeroAudioManager } from '../../lib/audio/heroAudioManager';
+import { normalizeTurnSummaryPayload } from '../../lib/rank/turnSummary';
 import { normalizeTimelineEvents } from '@/lib/rank/timelineEvents';
 import { supabase } from '../../lib/supabase';
 import { withTable } from '../../lib/supabaseTables';
@@ -21,6 +22,12 @@ import {
   compressorSettingsAreEqual,
   diffAudioPreferenceChanges,
   extractHeroAudioEffectSnapshot,
+  formatDbLabel,
+  formatDurationLabel,
+  formatMillisecondsLabel,
+  formatPercentLabel,
+  formatRatioLabel,
+  formatSecondsLabel,
   normalizeAudioPreferenceRecord,
   normalizeCompressorSettings,
   normalizeEqSettings,
@@ -35,7 +42,6 @@ import {
   formatDate,
 } from '@/lib/rank/gameRoomHistory';
 
-// eslint-disable-next-line no-unused-vars -- used in JSX further below; keep dynamic import
 const GameRoomHistoryPane = dynamic(() => import('./GameRoomHistoryPane'), {
   loading: () => (
     <section className={styles.section}>
@@ -126,7 +132,7 @@ function interpretRulesShape(value) {
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
         return { type: 'object', value: parsed };
       }
-    } catch {
+    } catch (error) {
       // not JSON, fall through to plain text rendering
     }
     return { type: 'text', value: trimmed };
@@ -203,7 +209,7 @@ function renderRules(rules) {
       try {
         const pretty = JSON.stringify(interpreted.value, null, 2);
         return <pre className={styles.rulesCode}>{pretty}</pre>;
-      } catch {
+      } catch (error) {
         return null;
       }
     }
@@ -240,7 +246,7 @@ function renderRules(rules) {
     const pretty = JSON.stringify(interpreted.value, null, 2);
     if (!pretty) return null;
     return <pre className={styles.rulesCode}>{pretty}</pre>;
-  } catch {
+  } catch (error) {
     return null;
   }
 }
@@ -261,7 +267,26 @@ function formatWinRate(value) {
   return `${rounded}%`;
 }
 
+function describeSessionStatus(status) {
+  const raw = typeof status === 'string' ? status.trim().toLowerCase() : '';
+  if (!raw) {
+    return { label: '진행 중', tone: 'active' };
+  }
 
+  if (['completed', 'done', 'finished', 'closed', 'victory', 'won'].includes(raw)) {
+    return { label: '종료', tone: 'completed' };
+  }
+
+  if (['failed', 'error', 'aborted', 'cancelled', 'canceled', 'defeat', 'lost'].includes(raw)) {
+    return { label: '중단', tone: 'failed' };
+  }
+
+  if (['active', 'running', 'pending', 'open', 'in_progress'].includes(raw)) {
+    return { label: '진행 중', tone: 'active' };
+  }
+
+  return { label: status || '진행 중', tone: 'active' };
+}
 
 function groupByRole(participants = []) {
   const map = new Map();
@@ -288,7 +313,7 @@ export default function GameRoomView({
   myEntry = null,
   onBack,
   onJoin,
-  onLeave: _onLeave,
+  onLeave,
   onOpenModeSettings,
   onOpenLeaderboard,
   onDelete,
@@ -300,12 +325,12 @@ export default function GameRoomView({
   startError = '',
   recentBattles = [],
   roleOccupancy = [],
+  roleLeaderboards = [],
   sessionHistory = [],
   sharedSessionHistory = [],
 }) {
   const [joinLoading, setJoinLoading] = useState(false);
-  // eslint-disable-next-line no-unused-vars -- kept for parity with UI flow; handler may be used in alternate render paths
-  const [_leaveLoading, _setLeaveLoading] = useState(false);
+  const [leaveLoading, setLeaveLoading] = useState(false);
   const [visibleHeroLogs, setVisibleHeroLogs] = useState(10);
   const [activeTab, setActiveTab] = useState(TABS[0].key);
   const [isCompactLayout, setIsCompactLayout] = useState(false);
@@ -342,7 +367,7 @@ export default function GameRoomView({
   const [heroAudioState, setHeroAudioState] = useState(() =>
     audioManager ? audioManager.getState() : null
   );
-  
+  const heroAudioVolumeInputId = useId();
   const [selectedHeroAudioTrackId, setSelectedHeroAudioTrackId] = useState(null);
   const [selectedHeroAudioPresetId, setSelectedHeroAudioPresetId] = useState(null);
   const [heroAudioManualOverride, setHeroAudioManualOverride] = useState(false);
@@ -417,7 +442,7 @@ export default function GameRoomView({
         return '';
       }
       return date.toLocaleString();
-    } catch {
+    } catch (error) {
       return '';
     }
   }, []);
@@ -753,7 +778,17 @@ export default function GameRoomView({
     return map;
   }, [myHero, participants]);
 
-  
+  const participantsByOwnerId = useMemo(() => {
+    const map = new Map();
+    participants.forEach(participant => {
+      const ownerId = participant?.owner_id || participant?.ownerId;
+      if (!ownerId) return;
+      if (!map.has(ownerId)) {
+        map.set(ownerId, participant);
+      }
+    });
+    return map;
+  }, [participants]);
 
   const participantCountLabel = useMemo(() => {
     const count = Array.isArray(participants) ? participants.length : 0;
@@ -840,7 +875,7 @@ export default function GameRoomView({
 
   const heroAudioProfileKey = useMemo(
     () => buildHeroAudioProfileKey(heroAudioProfile),
-    [heroAudioProfile]
+    [heroAudioProfile?.heroId, heroAudioProfile?.heroName, heroAudioProfile?.source]
   );
 
   useEffect(() => {
@@ -911,14 +946,6 @@ export default function GameRoomView({
     });
 
     setHeroAudioManualOverride(false);
-    // NOTE: auto-suppressed by codemod. heroAudioProfile contains nested fields
-    // and length checks; adding all derived values to deps produced excessive
-    // re-renders. Please review before restoring the rule.
-    // NOTE: auto-suppressed by codemod. This suppression was added by automated
-    // tooling to reduce noise. Please review the surrounding effect body and
-    // either add the minimal safe dependencies or keep the suppression with
-    // an explanatory comment before removing this note.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [
     heroAudioProfile?.heroId,
     heroAudioProfile?.defaultTrackId,
@@ -927,7 +954,24 @@ export default function GameRoomView({
     heroAudioProfile?.presets?.length,
   ]);
 
-  
+  const heroAudioSourceLabel = useMemo(() => {
+    if (!heroAudioProfile) {
+      return '';
+    }
+
+    switch (heroAudioProfile.source) {
+      case 'viewer':
+        return '현재 브금 · 내 캐릭터';
+      case 'host':
+        return '현재 브금 · 방장 기준';
+      case 'participant':
+        return '현재 브금 · 참가자 공유';
+      case 'ranking':
+        return '현재 브금 · 랭킹 1위';
+      default:
+        return '현재 브금';
+    }
+  }, [heroAudioProfile]);
 
   const heroAudioActiveTrack = useMemo(() => {
     if (!heroAudioProfile) {
@@ -955,14 +999,34 @@ export default function GameRoomView({
     return null;
   }, [heroAudioProfile, selectedHeroAudioTrackId]);
 
-  
+  const heroAudioDurationLabel = useMemo(
+    () =>
+      Number.isFinite(heroAudioActiveTrack?.duration)
+        ? formatDurationLabel(heroAudioActiveTrack.duration)
+        : null,
+    [heroAudioActiveTrack?.duration]
+  );
 
-  const heroAudioTracks = useMemo(() => heroAudioProfile?.tracks ?? [], [heroAudioProfile]);
-  const heroAudioPresets = useMemo(() => heroAudioProfile?.presets ?? [], [heroAudioProfile]);
+  const heroAudioTracks = heroAudioProfile?.tracks ?? [];
+  const heroAudioPresets = heroAudioProfile?.presets ?? [];
+  const heroAudioActivePreset =
+    heroAudioPresets.find(preset => preset.id === selectedHeroAudioPresetId) || null;
 
   const heroAudioEffectSnapshot = useMemo(
     () => extractHeroAudioEffectSnapshot(heroAudioState),
-    [heroAudioState]
+    [
+      heroAudioState?.eqEnabled,
+      heroAudioState?.equalizer?.high,
+      heroAudioState?.equalizer?.low,
+      heroAudioState?.equalizer?.mid,
+      heroAudioState?.reverbEnabled,
+      heroAudioState?.reverbDetail?.decay,
+      heroAudioState?.reverbDetail?.mix,
+      heroAudioState?.compressorEnabled,
+      heroAudioState?.compressorDetail?.ratio,
+      heroAudioState?.compressorDetail?.release,
+      heroAudioState?.compressorDetail?.threshold,
+    ]
   );
 
   const currentHeroAudioPreference = useMemo(() => {
@@ -988,7 +1052,34 @@ export default function GameRoomView({
     [currentHeroAudioPreference]
   );
 
-  
+  const heroAudioEqSummary = useMemo(() => {
+    if (!heroAudioState?.equalizer) {
+      return '저 0dB · 중 0dB · 고 0dB';
+    }
+    return `저 ${formatDbLabel(heroAudioState.equalizer.low)} · 중 ${formatDbLabel(heroAudioState.equalizer.mid)} · 고 ${formatDbLabel(heroAudioState.equalizer.high)}`;
+  }, [
+    heroAudioState?.equalizer?.high,
+    heroAudioState?.equalizer?.low,
+    heroAudioState?.equalizer?.mid,
+  ]);
+
+  const heroAudioReverbSummary = useMemo(() => {
+    if (!heroAudioState?.reverbDetail) {
+      return '믹스 0% · 잔향 0.0s';
+    }
+    return `믹스 ${formatPercentLabel(heroAudioState.reverbDetail.mix)} · 잔향 ${formatSecondsLabel(heroAudioState.reverbDetail.decay)}`;
+  }, [heroAudioState?.reverbDetail?.decay, heroAudioState?.reverbDetail?.mix]);
+
+  const heroAudioCompressorSummary = useMemo(() => {
+    if (!heroAudioState?.compressorDetail) {
+      return '임계값 0dB · 비율 1.0:1 · 릴리즈 0ms';
+    }
+    return `임계값 ${formatDbLabel(heroAudioState.compressorDetail.threshold)} · 비율 ${formatRatioLabel(heroAudioState.compressorDetail.ratio)} · 릴리즈 ${formatMillisecondsLabel(heroAudioState.compressorDetail.release)}`;
+  }, [
+    heroAudioState?.compressorDetail?.ratio,
+    heroAudioState?.compressorDetail?.release,
+    heroAudioState?.compressorDetail?.threshold,
+  ]);
 
   const applyLoadedHeroAudioPreference = useCallback(
     preference => {
@@ -1258,7 +1349,174 @@ export default function GameRoomView({
     viewerId,
   ]);
 
-  
+  const heroAudioPresetLabel = heroAudioManualOverride
+    ? '커스텀'
+    : heroAudioActivePreset?.label || (heroAudioPresets.length ? '기본 프리셋' : '기본 설정');
+
+  const heroAudioVolumePercent = useMemo(() => {
+    const fromState = Number.isFinite(Number(heroAudioState?.volume))
+      ? Number(heroAudioState.volume)
+      : null;
+    const baselineVolume = Number.isFinite(Number(audioBaselineRef.current?.volume))
+      ? Number(audioBaselineRef.current.volume)
+      : null;
+    const resolved = fromState ?? baselineVolume ?? 0.72;
+    return Math.round(Math.min(Math.max(resolved, 0), 1) * 100);
+  }, [heroAudioState?.volume]);
+
+  const heroAudioIsMuted = heroAudioVolumePercent <= 0;
+
+  const heroAudioProgressPercent = useMemo(() => {
+    if (
+      !heroAudioState ||
+      !Number.isFinite(heroAudioState.duration) ||
+      heroAudioState.duration <= 0
+    ) {
+      return 0;
+    }
+    const ratio =
+      heroAudioState.progress && Number.isFinite(heroAudioState.progress)
+        ? heroAudioState.progress / heroAudioState.duration
+        : 0;
+    return Math.round(Math.min(Math.max(ratio, 0), 1) * 100);
+  }, [heroAudioState?.duration, heroAudioState?.progress]);
+
+  const heroAudioProgressLabel = useMemo(() => {
+    if (!heroAudioState) {
+      return '0:00';
+    }
+    const formatted = formatDurationLabel(heroAudioState.progress);
+    return formatted ?? '0:00';
+  }, [heroAudioState?.progress]);
+
+  const heroAudioDurationDisplay = useMemo(() => {
+    const formatted =
+      heroAudioDurationLabel ??
+      (heroAudioState?.duration ? formatDurationLabel(heroAudioState.duration) : null);
+    return formatted ?? null;
+  }, [heroAudioDurationLabel, heroAudioState?.duration]);
+
+  const handleToggleHeroAudioPlayback = useCallback(() => {
+    if (!audioManager) return;
+    audioManager.toggle();
+  }, [audioManager]);
+
+  const handleHeroAudioVolumeChange = useCallback(
+    event => {
+      if (!audioManager) return;
+      const raw = Number(event?.target?.value);
+      if (!Number.isFinite(raw)) return;
+      const normalized = Math.min(Math.max(raw / 100, 0), 1);
+      audioManager.setVolume(normalized);
+      if (normalized > 0) {
+        heroAudioVolumeMemoryRef.current = normalized;
+      }
+    },
+    [audioManager]
+  );
+
+  const handleToggleHeroAudioMute = useCallback(() => {
+    if (!audioManager) return;
+    const snapshot = audioManager.getState();
+    if (!snapshot) return;
+    if (snapshot.volume <= 0.001) {
+      const restore = heroAudioVolumeMemoryRef.current;
+      const fallback = Number.isFinite(restore) && restore > 0 ? restore : 0.72;
+      audioManager.setVolume(fallback);
+      heroAudioVolumeMemoryRef.current = fallback;
+      return;
+    }
+    if (snapshot.volume > 0) {
+      heroAudioVolumeMemoryRef.current = snapshot.volume;
+    }
+    audioManager.setVolume(0);
+  }, [audioManager]);
+
+  const handleSelectHeroAudioTrack = useCallback(
+    trackId => {
+      if (!heroAudioProfile) return;
+      const nextTrack = heroAudioTracks.find(track => track.id === trackId) || null;
+      if (!nextTrack) return;
+      heroAudioPreferenceDirtyRef.current = true;
+      setSelectedHeroAudioTrackId(nextTrack.id);
+      if (!heroAudioManualOverride && nextTrack.presetId) {
+        const matchingPreset =
+          heroAudioPresets.find(preset => preset.id === nextTrack.presetId) || null;
+        if (matchingPreset) {
+          setSelectedHeroAudioPresetId(matchingPreset.id);
+        }
+      }
+    },
+    [heroAudioManualOverride, heroAudioPresets, heroAudioProfile, heroAudioTracks]
+  );
+
+  const handleSelectHeroAudioPreset = useCallback(
+    presetId => {
+      if (!heroAudioProfile) return;
+      if (!presetId) {
+        heroAudioPreferenceDirtyRef.current = true;
+        setHeroAudioManualOverride(false);
+        setSelectedHeroAudioPresetId(null);
+        return;
+      }
+      if (!heroAudioPresets.some(preset => preset.id === presetId)) {
+        return;
+      }
+      heroAudioPreferenceDirtyRef.current = true;
+      setHeroAudioManualOverride(false);
+      setSelectedHeroAudioPresetId(presetId);
+    },
+    [heroAudioPresets, heroAudioProfile]
+  );
+
+  const handleResetHeroAudioPreset = useCallback(() => {
+    if (!heroAudioProfile) {
+      setSelectedHeroAudioPresetId(null);
+      setHeroAudioManualOverride(false);
+      return;
+    }
+    heroAudioPreferenceDirtyRef.current = true;
+    setHeroAudioManualOverride(false);
+    if (
+      heroAudioProfile.defaultPresetId &&
+      heroAudioPresets.some(preset => preset.id === heroAudioProfile.defaultPresetId)
+    ) {
+      setSelectedHeroAudioPresetId(heroAudioProfile.defaultPresetId);
+      return;
+    }
+    if (heroAudioPresets.length) {
+      setSelectedHeroAudioPresetId(heroAudioPresets[0].id);
+      return;
+    }
+    setSelectedHeroAudioPresetId(null);
+  }, [heroAudioPresets, heroAudioProfile]);
+
+  const handleToggleHeroEq = useCallback(() => {
+    if (!audioManager) return;
+    setHeroAudioManualOverride(true);
+    setSelectedHeroAudioPresetId(null);
+    heroAudioPreferenceDirtyRef.current = true;
+    const nextEnabled = !(heroAudioState?.eqEnabled ?? false);
+    audioManager.setEqEnabled(nextEnabled);
+  }, [audioManager, heroAudioState?.eqEnabled]);
+
+  const handleToggleHeroReverb = useCallback(() => {
+    if (!audioManager) return;
+    setHeroAudioManualOverride(true);
+    setSelectedHeroAudioPresetId(null);
+    heroAudioPreferenceDirtyRef.current = true;
+    const nextEnabled = !(heroAudioState?.reverbEnabled ?? false);
+    audioManager.setReverbEnabled(nextEnabled);
+  }, [audioManager, heroAudioState?.reverbEnabled]);
+
+  const handleToggleHeroCompressor = useCallback(() => {
+    if (!audioManager) return;
+    setHeroAudioManualOverride(true);
+    setSelectedHeroAudioPresetId(null);
+    heroAudioPreferenceDirtyRef.current = true;
+    const nextEnabled = !(heroAudioState?.compressorEnabled ?? false);
+    audioManager.setCompressorEnabled(nextEnabled);
+  }, [audioManager, heroAudioState?.compressorEnabled]);
 
   useEffect(() => {
     if (!audioManager) {
@@ -1518,7 +1776,8 @@ export default function GameRoomView({
     return filtered.map(battle => buildBattleLine(battle, heroNameMap));
   }, [heroNameMap, myEntry?.hero_id, myHero?.id, recentBattles]);
 
-  
+  const myRoleName = typeof myEntry?.role === 'string' ? myEntry.role : '';
+  const myHeroDisplayName = (myEntry?.hero && myEntry.hero.name) || myHero?.name || '';
 
   const displayedHeroLogs = useMemo(
     () => heroBattleLogs.slice(0, visibleHeroLogs),
@@ -1784,7 +2043,15 @@ export default function GameRoomView({
     }
   }, [alreadyJoined, joinLoading, onJoin]);
 
-  
+  const handleLeaveClick = useCallback(async () => {
+    if (!onLeave || leaveLoading) return;
+    setLeaveLoading(true);
+    try {
+      await onLeave();
+    } finally {
+      setLeaveLoading(false);
+    }
+  }, [leaveLoading, onLeave]);
 
   const handleDeleteClick = useCallback(() => {
     if (!onDelete || deleting) return;

@@ -49,6 +49,7 @@ export default function TitleBackgroundEditor() {
       setPendingUpload(null);
       setFileInfo(null);
       if (fileInputRef.current) {
+        // eslint-disable-next-line no-param-reassign
         fileInputRef.current.value = '';
       }
 
@@ -160,6 +161,7 @@ export default function TitleBackgroundEditor() {
         setPendingUpload(null);
         setFileInfo(null);
         if (fileInputRef.current) {
+          // eslint-disable-next-line no-param-reassign
           fileInputRef.current.value = '';
         }
         setStatus({ type: 'success', message: '타이틀 화면 배경을 저장했습니다.' });

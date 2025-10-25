@@ -1,3 +1,5 @@
+import React from 'react';
+
 import { baseStyles, previewStyles } from './styles';
 
 export default function PreviewStep({

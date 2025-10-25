@@ -1,11 +1,6 @@
 #!/usr/bin/env node
 /**
  * Deploy Supabase Edge Functions with retry + Pager/Slack notifications.
- *
- * SECURITY NOTE:
- * This script may read a Supabase service-role key from environment variables
- * (SUPABASE_SERVICE_ROLE). If present, ensure the key is stored only in protected
- * environments and not exposed in CI logs or untrusted runners.
  */
 
 const { spawn } = require('child_process');

@@ -1,3 +1,5 @@
+import React from 'react';
+
 import BackgroundLayer from '../sections/BackgroundLayer';
 import { shellStyles, navigationStyles, quickActionStyles } from './styles';
 

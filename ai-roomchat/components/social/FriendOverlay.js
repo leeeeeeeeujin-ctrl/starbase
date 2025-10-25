@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+
 import ProfileActionSheet from '../common/ProfileActionSheet';
 import SurfaceOverlay from '../common/SurfaceOverlay';
 

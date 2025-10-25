@@ -1,8 +1,175 @@
 // components/maker/editor/CodeEditor.js
-// JavaScript 코드 실행 에디터 컴포넌트
+// 다중 언어 지원 통합 개발 환경
 
 'use client';
-import { useState, useCallback, useRef } from 'react';
+
+import { useState, useCallback, useRef, useEffect } from 'react';
+
+// 지원 언어 정의
+const SUPPORTED_LANGUAGES = {
+  javascript: {
+    name: 'JavaScript',
+    icon: '🟨',
+    extension: 'js',
+    executable: true,
+    template: `// 🎮 JavaScript 게임 로직
+function gameSystem(players, gameState) {
+  // 게임 상태 업데이트 로직
+  console.log('게임 시작!', players)
+  
+  return {
+    success: true,
+    message: '게임이 성공적으로 실행되었습니다!',
+    newState: { ...gameState, turn: gameState.turn + 1 }
+  }
+}
+
+// 실행
+const result = gameSystem(
+  [{ name: '플레이어1', hp: 100 }, { name: '플레이어2', hp: 100 }],
+  { turn: 1, round: 1 }
+)
+
+console.log(result)
+return result`,
+  },
+  python: {
+    name: 'Python',
+    icon: '🐍',
+    extension: 'py',
+    executable: false, // 클라이언트에서 실행 불가
+    template: `# 🎮 Python 게임 시스템
+import json
+from typing import Dict, List, Any
+
+class GameEngine:
+    def __init__(self):
+        self.players = []
+        self.game_state = {}
+    
+    def add_player(self, name: str, stats: Dict[str, int]):
+        player = {
+            'name': name,
+            'stats': stats,
+            'id': len(self.players) + 1
+        }
+        self.players.append(player)
+        return player
+    
+    def process_turn(self, player_action: str) -> Dict[str, Any]:
+        # 턴 처리 로직
+        return {
+            'success': True,
+            'message': f'{player_action} 액션이 처리되었습니다',
+            'result': 'continue'
+        }
+
+# 사용 예시
+engine = GameEngine()
+engine.add_player('영웅', {'hp': 100, 'attack': 20})
+result = engine.process_turn('attack')
+print(json.dumps(result, ensure_ascii=False, indent=2))`,
+  },
+  sql: {
+    name: 'SQL',
+    icon: '🗃️',
+    extension: 'sql',
+    executable: false,
+    template: `-- 🎮 게임 데이터베이스 스키마
+
+-- 플레이어 테이블
+CREATE TABLE players (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    level INTEGER DEFAULT 1,
+    experience INTEGER DEFAULT 0,
+    hp INTEGER DEFAULT 100,
+    attack INTEGER DEFAULT 10,
+    defense INTEGER DEFAULT 5,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 게임 세션 테이블  
+CREATE TABLE game_sessions (
+    id SERIAL PRIMARY KEY,
+    session_name VARCHAR(100),
+    player_count INTEGER,
+    status VARCHAR(20) DEFAULT 'waiting',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 게임 로그 테이블
+CREATE TABLE game_logs (
+    id SERIAL PRIMARY KEY,
+    session_id INTEGER REFERENCES game_sessions(id),
+    player_id INTEGER REFERENCES players(id),
+    action_type VARCHAR(50),
+    action_data JSONB,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 샘플 데이터 삽입
+INSERT INTO players (username, level, hp, attack) VALUES
+('DragonSlayer', 5, 150, 25),
+('MagicUser', 3, 80, 35),
+('Tank', 4, 200, 15);
+
+-- 플레이어 조회
+SELECT username, level, hp, attack FROM players ORDER BY level DESC;`,
+  },
+  json: {
+    name: 'JSON Config',
+    icon: '📋',
+    extension: 'json',
+    executable: false,
+    template: `{
+  "gameConfig": {
+    "name": "Epic Battle RPG",
+    "version": "1.0.0",
+    "maxPlayers": 4,
+    "turnTimeLimit": 30,
+    "gameSettings": {
+      "difficulty": "normal",
+      "pvpEnabled": true,
+      "respawnAllowed": false
+    }
+  },
+  "playerClasses": [
+    {
+      "id": "warrior",
+      "name": "전사",
+      "baseStats": {
+        "hp": 120,
+        "attack": 25,
+        "defense": 20,
+        "magic": 5
+      },
+      "skills": ["강타", "방어", "돌진"]
+    },
+    {
+      "id": "mage", 
+      "name": "마법사",
+      "baseStats": {
+        "hp": 80,
+        "attack": 15,
+        "defense": 10,
+        "magic": 30
+      },
+      "skills": ["파이어볼", "힐링", "텔레포트"]
+    }
+  ],
+  "gameRules": {
+    "winCondition": "lastPlayerStanding",
+    "specialRules": [
+      "매 턴마다 1 HP씩 자동 회복",
+      "마법 사용시 마나 소모",
+      "크리티컬 확률 10%"
+    ]
+  }
+}`,
+  },
+};
 
 export default function CodeEditor({
   onCodeRun,
@@ -10,6 +177,7 @@ export default function CodeEditor({
   gameContext = {},
   visible = false,
 }) {
+  const [selectedLanguage, setSelectedLanguage] = useState('javascript');
   const [code, setCode] = useState(
     initialCode ||
       `// 🎮 게임 로직 코딩하기

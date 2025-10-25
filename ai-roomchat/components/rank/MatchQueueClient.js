@@ -1019,11 +1019,6 @@ export default function MatchQueueClient({
         }
       }
     });
-    // NOTE: auto-suppressed by codemod. This suppression was added by automated
-    // tooling to reduce noise. Please review the surrounding effect body and
-    // either add the minimal safe dependencies or keep the suppression with
-    // an explanatory comment before removing this note.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   }, [autoJoin, state.status, state.viewerId, targetRoleName, state.heroId, actions]);
 
   useEffect(() => {
@@ -1428,6 +1423,7 @@ export default function MatchQueueClient({
         try {
           console.info('[MatchQueue] 디버그 홀드 활성화', holdSnapshot);
         } catch (error) {
+          // eslint-disable-next-line no-console
           console.log('[MatchQueue] 디버그 홀드 활성화', holdSnapshot);
         }
       }

@@ -2,11 +2,13 @@
  * @jest-environment jsdom
  */
 
+import React from 'react';
 import { act, create } from 'react-test-renderer';
 
 const mockReadActiveSession = jest.fn();
 const mockSubscribeActiveSession = jest.fn(() => () => {});
 const mockClearActiveSessionRecord = jest.fn();
+const mockFetchLatestSessionRow = jest.fn();
 
 jest.mock('../../../lib/rank/activeSessionStorage', () => ({
   readActiveSession: (...args) => mockReadActiveSession(...args),
@@ -18,12 +20,6 @@ const mockWithTable = jest.fn();
 
 jest.mock('../../../lib/supabaseTables', () => ({
   withTable: (...args) => mockWithTable(...args),
-}));
-
-const mockFetchLatestSessionRow = jest.fn();
-
-jest.mock('../../../modules/rank/matchRealtimeSync', () => ({
-  fetchLatestSessionRow: (...args) => mockFetchLatestSessionRow(...args),
 }));
 
 const mockGetUser = jest.fn();
@@ -55,6 +51,12 @@ jest.mock('../../../lib/supabase', () => ({
   },
 }));
 
+// In jsdom, fetchLatestSessionRow takes the browser path (API fetch) and returns null.
+// Mock it to return a valid active session row so the overlay remains visible for the happy path.
+jest.mock('../../../modules/rank/matchRealtimeSync', () => ({
+  fetchLatestSessionRow: (...args) => mockFetchLatestSessionRow(...args),
+}));
+
 jest.mock('next/router', () => ({
   useRouter: () => ({
     asPath: '/',
@@ -77,13 +79,6 @@ describe('ActiveMatchOverlay', () => {
       turn: 3,
     });
 
-    mockFetchLatestSessionRow.mockResolvedValue({
-      id: 'session-1',
-      status: 'active',
-      owner_id: 'user-1',
-      game_id: 'game-1',
-    });
-
     mockWithTable.mockImplementation(async (_client, logicalName) => {
       if (logicalName === 'rank_games') {
         return { data: { id: 'game-1' }, error: null };
@@ -98,6 +93,13 @@ describe('ActiveMatchOverlay', () => {
     });
 
     mockGetUser.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
+
+    mockFetchLatestSessionRow.mockResolvedValue({
+      id: 'session-1',
+      status: 'active',
+      owner_id: 'user-1',
+      game_id: 'game-1',
+    });
 
     mockSessionQuery.select.mockClear();
     mockSessionQuery.eq.mockClear();
@@ -118,9 +120,8 @@ describe('ActiveMatchOverlay', () => {
       renderer = create(<ActiveMatchOverlay />);
     });
 
-    // Force re-render to apply useEffect state changes
     await act(async () => {
-      renderer.update(<ActiveMatchOverlay />);
+      await Promise.resolve();
     });
 
     const tree = renderer.toJSON();

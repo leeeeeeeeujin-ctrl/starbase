@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 
@@ -8,6 +8,8 @@ import useGameBrowser from '@/components/lobby/hooks/useGameBrowser';
 
 import EditHeroModal from './sections/EditHeroModal';
 import { CharacterDashboardProvider, useCharacterDashboardContext } from './context';
+import AIBattleGameController from '../arena/AIBattleGameController';
+import UnifiedGameSystem from '../game/UnifiedGameSystem';
 
 const NAV_ITEMS = [
   { id: 'game', label: '게임 찾기' },
@@ -32,6 +34,7 @@ export default function CharacterDashboard({
   const [editOpen, setEditOpen] = useState(false);
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [gameSearchEnabled, setGameSearchEnabled] = useState(false);
+  const [unifiedGameOpen, setUnifiedGameOpen] = useState(false);
   const swipeViewportRef = useRef(null);
   const animatingRef = useRef(false);
   const animationTimeoutRef = useRef(null);
@@ -100,6 +103,7 @@ export default function CharacterDashboard({
       scoreboardRows: participation.scoreboard,
       openEditPanel: () => setEditOpen(true),
       closeEditPanel: () => setEditOpen(false),
+      openUnifiedGame: () => setUnifiedGameOpen(true),
       onStartBattle,
     }),
     [
@@ -446,6 +450,47 @@ export default function CharacterDashboard({
         </button>
       ) : null}
       <EditHeroModal open={editOpen} onClose={() => setEditOpen(false)} />
+
+      {/* 통합 게임 시스템 */}
+      {unifiedGameOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 1000,
+            background: '#0f172a',
+          }}
+        >
+          <UnifiedGameSystem
+            initialCharacter={profile.hero}
+            onGameEnd={result => {
+              console.log('게임 종료:', result);
+              setUnifiedGameOpen(false);
+            }}
+          />
+          <button
+            onClick={() => setUnifiedGameOpen(false)}
+            style={{
+              position: 'fixed',
+              top: '20px',
+              right: '20px',
+              padding: '8px 16px',
+              background: 'rgba(239, 68, 68, 0.9)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              zIndex: 1001,
+            }}
+          >
+            ✕ 닫기
+          </button>
+        </div>
+      )}
+
       <OverviewSheet
         open={overviewOpen}
         onClose={closeOverview}
@@ -482,6 +527,7 @@ function CharacterPanel() {
     statSlides = [],
     selectedGameId,
     openEditPanel,
+    openUnifiedGame,
   } = useCharacterDashboardContext();
 
   const description = (edit?.description || hero?.description || '').trim();
@@ -614,6 +660,17 @@ function CharacterPanel() {
           </span>
         </button>
       </div>
+
+      {/* 통합 게임 시스템 실행 버튼 */}
+      <div style={styles.gameSystemSection}>
+        <button type="button" onClick={openUnifiedGame} style={styles.unifiedGameButton}>
+          🎮 AI 배틀 게임 제작 & 실행
+        </button>
+        <p style={styles.gameSystemDesc}>
+          캐릭터 정보를 활용한 프롬프트 기반 게임을 제작하고 실행하세요
+        </p>
+      </div>
+
       <div style={styles.panelStack}>
         <InstantBattleSection />
         <BattleLogSection />
@@ -1905,6 +1962,33 @@ const styles = {
     fontSize: 13,
     padding: '6px 14px',
     cursor: 'pointer',
+  },
+  gameSystemSection: {
+    borderRadius: 22,
+    border: '1px solid rgba(56, 189, 248, 0.3)',
+    background: 'rgba(8, 47, 73, 0.4)',
+    padding: 20,
+    margin: '20px 0',
+    textAlign: 'center',
+  },
+  unifiedGameButton: {
+    width: '100%',
+    padding: '16px 24px',
+    borderRadius: 12,
+    border: 'none',
+    background: 'linear-gradient(135deg, #38bdf8 0%, #0ea5e9 100%)',
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    marginBottom: 12,
+  },
+  gameSystemDesc: {
+    margin: 0,
+    fontSize: 13,
+    color: '#94a3b8',
+    lineHeight: 1.5,
   },
 };
 

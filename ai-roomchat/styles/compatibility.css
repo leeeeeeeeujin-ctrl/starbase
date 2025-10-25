@@ -1,0 +1,515 @@
+/**
+ * 🎨 CSS 호환성 스타일시트
+ * 
+ * IE 11+, Safari 12+, 구형 브라우저 지원을 위한
+ * 호환성 CSS 및 폴백 스타일
+ */
+
+/* ================================
+   CSS 변수 (IE 호환 폴백 포함)
+   ================================ */
+
+:root {
+  /* 컬러 시스템 */
+  --color-primary: #3b82f6;
+  --color-primary-light: #60a5fa;
+  --color-primary-dark: #1d4ed8;
+
+  --color-secondary: #6366f1;
+  --color-accent: #10b981;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
+
+  /* 그레이스케일 */
+  --color-white: #ffffff;
+  --color-gray-50: #f9fafb;
+  --color-gray-100: #f3f4f6;
+  --color-gray-200: #e5e7eb;
+  --color-gray-300: #d1d5db;
+  --color-gray-400: #9ca3af;
+  --color-gray-500: #6b7280;
+  --color-gray-600: #4b5563;
+  --color-gray-700: #374151;
+  --color-gray-800: #1f2937;
+  --color-gray-900: #111827;
+  --color-black: #000000;
+
+  /* 타이포그래피 */
+  --font-family-base:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-family-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+
+  --font-size-xs: 0.75rem; /* 12px */
+  --font-size-sm: 0.875rem; /* 14px */
+  --font-size-base: 1rem; /* 16px */
+  --font-size-lg: 1.125rem; /* 18px */
+  --font-size-xl: 1.25rem; /* 20px */
+  --font-size-2xl: 1.5rem; /* 24px */
+  --font-size-3xl: 1.875rem; /* 30px */
+
+  /* 스페이싱 */
+  --spacing-1: 0.25rem; /* 4px */
+  --spacing-2: 0.5rem; /* 8px */
+  --spacing-3: 0.75rem; /* 12px */
+  --spacing-4: 1rem; /* 16px */
+  --spacing-5: 1.25rem; /* 20px */
+  --spacing-6: 1.5rem; /* 24px */
+  --spacing-8: 2rem; /* 32px */
+  --spacing-10: 2.5rem; /* 40px */
+  --spacing-12: 3rem; /* 48px */
+  --spacing-16: 4rem; /* 64px */
+
+  /* 브레이크포인트 */
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+
+  /* 애니메이션 */
+  --duration-fast: 0.15s;
+  --duration-normal: 0.3s;
+  --duration-slow: 0.5s;
+
+  /* Z-index */
+  --z-dropdown: 1000;
+  --z-modal: 1050;
+  --z-tooltip: 1100;
+  --z-notification: 1200;
+}
+
+/* IE 11 폴백 변수 (JavaScript로 주입됨) */
+.ie11-fallback {
+  /* 컬러 */
+  color: #3b82f6; /* var(--color-primary) 대신 */
+  background-color: #ffffff; /* var(--color-white) 대신 */
+
+  /* 폰트 */
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+  font-size: 16px; /* var(--font-size-base) 대신 */
+
+  /* 스페이싱 */
+  padding: 16px; /* var(--spacing-4) 대신 */
+  margin: 16px; /* var(--spacing-4) 대신 */
+}
+
+/* ================================
+   Flexbox 호환성
+   ================================ */
+
+.flex {
+  display: -webkit-box; /* iOS 6-, Safari 3.1-6 */
+  display: -webkit-flex; /* Safari 6.1+, iOS 7.1+ */
+  display: -ms-flexbox; /* IE 10 */
+  display: flex; /* 표준 */
+}
+
+.flex-col {
+  -webkit-box-orient: vertical;
+  -webkit-box-direction: normal;
+  -webkit-flex-direction: column;
+  -ms-flex-direction: column;
+  flex-direction: column;
+}
+
+.flex-row {
+  -webkit-box-orient: horizontal;
+  -webkit-box-direction: normal;
+  -webkit-flex-direction: row;
+  -ms-flex-direction: row;
+  flex-direction: row;
+}
+
+.flex-wrap {
+  -webkit-flex-wrap: wrap;
+  -ms-flex-wrap: wrap;
+  flex-wrap: wrap;
+}
+
+.justify-center {
+  -webkit-box-pack: center;
+  -webkit-justify-content: center;
+  -ms-flex-pack: center;
+  justify-content: center;
+}
+
+.justify-between {
+  -webkit-box-pack: justify;
+  -webkit-justify-content: space-between;
+  -ms-flex-pack: justify;
+  justify-content: space-between;
+}
+
+.items-center {
+  -webkit-box-align: center;
+  -webkit-align-items: center;
+  -ms-flex-align: center;
+  align-items: center;
+}
+
+.flex-1 {
+  -webkit-box-flex: 1;
+  -webkit-flex: 1 1 0%;
+  -ms-flex: 1 1 0%;
+  flex: 1 1 0%;
+}
+
+/* ================================
+   Grid 호환성 (Flexbox 폴백)
+   ================================ */
+
+.grid {
+  display: -ms-grid; /* IE 10-11 */
+  display: grid; /* 표준 */
+}
+
+/* IE에서는 grid 대신 flexbox 사용 */
+@media screen and (-ms-high-contrast: active), screen and (-ms-high-contrast: none) {
+  .grid {
+    display: -webkit-box;
+    display: -webkit-flex;
+    display: -ms-flexbox;
+    display: flex;
+    -webkit-flex-wrap: wrap;
+    -ms-flex-wrap: wrap;
+    flex-wrap: wrap;
+  }
+
+  .grid-cols-1 > * {
+    -webkit-flex: 0 0 100%;
+    -ms-flex: 0 0 100%;
+    flex: 0 0 100%;
+  }
+  .grid-cols-2 > * {
+    -webkit-flex: 0 0 50%;
+    -ms-flex: 0 0 50%;
+    flex: 0 0 50%;
+  }
+  .grid-cols-3 > * {
+    -webkit-flex: 0 0 33.333333%;
+    -ms-flex: 0 0 33.333333%;
+    flex: 0 0 33.333333%;
+  }
+  .grid-cols-4 > * {
+    -webkit-flex: 0 0 25%;
+    -ms-flex: 0 0 25%;
+    flex: 0 0 25%;
+  }
+}
+
+.grid-cols-1 {
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  -ms-grid-columns: 1fr;
+}
+
+.grid-cols-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  -ms-grid-columns: 1fr 1fr;
+}
+
+.grid-cols-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  -ms-grid-columns: 1fr 1fr 1fr;
+}
+
+.gap-4 {
+  grid-gap: 1rem; /* IE 10-11 */
+  gap: 1rem; /* 표준 */
+}
+
+.gap-2 {
+  grid-gap: 0.5rem;
+  gap: 0.5rem;
+}
+
+/* ================================
+   Transform 호환성
+   ================================ */
+
+.transform {
+  -webkit-transform: translateZ(0);
+  -ms-transform: translateZ(0);
+  transform: translateZ(0);
+}
+
+.rotate-90 {
+  -webkit-transform: rotate(90deg);
+  -ms-transform: rotate(90deg);
+  transform: rotate(90deg);
+}
+
+.scale-105 {
+  -webkit-transform: scale(1.05);
+  -ms-transform: scale(1.05);
+  transform: scale(1.05);
+}
+
+.translate-x-1 {
+  -webkit-transform: translateX(0.25rem);
+  -ms-transform: translateX(0.25rem);
+  transform: translateX(0.25rem);
+}
+
+/* ================================
+   Transition 호환성
+   ================================ */
+
+.transition {
+  -webkit-transition: all 0.3s ease;
+  -o-transition: all 0.3s ease;
+  transition: all 0.3s ease;
+}
+
+.transition-colors {
+  -webkit-transition:
+    color 0.15s ease,
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+  -o-transition:
+    color 0.15s ease,
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.transition-transform {
+  -webkit-transition: -webkit-transform 0.15s ease;
+  -o-transition: transform 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    -webkit-transform 0.15s ease;
+}
+
+/* ================================
+   Box Shadow 호환성
+   ================================ */
+
+.shadow {
+  -webkit-box-shadow:
+    0 1px 3px 0 rgba(0, 0, 0, 0.1),
+    0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  box-shadow:
+    0 1px 3px 0 rgba(0, 0, 0, 0.1),
+    0 1px 2px 0 rgba(0, 0, 0, 0.06);
+}
+
+.shadow-lg {
+  -webkit-box-shadow:
+    0 10px 15px -3px rgba(0, 0, 0, 0.1),
+    0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  box-shadow:
+    0 10px 15px -3px rgba(0, 0, 0, 0.1),
+    0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+.shadow-none {
+  -webkit-box-shadow: none;
+  box-shadow: none;
+}
+
+/* ================================
+   Border Radius 호환성
+   ================================ */
+
+.rounded {
+  -webkit-border-radius: 0.25rem;
+  border-radius: 0.25rem;
+}
+
+.rounded-lg {
+  -webkit-border-radius: 0.5rem;
+  border-radius: 0.5rem;
+}
+
+.rounded-full {
+  -webkit-border-radius: 9999px;
+  border-radius: 9999px;
+}
+
+/* ================================
+   모바일 터치 최적화
+   ================================ */
+
+/* 터치 디바이스에서 탭 하이라이트 제거 */
+.touch-target {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -khtml-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* 최소 터치 크기 보장 */
+.touch-target,
+button,
+.btn,
+a[role='button'] {
+  min-height: 44px; /* Apple 권장 최소 터치 크기 */
+  min-width: 44px;
+}
+
+/* iOS Safari 줌 방지 */
+input,
+textarea,
+select {
+  font-size: 16px; /* 16px 미만시 iOS에서 자동 줌 */
+}
+
+/* ================================
+   IE 11 전용 핫픽스
+   ================================ */
+
+/* IE 11에서 flex 버그 수정 */
+@media screen and (-ms-high-contrast: active), screen and (-ms-high-contrast: none) {
+  .flex-ie-fix {
+    -ms-flex: 1 1 auto;
+    flex: 1 1 auto;
+  }
+
+  /* IE에서 min-height 버그 수정 */
+  .min-h-screen {
+    height: 100vh;
+  }
+
+  /* IE에서 object-fit 대체 */
+  .object-cover {
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+  }
+}
+
+/* ================================
+   Safari 전용 핫픽스
+   ================================ */
+
+/* Safari에서 position: sticky 버그 수정 */
+@supports (-webkit-appearance: none) {
+  .sticky-safari-fix {
+    position: -webkit-sticky;
+    position: sticky;
+  }
+}
+
+/* Safari에서 100vh 버그 수정 */
+@supports (-webkit-appearance: none) {
+  .h-screen-safari {
+    height: 100vh;
+    height: -webkit-fill-available;
+  }
+}
+
+/* ================================
+   안드로이드 브라우저 핫픽스
+   ================================ */
+
+/* 안드로이드에서 input 배경 제거 */
+@media screen and (-webkit-min-device-pixel-ratio: 0) {
+  input {
+    background-clip: padding-box;
+  }
+}
+
+/* ================================
+   접근성 개선
+   ================================ */
+
+/* 포커스 가시성 개선 */
+.focus-visible:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* 고대비 모드 지원 */
+@media (prefers-contrast: high) {
+  .btn {
+    border: 2px solid currentColor;
+  }
+}
+
+/* 동작 감소 모드 지원 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    -webkit-animation-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    -webkit-animation-iteration-count: 1 !important;
+    animation-iteration-count: 1 !important;
+    -webkit-transition-duration: 0.01ms !important;
+    -o-transition-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ================================
+   인쇄 최적화
+   ================================ */
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  /* 링크 URL 표시 */
+  a[href]:after {
+    content: ' (' attr(href) ')';
+  }
+
+  /* 색상을 흑백으로 */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    color-adjust: exact;
+  }
+}
+
+/* ================================
+   유틸리티 클래스
+   ================================ */
+
+/* 시각적으로 숨기지만 스크린 리더에는 노출 */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* 텍스트 생략 */
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 스크롤바 스타일링 (WebKit 브라우저) */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #a1a1a1;
+}

@@ -1,3 +1,5 @@
+import React from 'react';
+
 import { useCharacterDashboardContext } from '../../context';
 import StatPageSelector from '../left/StatPageSelector';
 import GameStatCarousel from '../left/GameStatCarousel';

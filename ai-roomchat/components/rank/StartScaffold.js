@@ -1,5 +1,5 @@
 // components/maker/VarRulesEditor.js
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 export default function VarRulesEditor({ value = [], onChange, title = '변수 규칙' }) {
   const [list, setList] = useState(() => (Array.isArray(value) ? value : []));

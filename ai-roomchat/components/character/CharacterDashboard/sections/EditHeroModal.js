@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
 import { useCharacterDashboardContext } from '../context';
 import HeroDetailsForm from './editHero/HeroDetailsForm';
 import HeroBackgroundSection from './editHero/HeroBackgroundSection';
@@ -141,6 +142,8 @@ export default function EditHeroModal({ open, onClose }) {
     }
   }, [open, draft, hero?.bgm_url]);
 
+  if (!open) return null;
+
   const draftState = draft || createDraftFromProfile(hero, edit) || EMPTY_DRAFT;
   const abilityCards = useMemo(() => buildAbilityCards(draftState), [draftState]);
   const backgroundSource =
@@ -221,11 +224,6 @@ export default function EditHeroModal({ open, onClose }) {
     onClose?.();
   }, [onClose]);
 
-  // NOTE: auto-suppressed by codemod. This suppression was added by automated
-  // tooling to reduce noise. Please review the surrounding effect body and
-  // either add the minimal safe dependencies or keep the suppression with
-  // an explanatory comment before removing this note.
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- auto-suppressed by codemod
   const abilityTabContent = (
     <HeroAbilitiesSection
       abilityCards={abilityCards}

@@ -1,3 +1,5 @@
+import { formatOwnerDisplayName } from './participants';
+
 export function formatRealtimeReason(reason) {
   if (!reason) return '';
   const normalized = String(reason).trim().toLowerCase();

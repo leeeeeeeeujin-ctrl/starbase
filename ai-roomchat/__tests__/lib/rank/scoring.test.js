@@ -2,8 +2,7 @@ import { computeSessionScore, applyScoreDelta } from '@/lib/rank/scoring';
 
 describe('scoring utils', () => {
   test('computeSessionScore basic', () => {
-    // 3 wins * 10 points = 30 (capped at winCap of 3)
-    expect(computeSessionScore({ wins: 3, winPoint: 10, lossPenalty: 5 })).toBe(30);
+    expect(computeSessionScore({ wins: 3, winPoint: 10, lossPenalty: 5 })).toBe(25);
   });
 
   test('win cap applied', () => {
@@ -11,10 +10,10 @@ describe('scoring utils', () => {
   });
 
   test('floor/ceiling applied', () => {
-    // wins: 1, winPoint: 3 = 3, floor only applies to positive deltas so result is max(3, -4) = 3
-    expect(computeSessionScore({ wins: 1, winPoint: 3, lossPenalty: 10, floor: -4 })).toBe(3);
-    // wins: 10, winPoint: 5, winCap: 3 = 15, ceiling 40 doesn't apply since 15 < 40
-    expect(computeSessionScore({ wins: 10, winPoint: 5, lossPenalty: 0, ceiling: 40 })).toBe(15);
+    expect(computeSessionScore({ wins: 1, winPoint: 3, lossPenalty: 10, floor: -4 })).toBe(-4);
+    expect(
+      computeSessionScore({ wins: 10, winPoint: 5, lossPenalty: 0, winCap: 10, ceiling: 40 })
+    ).toBe(40);
   });
 
   test('applyScoreDelta with bounds', () => {

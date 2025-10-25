@@ -2,12 +2,6 @@
 /**
  * Supabase 데이터 조회/생성/삭제 유틸리티
  * 안전한 CRUD 작업만 수행
- *
- * SECURITY NOTE:
- * This script reads a Supabase service-role key from the environment
- * (e.g. SUPABASE_SERVICE_ROLE_KEY). Service-role keys are highly privileged.
- * Only run this script in trusted, server-side environments and never expose
- * the key in client code, public logs, or unprotected CI runs.
  */
 
 const path = require('path');

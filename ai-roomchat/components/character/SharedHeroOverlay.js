@@ -732,6 +732,7 @@ function HeroProfileModal({
 
         <div style={profileStyles.heroMedia} role="presentation" onClick={handleCycle}>
           {hero?.image_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={hero.image_url}
               alt={heroName}
@@ -1183,6 +1184,7 @@ export default function SharedHeroOverlay() {
                 <div key={hero.id} style={styles.rankingHeroRow}>
                   <div style={styles.rankingHeroMeta}>
                     {hero.image_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
                       <img src={hero.image_url} alt={hero.name} style={styles.rankingAvatar} />
                     ) : (
                       <div style={styles.rankingFallback}>{hero.name.slice(0, 2)}</div>

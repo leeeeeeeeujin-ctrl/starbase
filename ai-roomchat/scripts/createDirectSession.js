@@ -1,12 +1,6 @@
 #!/usr/bin/env node
 /**
  * 매칭 우회 - 직접 세션 생성 테스트
- *
- * SECURITY NOTE:
- * This script uses a Supabase service-role key from environment variables
- * (SUPABASE_SERVICE_ROLE_KEY). Only run locally or in restricted server
- * environments. Do NOT expose the service-role key in client contexts or
- * unprotected CI workflows.
  */
 
 const path = require('path');

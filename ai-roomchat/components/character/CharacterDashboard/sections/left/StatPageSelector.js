@@ -1,3 +1,5 @@
+import React from 'react';
+
 const styles = {
   container: {
     display: 'flex',

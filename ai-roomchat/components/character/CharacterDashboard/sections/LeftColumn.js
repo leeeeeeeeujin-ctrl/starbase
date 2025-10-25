@@ -1,3 +1,5 @@
+import React from 'react';
+
 import { useCharacterDashboardContext } from '../context';
 import HeroProfileCard from './left/HeroProfileCard';
 import StatPageSelector from './left/StatPageSelector';

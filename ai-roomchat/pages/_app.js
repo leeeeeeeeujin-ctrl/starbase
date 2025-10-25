@@ -1,3 +1,4 @@
+import React from 'react';
 import { useRouter } from 'next/router';
 
 import SharedHeroOverlay from '@/components/character/SharedHeroOverlay';

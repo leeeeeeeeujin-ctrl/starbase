@@ -3,11 +3,6 @@
  * Supabase를 직접 조회하는 유틸리티
  * 사용법: node scripts/querySupabase.js <query>
  * 예시: node scripts/querySupabase.js "select * from rank_sessions where extras->>'simulation' = 'true' limit 5"
- *
- * SECURITY NOTE:
- * This utility uses the Supabase service-role key from .env.local (SUPABASE_SERVICE_ROLE_KEY).
- * It should only be used in trusted, server-side environments. Avoid exposing this key in
- * client-side code, public CI logs, or unprotected environments.
  */
 
 const path = require('path');
