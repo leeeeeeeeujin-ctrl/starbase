@@ -44,4 +44,4 @@ jobs:
 
           # Try to run SQL file using supabase CLI. The exact command may vary by CLI version.
           # We attempt `supabase db query` which runs a SQL file against the project's database.
-          supabase db query -f docs/sql/20251025_add_recompute_queue.sql --project-ref "$PROJECT_REF"
+            supabase db query --file docs/sql/20251025_add_recompute_queue.sql --project-ref "$PROJECT_REF" --service-role-key "$SUPABASE_SERVICE_ROLE_KEY" --yes
