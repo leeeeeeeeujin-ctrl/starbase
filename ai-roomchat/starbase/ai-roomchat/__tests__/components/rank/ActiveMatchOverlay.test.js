@@ -14,15 +14,32 @@ jest.mock('../../../lib/rank/activeSessionStorage', () => ({
   clearActiveSessionRecord: (...args) => mockClearActiveSessionRecord(...args),
 }));
 
+// Also mock the aliased import path used by the component in some resolutions
+jest.mock('@/lib/rank/activeSessionStorage', () => ({
+  readActiveSession: (...args) => mockReadActiveSession(...args),
+  subscribeActiveSession: (...args) => mockSubscribeActiveSession(...args),
+  clearActiveSessionRecord: (...args) => mockClearActiveSessionRecord(...args),
+}));
+
 const mockWithTable = jest.fn();
 
 jest.mock('../../../lib/supabaseTables', () => ({
   withTable: (...args) => mockWithTable(...args),
 }));
 
+// alias mock for component import path
+jest.mock('@/lib/supabaseTables', () => ({
+  withTable: (...args) => mockWithTable(...args),
+}));
+
 const mockFetchLatestSessionRow = jest.fn();
 
 jest.mock('../../../modules/rank/matchRealtimeSync', () => ({
+  fetchLatestSessionRow: (...args) => mockFetchLatestSessionRow(...args),
+}));
+
+// alias mock for component import path
+jest.mock('@/modules/rank/matchRealtimeSync', () => ({
   fetchLatestSessionRow: (...args) => mockFetchLatestSessionRow(...args),
 }));
 
@@ -47,6 +64,16 @@ const mockSessionQuery = {
 const mockFrom = jest.fn(() => mockSessionQuery);
 
 jest.mock('../../../lib/supabase', () => ({
+  supabase: {
+    auth: {
+      getUser: (...args) => mockGetUser(...args),
+    },
+    from: (...args) => mockFrom(...args),
+  },
+}));
+
+// alias mock for component import path
+jest.mock('@/lib/supabase', () => ({
   supabase: {
     auth: {
       getUser: (...args) => mockGetUser(...args),
@@ -118,9 +145,9 @@ describe('ActiveMatchOverlay', () => {
       renderer = create(<ActiveMatchOverlay />);
     });
 
-    // Force re-render to apply useEffect state changes
+    // Allow effects and async validation to run
     await act(async () => {
-      renderer.update(<ActiveMatchOverlay />);
+      await Promise.resolve();
     });
 
     const tree = renderer.toJSON();

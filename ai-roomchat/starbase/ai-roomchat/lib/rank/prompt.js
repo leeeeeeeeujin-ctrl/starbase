@@ -86,16 +86,16 @@ function findFallbackHero({ pools, key, excludeHeroId }) {
 function placeholderLabels(slotNo, useZeroBased = true) {
   const numeric = Number(slotNo);
   if (!Number.isFinite(numeric)) return [];
-  if (useZeroBased) {
-    return [String(numeric)];
-  }
+  if (useZeroBased) return [String(numeric)];
   return [String(numeric + 1)];
 }
 
 function clearSlotPlaceholders(text, slotNo) {
   if (!text) return '';
   let out = text;
-  const labels = placeholderLabels(slotNo);
+  // Remove both zero-based and one-based labels that could reference this
+  // slot index. For slot index N we remove {{slotN.*}} and {{slotN+1.*}}
+  const labels = [String(Number(slotNo)), String(Number(slotNo) + 1)];
   labels.forEach(label => {
     const pattern = new RegExp(`\\{\\{slot${label}\\.[^}]+\\}\\}`, 'g');
     out = out.replace(pattern, '');
@@ -112,7 +112,7 @@ function applyHeroPlaceholders(text, hero, slotNo, useZeroBased = true) {
   const labels = placeholderLabels(slotNo, useZeroBased);
   const zeroBasedValue = Number(slotNo);
   const oneBasedValue = zeroBasedValue + 1;
-
+  // (no debug logging)
   labels.forEach(label => {
     out = out.replaceAll(`{{slot${label}.name}}`, hero.name ?? '');
     out = out.replaceAll(`{{slot${label}.description}}`, hero.description ?? '');
@@ -227,6 +227,7 @@ export function compileTemplate({ template, slotsMap = {}, historyText = '' }) {
   // zero-based (slot0) or one-based (slot1) form. Prefer zero-based when
   // both present. This prevents earlier replacements from accidentally
   // overwriting placeholders intended for other slots.
+  // no-op: input logging removed
   const slotLabelUsage = new Map();
   for (let s = 0; s < 12; s += 1) {
     const zeroLabel = new RegExp(`\\{\\{slot${s}\\.[^}]+\\}\\}`);
@@ -249,13 +250,72 @@ export function compileTemplate({ template, slotsMap = {}, historyText = '' }) {
     }
 
     if (!hero) {
-      out = clearSlotPlaceholders(out, s);
+      // do not mutate the template here; let the single-pass resolver
+      // handle missing heroes and produce empty substitutions.
       continue;
     }
 
-    const useZeroBased = slotLabelUsage.get(s) !== 'one';
-    out = applyHeroPlaceholders(out, hero, s, useZeroBased);
+    // Do not perform per-slot global replacements here; instead we will
+    // perform a single-pass placeholder replacement below to avoid
+    // alias/overlap issues when templates mix zero- and one-based labels.
   }
+
+  // Single-pass placeholder resolution: prefer one-based (N -> slot N-1)
+  // when that target has a resolved hero, otherwise fall back to zero-based N.
+  // no-op: before-replace logging removed
+
+  out = out.replace(/\{\{slot(\d+)\.([^}]+)\}\}/g, (match, labelNumStr, key) => {
+    const labelNum = Number(labelNumStr);
+    if (!Number.isFinite(labelNum)) return '';
+
+    // Decide whether this label should be interpreted as one-based or
+    // zero-based by consulting the pre-scan slotLabelUsage. If the label
+    // corresponds to one-based usage for the (labelNum-1) slot, prefer
+    // mapping to that index first; otherwise prefer zero-based.
+    const zeroIdx = labelNum;
+    const oneIdx = labelNum - 1;
+    const candidateIndices = [];
+    const onePrefers = oneIdx >= 0 && slotLabelUsage.get(oneIdx) === 'one';
+    if (onePrefers) {
+      candidateIndices.push(oneIdx, zeroIdx);
+    } else {
+      candidateIndices.push(zeroIdx, oneIdx);
+    }
+
+    let resolved = null;
+    for (const idx of candidateIndices) {
+      if (!Number.isFinite(Number(idx)) || idx < 0) continue;
+      const baseHero = slotsMap[idx];
+      const { hero: resolvedHero } = resolveSlotHero({ slotNo: idx, baseHero, pools });
+      if (resolvedHero) {
+        resolved = { hero: resolvedHero, slotIndex: idx };
+        break;
+      }
+    }
+
+    if (!resolved) return '';
+
+    // no-op: replacement logging removed
+
+    const { hero: h, slotIndex } = resolved;
+    const zeroBasedValue = Number(slotIndex);
+    const oneBasedValue = zeroBasedValue + 1;
+
+    if (key === 'name') return h.name ?? '';
+    if (key === 'description') return h.description ?? '';
+    if (/^ability\d+$/.test(key)) return h[key] ?? '';
+    if (key === 'role') return h.role ?? '';
+    if (key === 'side') return h.side ?? '';
+    if (key === 'status') return h.status ?? '';
+    if (key === 'owner_id' || key === 'ownerId') return h.owner_id ?? h.ownerId ?? '';
+    if (key === 'slotNo' || key === 'slot_no') return h.slotNo ?? h.slot_no ?? zeroBasedValue;
+    if (key === 'slotNumber' || key === 'slot_number') return h.slotNumber ?? h.slot_number ?? oneBasedValue;
+    if (key === 'slotIndex' || key === 'slot_index') return h.slotIndex ?? h.slot_index ?? zeroBasedValue;
+    if (key === 'name_or_role') return h.name_or_role ?? h.name ?? h.role ?? '';
+    if (key === 'display_name') return h.display_name ?? h.name ?? '';
+
+    return stringifyValue(h[key]);
+  });
 
   out = out.replaceAll('{{history.last1}}', last1);
   out = out.replaceAll('{{history.last2}}', last2);
