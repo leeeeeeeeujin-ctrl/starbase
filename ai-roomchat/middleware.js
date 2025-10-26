@@ -53,6 +53,18 @@ export async function middleware(request) {
       try {
         console.error('[middleware] failed to import ./config/features:', importErr && importErr.message);
         if (importErr && importErr.stack) console.error(importErr.stack);
+        // If debug requested (env or request header), return diagnostic payload
+        const debugActive = process.env.DEBUG_MIDDLEWARE === '1' || request.headers.get('x-debug-middleware') === '1';
+        if (debugActive) {
+          const props = Object.getOwnPropertyNames(importErr).reduce((acc, k) => {
+            try { acc[k] = String(importErr[k]).slice(0, 200); } catch (e) { acc[k] = '<unserializable>'; }
+            return acc;
+          }, {});
+          const diagResp = { error: 'middleware_import_failed', message: importErr && importErr.message, props };
+          const res = NextResponse.json(diagResp, { status: 500 });
+          res.headers.set('X-MW-DIAG', 'import_failed');
+          return res;
+        }
       } catch (logErr) {
         // ignore logging errors
       }
@@ -90,6 +102,18 @@ export async function middleware(request) {
     try {
       console.error('[middleware] caught error during request processing:', err && err.message);
       if (err && err.stack) console.error(err.stack);
+      // If debug requested (env or request header), expose a trimmed diagnostic object
+      const debugActive = process.env.DEBUG_MIDDLEWARE === '1' || request.headers.get('x-debug-middleware') === '1';
+      if (debugActive) {
+        const props = Object.getOwnPropertyNames(err).reduce((acc, k) => {
+          try { acc[k] = String(err[k]).slice(0, 200); } catch (e) { acc[k] = '<unserializable>'; }
+          return acc;
+        }, {});
+        const diag = { message: err && err.message, props };
+        const res = NextResponse.json({ error: 'internal_middleware_error', diagnostic: diag }, { status: 500 });
+        res.headers.set('X-MW-DIAG', 'internal_error');
+        return res;
+      }
     } catch (logErr) {
       // ignore logging errors
     }
