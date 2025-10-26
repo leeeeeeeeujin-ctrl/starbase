@@ -1,14 +1,44 @@
 import { NextResponse } from 'next/server';
-import FEATURES, { getFeatureForRoute } from './config/features';
+
+// Note: switch to a dynamic import for feature config so any module-evaluation
+// errors (e.g. references to Node-only globals like __dirname) can be
+// caught at runtime and logged. Static imports fail during module
+// evaluation and are not catchable by the middleware function's try/catch.
 
 /**
  * Feature Flag Middleware
  *
  * 비활성화된 기능의 페이지/API로 접근 시 404 또는 적절한 응답 반환
  */
-export function middleware(request) {
+export async function middleware(request) {
+  // We make the middleware async and dynamically import the features module
+  // so that if that module (or any of its transitive dependencies) throws
+  // during evaluation (for example by referencing `__dirname`), we can
+  // catch and log the stack trace and return a safe 500 response.
   try {
     const { pathname } = request.nextUrl;
+
+    // Dynamic import so import-time errors are catchable here
+    let FEATURES;
+    let getFeatureForRoute;
+    try {
+      const mod = await import('./config/features');
+      FEATURES = mod.default;
+      getFeatureForRoute = mod.getFeatureForRoute;
+    } catch (importErr) {
+      // Log the full stack to Vercel logs for diagnosis
+      try {
+        console.error('[middleware] failed to import ./config/features:', importErr && importErr.message);
+        if (importErr && importErr.stack) console.error(importErr.stack);
+      } catch (logErr) {
+        // ignore logging errors
+      }
+
+      return NextResponse.json(
+        { error: 'internal_middleware_error', message: 'Middleware initialization failed' },
+        { status: 500 }
+      );
+    }
 
     // Feature check
     const feature = getFeatureForRoute(pathname);
