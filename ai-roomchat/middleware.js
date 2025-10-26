@@ -1,4 +1,8 @@
-import { NextResponse } from 'next/server';
+// Dynamically import NextResponse at runtime inside the middleware function
+// to avoid pulling `next/server` and its vendor dependencies into module
+// evaluation time. Some bundled vendor modules set a bundler base using
+// `__dirname` which throws in Edge (no __dirname). Dynamic import allows
+// us to catch and handle import-time errors inside the middleware function.
 
 // Note: switch to a dynamic import for feature config so any module-evaluation
 // errors (e.g. references to Node-only globals like __dirname) can be
@@ -11,6 +15,28 @@ import { NextResponse } from 'next/server';
  * 비활성화된 기능의 페이지/API로 접근 시 404 또는 적절한 응답 반환
  */
 export async function middleware(request) {
+  // Lazy-load NextResponse so top-level module evaluation doesn't include
+  // server-only vendor code that may reference Node globals like __dirname.
+  let NextResponse;
+  try {
+    ({ NextResponse } = await import('next/server'));
+  } catch (e) {
+    // If dynamic import fails (very unlikely), provide a minimal fallback
+    // that uses the standard Response API so we can still return JSON
+    // diagnostic responses. This fallback is intentionally small — the
+    // normal NextResponse behaviors (rewrite/next) should be available
+    // from the real import in typical environments.
+    NextResponse = {
+      json: (obj, opts = {}) => {
+        const body = JSON.stringify(obj);
+        const headers = new Headers({ 'content-type': 'application/json' });
+        const status = (opts && opts.status) || 200;
+        return new Response(body, { status, headers });
+      },
+      rewrite: (url) => new Response(null, { status: 307, headers: { location: String(url) } }),
+      next: () => undefined,
+    };
+  }
   // We make the middleware async and dynamically import the features module
   // so that if that module (or any of its transitive dependencies) throws
   // during evaluation (for example by referencing `__dirname`), we can
@@ -53,6 +79,18 @@ export async function middleware(request) {
       try {
         console.error('[middleware] failed to import ./config/features:', importErr && importErr.message);
         if (importErr && importErr.stack) console.error(importErr.stack);
+        // If debug requested (env or request header), return diagnostic payload
+        const debugActive = process.env.DEBUG_MIDDLEWARE === '1' || request.headers.get('x-debug-middleware') === '1';
+        if (debugActive) {
+          const props = Object.getOwnPropertyNames(importErr).reduce((acc, k) => {
+            try { acc[k] = String(importErr[k]).slice(0, 200); } catch (e) { acc[k] = '<unserializable>'; }
+            return acc;
+          }, {});
+          const diagResp = { error: 'middleware_import_failed', message: importErr && importErr.message, props };
+          const res = NextResponse.json(diagResp, { status: 500 });
+          res.headers.set('X-MW-DIAG', 'import_failed');
+          return res;
+        }
       } catch (logErr) {
         // ignore logging errors
       }
@@ -90,6 +128,18 @@ export async function middleware(request) {
     try {
       console.error('[middleware] caught error during request processing:', err && err.message);
       if (err && err.stack) console.error(err.stack);
+      // If debug requested (env or request header), expose a trimmed diagnostic object
+      const debugActive = process.env.DEBUG_MIDDLEWARE === '1' || request.headers.get('x-debug-middleware') === '1';
+      if (debugActive) {
+        const props = Object.getOwnPropertyNames(err).reduce((acc, k) => {
+          try { acc[k] = String(err[k]).slice(0, 200); } catch (e) { acc[k] = '<unserializable>'; }
+          return acc;
+        }, {});
+        const diag = { message: err && err.message, props };
+        const res = NextResponse.json({ error: 'internal_middleware_error', diagnostic: diag }, { status: 500 });
+        res.headers.set('X-MW-DIAG', 'internal_error');
+        return res;
+      }
     } catch (logErr) {
       // ignore logging errors
     }
