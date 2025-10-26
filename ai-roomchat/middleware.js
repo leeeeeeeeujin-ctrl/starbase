@@ -18,6 +18,29 @@ export async function middleware(request) {
   try {
     const { pathname } = request.nextUrl;
 
+    // Temporary diagnostics: log a precomputed list of suspicious files that
+    // reference Node-only APIs (this JSON is generated at repo-level and
+    // bundled into the middleware so Edge logs will contain it). Safe: no
+    // secrets are written here. This is ephemeral and will be reverted after
+    // we collect Vercel logs.
+    try {
+      const diag = await import('./tmp_diagnostics/suspicious_files.json');
+      const suspicious = diag && (diag.default || diag);
+      if (Array.isArray(suspicious) && suspicious.length) {
+        try {
+          console.warn('[middleware diag] suspicious_files_count=', suspicious.length);
+          // Log up to 50 entries to avoid huge logs
+          console.warn('[middleware diag] suspicious_files=', suspicious.slice(0, 50));
+        } catch (e) {
+          // ignore logging issues
+        }
+      }
+    } catch (e) {
+      try {
+        console.warn('[middleware diag] no suspicious list available:', e && e.message);
+      } catch (ignore) {}
+    }
+
     // Dynamic import so import-time errors are catchable here
     let FEATURES;
     let getFeatureForRoute;

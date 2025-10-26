@@ -52,7 +52,6 @@ try {
  */
 
 import { polyfillLoader } from './polyfills.js';
-import { universalAdapter } from './universalEnvironmentAdapter.js';
 
 class CompatibilityManager {
   constructor() {
@@ -62,12 +61,36 @@ class CompatibilityManager {
     this.isInitialized = false;
     this.adaptations = new Map();
 
-    // 환경 정보
-    this.environment = universalAdapter.getEnvironmentInfo();
-    this.universalConfig = universalAdapter.getConfig();
+    // 환경 정보은 지연 초기화합니다. (모듈 import 시점에 Node 전용 어댑터를
+    // 평가하지 않도록 함) — Edge/middleware 번들에 Node 전용 모듈이 포함되는
+    // 것을 방지하기 위해서입니다.
+    this.environment = null;
+    this.universalConfig = null;
 
     // 초기화 완료 콜백들
     this.onReadyCallbacks = [];
+  }
+
+  /**
+   * Ensure environment/universalConfig are populated lazily. This avoids
+   * calling into `universalAdapter` at module-import/constructor time which
+   * may pull Node-only modules into client/Edge bundles.
+   */
+  ensureEnvironment() {
+    if (this.environment != null && this.universalConfig != null) return;
+
+    // Safe, synchronous best-effort defaults. We intentionally avoid importing
+    // or calling `universalAdapter` synchronously here to prevent module
+    // evaluation of Node-only adapters in client/Edge bundles. If callers
+    // need real environment info they should call initialize(), which will
+    // load the adapter lazily.
+    this.environment = this.environment || {
+      isBrowser: typeof window !== 'undefined',
+      type: typeof window !== 'undefined' ? 'browser' : 'node',
+      features: {},
+      device: { type: 'unknown' },
+    };
+    this.universalConfig = this.universalConfig || {};
   }
 
   /**
@@ -433,8 +456,14 @@ class CompatibilityManager {
     try {
       this.setupAdaptations();
     } catch (e) {}
-    this.environment = this.environment || universalAdapter.getEnvironmentInfo();
-    this.universalConfig = this.universalConfig || universalAdapter.getConfig();
+
+    // Lazily ensure environment/universalConfig are available without forcing
+    // evaluation of Node-only adapters during module import.
+    try {
+      this.ensureEnvironment();
+    } catch (e) {
+      // ignore failures — ensureEnvironment is best-effort
+    }
   }
 
   /**
@@ -449,8 +478,27 @@ class CompatibilityManager {
 
     try {
       // 0. 환경 감지 및 설정
-      this.environment = universalAdapter.getEnvironmentInfo();
-      this.universalConfig = universalAdapter.getConfig();
+      // Lazily import the universalEnvironmentAdapter to avoid evaluating
+      // Node-only code at module-import time. If the import fails, fall back
+      // to synchronous defaults provided by ensureEnvironment().
+      try {
+        const uaMod = await import('./universalEnvironmentAdapter.js');
+        const universalAdapterLocal = uaMod && (uaMod.universalAdapter || uaMod.default || uaMod);
+        if (universalAdapterLocal && typeof universalAdapterLocal.getEnvironmentInfo === 'function') {
+          this.environment = universalAdapterLocal.getEnvironmentInfo();
+        }
+        if (universalAdapterLocal && typeof universalAdapterLocal.getConfig === 'function') {
+          this.universalConfig = universalAdapterLocal.getConfig();
+        }
+      } catch (e) {
+        // fallback to safe defaults
+        try {
+          this.ensureEnvironment();
+        } catch (ee) {
+          // ignore
+        }
+      }
+
       // Ensure lightweight detection uses any test-injected globals before heavy detection
       try {
         this.detectFromGlobals();
@@ -882,6 +930,13 @@ class CompatibilityManager {
       this.detectFromGlobals();
     } catch (e) {
       // best-effort
+    }
+
+    // Ensure we have environment/universalConfig lazily populated
+    try {
+      this.ensureEnvironment();
+    } catch (e) {
+      // ignore
     }
 
     // Ensure feature keys exist and are booleans (tests expect defined boolean fields)

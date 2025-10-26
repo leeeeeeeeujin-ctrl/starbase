@@ -13,7 +13,6 @@
  */
 
 import { CompatibilityManager } from './compatibilityManager';
-import { universalAdapter } from './universalEnvironmentAdapter';
 
 export class PerformanceMonitor {
   constructor() {
@@ -87,7 +86,27 @@ export class PerformanceMonitor {
     try {
       // 호환성 정보 가져오기
       this.compatibilityInfo = CompatibilityManager.getCompatibilityInfo();
-      this.environment = universalAdapter.getEnvironmentInfo();
+
+      // Load universalAdapter lazily to avoid evaluating Node-only adapters during module import
+      try {
+        const uaMod = await import('./universalEnvironmentAdapter');
+        const universalAdapterLocal = uaMod && (uaMod.universalAdapter || uaMod.default || uaMod);
+        if (universalAdapterLocal && typeof universalAdapterLocal.getEnvironmentInfo === 'function') {
+          this.environment = universalAdapterLocal.getEnvironmentInfo();
+        }
+        if (universalAdapterLocal && typeof universalAdapterLocal.getConfig === 'function') {
+          this.universalConfig = universalAdapterLocal.getConfig();
+        }
+      } catch (e) {
+        // fallback to best-effort environment info
+        this.environment = this.environment || {
+          isBrowser: typeof window !== 'undefined',
+          type: typeof window !== 'undefined' ? 'browser' : 'node',
+          features: {},
+          device: { type: 'unknown' },
+        };
+        this.universalConfig = this.universalConfig || {};
+      }
 
       // 옵션 적용
       Object.assign(this.optimizations, options);

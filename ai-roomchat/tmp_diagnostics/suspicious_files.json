@@ -1,0 +1,12 @@
+[
+  "starbase/ai-roomchat/scripts/supabaseAdmin.js",
+  "starbase/ai-roomchat/scripts/createDirectSession.js",
+  "starbase/ai-roomchat/scripts/runSelftest.js",
+  "starbase/ai-roomchat/scripts/testSqlExec.js",
+  "starbase/ai-roomchat/scripts/querySupabase.js",
+  "starbase/ai-roomchat/scripts/deploy-edge-functions.js",
+  "utils/universalEnvironmentAdapter.node.js",
+  "scripts/trace-middleware-deps.js",
+  "pages/api/admin/real-sim/selftest.js",
+  "__tests__/api/testUtils.js"
+]
