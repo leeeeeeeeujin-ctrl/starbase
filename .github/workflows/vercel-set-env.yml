@@ -1,3 +1,4 @@
+﻿---
 name: Vercel Set Env (manual)
 
 on:
@@ -81,3 +82,4 @@ jobs:
 
       - name: Summary
         run: echo "Done. Check Vercel dashboard or re-run with different inputs if needed."
+

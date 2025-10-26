@@ -1,0 +1,119 @@
+import { NextResponse } from 'next/server';
+
+// Note: switch to a dynamic import for feature config so any module-evaluation
+// errors (e.g. references to Node-only globals like __dirname) can be
+// caught at runtime and logged. Static imports fail during module
+// evaluation and are not catchable by the middleware function's try/catch.
+
+/**
+ * Feature Flag Middleware
+ *
+ * 비활성화된 기능의 페이지/API로 접근 시 404 또는 적절한 응답 반환
+ */
+export async function middleware(request) {
+  // We make the middleware async and dynamically import the features module
+  // so that if that module (or any of its transitive dependencies) throws
+  // during evaluation (for example by referencing `__dirname`), we can
+  // catch and log the stack trace and return a safe 500 response.
+  try {
+    const { pathname } = request.nextUrl;
+
+    // Temporary diagnostics: log a precomputed list of suspicious files that
+    // reference Node-only APIs (this JSON is generated at repo-level and
+    // bundled into the middleware so Edge logs will contain it). Safe: no
+    // secrets are written here. This is ephemeral and will be reverted after
+    // we collect Vercel logs.
+    try {
+      const diag = await import('./tmp_diagnostics/suspicious_files.json');
+      const suspicious = diag && (diag.default || diag);
+      if (Array.isArray(suspicious) && suspicious.length) {
+        try {
+          console.warn('[middleware diag] suspicious_files_count=', suspicious.length);
+          // Log up to 50 entries to avoid huge logs
+          console.warn('[middleware diag] suspicious_files=', suspicious.slice(0, 50));
+        } catch (e) {
+          // ignore logging issues
+        }
+      }
+    } catch (e) {
+      try {
+        console.warn('[middleware diag] no suspicious list available:', e && e.message);
+      } catch (ignore) {}
+    }
+
+    // Dynamic import so import-time errors are catchable here
+    let FEATURES;
+    let getFeatureForRoute;
+    try {
+      const mod = await import('./config/features');
+      FEATURES = mod.default;
+      getFeatureForRoute = mod.getFeatureForRoute;
+    } catch (importErr) {
+      // Log the full stack to Vercel logs for diagnosis
+      try {
+        console.error('[middleware] failed to import ./config/features:', importErr && importErr.message);
+        if (importErr && importErr.stack) console.error(importErr.stack);
+      } catch (logErr) {
+        // ignore logging errors
+      }
+
+      return NextResponse.json(
+        { error: 'internal_middleware_error', message: 'Middleware initialization failed' },
+        { status: 500 }
+      );
+    }
+
+    // Feature check
+    const feature = getFeatureForRoute(pathname);
+
+    if (feature && !FEATURES[feature]) {
+      // API 요청은 404 JSON
+      if (pathname.startsWith('/api/')) {
+        return NextResponse.json(
+          {
+            error: 'feature_disabled',
+            message: `Feature "${feature}" is not enabled on this installation`,
+            feature,
+          },
+          { status: 404 }
+        );
+      }
+
+      // 페이지 요청은 404 페이지로
+      return NextResponse.rewrite(new URL('/404', request.url));
+    }
+
+    return NextResponse.next();
+  } catch (err) {
+    // 로그에 스택과 메시지를 남겨 Vercel 로그에서 원인 진단에 도움을 줍니다.
+    // (보안상 민감값은 포함하지 않도록 주의)
+    try {
+      console.error('[middleware] caught error during request processing:', err && err.message);
+      if (err && err.stack) console.error(err.stack);
+    } catch (logErr) {
+      // ignore logging errors
+    }
+
+    // 내부 서버 오류 응답을 반환합니다. 상세한 내부 오류는 로그에서 확인하세요.
+    return NextResponse.json(
+      { error: 'internal_middleware_error', message: 'Internal middleware error' },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * 미들웨어를 적용할 경로 패턴
+ */
+export const config = {
+  matcher: [
+    /*
+     * Match all request paths except for the ones starting with:
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     * - public folder
+     */
+    '/((?!_next/static|_next/image|favicon.ico|public).*)',
+  ],
+};

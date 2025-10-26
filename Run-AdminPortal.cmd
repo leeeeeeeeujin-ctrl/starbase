@@ -208,8 +208,11 @@ echo [3/5] Setting up Admin Portal password...
 
 REM Default password for local admin portal if none is set
 if not defined ADMIN_PORTAL_PASSWORD (
+  REM WARNING: This default is for local development only. Do NOT expose this value in
+  REM production environments or CI workflows. If you need an admin password in production,
+  REM set `ADMIN_PORTAL_PASSWORD` in the environment or secret store and do not use 'localdev'.
   set "ADMIN_PORTAL_PASSWORD=localdev"
-  echo    Using default password: localdev
+  echo    Using default password: localdev (DEVELOPMENT ONLY)
 ) else (
   echo    Using password from environment
 )

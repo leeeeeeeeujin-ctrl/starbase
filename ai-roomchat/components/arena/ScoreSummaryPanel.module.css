@@ -1,0 +1,40 @@
+.panel {
+  background: rgba(14, 16, 22, 0.85);
+  border-radius: 16px;
+  padding: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: grid;
+  gap: 16px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header button {
+  background: rgba(255, 255, 255, 0.12);
+  border: none;
+  padding: 8px 12px;
+  border-radius: 8px;
+  color: #f7fafc;
+  cursor: pointer;
+}
+
+.grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.participant {
+  background: rgba(9, 11, 15, 0.75);
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.error {
+  color: #ff6b81;
+}

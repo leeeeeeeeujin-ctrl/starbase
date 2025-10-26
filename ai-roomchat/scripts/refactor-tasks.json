@@ -1,0 +1,31 @@
+[
+  {
+    "description": "UnifiedGameSystem 모듈화 - 렌더링 로직 분리",
+    "files": ["components/game/UnifiedGameSystem.js"],
+    "instruction": "다음 작업을 수행하세요:\n1. components/game/renderers/ 디렉터리에 렌더링 로직 분리\n  - GameRenderer.js: 메인 렌더링 로직\n  - UIRenderer.js: UI 오버레이 렌더링\n  - EffectsRenderer.js: 파티클/이펙트 렌더링\n2. 각 파일은 독립적이고 테스트 가능해야 함\n3. IE11+ 호환성 유지\n4. 모바일 최적화 고려\n5. 완전한 코드와 JSDoc 주석 포함\n\n출력 형식:\n```javascript\n// 파일경로: components/game/renderers/GameRenderer.js\n[전체 코드]\n\n// 파일경로: components/game/renderers/UIRenderer.js\n[전체 코드]\n\n// 파일경로: components/game/renderers/EffectsRenderer.js\n[전체 코드]\n```"
+  },
+  {
+    "description": "UnifiedGameSystem 모듈화 - 입력 핸들러 분리",
+    "files": ["components/game/UnifiedGameSystem.js", "utils/mobileOptimizationManager.js"],
+    "instruction": "다음 작업을 수행하세요:\n1. components/game/input/ 디렉터리에 입력 처리 로직 분리\n  - InputManager.js: 통합 입력 관리\n  - KeyboardHandler.js: 키보드 이벤트\n  - TouchHandler.js: 터치/포인터 이벤트\n  - GamepadHandler.js: 게임패드 지원\n2. MobileOptimizationManager와 통합\n3. 이벤트 정리(cleanup) 포함\n4. 호환성: IE11+, Safari 12+\n5. 완전한 코드와 JSDoc 주석 포함\n\n출력 형식:\n```javascript\n// 파일경로: components/game/input/InputManager.js\n[전체 코드]\n\n// 파일경로: components/game/input/KeyboardHandler.js\n[전체 코드]\n\n// 파일경로: components/game/input/TouchHandler.js\n[전체 코드]\n\n// 파일경로: components/game/input/GamepadHandler.js\n[전체 코드]\n```"
+  },
+  {
+    "description": "UnifiedGameSystem 모듈화 - 게임 로직 분리",
+    "files": ["components/game/UnifiedGameSystem.js"],
+    "instruction": "다음 작업을 수행하세요:\n1. components/game/logic/ 디렉터리에 게임 로직 분리\n  - GameEngine.js: 게임 루프 및 상태 관리\n  - PhysicsEngine.js: 물리 연산 (충돌, 이동)\n  - EntityManager.js: 엔티티 생성/제거\n  - ScoreManager.js: 점수 및 진행도 관리\n2. 각 모듈은 순수 함수로 구성\n3. 테스트 가능한 API\n4. 완전한 코드와 JSDoc 주석 포함\n\n출력 형식:\n```javascript\n// 파일경로: components/game/logic/GameEngine.js\n[전체 코드]\n\n// 파일경로: components/game/logic/PhysicsEngine.js\n[전체 코드]\n\n// 파일경로: components/game/logic/EntityManager.js\n[전체 코드]\n\n// 파일경로: components/game/logic/ScoreManager.js\n[전체 코드]\n```"
+  },
+  {
+    "description": "리팩토링 검수 - 코드 품질 및 호환성 검증",
+    "files": [
+      "components/game/UnifiedGameSystem.js",
+      "utils/compatibilityManager.js",
+      "utils/mobileOptimizationManager.js"
+    ],
+    "instruction": "다음 검수를 수행하세요:\n1. 모듈화된 코드의 품질 검증\n  - 순환 의존성 확인\n  - API 일관성 검사\n  - 에러 처리 확인\n2. 브라우저 호환성 검증 (IE11+, Safari 12+)\n  - Polyfill 필요 여부\n  - 지원되지 않는 API 사용 확인\n3. 성능 최적화 검토\n  - 메모리 누수 가능성\n  - 렌더링 성능\n  - 모바일 최적화\n4. 테스트 전략 제안\n  - 단위 테스트 케이스\n  - 통합 테스트 시나리오\n  - E2E 테스트 체크리스트\n\n출력 형식:\n# 검수 보고서\n\n## 1. 코드 품질\n[분석 결과]\n\n## 2. 호환성\n[확인 사항]\n\n## 3. 성능\n[최적화 제안]\n\n## 4. 테스트 전략\n[테스트 케이스]\n\n## 5. 개선 권장사항\n[우선순위별 목록]"
+  },
+  {
+    "description": "UnifiedGameSystem 통합 - 메인 파일 업데이트",
+    "files": ["components/game/UnifiedGameSystem.js"],
+    "instruction": "다음 작업을 수행하세요:\n1. UnifiedGameSystem.js를 오케스트레이션 레이어로 변경\n  - 렌더러, 입력, 로직 모듈 import\n  - 생명주기 관리 (init, update, cleanup)\n  - 모듈 간 통신 조율\n2. Props 인터페이스 유지 (하위 호환성)\n3. 에러 경계 및 폴백 처리\n4. 완전한 코드와 JSDoc 주석 포함\n\n출력 형식:\n```javascript\n// 파일경로: components/game/UnifiedGameSystem.js\n/**\n * 🎮 Unified Game System - 오케스트레이션 레이어\n * 렌더링, 입력, 로직 모듈을 통합하여 게임을 실행합니다\n */\n[전체 코드]\n```"
+  }
+]

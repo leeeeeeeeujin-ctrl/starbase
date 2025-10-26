@@ -1,2 +1,11 @@
-# Ignore archived snapshot directories (local archives, large files, etc.)
+﻿# Ignore archived snapshot directories (local archives, large files, etc.)
 archived/
+
+# Ignore local environment files which may contain secrets
+# Developers should keep a local `.env.local` (not committed). Use `.env.local.example` as a template.
+.env.local
+**/.env.local
+*.Local
+
+# Ignore runtime and log directories created by local runs
+ai-roomchat/logs/
