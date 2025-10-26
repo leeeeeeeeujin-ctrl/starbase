@@ -11,6 +11,21 @@ const flagged = [];
 
 function resolveModule(fromFile, spec) {
   if (!spec || spec.startsWith('http') || spec.startsWith('https')) return null;
+  // Support project alias '@/...' -> project root
+  if (spec.startsWith('@/')) {
+    const pAlias = path.resolve(root, spec.slice(2));
+    for (const ext of exts) {
+      if (fs.existsSync(pAlias + ext)) return pAlias + ext;
+    }
+    if (fs.existsSync(pAlias) && fs.statSync(pAlias).isDirectory()) {
+      for (const ext of exts) {
+        const idx = path.join(pAlias, 'index' + ext);
+        if (fs.existsSync(idx)) return idx;
+      }
+    }
+    if (fs.existsSync(pAlias)) return pAlias;
+    return null;
+  }
   if (!spec.startsWith('.') && !spec.startsWith('/')) return null; // skip node_modules
   const baseDir = path.dirname(fromFile);
   let p = path.resolve(baseDir, spec);
