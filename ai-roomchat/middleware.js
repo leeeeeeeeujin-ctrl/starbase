@@ -1,4 +1,8 @@
-import { NextResponse } from 'next/server';
+// Dynamically import NextResponse at runtime inside the middleware function
+// to avoid pulling `next/server` and its vendor dependencies into module
+// evaluation time. Some bundled vendor modules set a bundler base using
+// `__dirname` which throws in Edge (no __dirname). Dynamic import allows
+// us to catch and handle import-time errors inside the middleware function.
 
 // Note: switch to a dynamic import for feature config so any module-evaluation
 // errors (e.g. references to Node-only globals like __dirname) can be
@@ -11,6 +15,28 @@ import { NextResponse } from 'next/server';
  * 비활성화된 기능의 페이지/API로 접근 시 404 또는 적절한 응답 반환
  */
 export async function middleware(request) {
+  // Lazy-load NextResponse so top-level module evaluation doesn't include
+  // server-only vendor code that may reference Node globals like __dirname.
+  let NextResponse;
+  try {
+    ({ NextResponse } = await import('next/server'));
+  } catch (e) {
+    // If dynamic import fails (very unlikely), provide a minimal fallback
+    // that uses the standard Response API so we can still return JSON
+    // diagnostic responses. This fallback is intentionally small — the
+    // normal NextResponse behaviors (rewrite/next) should be available
+    // from the real import in typical environments.
+    NextResponse = {
+      json: (obj, opts = {}) => {
+        const body = JSON.stringify(obj);
+        const headers = new Headers({ 'content-type': 'application/json' });
+        const status = (opts && opts.status) || 200;
+        return new Response(body, { status, headers });
+      },
+      rewrite: (url) => new Response(null, { status: 307, headers: { location: String(url) } }),
+      next: () => undefined,
+    };
+  }
   // We make the middleware async and dynamically import the features module
   // so that if that module (or any of its transitive dependencies) throws
   // during evaluation (for example by referencing `__dirname`), we can
