@@ -79,7 +79,47 @@ export class UniversalEnvironmentAdapter {
   }
 }
 
-export const universalAdapter = new UniversalEnvironmentAdapter();
+// Lazy-instantiated adapter to avoid running Node-only setup at module-eval time.
+let _universalAdapterInstance = null;
+function _createInstance() {
+  if (_universalAdapterInstance) return _universalAdapterInstance;
+  if (!isNode) {
+    // Running in a non-Node environment (Edge / Browser build). Return a safe stub
+    // so callers can still query a few properties without triggering Node built-ins.
+    _universalAdapterInstance = {
+      getEnvironmentInfo: () => ({ type: 'edge-or-browser', isNode: false, version: null }),
+      getConfig: () => ({ environment: { type: 'edge-or-browser', isNode: false }, features: {}, storage: { type: 'none' } }),
+      getStorage: () => ({ get: () => null, set: () => false, remove: () => false, clear: () => false }),
+      getNetwork: () => ({ fetch: (url, opts) => { throw new Error('universalAdapter: network fetch is not available in this environment'); } }),
+    };
+    return _universalAdapterInstance;
+  }
+
+  // Safe to construct the real adapter on Node.
+  _universalAdapterInstance = new UniversalEnvironmentAdapter();
+  return _universalAdapterInstance;
+}
+
+// A small proxy that defers instance creation until a property is accessed.
+const universalAdapter = new Proxy({}, {
+  get(_target, prop) {
+    const inst = _createInstance();
+    const v = inst[prop];
+    if (typeof v === 'function') return v.bind(inst);
+    return v;
+  },
+  has(_target, prop) {
+    return prop in _createInstance();
+  },
+  ownKeys() {
+    return Reflect.ownKeys(_createInstance());
+  },
+  getOwnPropertyDescriptor(_target, prop) {
+    return Object.getOwnPropertyDescriptor(_createInstance(), prop) || { configurable: true, enumerable: true, value: undefined };
+  }
+});
+
+export { universalAdapter };
 export const isNodeEnvironment = () => isNode;
-export const isBrowserEnvironment = () => false;
+export const isBrowserEnvironment = () => !isNode;
 export default universalAdapter;
