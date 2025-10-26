@@ -1,8 +1,0 @@
-{
-  "builds": [
-    {
-      "src": "ai-roomchat/package.json",
-      "use": "@vercel/next"
-    }
-  ]
-}
