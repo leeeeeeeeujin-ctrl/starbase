@@ -55,13 +55,56 @@ jobs:
             exit 1
           fi
 
-          echo "Running SQL file: $SQL_FILE"
-          # Try to run SQL file using supabase CLI. Some CLI versions don't support --file; pipe via stdin
-          # First attempt: pipe file contents into supabase db query
-          if cat "$SQL_FILE" | supabase db query --project-ref "$PROJECT_REF" --service-role-key "$SUPABASE_SERVICE_ROLE_KEY" --yes; then
-            echo "supabase db query succeeded (via stdin)"
-          else
-            echo "supabase db query (via stdin) failed — falling back to printing error and exiting" >&2
+          # Try to resolve SQL file in common repo locations (allow callers to pass path relative to repo root
+          # or relative to ai-roomchat/ subfolder). This helps when default path differs between devs.
+          CANDIDATE="$SQL_FILE"
+          if [ ! -f "$CANDIDATE" ]; then
+            if [ -f "ai-roomchat/$SQL_FILE" ]; then
+              CANDIDATE="ai-roomchat/$SQL_FILE"
+            elif [ -f "docs/sql/$SQL_FILE" ]; then
+              CANDIDATE="docs/sql/$SQL_FILE"
+            fi
+          fi
+
+          if [ ! -f "$CANDIDATE" ]; then
+            echo "ERROR: SQL file not found at '$SQL_FILE' or common locations (ai-roomchat/$SQL_FILE, docs/sql/$SQL_FILE)" >&2
+            ls -la || true
             exit 1
           fi
+
+          echo "Running SQL file: $CANDIDATE"
+
+          # Try multiple invocation forms for supabase CLI to handle different CLI versions.
+          # We already exported SUPABASE_ACCESS_TOKEN above.
+          set +e
+          echo "Attempt 1: supabase db query --project-ref <ref> --service-role-key <key> (with flags)"
+          cat "$CANDIDATE" | supabase db query --project-ref "$PROJECT_REF" --service-role-key "$SUPABASE_SERVICE_ROLE_KEY" --yes
+          RC=$?
+          if [ $RC -eq 0 ]; then
+            echo "supabase db query succeeded (with flags)"
+            exit 0
+          fi
+
+          echo "Attempt 2: supabase db query (stdin, no flags)"
+          cat "$CANDIDATE" | supabase db query --yes
+          RC=$?
+          if [ $RC -eq 0 ]; then
+            echo "supabase db query succeeded (stdin, no flags)"
+            exit 0
+          fi
+
+          echo "Attempt 3: supabase db query --yes (no stdin)" 
+          # Some CLI versions may accept --file or read from STDIN only; try without piping
+          supabase db query --yes < "$CANDIDATE"
+          RC=$?
+          if [ $RC -eq 0 ]; then
+            echo "supabase db query succeeded (stdin via redirection)"
+            exit 0
+          fi
+
+          echo "All supabase CLI attempts failed. Printing supabase --version and help to assist diagnostics." >&2
+          supabase --version || true
+          supabase db --help || true
+          exit 1
+          set -e
 
