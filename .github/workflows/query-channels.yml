@@ -1,0 +1,45 @@
+name: Query recent rank_session_battle_logs channels
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  query:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Supabase CLI
+        run: |
+          set -e
+          echo "Downloading supabase CLI binary..."
+          curl -L -o /tmp/supabase.tar.gz https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.tar.gz
+          tar -xzf /tmp/supabase.tar.gz -C /tmp
+          sudo mv /tmp/supabase /usr/local/bin/supabase || true
+          sudo chmod +x /usr/local/bin/supabase || true
+
+      - name: Query recent channels
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_PROJECT_URL: ${{ secrets.SUPABASE_PROJECT_URL }}
+        run: |
+          set -e
+          if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ] || [ -z "$SUPABASE_PROJECT_URL" ]; then
+            echo "Missing SUPABASE_SERVICE_ROLE_KEY or SUPABASE_PROJECT_URL secret" >&2
+            exit 1
+          fi
+
+          PROJECT_REF=$(echo "$SUPABASE_PROJECT_URL" | sed -E 's#https?://([^.]*)\..*#\1#')
+          echo "Project ref: $PROJECT_REF"
+          export SUPABASE_ACCESS_TOKEN="$SUPABASE_SERVICE_ROLE_KEY"
+
+          SQL=$(cat <<'SQL'
+SELECT id, payload -> 'channels' AS channels, created_at
+FROM public.rank_session_battle_logs
+ORDER BY created_at DESC
+LIMIT 5;
+SQL
+)
+
+          echo "$SQL" | supabase db query --yes || { echo "supabase db query failed" >&2; supabase --version || true; exit 1; }
