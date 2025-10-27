@@ -1,0 +1,88 @@
+---
+name: Apply SQL on push (supabase-cli)
+
+on:
+  push:
+    branches:
+      - apply-sql-now
+
+jobs:
+  apply-sql-on-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Supabase CLI (official binary)
+        run: |
+          set -e
+          echo "Downloading supabase CLI binary..."
+          curl -L -o /tmp/supabase.tar.gz https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.tar.gz
+          tar -xzf /tmp/supabase.tar.gz -C /tmp
+          sudo mv /tmp/supabase /usr/local/bin/supabase
+          sudo chmod +x /usr/local/bin/supabase
+
+      - name: Run SQL via Supabase CLI (push trigger)
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_PROJECT_URL: ${{ secrets.SUPABASE_PROJECT_URL }}
+        run: |
+          set -e
+          if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ] || [ -z "$SUPABASE_PROJECT_URL" ]; then
+            echo "Missing SUPABASE_SERVICE_ROLE_KEY or SUPABASE_PROJECT_URL secret" >&2
+            exit 1
+          fi
+
+          PROJECT_REF=$(echo "$SUPABASE_PROJECT_URL" | sed -E 's#https?://([^.]*)\..*#\1#')
+          echo "Project ref: $PROJECT_REF"
+
+          export SUPABASE_ACCESS_TOKEN="$SUPABASE_SERVICE_ROLE_KEY"
+
+          # Default SQL file we intend to apply in this repo
+          SQL_FILE="ai-roomchat/docs/sql/finalize-rank-session-outcome-channel-aware.sql"
+
+          # Resolve SQL by basename using git ls-files if needed
+          if [ ! -f "$SQL_FILE" ]; then
+            BASENAME=$(basename "$SQL_FILE")
+            FOUND=$(git ls-files | grep -F "${BASENAME}" | head -n1 || true)
+            if [ -n "$FOUND" ]; then
+              echo "Found candidate via git ls-files: $FOUND"
+              SQL_FILE="$FOUND"
+            fi
+          fi
+
+          if [ ! -f "$SQL_FILE" ]; then
+            echo "ERROR: SQL file not found: $SQL_FILE" >&2
+            ls -la || true
+            exit 1
+          fi
+
+          echo "Applying SQL file: $SQL_FILE"
+
+          set +e
+          cat "$SQL_FILE" | supabase db query --project-ref "$PROJECT_REF" --service-role-key "$SUPABASE_SERVICE_ROLE_KEY" --yes
+          RC=$?
+          if [ $RC -eq 0 ]; then
+            echo "supabase db query succeeded (with flags)"
+            exit 0
+          fi
+
+          cat "$SQL_FILE" | supabase db query --yes
+          RC=$?
+          if [ $RC -eq 0 ]; then
+            echo "supabase db query succeeded (stdin, no flags)"
+            exit 0
+          fi
+
+          supabase db query --yes < "$SQL_FILE"
+          RC=$?
+          if [ $RC -eq 0 ]; then
+            echo "supabase db query succeeded (stdin via redirection)"
+            exit 0
+          fi
+
+          echo "All supabase CLI attempts failed. Printing diagnostics." >&2
+          supabase --version || true
+          supabase db --help || true
+          exit 1
+          set -e
