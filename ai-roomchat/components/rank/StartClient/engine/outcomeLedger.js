@@ -709,6 +709,15 @@ export function buildOutcomeSnapshot(ledger) {
   }
 
   const entries = ledger.entries.map(entry => cloneEntry(entry));
+  // ensure each outcome entry carries a channel so DB-side finalizers can group by channel
+  entries.forEach(e => {
+    try {
+      // Prefer explicit role-based channel, fall back to slot-based key
+      e.channel = e.role || (e.slotIndex != null ? `slot-${e.slotIndex}` : e.key || null);
+    } catch (err) {
+      // noop - defensive
+    }
+  });
   const bySlotIndex = {};
   const byOwnerId = {};
   const byHeroName = {};

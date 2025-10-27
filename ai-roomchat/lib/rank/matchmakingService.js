@@ -5,6 +5,7 @@ import {
   matchCasualParticipants,
   matchRankParticipants,
   matchSoloRankParticipants,
+  matchAsyncParticipants,
 } from './matching';
 import { getDefaultPartySize, getMatcherKey, getQueueModes } from './matchModes';
 import { withTable } from '../supabaseTables';
@@ -31,6 +32,8 @@ const MATCHER_BY_KEY = {
   rank: matchRankParticipants,
   rank_solo: matchSoloRankParticipants,
   casual: matchCasualParticipants,
+  async: matchAsyncParticipants,
+  participant_pool: matchAsyncParticipants,
 };
 
 function nowIso() {
@@ -630,13 +633,12 @@ export async function enqueueParticipant(
       }
     }
   }
-
-  if (duplicateEntries.length > 0) {
-    return {
-      ok: false,
-      error: '이미 다른 대기열에 참여 중입니다. 기존 대기열을 먼저 취소해주세요.',
-    };
-  }
+  // NOTE: allow owners to participate in multiple game queues concurrently.
+  // Historically we prevented cross-game queueing and attempted to clean up
+  // other-game entries. That restriction is intentionally removed so game
+  // participation rules can be decided by the later, fully-featured game
+  // system. We keep duplicateEntries available for telemetry but do not
+  // block or cleanup them here.
 
   const payload = {
     game_id: gameId,

@@ -1546,6 +1546,28 @@ export function useStartClientEngine(gameId, options = {}) {
             normalizedEntry.extra = extra;
           }
 
+          // Propagate channel information when available so server can group by channel.
+          // Priority: explicit entry.channel -> entry.channelName/channel_name -> meta.channel
+          // Fallback: use meta.slotIndex -> role as a last resort.
+          try {
+            let channel = null;
+            if (entry && typeof entry === 'object') {
+              if (entry.channel) channel = entry.channel;
+              else if (entry.channelName) channel = entry.channelName;
+              else if (entry.channel_name) channel = entry.channel_name;
+              else if (entry.key) channel = entry.key;
+              else if (entry.meta && typeof entry.meta === 'object') {
+                if (entry.meta.channel) channel = entry.meta.channel;
+                else if (typeof entry.meta.slotIndex !== 'undefined' && entry.meta.slotIndex !== null)
+                  channel = `slot-${entry.meta.slotIndex}`;
+              }
+              if (!channel && role) channel = role;
+            }
+            if (channel) normalizedEntry.channel = channel;
+          } catch (err) {
+            /* ignore channel propagation failure */
+          }
+
           normalized.push(normalizedEntry);
         });
       }
@@ -2366,12 +2388,37 @@ export function useStartClientEngine(gameId, options = {}) {
           throw new Error('세션 토큰을 확인하지 못했습니다.');
         }
 
+        // Ensure outcome entries carry channel metadata before sending to server.
+        const computedOutcome = snapshot || buildOutcomeSnapshot(outcomeLedgerRef.current);
+        try {
+          if (computedOutcome && Array.isArray(computedOutcome.entries)) {
+            computedOutcome.entries = computedOutcome.entries.map((entry, idx) => {
+              if (!entry || typeof entry !== 'object') return entry;
+              if (entry.channel) return entry;
+              let channel = null;
+              if (entry.channelName) channel = entry.channelName;
+              else if (entry.channel_name) channel = entry.channel_name;
+              else if (entry.key) channel = entry.key;
+              else if (entry.meta && typeof entry.meta === 'object') {
+                if (entry.meta.channel) channel = entry.meta.channel;
+                else if (typeof entry.meta.slotIndex !== 'undefined' && entry.meta.slotIndex !== null)
+                  channel = `slot-${entry.meta.slotIndex}`;
+              }
+              if (!channel && entry.role) channel = entry.role;
+              if (channel) return { ...entry, channel };
+              return entry;
+            });
+          }
+        } catch (err) {
+          /* ignore channel normalization errors */
+        }
+
         const payload = {
           sessionId: sessionInfo.id,
           gameId,
           turnNumber,
           reason: reason || 'roles_resolved',
-          outcome: snapshot || buildOutcomeSnapshot(outcomeLedgerRef.current),
+          outcome: computedOutcome,
           finalResponse: responseText || '',
         };
 

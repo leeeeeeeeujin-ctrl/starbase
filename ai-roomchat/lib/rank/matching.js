@@ -52,11 +52,15 @@ function matchRankParticipants({
   }
 
   const maxWindowAllowed = normaliseWindowThreshold(scoreWindows);
+  // Apply adaptive scaling: if the queue's scores are far from baseline, allow
+  // a wider window so extreme-score players match more easily.
+  const adaptiveFactor = computeAdaptiveWindowFactor(queue);
+  const effectiveMaxWindow = Math.max(0, Math.round(Number(maxWindowAllowed) * adaptiveFactor));
   const { pools: rolePools, skipped } = buildRolePools({ template, groups });
   const { rooms, unplaced } = allocateRoomsFromPools({
     template,
     rolePools,
-    maxWindowAllowed,
+    maxWindowAllowed: effectiveMaxWindow,
   });
   const combinedUnplaced = skipped.concat(unplaced);
 
@@ -165,6 +169,37 @@ function normaliseWindowThreshold(windows = DEFAULT_SCORE_WINDOWS) {
   return max;
 }
 
+// Adaptive factor: if queue scores are, on average, far from the baseline (1000),
+// make the matching window more permissive. This keeps matching strict near the
+// baseline and relaxes for extreme populations.
+function computeAdaptiveWindowFactor(queue = [], { baseline = FALLBACK_SCORE, sensitivity = null } = {}) {
+  try {
+    const SENS =
+      sensitivity != null
+        ? Number(sensitivity)
+        : Number(process.env.RANK_ADAPTIVE_SENSITIVITY ?? process.env.RANK_ADAPTIVE_K ?? 0.5);
+    const sens = Number.isFinite(SENS) && SENS >= 0 ? SENS : 0.5;
+
+    const scores = Array.isArray(queue)
+      ? queue
+          .map(c => {
+            const s = Number(c?.score);
+            return Number.isFinite(s) ? s : FALLBACK_SCORE;
+          })
+          .filter(() => true)
+      : [];
+
+    if (!scores.length) return 1;
+
+    const meanAbsDev = scores.reduce((acc, s) => acc + Math.abs(s - baseline), 0) / scores.length;
+    // Factor grows linearly with meanAbsDev / baseline scaled by sensitivity.
+    const factor = 1 + (meanAbsDev / Math.max(1, baseline)) * sens;
+    return Number.isFinite(factor) && factor > 0 ? factor : 1;
+  } catch (e) {
+    return 1;
+  }
+}
+
 function buildQueueGroups(queue) {
   const normalized = normalizeQueue(queue);
   if (!normalized.length) return [];
@@ -232,6 +267,176 @@ function buildQueueGroups(queue) {
   const groups = soloGroups.concat(partyGroups);
   groups.sort((a, b) => a.joinedAt - b.joinedAt);
   return groups;
+}
+
+function buildQueueGroupsWithStandins(queue) {
+  const normalized = normalizeQueueIncludingStandins(queue);
+  if (!normalized.length) return [];
+
+  const partyBuckets = new Map();
+  const soloGroups = [];
+
+  normalized.forEach(candidate => {
+    const role = normalizeRoleLabel(candidate.role);
+    if (!role) return;
+
+    const member = normaliseQueueMember(candidate);
+    if (!member) return;
+
+    const partyKey = normalizePartyKey(candidate.partyKey);
+
+    if (partyKey) {
+      const composite = `${role}::${partyKey}`;
+      if (!partyBuckets.has(composite)) {
+        partyBuckets.set(composite, []);
+      }
+      partyBuckets.get(composite).push({
+        member,
+        joinedAt: candidate.joinedAt,
+        score: candidate.score,
+      });
+      return;
+    }
+
+    const group = materialiseGroup({
+      role,
+      members: [member],
+      partyKey: null,
+      joinedAt: candidate.joinedAt,
+      score: candidate.score,
+      groupKey: candidate.groupKey || buildSoloGroupKey(member),
+    });
+    if (group) {
+      soloGroups.push(group);
+    }
+  });
+
+  const partyGroups = [];
+  for (const [composite, items] of partyBuckets.entries()) {
+    const [roleName, partyKey] = composite.split('::');
+    const role = normalizeRoleLabel(roleName);
+    if (!role) continue;
+    const sorted = items.slice().sort((a, b) => a.joinedAt - b.joinedAt);
+    const members = sorted.map(item => item.member);
+    const score = averageScore(sorted.map(item => item.score));
+    const joinedAt = sorted[0]?.joinedAt ?? Number.MAX_SAFE_INTEGER;
+    const group = materialiseGroup({
+      role,
+      members,
+      partyKey,
+      joinedAt,
+      score,
+      groupKey: `party:${partyKey || role}`,
+    });
+    if (group) {
+      partyGroups.push(group);
+    }
+  }
+
+  const groups = soloGroups.concat(partyGroups);
+  groups.sort((a, b) => a.joinedAt - b.joinedAt);
+  return groups;
+}
+
+function matchAsyncParticipants({ roles = [], queue = [], standins = [], scoreWindows = DEFAULT_SCORE_WINDOWS } = {}) {
+  // Merge human queue entries (exclude simulated/standin flagged) with
+  // participant-pool standins. Avoid simple duplicates by owner/hero.
+  const human = Array.isArray(queue)
+    ? queue.filter(e => !(e?.simulated === true) && !(e?.standin === true))
+    : [];
+  const pool = Array.isArray(standins) ? standins.slice() : [];
+
+  const ownerSeen = new Set();
+  const heroSeen = new Set();
+  human.forEach(h => {
+    const owner = (h?.owner_id ?? h?.ownerId) || null;
+    const hero = (h?.hero_id ?? h?.heroId) || null;
+    if (owner) ownerSeen.add(String(owner));
+    if (hero) heroSeen.add(String(hero));
+  });
+
+  const filteredPool = pool.filter(s => {
+    const owner = s?.owner_id ?? s?.ownerId ?? null;
+    const hero = s?.hero_id ?? s?.heroId ?? null;
+    if (owner && ownerSeen.has(String(owner))) return false;
+    if (hero && heroSeen.has(String(hero))) return false;
+    return true;
+  });
+
+  const mergedQueue = human.concat(filteredPool);
+
+  const template = buildRoomTemplate(roles);
+  const totalSlots = template.totalSlots;
+  if (!totalSlots) {
+    return buildResult({
+      ready: false,
+      totalSlots: 0,
+      error: { type: 'no_active_slots' },
+    });
+  }
+
+  const groups = buildQueueGroupsWithStandins(mergedQueue);
+  if (!groups.length) {
+    return buildResult({
+      ready: false,
+      assignments: [],
+      rooms: [],
+      totalSlots,
+      maxWindow: 0,
+    });
+  }
+
+  const maxWindowAllowed = normaliseWindowThreshold(scoreWindows);
+  const adaptiveFactor = computeAdaptiveWindowFactor(mergedQueue);
+  const effectiveMaxWindow = Math.max(0, Math.round(Number(maxWindowAllowed) * adaptiveFactor));
+  const { pools: rolePools, skipped } = buildRolePools({ template, groups });
+  const { rooms, unplaced } = allocateRoomsFromPools({
+    template,
+    rolePools,
+    maxWindowAllowed: effectiveMaxWindow,
+  });
+  const combinedUnplaced = skipped.concat(unplaced);
+
+  const assignments = [];
+  let ready = false;
+  let maxWindowUsed = 0;
+
+  rooms.forEach(room => {
+    finalizeRoom(room);
+    if (room.maxScoreGap > maxWindowUsed) {
+      maxWindowUsed = room.maxScoreGap;
+    }
+    if (room.ready) {
+      ready = true;
+    }
+    assignments.push(buildRoomAssignment(room, template));
+  });
+
+  const serializedRooms = rooms.map(room => serializeRoom(room, template));
+  let error = null;
+  if (!ready) {
+    if (combinedUnplaced.length) {
+      error = {
+        type: 'insufficient_candidates',
+        groups: combinedUnplaced.map(entry => ({
+          role: entry.group.role,
+          reason: entry.reason,
+          size: entry.group.size,
+        })),
+      };
+    } else if (!assignments.length) {
+      error = { type: 'no_candidates' };
+    }
+  }
+
+  return buildResult({
+    ready,
+    assignments,
+    rooms: serializedRooms,
+    totalSlots,
+    maxWindow: maxWindowUsed,
+    error,
+  });
 }
 
 function buildRolePools({ template, groups }) {
@@ -1479,12 +1684,42 @@ function pushGroup(map, roleName, group) {
 function normalizeQueue(queue) {
   if (!Array.isArray(queue)) return [];
   const result = [];
+  for (const entry of queue) {
+    if (!entry) continue;
+
+    const role = entry.role ?? entry.role_name ?? entry.roleName;
+    if (!role) continue;
+
+    const score = deriveScore(entry);
+    const joinedAt = deriveTimestamp(entry);
+    const partyKey = derivePartyKey(entry);
+    const groupKey = deriveGroupKey(entry);
+    const heroIds = deriveHeroIds(entry);
+
+    result.push({
+      role,
+      score,
+      joinedAt,
+      partyKey,
+      groupKey,
+      heroIds,
+      entry,
+    });
+  }
+
+  result.sort((a, b) => a.joinedAt - b.joinedAt);
+  return result;
+}
+
+// Variant of normalizeQueue that does NOT filter out simulated/standin entries.
+// Used by the async/participant-pool matcher to allow participant-pool standins
+// to be considered alongside real queue entries.
+function normalizeQueueIncludingStandins(queue) {
+  if (!Array.isArray(queue)) return [];
+  const result = [];
 
   for (const entry of queue) {
     if (!entry) continue;
-    if (entry.simulated === true || entry.standin === true) {
-      continue;
-    }
 
     const role = entry.role ?? entry.role_name ?? entry.roleName;
     if (!role) continue;
@@ -1674,5 +1909,6 @@ if (typeof module !== 'undefined' && module.exports) {
     matchSoloRankParticipants,
     matchDuoRankParticipants,
     matchCasualParticipants,
+    matchAsyncParticipants,
   };
 }

@@ -45,7 +45,9 @@ function normaliseEntries(entries, roleConfigMap = {}) {
 
       return {
         key: entry.key || null,
-        participant_id: entry.participantId || entry.participant_id || null,
+        // allow legacy keys and ledger 'key' to be treated as participant id when present
+        participant_id:
+          entry.participantId || entry.participant_id || entry.participant || entry.key || null,
         owner_id: entry.ownerId || entry.owner_id || null,
         hero_id: entry.heroId || entry.hero_id || null,
         hero_name: entry.heroName || entry.hero_name || null,
@@ -57,6 +59,8 @@ function normaliseEntries(entries, roleConfigMap = {}) {
         slot_index: Number.isFinite(Number(entry.slotIndex)) ? Number(entry.slotIndex) : null,
         score_delta: scoreDelta,
         history: Array.isArray(entry.history) ? entry.history.slice(-10) : [],
+        // pass through optional channel metadata if present (channel, channelName, channel_name)
+        channel: entry.channel || entry.channelName || entry.channel_name || null,
       };
     })
     .filter(Boolean);

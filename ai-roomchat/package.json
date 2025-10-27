@@ -28,18 +28,26 @@
     "commit": "node scripts/quick-commit.js",
     "workflow": "node scripts/dev-workflow.js",
     "ai-workers": "node scripts/ai-worker-pool-openai.js",
-    "test:ai-workers": "node scripts/test-ai-workers.js"
+    "test:ai-workers": "node scripts/test-ai-workers.js",
+    "experiment:main": "node scripts/experiment-main-flow.js",
+    "experiment:matrix": "node scripts/experiment-matrix.js"
   },
   "dependencies": {
     "@supabase/auth-helpers-nextjs": "^0.10.0",
+    "@supabase/ssr": "^0.6.0",
     "@supabase/supabase-js": "^2.76.1",
-  "@supabase/ssr": "^0.6.0",
+    "body-parser": "^2.2.0",
     "core-js": "^3.37.1",
+    "cors": "^2.8.5",
+    "cross-fetch": "^3.1.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
     "googleapis": "^161.0.0",
     "intersection-observer": "^0.12.2",
+    "jsonwebtoken": "^8.5.1",
+    "minimist": "^1.2.8",
     "next": "^14.2.33",
     "node-fetch": "^3.3.2",
-  "cross-fetch": "^3.1.5",
     "openai": "^4.67.1",
     "react": "18.2.0",
     "react-dom": "18.2.0",
@@ -48,7 +56,6 @@
     "resize-observer-polyfill": "^1.5.1",
     "whatwg-fetch": "^3.6.20",
     "zod": "^3.25.76"
-    ,"jsonwebtoken": "^8.5.1"
   },
   "devDependencies": {
     "@babel/core": "^7.24.5",

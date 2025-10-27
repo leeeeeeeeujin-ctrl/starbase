@@ -9,3 +9,14 @@ archived/
 
 # Ignore runtime and log directories created by local runs
 ai-roomchat/logs/
+
+# Sensitive keys and SPPP files (do NOT commit)
+ci_deploy_key
+ci_deploy_key.pub
+ai-roomchat/SPPP*
+ai-roomchat/SPPP_key*
+
+# Common large/runtime dirs we don't want in the repo
+artifacts/
+reports/
+tmp/
