@@ -44,6 +44,20 @@ jobs:
             "LIMIT 5;" > /tmp/query.sql
 
           set +e
+
+          # Try direct REST query to PostgREST (Supabase REST endpoint) as a fallback — simpler and avoids CLI incompatibilities
+          REST_URL="$SUPABASE_PROJECT_URL/rest/v1/rank_session_battle_logs?select=id,payload,created_at&order=created_at.desc&limit=5"
+          echo "Querying REST endpoint: $REST_URL"
+          curl -s -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" -H "Accept: application/json" "$REST_URL" -o /tmp/rest_result.json
+          if [ -s /tmp/rest_result.json ]; then
+            echo "REST query returned (first 4k chars):"
+            head -c 4096 /tmp/rest_result.json || true
+            echo
+            echo "REST query succeeded"
+            exit 0
+          else
+            echo "REST query returned no rows or failed; falling back to supabase CLI methods" >&2
+          fi
           cat /tmp/query.sql | supabase db query --project-ref "$PROJECT_REF" --service-role-key "$SUPABASE_SERVICE_ROLE_KEY" --yes
           RC=$?
           if [ $RC -eq 0 ]; then
