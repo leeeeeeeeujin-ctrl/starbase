@@ -1,0 +1,54 @@
+name: Dump finalize function definitions
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  dump-defs:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Supabase CLI
+        run: |
+          set -e
+          echo "Downloading supabase CLI binary..."
+          curl -L -o /tmp/supabase.tar.gz https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.tar.gz
+          tar -xzf /tmp/supabase.tar.gz -C /tmp
+          sudo mv /tmp/supabase /usr/local/bin/supabase || true
+          sudo chmod +x /usr/local/bin/supabase || true
+
+      - name: Run query and upload
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_PROJECT_URL: ${{ secrets.SUPABASE_PROJECT_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ] || [ -z "$SUPABASE_PROJECT_URL" ]; then
+            echo "Missing SUPABASE_SERVICE_ROLE_KEY or SUPABASE_PROJECT_URL secret" >&2
+            exit 1
+          fi
+
+          PROJECT_REF=$(echo "$SUPABASE_PROJECT_URL" | sed -E 's#https?://([^.]*)\..*#\1#')
+          export SUPABASE_ACCESS_TOKEN="$SUPABASE_SERVICE_ROLE_KEY"
+
+          SQL_FILE="ai-roomchat/docs/sql/query-finalize-functions.sql"
+          echo "Running: $SQL_FILE"
+
+          # Run the SQL and capture stdout so we can upload it as an artifact
+          /bin/bash -lc "cat $SQL_FILE | supabase db query --project-ref $PROJECT_REF --service-role-key $SUPABASE_SERVICE_ROLE_KEY --yes" > /tmp/finalize-defs.txt 2>&1 || true
+
+          # Upload as artifact for inspection
+          ls -la /tmp
+          echo "Uploading artifact finalize-defs.txt"
+          mkdir -p artifacts
+          cp /tmp/finalize-defs.txt artifacts/finalize-defs.txt || true
+          tar -czf /tmp/finalize-defs.tar.gz -C artifacts . || true
+          echo "artifact ready"
+        
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: finalize-defs
+          path: /tmp/finalize-defs.txt
