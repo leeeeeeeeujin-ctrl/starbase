@@ -29,6 +29,8 @@ jobs:
         run: |
           set -euo pipefail
           echo "Starting debug RPC runner..."
+          # ensure tiny runtime deps that scripts sometimes require (do not modify package.json)
+          npm install dotenv --no-save || true
           node scripts/run-rpc-create-session-debug.js > /tmp/debug-rpc-output.txt 2>&1 || true
           echo "--- STDOUT/STDERR from debug RPC runner ---"
           sed -n '1,200p' /tmp/debug-rpc-output.txt || true
