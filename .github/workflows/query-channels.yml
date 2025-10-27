@@ -2,6 +2,9 @@ name: Query recent rank_session_battle_logs channels
 
 on:
   workflow_dispatch: {}
+  push:
+    branches:
+      - apply-sql-now
 
 jobs:
   query:
