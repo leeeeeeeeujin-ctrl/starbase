@@ -37,7 +37,9 @@ jobs:
           echo "Running: $SQL_FILE"
 
           # Run the SQL and capture stdout so we can upload it as an artifact
-          /bin/bash -lc "cat $SQL_FILE | supabase db query --project-ref $PROJECT_REF --service-role-key $SUPABASE_SERVICE_ROLE_KEY --yes" > /tmp/finalize-defs.txt 2>&1 || true
+          # Some supabase CLI releases don't accept --project-ref on the db query subcommand,
+          # so omit it and provide the service-role key instead.
+          /bin/bash -lc "cat $SQL_FILE | supabase db query --service-role-key $SUPABASE_SERVICE_ROLE_KEY --yes" > /tmp/finalize-defs.txt 2>&1 || true
 
           # Upload as artifact for inspection
           ls -la /tmp
