@@ -21,6 +21,12 @@ jobs:
         run: |
           npm ci --prefer-offline --no-audit --no-fund
 
+      - name: Ensure small runtime deps
+        working-directory: ai-roomchat
+        run: |
+          # dotenv may not be a dependency in CI; install it no-save to satisfy scripts that require it
+          npm install dotenv --no-save || true
+
       - name: Run debug RPC script
         working-directory: ai-roomchat
         env:
