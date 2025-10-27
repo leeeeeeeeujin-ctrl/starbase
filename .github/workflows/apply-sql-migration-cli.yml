@@ -55,14 +55,23 @@ jobs:
             exit 1
           fi
 
-          # Try to resolve SQL file in common repo locations (allow callers to pass path relative to repo root
-          # or relative to ai-roomchat/ subfolder). This helps when default path differs between devs.
+          # Resolve SQL file robustly. Accept explicit path, or try to locate by basename in the repo
           CANDIDATE="$SQL_FILE"
           if [ ! -f "$CANDIDATE" ]; then
-            if [ -f "ai-roomchat/$SQL_FILE" ]; then
-              CANDIDATE="ai-roomchat/$SQL_FILE"
-            elif [ -f "docs/sql/$SQL_FILE" ]; then
-              CANDIDATE="docs/sql/$SQL_FILE"
+            BASENAME=$(basename "$SQL_FILE")
+            echo "SQL file not found at $SQL_FILE; searching repository for $BASENAME"
+            # Prefer exact git-tracked path if available
+            FOUND=$(git ls-files | grep -F "${BASENAME}" | head -n1 || true)
+            if [ -n "$FOUND" ]; then
+              echo "Found candidate via git ls-files: $FOUND"
+              CANDIDATE="$FOUND"
+            else
+              # Fallback common locations
+              if [ -f "ai-roomchat/$SQL_FILE" ]; then
+                CANDIDATE="ai-roomchat/$SQL_FILE"
+              elif [ -f "docs/sql/$SQL_FILE" ]; then
+                CANDIDATE="docs/sql/$SQL_FILE"
+              fi
             fi
           fi
 
