@@ -43,4 +43,30 @@ jobs:
             "ORDER BY created_at DESC" \
             "LIMIT 5;" > /tmp/query.sql
 
-          supabase db query --yes < /tmp/query.sql || { echo "supabase db query failed" >&2; supabase --version || true; exit 1; }
+          set +e
+          cat /tmp/query.sql | supabase db query --project-ref "$PROJECT_REF" --service-role-key "$SUPABASE_SERVICE_ROLE_KEY" --yes
+          RC=$?
+          if [ $RC -eq 0 ]; then
+            echo "supabase db query succeeded (with flags)"
+            exit 0
+          fi
+
+          cat /tmp/query.sql | supabase db query --yes
+          RC=$?
+          if [ $RC -eq 0 ]; then
+            echo "supabase db query succeeded (stdin, no flags)"
+            exit 0
+          fi
+
+          supabase db query --yes < /tmp/query.sql
+          RC=$?
+          if [ $RC -eq 0 ]; then
+            echo "supabase db query succeeded (stdin via redirection)"
+            exit 0
+          fi
+
+          echo "All supabase CLI attempts failed. Printing diagnostics." >&2
+          supabase --version || true
+          supabase db --help || true
+          exit 1
+          set -e
