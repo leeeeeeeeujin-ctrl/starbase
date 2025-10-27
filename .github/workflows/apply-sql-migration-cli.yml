@@ -3,6 +3,11 @@ name: Apply SQL migration (supabase-cli)
 
 on:
   workflow_dispatch:
+    inputs:
+      sql_file:
+        description: 'Path to SQL file in the repository (relative)'
+        required: true
+        default: 'docs/sql/finalize-rank-session-outcome-channel-aware.sql'
 
 jobs:
   apply-sql-cli:
@@ -43,7 +48,20 @@ jobs:
           # Set access token for supabase CLI
           export SUPABASE_ACCESS_TOKEN="$SUPABASE_SERVICE_ROLE_KEY"
 
-          # Try to run SQL file using supabase CLI. The exact command may vary by CLI version.
-          # We attempt `supabase db query` which runs a SQL file against the project's database.
-            supabase db query --file docs/sql/20251025_add_recompute_queue.sql --project-ref "$PROJECT_REF" --service-role-key "$SUPABASE_SERVICE_ROLE_KEY" --yes
+          # Workflow input available at github.event.inputs.sql_file
+          SQL_FILE="${{ github.event.inputs.sql_file }}"
+          if [ -z "$SQL_FILE" ]; then
+            echo "ERROR: sql_file input is empty" >&2
+            exit 1
+          fi
+
+          echo "Running SQL file: $SQL_FILE"
+          # Try to run SQL file using supabase CLI. Some CLI versions don't support --file; pipe via stdin
+          # First attempt: pipe file contents into supabase db query
+          if cat "$SQL_FILE" | supabase db query --project-ref "$PROJECT_REF" --service-role-key "$SUPABASE_SERVICE_ROLE_KEY" --yes; then
+            echo "supabase db query succeeded (via stdin)"
+          else
+            echo "supabase db query (via stdin) failed — falling back to printing error and exiting" >&2
+            exit 1
+          fi
 
