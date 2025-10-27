@@ -65,13 +65,14 @@ begin
         history jsonb
       )
   loop
-    -- Try to cast participant_id/owner_id/hero_id text values to uuid safely using helper try_cast_uuid
-    -- (this avoids type-mismatch errors when callers accidentally supply numeric IDs)
-    declare v_participant_uuid uuid := public.try_cast_uuid(coalesce(v_outcome.participant_id::text, null));
-    declare v_owner_uuid uuid := public.try_cast_uuid(coalesce(v_outcome.owner_id::text, null));
-    declare v_hero_uuid uuid := public.try_cast_uuid(coalesce(v_outcome.hero_id::text, null));
+    -- Normalize incoming ids to text and compare against stored id::text.
+    -- This makes the function tolerant to schemas where rank_participants.id
+    -- may be numeric (bigint) or uuid. Comparing id::text avoids operator
+    -- mismatch errors while remaining simple and explicit.
+    declare v_participant_text text := nullif(coalesce(v_outcome.participant_id::text, ''), '');
+    declare v_participant_json jsonb := null;
 
-    if v_participant_uuid is not null then
+    if v_participant_text is not null then
       update public.rank_participants
          set score = coalesce(score, 0) + coalesce(v_outcome.score_delta, 0),
              battles = coalesce(battles, 0) + 1,
@@ -82,18 +83,18 @@ begin
                else coalesce(status, 'active')
              end,
              updated_at = p_completed_at
-       where id = v_participant_uuid
+       where (id::text) = v_participant_text
        returning jsonb_build_object(
          'participant_id', id,
          'score', score,
          'status', status
-       ) into v_participant;
+       ) into v_participant_json;
 
-      if v_participant is not null then
+      if v_participant_json is not null then
         v_result := jsonb_set(
           v_result,
           array['participants'],
-          coalesce(v_result->'participants', '[]'::jsonb) || v_participant
+          coalesce(v_result->'participants', '[]'::jsonb) || v_participant_json
         );
       end if;
     end if;
