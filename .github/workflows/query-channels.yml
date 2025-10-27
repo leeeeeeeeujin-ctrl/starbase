@@ -51,14 +51,14 @@ jobs:
             exit 0
           fi
 
-          cat /tmp/query.sql | supabase db query --yes
+          cat /tmp/query.sql | supabase db query --yes -o json
           RC=$?
           if [ $RC -eq 0 ]; then
             echo "supabase db query succeeded (stdin, no flags)"
             exit 0
           fi
 
-          supabase db query --yes < /tmp/query.sql
+          supabase db query --yes -o json < /tmp/query.sql
           RC=$?
           if [ $RC -eq 0 ]; then
             echo "supabase db query succeeded (stdin via redirection)"
