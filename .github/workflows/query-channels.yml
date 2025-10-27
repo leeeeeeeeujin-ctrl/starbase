@@ -37,12 +37,10 @@ jobs:
           echo "Project ref: $PROJECT_REF"
           export SUPABASE_ACCESS_TOKEN="$SUPABASE_SERVICE_ROLE_KEY"
 
-          SQL=$(cat <<'SQL'
-SELECT id, payload -> 'channels' AS channels, created_at
-FROM public.rank_session_battle_logs
-ORDER BY created_at DESC
-LIMIT 5;
-SQL
-)
+          printf '%s\n' \
+            "SELECT id, payload -> 'channels' AS channels, created_at" \
+            "FROM public.rank_session_battle_logs" \
+            "ORDER BY created_at DESC" \
+            "LIMIT 5;" > /tmp/query.sql
 
-          echo "$SQL" | supabase db query --yes || { echo "supabase db query failed" >&2; supabase --version || true; exit 1; }
+          supabase db query --yes < /tmp/query.sql || { echo "supabase db query failed" >&2; supabase --version || true; exit 1; }
