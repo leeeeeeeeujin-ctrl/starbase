@@ -162,17 +162,47 @@ export default async function handler(req, res) {
     return res.status(409).json({ error: 'session_inactive' });
   }
 
-  const result = await callChat({
-    userApiKey: effectiveApiKey,
-    system: typeof system === 'string' ? system : '',
-    user: prompt,
-    apiVersion: effectiveApiVersion || 'gemini',
-    history: historyEntries,
-    providerOptions:
-      (effectiveApiVersion || 'gemini') === 'gemini'
-        ? { geminiMode: effectiveGeminiMode, geminiModel: effectiveGeminiModel }
-        : {},
-  });
+  // Call provider. Support a dev-only server-side path 'gemini-proxy' which uses
+  // the server DEV_GEMINI_API_KEY to call Gemini without requiring a client-supplied key.
+  let result;
+  if (effectiveApiVersion === 'gemini-proxy') {
+    const { callGemini } = require('../../../lib/rank/ai');
+    const devKey = process.env.DEV_GEMINI_API_KEY;
+    if (!devKey) {
+      return res.status(500).json({ error: 'server_misconfigured_dev_gemini_key' });
+    }
+
+    try {
+      const geminiRes = await callGemini({
+        apiKey: devKey,
+        system: typeof system === 'string' ? system : '',
+        prompt,
+        mode: effectiveGeminiMode || undefined,
+        model: effectiveGeminiModel || undefined,
+        history: historyEntries,
+      });
+      // Normalize to the same shape callChat returns where possible
+      result = { ok: true, text: (geminiRes?.text || geminiRes?.candidates?.[0]?.content?.parts?.join('') || '') };
+    } catch (err) {
+      console.error('[run-turn] callGemini (dev proxy) error', err);
+      return res.status(500).json({ error: 'provider_call_failed' });
+    }
+  } else {
+    result = await callChat({
+      userApiKey: effectiveApiKey,
+      system: typeof system === 'string' ? system : '',
+      user: prompt,
+      apiVersion: effectiveApiVersion || 'gemini',
+      history: historyEntries,
+      providerOptions:
+        (effectiveApiVersion || 'gemini') === 'gemini'
+          ? { geminiMode: effectiveGeminiMode, geminiModel: effectiveGeminiModel }
+          : {},
+    }).catch((err) => {
+      console.error('callChat error', err);
+      throw err;
+    });
+  }
 
   if (result?.error) {
     return res.status(400).json(result);
@@ -229,18 +259,6 @@ export default async function handler(req, res) {
       is_visible: false,
       content: trimmedPrompt,
       summary_payload: promptSummary,
-    });
-
-    currentIdx += 1;
-  }
-
-  if (responseText) {
-    const responseSummary = buildTurnSummaryPayload({
-      role: responseRole,
-      content: responseText,
-      prompt: trimmedPrompt,
-      session: { id: sessionId, turn: nextTurnNumber },
-      idx: currentIdx,
     });
 
     rows.push({

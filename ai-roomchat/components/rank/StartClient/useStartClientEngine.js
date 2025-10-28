@@ -58,6 +58,7 @@ import { mergeTimelineEvents, normalizeTimelineStatus } from '@/lib/rank/timelin
 import { buildDropInExtensionTimelineEvent } from '@/lib/rank/dropInTimeline';
 import { prepareHistoryPayload } from '@/lib/rank/chatHistory';
 import { buildHistorySeedEntries } from '@/lib/rank/historySeeds';
+import { runClientAction } from '@/lib/rank/clientActions';
 import { useHistoryBuffer } from './hooks/useHistoryBuffer';
 import { useStartSessionLifecycle } from './hooks/useStartSessionLifecycle';
 import { useStartApiKeyManager } from './hooks/useStartApiKeyManager';
@@ -3654,6 +3655,114 @@ export function useStartClientEngine(gameId, options = {}) {
           logsRef.current = nextLogs;
           return nextLogs;
         });
+
+        // If the chosen edge carries an action, dispatch it to the server (POC)
+        if (chosenEdge?.data?.action && chosenEdge.data.action !== 'continue') {
+          (async () => {
+            try {
+              // Prefer explicit action payload on the bridge if present, otherwise construct a small default payload
+              const explicitPayload = chosenEdge.data.payload || chosenEdge.data.actionPayload || null;
+              const defaultPayload = {
+                ownerId: actorContext?.participant?.owner_id || null,
+                slotIndex: actorContext?.slotIndex ?? null,
+                amount: 1,
+              };
+              const actionPayload = explicitPayload || defaultPayload;
+
+              const runLocally = !!chosenEdge.data?.runLocally || !!chosenEdge.data?.run_local;
+              if (runLocally) {
+                try {
+                  const localResp = await runClientAction(chosenEdge.data.action, {
+                    payload: actionPayload,
+                    participants: participantsRef.current,
+                    actorContext,
+                  });
+                  if (localResp?.ok) {
+                    const updated = Array.isArray(localResp?.changes?.participants)
+                      ? localResp.changes.participants
+                      : null;
+                    if (updated) {
+                      patchEngineState({ participants: updated });
+                    }
+                    // best-effort: send compact audit summary to server
+                    try {
+                      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+                      if (!sessionError && sessionData?.session?.access_token) {
+                        const token = sessionData.session.access_token;
+                        const requestId = typeof crypto !== 'undefined' && crypto.randomUUID
+                          ? crypto.randomUUID()
+                          : `${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
+                        // Fire-and-forget; don't block turn processing
+                        void fetch('/api/rank/log-action', {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                            Authorization: `Bearer ${token}`,
+                          },
+                          body: JSON.stringify({
+                            action: chosenEdge.data.action,
+                            summary: localResp.summary || null,
+                            result: localResp.result || null,
+                            session_id: sessionInfo?.id || null,
+                            game_id: gameId || null,
+                            request_id: requestId,
+                          }),
+                        }).catch(err => console.warn('[StartClient] log-action fetch failed', err));
+                      }
+                    } catch (err) {
+                      console.warn('[StartClient] log-action error', err?.message || err);
+                    }
+                  } else {
+                    console.warn('[StartClient] local action failed', localResp);
+                  }
+                } catch (err) {
+                  console.warn('[StartClient] local action error:', err?.message || err);
+                }
+
+                // Do not dispatch to server when runLocally
+                return;
+              }
+
+              const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+              if (sessionError) throw sessionError;
+              const token = sessionData?.session?.access_token;
+              if (!token) throw new Error('missing_session_token');
+
+              const resp = await fetch('/api/rank/handle-action', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                  action: chosenEdge.data.action,
+                  payload: actionPayload,
+                  session_id: sessionInfo?.id || null,
+                  game_id: gameId || null,
+                }),
+              });
+
+              if (!resp.ok) {
+                const detail = await resp.json().catch(() => ({}));
+                console.warn('[StartClient] action dispatch failed', detail);
+                return;
+              }
+
+              const body = await resp.json().catch(() => ({}));
+              if (body?.changes && body.changes.participants) {
+                // Apply participant changes if returned (simple replace for POC)
+                const updated = Array.isArray(body.changes.participants)
+                  ? body.changes.participants
+                  : null;
+                if (updated) {
+                  patchEngineState({ participants: updated });
+                }
+              }
+            } catch (err) {
+              console.warn('[StartClient] action dispatch error:', err?.message || err);
+            }
+          })();
+        }
 
         clearManualResponse();
 
