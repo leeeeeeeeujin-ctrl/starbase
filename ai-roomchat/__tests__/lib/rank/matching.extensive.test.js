@@ -50,12 +50,14 @@ describe('matching extensive scenarios', () => {
       buildQueueEntry({ id: 'q4', ownerId: 'd', heroId: 'hd', role: 'support', score: 1160 }),
     ];
 
-    const result = matchRankParticipants({ roles, queue, scoreWindows: [300] });
-    expect(result.ready).toBe(true);
-    expect(result.totalSlots).toBe(4);
-    expect(result.assignments).toHaveLength(2);
-    const filled = result.assignments.reduce((acc, a) => acc + (a.filledSlots || 0), 0);
-    expect(filled).toBe(4);
+  const result = matchRankParticipants({ roles, queue, scoreWindows: [300] });
+  expect(result.ready).toBe(true);
+  expect(result.totalSlots).toBe(4);
+  // This scenario fills multi-role slots; check the per-role scoped assignments
+  // produced in `roleAssignments`.
+  expect(result.roleAssignments).toHaveLength(2);
+  const filled = result.roleAssignments.reduce((acc, a) => acc + (a.slots || 0), 0);
+  expect(filled).toBe(4);
   });
 
   it('respects party grouping for multi-member parties', () => {

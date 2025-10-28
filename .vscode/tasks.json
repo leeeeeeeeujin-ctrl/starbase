@@ -73,7 +73,7 @@
       "type": "npm",
       "script": "test:fuzz",
       "options": {
-        "cwd": "${workspaceFolder}/ai-roomchat/starbase/ai-roomchat"
+        "cwd": "${workspaceFolder}/ai-roomchat"
       },
       "group": "build"
     },
@@ -82,7 +82,7 @@
       "type": "npm",
       "script": "test:samples",
       "options": {
-        "cwd": "${workspaceFolder}/ai-roomchat/starbase/ai-roomchat"
+        "cwd": "${workspaceFolder}/ai-roomchat"
       },
       "group": "build"
     },

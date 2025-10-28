@@ -11,6 +11,10 @@ const customJestConfig = {
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
     '^.+\\.module\\.css$': '<rootDir>/__mocks__/styleMock.js',
+    // Ensure Jest resolves to this package's React copies when workspace has
+    // nested app copies (avoids multiple-react-copies and hooks errors).
+    '^react$': '<rootDir>/node_modules/react',
+    '^react-test-renderer$': '<rootDir>/node_modules/react-test-renderer',
   },
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   reporters: [

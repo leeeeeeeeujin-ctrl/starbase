@@ -609,6 +609,23 @@ export async function enqueueParticipant(
     });
   }
 
+  // If the owner already has a matched entry in the same game+mode, prevent
+  // re-queueing — they are already assigned and should not be allowed to join
+  // again until that match resolves.
+  const hasMatchedInSameQueue = duplicateEntries.some(entry => {
+    if (!entry) return false;
+    const entryGameId = entry.game_id ?? entry.gameId;
+    const entryMode = entry.mode;
+    const entryStatus = (entry.status || '').toString().toLowerCase();
+    const sameGame = String(entryGameId ?? '') === String(gameId ?? '');
+    const sameMode = String(entryMode ?? '') === String(mode ?? '');
+    return sameGame && sameMode && entryStatus === 'matched';
+  });
+
+  if (hasMatchedInSameQueue) {
+    return { ok: false, error: '이미 다른 대기열에 참여 중입니다' };
+  }
+
   if (otherGameQueueEntries.length > 0) {
     const otherGameIds = Array.from(
       new Set(
@@ -618,6 +635,21 @@ export async function enqueueParticipant(
       )
     ).filter(Boolean);
 
+    const blockCrossGame = String(process.env.RANK_BLOCK_CROSS_GAME_QUEUE || '').toLowerCase();
+    if (blockCrossGame === '1' || blockCrossGame === 'true' || blockCrossGame === 'yes') {
+      return {
+        ok: false,
+        error:
+          otherGameIds.length > 0
+            ? `이미 다른 게임(${otherGameIds.join(',')})에 참여 중입니다.`
+            : '이미 다른 게임에 참여 중입니다.',
+      };
+    }
+
+    // Legacy/testing behavior: mark other-game entries abandoned and proceed
+    // with inserting the new queue entry. This keeps the prior test-friendly
+    // behavior but can be turned off in production via the
+    // RANK_BLOCK_CROSS_GAME_QUEUE env var.
     if (otherGameIds.length > 0) {
       const cleanupResult = await withTable(supabaseClient, 'rank_match_queue', table =>
         supabaseClient
@@ -633,12 +665,6 @@ export async function enqueueParticipant(
       }
     }
   }
-  // NOTE: allow owners to participate in multiple game queues concurrently.
-  // Historically we prevented cross-game queueing and attempted to clean up
-  // other-game entries. That restriction is intentionally removed so game
-  // participation rules can be decided by the later, fully-featured game
-  // system. We keep duplicateEntries available for telemetry but do not
-  // block or cleanup them here.
 
   const payload = {
     game_id: gameId,
@@ -655,13 +681,16 @@ export async function enqueueParticipant(
 
   const insert = await withTable(supabaseClient, 'rank_match_queue', async table => {
     // Supabase upsert requires unique constraint, so attempt delete + insert.
+    // Only remove existing waiting entries for this owner/game/mode. Do NOT
+    // delete already-matched entries here — matched entries should block
+    // re-queueing above.
     await supabaseClient
       .from(table)
       .delete()
       .eq('game_id', gameId)
       .eq('mode', mode)
       .eq('owner_id', ownerId)
-      .in('status', ['waiting', 'matched']);
+      .in('status', ['waiting']);
 
     return supabaseClient.from(table).insert(payload, { defaultToNull: false });
   });

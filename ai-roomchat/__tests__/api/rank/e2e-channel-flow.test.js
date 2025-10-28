@@ -80,6 +80,10 @@ describe('E2E: matching -> realtime play -> finalize (channel-aware)', () => {
     });
     const startRes = createMockResponse();
     await startHandler(startReq, startRes);
+  // Debug: 출력하여 start-session이 왜 400을 반환하는지 확인
+  // (테스트 전용 로그 — 추후 제거 가능)
+  // eslint-disable-next-line no-console
+  console.error('DEBUG start-session response:', startRes.statusCode, startRes.body);
     expect(startRes.statusCode).toBe(200);
     expect(startRes.body.ok).toBe(true);
     const sessionId = startRes.body.session.id;
