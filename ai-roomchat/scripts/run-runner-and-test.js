@@ -22,12 +22,12 @@ function startRunner() {
 }
 
 function runTest() {
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     const node = process.execPath;
     const proc = spawn(node, [testPath], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
     proc.stdout.pipe(process.stdout);
     proc.stderr.pipe(process.stderr);
-    proc.on('close', (code) => resolve(code));
+    proc.on('close', code => resolve(code));
   });
 }
 
@@ -41,7 +41,7 @@ function runTest() {
   const readyMatcher = /listening on (\d+)/i;
   const readyTimeoutMs = 5000;
 
-  const onData = (chunk) => {
+  const onData = chunk => {
     process.stdout.write(chunk);
     buffer += chunk;
     if (!ready && readyMatcher.test(buffer)) {
@@ -51,10 +51,10 @@ function runTest() {
   };
 
   runner.stdout.on('data', onData);
-  runner.stderr.on('data', (c) => process.stderr.write(c));
+  runner.stderr.on('data', c => process.stderr.write(c));
 
   // Fallback: if not ready within timeout, proceed anyway after short delay
-  await new Promise((res) => setTimeout(res, 800));
+  await new Promise(res => setTimeout(res, 800));
 
   try {
     const code = await runTest();
@@ -64,7 +64,7 @@ function runTest() {
   }
 
   // Give runner a moment to flush logs then kill
-  await new Promise((res) => setTimeout(res, 200));
+  await new Promise(res => setTimeout(res, 200));
   console.log('Stopping runner...');
   try {
     runner.kill();
@@ -73,6 +73,6 @@ function runTest() {
   }
 
   // Wait briefly for runner to exit
-  await new Promise((res) => setTimeout(res, 200));
+  await new Promise(res => setTimeout(res, 200));
   process.exit(0);
 })();

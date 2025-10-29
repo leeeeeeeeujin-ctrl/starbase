@@ -1,7 +1,7 @@
-const { spawn } = require('child_process')
-const fs = require('fs')
-const os = require('os')
-const path = require('path')
+const { spawn } = require('child_process');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 
 // Server-side adapter that invokes a local Gemini CLI. Configure via env:
 // GEMINI_CLI_PATH - path to the CLI executable (default: 'gemini')
@@ -11,106 +11,119 @@ const path = require('path')
 
 function spawnWithTimeout(cmd, args, opts = {}, timeout = 30000) {
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, opts)
-    let stdout = ''
-    let stderr = ''
-    let finished = false
+    const child = spawn(cmd, args, opts);
+    let stdout = '';
+    let stderr = '';
+    let finished = false;
 
     const kill = () => {
       if (!finished) {
-        finished = true
+        finished = true;
         try {
-          child.kill('SIGKILL')
+          child.kill('SIGKILL');
         } catch (e) {}
-        reject(new Error('gemini-cli: timeout'))
+        reject(new Error('gemini-cli: timeout'));
       }
-    }
+    };
 
-    const timer = setTimeout(kill, timeout)
+    const timer = setTimeout(kill, timeout);
 
-    child.stdout && child.stdout.on('data', (d) => (stdout += d.toString()))
-    child.stderr && child.stderr.on('data', (d) => (stderr += d.toString()))
+    child.stdout && child.stdout.on('data', d => (stdout += d.toString()));
+    child.stderr && child.stderr.on('data', d => (stderr += d.toString()));
 
-    child.on('error', (err) => {
-      if (finished) return
-      finished = true
-      clearTimeout(timer)
-      reject(err)
-    })
+    child.on('error', err => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      reject(err);
+    });
 
-    child.on('close', (code) => {
-      if (finished) return
-      finished = true
-      clearTimeout(timer)
-      resolve({ code, stdout, stderr })
-    })
-  })
+    child.on('close', code => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      resolve({ code, stdout, stderr });
+    });
+  });
 }
 
 async function callProvider({ provider = 'gemini', prompt, opts = {} }) {
-  const cliPath = process.env.GEMINI_CLI_PATH || 'gemini'
-  const cliArgsEnv = process.env.GEMINI_CLI_ARGS || ''
-  const cliArgs = cliArgsEnv.split(' ').filter(Boolean)
-  const acceptStdin = String(process.env.GEMINI_CLI_ACCEPT_STDIN || '1') === '1'
-  const timeout = parseInt(process.env.GEMINI_CLI_TIMEOUT_MS || '30000', 10)
+  const cliPath = process.env.GEMINI_CLI_PATH || 'gemini';
+  const cliArgsEnv = process.env.GEMINI_CLI_ARGS || '';
+  const cliArgs = cliArgsEnv.split(' ').filter(Boolean);
+  const acceptStdin = String(process.env.GEMINI_CLI_ACCEPT_STDIN || '1') === '1';
+  const timeout = parseInt(process.env.GEMINI_CLI_TIMEOUT_MS || '30000', 10);
 
-  if (!prompt) prompt = ''
+  if (!prompt) prompt = '';
 
   if (acceptStdin) {
     // call CLI and write prompt to stdin
-    const args = cliArgs.slice()
-    const proc = spawnWithTimeout(cliPath, args, { stdio: ['pipe', 'pipe', 'pipe'] }, timeout)
+    const args = cliArgs.slice();
+    const proc = spawnWithTimeout(cliPath, args, { stdio: ['pipe', 'pipe', 'pipe'] }, timeout);
     // spawnWithTimeout returns a promise, but we need to write to stdin first.
     // Simpler: spawn directly and attach handlers here to allow stdin write.
     return new Promise((resolve, reject) => {
-      const child = spawn(cliPath, args, { stdio: ['pipe', 'pipe', 'pipe'] })
-      let stdout = ''
-      let stderr = ''
+      const child = spawn(cliPath, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+      let stdout = '';
+      let stderr = '';
       const timer = setTimeout(() => {
-        try { child.kill('SIGKILL') } catch (e) {}
-        reject(new Error('gemini-cli: timeout'))
-      }, timeout)
+        try {
+          child.kill('SIGKILL');
+        } catch (e) {}
+        reject(new Error('gemini-cli: timeout'));
+      }, timeout);
 
-      child.stdout && child.stdout.on('data', (d) => (stdout += d.toString()))
-      child.stderr && child.stderr.on('data', (d) => (stderr += d.toString()))
+      child.stdout && child.stdout.on('data', d => (stdout += d.toString()));
+      child.stderr && child.stderr.on('data', d => (stderr += d.toString()));
 
-      child.on('error', (err) => {
-        clearTimeout(timer)
-        reject(err)
-      })
+      child.on('error', err => {
+        clearTimeout(timer);
+        reject(err);
+      });
 
-      child.on('close', (code) => {
-        clearTimeout(timer)
-        resolve({ text: stdout.trim(), raw: { code, stderr }, usage: {} })
-      })
+      child.on('close', code => {
+        clearTimeout(timer);
+        resolve({ text: stdout.trim(), raw: { code, stderr }, usage: {} });
+      });
 
       try {
-        child.stdin.write(String(prompt))
-        child.stdin.end()
+        child.stdin.write(String(prompt));
+        child.stdin.end();
       } catch (err) {
-        clearTimeout(timer)
-        try { child.kill('SIGKILL') } catch (e) {}
-        reject(err)
+        clearTimeout(timer);
+        try {
+          child.kill('SIGKILL');
+        } catch (e) {}
+        reject(err);
       }
-    })
+    });
   }
 
   // Else: write prompt to a temp file and pass its path as an argument
-  const tmpDir = os.tmpdir()
-  const filename = `gemini_prompt_${Date.now()}.txt`
-  const filePath = path.join(tmpDir, filename)
-  fs.writeFileSync(filePath, String(prompt), 'utf8')
-  const args = cliArgs.concat([filePath])
+  const tmpDir = os.tmpdir();
+  const filename = `gemini_prompt_${Date.now()}.txt`;
+  const filePath = path.join(tmpDir, filename);
+  fs.writeFileSync(filePath, String(prompt), 'utf8');
+  const args = cliArgs.concat([filePath]);
 
   try {
-    const result = await spawnWithTimeout(cliPath, args, { stdio: ['ignore', 'pipe', 'pipe'] }, timeout)
+    const result = await spawnWithTimeout(
+      cliPath,
+      args,
+      { stdio: ['ignore', 'pipe', 'pipe'] },
+      timeout
+    );
     // cleanup
-    try { fs.unlinkSync(filePath) } catch (e) {}
-    return { text: (result.stdout || '').trim(), raw: result, usage: {} }
+    try {
+      fs.unlinkSync(filePath);
+    } catch (e) {}
+    return { text: (result.stdout || '').trim(), raw: result, usage: {} };
   } catch (err) {
-    try { fs.unlinkSync(filePath) } catch (e) {}
-    throw err
+    try {
+      fs.unlinkSync(filePath);
+    } catch (e) {}
+    throw err;
   }
 }
 
-module.exports = { callProvider }
+module.exports = { callProvider };
