@@ -7,7 +7,7 @@ on:
       sql_file:
         description: 'Path to SQL file in the repository (relative)'
         required: true
-        default: 'ai-roomchat/docs/sql/finalize-rank-session-outcome-channel-aware.sql'
+        default: 'ai-roomchat/sql/002_add_devices_and_prompt_runs.sql'
 
 jobs:
   apply-sql-cli:
