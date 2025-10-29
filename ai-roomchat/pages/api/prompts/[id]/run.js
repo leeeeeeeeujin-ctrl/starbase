@@ -98,14 +98,12 @@ export default async function handler(req, res) {
             .select()
             .single();
           if (error) throw error;
-          return res
-            .status(200)
-            .json({
-              runId: runRow.id,
-              providerResponse: storedProviderResponse,
-              verified: verification.verified,
-              reason: verification.reason,
-            });
+          return res.status(200).json({
+            runId: runRow.id,
+            providerResponse: storedProviderResponse,
+            verified: verification.verified,
+            reason: verification.reason,
+          });
         }
       } catch (err) {
         console.warn('Supabase save run failed, falling back to memory store', err && err.message);
@@ -120,14 +118,12 @@ export default async function handler(req, res) {
         provider_response: storedProviderResponse,
         status,
       });
-      return res
-        .status(200)
-        .json({
-          runId: run.id,
-          providerResponse: storedProviderResponse,
-          verified: verification.verified,
-          reason: verification.reason,
-        });
+      return res.status(200).json({
+        runId: run.id,
+        providerResponse: storedProviderResponse,
+        verified: verification.verified,
+        reason: verification.reason,
+      });
     } catch (err) {
       console.warn('Client provider verification failed', err && err.message);
       return res.status(500).json({ error: 'verification_failed', detail: String(err) });
