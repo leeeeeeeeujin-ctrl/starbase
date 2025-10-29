@@ -1,7 +1,7 @@
 import { getPrompt as getPromptInMemory, savePrompt as savePromptInMemory } from '../../../lib/promptStore'
 import { supabase as supabaseAdmin } from '../../../lib/supabaseAdmin'
 
-export default function handler(req, res) {
+export default async function handler(req, res) {
   const { id } = req.query
 
   if (req.method === 'GET') {
