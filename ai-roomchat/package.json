@@ -20,6 +20,7 @@
     "test:compatibility": "jest --config jest.compatibility.config.js",
     "test:fuzz": "jest --config jest.fuzz.config.js",
     "test:samples": "node scripts/run-matching-samples.js",
+  "lint": "eslint . --ext .js,.jsx --max-warnings=0",
     "notify:audio-events": "node scripts/notify-audio-event-trends.js",
     "deploy:edge-functions": "node scripts/deploy-edge-functions.js",
     "check:edge-deploy-config": "node scripts/verify-edge-deploy-config.js",
@@ -80,6 +81,7 @@
     "babel-plugin-transform-imports": "^2.0.0",
     "babel-plugin-transform-remove-console": "^6.9.4",
     "eslint": "^9.38.0",
+  "eslint-plugin-import": "^2.27.5",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.0.1",
     "jest": "^29.7.0",
@@ -90,4 +92,7 @@
     "react-refresh": "^0.18.0",
     "react-test-renderer": "18.2.0"
   }
+  ,
+  "optionalDependencies": {},
+  "peerDependencies": {}
 }

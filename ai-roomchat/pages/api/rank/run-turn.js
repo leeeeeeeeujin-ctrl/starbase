@@ -264,15 +264,28 @@ export default async function handler(req, res) {
       summary_payload: promptSummary,
     });
 
-    rows.push({
-      session_id: sessionId,
-      idx: currentIdx,
-      role: responseRole,
-      public: responsePublic,
-      is_visible: responsePublic !== false,
-      content: responseText,
-      summary_payload: responseSummary,
-    });
+    // If there's a response text, increment the index and add a response row.
+    // Compute a summary payload for the response as well so the DB insert
+    // doesn't reference an undefined variable.
+    if (responseText) {
+      currentIdx += 1;
+      const responseSummary = buildTurnSummaryPayload({
+        role: responseRole,
+        content: responseText,
+        session: { id: sessionId, turn: nextTurnNumber },
+        idx: currentIdx,
+      });
+
+      rows.push({
+        session_id: sessionId,
+        idx: currentIdx,
+        role: responseRole,
+        public: responsePublic,
+        is_visible: responsePublic !== false,
+        content: responseText,
+        summary_payload: responseSummary,
+      });
+    }
   }
 
   let inserted = [];

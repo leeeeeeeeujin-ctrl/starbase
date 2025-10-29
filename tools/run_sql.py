@@ -133,7 +133,10 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     ensure_dirs(args.out)
     with open(args.out, "w", encoding="utf-8") as f:
-        json.dump({"meta": {"source": conn_info.get("url")}, "result": result}, f, indent=2, ensure_ascii=False)
+        # Some Postgres types (datetime, Decimal, UUID, etc.) are not JSON serializable
+        # by default. Use `default=str` to stringify those values so the tool can write
+        # general query results without raising TypeError.
+        json.dump({"meta": {"source": conn_info.get("url")}, "result": result}, f, indent=2, ensure_ascii=False, default=str)
 
     print("Wrote results to", args.out)
     return 0

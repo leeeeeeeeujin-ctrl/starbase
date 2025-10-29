@@ -35,6 +35,7 @@ module.exports = [
     // This prevents "Definition for rule 'x' was not found" errors
     // when running eslint from the package folder.
     plugins: {
+      import: require('eslint-plugin-import'),
       react: require('eslint-plugin-react'),
       'react-hooks': require('eslint-plugin-react-hooks'),
       '@next/next': require('@next/eslint-plugin-next'),
