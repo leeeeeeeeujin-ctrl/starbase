@@ -50,10 +50,9 @@ export default async function handler(req, res) {
   // select provider implementation
   let selectedCallProvider = mockCallProvider;
   if (provider === 'gemini') {
-    try {
-      // dynamic require so server-side only and to avoid ESM/CJS top-level issues
-      // eslint-disable-next-line global-require, import/no-extraneous-dependencies
-      const gemini = require('../../../../lib/providers/geminiCliProvider');
+  try {
+  // dynamic require so server-side only and to avoid ESM/CJS top-level issues
+  const gemini = require('../../../../lib/providers/geminiCliProvider');
       if (gemini && typeof gemini.callProvider === 'function')
         selectedCallProvider = gemini.callProvider;
     } catch (e) {
@@ -66,9 +65,8 @@ export default async function handler(req, res) {
 
   // If the caller provided a client-side provider response, verify it instead of calling the server provider.
   if (isClientRun) {
-    try {
+      try {
       // dynamic require verifier
-      // eslint-disable-next-line global-require
       const {
         verifyProviderResponse,
       } = require('../../../../lib/providers/verifyProviderResponse');
