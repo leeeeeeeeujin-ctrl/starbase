@@ -60,7 +60,7 @@ async function main() {
     const outcomes = [
       { participant_id: null, channel: null },
       { participant_id: null, channel: '' },
-      { participant_id: null, channel: 'attacker' }
+      { participant_id: null, channel: 'attacker' },
     ];
 
     console.log('Calling finalize_rank_session_outcome for session', sessionId);
@@ -69,7 +69,7 @@ async function main() {
       p_game_id: null,
       p_outcomes: outcomes,
       p_roles: [],
-      p_summary: {}
+      p_summary: {},
     });
 
     if (rpcErr) {
@@ -88,7 +88,10 @@ async function main() {
 
     if (logsErr) throw logsErr;
     if (logs && logs.length > 0) {
-      console.log('Latest battle log payload.channels:', JSON.stringify(logs[0].payload.channels, null, 2));
+      console.log(
+        'Latest battle log payload.channels:',
+        JSON.stringify(logs[0].payload.channels, null, 2)
+      );
     } else {
       console.log('No battle logs found for session', sessionId);
     }

@@ -8,7 +8,13 @@ import { subscribeToBroadcastTopic } from '@/lib/realtime/broadcast';
 // should pass `supabase`, `sessionInfo`, `applyTurnStateChange`, and
 // `backfillTurnEvents` so the hook can coordinate subscriptions and backfill.
 
-export function useRealtimeSync({ initialSnapshot = null, supabase = null, sessionInfo = null, applyTurnStateChange = null, backfillTurnEvents = null } = {}) {
+export function useRealtimeSync({
+  initialSnapshot = null,
+  supabase = null,
+  sessionInfo = null,
+  applyTurnStateChange = null,
+  backfillTurnEvents = null,
+} = {}) {
   const [realtimePresence, setRealtimePresence] = useState(initialSnapshot);
   const [realtimeEvents, setRealtimeEvents] = useState(() =>
     initializeRealtimeEvents(initialSnapshot)
@@ -69,7 +75,8 @@ export function useRealtimeSync({ initialSnapshot = null, supabase = null, sessi
       `rank_turn_state_events:session:${sessionId}`,
       change => {
         const changePayload = change?.new || change?.payload || null;
-        const commitTimestamp = change?.commit_timestamp || change?.payload?.commit_timestamp || null;
+        const commitTimestamp =
+          change?.commit_timestamp || change?.payload?.commit_timestamp || null;
         if (typeof applyTurnStateChange === 'function') {
           applyTurnStateChange(changePayload, { commitTimestamp });
         }

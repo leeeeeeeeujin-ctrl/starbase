@@ -63,7 +63,11 @@
 
     for (const tmpl of templates) {
       for (const vars of variableSets) {
-        const compiled = compileTemplate({ template: tmpl.template, slotsMap, historyText: '지난 턴: 아무것도 없음' });
+        const compiled = compileTemplate({
+          template: tmpl.template,
+          slotsMap,
+          historyText: '지난 턴: 아무것도 없음',
+        });
 
         // simulate ledger update: assume the response declares first hero as winner
         const ledger = createOutcomeLedger({ participants, roleSettings: {} });
@@ -85,7 +89,13 @@
           meta: compiled.meta || {},
           ledgerChanged: rec.changed || false,
           snapshotOverallResult: snapshot.overallResult,
-          snapshotEntries: snapshot.entries.map(e => ({ key: e.key, heroName: e.heroName, channel: e.channel, result: e.result, projected: e.projectedScore })),
+          snapshotEntries: snapshot.entries.map(e => ({
+            key: e.key,
+            heroName: e.heroName,
+            channel: e.channel,
+            result: e.result,
+            projected: e.projectedScore,
+          })),
         });
       }
     }
@@ -93,7 +103,11 @@
     const outDir = path.join(__dirname, '..', 'reports');
     if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
     const outPath = path.join(outDir, 'experiment-matrix.json');
-    fs.writeFileSync(outPath, JSON.stringify({ generatedAt: new Date().toISOString(), report }, null, 2), 'utf8');
+    fs.writeFileSync(
+      outPath,
+      JSON.stringify({ generatedAt: new Date().toISOString(), report }, null, 2),
+      'utf8'
+    );
     console.log('Wrote experiment report to', outPath);
   } catch (err) {
     console.error('experiment-matrix failed:', err && err.message ? err.message : err);

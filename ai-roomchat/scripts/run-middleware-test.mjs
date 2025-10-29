@@ -2,7 +2,7 @@ import { middleware } from '../middleware.js';
 
 const fakeRequest = {
   nextUrl: { pathname: '/' },
-  url: 'http://localhost/'
+  url: 'http://localhost/',
 };
 
 (async () => {

@@ -14,14 +14,15 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: starbase/ai-roomchat
+        working-directory: ai-roomchat
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 18
           cache: 'npm'
-          cache-dependency-path: starbase/ai-roomchat/package-lock.json
+          # cache-dependency-path must be relative to the repository root
+          cache-dependency-path: ai-roomchat/package-lock.json
       - name: Install dependencies
         run: npm ci
       - name: Run ESLint
@@ -37,14 +38,14 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: starbase/ai-roomchat
+        working-directory: ai-roomchat
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 18
           cache: 'npm'
-          cache-dependency-path: starbase/ai-roomchat/package-lock.json
+          cache-dependency-path: ai-roomchat/package-lock.json
       - name: Install dependencies
         run: npm ci
       - name: Run TypeScript Type Check

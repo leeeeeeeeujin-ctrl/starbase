@@ -31,22 +31,27 @@ if (url && key) {
   // Create a throwing proxy so existing imports (e.g. `supabaseAdmin.from(...)`)
   // will still produce a helpful error, but only at the time of use instead
   // of during module import/compilation.
-  const missingErr = new Error('Missing SUPABASE envs - set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE');
+  const missingErr = new Error(
+    'Missing SUPABASE envs - set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE'
+  );
   const thrower = () => {
     throw missingErr;
   };
 
-  supabaseAdmin = new Proxy({}, {
-    get() {
-      throw missingErr;
-    },
-    apply() {
-      throw missingErr;
-    },
-    construct() {
-      throw missingErr;
-    },
-  });
+  supabaseAdmin = new Proxy(
+    {},
+    {
+      get() {
+        throw missingErr;
+      },
+      apply() {
+        throw missingErr;
+      },
+      construct() {
+        throw missingErr;
+      },
+    }
+  );
 }
 
 // Backwards-compatible named export expected by some modules

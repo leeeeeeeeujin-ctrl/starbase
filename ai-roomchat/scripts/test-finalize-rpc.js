@@ -32,8 +32,8 @@ async function run() {
       losses: 0,
       score_delta: 10,
       channel: 'prompt',
-      history: {}
-    }
+      history: {},
+    },
   ];
 
   const roles = [];
@@ -44,7 +44,7 @@ async function run() {
     p_game_id: gameId,
     p_outcomes: outcomes,
     p_roles: roles,
-    p_summary: summary
+    p_summary: summary,
   });
 
   if (error) {
@@ -55,4 +55,7 @@ async function run() {
   console.log('RPC result:', JSON.stringify(data, null, 2));
 }
 
-run().catch((err) => { console.error(err); process.exit(3); });
+run().catch(err => {
+  console.error(err);
+  process.exit(3);
+});

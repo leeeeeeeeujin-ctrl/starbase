@@ -22,11 +22,7 @@
     const ledgerMod = await import(pathToFileURL(ledgerPath).href);
 
     const { compileTemplate } = promptMod;
-    const {
-      createOutcomeLedger,
-      recordOutcomeLedger,
-      buildOutcomeSnapshot,
-    } = ledgerMod;
+    const { createOutcomeLedger, recordOutcomeLedger, buildOutcomeSnapshot } = ledgerMod;
 
     console.log('\n=== Experiment: prompt/template and ledger flow ===\n');
 
@@ -67,7 +63,7 @@
       {
         name: 'random & history',
         template:
-          "최근: {{history.last1}}\n무작위 슬롯: {{slot.random}}\n선택: {{random.choice:승|패|무}}\n능력: {{slot0.ability1}}",
+          '최근: {{history.last1}}\n무작위 슬롯: {{slot.random}}\n선택: {{random.choice:승|패|무}}\n능력: {{slot0.ability1}}',
       },
       {
         name: 'fallback and missing slot',
@@ -77,7 +73,11 @@
 
     // Run compileTemplate for each template and show compile meta
     for (const t of templates) {
-      const { text, meta } = compileTemplate({ template: t.template, slotsMap, historyText: '지난 턴: 아무것도 없음' });
+      const { text, meta } = compileTemplate({
+        template: t.template,
+        slotsMap,
+        historyText: '지난 턴: 아무것도 없음',
+      });
       console.log(`-- template: ${t.name}`);
       console.log('compiled text:\n', text.slice(0, 500));
       console.log('meta.slots keys:', Object.keys(meta.slots || {}));
@@ -86,7 +86,10 @@
 
     // --- Create an outcome ledger from participants and simulate turns ---
     const ledger = createOutcomeLedger({ participants, roleSettings: {} });
-    console.log('Initial ledger entries:', ledger.entries.map(e => ({ key: e.key, heroName: e.heroName }))); 
+    console.log(
+      'Initial ledger entries:',
+      ledger.entries.map(e => ({ key: e.key, heroName: e.heroName }))
+    );
 
     // Simulate 3 turns with result lines that should update the ledger
     const turns = [
@@ -103,18 +106,27 @@
         actors: t.actors,
         participantsSnapshot: participants,
       });
-      console.log(`Turn ${t.turn} applied changed=${res.changed} completed=${res.completed || false}`);
+      console.log(
+        `Turn ${t.turn} applied changed=${res.changed} completed=${res.completed || false}`
+      );
     }
 
     const snapshot = buildOutcomeSnapshot(ledger);
     console.log('\nFinal snapshot.overallResult:', snapshot.overallResult);
     console.log('Snapshot entries with channels:');
-    snapshot.entries.forEach(e => console.log(`  - ${e.heroName} key=${e.key} channel=${e.channel} result=${e.result} projected=${e.projectedScore}`));
+    snapshot.entries.forEach(e =>
+      console.log(
+        `  - ${e.heroName} key=${e.key} channel=${e.channel} result=${e.result} projected=${e.projectedScore}`
+      )
+    );
 
     // Demonstrate sortEntriesByOutcome (import from ledger module if present)
     if (typeof ledgerMod.sortEntriesByOutcome === 'function') {
       const sorted = ledgerMod.sortEntriesByOutcome(snapshot.entries);
-      console.log('\nSorted entries (by outcome):', sorted.map(e => ({ hero: e.heroName, result: e.result }))); 
+      console.log(
+        '\nSorted entries (by outcome):',
+        sorted.map(e => ({ hero: e.heroName, result: e.result }))
+      );
     }
 
     console.log('\n=== Experiment complete ===\n');

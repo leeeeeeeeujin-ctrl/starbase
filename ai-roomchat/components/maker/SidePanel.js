@@ -25,6 +25,8 @@ export default function SidePanel({
     probability: 1.0,
     fallback: false,
     action: 'continue',
+    action_payload: '{}',
+    run_local: false,
   });
 
   useEffect(() => {
@@ -36,6 +38,10 @@ export default function SidePanel({
       probability: selectedEdge.data?.probability ?? 1.0,
       fallback: !!selectedEdge.data?.fallback,
       action: selectedEdge.data?.action || 'continue',
+      action_payload: JSON.stringify(
+        selectedEdge.data?.actionPayload ?? selectedEdge.data?.payload ?? {}
+      ),
+      run_local: !!selectedEdge.data?.runLocally,
     });
   }, [selectedEdge]);
 
@@ -78,6 +84,13 @@ export default function SidePanel({
     const probability = Math.max(0, Math.min(1, parseFloat(edgeForm.probability) || 0));
     const fallback = !!edgeForm.fallback;
     const action = edgeForm.action;
+    let payloadObj = {};
+    try {
+      payloadObj = edgeForm.action_payload ? JSON.parse(edgeForm.action_payload) : {};
+    } catch (err) {
+      // invalid JSON -> fall back to empty object
+      payloadObj = {};
+    }
 
     setEdges(eds =>
       eds.map(e => {
@@ -90,6 +103,11 @@ export default function SidePanel({
           probability,
           fallback,
           action,
+          // store structured payload under actionPayload (preferred) and keep legacy payload
+          actionPayload: payloadObj,
+          payload: payloadObj,
+          // runLocally flag controls client-side execution
+          runLocally: !!edgeForm.run_local,
         };
         return { ...e, data, label: rebuildLabel(data) };
       })
@@ -202,6 +220,26 @@ export default function SidePanel({
               <option value="continue">continue</option>
               <option value="stop">stop</option>
             </select>
+          </label>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+            <input
+              type="checkbox"
+              checked={edgeForm.run_local}
+              onChange={e => setEdgeForm(f => ({ ...f, run_local: e.target.checked }))}
+            />
+            Run action locally in the app (no server dispatch)
+          </label>
+
+          <label style={{ fontSize: 12, display: 'grid', gap: 6 }}>
+            Action Payload (JSON)
+            <textarea
+              value={edgeForm.action_payload}
+              onChange={e => setEdgeForm(f => ({ ...f, action_payload: e.target.value }))}
+              rows={6}
+              style={{ width: '100%', fontFamily: 'monospace', marginTop: 4 }}
+              placeholder='예: { "amount": 1, "ownerId": "..." }'
+            />
           </label>
 
           <button

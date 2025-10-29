@@ -57,6 +57,8 @@ function normaliseEntries(entries, roleConfigMap = {}) {
         slot_index: Number.isFinite(Number(entry.slotIndex)) ? Number(entry.slotIndex) : null,
         score_delta: scoreDelta,
         history: Array.isArray(entry.history) ? entry.history.slice(-10) : [],
+        // Preserve simple passthrough fields used by callers/tests (e.g. channel)
+        channel: entry.channel || entry.channel === '' ? entry.channel : undefined,
       };
     })
     .filter(Boolean);
@@ -170,6 +172,9 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ ok: true, result: rpcResult });
   } catch (error) {
+    // Surface the error in test logs to help debugging
+
+    console.error('[DEBUG complete-session] unexpected error:', error);
     return res.status(500).json({ error: 'server_error', detail: String(error).slice(0, 300) });
   }
 }

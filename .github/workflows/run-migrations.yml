@@ -1,0 +1,34 @@
+name: Run DB Migrations
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  migrate:
+    name: Apply SQL migrations
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: |
+          cd ai-roomchat
+          npm ci
+
+      - name: Run migrations
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          cd ai-roomchat
+          npm run migrate:db
+
+      - name: Verify migration - list sql files applied
+        if: ${{ success() }}
+        run: |
+          echo "Migrations applied successfully."

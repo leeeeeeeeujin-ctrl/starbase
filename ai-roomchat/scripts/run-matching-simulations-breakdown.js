@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* eslint-disable no-console */
+
 // Run matching simulations and collect detailed failure reasons per config.
 
 const fs = require('fs');
@@ -7,7 +7,8 @@ const path = require('path');
 const { matchRankParticipants, matchAsyncParticipants } = require('../lib/rank/matching');
 
 function randNormal(mean = 1000, sd = 200) {
-  let u = 0, v = 0;
+  let u = 0,
+    v = 0;
   while (u === 0) u = Math.random();
   while (v === 0) v = Math.random();
   const z = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
@@ -18,7 +19,8 @@ function sampleScores(n, dist) {
   const out = [];
   for (let i = 0; i < n; i += 1) {
     if (dist.type === 'normal') out.push(randNormal(dist.mean, dist.sd));
-    else if (dist.type === 'uniform') out.push(Math.round(dist.min + Math.random() * (dist.max - dist.min)));
+    else if (dist.type === 'uniform')
+      out.push(Math.round(dist.min + Math.random() * (dist.max - dist.min)));
     else out.push(1000);
   }
   return out;
@@ -26,10 +28,19 @@ function sampleScores(n, dist) {
 
 function buildRoleTemplates() {
   return [
-    [{ name: 'attack', slot_count: 1 }, { name: 'support', slot_count: 1 }],
-    [{ name: 'attack', slot_count: 2 }, { name: 'support', slot_count: 2 }],
+    [
+      { name: 'attack', slot_count: 1 },
+      { name: 'support', slot_count: 1 },
+    ],
+    [
+      { name: 'attack', slot_count: 2 },
+      { name: 'support', slot_count: 2 },
+    ],
     [{ name: 'solo', slot_count: 1 }],
-    [{ name: 'tank', slot_count: 1 }, { name: 'dps', slot_count: 3 }],
+    [
+      { name: 'tank', slot_count: 1 },
+      { name: 'dps', slot_count: 3 },
+    ],
   ];
 }
 
@@ -65,7 +76,15 @@ function tallyErrorCounts(counter, result) {
   }
 }
 
-function runTrialsBreakdown({ roles, dist, queueSize = 10, standinPool = 0, asyncMode = false, sensitivity = null, trials = 200 }) {
+function runTrialsBreakdown({
+  roles,
+  dist,
+  queueSize = 10,
+  standinPool = 0,
+  asyncMode = false,
+  sensitivity = null,
+  trials = 200,
+}) {
   const counts = { trials, failures: 0, reasons: {} };
   for (let t = 0; t < trials; t += 1) {
     const queues = [];
@@ -83,7 +102,15 @@ function runTrialsBreakdown({ roles, dist, queueSize = 10, standinPool = 0, asyn
       let sid = id;
       scores.forEach((s, idx) => {
         const role = roles[Math.floor(Math.random() * roles.length)].name;
-        standins.push({ id: `s-${sid + idx}`, owner_id: `bot-${sid + idx}`, hero_id: `b-${sid + idx}`, role, score: s, simulated: true, match_source: 'participant_pool' });
+        standins.push({
+          id: `s-${sid + idx}`,
+          owner_id: `bot-${sid + idx}`,
+          hero_id: `b-${sid + idx}`,
+          role,
+          score: s,
+          simulated: true,
+          match_source: 'participant_pool',
+        });
       });
     }
 
@@ -118,8 +145,24 @@ async function main() {
   for (const roles of roleTemplates) {
     for (const dist of dists) {
       for (const sens of sensitivities) {
-        const realtime = runTrialsBreakdown({ roles, dist, queueSize: 6, standinPool: 0, asyncMode: false, sensitivity: sens, trials: 300 });
-        const async = runTrialsBreakdown({ roles, dist, queueSize: 3, standinPool: 6, asyncMode: true, sensitivity: sens, trials: 300 });
+        const realtime = runTrialsBreakdown({
+          roles,
+          dist,
+          queueSize: 6,
+          standinPool: 0,
+          asyncMode: false,
+          sensitivity: sens,
+          trials: 300,
+        });
+        const async = runTrialsBreakdown({
+          roles,
+          dist,
+          queueSize: 3,
+          standinPool: 6,
+          asyncMode: true,
+          sensitivity: sens,
+          trials: 300,
+        });
 
         const entry = {
           timestamp: new Date().toISOString(),
@@ -129,7 +172,18 @@ async function main() {
           realtime,
           async,
         };
-        console.log('BREAKDOWN', roles.map(r => `${r.name}(${r.slot_count})`).join(','), dist.name, 'sens=', sens, '-> realtime fail', realtime.failureRate.toFixed(2), '% async fail', async.failureRate.toFixed(2), '%');
+        console.log(
+          'BREAKDOWN',
+          roles.map(r => `${r.name}(${r.slot_count})`).join(','),
+          dist.name,
+          'sens=',
+          sens,
+          '-> realtime fail',
+          realtime.failureRate.toFixed(2),
+          '% async fail',
+          async.failureRate.toFixed(2),
+          '%'
+        );
         reports.push(entry);
       }
     }
@@ -138,7 +192,11 @@ async function main() {
   const outDir = path.join(process.cwd(), 'reports');
   fs.mkdirSync(outDir, { recursive: true });
   const outPath = path.join(outDir, `matching-simulations-breakdown-${Date.now()}.json`);
-  fs.writeFileSync(outPath, JSON.stringify({ generatedAt: new Date().toISOString(), reports }, null, 2), 'utf8');
+  fs.writeFileSync(
+    outPath,
+    JSON.stringify({ generatedAt: new Date().toISOString(), reports }, null, 2),
+    'utf8'
+  );
   console.log('WROTE', outPath);
 }
 

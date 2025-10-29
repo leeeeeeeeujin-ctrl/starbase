@@ -2167,13 +2167,13 @@ export default function CharacterBasicView({ hero }) {
     if (!file) return;
     if (!file.type.startsWith('image/')) {
       alert('이미지 파일만 업로드할 수 있습니다.');
-      // eslint-disable-next-line no-param-reassign
+
       event.target.value = '';
       return;
     }
     if (file.size > MAX_IMAGE_SIZE) {
       alert('이미지는 5MB를 넘을 수 없습니다.');
-      // eslint-disable-next-line no-param-reassign
+
       event.target.value = '';
       return;
     }
@@ -2184,7 +2184,7 @@ export default function CharacterBasicView({ hero }) {
     imageObjectUrlRef.current = objectUrl;
     setImagePreview(objectUrl);
     setImageFile(file);
-    // eslint-disable-next-line no-param-reassign
+
     event.target.value = '';
   };
 
@@ -2193,13 +2193,13 @@ export default function CharacterBasicView({ hero }) {
     if (!file) return;
     if (!file.type.startsWith('image/')) {
       alert('배경은 이미지 파일만 업로드할 수 있습니다.');
-      // eslint-disable-next-line no-param-reassign
+
       event.target.value = '';
       return;
     }
     if (file.size > MAX_BACKGROUND_SIZE) {
       alert('배경 이미지는 8MB를 넘을 수 없습니다.');
-      // eslint-disable-next-line no-param-reassign
+
       event.target.value = '';
       return;
     }
@@ -2210,7 +2210,7 @@ export default function CharacterBasicView({ hero }) {
     backgroundObjectUrlRef.current = objectUrl;
     setBackgroundPreview(objectUrl);
     setBackgroundFile(file);
-    // eslint-disable-next-line no-param-reassign
+
     event.target.value = '';
   };
 
@@ -2222,13 +2222,13 @@ export default function CharacterBasicView({ hero }) {
 
     if (!file.type.startsWith('audio/')) {
       setBgmError('오디오 파일만 업로드할 수 있습니다.');
-      // eslint-disable-next-line no-param-reassign
+
       event.target.value = '';
       return;
     }
     if (file.size > MAX_AUDIO_SIZE) {
       setBgmError('오디오는 12MB 이하만 업로드할 수 있습니다.');
-      // eslint-disable-next-line no-param-reassign
+
       event.target.value = '';
       return;
     }
@@ -2280,7 +2280,6 @@ export default function CharacterBasicView({ hero }) {
       audioManager.setEnabled(Boolean(currentHero?.bgm_url));
     }
 
-    // eslint-disable-next-line no-param-reassign
     event.target.value = '';
   };
 
@@ -2894,7 +2893,6 @@ export default function CharacterBasicView({ hero }) {
                 <div style={styles.uploadSection}>
                   <div style={styles.previewFrame}>
                     {imagePreview ? (
-                      // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={imagePreview}
                         alt="캐릭터 이미지 미리보기"
@@ -2916,7 +2914,6 @@ export default function CharacterBasicView({ hero }) {
                 <div style={styles.uploadSection}>
                   <div style={styles.previewFrame}>
                     {backgroundPreview ? (
-                      // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={backgroundPreview}
                         alt="배경 미리보기"
@@ -3219,7 +3216,6 @@ export default function CharacterBasicView({ hero }) {
                       aria-label={`${overlayHeroName} 카드 전환`}
                     >
                       {topRankingHero.image_url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={topRankingHero.image_url}
                           alt={`${overlayHeroName} 이미지`}
@@ -3247,7 +3243,7 @@ export default function CharacterBasicView({ hero }) {
                 </section>
                 {selectedEntry?.game?.image_url ? (
                   <figure style={styles.playDetailGameFigure}>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    {}
                     <img
                       src={selectedEntry.game.image_url}
                       alt={`${selectedEntry.game?.name || '게임'} 이미지`}
@@ -3413,7 +3409,6 @@ export default function CharacterBasicView({ hero }) {
         </div>
 
         {hero?.image_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
           <img src={hero.image_url} alt={heroName} style={imageStyle} />
         ) : (
           <div style={styles.heroFallback}>{heroName.slice(0, 2)}</div>

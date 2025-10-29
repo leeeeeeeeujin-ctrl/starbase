@@ -2,11 +2,20 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "Run assistant SQL (example)",
+      "type": "shell",
+      "command": "python tools/run_sql.py --file assistant-sql/examples/select_version.sql",
+      "group": "none",
+      "presentation": {
+        "reveal": "always"
+      }
+    },
+    {
       "label": "app: dev (onOpen)",
       "type": "npm",
       "script": "dev",
       "options": {
-  "cwd": "${workspaceFolder}/ai-roomchat",
+        "cwd": "${workspaceFolder}/ai-roomchat",
         "env": {
           "ADMIN_PORTAL_PASSWORD": "localdev",
           "HOST": "0.0.0.0",
@@ -24,7 +33,7 @@
       "type": "npm",
       "script": "dev",
       "options": {
-  "cwd": "${workspaceFolder}/ai-roomchat",
+        "cwd": "${workspaceFolder}/ai-roomchat",
         "env": {
           "ADMIN_PORTAL_PASSWORD": "localdev",
           "HOST": "0.0.0.0",
@@ -64,7 +73,7 @@
       "type": "npm",
       "script": "test:fuzz",
       "options": {
-        "cwd": "${workspaceFolder}/ai-roomchat/starbase/ai-roomchat"
+        "cwd": "${workspaceFolder}/ai-roomchat"
       },
       "group": "build"
     },
@@ -73,7 +82,7 @@
       "type": "npm",
       "script": "test:samples",
       "options": {
-        "cwd": "${workspaceFolder}/ai-roomchat/starbase/ai-roomchat"
+        "cwd": "${workspaceFolder}/ai-roomchat"
       },
       "group": "build"
     },
@@ -93,7 +102,7 @@
       "label": "node-run-matching-samples",
       "type": "shell",
       "command": "cmd",
-        "args": [
+      "args": [
         "/d",
         "/c",
         "cd C:\\Users\\yujin\\Documents\\234423\\starbase\\ai-roomchat && node scripts\\run-matching-samples.js"
@@ -106,7 +115,7 @@
       "label": "node-run-matching-samples",
       "type": "shell",
       "command": "cmd",
-        "args": [
+      "args": [
         "/d",
         "/c",
         "cd C:\\Users\\yujin\\Documents\\234423\\starbase\\ai-roomchat && node scripts\\run-matching-samples.js && type reports\\matching-samples.json"

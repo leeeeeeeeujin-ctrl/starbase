@@ -15,8 +15,14 @@ ci_deploy_key
 ci_deploy_key.pub
 ai-roomchat/SPPP*
 ai-roomchat/SPPP_key*
+SPPP_www
+SPPP_www.*
+SPPP_url
+SPPP_url.*
+ai-roomchat/SPPP_url*
 
 # Common large/runtime dirs we don't want in the repo
 artifacts/
 reports/
 tmp/
+assistant-sql/

@@ -1,4 +1,7 @@
-﻿#!/bin/sh
-. "$(dirname "$0")/_/husky.sh"
+﻿@echo off
+REM Windows-friendly Git hook that delegates to the Node script.
+REM This file will run when Git executes hooks via cmd/PowerShell on Windows.
 
-npx --no -- lint-staged || exit 0
+SETLOCAL ENABLEDELAYEDEXPANSION
+node "%~dp0pre-commit.js" %*
+EXIT /B %ERRORLEVEL%

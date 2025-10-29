@@ -117,14 +117,12 @@ export default async function handler(req, res) {
           status: dropIn?.missing ? 'missing_dependency' : 'pending',
           metadata: { meta: dropIn?.meta || null, mode, realtime: true },
         });
-        return res
-          .status(200)
-          .json({
-            ready: false,
-            error: dropIn?.meta?.reason || 'no_realtime_drop_in_target',
-            meta: dropIn?.meta || null,
-            requestId,
-          });
+        return res.status(200).json({
+          ready: false,
+          error: dropIn?.meta?.reason || 'no_realtime_drop_in_target',
+          meta: dropIn?.meta || null,
+          requestId,
+        });
       }
 
       await markAssignmentsMatched(supabase, {
@@ -174,15 +172,13 @@ export default async function handler(req, res) {
           assignments: buildAssignmentSummary(result.assignments || []),
         },
       });
-      return res
-        .status(200)
-        .json({
-          ready: false,
-          assignments: result.assignments || [],
-          totalSlots: result.totalSlots,
-          error: result.error || null,
-          requestId,
-        });
+      return res.status(200).json({
+        ready: false,
+        assignments: result.assignments || [],
+        totalSlots: result.totalSlots,
+        error: result.error || null,
+        requestId,
+      });
     }
 
     const matchCode = `dropin_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
@@ -205,16 +201,14 @@ export default async function handler(req, res) {
       },
     });
 
-    return res
-      .status(200)
-      .json({
-        ready: true,
-        assignments: result.assignments,
-        totalSlots: result.totalSlots,
-        matchCode,
-        matchType: 'offline_drop_in',
-        requestId,
-      });
+    return res.status(200).json({
+      ready: true,
+      assignments: result.assignments,
+      totalSlots: result.totalSlots,
+      matchCode,
+      matchType: 'offline_drop_in',
+      requestId,
+    });
   } catch (error) {
     console.error('drop-in failed:', { requestId, error });
     await logStage({

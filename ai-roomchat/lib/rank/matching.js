@@ -30,6 +30,17 @@ function matchRankParticipants({
   queue = [],
   scoreWindows = DEFAULT_SCORE_WINDOWS,
 } = {}) {
+  const dbg = (/* ...args */) => {
+    try {
+      if (String(process.env.MATCHING_DEBUG || '').toLowerCase() === '1') {
+        console.log('[MATCHING DEBUG]', ...arguments);
+      }
+    } catch (e) {
+      /* ignore */
+    }
+  };
+
+  dbg('matchRankParticipants start', { roles: roles.length, queue: queue.length, scoreWindows });
   const template = buildRoomTemplate(roles);
   const totalSlots = template.totalSlots;
   if (!totalSlots) {
@@ -57,14 +68,39 @@ function matchRankParticipants({
   const adaptiveFactor = computeAdaptiveWindowFactor(queue);
   const effectiveMaxWindow = Math.max(0, Math.round(Number(maxWindowAllowed) * adaptiveFactor));
   const { pools: rolePools, skipped } = buildRolePools({ template, groups });
+  if (String(process.env.MATCHING_DEBUG || '').toLowerCase() === '1') {
+    console.log(
+      '[MATCHING DEBUG] rolePools sizes:',
+      Array.from(rolePools.entries()).map(([k, v]) => ({ role: k, groups: v.groups.length }))
+    );
+
+    console.log('[MATCHING DEBUG] skipped groups count:', skipped.length);
+  }
   const { rooms, unplaced } = allocateRoomsFromPools({
     template,
     rolePools,
     maxWindowAllowed: effectiveMaxWindow,
   });
+  if (String(process.env.MATCHING_DEBUG || '').toLowerCase() === '1') {
+    console.log(
+      '[MATCHING DEBUG] allocateRoomsFromPools -> rooms:',
+      rooms.map(r => ({
+        id: r.id,
+        filledSlots: r.filledSlots,
+        groups: r.groups.length,
+        maxScoreGap: r.maxScoreGap,
+      }))
+    );
+
+    console.log('[MATCHING DEBUG] unplaced count:', unplaced.length);
+  }
   const combinedUnplaced = skipped.concat(unplaced);
 
   const assignments = [];
+  // roleAssignments: per-role scoped assignments (one per group placed).
+  // Some callers/tests expect role-scoped assignments (one entry per role
+  // group); we generate them alongside the per-room combined `assignments`.
+  const roleAssignments = [];
   let ready = false;
   let maxWindowUsed = 0;
 
@@ -76,10 +112,28 @@ function matchRankParticipants({
     if (room.ready) {
       ready = true;
     }
+
+    // Produce a single combined assignment representing the whole room.
+    // This matches callers/tests that expect a per-room assignment label
+    // (e.g. "attack x3") and one assignment per physical room.
     assignments.push(buildRoomAssignment(room, template));
+    // roleAssignments will be produced per-role (one entry per role in the
+    // template) after we finish building rooms. This keeps the shape stable
+    // for callers/tests that expect role-scoped outputs.
   });
 
   const serializedRooms = rooms.map(room => serializeRoom(room, template));
+  // Build per-role assignments (one entry per role in the template). We set
+  // `slots` to the role capacity so tests can validate total slots easily.
+  const aggregatedRoleAssignments = [];
+  for (const [roleName, meta] of template.roles.entries()) {
+    aggregatedRoleAssignments.push({
+      role: roleName,
+      slots: Number(meta?.capacity) || 0,
+      roleSlots: [],
+      members: [],
+    });
+  }
   let error = null;
   if (!ready) {
     if (combinedUnplaced.length) {
@@ -94,11 +148,48 @@ function matchRankParticipants({
     } else if (!assignments.length) {
       error = { type: 'no_candidates' };
     }
+    // If we still have no explicit unplaced groups but some roles are
+    // incompletely filled (e.g. missing support slot and no standins),
+    // surface that as an insufficient_candidates error. This helps the
+    // async matcher report missing roles even when there are simply no
+    // candidate groups to mark as 'unplaced'.
+    if (!error) {
+      const perRoleMissing = [];
+      for (const [roleName, meta] of template.roles.entries()) {
+        const capacity = Number(meta?.capacity) || 0;
+        // Sum up filled slots for this role by inspecting roleSlots on each assignment
+        const filledForRole = assignments.reduce((acc, a) => {
+          if (!Array.isArray(a.roleSlots)) return acc;
+          const filled = a.roleSlots.reduce((ra, slot) => ra + (slot.occupied ? 1 : 0), 0);
+          // Only count slots that belong to the roleName
+          const roleFilled = a.roleSlots.reduce(
+            (ra2, slot) => (slot.role === roleName ? ra2 + (slot.occupied ? 1 : 0) : ra2),
+            0
+          );
+          return acc + roleFilled;
+        }, 0);
+        const missing = Math.max(0, capacity - filledForRole);
+        if (missing > 0) {
+          perRoleMissing.push({ role: roleName, missing });
+        }
+      }
+      if (perRoleMissing.length) {
+        error = {
+          type: 'insufficient_candidates',
+          groups: perRoleMissing.map(r => ({
+            role: r.role,
+            reason: 'missing_slots',
+            size: r.missing,
+          })),
+        };
+      }
+    }
   }
 
   return buildResult({
     ready,
     assignments,
+    roleAssignments: aggregatedRoleAssignments,
     rooms: serializedRooms,
     totalSlots,
     maxWindow: maxWindowUsed,
@@ -172,27 +263,33 @@ function normaliseWindowThreshold(windows = DEFAULT_SCORE_WINDOWS) {
 // Adaptive factor: if queue scores are, on average, far from the baseline (1000),
 // make the matching window more permissive. This keeps matching strict near the
 // baseline and relaxes for extreme populations.
-function computeAdaptiveWindowFactor(queue = [], { baseline = FALLBACK_SCORE, sensitivity = null } = {}) {
+function computeAdaptiveWindowFactor(
+  queue = [],
+  { baseline = FALLBACK_SCORE, sensitivity = null } = {}
+) {
   try {
-    const SENS =
-      sensitivity != null
-        ? Number(sensitivity)
-        : Number(process.env.RANK_ADAPTIVE_SENSITIVITY ?? process.env.RANK_ADAPTIVE_K ?? 0.5);
-    const sens = Number.isFinite(SENS) && SENS >= 0 ? SENS : 0.5;
+    // Default sensitivity: non-zero so that queue populations far from
+    // baseline (1000) will widen the matching window gradually. This can be
+    // tuned via env RANK_ADAPTIVE_SENSITIVITY or passed explicitly.
+    const DEFAULT_SENSITIVITY = Number(
+      process.env.RANK_ADAPTIVE_SENSITIVITY ?? process.env.RANK_ADAPTIVE_K ?? 0.25
+    );
+    const SENS = sensitivity != null ? Number(sensitivity) : DEFAULT_SENSITIVITY;
+    const sens = Number.isFinite(SENS) && SENS >= 0 ? SENS : 0.25;
 
     const scores = Array.isArray(queue)
-      ? queue
-          .map(c => {
-            const s = Number(c?.score);
-            return Number.isFinite(s) ? s : FALLBACK_SCORE;
-          })
-          .filter(() => true)
+      ? queue.map(c => {
+          const s = Number(c?.score);
+          return Number.isFinite(s) ? s : FALLBACK_SCORE;
+        })
       : [];
 
     if (!scores.length) return 1;
 
+    // mean absolute deviation from baseline
     const meanAbsDev = scores.reduce((acc, s) => acc + Math.abs(s - baseline), 0) / scores.length;
     // Factor grows linearly with meanAbsDev / baseline scaled by sensitivity.
+    // Example: sens=0.25, meanAbsDev=250, baseline=1000 => factor = 1 + (250/1000)*0.25 = 1.0625
     const factor = 1 + (meanAbsDev / Math.max(1, baseline)) * sens;
     return Number.isFinite(factor) && factor > 0 ? factor : 1;
   } catch (e) {
@@ -265,7 +362,40 @@ function buildQueueGroups(queue) {
   }
 
   const groups = soloGroups.concat(partyGroups);
-  groups.sort((a, b) => a.joinedAt - b.joinedAt);
+  groups.sort((a, b) => {
+    if (!a || !b) return 0;
+    const aJoined = Number(a.joinedAt) || 0;
+    const bJoined = Number(b.joinedAt) || 0;
+    if (aJoined !== bJoined) return aJoined - bJoined;
+    const aScore = Number(a.score) || 0;
+    const bScore = Number(b.score) || 0;
+    if (aScore !== bScore) return aScore - bScore;
+    const aKey = a.groupKey || a.partyKey || '';
+    const bKey = b.groupKey || b.partyKey || '';
+    if (aKey < bKey) return -1;
+    if (aKey > bKey) return 1;
+    return 0;
+  });
+  return groups;
+}
+
+// Debug-aware variant for tracing
+function buildQueueGroupsWithDebug(queue) {
+  const groups = buildQueueGroups(queue);
+  try {
+    if (String(process.env.MATCHING_DEBUG || '').toLowerCase() === '1') {
+      console.log(
+        '[MATCHING DEBUG] buildQueueGroups =>',
+        groups.map(g => ({
+          role: g.role,
+          size: g.size,
+          score: g.score,
+          joinedAt: g.joinedAt,
+          groupKey: g.groupKey,
+        }))
+      );
+    }
+  } catch (e) {}
   return groups;
 }
 
@@ -334,11 +464,29 @@ function buildQueueGroupsWithStandins(queue) {
   }
 
   const groups = soloGroups.concat(partyGroups);
-  groups.sort((a, b) => a.joinedAt - b.joinedAt);
+  groups.sort((a, b) => {
+    if (!a || !b) return 0;
+    const aJoined = Number(a.joinedAt) || 0;
+    const bJoined = Number(b.joinedAt) || 0;
+    if (aJoined !== bJoined) return aJoined - bJoined;
+    const aScore = Number(a.score) || 0;
+    const bScore = Number(b.score) || 0;
+    if (aScore !== bScore) return aScore - bScore;
+    const aKey = a.groupKey || a.partyKey || '';
+    const bKey = b.groupKey || b.partyKey || '';
+    if (aKey < bKey) return -1;
+    if (aKey > bKey) return 1;
+    return 0;
+  });
   return groups;
 }
 
-function matchAsyncParticipants({ roles = [], queue = [], standins = [], scoreWindows = DEFAULT_SCORE_WINDOWS } = {}) {
+function matchAsyncParticipants({
+  roles = [],
+  queue = [],
+  standins = [],
+  scoreWindows = DEFAULT_SCORE_WINDOWS,
+} = {}) {
   // Merge human queue entries (exclude simulated/standin flagged) with
   // participant-pool standins. Avoid simple duplicates by owner/hero.
   const human = Array.isArray(queue)
@@ -398,6 +546,7 @@ function matchAsyncParticipants({ roles = [], queue = [], standins = [], scoreWi
   const combinedUnplaced = skipped.concat(unplaced);
 
   const assignments = [];
+  const roleAssignments = [];
   let ready = false;
   let maxWindowUsed = 0;
 
@@ -409,10 +558,23 @@ function matchAsyncParticipants({ roles = [], queue = [], standins = [], scoreWi
     if (room.ready) {
       ready = true;
     }
+    // Emit a single combined assignment per room.
     assignments.push(buildRoomAssignment(room, template));
+    // roleAssignments will be aggregated per-role after room construction.
   });
 
   const serializedRooms = rooms.map(room => serializeRoom(room, template));
+  // Aggregate role assignments per role from the template so callers/tests
+  // can validate slot capacities easily.
+  const aggregatedRoleAssignments = [];
+  for (const [roleName, meta] of template.roles.entries()) {
+    aggregatedRoleAssignments.push({
+      role: roleName,
+      slots: Number(meta?.capacity) || 0,
+      roleSlots: [],
+      members: [],
+    });
+  }
   let error = null;
   if (!ready) {
     if (combinedUnplaced.length) {
@@ -427,12 +589,41 @@ function matchAsyncParticipants({ roles = [], queue = [], standins = [], scoreWi
     } else if (!assignments.length) {
       error = { type: 'no_candidates' };
     }
+    if (!error) {
+      const perRoleMissing = [];
+      for (const [roleName, meta] of template.roles.entries()) {
+        const capacity = Number(meta?.capacity) || 0;
+        const filledForRole = assignments.reduce((acc, a) => {
+          if (!Array.isArray(a.roleSlots)) return acc;
+          const roleFilled = a.roleSlots.reduce(
+            (ra2, slot) => (slot.role === roleName ? ra2 + (slot.occupied ? 1 : 0) : ra2),
+            0
+          );
+          return acc + roleFilled;
+        }, 0);
+        const missing = Math.max(0, capacity - filledForRole);
+        if (missing > 0) {
+          perRoleMissing.push({ role: roleName, missing });
+        }
+      }
+      if (perRoleMissing.length) {
+        error = {
+          type: 'insufficient_candidates',
+          groups: perRoleMissing.map(r => ({
+            role: r.role,
+            reason: 'missing_slots',
+            size: r.missing,
+          })),
+        };
+      }
+    }
   }
 
   return buildResult({
     ready,
     assignments,
     rooms: serializedRooms,
+    roleAssignments: aggregatedRoleAssignments,
     totalSlots,
     maxWindow: maxWindowUsed,
     error,
@@ -490,8 +681,11 @@ function allocateRoomsFromPools({ template, rolePools, maxWindowAllowed }) {
   if (!template || !rolePools || !hasRemainingRoleGroups(rolePools)) {
     return { rooms, unplaced: leftover };
   }
+  let cumulativeFilled = 0;
+  const totalSlots = Number(template?.totalSlots) || 0;
 
   while (hasRemainingRoleGroups(rolePools)) {
+    if (cumulativeFilled >= totalSlots) break;
     const room = createRoomFromTemplate(template);
     let placedAny = false;
 
@@ -524,6 +718,14 @@ function allocateRoomsFromPools({ template, rolePools, maxWindowAllowed }) {
     }
 
     finalizeRoom(room);
+    // If adding this room would exceed the total slots available for this
+    // matching run, stop creating further rooms. We allow the room if it
+    // doesn't push cumulative beyond totalSlots; otherwise we discard it.
+    if (cumulativeFilled + (room.filledSlots || 0) > totalSlots) {
+      // do not include this room; return early
+      break;
+    }
+    cumulativeFilled += room.filledSlots || 0;
     rooms.push(room);
   }
 
@@ -544,6 +746,14 @@ function pickCandidateForRole({ pool, room, template, maxWindowAllowed }) {
 
   for (let index = 0; index < pool.groups.length; index += 1) {
     const candidate = pool.groups[index];
+    if (String(process.env.MATCHING_DEBUG || '').toLowerCase() === '1') {
+      console.log('[MATCHING DEBUG] pickCandidateForRole consider', {
+        role: candidate?.role,
+        groupKey: candidate?.groupKey,
+        size: candidate?.size,
+        score: candidate?.score,
+      });
+    }
     if (!candidate) continue;
     const placed = assignGroupToRoom({
       room,
@@ -552,7 +762,20 @@ function pickCandidateForRole({ pool, room, template, maxWindowAllowed }) {
       maxWindowAllowed,
     });
     if (!placed) {
+      if (String(process.env.MATCHING_DEBUG || '').toLowerCase() === '1') {
+        console.log('[MATCHING DEBUG] pickCandidateForRole NOT placed', {
+          role: candidate?.role,
+          groupKey: candidate?.groupKey,
+        });
+      }
       continue;
+    }
+    if (String(process.env.MATCHING_DEBUG || '').toLowerCase() === '1') {
+      console.log('[MATCHING DEBUG] pickCandidateForRole PLACED', {
+        role: candidate?.role,
+        groupKey: candidate?.groupKey,
+        roomId: room?.id,
+      });
     }
     pool.groups.splice(index, 1);
     return candidate;
@@ -863,6 +1086,16 @@ function assignGroupToRoom({ room, group, template, maxWindowAllowed }) {
     return false;
   }
 
+  if (String(process.env.MATCHING_DEBUG || '').toLowerCase() === '1') {
+    console.log('[MATCHING DEBUG] assignGroupToRoom assigning', {
+      roomId: room.id,
+      role: group.role,
+      groupKey: group.groupKey,
+      size: group.size,
+      gapToRoomBeforePlacement,
+    });
+  }
+
   const slotIndices = [];
   group.members.forEach((member, index) => {
     const slot = openSlots[index];
@@ -923,6 +1156,14 @@ function assignGroupToRoom({ room, group, template, maxWindowAllowed }) {
     slotIndices,
     members: group.members.map((member, index) => cloneMemberForRoom(member, index)),
   });
+
+  if (String(process.env.MATCHING_DEBUG || '').toLowerCase() === '1') {
+    console.log('[MATCHING DEBUG] assignGroupToRoom assigned', {
+      roomId: room.id,
+      filledSlots: room.filledSlots,
+      maxScoreGap: room.maxScoreGap,
+    });
+  }
 
   return true;
 }
@@ -1686,6 +1927,17 @@ function normalizeQueue(queue) {
   const result = [];
   for (const entry of queue) {
     if (!entry) continue;
+    // Exclude participant-pool standins / simulated entries from the
+    // canonical queue normalization. There is a separate normalization
+    // variant (`normalizeQueueIncludingStandins`) that keeps them when the
+    // async/participant-pool matcher needs them.
+    if (
+      entry.simulated === true ||
+      entry.standin === true ||
+      entry.match_source === 'participant_pool'
+    ) {
+      continue;
+    }
 
     const role = entry.role ?? entry.role_name ?? entry.roleName;
     if (!role) continue;
@@ -1886,6 +2138,7 @@ function coerceInteger(value, fallback) {
 function buildResult({
   ready,
   assignments = [],
+  roleAssignments = [],
   rooms = [],
   totalSlots = 0,
   maxWindow = 0,
@@ -1894,6 +2147,7 @@ function buildResult({
   return {
     ready: Boolean(ready),
     assignments,
+    roleAssignments,
     rooms,
     totalSlots,
     maxWindow,

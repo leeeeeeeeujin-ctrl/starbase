@@ -91,7 +91,10 @@ export class PerformanceMonitor {
       try {
         const uaMod = await import('./universalEnvironmentAdapter');
         const universalAdapterLocal = uaMod && (uaMod.universalAdapter || uaMod.default || uaMod);
-        if (universalAdapterLocal && typeof universalAdapterLocal.getEnvironmentInfo === 'function') {
+        if (
+          universalAdapterLocal &&
+          typeof universalAdapterLocal.getEnvironmentInfo === 'function'
+        ) {
           this.environment = universalAdapterLocal.getEnvironmentInfo();
         }
         if (universalAdapterLocal && typeof universalAdapterLocal.getConfig === 'function') {

@@ -23,7 +23,12 @@ const { Client } = require('pg');
 
 const repoRoot = path.join(__dirname, '..');
 const spppPath = path.join(repoRoot, 'SPPP');
-const sqlPath = path.join(repoRoot, 'docs', 'sql', 'finalize-rank-session-outcome-channel-aware.sql');
+const sqlPath = path.join(
+  repoRoot,
+  'docs',
+  'sql',
+  'finalize-rank-session-outcome-channel-aware.sql'
+);
 
 if (!fs.existsSync(spppPath)) {
   console.error('SPPP file not found at', spppPath);
@@ -34,7 +39,10 @@ const spppRaw = fs.readFileSync(spppPath, 'utf8');
 
 // Extract password (supports Korean label '비밀번호:' and common forms)
 let password = null;
-const pwMatch = spppRaw.match(/비밀번호\s*[:=]\s*(\S+)/i) || spppRaw.match(/PASSWORD\s*[:=]\s*(\S+)/i) || spppRaw.match(/PGPASSWORD\s*[:=]\s*(\S+)/i);
+const pwMatch =
+  spppRaw.match(/비밀번호\s*[:=]\s*(\S+)/i) ||
+  spppRaw.match(/PASSWORD\s*[:=]\s*(\S+)/i) ||
+  spppRaw.match(/PGPASSWORD\s*[:=]\s*(\S+)/i);
 if (pwMatch) password = pwMatch[1].trim();
 
 // Try to extract JSON diagnostics block with server info
@@ -61,7 +69,7 @@ const cfg = {
   database: serverInfo && serverInfo.database_name ? serverInfo.database_name : 'postgres',
   user: serverInfo && serverInfo.session_user ? serverInfo.session_user : 'postgres',
   password: password,
-  ssl: { rejectUnauthorized: false }
+  ssl: { rejectUnauthorized: false },
 };
 
 // If host missing but supabase url present, try to derive host
@@ -101,7 +109,9 @@ async function run() {
       // If timed out or host unreachable, and we can derive a hostname from the Supabase URL,
       // try one retry using that hostname (likely an A/AAAA record behind Cloudflare that may
       // handle IPv4 connectivity).
-      const retryable = err && (err.code === 'ETIMEDOUT' || err.code === 'EHOSTUNREACH' || err.code === 'ECONNREFUSED');
+      const retryable =
+        err &&
+        (err.code === 'ETIMEDOUT' || err.code === 'EHOSTUNREACH' || err.code === 'ECONNREFUSED');
       if (retryable && supaUrl) {
         try {
           const u = new URL(supaUrl);
@@ -117,7 +127,10 @@ async function run() {
                 console.log(`Could not resolve IPv4 for ${u.hostname}, will retry using hostname.`);
               }
             } catch (dnsErr) {
-              console.log(`IPv4 lookup failed for ${u.hostname}:`, dnsErr && dnsErr.code ? dnsErr.code : dnsErr);
+              console.log(
+                `IPv4 lookup failed for ${u.hostname}:`,
+                dnsErr && dnsErr.code ? dnsErr.code : dnsErr
+              );
             }
 
             console.log(`Initial connect failed (${err.code}). Retrying with ${triedHost}...`);
@@ -137,7 +150,10 @@ async function run() {
       }
     }
 
-    console.log('Connected to DB. Applying SQL file...' + (triedRetry ? ' (used supabase hostname retry)' : ''));
+    console.log(
+      'Connected to DB. Applying SQL file...' +
+        (triedRetry ? ' (used supabase hostname retry)' : '')
+    );
     // Execute the file content as a single query (Postgres supports multiple statements)
     await client.query(sql);
     console.log('SQL applied successfully.');

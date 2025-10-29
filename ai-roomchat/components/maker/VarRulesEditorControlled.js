@@ -12,7 +12,6 @@ export default function VarRulesEditorControlled({ value = [], onChange, title =
       v.length === list.length &&
       v.every((r, i) => r?.name === list[i]?.name && r?.condition === list[i]?.condition);
     if (!same) setList(v);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
   function push(next) {

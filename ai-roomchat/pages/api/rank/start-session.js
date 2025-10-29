@@ -87,12 +87,17 @@ export default async function handler(req, res) {
   const { data: participant, error: participantError } = await withTableQuery(
     supabaseAdmin,
     'rank_participants',
-    from =>
-      from
+    async from => {
+      const qRes = await from
         .select('id, status, role, hero_id')
         .eq('game_id', game_id)
         .eq('owner_id', ownerId)
-        .maybeSingle()
+        .limit(1);
+      return {
+        data: Array.isArray(qRes.data) ? qRes.data[0] || null : qRes.data,
+        error: qRes.error,
+      };
+    }
   );
 
   if (participantError) {
@@ -110,14 +115,18 @@ export default async function handler(req, res) {
   const { data: existingSession, error: existingError } = await withTableQuery(
     supabaseAdmin,
     'rank_sessions',
-    from =>
-      from
+    async from => {
+      const qRes = await from
         .select('id, status, created_at')
         .eq('game_id', game_id)
         .eq('owner_id', ownerId)
         .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
+        .limit(1);
+      return {
+        data: Array.isArray(qRes.data) ? qRes.data[0] || null : qRes.data,
+        error: qRes.error,
+      };
+    }
   );
 
   if (existingError) {
@@ -131,18 +140,32 @@ export default async function handler(req, res) {
     const { data: inserted, error: insertError } = await withTableQuery(
       supabaseAdmin,
       'rank_sessions',
-      from =>
-        from
-          .insert({
-            game_id,
-            owner_id: ownerId,
-            status: 'active',
-            turn: 0,
-            created_at: now,
-            updated_at: now,
-          })
-          .select('id, status, created_at')
-          .maybeSingle()
+      async from => {
+        const insertResultOrChain = from.insert({
+          game_id,
+          owner_id: ownerId,
+          status: 'active',
+          turn: 0,
+          created_at: now,
+          updated_at: now,
+        });
+
+        let qRes;
+        // Some mocks return a Promise directly from insert(...). Other clients
+        // (real supabase) return a chain allowing .select(...).limit(...).
+        if (insertResultOrChain && typeof insertResultOrChain.then === 'function') {
+          qRes = await insertResultOrChain;
+        } else if (insertResultOrChain && typeof insertResultOrChain.select === 'function') {
+          qRes = await insertResultOrChain.select('id, status, created_at').limit(1);
+        } else {
+          qRes = { data: null, error: null };
+        }
+
+        return {
+          data: Array.isArray(qRes.data) ? qRes.data[0] || null : qRes.data,
+          error: qRes.error,
+        };
+      }
     );
 
     if (insertError) {

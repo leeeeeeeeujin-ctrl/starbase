@@ -17,8 +17,7 @@ All images are available at https://hub.docker.com/r/tinode/
    $ docker run --name mysql --network tinode-net --restart always --env MYSQL_ALLOW_EMPTY_PASSWORD=yes -d mysql:5.7
    ```
 
-   See [instructions](https://hub.docker.com/_/mysql/) for more options. MySQL 5.7 or above is required.
-   2. **PostgreSQL**: If you've decided to use PostgreSQL backend, run the official PostgreSQL Docker container:
+   See [instructions](https://hub.docker.com/_/mysql/) for more options. MySQL 5.7 or above is required. 2. **PostgreSQL**: If you've decided to use PostgreSQL backend, run the official PostgreSQL Docker container:
 
    ```
    $ docker run --name postgres --network tinode-net --restart always --env POSTGRES_PASSWORD=postgres -d postgres:13
@@ -26,8 +25,7 @@ All images are available at https://hub.docker.com/r/tinode/
 
    See [instructions](https://hub.docker.com/_/postgres/) for more options. PostgresSQL 13 or above is required.
 
-   The name `rethinkdb`, `mysql`, `mongodb` or `postgres` in the `--name` assignment is important. It's used by other containers as a database's host name.
-   3. **MongoDB**: If you've decided to use MongoDB backend, run the official MongoDB Docker container and initialise it as single node replica set (you can change "rs0" if you wish):
+   The name `rethinkdb`, `mysql`, `mongodb` or `postgres` in the `--name` assignment is important. It's used by other containers as a database's host name. 3. **MongoDB**: If you've decided to use MongoDB backend, run the official MongoDB Docker container and initialise it as single node replica set (you can change "rs0" if you wish):
 
    ```
    $ docker run --name mongodb --network tinode-net --restart always -d mongo:latest --replSet "rs0"
@@ -38,8 +36,7 @@ All images are available at https://hub.docker.com/r/tinode/
    > quit()
    ```
 
-   See [instructions](https://hub.docker.com/_/mongo/) for more options. MongoDB 4.2 or above is required.
-   4. **RethinkDB**: If you've decided to use RethinkDB backend, run the official RethinkDB Docker container:
+   See [instructions](https://hub.docker.com/_/mongo/) for more options. MongoDB 4.2 or above is required. 4. **RethinkDB**: If you've decided to use RethinkDB backend, run the official RethinkDB Docker container:
 
    ```
    $ docker run --name rethinkdb --network tinode-net --restart always -d rethinkdb:2.3

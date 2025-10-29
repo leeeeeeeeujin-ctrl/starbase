@@ -22,7 +22,9 @@ const cors = require('cors');
 
 const argv = require('minimist')(process.argv.slice(2));
 const port = argv.port || 8765;
-const sqlPath = argv.sql || path.join(__dirname, '..', 'docs', 'sql', 'finalize-rank-session-outcome-channel-aware.sql');
+const sqlPath =
+  argv.sql ||
+  path.join(__dirname, '..', 'docs', 'sql', 'finalize-rank-session-outcome-channel-aware.sql');
 
 const app = express();
 app.use(cors());
@@ -39,7 +41,7 @@ app.post('/result', (req, res) => {
   const payload = {
     received_at: new Date().toISOString(),
     origin: req.ip,
-    body: req.body
+    body: req.body,
   };
 
   const reportsDir = path.join(__dirname, '..', 'reports');
@@ -49,7 +51,10 @@ app.post('/result', (req, res) => {
     if (err) console.error('Failed to write report:', err);
   });
 
-  console.log('Received result:', payload.body && payload.body.sessionId ? payload.body.sessionId : '(no sessionId)');
+  console.log(
+    'Received result:',
+    payload.body && payload.body.sessionId ? payload.body.sessionId : '(no sessionId)'
+  );
   res.json({ status: 'ok' });
 });
 

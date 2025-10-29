@@ -198,6 +198,9 @@ async function callGemini({ apiKey, system, prompt, mode, model, history = [] })
   return lastFailure || { error: 'ai_failed' };
 }
 
+// Export callGemini so server-side code can reuse it (e.g., dev proxy path)
+export { callGemini };
+
 function deriveOpenAIError(status, rawBody) {
   const parsed = safeParseJson(rawBody);
   const message = parsed?.error?.message || parsed?.error?.code || sanitizeDetail(rawBody);

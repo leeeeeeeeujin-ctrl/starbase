@@ -125,7 +125,7 @@ function applyHeroPlaceholders(text, hero, slotNo, useZeroBased = true) {
     out = out.replaceAll(`{{slot${label}.owner_id}}`, hero.owner_id ?? '');
     out = out.replaceAll(`{{slot${label}.ownerId}}`, hero.ownerId ?? '');
 
-  const slotNoValue = hero.slotNo ?? hero.slot_no ?? zeroBasedValue;
+    const slotNoValue = hero.slotNo ?? hero.slot_no ?? zeroBasedValue;
 
     out = out.replaceAll(`{{slot${label}.slotNo}}`, slotNoValue);
     out = out.replaceAll(`{{slot${label}.slot_no}}`, slotNoValue);

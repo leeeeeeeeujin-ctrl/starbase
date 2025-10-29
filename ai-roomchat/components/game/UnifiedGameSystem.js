@@ -306,7 +306,6 @@ export default function UnifiedGameSystem({
     return () => {
       mounted = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialCharacter, gameTemplateId, isCompatibilityReady, compatibilityInfo]);
 
   // 캐릭터 변수 등록 (테스트에서 검증된 로직 적용)

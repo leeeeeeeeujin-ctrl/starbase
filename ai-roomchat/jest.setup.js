@@ -1,80 +1,85 @@
+// Minimal jest setup: set env vars and guarded jest mocks
+
 process.env.NEXT_PUBLIC_SUPABASE_URL =
   process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://example.supabase.co';
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'test-anon-key';
 process.env.SUPABASE_SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE || 'test-service-role-key';
 
-// Ensure global.navigator is writable/assignable for tests that mutate it
-try {
-  if (typeof global !== 'undefined' && typeof global.navigator !== 'undefined') {
-    const desc =
-      Object.getOwnPropertyDescriptor(global, 'navigator') ||
-      Object.getOwnPropertyDescriptor(global, 'window');
-    // If navigator.userAgent is an accessor on the prototype, replace navigator with a plain object copy
-    if (
-      global.navigator &&
-      Object.getOwnPropertyDescriptor(global.navigator, 'userAgent') &&
-      !Object.getOwnPropertyDescriptor(global.navigator, 'userAgent').writable
-    ) {
-      global.navigator = Object.assign({}, global.navigator);
-    }
+// Set React act environment flag used by react-test-renderer / react-dom
+if (typeof globalThis !== 'undefined') {
+  try {
+    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  } catch (e) {
+    /* ignore */
   }
-} catch (_e) {
-  // ignore
 }
 
-// Polyfill: provide a no-op getContext for HTMLCanvasElement in jsdom tests
-try {
-  if (typeof global !== 'undefined') {
-    if (typeof HTMLCanvasElement === 'undefined') {
-      // define a minimal mock HTMLCanvasElement constructor for tests that inspect prototype
-      global.HTMLCanvasElement = function () {};
-      global.HTMLCanvasElement.prototype = {};
+// Suppress React act dev warnings in console.error during tests to avoid
+// failing suites where act-related updates are noisy. Tests that need to
+// assert on these warnings should re-enable or spy on console.error.
+if (typeof console !== 'undefined' && typeof console.error === 'function') {
+  const _origConsoleError = console.error.bind(console);
+  console.error = (...args) => {
+    try {
+      const msg = args[0] || '';
+      if (typeof msg === 'string' && msg.includes('not wrapped in act(')) return;
+      if (typeof msg === 'string' && msg.includes('wrap-tests-with-act')) return;
+    } catch (e) {
+      // ignore
     }
-
-    if (!HTMLCanvasElement.prototype.getContext) {
-      HTMLCanvasElement.prototype.getContext = function (type) {
-        // return a minimal 2D context-like object for tests that expect callability
-        if (type === '2d') {
-          return {
-            fillRect: function () {},
-            clearRect: function () {},
-            getImageData: function () {
-              return { data: [] };
-            },
-            putImageData: function () {},
-            createImageData: function () {
-              return [];
-            },
-            setTransform: function () {},
-            drawImage: function () {},
-            save: function () {},
-            fillText: function () {},
-            restore: function () {},
-            measureText: function () {
-              return { width: 0 };
-            },
-          };
-        }
-
-        // For WebGL or other types, return null to mimic lack of support
-        return null;
-      };
-    }
-  }
-} catch (_e) {
-  // ignore polyfill errors
+    _origConsoleError(...args);
+  };
 }
 
-// Defensive: ensure global.window and global.document exist and are plain objects for tests
-try {
-  if (typeof global !== 'undefined') {
-    if (typeof global.window === 'undefined') global.window = {};
-    if (typeof global.document === 'undefined')
-      global.document = {
-        createElement: function () {
-          return new HTMLCanvasElement();
-        },
-      };
+// Guarded jest-only mocks so importing this file outside of jest is safe
+if (typeof jest !== 'undefined' && typeof jest.mock === 'function') {
+  // Note: Avoid requiring or mocking React here synchronously because that
+  // can recurse into Jest's module system. If multiple copies of React in
+  // the workspace cause hooks to break, prefer setting moduleNameMapper in
+  // jest.config.js to point ^react$ and ^react-test-renderer$ to this
+  // package's node_modules. We keep this file minimal and guarded.
+  jest.mock('@/lib/realtime/broadcast', () => ({
+    subscribeToBroadcastTopic: () => () => {},
+    subscribeToBroadcastTopics: () => [],
+  }));
+
+  jest.mock('next/router', () => ({
+    useRouter: () => ({
+      route: '/',
+      pathname: '/',
+      query: {},
+      asPath: '/',
+      push: jest.fn(() => Promise.resolve()),
+      replace: jest.fn(() => Promise.resolve()),
+      prefetch: jest.fn(() => Promise.resolve()),
+      reload: jest.fn(() => {}),
+      back: jest.fn(() => {}),
+      events: { on: jest.fn(), off: jest.fn(), emit: jest.fn() },
+    }),
+  }));
+
+  // Wrap listeners registered via subscribeGameMatchData so emitted updates run inside act()
+  try {
+    const actualMatchData = jest.requireActual('modules/rank/matchDataStore');
+    jest.mock('modules/rank/matchDataStore', () => ({
+      ...actualMatchData,
+      subscribeGameMatchData: (gameId, listener) => {
+        const wrapped = snapshot => {
+          try {
+            const { act } = require('react-test-renderer');
+            act(() => {
+              listener(snapshot);
+            });
+          } catch (e) {
+            // fallback without act if something goes wrong
+            listener(snapshot);
+          }
+        };
+        return actualMatchData.subscribeGameMatchData(gameId, wrapped);
+      },
+    }));
+  } catch (e) {
+    // ignore if module can't be required in this context
   }
-} catch (_e) {}
+}

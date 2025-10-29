@@ -16,8 +16,9 @@ const API_KEY = process.env.SYNC_API_KEY || process.env.REPORTS_API_KEY || null;
 async function upload(key, filePath) {
   const content = fs.readFileSync(filePath, 'utf8');
   const res = await fetch(`${SERVER}/api/sync/upload`, {
-    method: 'POST', headers: addAuth({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ key, content })
+    method: 'POST',
+    headers: addAuth({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ key, content }),
   });
   console.log(await res.json());
 }
@@ -28,8 +29,13 @@ function addAuth(headers) {
 }
 
 async function getKey(key, outFile) {
-  const res = await fetch(`${SERVER}/api/sync/${encodeURIComponent(key)}`, { headers: addAuth({}) });
-  if (!res.ok) { console.error('not found'); process.exit(2); }
+  const res = await fetch(`${SERVER}/api/sync/${encodeURIComponent(key)}`, {
+    headers: addAuth({}),
+  });
+  if (!res.ok) {
+    console.error('not found');
+    process.exit(2);
+  }
   const txt = await res.text();
   if (outFile) fs.writeFileSync(outFile, txt, 'utf8');
   else console.log(txt);
@@ -41,11 +47,14 @@ async function listKeys() {
 }
 
 async function main() {
-  const [,,cmd,a,b] = process.argv;
+  const [, , cmd, a, b] = process.argv;
   if (cmd === 'upload') return upload(a, b);
   if (cmd === 'get') return getKey(a, b);
   if (cmd === 'list') return listKeys();
   console.log('usage: upload|get|list');
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
+main().catch(e => {
+  console.error(e);
+  process.exit(1);
+});
