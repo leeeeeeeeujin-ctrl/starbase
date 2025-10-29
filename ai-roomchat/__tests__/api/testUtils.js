@@ -73,7 +73,6 @@ function loadApiRoute(...segments) {
   const modulePath = path.join(__dirname, '..', '..', 'pages', 'api', ...segments);
   let module;
   jest.isolateModules(() => {
-     
     module = require(modulePath);
   });
   return module.default;
