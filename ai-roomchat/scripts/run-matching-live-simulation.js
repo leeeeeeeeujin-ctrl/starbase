@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* eslint-disable no-console */
+ 
 // Live-style matching simulator: multiple games, users join/leave over time,
 // matcher invoked periodically; simulates mid-leave race conditions.
 

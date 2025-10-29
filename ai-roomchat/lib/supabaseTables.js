@@ -32,7 +32,7 @@ const recentInsertCache = {};
 function dbg(...args) {
   try {
     if (process && process.env && process.env.SUPABASE_TABLES_DEBUG === 'true') {
-      // eslint-disable-next-line no-console
+       
       console.error(...args);
     }
   } catch (e) {

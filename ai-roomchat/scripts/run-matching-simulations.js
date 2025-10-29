@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* eslint-disable no-console */
+ 
 // Run a battery of matching simulations across many synthetic games and queues.
 // Produces reports in ./reports/matching-simulations.json
 

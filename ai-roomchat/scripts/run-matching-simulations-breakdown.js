@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* eslint-disable no-console */
+ 
 // Run matching simulations and collect detailed failure reasons per config.
 
 const fs = require('fs');

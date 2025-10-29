@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* eslint-disable no-console */
+ 
 // Simple CLI to compile a prompt node using the existing promptEngine.makeNodePrompt
 // Usage:
 //  node scripts/make-sample-prompt.js --template "Hello {{slot0.name}}" 

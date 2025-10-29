@@ -241,10 +241,10 @@ class CompatibilityManager {
       explicitEmptyOnAnyNavigator || (typeof ownUA !== 'undefined' && String(ownUA || '') === '');
     // Debugging aid for test runs
     try {
-      // eslint-disable-next-line no-console
+       
       console.log('[detectFromGlobals] chosen userAgent=', uaRawStr);
       try {
-        // eslint-disable-next-line no-console
+         
         console.log(
           '[detectFromGlobals] global.navigator.descriptor=',
           typeof global !== 'undefined' && Object.getOwnPropertyDescriptor
@@ -254,18 +254,18 @@ class CompatibilityManager {
       } catch (e) {
         // ignore
       }
-      // eslint-disable-next-line no-console
+       
       console.log('[detectFromGlobals] window keys=', Object.keys(win || {}).slice(0, 50));
       // Debug global.navigator content to see test-injected values
       try {
-        // eslint-disable-next-line no-console
+         
         console.log(
           '[detectFromGlobals] global.navigator type=',
           typeof global.navigator,
           'keys=',
           Object.keys(global.navigator || {}).slice(0, 20)
         );
-        // eslint-disable-next-line no-console
+         
         console.log(
           '[detectFromGlobals] global.navigator.userAgent=',
           global.navigator && Object.prototype.hasOwnProperty.call(global.navigator, 'userAgent')
@@ -340,21 +340,21 @@ class CompatibilityManager {
 
     // Debug information about whether these properties are own properties (tests often assign them)
     try {
-      // eslint-disable-next-line no-console
+       
       console.log(
         '[detectFromGlobals] win.fetch type=',
         typeof win.fetch,
         'own=',
         Object.prototype.hasOwnProperty.call(win || {}, 'fetch')
       );
-      // eslint-disable-next-line no-console
+       
       console.log(
         '[detectFromGlobals] win.Promise type=',
         typeof win.Promise,
         'own=',
         Object.prototype.hasOwnProperty.call(win || {}, 'Promise')
       );
-      // eslint-disable-next-line no-console
+       
       console.log(
         '[detectFromGlobals] win.AbortController type=',
         typeof win.AbortController,
@@ -367,7 +367,7 @@ class CompatibilityManager {
 
     // Debug computed features
     try {
-      // eslint-disable-next-line no-console
+       
       console.log('[detectFromGlobals] computed features preliminary: ', {
         fetch: !!win.fetch,
         promise: !!win.Promise,

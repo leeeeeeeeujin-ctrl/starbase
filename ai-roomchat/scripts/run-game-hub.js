@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* eslint-disable no-console */
+ 
 // Minimal game-hub PoC: uses promptEngine.makeNodePrompt to compile prompts for multiple
 // simulated game instances and records outputs. AI calls are mocked by a simple function.
 

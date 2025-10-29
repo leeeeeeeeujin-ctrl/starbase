@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* eslint-disable no-console */
+ 
 // Live-style matching simulator with a reservation PoC.
 // Steps:
 // 1) Matcher returns assignments.

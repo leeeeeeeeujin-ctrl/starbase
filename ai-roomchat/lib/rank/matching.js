@@ -33,7 +33,7 @@ function matchRankParticipants({
   const dbg = (/* ...args */) => {
     try {
       if (String(process.env.MATCHING_DEBUG || '').toLowerCase() === '1') {
-        // eslint-disable-next-line no-console
+         
         console.log('[MATCHING DEBUG]', ...arguments);
       }
     } catch (e) {
@@ -70,9 +70,9 @@ function matchRankParticipants({
   const effectiveMaxWindow = Math.max(0, Math.round(Number(maxWindowAllowed) * adaptiveFactor));
   const { pools: rolePools, skipped } = buildRolePools({ template, groups });
   if (String(process.env.MATCHING_DEBUG || '').toLowerCase() === '1') {
-    // eslint-disable-next-line no-console
+     
     console.log('[MATCHING DEBUG] rolePools sizes:', Array.from(rolePools.entries()).map(([k, v]) => ({ role: k, groups: v.groups.length })) );
-    // eslint-disable-next-line no-console
+     
     console.log('[MATCHING DEBUG] skipped groups count:', skipped.length);
   }
   const { rooms, unplaced } = allocateRoomsFromPools({
@@ -81,9 +81,9 @@ function matchRankParticipants({
     maxWindowAllowed: effectiveMaxWindow,
   });
   if (String(process.env.MATCHING_DEBUG || '').toLowerCase() === '1') {
-    // eslint-disable-next-line no-console
+     
     console.log('[MATCHING DEBUG] allocateRoomsFromPools -> rooms:', rooms.map(r => ({ id: r.id, filledSlots: r.filledSlots, groups: r.groups.length, maxScoreGap: r.maxScoreGap })));
-    // eslint-disable-next-line no-console
+     
     console.log('[MATCHING DEBUG] unplaced count:', unplaced.length);
   }
   const combinedUnplaced = skipped.concat(unplaced);
@@ -365,7 +365,7 @@ function buildQueueGroupsWithDebug(queue) {
   const groups = buildQueueGroups(queue);
   try {
     if (String(process.env.MATCHING_DEBUG || '').toLowerCase() === '1') {
-      // eslint-disable-next-line no-console
+       
       console.log('[MATCHING DEBUG] buildQueueGroups =>', groups.map(g => ({ role: g.role, size: g.size, score: g.score, joinedAt: g.joinedAt, groupKey: g.groupKey })));
     }
   } catch (e) {}
@@ -708,7 +708,7 @@ function pickCandidateForRole({ pool, room, template, maxWindowAllowed }) {
   for (let index = 0; index < pool.groups.length; index += 1) {
     const candidate = pool.groups[index];
     if (String(process.env.MATCHING_DEBUG || '').toLowerCase() === '1') {
-      // eslint-disable-next-line no-console
+       
       console.log('[MATCHING DEBUG] pickCandidateForRole consider', { role: candidate?.role, groupKey: candidate?.groupKey, size: candidate?.size, score: candidate?.score });
     }
     if (!candidate) continue;
@@ -720,13 +720,13 @@ function pickCandidateForRole({ pool, room, template, maxWindowAllowed }) {
     });
     if (!placed) {
       if (String(process.env.MATCHING_DEBUG || '').toLowerCase() === '1') {
-        // eslint-disable-next-line no-console
+         
         console.log('[MATCHING DEBUG] pickCandidateForRole NOT placed', { role: candidate?.role, groupKey: candidate?.groupKey });
       }
       continue;
     }
     if (String(process.env.MATCHING_DEBUG || '').toLowerCase() === '1') {
-      // eslint-disable-next-line no-console
+       
       console.log('[MATCHING DEBUG] pickCandidateForRole PLACED', { role: candidate?.role, groupKey: candidate?.groupKey, roomId: room?.id });
     }
     pool.groups.splice(index, 1);
@@ -1039,7 +1039,7 @@ function assignGroupToRoom({ room, group, template, maxWindowAllowed }) {
   }
 
   if (String(process.env.MATCHING_DEBUG || '').toLowerCase() === '1') {
-    // eslint-disable-next-line no-console
+     
     console.log('[MATCHING DEBUG] assignGroupToRoom assigning', { roomId: room.id, role: group.role, groupKey: group.groupKey, size: group.size, gapToRoomBeforePlacement });
   }
 
@@ -1105,7 +1105,7 @@ function assignGroupToRoom({ room, group, template, maxWindowAllowed }) {
   });
 
   if (String(process.env.MATCHING_DEBUG || '').toLowerCase() === '1') {
-    // eslint-disable-next-line no-console
+     
     console.log('[MATCHING DEBUG] assignGroupToRoom assigned', { roomId: room.id, filledSlots: room.filledSlots, maxScoreGap: room.maxScoreGap });
   }
 
