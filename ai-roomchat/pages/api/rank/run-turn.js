@@ -182,7 +182,10 @@ export default async function handler(req, res) {
         history: historyEntries,
       });
       // Normalize to the same shape callChat returns where possible
-      result = { ok: true, text: (geminiRes?.text || geminiRes?.candidates?.[0]?.content?.parts?.join('') || '') };
+      result = {
+        ok: true,
+        text: geminiRes?.text || geminiRes?.candidates?.[0]?.content?.parts?.join('') || '',
+      };
     } catch (err) {
       console.error('[run-turn] callGemini (dev proxy) error', err);
       return res.status(500).json({ error: 'provider_call_failed' });
@@ -198,7 +201,7 @@ export default async function handler(req, res) {
         (effectiveApiVersion || 'gemini') === 'gemini'
           ? { geminiMode: effectiveGeminiMode, geminiModel: effectiveGeminiModel }
           : {},
-    }).catch((err) => {
+    }).catch(err => {
       console.error('callChat error', err);
       throw err;
     });

@@ -57,7 +57,6 @@ export default function RankingShowcaseSkeleton() {
           >
             {[0, 1, 2].map(idx => (
               <div
-                 
                 key={idx}
                 style={{
                   borderRadius: 18,
@@ -111,7 +110,6 @@ export default function RankingShowcaseSkeleton() {
         <div style={{ display: 'grid', gap: 12 }}>
           {[0, 1, 2, 3].map(idx => (
             <div
-               
               key={idx}
               style={{
                 display: 'grid',
@@ -186,7 +184,6 @@ export default function RankingShowcaseSkeleton() {
         <div style={{ display: 'grid', gap: 12 }}>
           {[0, 1, 2].map(group => (
             <div
-               
               key={group}
               style={{
                 borderRadius: 20,
@@ -229,7 +226,6 @@ export default function RankingShowcaseSkeleton() {
               <div style={{ display: 'grid', gap: 8 }}>
                 {[0, 1, 2].map(entry => (
                   <div
-                     
                     key={entry}
                     style={{
                       display: 'grid',

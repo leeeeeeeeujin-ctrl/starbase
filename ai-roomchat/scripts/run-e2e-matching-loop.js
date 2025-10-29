@@ -51,10 +51,15 @@ function computeRoleAverages(queue) {
   return avgs;
 }
 
-function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+function clamp(v, a, b) {
+  return Math.max(a, Math.min(b, v));
+}
 
 async function run() {
-  const roles = [ { name: 'attack', slot_count: 2 }, { name: 'support', slot_count: 2 } ];
+  const roles = [
+    { name: 'attack', slot_count: 2 },
+    { name: 'support', slot_count: 2 },
+  ];
 
   // Simulated rank_games_roles config
   const roleDeltas = {
@@ -64,7 +69,10 @@ async function run() {
 
   let queue = buildInitialQueue();
 
-  console.log('Starting queue:', queue.map(q => ({ id: q.id, role: q.role, score: q.score })));
+  console.log(
+    'Starting queue:',
+    queue.map(q => ({ id: q.id, role: q.role, score: q.score }))
+  );
 
   const iterations = 5;
   for (let iter = 1; iter <= iterations; iter++) {
@@ -74,7 +82,15 @@ async function run() {
 
     const result = matchRankParticipants({ roles, queue, scoreWindows: [200] });
     console.log('matched ready?', result.ready, 'totalSlots', result.totalSlots);
-    console.log('assignments (rooms):', result.assignments.map(a => ({ roomId: a.roomId, filled: a.filledSlots, ready: a.ready, role: a.role })));
+    console.log(
+      'assignments (rooms):',
+      result.assignments.map(a => ({
+        roomId: a.roomId,
+        filled: a.filledSlots,
+        ready: a.ready,
+        role: a.role,
+      }))
+    );
 
     // If nothing matched, break
     if (!result.assignments || !result.assignments.length) {
@@ -91,7 +107,7 @@ async function run() {
         const anchorScore = group.score || 0;
         const roleAvg = roleAvgs[role] || anchorScore || 1000;
         const fraction = clamp((anchorScore - roleAvg) / Math.max(1, roleAvg), -1, 1);
-        const { min, max } = (roleDeltas[role] || { min: 0, max: 0 });
+        const { min, max } = roleDeltas[role] || { min: 0, max: 0 };
         const delta = min + (max - min) * ((fraction + 1) / 2);
         const rounded = Math.round(delta);
         // apply to each member in the group
@@ -115,13 +131,23 @@ async function run() {
 
     // Rebuild queue for next iteration: use updated players plus any unplaced original queue members
     const placedIds = new Set(Object.keys(updatedPlayers));
-    const unplaced = (result.rooms || []).flatMap(r => r.slots || []).map(s => null).filter(Boolean); // dummy to satisfy linter
+    const unplaced = (result.rooms || [])
+      .flatMap(r => r.slots || [])
+      .map(s => null)
+      .filter(Boolean); // dummy to satisfy linter
     const nextQueue = [];
 
     // Re-add all players from updatedPlayers
     for (const key of Object.keys(updatedPlayers)) {
       const p = updatedPlayers[key];
-      nextQueue.push({ id: p.id, owner_id: p.owner_id, hero_id: p.hero_id, role: p.role, score: p.score, entry: { id: p.id, owner_id: p.owner_id, hero_id: p.hero_id } });
+      nextQueue.push({
+        id: p.id,
+        owner_id: p.owner_id,
+        hero_id: p.hero_id,
+        role: p.role,
+        score: p.score,
+        entry: { id: p.id, owner_id: p.owner_id, hero_id: p.hero_id },
+      });
     }
 
     // If there were other players not matched this round (e.g., leftovers in earlier queue), include them unchanged
@@ -133,7 +159,10 @@ async function run() {
     }
 
     queue = nextQueue;
-    console.log('Queue for next iter:', queue.map(q => ({ id: q.id, role: q.role, score: q.score })));
+    console.log(
+      'Queue for next iter:',
+      queue.map(q => ({ id: q.id, role: q.role, score: q.score }))
+    );
   }
 
   console.log('\nSimulation complete. Final queue:');

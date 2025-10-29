@@ -3661,7 +3661,8 @@ export function useStartClientEngine(gameId, options = {}) {
           (async () => {
             try {
               // Prefer explicit action payload on the bridge if present, otherwise construct a small default payload
-              const explicitPayload = chosenEdge.data.payload || chosenEdge.data.actionPayload || null;
+              const explicitPayload =
+                chosenEdge.data.payload || chosenEdge.data.actionPayload || null;
               const defaultPayload = {
                 ownerId: actorContext?.participant?.owner_id || null,
                 slotIndex: actorContext?.slotIndex ?? null,
@@ -3686,12 +3687,14 @@ export function useStartClientEngine(gameId, options = {}) {
                     }
                     // best-effort: send compact audit summary to server
                     try {
-                      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+                      const { data: sessionData, error: sessionError } =
+                        await supabase.auth.getSession();
                       if (!sessionError && sessionData?.session?.access_token) {
                         const token = sessionData.session.access_token;
-                        const requestId = typeof crypto !== 'undefined' && crypto.randomUUID
-                          ? crypto.randomUUID()
-                          : `${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
+                        const requestId =
+                          typeof crypto !== 'undefined' && crypto.randomUUID
+                            ? crypto.randomUUID()
+                            : `${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
                         // Fire-and-forget; don't block turn processing
                         void fetch('/api/rank/log-action', {
                           method: 'POST',

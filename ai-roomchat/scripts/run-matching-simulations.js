@@ -1,5 +1,5 @@
 #!/usr/bin/env node
- 
+
 // Run a battery of matching simulations across many synthetic games and queues.
 // Produces reports in ./reports/matching-simulations.json
 
@@ -21,7 +21,8 @@ function sampleScores(n, dist) {
   const out = [];
   for (let i = 0; i < n; i += 1) {
     if (dist.type === 'normal') out.push(randNormal(dist.mean, dist.sd));
-    else if (dist.type === 'uniform') out.push(Math.round(dist.min + Math.random() * (dist.max - dist.min)));
+    else if (dist.type === 'uniform')
+      out.push(Math.round(dist.min + Math.random() * (dist.max - dist.min)));
     else if (dist.type === 'low') out.push(randNormal(900, 80));
     else out.push(1000);
   }
@@ -30,10 +31,19 @@ function sampleScores(n, dist) {
 
 function buildRoleTemplates() {
   return [
-    [{ name: 'attack', slot_count: 1 }, { name: 'support', slot_count: 1 }],
-    [{ name: 'attack', slot_count: 2 }, { name: 'support', slot_count: 2 }],
+    [
+      { name: 'attack', slot_count: 1 },
+      { name: 'support', slot_count: 1 },
+    ],
+    [
+      { name: 'attack', slot_count: 2 },
+      { name: 'support', slot_count: 2 },
+    ],
     [{ name: 'solo', slot_count: 1 }],
-    [{ name: 'tank', slot_count: 1 }, { name: 'dps', slot_count: 3 }],
+    [
+      { name: 'tank', slot_count: 1 },
+      { name: 'dps', slot_count: 3 },
+    ],
   ];
 }
 
@@ -52,7 +62,15 @@ function buildQueueFromScores(role, scores, startId = 0) {
   return queue;
 }
 
-function runTrials({ roles, dist, queueSize = 10, standinPool = 0, asyncMode = false, sensitivity = null, trials = 200 }) {
+function runTrials({
+  roles,
+  dist,
+  queueSize = 10,
+  standinPool = 0,
+  asyncMode = false,
+  sensitivity = null,
+  trials = 200,
+}) {
   let failures = 0;
   for (let t = 0; t < trials; t += 1) {
     // generate per-role queues
@@ -72,7 +90,13 @@ function runTrials({ roles, dist, queueSize = 10, standinPool = 0, asyncMode = f
       scores.forEach((s, idx) => {
         // attach to a random role
         const role = roles[Math.floor(Math.random() * roles.length)].name;
-        standins.push({ id: `s-${sid + idx}`, owner_id: `bot-${sid + idx}`, hero_id: `b-${sid + idx}`, role, score: s });
+        standins.push({
+          id: `s-${sid + idx}`,
+          owner_id: `bot-${sid + idx}`,
+          hero_id: `b-${sid + idx}`,
+          role,
+          score: s,
+        });
       });
     }
 
@@ -104,8 +128,24 @@ async function main() {
   for (const roles of roleTemplates) {
     for (const dist of dists) {
       for (const sens of sensitivities) {
-        const r1 = runTrials({ roles, dist, queueSize: 6, standinPool: 0, asyncMode: false, sensitivity: sens, trials: 300 });
-        const r2 = runTrials({ roles, dist, queueSize: 3, standinPool: 6, asyncMode: true, sensitivity: sens, trials: 300 });
+        const r1 = runTrials({
+          roles,
+          dist,
+          queueSize: 6,
+          standinPool: 0,
+          asyncMode: false,
+          sensitivity: sens,
+          trials: 300,
+        });
+        const r2 = runTrials({
+          roles,
+          dist,
+          queueSize: 3,
+          standinPool: 6,
+          asyncMode: true,
+          sensitivity: sens,
+          trials: 300,
+        });
 
         const entry = {
           timestamp: new Date().toISOString(),
@@ -115,7 +155,18 @@ async function main() {
           realtime: r1,
           async: r2,
         };
-        console.log('SIM', roles.map(r => `${r.name}(${r.slot_count})`).join(','), dist.name, 'sens=', sens, '-> realtime fail', r1.failureRate.toFixed(2), '% async fail', r2.failureRate.toFixed(2), '%');
+        console.log(
+          'SIM',
+          roles.map(r => `${r.name}(${r.slot_count})`).join(','),
+          dist.name,
+          'sens=',
+          sens,
+          '-> realtime fail',
+          r1.failureRate.toFixed(2),
+          '% async fail',
+          r2.failureRate.toFixed(2),
+          '%'
+        );
         reports.push(entry);
       }
     }
@@ -124,7 +175,11 @@ async function main() {
   const outDir = path.join(process.cwd(), 'reports');
   fs.mkdirSync(outDir, { recursive: true });
   const outPath = path.join(outDir, `matching-simulations-${Date.now()}.json`);
-  fs.writeFileSync(outPath, JSON.stringify({ generatedAt: new Date().toISOString(), reports }, null, 2), 'utf8');
+  fs.writeFileSync(
+    outPath,
+    JSON.stringify({ generatedAt: new Date().toISOString(), reports }, null, 2),
+    'utf8'
+  );
   console.log('WROTE', outPath);
 }
 

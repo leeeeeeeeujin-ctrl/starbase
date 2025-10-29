@@ -38,12 +38,18 @@ function analyzeRuns(games, queuesByGame) {
 
     // check per-role slot consumption
     const remaining = new Map();
-    for (const r of game.roles) remaining.set(String(r.name), Number(r.slot_count || r.slotCount || 0));
+    for (const r of game.roles)
+      remaining.set(String(r.name), Number(r.slot_count || r.slotCount || 0));
     for (const a of result.assignments || []) {
       for (const slot of a.roleSlots || []) {
         const slotRole = slot.role;
         if (!remaining.has(slotRole)) {
-          errors.push({ type: 'undeclaredRoleUsed', gameId: gid, slotRole, assignmentRole: a.role });
+          errors.push({
+            type: 'undeclaredRoleUsed',
+            gameId: gid,
+            slotRole,
+            assignmentRole: a.role,
+          });
         } else {
           remaining.set(slotRole, (remaining.get(slotRole) || 0) - 1);
           if ((remaining.get(slotRole) || 0) < 0) {
@@ -78,8 +84,20 @@ function analyzeRuns(games, queuesByGame) {
 (async function main() {
   // Define multiple games with different role setups
   const games = [
-    { id: 'game-A', roles: [{ name: 'attack', slot_count: 2 }, { name: 'support', slot_count: 1 }] },
-    { id: 'game-B', roles: [{ name: 'attack', slot_count: 1 }, { name: 'defense', slot_count: 1 }] },
+    {
+      id: 'game-A',
+      roles: [
+        { name: 'attack', slot_count: 2 },
+        { name: 'support', slot_count: 1 },
+      ],
+    },
+    {
+      id: 'game-B',
+      roles: [
+        { name: 'attack', slot_count: 1 },
+        { name: 'defense', slot_count: 1 },
+      ],
+    },
     { id: 'game-C', roles: [{ name: 'duo', slot_count: 2 }] },
   ];
 
@@ -106,16 +124,25 @@ function analyzeRuns(games, queuesByGame) {
   let step = 0;
   for (let i = 0; i < participants.length; i++) {
     const p = participants[i];
-    const targetGame = games.find((gg) => gg.id === p.gameId);
+    const targetGame = games.find(gg => gg.id === p.gameId);
     if (!targetGame) {
       console.warn('Skipping participant with unknown gameId', p);
       continue;
     }
-    const entry = buildEntry({ id: `${p.ownerId}-${step}`, ownerId: p.ownerId, heroId: p.heroId, role: p.role, score: 1000 + i * 10, gameId: targetGame.id });
+    const entry = buildEntry({
+      id: `${p.ownerId}-${step}`,
+      ownerId: p.ownerId,
+      heroId: p.heroId,
+      role: p.role,
+      score: 1000 + i * 10,
+      gameId: targetGame.id,
+    });
     queues[targetGame.id].push(entry);
     step += 1;
 
-    console.log(`\n--- Step ${step}: added ${entry.owner_id} to ${targetGame.id} as ${entry.role} ---`);
+    console.log(
+      `\n--- Step ${step}: added ${entry.owner_id} to ${targetGame.id} as ${entry.role} ---`
+    );
     const { results, errors } = analyzeRuns(games, queues);
     if (errors.length) {
       console.warn('Errors detected at step', step, errors);

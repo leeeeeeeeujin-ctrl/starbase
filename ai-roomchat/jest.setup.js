@@ -1,7 +1,9 @@
 // Minimal jest setup: set env vars and guarded jest mocks
 
-process.env.NEXT_PUBLIC_SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://example.supabase.co';
-process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'test-anon-key';
+process.env.NEXT_PUBLIC_SUPABASE_URL =
+  process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://example.supabase.co';
+process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY =
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'test-anon-key';
 process.env.SUPABASE_SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE || 'test-service-role-key';
 
 // Set React act environment flag used by react-test-renderer / react-dom
@@ -81,4 +83,3 @@ if (typeof jest !== 'undefined' && typeof jest.mock === 'function') {
     // ignore if module can't be required in this context
   }
 }
-

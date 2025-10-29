@@ -173,7 +173,7 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, result: rpcResult });
   } catch (error) {
     // Surface the error in test logs to help debugging
-     
+
     console.error('[DEBUG complete-session] unexpected error:', error);
     return res.status(500).json({ error: 'server_error', detail: String(error).slice(0, 300) });
   }

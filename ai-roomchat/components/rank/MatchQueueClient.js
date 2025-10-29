@@ -1423,7 +1423,6 @@ export default function MatchQueueClient({
         try {
           console.info('[MatchQueue] 디버그 홀드 활성화', holdSnapshot);
         } catch (error) {
-           
           console.log('[MatchQueue] 디버그 홀드 활성화', holdSnapshot);
         }
       }

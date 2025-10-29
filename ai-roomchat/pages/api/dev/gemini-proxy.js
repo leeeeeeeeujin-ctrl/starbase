@@ -13,12 +13,13 @@ if (!SUPABASE_URL || !SUPABASE_ANON) {
   // not throwing so build doesn't fail for environments without supabase config
 }
 
-const anonClient = SUPABASE_URL && SUPABASE_ANON
-  ? createClient(SUPABASE_URL, SUPABASE_ANON, {
-      auth: { persistSession: false },
-      global: { headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}` } },
-    })
-  : null;
+const anonClient =
+  SUPABASE_URL && SUPABASE_ANON
+    ? createClient(SUPABASE_URL, SUPABASE_ANON, {
+        auth: { persistSession: false },
+        global: { headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${SUPABASE_ANON}` } },
+      })
+    : null;
 
 // very small in-memory rate limiter (POC)
 const rateMap = new Map();

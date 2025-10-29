@@ -9,7 +9,14 @@ export function registerAction(name, { schema = null, roles = [], handler }) {
   registry.set(name, { schema, roles, handler });
 }
 
-export async function dispatchAction({ name, user, sessionId, gameId, payload = {}, idempotencyKey = null }) {
+export async function dispatchAction({
+  name,
+  user,
+  sessionId,
+  gameId,
+  payload = {},
+  idempotencyKey = null,
+}) {
   if (!name) return { ok: false, error: 'missing_action' };
   const entry = registry.get(name);
   if (!entry) return { ok: false, error: 'unknown_action' };
@@ -46,24 +53,33 @@ export async function dispatchAction({ name, user, sessionId, gameId, payload = 
 
 // Demo handler: award_xp
 registerAction('award_xp', {
-  schema: z.object({ ownerId: z.string().uuid().optional(), playerId: z.string().uuid().optional(), amount: z.number().int().min(1) }),
+  schema: z.object({
+    ownerId: z.string().uuid().optional(),
+    playerId: z.string().uuid().optional(),
+    amount: z.number().int().min(1),
+  }),
   handler: async (ctx, payload = {}) => {
     const { supabaseAdmin, withTableQuery } = ctx;
     const ownerId = payload?.ownerId || payload?.playerId || null;
-    const amount = Number.isFinite(Number(payload?.amount)) ? Math.floor(Number(payload.amount)) : 0;
+    const amount = Number.isFinite(Number(payload?.amount))
+      ? Math.floor(Number(payload.amount))
+      : 0;
 
     if (!ownerId || !amount || amount === 0) {
       return { ok: false, error: 'invalid_payload' };
     }
 
     // Update rank_participants.score (simple POC)
-    const { data: updated, error: updateError } = await withTableQuery(supabaseAdmin, 'rank_participants', from =>
-      supabaseAdmin
-        .from(from)
-        .update({ score: supabaseAdmin.raw('coalesce(score, 0) + ?', [amount]) })
-        .eq('game_id', ctx.gameId)
-        .eq('owner_id', ownerId)
-        .select('id, owner_id, score')
+    const { data: updated, error: updateError } = await withTableQuery(
+      supabaseAdmin,
+      'rank_participants',
+      from =>
+        supabaseAdmin
+          .from(from)
+          .update({ score: supabaseAdmin.raw('coalesce(score, 0) + ?', [amount]) })
+          .eq('game_id', ctx.gameId)
+          .eq('owner_id', ownerId)
+          .select('id, owner_id, score')
     );
 
     if (updateError) {

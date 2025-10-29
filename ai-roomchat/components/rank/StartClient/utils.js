@@ -33,7 +33,8 @@ export function buildParticipantsFromRoster(roster = []) {
       if (!ownerId || !heroId) return null;
 
       const slotIndex = parseSlotIndex(entry.slotIndex, index);
-      const heroName = typeof entry.heroName === 'string' && entry.heroName.trim() ? entry.heroName.trim() : '';
+      const heroName =
+        typeof entry.heroName === 'string' && entry.heroName.trim() ? entry.heroName.trim() : '';
 
       return {
         id: `roster-${slotIndex != null ? slotIndex : index}-${ownerId}`,

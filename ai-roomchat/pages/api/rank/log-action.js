@@ -44,7 +44,14 @@ export default async function handler(req, res) {
     }
   }
 
-  const { action, summary = null, result = null, session_id: sessionId = null, game_id: gameId = null, request_id: requestId = null } = payload || {};
+  const {
+    action,
+    summary = null,
+    result = null,
+    session_id: sessionId = null,
+    game_id: gameId = null,
+    request_id: requestId = null,
+  } = payload || {};
 
   if (!action || typeof action !== 'string') {
     return res.status(400).json({ error: 'missing_action' });

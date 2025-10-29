@@ -59,7 +59,12 @@ function scan(file) {
   // flag node-only API usage
   const checks = [];
   if (/__dirname/.test(src)) checks.push('__dirname');
-  if (/\bfrom\s+['\"]fs['\"]/m.test(src) || /require\(['\"]fs['\"]\)/m.test(src) || /import\s+fs\s+from\s+['\"]fs['\"]/m.test(src)) checks.push('fs');
+  if (
+    /\bfrom\s+['\"]fs['\"]/m.test(src) ||
+    /require\(['\"]fs['\"]\)/m.test(src) ||
+    /import\s+fs\s+from\s+['\"]fs['\"]/m.test(src)
+  )
+    checks.push('fs');
   if (/process\.cwd\(/.test(src)) checks.push('process.cwd');
   if (checks.length) flagged.push({ file: real, checks });
 
@@ -68,7 +73,7 @@ function scan(file) {
   const dynamicImportRegex = /import\(['"]([^'"]+)['"]\)/g;
   const requireRegex = /require\(['"]([^'"]+)['"]\)/g;
 
-  const addMatch = (m) => {
+  const addMatch = m => {
     const spec = m[1];
     const resolved = resolveModule(real, spec);
     if (resolved) scan(resolved);

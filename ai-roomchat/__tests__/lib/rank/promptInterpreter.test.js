@@ -74,9 +74,9 @@ describe('promptInterpreter', () => {
     expect(result.rulesBlock).toContain('전역 변수 FIRE_GUARD');
     expect(result.rulesBlock).toContain('로컬 변수 지침');
     expect(result.rulesBlock).toContain('[전역 변수 상태]');
-  expect(result.rulesBlock).toContain('활성화된 전역 변수: 무');
+    expect(result.rulesBlock).toContain('활성화된 전역 변수: 무');
     expect(result.rulesBlock).toContain('[로컬 변수 상태]');
-  expect(result.rulesBlock).toContain('활성화된 로컬 변수: 무');
+    expect(result.rulesBlock).toContain('활성화된 로컬 변수: 무');
     expect(result.text).toContain('-------------------------------------');
   });
 

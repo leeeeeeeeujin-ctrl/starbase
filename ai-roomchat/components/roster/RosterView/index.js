@@ -134,7 +134,6 @@ export default function RosterView({
                       </div>
                       {paragraphs.map((paragraph, index) => (
                         <p
-                           
                           key={index}
                           style={
                             index === paragraphs.length - 1

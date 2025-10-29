@@ -17,7 +17,13 @@ export class UniversalEnvironmentAdapter {
 
   detectEnvironment() {
     if (isNode) {
-      return { type: 'node', version: process.version, platform: process.platform, isSSR: true, supportsModules: true };
+      return {
+        type: 'node',
+        version: process.version,
+        platform: process.platform,
+        isSSR: true,
+        supportsModules: true,
+      };
     }
     return { type: 'unknown', isSSR: false, supportsModules: false };
   }
@@ -64,9 +70,17 @@ export class UniversalEnvironmentAdapter {
   getStorage() {
     return {
       get: key => this.globals.localStorage.get(key) || null,
-      set: (key, value) => { this.globals.localStorage.set(key, value); return true; },
-      remove: key => { return this.globals.localStorage.delete(key); },
-      clear: () => { this.globals.localStorage.clear(); return true; },
+      set: (key, value) => {
+        this.globals.localStorage.set(key, value);
+        return true;
+      },
+      remove: key => {
+        return this.globals.localStorage.delete(key);
+      },
+      clear: () => {
+        this.globals.localStorage.clear();
+        return true;
+      },
     };
   }
 
@@ -88,9 +102,22 @@ function _createInstance() {
     // so callers can still query a few properties without triggering Node built-ins.
     _universalAdapterInstance = {
       getEnvironmentInfo: () => ({ type: 'edge-or-browser', isNode: false, version: null }),
-      getConfig: () => ({ environment: { type: 'edge-or-browser', isNode: false }, features: {}, storage: { type: 'none' } }),
-      getStorage: () => ({ get: () => null, set: () => false, remove: () => false, clear: () => false }),
-      getNetwork: () => ({ fetch: (url, opts) => { throw new Error('universalAdapter: network fetch is not available in this environment'); } }),
+      getConfig: () => ({
+        environment: { type: 'edge-or-browser', isNode: false },
+        features: {},
+        storage: { type: 'none' },
+      }),
+      getStorage: () => ({
+        get: () => null,
+        set: () => false,
+        remove: () => false,
+        clear: () => false,
+      }),
+      getNetwork: () => ({
+        fetch: (url, opts) => {
+          throw new Error('universalAdapter: network fetch is not available in this environment');
+        },
+      }),
     };
     return _universalAdapterInstance;
   }
@@ -101,23 +128,32 @@ function _createInstance() {
 }
 
 // A small proxy that defers instance creation until a property is accessed.
-const universalAdapter = new Proxy({}, {
-  get(_target, prop) {
-    const inst = _createInstance();
-    const v = inst[prop];
-    if (typeof v === 'function') return v.bind(inst);
-    return v;
-  },
-  has(_target, prop) {
-    return prop in _createInstance();
-  },
-  ownKeys() {
-    return Reflect.ownKeys(_createInstance());
-  },
-  getOwnPropertyDescriptor(_target, prop) {
-    return Object.getOwnPropertyDescriptor(_createInstance(), prop) || { configurable: true, enumerable: true, value: undefined };
+const universalAdapter = new Proxy(
+  {},
+  {
+    get(_target, prop) {
+      const inst = _createInstance();
+      const v = inst[prop];
+      if (typeof v === 'function') return v.bind(inst);
+      return v;
+    },
+    has(_target, prop) {
+      return prop in _createInstance();
+    },
+    ownKeys() {
+      return Reflect.ownKeys(_createInstance());
+    },
+    getOwnPropertyDescriptor(_target, prop) {
+      return (
+        Object.getOwnPropertyDescriptor(_createInstance(), prop) || {
+          configurable: true,
+          enumerable: true,
+          value: undefined,
+        }
+      );
+    },
   }
-});
+);
 
 export { universalAdapter };
 export const isNodeEnvironment = () => isNode;

@@ -95,19 +95,19 @@ export default function SidePanel({
     setEdges(eds =>
       eds.map(e => {
         if (e.id !== selectedEdge.id) return e;
-    const data = {
+        const data = {
           ...(e.data || {}),
           trigger_words,
           conditions: cond,
           priority,
           probability,
           fallback,
-      action,
-      // store structured payload under actionPayload (preferred) and keep legacy payload
-      actionPayload: payloadObj,
-      payload: payloadObj,
-      // runLocally flag controls client-side execution
-      runLocally: !!edgeForm.run_local,
+          action,
+          // store structured payload under actionPayload (preferred) and keep legacy payload
+          actionPayload: payloadObj,
+          payload: payloadObj,
+          // runLocally flag controls client-side execution
+          runLocally: !!edgeForm.run_local,
         };
         return { ...e, data, label: rebuildLabel(data) };
       })

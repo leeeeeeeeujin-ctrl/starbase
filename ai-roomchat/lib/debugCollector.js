@@ -45,7 +45,10 @@ export function addDebugEvent(entry = {}) {
   // 로컬 디버깅과 테스트 실행 시 로그를 바로 확인할 수 있게 합니다.
   try {
     const enabled =
-      (typeof process !== 'undefined' && process.env && (process.env.STARTCLIENT_DEBUG === '1' || String(process.env.STARTCLIENT_DEBUG).toLowerCase() === 'true')) ||
+      (typeof process !== 'undefined' &&
+        process.env &&
+        (process.env.STARTCLIENT_DEBUG === '1' ||
+          String(process.env.STARTCLIENT_DEBUG).toLowerCase() === 'true')) ||
       false;
     if (enabled && typeof console !== 'undefined' && typeof console.debug === 'function') {
       try {

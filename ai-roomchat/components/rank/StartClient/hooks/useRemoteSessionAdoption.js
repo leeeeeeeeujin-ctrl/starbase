@@ -33,12 +33,18 @@ export function useRemoteSessionAdoption({
         return false;
       }
 
-      const statusToken = sessionRow.status ? String(sessionRow.status).trim().toLowerCase() : 'active';
+      const statusToken = sessionRow.status
+        ? String(sessionRow.status).trim().toLowerCase()
+        : 'active';
       if (statusToken && statusToken !== 'active') return false;
 
       const ownerSource =
-        sessionRow.owner_id ?? sessionRow.ownerId ?? sessionRow.ownerID ?? (sessionRow.owner && typeof sessionRow.owner === 'object' ? sessionRow.owner.id : null);
-      const ownerToken = ownerSource !== null && ownerSource !== undefined ? String(ownerSource).trim() : '';
+        sessionRow.owner_id ??
+        sessionRow.ownerId ??
+        sessionRow.ownerID ??
+        (sessionRow.owner && typeof sessionRow.owner === 'object' ? sessionRow.owner.id : null);
+      const ownerToken =
+        ownerSource !== null && ownerSource !== undefined ? String(ownerSource).trim() : '';
       if (normalizedHostOwnerId && ownerToken && ownerToken !== normalizedHostOwnerId) return false;
 
       if (!preflight) {
@@ -76,7 +82,8 @@ export function useRemoteSessionAdoption({
 
         if (!sanitized || sanitized.length === 0) {
           remoteSessionAdoptedRef.current = false;
-          setStatusMessage && setStatusMessage('참가자 구성이 유효하지 않아 게임에 참여할 수 없습니다.');
+          setStatusMessage &&
+            setStatusMessage('참가자 구성이 유효하지 않아 게임에 참여할 수 없습니다.');
           return false;
         }
 
@@ -96,16 +103,21 @@ export function useRemoteSessionAdoption({
       } catch (error) {
         remoteSessionAdoptedRef.current = false;
         console.error('[StartClient] 원격 세션 검증 실패:', error);
-        setStatusMessage && setStatusMessage('매칭 데이터를 검증하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+        setStatusMessage &&
+          setStatusMessage('매칭 데이터를 검증하지 못했습니다. 잠시 후 다시 시도해 주세요.');
         return false;
       }
 
       setStatusMessage && setStatusMessage('호스트가 게임을 시작했습니다. 전투에 합류합니다.');
-      const bootSession = typeof bootLocalSessionRef?.current === 'function' ? bootLocalSessionRef.current : null;
+      const bootSession =
+        typeof bootLocalSessionRef?.current === 'function' ? bootLocalSessionRef.current : null;
       if (!bootSession) {
         remoteSessionAdoptedRef.current = false;
         console.warn('[StartClient] 로컬 세션 부팅 콜백이 초기화되지 않았습니다.');
-        setStatusMessage && setStatusMessage('게임 화면을 초기화하는 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.');
+        setStatusMessage &&
+          setStatusMessage(
+            '게임 화면을 초기화하는 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.'
+          );
         return false;
       }
 
@@ -200,8 +212,12 @@ export function useRemoteSessionAdoption({
         if (statusToken && statusToken !== 'active') return;
 
         const ownerSource =
-          record.owner_id ?? record.ownerId ?? record.ownerID ?? (record.owner && typeof record.owner === 'object' ? record.owner.id : null);
-        const ownerToken = ownerSource !== null && ownerSource !== undefined ? String(ownerSource).trim() : '';
+          record.owner_id ??
+          record.ownerId ??
+          record.ownerID ??
+          (record.owner && typeof record.owner === 'object' ? record.owner.id : null);
+        const ownerToken =
+          ownerSource !== null && ownerSource !== undefined ? String(ownerSource).trim() : '';
         if (normalizedHostOwnerId && ownerToken && ownerToken !== normalizedHostOwnerId) return;
 
         adoptRemoteSession(record);

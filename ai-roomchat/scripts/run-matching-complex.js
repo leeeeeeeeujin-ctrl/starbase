@@ -95,7 +95,14 @@ function checkResult(result, roles, label) {
       // duplicates and cross-role entries
       buildEntry({ id: 'p7', ownerId: 'o1', heroId: 'h1', role: 'support', score: 1300 }),
       // standin pool entries
-      buildEntry({ id: 's1', ownerId: 'bot1', heroId: 'hb1', role: 'support', score: 1200, simulated: true }),
+      buildEntry({
+        id: 's1',
+        ownerId: 'bot1',
+        heroId: 'hb1',
+        role: 'support',
+        score: 1200,
+        simulated: true,
+      }),
     ],
     useAsync: false,
   });
@@ -107,7 +114,9 @@ function checkResult(result, roles, label) {
       { name: 'attack', slot_count: 1 },
       { name: 'support', slot_count: 1 },
     ],
-    queue: [buildEntry({ id: 'h1', ownerId: 'human1', heroId: 'hr1', role: 'attack', score: 1200 })],
+    queue: [
+      buildEntry({ id: 'h1', ownerId: 'human1', heroId: 'hr1', role: 'attack', score: 1200 }),
+    ],
     standins: [],
     useAsync: true,
   });
@@ -120,8 +129,22 @@ function checkResult(result, roles, label) {
       { name: 'solo', slot_count: 2 },
     ],
     queue: [
-      buildEntry({ id: 'd1', ownerId: 'a1', heroId: 'ha1', role: 'duo', score: 1000, partyKey: 'partyA' }),
-      buildEntry({ id: 'd2', ownerId: 'a2', heroId: 'ha2', role: 'duo', score: 1000, partyKey: 'partyA' }),
+      buildEntry({
+        id: 'd1',
+        ownerId: 'a1',
+        heroId: 'ha1',
+        role: 'duo',
+        score: 1000,
+        partyKey: 'partyA',
+      }),
+      buildEntry({
+        id: 'd2',
+        ownerId: 'a2',
+        heroId: 'ha2',
+        role: 'duo',
+        score: 1000,
+        partyKey: 'partyA',
+      }),
       buildEntry({ id: 's1', ownerId: 'b1', heroId: 'hb1', role: 'solo', score: 1050 }),
       buildEntry({ id: 's2', ownerId: 'b2', heroId: 'hb2', role: 'solo', score: 1040 }),
     ],
@@ -133,13 +156,23 @@ function checkResult(result, roles, label) {
   for (const sc of scenarios) {
     let result;
     if (sc.useAsync) {
-      result = matchAsyncParticipants({ roles: sc.roles, queue: sc.queue, standins: sc.standins || [], scoreWindows: [200] });
+      result = matchAsyncParticipants({
+        roles: sc.roles,
+        queue: sc.queue,
+        standins: sc.standins || [],
+        scoreWindows: [200],
+      });
     } else {
       result = matchRankParticipants({ roles: sc.roles, queue: sc.queue, scoreWindows: [200] });
     }
     const ok = checkResult(result, sc.roles, sc.label);
     if (!ok) allOk = false;
-    console.log('result summary:', { ready: result.ready, assignments: (result.assignments || []).length, totalSlots: result.totalSlots, maxWindow: result.maxWindow });
+    console.log('result summary:', {
+      ready: result.ready,
+      assignments: (result.assignments || []).length,
+      totalSlots: result.totalSlots,
+      maxWindow: result.maxWindow,
+    });
   }
 
   if (!allOk) process.exitCode = 2;

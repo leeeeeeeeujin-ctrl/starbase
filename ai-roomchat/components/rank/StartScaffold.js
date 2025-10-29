@@ -12,7 +12,7 @@ export default function VarRulesEditor({ value = [], onChange, title = '변수 �
       v.length === list.length &&
       v.every((r, i) => r?.name === list[i]?.name && r?.condition === list[i]?.condition);
     if (!same) setList(v);
-  }, [value]);  
+  }, [value]);
 
   function add() {
     const next = [...list, { name: '', condition: '' }];

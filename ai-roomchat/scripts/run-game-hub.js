@@ -1,5 +1,5 @@
 #!/usr/bin/env node
- 
+
 // Minimal game-hub PoC: uses promptEngine.makeNodePrompt to compile prompts for multiple
 // simulated game instances and records outputs. AI calls are mocked by a simple function.
 
@@ -21,7 +21,9 @@ const GAME_TEMPLATES = [
   { id: 'g2', name: 'solo', roles: [{ name: 'solo' }] },
 ];
 
-function randPick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+function randPick(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
 
 function mockAiClient(messages) {
   // Very small mock: produce a pseudo-outcome based on prompt length
@@ -43,7 +45,9 @@ async function runHub({ ticks = 20, instancesPerTemplate = 2 } = {}) {
       const runner = path.resolve(__dirname, './_prompt_runner.mjs');
       const runCompile = (node, slots, historyText) => {
         const input = { node, slots, historyText };
-        const out = cp.execFileSync(process.execPath, [runner, JSON.stringify(input)], { encoding: 'utf8' });
+        const out = cp.execFileSync(process.execPath, [runner, JSON.stringify(input)], {
+          encoding: 'utf8',
+        });
         const parsed = JSON.parse(out);
         return parsed.compiled;
       };
@@ -55,7 +59,11 @@ async function runHub({ ticks = 20, instancesPerTemplate = 2 } = {}) {
   let seq = 1;
   for (const tmpl of GAME_TEMPLATES) {
     for (let i = 0; i < instancesPerTemplate; i++) {
-      instances.push({ id: `${tmpl.id}-${i}`, template: tmpl, slots: tmpl.roles.map((r, idx) => ({ name: `P${seq++}`, role: r.name })) });
+      instances.push({
+        id: `${tmpl.id}-${i}`,
+        template: tmpl,
+        slots: tmpl.roles.map((r, idx) => ({ name: `P${seq++}`, role: r.name })),
+      });
     }
   }
 
@@ -64,27 +72,48 @@ async function runHub({ ticks = 20, instancesPerTemplate = 2 } = {}) {
   for (let t = 0; t < ticks; t++) {
     for (const inst of instances) {
       // pick a node (simple inline node for PoC)
-      const node = { id: `node-${t}`, template: `턴 ${t} - ${inst.template.name}: {{slot0.name}}와 {{slot1.name}}의 대화. 히스토리: {{history}}` };
+      const node = {
+        id: `node-${t}`,
+        template: `턴 ${t} - ${inst.template.name}: {{slot0.name}}와 {{slot1.name}}의 대화. 히스토리: {{history}}`,
+      };
       const history = `최근 이벤트: tick ${t}`;
-      const compiled = makeNodePrompt({ node, slots: inst.slots.slice(0, 2), historyText: history });
+      const compiled = makeNodePrompt({
+        node,
+        slots: inst.slots.slice(0, 2),
+        historyText: history,
+      });
       metrics.generated += 1;
 
       // Build messages similar to engine runner
-      const messages = [{ role: 'system', content: `Game: ${inst.template.name}` }, { role: 'user', content: compiled.text }];
+      const messages = [
+        { role: 'system', content: `Game: ${inst.template.name}` },
+        { role: 'user', content: compiled.text },
+      ];
       const aiResp = await mockAiClient(messages);
       const outcome = { text: aiResp.text };
-      metrics.outcomes.push({ inst: inst.id, tick: t, prompt: compiled.text.slice(0, 200), ai: aiResp.text.slice(0, 200) });
+      metrics.outcomes.push({
+        inst: inst.id,
+        tick: t,
+        prompt: compiled.text.slice(0, 200),
+        ai: aiResp.text.slice(0, 200),
+      });
     }
   }
 
   const out = { generatedAt: new Date().toISOString(), metrics };
-  const outDir = path.join(process.cwd(), 'reports'); fs.mkdirSync(outDir, { recursive: true });
+  const outDir = path.join(process.cwd(), 'reports');
+  fs.mkdirSync(outDir, { recursive: true });
   const outPath = path.join(outDir, `game-hub-report-${Date.now()}.json`);
   fs.writeFileSync(outPath, JSON.stringify(out, null, 2), 'utf8');
   console.log('WROTE', outPath);
   return out;
 }
 
-if (require.main === module) { runHub().catch(err => { console.error(err); process.exit(1); }); }
+if (require.main === module) {
+  runHub().catch(err => {
+    console.error(err);
+    process.exit(1);
+  });
+}
 
 module.exports = { runHub };

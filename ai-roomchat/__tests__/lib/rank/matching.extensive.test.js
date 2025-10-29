@@ -1,7 +1,4 @@
-import {
-  matchRankParticipants,
-  matchAsyncParticipants,
-} from '@/lib/rank/matching';
+import { matchRankParticipants, matchAsyncParticipants } from '@/lib/rank/matching';
 
 function buildQueueEntry({ id, ownerId, heroId, role, score, partyKey } = {}) {
   return {
@@ -50,21 +47,35 @@ describe('matching extensive scenarios', () => {
       buildQueueEntry({ id: 'q4', ownerId: 'd', heroId: 'hd', role: 'support', score: 1160 }),
     ];
 
-  const result = matchRankParticipants({ roles, queue, scoreWindows: [300] });
-  expect(result.ready).toBe(true);
-  expect(result.totalSlots).toBe(4);
-  // This scenario fills multi-role slots; check the per-role scoped assignments
-  // produced in `roleAssignments`.
-  expect(result.roleAssignments).toHaveLength(2);
-  const filled = result.roleAssignments.reduce((acc, a) => acc + (a.slots || 0), 0);
-  expect(filled).toBe(4);
+    const result = matchRankParticipants({ roles, queue, scoreWindows: [300] });
+    expect(result.ready).toBe(true);
+    expect(result.totalSlots).toBe(4);
+    // This scenario fills multi-role slots; check the per-role scoped assignments
+    // produced in `roleAssignments`.
+    expect(result.roleAssignments).toHaveLength(2);
+    const filled = result.roleAssignments.reduce((acc, a) => acc + (a.slots || 0), 0);
+    expect(filled).toBe(4);
   });
 
   it('respects party grouping for multi-member parties', () => {
     const roles = [{ name: 'duo', slot_count: 2 }];
     const queue = [
-      buildQueueEntry({ id: 'p1-0', ownerId: 'owner1', heroId: 'h1', role: 'duo', score: 1000, partyKey: 'partyX' }),
-      buildQueueEntry({ id: 'p1-1', ownerId: 'owner2', heroId: 'h2', role: 'duo', score: 1000, partyKey: 'partyX' }),
+      buildQueueEntry({
+        id: 'p1-0',
+        ownerId: 'owner1',
+        heroId: 'h1',
+        role: 'duo',
+        score: 1000,
+        partyKey: 'partyX',
+      }),
+      buildQueueEntry({
+        id: 'p1-1',
+        ownerId: 'owner2',
+        heroId: 'h2',
+        role: 'duo',
+        score: 1000,
+        partyKey: 'partyX',
+      }),
     ];
 
     const result = matchRankParticipants({ roles, queue });
@@ -81,7 +92,13 @@ describe('matching extensive scenarios', () => {
     ];
 
     const queue = [
-      buildQueueEntry({ id: 'real-attack', ownerId: 'human1', heroId: 'h-real', role: 'attack', score: 1200 }),
+      buildQueueEntry({
+        id: 'real-attack',
+        ownerId: 'human1',
+        heroId: 'h-real',
+        role: 'attack',
+        score: 1200,
+      }),
     ];
 
     const standins = [
@@ -104,7 +121,13 @@ describe('matching extensive scenarios', () => {
     ];
 
     const queue = [
-      buildQueueEntry({ id: 'real-attack', ownerId: 'human1', heroId: 'h-real', role: 'attack', score: 1200 }),
+      buildQueueEntry({
+        id: 'real-attack',
+        ownerId: 'human1',
+        heroId: 'h-real',
+        role: 'attack',
+        score: 1200,
+      }),
     ];
 
     const standins = []; // none available

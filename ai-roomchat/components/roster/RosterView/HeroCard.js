@@ -41,7 +41,6 @@ export default function HeroCard({ hero, onSelect }) {
     >
       <div style={styles.heroButtonContent}>
         {hero?.image_url ? (
-           
           <img src={hero.image_url} alt={heroName} style={imageStyle} />
         ) : (
           <div style={styles.heroFallback}>{heroName.slice(0, 2)}</div>

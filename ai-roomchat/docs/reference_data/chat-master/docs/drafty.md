@@ -203,15 +203,18 @@ _IMPORTANT Security Consideration_: the `val` and `ref` fields may contain malic
 
 - `act`: type of action in response to button click:
   - `pub`: send a Drafty-formatted `{pub}` message to the current topic with the form data as an attachment:
+
   ```js
   { "tp":"EX", "data":{ "mime":"text/x-drafty-fr", "val": { "seq": 3, "resp": { "confirmation": "some-value" } } } }
   ```
 
   - `url`: issue an `HTTP GET` request to the URL from the `data.ref` field. The following query parameters are appended to the URL: `<name>=<val>`, `uid=<current-user-ID>`, `topic=<topic name>`, `seq=<message sequence ID>`.
   - `note`: send a `{note}` message to the current topic with `what` set to `data` (not currently implemented, contact us if you need it).
+
   ```js
   { "what": "data", "data": { "mime": "text/x-drafty-fr", "val": { "seq": 3, "resp": { "confirmation": "some-value" } } }
   ```
+
 - `name`: optional name of the button which is reported back to the server.
 - `val`: additional opaque data.
 - `ref`: the URL for the `url` action.

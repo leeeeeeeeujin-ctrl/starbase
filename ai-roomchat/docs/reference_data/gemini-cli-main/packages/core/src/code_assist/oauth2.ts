@@ -34,13 +34,15 @@ const userAccountManager = new UserAccountManager();
 // IMPORTANT: Do NOT commit real client IDs or secrets into source control.
 // For reference/sample purposes only — prefer reading these from environment
 // variables or a secure credential store in real deployments.
-const OAUTH_CLIENT_ID = process.env['GEMINI_OAUTH_CLIENT_ID'] || '<REDACTED_CLIENT_ID>';
+const OAUTH_CLIENT_ID =
+  process.env['GEMINI_OAUTH_CLIENT_ID'] || '<REDACTED_CLIENT_ID>';
 
 // OAuth Secret value used to initiate OAuth2Client class.
 // In production, store this securely (secret manager / env var) and do not
 // embed it in the repository. This placeholder intentionally does not contain
 // any sensitive value.
-const OAUTH_CLIENT_SECRET = process.env['GEMINI_OAUTH_CLIENT_SECRET'] || '<REDACTED_CLIENT_SECRET>';
+const OAUTH_CLIENT_SECRET =
+  process.env['GEMINI_OAUTH_CLIENT_SECRET'] || '<REDACTED_CLIENT_SECRET>';
 
 // OAuth Scopes for Cloud Code authorization.
 const OAUTH_SCOPE = [

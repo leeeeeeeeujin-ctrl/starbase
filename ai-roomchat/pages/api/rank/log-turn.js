@@ -232,7 +232,7 @@ export default async function handler(req, res) {
   );
 
   // Debug: surface insert result for tests so we can diagnose failures
-   
+
   console.error('[DEBUG log-turn] insert result:', inserted, 'error:', insertError);
 
   if (insertError) {

@@ -13,7 +13,9 @@ const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const SESSION_ID = process.env.SESSION_ID; // optional, if you want to test a specific session
 
 if (!SUPABASE_URL || !SERVICE_KEY) {
-  console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY. See .env.example and do NOT commit your .env file.');
+  console.error(
+    'Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY. See .env.example and do NOT commit your .env file.'
+  );
   process.exit(2);
 }
 
@@ -26,7 +28,7 @@ async function main() {
   const outcomes = [
     { participant_id: null, channel: null },
     { participant_id: null, channel: '' },
-    { participant_id: null, channel: 'attacker' }
+    { participant_id: null, channel: 'attacker' },
   ];
 
   try {
@@ -36,7 +38,7 @@ async function main() {
       p_game_id: null,
       p_outcomes: outcomes,
       p_roles: [],
-      p_summary: {}
+      p_summary: {},
     });
 
     if (error) {
@@ -45,7 +47,6 @@ async function main() {
     } else {
       console.log('RPC result:', JSON.stringify(data, null, 2));
     }
-
   } catch (err) {
     console.error('Unexpected error:', err);
     process.exitCode = 4;

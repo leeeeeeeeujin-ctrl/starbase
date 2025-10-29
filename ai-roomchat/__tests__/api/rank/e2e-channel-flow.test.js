@@ -26,7 +26,9 @@ describe('E2E: matching -> realtime play -> finalize (channel-aware)', () => {
 
   it('flows start-session -> log-turn -> complete-session and forwards channel to RPC', async () => {
     // Prepare anon client getUser mock and user token handling
-    const anonGetUser = jest.fn().mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
+    const anonGetUser = jest
+      .fn()
+      .mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
 
     mockCreateClientImplementation = jest.fn((urlArg, keyArg, options = {}) => {
       const authHeader = options?.global?.headers?.Authorization;
@@ -38,10 +40,22 @@ describe('E2E: matching -> realtime play -> finalize (channel-aware)', () => {
     });
 
     // Prepare supabaseAdmin.from chains
-    const participantSelect = createSupabaseSelectChain(Promise.resolve({ data: { id: 'p-1', hero_id: 'hero-1', role: 'dealer', status: null }, error: null }));
+    const participantSelect = createSupabaseSelectChain(
+      Promise.resolve({
+        data: { id: 'p-1', hero_id: 'hero-1', role: 'dealer', status: null },
+        error: null,
+      })
+    );
     const sessionsSelect = createSupabaseSelectChain(Promise.resolve({ data: null, error: null }));
-    const sessionsInsert = createSupabaseInsertChain(() => Promise.resolve({ data: { id: 'session-1', status: 'active', created_at: '2025-01-01T00:00:00Z' }, error: null }));
-    const turnsInsert = createSupabaseInsertChain(() => Promise.resolve({ data: [{ id: 'turn-1', idx: 0, role: 'system' }], error: null }));
+    const sessionsInsert = createSupabaseInsertChain(() =>
+      Promise.resolve({
+        data: { id: 'session-1', status: 'active', created_at: '2025-01-01T00:00:00Z' },
+        error: null,
+      })
+    );
+    const turnsInsert = createSupabaseInsertChain(() =>
+      Promise.resolve({ data: [{ id: 'turn-1', idx: 0, role: 'system' }], error: null })
+    );
 
     // role config select for complete-session
     const roleConfigChain = createSupabaseSelectChain(Promise.resolve({ data: [], error: null }));
@@ -68,7 +82,11 @@ describe('E2E: matching -> realtime play -> finalize (channel-aware)', () => {
       if (tableName === 'rank_game_roles') return roleConfigChain.fromMock();
       if (tableName === 'rank_turns_last') return lastTurnChain.fromMock();
       // fallback
-      return { select: jest.fn(() => ({ maybeSingle: jest.fn(() => Promise.resolve({ data: null, error: null })) })) };
+      return {
+        select: jest.fn(() => ({
+          maybeSingle: jest.fn(() => Promise.resolve({ data: null, error: null })),
+        })),
+      };
     }, rpcMock);
 
     // 1) start-session
@@ -80,10 +98,10 @@ describe('E2E: matching -> realtime play -> finalize (channel-aware)', () => {
     });
     const startRes = createMockResponse();
     await startHandler(startReq, startRes);
-  // Debug: 출력하여 start-session이 왜 400을 반환하는지 확인
-  // (테스트 전용 로그 — 추후 제거 가능)
-  // eslint-disable-next-line no-console
-  console.error('DEBUG start-session response:', startRes.statusCode, startRes.body);
+    // Debug: 출력하여 start-session이 왜 400을 반환하는지 확인
+    // (테스트 전용 로그 — 추후 제거 가능)
+    // eslint-disable-next-line no-console
+    console.error('DEBUG start-session response:', startRes.statusCode, startRes.body);
     expect(startRes.statusCode).toBe(200);
     expect(startRes.body.ok).toBe(true);
     const sessionId = startRes.body.session.id;
@@ -116,9 +134,7 @@ describe('E2E: matching -> realtime play -> finalize (channel-aware)', () => {
         sessionId: sessionId,
         gameId: 'game-1',
         outcome: {
-          entries: [
-            { key: 'p-1', participant_id: 'p-1', result: 'won', channel: 'chat' },
-          ],
+          entries: [{ key: 'p-1', participant_id: 'p-1', result: 'won', channel: 'chat' }],
           roleSummaries: [],
           overallResult: 'won',
         },

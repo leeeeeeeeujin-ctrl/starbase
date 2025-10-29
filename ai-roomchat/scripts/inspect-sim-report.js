@@ -4,13 +4,15 @@ const path = require('path');
 let reportPath = process.argv[2];
 if (!reportPath) {
   const rptDir = path.resolve(__dirname, '..', 'reports');
-  const files = fs.existsSync(rptDir) ? fs.readdirSync(rptDir).filter(f => f.startsWith('large-sim-') && f.endsWith('.json')) : [];
+  const files = fs.existsSync(rptDir)
+    ? fs.readdirSync(rptDir).filter(f => f.startsWith('large-sim-') && f.endsWith('.json'))
+    : [];
   if (files.length === 0) {
     console.error('No large-sim reports found in', rptDir);
     process.exit(2);
   }
   files.sort();
-  reportPath = path.join(rptDir, files[files.length-1]);
+  reportPath = path.join(rptDir, files[files.length - 1]);
 }
 reportPath = path.resolve(reportPath);
 if (!fs.existsSync(reportPath)) {
@@ -47,19 +49,21 @@ for (const s of sessions) {
       sessionId: s.sessionId,
       injected: s.injected || [],
       errors: errMsgs,
-      steps: s.steps
+      steps: s.steps,
     });
   }
 }
-function topN(map, n=10){
-  return Object.entries(map).sort((a,b)=>b[1]-a[1]).slice(0,n);
+function topN(map, n = 10) {
+  return Object.entries(map)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, n);
 }
 console.log('Report:', reportPath);
 console.log('Summary: total=%d success=%d failed=%d', total, success, failed);
 console.log('\nTop injected error types (count):');
-for (const [k,v] of topN(injectedStats, 20)) console.log('  %d  %s', v, k);
+for (const [k, v] of topN(injectedStats, 20)) console.log('  %d  %s', v, k);
 console.log('\nTop natural error types (count):');
-for (const [k,v] of topN(naturalStats, 20)) console.log('  %d  %s', v, k);
+for (const [k, v] of topN(naturalStats, 20)) console.log('  %d  %s', v, k);
 console.log('\nNatural failure samples (up to 10):');
 for (const s of naturalSamples) {
   console.log('\n---');
@@ -67,7 +71,7 @@ for (const s of naturalSamples) {
   console.log('gameId=%s', s.gameId);
   console.log('sessionId=%s', s.sessionId);
   console.log('errors: %s', s.errors.join(' | '));
-  const errSteps = s.steps.filter(st=>st.status==='error');
+  const errSteps = s.steps.filter(st => st.status === 'error');
   for (const st of errSteps) {
     console.log(' step: %s  error: %s', st.step, st.error || 'unknown');
   }

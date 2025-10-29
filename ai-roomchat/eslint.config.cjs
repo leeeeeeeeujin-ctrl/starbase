@@ -11,21 +11,21 @@ module.exports = [
     // repository's top-level ESLint config; this minimal config
     // prevents the "no config found" crash and keeps local lint
     // runs focused and fast.
-    files: ["**/*.{js,jsx}"],
+    files: ['**/*.{js,jsx}'],
     ignores: [
-      "node_modules/**",
-      ".next/**",
-      "public/**",
-      "reports/**",
-      "logs/**",
+      'node_modules/**',
+      '.next/**',
+      'public/**',
+      'reports/**',
+      'logs/**',
       // Exclude large third-party snapshots and archived copies
       // that cause parsing noise (TypeScript, enums, interfaces).
-      "docs/reference_data/**",
-      "archived/**",
+      'docs/reference_data/**',
+      'archived/**',
     ],
     languageOptions: {
       ecmaVersion: 2023,
-      sourceType: "module",
+      sourceType: 'module',
       // parserOptions must be nested under languageOptions in flat config
       parserOptions: {
         ecmaFeatures: { jsx: true },
@@ -35,9 +35,9 @@ module.exports = [
     // This prevents "Definition for rule 'x' was not found" errors
     // when running eslint from the package folder.
     plugins: {
-      react: require("eslint-plugin-react"),
-      "react-hooks": require("eslint-plugin-react-hooks"),
-      "@next/next": require("@next/eslint-plugin-next"),
+      react: require('eslint-plugin-react'),
+      'react-hooks': require('eslint-plugin-react-hooks'),
+      '@next/next': require('@next/eslint-plugin-next'),
     },
     rules: {},
   },

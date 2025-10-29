@@ -1,5 +1,5 @@
 #!/usr/bin/env node
- 
+
 // Live-style matching simulator: multiple games, users join/leave over time,
 // matcher invoked periodically; simulates mid-leave race conditions.
 
@@ -12,20 +12,41 @@ function randInt(min, max) {
 }
 
 function randNormal(mean = 1000, sd = 200) {
-  let u = 0, v = 0;
+  let u = 0,
+    v = 0;
   while (u === 0) u = Math.random();
   while (v === 0) v = Math.random();
   const z = Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
   return Math.round(mean + z * sd);
 }
 
-function makeId(prefix, n) { return `${prefix}-${n}-${Date.now().toString(36)}`; }
+function makeId(prefix, n) {
+  return `${prefix}-${n}-${Date.now().toString(36)}`;
+}
 
 const GAME_TEMPLATES = [
-  { name: 'duo', roles: [{ name: 'attack', slot_count: 1 }, { name: 'support', slot_count: 1 }] },
-  { name: '2v2', roles: [{ name: 'attack', slot_count: 2 }, { name: 'support', slot_count: 2 }] },
+  {
+    name: 'duo',
+    roles: [
+      { name: 'attack', slot_count: 1 },
+      { name: 'support', slot_count: 1 },
+    ],
+  },
+  {
+    name: '2v2',
+    roles: [
+      { name: 'attack', slot_count: 2 },
+      { name: 'support', slot_count: 2 },
+    ],
+  },
   { name: 'solo', roles: [{ name: 'solo', slot_count: 1 }] },
-  { name: '4p', roles: [{ name: 'tank', slot_count: 1 }, { name: 'dps', slot_count: 3 }] },
+  {
+    name: '4p',
+    roles: [
+      { name: 'tank', slot_count: 1 },
+      { name: 'dps', slot_count: 3 },
+    ],
+  },
 ];
 
 const DEFAULTS = {
@@ -77,7 +98,12 @@ async function runSim(opts = {}) {
   process.env.RANK_ADAPTIVE_SENSITIVITY = String(conf.sensitivity);
 
   // per-game queues
-  const games = GAME_TEMPLATES.map((t, gi) => ({ id: `game-${gi}`, name: t.name, roles: t.roles, queue: [] }));
+  const games = GAME_TEMPLATES.map((t, gi) => ({
+    id: `game-${gi}`,
+    name: t.name,
+    roles: t.roles,
+    queue: [],
+  }));
 
   // populate initial users
   let seq = 1;
@@ -136,12 +162,22 @@ async function runSim(opts = {}) {
       }
 
       // attempt async matching (human + standins)
-      const options = { roles: g.roles, queue: g.queue.slice(), standins, scoreWindows: [100, 200] };
+      const options = {
+        roles: g.roles,
+        queue: g.queue.slice(),
+        standins,
+        scoreWindows: [100, 200],
+      };
       const result = matchAsyncParticipants(options);
       metrics.matchesAttempted += 1;
       metrics.perGame[g.id].attempted += 1;
 
-      if (!result || result.ready !== true || !Array.isArray(result.assignments) || result.assignments.length === 0) {
+      if (
+        !result ||
+        result.ready !== true ||
+        !Array.isArray(result.assignments) ||
+        result.assignments.length === 0
+      ) {
         // no ready match this tick
         if (result && result.error && result.error.type === 'insufficient_candidates') {
           metrics.matchesNoStandins = (metrics.matchesNoStandins || 0) + 1;
@@ -201,7 +237,10 @@ async function runSim(opts = {}) {
 }
 
 if (require.main === module) {
-  runSim().catch(err => { console.error(err); process.exit(1); });
+  runSim().catch(err => {
+    console.error(err);
+    process.exit(1);
+  });
 }
 
 module.exports = { runSim };

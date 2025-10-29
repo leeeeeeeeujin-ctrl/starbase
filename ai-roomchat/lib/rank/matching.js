@@ -33,7 +33,6 @@ function matchRankParticipants({
   const dbg = (/* ...args */) => {
     try {
       if (String(process.env.MATCHING_DEBUG || '').toLowerCase() === '1') {
-         
         console.log('[MATCHING DEBUG]', ...arguments);
       }
     } catch (e) {
@@ -70,9 +69,11 @@ function matchRankParticipants({
   const effectiveMaxWindow = Math.max(0, Math.round(Number(maxWindowAllowed) * adaptiveFactor));
   const { pools: rolePools, skipped } = buildRolePools({ template, groups });
   if (String(process.env.MATCHING_DEBUG || '').toLowerCase() === '1') {
-     
-    console.log('[MATCHING DEBUG] rolePools sizes:', Array.from(rolePools.entries()).map(([k, v]) => ({ role: k, groups: v.groups.length })) );
-     
+    console.log(
+      '[MATCHING DEBUG] rolePools sizes:',
+      Array.from(rolePools.entries()).map(([k, v]) => ({ role: k, groups: v.groups.length }))
+    );
+
     console.log('[MATCHING DEBUG] skipped groups count:', skipped.length);
   }
   const { rooms, unplaced } = allocateRoomsFromPools({
@@ -81,9 +82,16 @@ function matchRankParticipants({
     maxWindowAllowed: effectiveMaxWindow,
   });
   if (String(process.env.MATCHING_DEBUG || '').toLowerCase() === '1') {
-     
-    console.log('[MATCHING DEBUG] allocateRoomsFromPools -> rooms:', rooms.map(r => ({ id: r.id, filledSlots: r.filledSlots, groups: r.groups.length, maxScoreGap: r.maxScoreGap })));
-     
+    console.log(
+      '[MATCHING DEBUG] allocateRoomsFromPools -> rooms:',
+      rooms.map(r => ({
+        id: r.id,
+        filledSlots: r.filledSlots,
+        groups: r.groups.length,
+        maxScoreGap: r.maxScoreGap,
+      }))
+    );
+
     console.log('[MATCHING DEBUG] unplaced count:', unplaced.length);
   }
   const combinedUnplaced = skipped.concat(unplaced);
@@ -154,7 +162,10 @@ function matchRankParticipants({
           if (!Array.isArray(a.roleSlots)) return acc;
           const filled = a.roleSlots.reduce((ra, slot) => ra + (slot.occupied ? 1 : 0), 0);
           // Only count slots that belong to the roleName
-          const roleFilled = a.roleSlots.reduce((ra2, slot) => (slot.role === roleName ? ra2 + (slot.occupied ? 1 : 0) : ra2), 0);
+          const roleFilled = a.roleSlots.reduce(
+            (ra2, slot) => (slot.role === roleName ? ra2 + (slot.occupied ? 1 : 0) : ra2),
+            0
+          );
           return acc + roleFilled;
         }, 0);
         const missing = Math.max(0, capacity - filledForRole);
@@ -165,7 +176,11 @@ function matchRankParticipants({
       if (perRoleMissing.length) {
         error = {
           type: 'insufficient_candidates',
-          groups: perRoleMissing.map(r => ({ role: r.role, reason: 'missing_slots', size: r.missing })),
+          groups: perRoleMissing.map(r => ({
+            role: r.role,
+            reason: 'missing_slots',
+            size: r.missing,
+          })),
         };
       }
     }
@@ -248,21 +263,25 @@ function normaliseWindowThreshold(windows = DEFAULT_SCORE_WINDOWS) {
 // Adaptive factor: if queue scores are, on average, far from the baseline (1000),
 // make the matching window more permissive. This keeps matching strict near the
 // baseline and relaxes for extreme populations.
-function computeAdaptiveWindowFactor(queue = [], { baseline = FALLBACK_SCORE, sensitivity = null } = {}) {
+function computeAdaptiveWindowFactor(
+  queue = [],
+  { baseline = FALLBACK_SCORE, sensitivity = null } = {}
+) {
   try {
     // Default sensitivity: non-zero so that queue populations far from
     // baseline (1000) will widen the matching window gradually. This can be
     // tuned via env RANK_ADAPTIVE_SENSITIVITY or passed explicitly.
-    const DEFAULT_SENSITIVITY = Number(process.env.RANK_ADAPTIVE_SENSITIVITY ?? process.env.RANK_ADAPTIVE_K ?? 0.25);
+    const DEFAULT_SENSITIVITY = Number(
+      process.env.RANK_ADAPTIVE_SENSITIVITY ?? process.env.RANK_ADAPTIVE_K ?? 0.25
+    );
     const SENS = sensitivity != null ? Number(sensitivity) : DEFAULT_SENSITIVITY;
     const sens = Number.isFinite(SENS) && SENS >= 0 ? SENS : 0.25;
 
     const scores = Array.isArray(queue)
-      ? queue
-          .map(c => {
-            const s = Number(c?.score);
-            return Number.isFinite(s) ? s : FALLBACK_SCORE;
-          })
+      ? queue.map(c => {
+          const s = Number(c?.score);
+          return Number.isFinite(s) ? s : FALLBACK_SCORE;
+        })
       : [];
 
     if (!scores.length) return 1;
@@ -365,8 +384,16 @@ function buildQueueGroupsWithDebug(queue) {
   const groups = buildQueueGroups(queue);
   try {
     if (String(process.env.MATCHING_DEBUG || '').toLowerCase() === '1') {
-       
-      console.log('[MATCHING DEBUG] buildQueueGroups =>', groups.map(g => ({ role: g.role, size: g.size, score: g.score, joinedAt: g.joinedAt, groupKey: g.groupKey })));
+      console.log(
+        '[MATCHING DEBUG] buildQueueGroups =>',
+        groups.map(g => ({
+          role: g.role,
+          size: g.size,
+          score: g.score,
+          joinedAt: g.joinedAt,
+          groupKey: g.groupKey,
+        }))
+      );
     }
   } catch (e) {}
   return groups;
@@ -454,7 +481,12 @@ function buildQueueGroupsWithStandins(queue) {
   return groups;
 }
 
-function matchAsyncParticipants({ roles = [], queue = [], standins = [], scoreWindows = DEFAULT_SCORE_WINDOWS } = {}) {
+function matchAsyncParticipants({
+  roles = [],
+  queue = [],
+  standins = [],
+  scoreWindows = DEFAULT_SCORE_WINDOWS,
+} = {}) {
   // Merge human queue entries (exclude simulated/standin flagged) with
   // participant-pool standins. Avoid simple duplicates by owner/hero.
   const human = Array.isArray(queue)
@@ -563,7 +595,10 @@ function matchAsyncParticipants({ roles = [], queue = [], standins = [], scoreWi
         const capacity = Number(meta?.capacity) || 0;
         const filledForRole = assignments.reduce((acc, a) => {
           if (!Array.isArray(a.roleSlots)) return acc;
-          const roleFilled = a.roleSlots.reduce((ra2, slot) => (slot.role === roleName ? ra2 + (slot.occupied ? 1 : 0) : ra2), 0);
+          const roleFilled = a.roleSlots.reduce(
+            (ra2, slot) => (slot.role === roleName ? ra2 + (slot.occupied ? 1 : 0) : ra2),
+            0
+          );
           return acc + roleFilled;
         }, 0);
         const missing = Math.max(0, capacity - filledForRole);
@@ -574,7 +609,11 @@ function matchAsyncParticipants({ roles = [], queue = [], standins = [], scoreWi
       if (perRoleMissing.length) {
         error = {
           type: 'insufficient_candidates',
-          groups: perRoleMissing.map(r => ({ role: r.role, reason: 'missing_slots', size: r.missing })),
+          groups: perRoleMissing.map(r => ({
+            role: r.role,
+            reason: 'missing_slots',
+            size: r.missing,
+          })),
         };
       }
     }
@@ -708,8 +747,12 @@ function pickCandidateForRole({ pool, room, template, maxWindowAllowed }) {
   for (let index = 0; index < pool.groups.length; index += 1) {
     const candidate = pool.groups[index];
     if (String(process.env.MATCHING_DEBUG || '').toLowerCase() === '1') {
-       
-      console.log('[MATCHING DEBUG] pickCandidateForRole consider', { role: candidate?.role, groupKey: candidate?.groupKey, size: candidate?.size, score: candidate?.score });
+      console.log('[MATCHING DEBUG] pickCandidateForRole consider', {
+        role: candidate?.role,
+        groupKey: candidate?.groupKey,
+        size: candidate?.size,
+        score: candidate?.score,
+      });
     }
     if (!candidate) continue;
     const placed = assignGroupToRoom({
@@ -720,14 +763,19 @@ function pickCandidateForRole({ pool, room, template, maxWindowAllowed }) {
     });
     if (!placed) {
       if (String(process.env.MATCHING_DEBUG || '').toLowerCase() === '1') {
-         
-        console.log('[MATCHING DEBUG] pickCandidateForRole NOT placed', { role: candidate?.role, groupKey: candidate?.groupKey });
+        console.log('[MATCHING DEBUG] pickCandidateForRole NOT placed', {
+          role: candidate?.role,
+          groupKey: candidate?.groupKey,
+        });
       }
       continue;
     }
     if (String(process.env.MATCHING_DEBUG || '').toLowerCase() === '1') {
-       
-      console.log('[MATCHING DEBUG] pickCandidateForRole PLACED', { role: candidate?.role, groupKey: candidate?.groupKey, roomId: room?.id });
+      console.log('[MATCHING DEBUG] pickCandidateForRole PLACED', {
+        role: candidate?.role,
+        groupKey: candidate?.groupKey,
+        roomId: room?.id,
+      });
     }
     pool.groups.splice(index, 1);
     return candidate;
@@ -1039,8 +1087,13 @@ function assignGroupToRoom({ room, group, template, maxWindowAllowed }) {
   }
 
   if (String(process.env.MATCHING_DEBUG || '').toLowerCase() === '1') {
-     
-    console.log('[MATCHING DEBUG] assignGroupToRoom assigning', { roomId: room.id, role: group.role, groupKey: group.groupKey, size: group.size, gapToRoomBeforePlacement });
+    console.log('[MATCHING DEBUG] assignGroupToRoom assigning', {
+      roomId: room.id,
+      role: group.role,
+      groupKey: group.groupKey,
+      size: group.size,
+      gapToRoomBeforePlacement,
+    });
   }
 
   const slotIndices = [];
@@ -1105,8 +1158,11 @@ function assignGroupToRoom({ room, group, template, maxWindowAllowed }) {
   });
 
   if (String(process.env.MATCHING_DEBUG || '').toLowerCase() === '1') {
-     
-    console.log('[MATCHING DEBUG] assignGroupToRoom assigned', { roomId: room.id, filledSlots: room.filledSlots, maxScoreGap: room.maxScoreGap });
+    console.log('[MATCHING DEBUG] assignGroupToRoom assigned', {
+      roomId: room.id,
+      filledSlots: room.filledSlots,
+      maxScoreGap: room.maxScoreGap,
+    });
   }
 
   return true;
@@ -1875,7 +1931,11 @@ function normalizeQueue(queue) {
     // canonical queue normalization. There is a separate normalization
     // variant (`normalizeQueueIncludingStandins`) that keeps them when the
     // async/participant-pool matcher needs them.
-    if (entry.simulated === true || entry.standin === true || entry.match_source === 'participant_pool') {
+    if (
+      entry.simulated === true ||
+      entry.standin === true ||
+      entry.match_source === 'participant_pool'
+    ) {
       continue;
     }
 

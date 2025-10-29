@@ -186,7 +186,13 @@ export function useTurnStateSync({
         turnEventBackfillAbortRef.current = null;
       }
     }
-  }, [sessionInfo?.id, applyTurnStateChange, fetchTurnStateEvents, turnEventBackfillAbortRef, lastRealtimeTurnEventRef]);
+  }, [
+    sessionInfo?.id,
+    applyTurnStateChange,
+    fetchTurnStateEvents,
+    turnEventBackfillAbortRef,
+    lastRealtimeTurnEventRef,
+  ]);
 
   return { applyTurnStateChange, backfillTurnEvents };
 }

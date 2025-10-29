@@ -27,7 +27,11 @@ function _runSync(actionName, { payload = {}, participants = [], actorContext = 
           })
         : participants;
 
-      return { ok: true, changes: { participants: updated }, summary: `Awarded ${amount} XP to ${ownerId}` };
+      return {
+        ok: true,
+        changes: { participants: updated },
+        summary: `Awarded ${amount} XP to ${ownerId}`,
+      };
     }
 
     case 'give_item': {
@@ -54,7 +58,11 @@ function _runSync(actionName, { payload = {}, participants = [], actorContext = 
           })
         : participants;
 
-      return { ok: true, changes: { participants: updated }, summary: `Gave item ${itemId} to ${ownerId}` };
+      return {
+        ok: true,
+        changes: { participants: updated },
+        summary: `Gave item ${itemId} to ${ownerId}`,
+      };
     }
 
     case 'toggle_flag': {
@@ -81,7 +89,11 @@ function _runSync(actionName, { payload = {}, participants = [], actorContext = 
           })
         : participants;
 
-      return { ok: true, changes: { participants: updated }, summary: `Toggled ${flag} for ${ownerId}` };
+      return {
+        ok: true,
+        changes: { participants: updated },
+        summary: `Toggled ${flag} for ${ownerId}`,
+      };
     }
 
     default:
@@ -90,10 +102,14 @@ function _runSync(actionName, { payload = {}, participants = [], actorContext = 
 }
 
 // If payload is large or explicitly requested, run inside a transient WebWorker to avoid blocking UI.
-export async function runClientAction(actionName, { payload = {}, participants = [], actorContext = null } = {}) {
+export async function runClientAction(
+  actionName,
+  { payload = {}, participants = [], actorContext = null } = {}
+) {
   try {
     const payloadStr = JSON.stringify(payload || {});
-    const useWorker = payload?._useWorker === true || (typeof payloadStr === 'string' && payloadStr.length > 2000);
+    const useWorker =
+      payload?._useWorker === true || (typeof payloadStr === 'string' && payloadStr.length > 2000);
     if (!useWorker || typeof window === 'undefined' || typeof Worker === 'undefined') {
       return _runSync(actionName, { payload, participants, actorContext });
     }
@@ -184,13 +200,17 @@ export async function runClientAction(actionName, { payload = {}, participants =
     const worker = new Worker(url);
     return await new Promise(resolve => {
       const timer = setTimeout(() => {
-        try { worker.terminate(); } catch (_) {}
+        try {
+          worker.terminate();
+        } catch (_) {}
         resolve({ ok: false, error: 'worker_timeout' });
       }, 5000);
 
-      worker.onmessage = function(ev) {
+      worker.onmessage = function (ev) {
         clearTimeout(timer);
-        try { worker.terminate(); } catch (_) {}
+        try {
+          worker.terminate();
+        } catch (_) {}
         resolve(ev.data || { ok: false, error: 'no_data' });
       };
 
@@ -200,4 +220,3 @@ export async function runClientAction(actionName, { payload = {}, participants =
     return { ok: false, error: err?.message || 'client_action_error' };
   }
 }
-

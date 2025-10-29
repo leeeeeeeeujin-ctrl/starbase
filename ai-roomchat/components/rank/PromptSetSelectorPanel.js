@@ -147,7 +147,6 @@ function RankNewPageWithSelector() {
   useEffect(() => {
     const qVal = typeof router.query?.setId === 'string' ? router.query.setId : '';
     if (qVal !== setId) setSetId(qVal);
-     
   }, [router.query?.setId]);
 
   // 선택 → 쿼리 반영 (shallow, 페이지 리로드 없음)

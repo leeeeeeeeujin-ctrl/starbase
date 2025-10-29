@@ -33,7 +33,13 @@ async function main() {
   const makeNodePrompt = pe.makeNodePrompt || (pe.default && pe.default.makeNodePrompt);
   if (!makeNodePrompt) throw new Error('makeNodePrompt not found on imported promptEngine');
 
-  const compiled = makeNodePrompt({ node, slots, historyText, activeGlobalNames: [], activeLocalNames: [] });
+  const compiled = makeNodePrompt({
+    node,
+    slots,
+    historyText,
+    activeGlobalNames: [],
+    activeLocalNames: [],
+  });
   const result = { compiled };
   process.stdout.write(JSON.stringify(result));
 }

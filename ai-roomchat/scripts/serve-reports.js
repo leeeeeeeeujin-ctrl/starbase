@@ -17,14 +17,20 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 const HOST = process.env.REPORTS_HOST || '127.0.0.1'; // bind to localhost by default
 const API_KEY = process.env.REPORTS_API_KEY || process.env.SYNC_API_KEY || null; // required to access APIs if set
-const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : ['http://localhost:3000'];
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',')
+  : ['http://localhost:3000'];
 
 // CORS: restrict to configured origins
-app.use(cors({ origin: function (origin, cb) {
-  if (!origin) return cb(null, true); // non-browser clients
-  if (ALLOWED_ORIGINS.indexOf(origin) !== -1) return cb(null, true);
-  return cb(new Error('Not allowed by CORS'));
-}}));
+app.use(
+  cors({
+    origin: function (origin, cb) {
+      if (!origin) return cb(null, true); // non-browser clients
+      if (ALLOWED_ORIGINS.indexOf(origin) !== -1) return cb(null, true);
+      return cb(new Error('Not allowed by CORS'));
+    },
+  })
+);
 
 // Basic in-memory rate limiter to avoid adding deps
 const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
@@ -43,7 +49,9 @@ function rateLimit(req, res, next) {
     entry.count++;
     if (entry.count > RATE_LIMIT_MAX) return res.status(429).json({ error: 'rate_limited' });
     return next();
-  } catch (e) { return next(); }
+  } catch (e) {
+    return next();
+  }
 }
 
 // Apply rate limiting globally for API routes
@@ -71,7 +79,11 @@ function requireApiKey(req, res, next) {
 app.get('/api/reports', requireApiKey, (req, res) => {
   try {
     if (!fs.existsSync(REPORTS_DIR)) return res.json([]);
-    const files = fs.readdirSync(REPORTS_DIR).filter(f => f.endsWith('.json')).sort().reverse();
+    const files = fs
+      .readdirSync(REPORTS_DIR)
+      .filter(f => f.endsWith('.json'))
+      .sort()
+      .reverse();
     res.json(files);
   } catch (e) {
     res.status(500).json({ error: String(e) });
@@ -82,7 +94,8 @@ app.get('/api/reports/:name', requireApiKey, (req, res) => {
   try {
     const name = req.params.name;
     const p = path.resolve(REPORTS_DIR, name);
-    if (path.relative(REPORTS_DIR, p).startsWith('..')) return res.status(400).json({ error: 'invalid' });
+    if (path.relative(REPORTS_DIR, p).startsWith('..'))
+      return res.status(400).json({ error: 'invalid' });
     if (!fs.existsSync(p)) return res.status(404).json({ error: 'not_found' });
     const content = fs.readFileSync(p, 'utf8');
     res.type('application/json').send(content);
@@ -103,7 +116,9 @@ app.get('/api/sync', requireApiKey, (req, res) => {
       return { key: f.replace(/\.json$/, ''), updatedAt: stat.mtimeMs };
     });
     res.json(list);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
 });
 // fetch a specific sync item
 app.get('/api/sync/:key', requireApiKey, (req, res) => {
@@ -112,9 +127,12 @@ app.get('/api/sync/:key', requireApiKey, (req, res) => {
     // sanitize key: allow only simple token to avoid path traversal
     if (!/^[a-zA-Z0-9_\-]{1,64}$/.test(k)) return res.status(400).json({ error: 'invalid_key' });
     const p = path.resolve(SYNC_DIR, k + '.json');
-    if (path.relative(SYNC_DIR, p).startsWith('..') || !fs.existsSync(p)) return res.status(404).json({ error: 'not_found' });
+    if (path.relative(SYNC_DIR, p).startsWith('..') || !fs.existsSync(p))
+      return res.status(404).json({ error: 'not_found' });
     res.type('application/json').send(fs.readFileSync(p, 'utf8'));
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
 });
 app.post('/api/sync/upload', requireApiKey, express.json({ limit: '1mb' }), (req, res) => {
   try {
@@ -124,11 +142,14 @@ app.post('/api/sync/upload', requireApiKey, express.json({ limit: '1mb' }), (req
     if (!/^[a-zA-Z0-9_\-]{1,64}$/.test(key)) return res.status(400).json({ error: 'invalid_key' });
     const payload = { content: content || '', meta: meta || {}, updatedAt: Date.now() };
     const p = path.resolve(SYNC_DIR, key + '.json');
-    if (path.relative(SYNC_DIR, p).startsWith('..')) return res.status(400).json({ error: 'invalid_path' });
+    if (path.relative(SYNC_DIR, p).startsWith('..'))
+      return res.status(400).json({ error: 'invalid_path' });
     fs.writeFileSync(p, JSON.stringify(payload, null, 2), 'utf8');
     notifyAll();
     res.json({ ok: true, key });
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
 });
 // delete a sync item
 app.delete('/api/sync/:key', requireApiKey, (req, res) => {
@@ -136,18 +157,24 @@ app.delete('/api/sync/:key', requireApiKey, (req, res) => {
     const k = req.params.key;
     if (!/^[a-zA-Z0-9_\-]{1,64}$/.test(k)) return res.status(400).json({ error: 'invalid_key' });
     const p = path.resolve(SYNC_DIR, k + '.json');
-    if (path.relative(SYNC_DIR, p).startsWith('..')) return res.status(400).json({ error: 'invalid_path' });
+    if (path.relative(SYNC_DIR, p).startsWith('..'))
+      return res.status(400).json({ error: 'invalid_path' });
     if (fs.existsSync(p)) fs.unlinkSync(p);
     notifyAll();
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
 });
-
 
 // Simple SSE endpoint to notify watchers when reports change
 let clients = [];
 app.get('/events', requireApiKey, (req, res) => {
-  res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+  res.set({
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  });
   res.flushHeaders();
   res.write('retry: 10000\n\n');
   // limit concurrent SSE connections per IP/key
@@ -161,12 +188,18 @@ app.get('/events', requireApiKey, (req, res) => {
   }
   res.meta = connKey;
   clients.push(res);
-  req.on('close', () => { clients = clients.filter(c => c !== res); });
+  req.on('close', () => {
+    clients = clients.filter(c => c !== res);
+  });
 });
 
 function notifyAll() {
   clients.forEach(res => {
-    try { res.write('event: update\ndata: {}\n\n'); } catch (e) { /* ignore */ }
+    try {
+      res.write('event: update\ndata: {}\n\n');
+    } catch (e) {
+      /* ignore */
+    }
   });
 }
 

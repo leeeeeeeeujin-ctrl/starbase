@@ -22,7 +22,7 @@ function walk(dir, cb) {
   }
 }
 
-walk(nestedRoot, (file) => {
+walk(nestedRoot, file => {
   const rel = path.relative(nestedRoot, file);
   const dest = path.join(mainRoot, rel);
   if (!fs.existsSync(dest)) {

@@ -49,7 +49,13 @@ export default async function handler(req, res) {
     }
   }
 
-  const { action, payload: actionPayload = {}, session_id: sessionId, game_id: gameId, idempotencyKey } = payload || {};
+  const {
+    action,
+    payload: actionPayload = {},
+    session_id: sessionId,
+    game_id: gameId,
+    idempotencyKey,
+  } = payload || {};
 
   if (!action || typeof action !== 'string') {
     return res.status(400).json({ error: 'missing_action' });
@@ -63,8 +69,10 @@ export default async function handler(req, res) {
       from => from.select('id, owner_id, game_id, status').eq('id', sessionId).maybeSingle()
     );
     if (sessionError) return res.status(400).json({ error: sessionError.message });
-    if (!session || session.owner_id !== user.id) return res.status(403).json({ error: 'forbidden' });
-    if (session.status && session.status !== 'active') return res.status(409).json({ error: 'session_inactive' });
+    if (!session || session.owner_id !== user.id)
+      return res.status(403).json({ error: 'forbidden' });
+    if (session.status && session.status !== 'active')
+      return res.status(409).json({ error: 'session_inactive' });
   }
 
   // rate limit (POC, in-memory)
@@ -86,14 +94,24 @@ export default async function handler(req, res) {
   // idempotency: if idempotencyKey provided, try to find previous execution
   if (idempotencyKey) {
     try {
-      const { data: existing, error: exErr } = await withTableQuery(supabaseAdmin, 'rank_action_logs', from =>
-        supabaseAdmin.from(from).select('*').eq('request_id', idempotencyKey).limit(1).maybeSingle()
+      const { data: existing, error: exErr } = await withTableQuery(
+        supabaseAdmin,
+        'rank_action_logs',
+        from =>
+          supabaseAdmin
+            .from(from)
+            .select('*')
+            .eq('request_id', idempotencyKey)
+            .limit(1)
+            .maybeSingle()
       );
       if (exErr) {
         console.warn('[handle-action] idempotency lookup failed', exErr);
       } else if (existing) {
         // return previous result
-        return res.status(200).json({ ok: true, result: existing.result || null, alreadyApplied: true });
+        return res
+          .status(200)
+          .json({ ok: true, result: existing.result || null, alreadyApplied: true });
       }
     } catch (err) {
       console.warn('[handle-action] idempotency check error', err?.message || err);
@@ -102,7 +120,14 @@ export default async function handler(req, res) {
 
   // dispatch
   try {
-    const result = await dispatchAction({ name: action, user, sessionId, gameId, payload: actionPayload, idempotencyKey });
+    const result = await dispatchAction({
+      name: action,
+      user,
+      sessionId,
+      gameId,
+      payload: actionPayload,
+      idempotencyKey,
+    });
     if (!result || result.ok === false) {
       // write audit failure
       try {
@@ -142,7 +167,9 @@ export default async function handler(req, res) {
       console.warn('[handle-action] audit insert failed', err?.message || err);
     }
 
-    return res.status(200).json({ ok: true, result: result.result || null, changes: result.changes || null });
+    return res
+      .status(200)
+      .json({ ok: true, result: result.result || null, changes: result.changes || null });
   } catch (err) {
     console.error('[handle-action] error', err);
     try {

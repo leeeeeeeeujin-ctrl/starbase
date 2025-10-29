@@ -32,7 +32,6 @@ const recentInsertCache = {};
 function dbg(...args) {
   try {
     if (process && process.env && process.env.SUPABASE_TABLES_DEBUG === 'true') {
-       
       console.error(...args);
     }
   } catch (e) {
@@ -62,7 +61,21 @@ function augmentQueryObject(tableName, orig) {
       // the original (if present) and ensures any returned object is
       // augmented as well. If original missing, provide a stub that
       // mutates _where and returns the proxied object.
-      const chainHelpers = ['eq', 'gte', 'lte', 'in', 'ilike', 'order', 'limit', 'maybeSingle', 'select', 'insert', 'update', 'upsert', 'delete'];
+      const chainHelpers = [
+        'eq',
+        'gte',
+        'lte',
+        'in',
+        'ilike',
+        'order',
+        'limit',
+        'maybeSingle',
+        'select',
+        'insert',
+        'update',
+        'upsert',
+        'delete',
+      ];
       if (chainHelpers.includes(prop)) {
         if (typeof val === 'function') {
           return (...args) => {
@@ -73,10 +86,30 @@ function augmentQueryObject(tableName, orig) {
               // (e.g. .limit().maybeSingle()) don't crash.
               if (result && typeof result.then === 'function') {
                 try {
-                  if (typeof result.eq !== 'function') Object.defineProperty(result, 'eq', { value: () => result, writable: false, configurable: true });
-                  if (typeof result.order !== 'function') Object.defineProperty(result, 'order', { value: () => result, writable: false, configurable: true });
-                  if (typeof result.limit !== 'function') Object.defineProperty(result, 'limit', { value: () => result, writable: false, configurable: true });
-                  if (typeof result.maybeSingle !== 'function') Object.defineProperty(result, 'maybeSingle', { value: () => result, writable: false, configurable: true });
+                  if (typeof result.eq !== 'function')
+                    Object.defineProperty(result, 'eq', {
+                      value: () => result,
+                      writable: false,
+                      configurable: true,
+                    });
+                  if (typeof result.order !== 'function')
+                    Object.defineProperty(result, 'order', {
+                      value: () => result,
+                      writable: false,
+                      configurable: true,
+                    });
+                  if (typeof result.limit !== 'function')
+                    Object.defineProperty(result, 'limit', {
+                      value: () => result,
+                      writable: false,
+                      configurable: true,
+                    });
+                  if (typeof result.maybeSingle !== 'function')
+                    Object.defineProperty(result, 'maybeSingle', {
+                      value: () => result,
+                      writable: false,
+                      configurable: true,
+                    });
                 } catch (e) {
                   // ignore augmentation errors on Promise-like objects
                 }
@@ -84,7 +117,8 @@ function augmentQueryObject(tableName, orig) {
               }
 
               // If the function returned an object (a new chain), augment/return it
-              if (result && typeof result === 'object') return augmentQueryObject(tableName, result);
+              if (result && typeof result === 'object')
+                return augmentQueryObject(tableName, result);
               return result;
             } catch (e) {
               // If the original chain method threw, rethrow to preserve behaviour
@@ -105,16 +139,22 @@ function augmentQueryObject(tableName, orig) {
           return () => proxy;
         }
         if (prop === 'limit') {
-          return async (_n) => {
+          return async _n => {
             const cached = recentInsertCache[tableName];
-            if (cached) return Array.isArray(cached) ? { data: cached, error: null } : { data: [cached], error: null };
+            if (cached)
+              return Array.isArray(cached)
+                ? { data: cached, error: null }
+                : { data: [cached], error: null };
             return { data: null, error: null };
           };
         }
         if (prop === 'maybeSingle') {
           return async function maybeSingleImpl() {
             const res = await proxy.limit(1);
-            return { data: Array.isArray(res.data) ? res.data[0] || null : res.data, error: res.error };
+            return {
+              data: Array.isArray(res.data) ? res.data[0] || null : res.data,
+              error: res.error,
+            };
           };
         }
 
@@ -194,7 +234,14 @@ export async function withTable(supabaseClient, logicalName, executor) {
   }
   // Debug: if we are about to return an error result, surface it to logs
   if (lastMissing && lastMissing.error) {
-    dbg('[DEBUG supabaseTables] returning error for', logicalName, '->', lastMissing.error && lastMissing.error.message ? lastMissing.error.message : String(lastMissing.error));
+    dbg(
+      '[DEBUG supabaseTables] returning error for',
+      logicalName,
+      '->',
+      lastMissing.error && lastMissing.error.message
+        ? lastMissing.error.message
+        : String(lastMissing.error)
+    );
   }
   return lastMissing || { data: null, error: new Error(`No accessible table for ${logicalName}`) };
 }
@@ -208,9 +255,15 @@ export async function withTableQuery(supabaseClient, logicalName, handler) {
   // so callers can use `.maybeSingle()` even in mocked environments that
   // don't provide that convenience method.
   return withTable(supabaseClient, logicalName, tableName => {
-  const origFrom = supabaseClient.from(tableName);
-  // Debug: 출력 (테스트 용) — origFrom의 타입과 키를 로그로 남겨 문제를 진단합니다.
-  dbg('[DEBUG supabaseTables] from for', tableName, '->', typeof origFrom, origFrom && Object.keys(origFrom));
+    const origFrom = supabaseClient.from(tableName);
+    // Debug: 출력 (테스트 용) — origFrom의 타입과 키를 로그로 남겨 문제를 진단합니다.
+    dbg(
+      '[DEBUG supabaseTables] from for',
+      tableName,
+      '->',
+      typeof origFrom,
+      origFrom && Object.keys(origFrom)
+    );
     // Wrap the returned object so that calls that produce a query chain
     // (like `.select(...)` or `.insert(...)`) receive a `.maybeSingle()`
     // helper even if the mocked chain doesn't include it.
@@ -249,7 +302,7 @@ export async function withTableQuery(supabaseClient, logicalName, handler) {
                 // recorded. This handles test mocks that only implement
                 // insert(...) but either return Promises or whose mocked
                 // calls have recorded results in jest.
-                queryApi.limit = async (_n) => {
+                queryApi.limit = async _n => {
                   try {
                     let res = null;
 
@@ -265,7 +318,11 @@ export async function withTableQuery(supabaseClient, logicalName, handler) {
                           const r = insertMock.mock.results[i];
                           if (!r) continue;
                           const val = r.value || r;
-                          if (val && (typeof val === 'object') && ('data' in val || Array.isArray(val))) {
+                          if (
+                            val &&
+                            typeof val === 'object' &&
+                            ('data' in val || Array.isArray(val))
+                          ) {
                             res = val;
                             break;
                           }
@@ -286,7 +343,10 @@ export async function withTableQuery(supabaseClient, logicalName, handler) {
                     if (!res) {
                       try {
                         const maybeRes = target.insert && target.insert();
-                        res = maybeRes && typeof maybeRes.then === 'function' ? await maybeRes : maybeRes;
+                        res =
+                          maybeRes && typeof maybeRes.then === 'function'
+                            ? await maybeRes
+                            : maybeRes;
                         if (res && typeof res === 'object' && 'data' in res) {
                           recentInsertCache[tableName] = res.data;
                         }
@@ -296,7 +356,8 @@ export async function withTableQuery(supabaseClient, logicalName, handler) {
                       }
                     }
 
-                    if (!res || !('data' in res)) return { data: null, error: res && res.error ? res.error : null };
+                    if (!res || !('data' in res))
+                      return { data: null, error: res && res.error ? res.error : null };
                     let rows = Array.isArray(res.data) ? res.data : [res.data];
 
                     // If the returned rows lack owner_id, try several heuristics
@@ -304,8 +365,19 @@ export async function withTableQuery(supabaseClient, logicalName, handler) {
                     // (e.g. .eq('owner_id', ...)); 2) the recentInsertCache for
                     // this table; 3) the recorded jest mock calls on the
                     // insert mock (handle array/object payloads).
-                    const whereOwner = queryApi._where && (queryApi._where.owner_id || queryApi._where.ownerId || queryApi._where.owner);
-                    dbg('[DEBUG supabaseTables] select-synthesis where for', tableName, '->', queryApi._where, 'whereOwner=', whereOwner);
+                    const whereOwner =
+                      queryApi._where &&
+                      (queryApi._where.owner_id ||
+                        queryApi._where.ownerId ||
+                        queryApi._where.owner);
+                    dbg(
+                      '[DEBUG supabaseTables] select-synthesis where for',
+                      tableName,
+                      '->',
+                      queryApi._where,
+                      'whereOwner=',
+                      whereOwner
+                    );
                     if (rows.length && !('owner_id' in rows[0])) {
                       let attached = false;
 
@@ -319,18 +391,32 @@ export async function withTableQuery(supabaseClient, logicalName, handler) {
                       if (!attached) {
                         try {
                           const cached = recentInsertCache[tableName];
-                          dbg('[DEBUG supabaseTables] recentInsertCache for', tableName, '->', cached);
+                          dbg(
+                            '[DEBUG supabaseTables] recentInsertCache for',
+                            tableName,
+                            '->',
+                            cached
+                          );
                           if (cached) {
                             const candidates = Array.isArray(cached) ? cached : [cached];
-                            const whereId = queryApi._where && (queryApi._where.id || queryApi._where.session_id);
+                            const whereId =
+                              queryApi._where && (queryApi._where.id || queryApi._where.session_id);
                             let match = null;
-                            if (whereId) match = candidates.find(c => c && (c.id === whereId || String(c.id) === String(whereId)));
+                            if (whereId)
+                              match = candidates.find(
+                                c => c && (c.id === whereId || String(c.id) === String(whereId))
+                              );
                             if (!match) match = candidates[0];
                             if (match && (match.owner_id || match.ownerId || match.owner)) {
                               const inferredOwner = match.owner_id || match.ownerId || match.owner;
                               rows = rows.map(r => ({ ...r, owner_id: inferredOwner }));
                               attached = true;
-                              dbg('[DEBUG supabaseTables] select-synthesis attached owner from recentInsertCache for', tableName, 'owner=', inferredOwner);
+                              dbg(
+                                '[DEBUG supabaseTables] select-synthesis attached owner from recentInsertCache for',
+                                tableName,
+                                'owner=',
+                                inferredOwner
+                              );
                             }
                           }
                         } catch (e) {
@@ -342,22 +428,44 @@ export async function withTableQuery(supabaseClient, logicalName, handler) {
                       if (!attached) {
                         try {
                           const insertMock = target.insert;
-                          dbg('[DEBUG supabaseTables] insertMock present?', Boolean(insertMock), 'hasMock=', Boolean(insertMock && insertMock.mock && Array.isArray(insertMock.mock.calls)));
-                          if (insertMock && insertMock.mock && Array.isArray(insertMock.mock.calls)) {
+                          dbg(
+                            '[DEBUG supabaseTables] insertMock present?',
+                            Boolean(insertMock),
+                            'hasMock=',
+                            Boolean(
+                              insertMock && insertMock.mock && Array.isArray(insertMock.mock.calls)
+                            )
+                          );
+                          if (
+                            insertMock &&
+                            insertMock.mock &&
+                            Array.isArray(insertMock.mock.calls)
+                          ) {
                             const calls = insertMock.mock.calls;
                             dbg('[DEBUG supabaseTables] insert.mock.calls.length=', calls.length);
                             for (let i = calls.length - 1; i >= 0; i -= 1) {
                               const callArgs = calls[i];
-                              dbg('[DEBUG supabaseTables] insert.mock.call[', i, ']=', callArgs && callArgs.length ? callArgs[0] : callArgs);
+                              dbg(
+                                '[DEBUG supabaseTables] insert.mock.call[',
+                                i,
+                                ']=',
+                                callArgs && callArgs.length ? callArgs[0] : callArgs
+                              );
                               if (!callArgs || !callArgs.length) continue;
                               let payload = callArgs[0];
                               if (Array.isArray(payload) && payload.length) payload = payload[0];
                               if (payload && typeof payload === 'object') {
-                                const inferredOwner = payload.owner_id || payload.ownerId || payload.owner;
+                                const inferredOwner =
+                                  payload.owner_id || payload.ownerId || payload.owner;
                                 if (inferredOwner) {
                                   rows = rows.map(r => ({ ...r, owner_id: inferredOwner }));
                                   attached = true;
-                                  dbg('[DEBUG supabaseTables] select-synthesis attached owner from insert.mock.calls for', tableName, 'owner=', inferredOwner);
+                                  dbg(
+                                    '[DEBUG supabaseTables] select-synthesis attached owner from insert.mock.calls for',
+                                    tableName,
+                                    'owner=',
+                                    inferredOwner
+                                  );
                                   break;
                                 }
                               }
@@ -382,7 +490,9 @@ export async function withTableQuery(supabaseClient, logicalName, handler) {
                     const whereId = queryApi._where && queryApi._where.id;
                     if (r && Array.isArray(r.data)) {
                       if (whereId) {
-                        const found = r.data.find(d => d && (d.id === whereId || String(d.id) === String(whereId)));
+                        const found = r.data.find(
+                          d => d && (d.id === whereId || String(d.id) === String(whereId))
+                        );
                         return { data: found || null, error: null };
                       }
                       return { data: r.data[0] || null, error: r.error };
@@ -407,7 +517,14 @@ export async function withTableQuery(supabaseClient, logicalName, handler) {
               // Add maybeSingle helper for convenience. Try to resolve from
               // recent inserts if available and a matching where clause is set.
               queryApi.maybeSingle = async () => {
-                dbg('[DEBUG supabaseTables] stubbed maybeSingle called for', tableName, 'where=', queryApi._where, 'cached=', recentInsertCache[tableName]);
+                dbg(
+                  '[DEBUG supabaseTables] stubbed maybeSingle called for',
+                  tableName,
+                  'where=',
+                  queryApi._where,
+                  'cached=',
+                  recentInsertCache[tableName]
+                );
                 const cached = recentInsertCache[tableName];
                 if (cached) {
                   if (Array.isArray(cached)) {
@@ -429,13 +546,20 @@ export async function withTableQuery(supabaseClient, logicalName, handler) {
             };
           }
 
-            return (...args) => {
+          return (...args) => {
             // Debug: 호출 전 prop의 타입 확인
             dbg('[DEBUG supabaseTables] calling prop', String(prop), 'type=', typeof target[prop]);
             const q = target[prop](...args);
             // Debug: inspect returned query object
             try {
-              dbg('[DEBUG supabaseTables] query object for', prop, '->', q && Object.keys(q), 'limitType=', q && typeof q.limit);
+              dbg(
+                '[DEBUG supabaseTables] query object for',
+                prop,
+                '->',
+                q && Object.keys(q),
+                'limitType=',
+                q && typeof q.limit
+              );
             } catch (e) {
               // ignore
             }
@@ -458,19 +582,39 @@ export async function withTableQuery(supabaseClient, logicalName, handler) {
                   });
                 }
                 if (typeof q.gte !== 'function') {
-                  Object.defineProperty(q, 'gte', { value: () => q, writable: false, configurable: true });
+                  Object.defineProperty(q, 'gte', {
+                    value: () => q,
+                    writable: false,
+                    configurable: true,
+                  });
                 }
                 if (typeof q.lte !== 'function') {
-                  Object.defineProperty(q, 'lte', { value: () => q, writable: false, configurable: true });
+                  Object.defineProperty(q, 'lte', {
+                    value: () => q,
+                    writable: false,
+                    configurable: true,
+                  });
                 }
                 if (typeof q.in !== 'function') {
-                  Object.defineProperty(q, 'in', { value: () => q, writable: false, configurable: true });
+                  Object.defineProperty(q, 'in', {
+                    value: () => q,
+                    writable: false,
+                    configurable: true,
+                  });
                 }
                 if (typeof q.ilike !== 'function') {
-                  Object.defineProperty(q, 'ilike', { value: () => q, writable: false, configurable: true });
+                  Object.defineProperty(q, 'ilike', {
+                    value: () => q,
+                    writable: false,
+                    configurable: true,
+                  });
                 }
                 if (typeof q.order !== 'function') {
-                  Object.defineProperty(q, 'order', { value: () => q, writable: false, configurable: true });
+                  Object.defineProperty(q, 'order', {
+                    value: () => q,
+                    writable: false,
+                    configurable: true,
+                  });
                 }
                 if (typeof q.limit !== 'function') {
                   Object.defineProperty(q, 'limit', {
@@ -490,7 +634,10 @@ export async function withTableQuery(supabaseClient, logicalName, handler) {
                   Object.defineProperty(q, 'maybeSingle', {
                     value: async function maybeSingleImpl() {
                       const res = await this.limit(1);
-                      return { data: Array.isArray(res.data) ? res.data[0] || null : res.data, error: res.error };
+                      return {
+                        data: Array.isArray(res.data) ? res.data[0] || null : res.data,
+                        error: res.error,
+                      };
                     },
                     writable: false,
                     configurable: true,
@@ -551,7 +698,10 @@ export async function withTableQuery(supabaseClient, logicalName, handler) {
                 Object.defineProperty(q, 'maybeSingle', {
                   value: async function maybeSingleImpl() {
                     const res = await this.limit(1);
-                    return { data: Array.isArray(res.data) ? res.data[0] || null : res.data, error: res.error };
+                    return {
+                      data: Array.isArray(res.data) ? res.data[0] || null : res.data,
+                      error: res.error,
+                    };
                   },
                   writable: false,
                   configurable: true,
@@ -570,7 +720,7 @@ export async function withTableQuery(supabaseClient, logicalName, handler) {
         // (e.g. update, upsert) so tests that only implement a subset of
         // the API won't crash. The stub returns a chain-like object with
         // common methods implemented as no-ops.
-          return (..._args) => {
+        return (..._args) => {
           dbg('[DEBUG supabaseTables] stubbed missing helper', String(prop), 'on table', tableName);
           const queryApi = {};
           const noopReturn = () => queryApi;

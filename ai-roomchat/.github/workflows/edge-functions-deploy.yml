@@ -70,10 +70,10 @@ jobs:
       RANK_EDGE_DEPLOY_REQUIRE_SMOKE: ${{ matrix.require_smoke }}
       RANK_EDGE_DEPLOY_REQUIRE_PAGERDUTY: ${{ matrix.require_pagerduty }}
     steps:
-      - name: "Checkout repository"
+      - name: 'Checkout repository'
         uses: actions/checkout@v4
 
-      - name: "Debug: print working directory and files"
+      - name: 'Debug: print working directory and files'
         run: |
           echo "PWD: $(pwd)"
           echo "Listing root:"
@@ -83,36 +83,36 @@ jobs:
           echo "Listing starbase/ai-roomchat:"
           ls -al starbase/ai-roomchat || true
 
-      - name: "Setup Node.js 18"
+      - name: 'Setup Node.js 18'
         uses: actions/setup-node@v4
         with:
           node-version: 18
           cache: npm
           cache-dependency-path: starbase/ai-roomchat/package-lock.json
 
-      - name: "Validate secret configuration"
+      - name: 'Validate secret configuration'
         run: npm run check:edge-deploy-config
 
-      - name: "Install dependencies"
+      - name: 'Install dependencies'
         run: npm ci
 
-      - name: "Run tests and generate JUnit report"
+      - name: 'Run tests and generate JUnit report'
         run: npm test -- --ci --reporters=default --reporters=jest-junit
         env:
           JEST_JUNIT_OUTPUT_DIR: ./reports/junit
           JEST_JUNIT_OUTPUT_NAME: junit.xml
 
-      - name: "Upload test results (JUnit)"
+      - name: 'Upload test results (JUnit)'
         uses: actions/upload-artifact@v4
         with:
           name: junit-report
           path: starbase/ai-roomchat/starbase/ai-roomchat/reports/junit/junit.xml
           if-no-files-found: warn
 
-      - name: "Install Supabase CLI"
+      - name: 'Install Supabase CLI'
         uses: supabase/setup-cli@v1
         with:
           version: ${{ env.SUPABASE_CLI_VERSION }}
 
-      - name: "Deploy Edge Functions with retry, smoke tests & alerts"
+      - name: 'Deploy Edge Functions with retry, smoke tests & alerts'
         run: npm run deploy:edge-functions
