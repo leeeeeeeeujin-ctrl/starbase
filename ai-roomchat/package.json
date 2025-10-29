@@ -7,8 +7,9 @@
     "npm": ">=8.0.0"
   },
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+  "dev": "next dev",
+  "dev:runner-test": "node scripts/run-runner-and-test.js",
+  "build": "next build",
     "build:compatibility": "npm run build && npm run test:compatibility",
     "start": "next start",
     "vercel:env": "node scripts/syncVercelEnv.js",
