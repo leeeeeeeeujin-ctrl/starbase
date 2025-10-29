@@ -25,7 +25,7 @@ permissions:
 
 defaults:
   run:
-    working-directory: starbase/ai-roomchat
+    working-directory: ai-roomchat
 
 jobs:
   deploy:
@@ -88,7 +88,7 @@ jobs:
         with:
           node-version: 18
           cache: npm
-          cache-dependency-path: starbase/ai-roomchat/package-lock.json
+          cache-dependency-path: ai-roomchat/package-lock.json
 
       - name: 'Validate secret configuration'
         run: npm run check:edge-deploy-config
@@ -106,7 +106,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: junit-report
-          path: starbase/ai-roomchat/starbase/ai-roomchat/reports/junit/junit.xml
+          path: ai-roomchat/reports/junit/junit.xml
           if-no-files-found: warn
 
       - name: 'Install Supabase CLI'

@@ -15,8 +15,8 @@ jobs:
       - name: Cache node_modules
         uses: actions/cache@v4
         with:
-          path: starbase/ai-roomchat/node_modules
-          key: ${{ runner.os }}-node-modules-${{ hashFiles('starbase/ai-roomchat/package-lock.json') }}
+          path: ai-roomchat/node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('ai-roomchat/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-node-modules-
 
@@ -28,7 +28,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('starbase/ai-roomchat/package-lock.json') }}
+          key: ${{ runner.os }}-playwright-${{ hashFiles('ai-roomchat/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-playwright-
 
