@@ -15,6 +15,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Ensure the full repository is available (git ls-files, exact paths)
+          fetch-depth: 0
+
+      - name: Debug: list workspace and SQL path
+        run: |
+          echo "PWD: $(pwd)"
+          echo "-- root listing --"
+          ls -la || true
+          echo "-- ai-roomchat/sql listing --"
+          ls -la ai-roomchat/sql || true
+          echo "-- git ls-files matching migration basename --"
+          git ls-files | grep '002_add_devices_and_prompt_runs.sql' || true
 
       - name: Install Supabase CLI (official binary)
         run: |
