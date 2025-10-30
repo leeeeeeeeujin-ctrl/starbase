@@ -16,10 +16,13 @@ jobs:
         with:
           node-version: '18'
 
-      - name: Install dependencies
+      - name: Install dependencies (ensure dev deps)
         run: |
           cd ai-roomchat
-          npm ci
+          # ensure devDependencies (like 'pg') are available for migration runner
+          npm ci --include=dev
+          echo "-- check pg module exists --"
+          ls -la node_modules/pg || echo "pg module not found"
 
       - name: Run migrations (with debug + fallback)
         env:
