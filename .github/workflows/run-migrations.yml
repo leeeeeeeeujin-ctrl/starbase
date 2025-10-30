@@ -21,12 +21,36 @@ jobs:
           cd ai-roomchat
           npm ci
 
-      - name: Run migrations
+      - name: Run migrations (with debug + fallback)
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SUPABASE_ROLE: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
+          # prefer DATABASE_URL, fall back to SUPABASE_SERVICE_ROLE_KEY if provided
+          if [ -z "$DATABASE_URL" ] && [ -n "$SUPABASE_ROLE" ]; then
+            export DATABASE_URL="$SUPABASE_ROLE"
+          fi
+          if [ -z "$DATABASE_URL" ]; then
+            echo "ERROR: DATABASE_URL (or SUPABASE_SERVICE_ROLE_KEY) not set in secrets"; exit 1
+          fi
+          # debug: show working dir and package.json to help diagnose 'Missing script' issues
           cd ai-roomchat
-          npm run migrate:db
+          echo "PWD: $(pwd)"
+          echo "-- listing ai-roomchat --"
+          ls -la
+          echo "-- package.json contents (scripts) --"
+          if [ -f package.json ]; then
+            cat package.json | jq '.scripts' || cat package.json
+          else
+            echo "package.json not found in ai-roomchat"
+          fi
+          # try npm script first, then fall back to running the migration runner directly
+          if npm run migrate:db; then
+            echo "npm migrate:db succeeded"
+          else
+            echo "npm migrate:db failed or missing; attempting node scripts/apply-migrations.js"
+            node scripts/apply-migrations.js
+          fi
 
       - name: Verify migration - list sql files applied
         if: ${{ success() }}
