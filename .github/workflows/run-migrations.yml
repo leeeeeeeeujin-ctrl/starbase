@@ -29,14 +29,14 @@ jobs:
       - name: Run migrations (with debug + fallback)
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          SUPABASE_ROLE: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
-          # prefer DATABASE_URL, fall back to SUPABASE_SERVICE_ROLE_KEY if provided
-          if [ -z "$DATABASE_URL" ] && [ -n "$SUPABASE_ROLE" ]; then
-            export DATABASE_URL="$SUPABASE_ROLE"
+          # prefer DATABASE_URL, fall back to SUPABASE_DB_URL if provided
+          if [ -z "$DATABASE_URL" ] && [ -n "$SUPABASE_DB_URL" ]; then
+            export DATABASE_URL="$SUPABASE_DB_URL"
           fi
           if [ -z "$DATABASE_URL" ]; then
-            echo "ERROR: DATABASE_URL (or SUPABASE_SERVICE_ROLE_KEY) not set in secrets"; exit 1
+            echo "ERROR: DATABASE_URL (or SUPABASE_DB_URL) not set in secrets"; exit 1
           fi
           # debug: show working dir and package.json to help diagnose 'Missing script' issues
           cd ai-roomchat
