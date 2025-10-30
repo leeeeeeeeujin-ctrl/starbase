@@ -1,0 +1,37 @@
+name: Dispatch - Run Node DB migrations (manual)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  migrate:
+    name: Run Node migration runner
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies (ensure dev deps)
+        run: |
+          cd ai-roomchat
+          npm ci --include=dev
+          npm install pg@^8.10.0 --no-save
+
+      - name: Run Node migration runner
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          MIGRATE_DATABASE_URL: ${{ secrets.MIGRATE_DATABASE_URL }}
+          DATABASE_POOLER_SESSION_URL: ${{ secrets.DATABASE_POOLER_SESSION_URL }}
+          DATABASE_POOLER_TRANSACTION_URL: ${{ secrets.DATABASE_POOLER_TRANSACTION_URL }}
+        run: |
+          echo "--- debug: MIGRATE_DATABASE_URL present? ${MIGRATE_DATABASE_URL:+yes} ---"
+          cd ai-roomchat
+          echo "PWD: $(pwd)"
+          echo "Listing ai-roomchat/sql files:" && ls -la sql || true
+          node scripts/apply-migrations.js
