@@ -25,9 +25,10 @@ jobs:
 
       - name: Run Node migration runner
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-          MIGRATE_DATABASE_URL: ${{ secrets.MIGRATE_DATABASE_URL }}
+          # prefer MIGRATE_DATABASE_URL (pooler); fall back to SUPABASE_DB_URL or DATABASE_URL
+          DATABASE_URL: ${{ secrets.MIGRATE_DATABASE_URL || secrets.SUPABASE_DB_URL || secrets.DATABASE_URL }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL || secrets.MIGRATE_DATABASE_URL || secrets.DATABASE_URL }}
+          MIGRATE_DATABASE_URL: ${{ secrets.MIGRATE_DATABASE_URL || secrets.SUPABASE_DB_URL || secrets.DATABASE_URL }}
           DATABASE_POOLER_SESSION_URL: ${{ secrets.DATABASE_POOLER_SESSION_URL }}
           DATABASE_POOLER_TRANSACTION_URL: ${{ secrets.DATABASE_POOLER_TRANSACTION_URL }}
         run: |
