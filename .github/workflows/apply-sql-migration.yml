@@ -22,11 +22,58 @@ jobs:
 
       - name: Install clients (psql + supabase-cli)
         run: |
-          set -e
+          set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y postgresql-client curl
-          # supabase CLI install (use latest stable release install script if available)
-          curl -sSfL https://raw.githubusercontent.com/supabase/cli/master/install.sh | sh || true
+          sudo apt-get install -y postgresql-client curl ca-certificates tar gzip
+          echo "Attempting to install supabase CLI via GitHub Releases (robust lookup)..."
+          ARCH="$(uname -m)"
+          # prefer amd64 vs arm64 naming
+          if [ "$ARCH" = "x86_64" ] || [ "$ARCH" = "amd64" ]; then
+            WANT_ARCH="amd64"
+          elif [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
+            WANT_ARCH="arm64"
+          else
+            echo "Unsupported architecture: $ARCH" >&2
+            WANT_ARCH="amd64"
+          fi
+
+          # Discover latest release asset URL using GitHub API
+          API_JSON="$(curl -fsSL https://api.github.com/repos/supabase/cli/releases/latest)" || true
+          DOWNLOAD_URL="$(printf "%s" "$API_JSON" | grep -E 'browser_download_url' | grep linux | grep "$WANT_ARCH" | head -n1 | cut -d '"' -f4 || true)"
+          if [ -z "$DOWNLOAD_URL" ]; then
+            echo "Could not find a matching supabase CLI release asset via API; trying generic asset names as fallback" >&2
+            # fallback candidate names (may 404)
+            if [ "$WANT_ARCH" = "amd64" ]; then
+              CAND="supabase_linux_amd64.tar.gz"
+            else
+              CAND="supabase_linux_arm64.tar.gz"
+            fi
+            DOWNLOAD_URL="https://github.com/supabase/cli/releases/latest/download/$CAND"
+          fi
+
+          echo "Downloading supabase from: $DOWNLOAD_URL"
+          if curl -fsSL "$DOWNLOAD_URL" -o /tmp/supabase.tar.gz; then
+            sudo tar -C /usr/local/bin -xzf /tmp/supabase.tar.gz || true
+            # some tarballs contain a supabase binary at top-level, others a folder
+            if [ -x /usr/local/bin/supabase ]; then
+              echo "supabase installed: $(/usr/local/bin/supabase --version 2>/dev/null || echo 'unknown')"
+            else
+              # try to extract binary from archive and move it
+              TMPDIR=$(mktemp -d)
+              tar -C "$TMPDIR" -xzf /tmp/supabase.tar.gz
+              BINPATH="$(find "$TMPDIR" -type f -name supabase -perm /111 | head -n1 || true)"
+              if [ -n "$BINPATH" ]; then
+                sudo mv "$BINPATH" /usr/local/bin/supabase
+                sudo chmod +x /usr/local/bin/supabase || true
+                echo "supabase installed: $(/usr/local/bin/supabase --version 2>/dev/null || echo 'unknown')"
+              else
+                echo "Downloaded supabase tarball but could not locate 'supabase' binary inside" >&2
+              fi
+            fi
+          else
+            echo "Failed to download supabase CLI from $DOWNLOAD_URL" >&2
+            echo "Continuing without supabase CLI; workflow will fallback to psql if available."
+          fi
 
       - name: Apply SQL migration (control-plane preferred)
         env:
@@ -45,6 +92,27 @@ jobs:
           fi
 
           echo "Requested SQL file: $SQL_FILE"
+          echo "Working directory: $(pwd)"
+          echo "Top-level files:" && ls -la . | sed -n '1,200p' || true
+
+          # If the requested SQL file path doesn't exist, try to discover it in the repo
+          if [ ! -f "$SQL_FILE" ]; then
+            echo "SQL file not found at requested path: $SQL_FILE"
+            # Try git ls-files first (respects repo layout)
+            FOUND="$(git ls-files | grep -E '002_add_devices_and_prompt_runs.sql$' | head -n1 || true)"
+            if [ -z "$FOUND" ]; then
+              # fallback to filesystem search (may be slower)
+              FOUND="$(find . -type f -name '002_add_devices_and_prompt_runs.sql' -print -quit || true)"
+            fi
+            if [ -n "$FOUND" ]; then
+              echo "Discovered SQL file at: $FOUND"
+              SQL_FILE="$FOUND"
+            else
+              echo "Could not locate SQL file in repository. Listing candidate SQL files for debugging:" >&2
+              git ls-files | grep '\.sql$' || true
+              exit 1
+            fi
+          fi
           if [ "$CONFIRM" != "yes" ]; then
             echo "Confirm input is not 'yes' — skipping execution. To run, re-dispatch and set confirm: 'yes'" >&2
             exit 0
