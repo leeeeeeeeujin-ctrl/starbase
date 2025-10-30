@@ -21,6 +21,8 @@ jobs:
           cd ai-roomchat
           # ensure devDependencies (like 'pg') are available for migration runner
           npm ci --include=dev
+          # ensure 'pg' is present even if lockfile omitted it; install locally without saving
+          npm install pg@^8.10.0 --no-save
           echo "-- check pg module exists --"
           ls -la node_modules/pg || echo "pg module not found"
 
