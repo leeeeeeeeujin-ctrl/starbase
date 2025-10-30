@@ -16,6 +16,19 @@ jobs:
         with:
           node-version: '18'
 
+      - name: Validate required secrets
+        env:
+          MIGRATE_DATABASE_URL: ${{ secrets.MIGRATE_DATABASE_URL }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          # Fail fast with a clear error if no DB connection secret is set.
+          if [ -z "$MIGRATE_DATABASE_URL" ] && [ -z "$SUPABASE_DB_URL" ] && [ -z "$DATABASE_URL" ]; then
+            echo "ERROR: No DB connection secret found. Please set one of: MIGRATE_DATABASE_URL, SUPABASE_DB_URL, or DATABASE_URL in repository secrets."
+            exit 1
+          fi
+          echo "Found DB secret; continuing."
+
       - name: Install runtime dependency (pg only)
         run: |
           cd ai-roomchat
