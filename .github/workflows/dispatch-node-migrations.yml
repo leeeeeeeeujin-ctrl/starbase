@@ -23,6 +23,18 @@ jobs:
           # install only the runtime postgres driver we need for the migration runner
           npm install --no-save --no-audit --no-fund pg@^8.10.0
 
+      - name: Restore npm / node_modules cache
+        uses: actions/cache@v4
+        with:
+          # cache both the npm cache and the node_modules within ai-roomchat
+          path: |
+            ~/.npm
+            ai-roomchat/node_modules
+          # use package-lock.json as the cache key basis; falls back to os-node key
+          key: ${{ runner.os }}-node-${{ hashFiles('ai-roomchat/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
       - name: Run Node migration runner
         env:
           # prefer MIGRATE_DATABASE_URL (pooler); fall back to SUPABASE_DB_URL or DATABASE_URL
