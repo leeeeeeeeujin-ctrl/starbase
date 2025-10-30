@@ -16,11 +16,12 @@ jobs:
         with:
           node-version: '18'
 
-      - name: Install dependencies (ensure dev deps)
+      - name: Install runtime dependency (pg only)
         run: |
           cd ai-roomchat
-          npm ci --include=dev
-          npm install pg@^8.10.0 --no-save
+          # don't run `npm ci` in CI here because package-lock.json may be out of sync
+          # install only the runtime postgres driver we need for the migration runner
+          npm install --no-save --no-audit --no-fund pg@^8.10.0
 
       - name: Run Node migration runner
         env:
