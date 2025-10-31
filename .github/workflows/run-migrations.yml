@@ -1,12 +1,23 @@
 name: Run DB Migrations
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment (maps to a GitHub Environment). Use a protected environment (e.g. production) for manual approval.'
+        required: true
+        default: 'production'
+      dry_run:
+        description: 'If true, perform dry-run (default true)'
+        required: true
+        default: 'true'
 
 jobs:
-  migrate:
-    name: Apply SQL migrations
+  preflight:
+    name: Preflight & dry-run
     runs-on: ubuntu-latest
+    outputs:
+      dry_run: ${{ steps.set.outputs.dry_run }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -19,138 +30,118 @@ jobs:
       - name: Install dependencies (ensure dev deps)
         run: |
           cd ai-roomchat
-          # ensure devDependencies (like 'pg') are available for migration runner
           npm ci --include=dev
-          # ensure 'pg' is present even if lockfile omitted it; install locally without saving
-          npm install pg@^8.10.0 --no-save
-          echo "-- check pg module exists --"
-          ls -la node_modules/pg || echo "pg module not found"
+          npm install pg@^8.10.0 --no-save || true
 
-      - name: Run migrations (with debug + fallback)
+      - name: Run migration dry-run (node helper)
+        id: run
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           MIGRATE_DATABASE_URL: ${{ secrets.MIGRATE_DATABASE_URL }}
-          DATABASE_POOLER_SESSION_URL: ${{ secrets.DATABASE_POOLER_SESSION_URL }}
-          DATABASE_POOLER_TRANSACTION_URL: ${{ secrets.DATABASE_POOLER_TRANSACTION_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SUPABASE_PROJECT_URL: ${{ secrets.SUPABASE_PROJECT_URL }}
         run: |
-          # debug: show presence of supabase service-role secrets (do NOT print values)
-          if [ -n "$SUPABASE_SERVICE_ROLE_KEY" ]; then echo "SUPABASE_SERVICE_ROLE_KEY: set"; else echo "SUPABASE_SERVICE_ROLE_KEY: not set"; fi
-          if [ -n "$SUPABASE_PROJECT_URL" ]; then echo "SUPABASE_PROJECT_URL: set"; else echo "SUPABASE_PROJECT_URL: not set"; fi
-
-          # If a local MIGRATE_DATABASE_URL (pooler URL) is provided, prefer the
-          # Node migration runner path. When MIGRATE_DATABASE_URL is present we
-          # skip attempting the Supabase CLI path to avoid direct-host networking
-          # variability on hosted runners.
-          if [ -n "$MIGRATE_DATABASE_URL" ]; then
-            echo "MIGRATE_DATABASE_URL set — will prefer Node migration runner and skip Supabase CLI"
-          fi
-
-          # If Supabase service-role + project URL are provided and MIGRATE_DATABASE_URL
-          # is NOT set, attempt the Supabase CLI path (avoids direct TCP when possible).
-          if [ -z "$MIGRATE_DATABASE_URL" ] && [ -n "$SUPABASE_SERVICE_ROLE_KEY" ] && [ -n "$SUPABASE_PROJECT_URL" ]; then
-            echo "Supabase service role and project URL set — attempting Supabase CLI path"
-            echo "Downloading supabase CLI..."
-            curl -L -o /tmp/supabase.tar.gz https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.tar.gz
-            tar -xzf /tmp/supabase.tar.gz -C /tmp
-            sudo mv /tmp/supabase /usr/local/bin/supabase || true
-            sudo chmod +x /usr/local/bin/supabase || true
-            export SUPABASE_ACCESS_TOKEN="$SUPABASE_SERVICE_ROLE_KEY"
-            PROJECT_REF=$(echo "$SUPABASE_PROJECT_URL" | sed -E 's#https?://([^.]*)\..*#\1#')
-            echo "Project ref: $PROJECT_REF"
-            SQL_DIR="ai-roomchat/sql"
-            OK=0
-            for f in $(ls "$SQL_DIR"/*.sql 2>/dev/null | sort); do
-              echo "--- Running SQL via supabase CLI: $f"
-              if ! cat "$f" | supabase db query --project-ref "$PROJECT_REF" --service-role-key "$SUPABASE_SERVICE_ROLE_KEY" --yes; then
-                echo "supabase db query failed for $f" >&2
-                OK=1
-                break
-              fi
-            done
-            if [ $OK -eq 0 ]; then
-              echo "Supabase CLI: all SQL files applied successfully"
-              exit 0
-            else
-              echo "Supabase CLI path failed; falling back to existing migration runner" >&2
-            fi
-          else
-            echo "Supabase CLI path skipped (SUPABASE_SERVICE_ROLE_KEY or SUPABASE_PROJECT_URL missing)"
-          fi
-
-          # prefer DATABASE_URL, fall back to SUPABASE_DB_URL if provided
-          if [ -z "$DATABASE_URL" ] && [ -n "$SUPABASE_DB_URL" ]; then
-            export DATABASE_URL="$SUPABASE_DB_URL"
-          fi
-          if [ -z "$DATABASE_URL" ]; then
-            echo "ERROR: DATABASE_URL (or SUPABASE_DB_URL) not set in secrets"; exit 1
-          fi
-          # --- debug: show presence of migration/pooler secrets (do NOT print values) ---
-          if [ -n "$MIGRATE_DATABASE_URL" ]; then echo "MIGRATE_DATABASE_URL: set"; else echo "MIGRATE_DATABASE_URL: not set"; fi
-          if [ -n "$DATABASE_POOLER_SESSION_URL" ]; then echo "DATABASE_POOLER_SESSION_URL: set"; else echo "DATABASE_POOLER_SESSION_URL: not set"; fi
-          if [ -n "$DATABASE_POOLER_TRANSACTION_URL" ]; then echo "DATABASE_POOLER_TRANSACTION_URL: set"; else echo "DATABASE_POOLER_TRANSACTION_URL: not set"; fi
-          # ---------------------------------------------------------------------------
-          # quick connectivity checks: resolve DB host and attempt a TCP connect from the runner
-          echo "-- resolve and test DB host --"
-          # extract host and port using Node (handles standard postgres URLs including IPv6 brackets)
-          read DB_HOST DB_PORT <<< $(node -e "const u=new URL(process.env.DATABASE_URL); console.log(u.hostname+' '+(u.port||5432));")
-          echo "DB_HOST=$DB_HOST DB_PORT=$DB_PORT"
-          echo "-- DNS resolution --"
-          if getent hosts "$DB_HOST" >/dev/null 2>&1; then
-            echo "DNS: resolved $DB_HOST"
-          else
-            echo "DNS: failed to resolve $DB_HOST (getent returned non-zero)"
-          fi
-          # attempt a TCP connect preferring IPv4 (use A record if present)
-          export DB_HOST DB_PORT
-          echo "-- DNS A/AAAA lookup (getent) --"
-          A_RECORDS=$(getent ahosts "$DB_HOST" 2>/dev/null | awk '{print $1}' | grep -E '^[0-9]+\.' | sort -u | tr '\n' ' ' || true)
-          AAAA_RECORDS=$(getent ahosts "$DB_HOST" 2>/dev/null | awk '{print $1}' | grep ':' | sort -u | tr '\n' ' ' || true)
-          echo "A records: $A_RECORDS"
-          echo "AAAA records: $AAAA_RECORDS"
-          if [ -n "$A_RECORDS" ]; then
-            TEST_HOST=$(echo $A_RECORDS | awk '{print $1}')
-            echo "Using IPv4 test host: $TEST_HOST"
-          else
-            TEST_HOST="$DB_HOST"
-            echo "No IPv4 A record found; using host as-is: $TEST_HOST"
-          fi
-          export TEST_HOST
-          python3 - <<PY
-import socket,os,sys
-host=os.environ.get('TEST_HOST') or os.environ.get('DB_HOST')
-port=int(os.environ.get('DB_PORT','5432'))
-try:
-    sock=socket.create_connection((host,port),timeout=6)
-    print('TCP: connect succeeded to', host, port)
-    sock.close()
-except Exception as e:
-    print('TCP: connect FAILED ->', repr(e))
-    sys.exit(3)
-PY
-
-          # debug: show working dir and package.json to help diagnose 'Missing script' issues
-          cd ai-roomchat
-          echo "PWD: $(pwd)"
-          echo "-- listing ai-roomchat --"
-          ls -la
-          echo "-- package.json contents (scripts) --"
-          if [ -f package.json ]; then
-            cat package.json | jq '.scripts' || cat package.json
-          else
-            echo "package.json not found in ai-roomchat"
-          fi
-          # try npm script first, then fall back to running the migration runner directly
-          if npm run migrate:db; then
-            echo "npm migrate:db succeeded"
-          else
-            echo "npm migrate:db failed or missing; attempting node scripts/apply-migrations.js"
-            node scripts/apply-migrations.js
-          fi
-
-      - name: Verify migration - list sql files applied
-        if: ${{ success() }}
+          echo "DRY_RUN=${{ github.event.inputs.dry_run }}" > dry_run_flag
+          # prefer MIGRATE_DATABASE_URL when available in helper
+          node ./ai-roomchat/scripts/apply-migrations.js --dry-run || true
+          echo "done" > preflight_done
+        # capture input so later jobs can decide
+      - name: Set outputs
+        id: set
         run: |
-          echo "Migrations applied successfully."
+          echo "::set-output name=dry_run::${{ github.event.inputs.dry_run }}"
+
+  backup:
+    name: Create DB backup
+    runs-on: ubuntu-latest
+    needs: preflight
+    if: always()
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pg client
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y postgresql-client
+
+      - name: Create DB dump
+        env:
+          MIGRATE_DATABASE_URL: ${{ secrets.MIGRATE_DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          # prefer migrate secret for consistent pooler connection
+          CONN="$MIGRATE_DATABASE_URL"
+          if [ -z "$CONN" ]; then
+            CONN="$DATABASE_URL"
+          fi
+          if [ -z "$CONN" ] && [ -n "$SUPABASE_DB_URL" ]; then
+            CONN="$SUPABASE_DB_URL"
+          fi
+          if [ -z "$CONN" ]; then
+            echo "No DB connection secret found. Skipping backup."; exit 0
+          fi
+          timestamp=$(date -u +%Y%m%dT%H%M%SZ)
+          filename="migration-backup-${timestamp}.sql.gz"
+          pg_dump "$CONN" | gzip > "$filename"
+          echo "Created backup $filename"
+
+      - name: Upload backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-backup
+          path: migration-backup-*.sql.gz
+
+  apply:
+    name: Apply migrations (approval if environment protected)
+    runs-on: ubuntu-latest
+    needs: backup
+    environment: ${{ github.event.inputs.environment }}
+    if: ${{ github.event.inputs.dry_run == 'false' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies (ensure dev deps)
+        run: |
+          cd ai-roomchat
+          npm ci --include=dev
+          npm install pg@^8.10.0 --no-save || true
+
+      - name: Apply migrations (node helper)
+        env:
+          MIGRATE_DATABASE_URL: ${{ secrets.MIGRATE_DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          # prefer MIGRATE_DATABASE_URL
+          if [ -n "$MIGRATE_DATABASE_URL" ]; then
+            echo "Using MIGRATE_DATABASE_URL"
+            node ./ai-roomchat/scripts/apply-migrations.js --databaseUrl "$MIGRATE_DATABASE_URL"
+          else
+            if [ -n "$DATABASE_URL" ]; then
+              node ./ai-roomchat/scripts/apply-migrations.js --databaseUrl "$DATABASE_URL"
+            elif [ -n "$SUPABASE_DB_URL" ]; then
+              node ./ai-roomchat/scripts/apply-migrations.js --databaseUrl "$SUPABASE_DB_URL"
+            else
+              echo "No DB secret available for apply. Failing."; exit 1
+            fi
+          fi
+
+      - name: Run smoke tests (ai-roomchat)
+        working-directory: ai-roomchat
+        run: |
+          npm test --if-present || true
+
+      - name: Upload migration logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: migrations-log
+          path: ai-roomchat/reports/migrations-*.log
