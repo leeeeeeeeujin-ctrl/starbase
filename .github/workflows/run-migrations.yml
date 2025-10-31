@@ -27,11 +27,11 @@ jobs:
         with:
           node-version: '18'
 
-      - name: Install dependencies (ensure dev deps)
+      - name: Install runtime dependency (pg only)
         run: |
           cd ai-roomchat
-          npm ci --include=dev
-          npm install pg@^8.10.0 --no-save || true
+          # avoid full `npm ci` in CI preflight (lockfile may be out of sync); install only runtime pg driver
+          npm install --no-save --no-audit --no-fund pg@^8.10.0 || true
 
       - name: Run migration dry-run (node helper)
         id: run
