@@ -64,7 +64,12 @@ jobs:
       - name: Install pg client
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y postgresql-client
+          # install PostgreSQL client matching server version (prefer pg 17)
+          sudo apt-get install -y wget ca-certificates lsb-release gnupg
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /usr/share/keyrings/pgdg.gpg
+          echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -y
+          sudo apt-get install -y postgresql-client-17 || sudo apt-get install -y postgresql-client
 
       - name: Create DB dump
         env:
@@ -85,8 +90,13 @@ jobs:
           fi
           timestamp=$(date -u +%Y%m%dT%H%M%SZ)
           filename="migration-backup-${timestamp}.sql.gz"
-          pg_dump "$CONN" | gzip > "$filename"
-          echo "Created backup $filename"
+          if pg_dump "$CONN" | gzip > "$filename"; then
+            echo "Created backup $filename"
+          else
+            echo "pg_dump failed or version mismatch; removing partial backup and failing";
+            rm -f "$filename" || true
+            exit 1
+          fi
 
       - name: Upload backup artifact
         uses: actions/upload-artifact@v4
