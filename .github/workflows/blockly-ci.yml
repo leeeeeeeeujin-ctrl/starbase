@@ -1,0 +1,22 @@
+name: Blockly CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  blockly:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - name: Install
+        run: npm ci
+        working-directory: ai-roomchat
+      - name: Run Blockly converter test
+        run: npm run test:blockly
+        working-directory: ai-roomchat

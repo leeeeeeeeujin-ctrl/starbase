@@ -38,6 +38,11 @@
     "test:ai-workers": "node scripts/test-ai-workers.js",
     "experiment:main": "node scripts/experiment-main-flow.js",
     "experiment:matrix": "node scripts/experiment-matrix.js"
+    ,
+    "wasm:build": "node scripts/wasm_build.js",
+    "blockly:convert": "node scripts/blockly_poc.js workflows/blockly-sample.json workflows/blockly-sample.out.js",
+    "test:blockly": "node scripts/test_blockly.js",
+    "blockly:run-local": "node scripts/run_blockly_local_runner.js"
   },
   "dependencies": {
     "@sentry/nextjs": "^7.50.0",
@@ -101,6 +106,8 @@
     "postcss-preset-env": "^9.5.14",
     "react-refresh": "^0.18.0",
     "react-test-renderer": "18.2.0"
+    ,
+    "wabt": "^1.0.33"
   },
   "lint-staged": {
     "*.{js,jsx}": [
