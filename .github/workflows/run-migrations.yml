@@ -88,9 +88,45 @@ jobs:
           if [ -z "$CONN" ]; then
             echo "No DB connection secret found. Skipping backup."; exit 0
           fi
+
+          # Choose a pg_dump binary that matches server major version (prefer 17)
+          # Try versioned locations first, then fallback to system pg_dump
+          PGDUMP_CANDIDATES=("/usr/lib/postgresql/17/bin/pg_dump" "pg_dump-17" "pg_dump")
+          PGDUMP_BIN=""
+          for c in "${PGDUMP_CANDIDATES[@]}"; do
+            if command -v "$c" >/dev/null 2>&1; then
+              # verify major version
+              ver=$($c --version 2>/dev/null || true)
+              echo "Found pg_dump candidate: $c -> $ver"
+              if echo "$ver" | grep -qE "\b([0-9]+)\."; then
+                maj=$(echo "$ver" | sed -E 's/.* ([0-9]+)\..*/\1/')
+                if [ "$maj" = "17" ]; then
+                  PGDUMP_BIN=$(command -v "$c")
+                  break
+                fi
+              fi
+            fi
+          done
+
+          if [ -z "$PGDUMP_BIN" ]; then
+            echo "pg_dump v17 not found on PATH or standard locations. Attempting to use any pg_dump but failing if version mismatch.";
+            if command -v pg_dump >/dev/null 2>&1; then
+              PGDUMP_BIN=$(command -v pg_dump)
+              echo "Using fallback pg_dump: $PGDUMP_BIN"
+            else
+              echo "No pg_dump available. Aborting backup."; exit 1
+            fi
+          fi
+
+          # sanity check chosen binary
+          echo "Selected pg_dump binary: $PGDUMP_BIN"
+          $PGDUMP_BIN --version
+
           timestamp=$(date -u +%Y%m%dT%H%M%SZ)
           filename="migration-backup-${timestamp}.sql.gz"
-          if pg_dump "$CONN" | gzip > "$filename"; then
+
+          # run pg_dump via chosen binary; fail if it exits non-zero
+          if $PGDUMP_BIN "$CONN" | gzip > "$filename"; then
             echo "Created backup $filename"
           else
             echo "pg_dump failed or version mismatch; removing partial backup and failing";
