@@ -125,9 +125,36 @@ jobs:
           timestamp=$(date -u +%Y%m%dT%H%M%SZ)
           filename="migration-backup-${timestamp}.sql.gz"
 
+          # Prefer explicit v17 binary when available (avoid PATH surprises)
+          if [ -x "/usr/lib/postgresql/17/bin/pg_dump" ]; then
+            PGDUMP_BIN="/usr/lib/postgresql/17/bin/pg_dump"
+            echo "Forcing explicit pg_dump path: $PGDUMP_BIN"
+            $PGDUMP_BIN --version || true
+          fi
+
           # run pg_dump via chosen binary; fail if it exits non-zero
           if $PGDUMP_BIN "$CONN" | gzip > "$filename"; then
             echo "Created backup $filename"
+
+            # quick verification: ensure gzip integrity and reasonable size
+            echo "Verifying gzip integrity..."
+            if gzip -t "$filename"; then
+              echo "gzip integrity: OK"
+            else
+              echo "gzip integrity failed; removing partial backup and failing"
+              rm -f "$filename" || true
+              exit 1
+            fi
+
+            # sanity size check (avoid tiny partial files). Threshold: 10KB
+            sz=$(stat -c%s "$filename" || echo 0)
+            if [ "$sz" -lt 10240 ]; then
+              echo "Backup file too small ($sz bytes); removing and failing"
+              rm -f "$filename" || true
+              exit 1
+            fi
+
+            echo "Backup verification passed: $filename ($sz bytes)"
           else
             echo "pg_dump failed or version mismatch; removing partial backup and failing";
             rm -f "$filename" || true
