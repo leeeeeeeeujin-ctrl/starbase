@@ -22,6 +22,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Load MIGRATE_DATABASE_URL from existing secrets
+        run: |
+          # Prefer an explicit MIGRATE_DATABASE_URL secret; fall back to DATABASE_URL or SUPABASE_DB_URL
+          if [ -n "${{ secrets.MIGRATE_DATABASE_URL }}" ]; then
+            echo "MIGRATE_DATABASE_URL=${{ secrets.MIGRATE_DATABASE_URL }}" >> $GITHUB_ENV
+          elif [ -n "${{ secrets.DATABASE_URL }}" ]; then
+            echo "MIGRATE_DATABASE_URL=${{ secrets.DATABASE_URL }}" >> $GITHUB_ENV
+          elif [ -n "${{ secrets.SUPABASE_DB_URL }}" ]; then
+            echo "MIGRATE_DATABASE_URL=${{ secrets.SUPABASE_DB_URL }}" >> $GITHUB_ENV
+          else
+            echo "MIGRATE_DATABASE_URL not found in secrets; continuing without it"
+          fi
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -60,6 +73,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Load MIGRATE_DATABASE_URL from existing secrets
+        run: |
+          # Prefer an explicit MIGRATE_DATABASE_URL secret; fall back to DATABASE_URL or SUPABASE_DB_URL
+          if [ -n "${{ secrets.MIGRATE_DATABASE_URL }}" ]; then
+            echo "MIGRATE_DATABASE_URL=${{ secrets.MIGRATE_DATABASE_URL }}" >> $GITHUB_ENV
+          elif [ -n "${{ secrets.DATABASE_URL }}" ]; then
+            echo "MIGRATE_DATABASE_URL=${{ secrets.DATABASE_URL }}" >> $GITHUB_ENV
+          elif [ -n "${{ secrets.SUPABASE_DB_URL }}" ]; then
+            echo "MIGRATE_DATABASE_URL=${{ secrets.SUPABASE_DB_URL }}" >> $GITHUB_ENV
+          else
+            echo "MIGRATE_DATABASE_URL not found in secrets; skipping backup"
+          fi
 
       - name: Install pg client
         run: |
@@ -177,6 +203,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Load MIGRATE_DATABASE_URL from existing secrets
+        run: |
+          # Prefer an explicit MIGRATE_DATABASE_URL secret; fall back to DATABASE_URL or SUPABASE_DB_URL
+          if [ -n "${{ secrets.MIGRATE_DATABASE_URL }}" ]; then
+            echo "MIGRATE_DATABASE_URL=${{ secrets.MIGRATE_DATABASE_URL }}" >> $GITHUB_ENV
+          elif [ -n "${{ secrets.DATABASE_URL }}" ]; then
+            echo "MIGRATE_DATABASE_URL=${{ secrets.DATABASE_URL }}" >> $GITHUB_ENV
+          elif [ -n "${{ secrets.SUPABASE_DB_URL }}" ]; then
+            echo "MIGRATE_DATABASE_URL=${{ secrets.SUPABASE_DB_URL }}" >> $GITHUB_ENV
+          else
+            echo "MIGRATE_DATABASE_URL not found in secrets; apply will fail if no DB secret available"
+          fi
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -187,6 +226,45 @@ jobs:
           cd ai-roomchat
           npm ci --include=dev
           npm install pg@^8.10.0 --no-save || true
+
+      - name: Install pg client for verification
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y wget ca-certificates lsb-release gnupg
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /usr/share/keyrings/pgdg.gpg
+          echo "deb [signed-by=/usr/share/keyrings/pgdg.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -y
+          sudo apt-get install -y postgresql-client-17 || sudo apt-get install -y postgresql-client
+
+      - name: Download and verify backup artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: migration-backup
+          path: ./migration-backup
+
+      - name: Verify downloaded backup (gzip + header + size)
+        run: |
+          set -euo pipefail
+          cd migration-backup
+          FILE=$(ls migration-backup-*.sql.gz 2>/dev/null | head -n1 || true)
+          if [ -z "$FILE" ]; then
+            echo "No backup artifact found in migration-backup/; failing"; exit 1
+          fi
+          echo "Verifying artifact: $FILE"
+          # gzip integrity
+          if ! gzip -t "$FILE"; then
+            echo "gzip integrity failed"; exit 1
+          fi
+          # size sanity
+          sz=$(stat -c%s "$FILE" || echo 0)
+          if [ "$sz" -lt 10240 ]; then
+            echo "Backup file too small ($sz bytes); failing"; exit 1
+          fi
+          # quick header check to ensure it's SQL-ish
+          if ! zcat "$FILE" | head -n 20 | grep -E '^(--|SET|CREATE|SELECT|COPY)' >/dev/null 2>&1; then
+            echo "Backup header doesn't look like SQL dump; failing"; exit 1
+          fi
+          echo "Backup artifact verification passed: $FILE ($sz bytes)"
 
       - name: Apply migrations (node helper)
         env:
