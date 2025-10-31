@@ -181,6 +181,15 @@ jobs:
             fi
 
             echo "Backup verification passed: $filename ($sz bytes)"
+            # compute sha256 checksum for reviewer verification
+            echo "Computing sha256 checksum..."
+            if command -v sha256sum >/dev/null 2>&1; then
+              sha256sum "$filename" > "$filename.sha256"
+            elif command -v shasum >/dev/null 2>&1; then
+              shasum -a 256 "$filename" > "$filename.sha256"
+            else
+              echo "No sha256 tool available; skipping checksum file generation"
+            fi
           else
             echo "pg_dump failed or version mismatch; removing partial backup and failing";
             rm -f "$filename" || true
@@ -192,6 +201,64 @@ jobs:
         with:
           name: migration-backup
           path: migration-backup-*.sql.gz
+
+      - name: Upload backup to Supabase Storage (fallback / parallel)
+        if: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY != '' }}
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_BUCKET: ${{ secrets.SUPABASE_BUCKET }}
+        run: |
+          set -euo pipefail
+          # find the backup and checksum files
+          FILE=$(ls migration-backup-*.sql.gz 2>/dev/null | head -n1 || true)
+          SUMFILE=""
+          if [ -n "$FILE" ]; then
+            if [ -f "$FILE.sha256" ]; then
+              SUMFILE="$FILE.sha256"
+            else
+              SUMFILE=$(ls migration-backup-*.sql.gz.sha256 2>/dev/null | head -n1 || true)
+            fi
+          fi
+          if [ -z "$FILE" ]; then
+            echo "No backup file found to upload to Supabase; skipping."; exit 0
+          fi
+          if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ] || [ -z "${SUPABASE_BUCKET:-}" ]; then
+            echo "Supabase config (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / SUPABASE_BUCKET) not fully set; skipping Supabase upload."; exit 0
+          fi
+
+          echo "Uploading $FILE to Supabase bucket: $SUPABASE_BUCKET"
+          # Use the storage API: PUT /storage/v1/object/{bucket}/{object}
+          RESP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X PUT "${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/${FILE}" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "Content-Type: application/gzip" \
+            --data-binary @"$FILE") || true
+
+          if [ "$RESP_CODE" = "200" ] || [ "$RESP_CODE" = "201" ]; then
+            echo "Supabase upload OK (HTTP $RESP_CODE)"
+          else
+            echo "Supabase upload returned HTTP $RESP_CODE; see runner logs for details";
+            echo "Attempting debug upload (non-binary) to show response body..."
+            curl -s -X PUT "${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/${FILE}" \
+              -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+              -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+              -H "Content-Type: application/gzip" \
+              --data-binary @"$FILE" || true
+          fi
+
+          # upload checksum if available
+          if [ -n "$SUMFILE" ] && [ -f "$SUMFILE" ]; then
+            echo "Uploading checksum $SUMFILE to Supabase"
+            RESP_CODE2=$(curl -s -o /dev/null -w "%{http_code}" -X PUT "${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/${SUMFILE}" \
+              -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+              -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+              -H "Content-Type: text/plain" \
+              --data-binary @"$SUMFILE") || true
+            echo "Checksum upload HTTP: $RESP_CODE2"
+          fi
+
+          echo "Supabase object path: ${SUPABASE_URL}/storage/v1/object/public/${SUPABASE_BUCKET}/${FILE} (if bucket is public)"
 
   apply:
     name: Apply migrations (approval if environment protected)
@@ -242,6 +309,36 @@ jobs:
           name: migration-backup
           path: ./migration-backup
 
+      - name: Fetch backup from Supabase if artifact missing
+        if: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY != '' }}
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_BUCKET: ${{ secrets.SUPABASE_BUCKET }}
+        run: |
+          set -euo pipefail
+          cd $GITHUB_WORKSPACE
+          mkdir -p migration-backup
+          # if artifact was downloaded by the download-artifact step, skip
+          FILE=$(ls migration-backup/migration-backup-*.sql.gz 2>/dev/null | head -n1 || true)
+          if [ -n "$FILE" ]; then
+            echo "Artifact present ($FILE); skipping Supabase fetch"
+            exit 0
+          fi
+          echo "Artifact missing; attempting to locate latest migration-backup in Supabase"
+          sudo apt-get update -y
+          sudo apt-get install -y jq curl || true
+          LIST=$(curl -s -X POST "${SUPABASE_URL}/storage/v1/object/list/${SUPABASE_BUCKET}" -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" -H "Content-Type: application/json" -d '{"prefix":"","limit":50}')
+          FILE=$(echo "$LIST" | jq -r 'sort_by(.metadata.lastModified) | last(.[]).name' || true)
+          if [ -z "$FILE" ] || [ "$FILE" = "null" ]; then
+            echo "No migration backup found in Supabase bucket ${SUPABASE_BUCKET}"; exit 1
+          fi
+          echo "Found backup in Supabase: $FILE"
+          echo "Downloading $FILE"
+          curl -s -X GET "${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/${FILE}" -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" --output "migration-backup/$FILE"
+          # attempt to download checksum
+          curl -s -X GET "${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/${FILE}.sha256" -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" --output "migration-backup/$FILE.sha256" || true
+
       - name: Verify downloaded backup (gzip + header + size)
         run: |
           set -euo pipefail
@@ -265,6 +362,32 @@ jobs:
             echo "Backup header doesn't look like SQL dump; failing"; exit 1
           fi
           echo "Backup artifact verification passed: $FILE ($sz bytes)"
+
+      - name: Compare checksum with .sha256 (if present)
+        run: |
+          set -euo pipefail
+          cd migration-backup
+          FILE=$(ls migration-backup-*.sql.gz 2>/dev/null | head -n1 || true)
+          if [ -z "$FILE" ]; then
+            echo "No backup file found for checksum compare"; exit 1
+          fi
+          if [ -f "$FILE.sha256" ]; then
+            echo "Found checksum file: $FILE.sha256. Comparing..."
+            if command -v sha256sum >/dev/null 2>&1; then
+              sha256sum -c --status "$FILE.sha256" || (echo "Checksum mismatch"; exit 1)
+            elif command -v shasum >/dev/null 2>&1; then
+              SHASUM=$(shasum -a 256 "$FILE" | awk '{print $1}')
+              EXPECT=$(awk '{print $1}' "$FILE.sha256")
+              if [ "$SHASUM" != "$EXPECT" ]; then
+                echo "Checksum mismatch: computed=$SHASUM expected=$EXPECT"; exit 1
+              fi
+            else
+              echo "No sha256 tool available in runner to compare checksums; please verify manually"; exit 1
+            fi
+            echo "Checksum verified OK"
+          else
+            echo "No checksum file present; skipping checksum compare"
+          fi
 
       - name: Apply migrations (node helper)
         env:
