@@ -203,7 +203,6 @@ jobs:
           path: migration-backup-*.sql.gz
 
       - name: Upload backup to Supabase Storage (fallback / parallel)
-        if: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY != '' }}
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -310,7 +309,6 @@ jobs:
           path: ./migration-backup
 
       - name: Fetch backup from Supabase if artifact missing
-        if: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY != '' }}
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
