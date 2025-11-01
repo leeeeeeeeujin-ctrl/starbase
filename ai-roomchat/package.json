@@ -42,7 +42,12 @@
     "wasm:build": "node scripts/wasm_build.js",
     "blockly:convert": "node scripts/blockly_poc.js workflows/blockly-sample.json workflows/blockly-sample.out.js",
     "test:blockly": "node scripts/test_blockly.js",
-    "blockly:run-local": "node scripts/run_blockly_local_runner.js"
+    "blockly:run-local": "node scripts/run_blockly_local_runner.js",
+    "typecheck": "tsc -p tsconfig.checkjs.json --noEmit",
+    "lint:json": "eslint public/templates/*.json --ext .json",
+    "studio:bridge": "node mobile/cli-bridge.js",
+    "studio:test:mock": "node tools/test_mock_runner.js",
+    "studio:test:cli": "node tools/test_cli_bridge.js"
   },
   "dependencies": {
     "@sentry/nextjs": "^7.50.0",
@@ -105,8 +110,11 @@
     "postcss": "^8.4.38",
     "postcss-preset-env": "^9.5.14",
     "react-refresh": "^0.18.0",
-    "react-test-renderer": "18.2.0"
-    ,
+    "react-test-renderer": "18.2.0",
+    "typescript": "^5.6.3",
+    "ajv": "^8.17.1",
+    "eslint-plugin-jsonc": "^2.15.0",
+    "jsonc-eslint-parser": "^2.4.0",
     "wabt": "^1.0.33"
   },
   "lint-staged": {

@@ -12,6 +12,8 @@ ai-roomchat/logs/
 
 # Ignore migration diagnostic artifacts and local backups
 ai-roomchat/*.json
+!ai-roomchat/.eslintrc.json
+!ai-roomchat/tsconfig.checkjs.json
 ai-roomchat/*_raw.txt
 ai-roomchat/list*.txt
 ai-roomchat/*.gz
