@@ -239,33 +239,29 @@ return result`
     setError('');
 
     try {
-      // 안전한 JavaScript 실행 환경 설정
-      const safeEval = new Function(
-        'console',
-        'Math',
-        'JSON',
-        'gameContext',
-        'setTimeout',
-        'setInterval',
-        `
-        "use strict";
-        const console = arguments[0];
-        const Math = arguments[1]; 
-        const JSON = arguments[2];
-        const gameContext = arguments[3];
-        // setTimeout, setInterval은 제한적으로 허용
-        
-        ${code}
-        `
-      );
-
-      // 콘솔 출력 캡처
+      // 콘솔 출력 캡처 및 전역 console 프록시(재선언 충돌 방지)
       const logs = [];
-      const mockConsole = {
-        log: (...args) => logs.push(args.map(String).join(' ')),
-        error: (...args) => logs.push('ERROR: ' + args.map(String).join(' ')),
-        warn: (...args) => logs.push('WARN: ' + args.map(String).join(' ')),
-      };
+      const originalConsole = globalThis.console;
+      const mockConsole = Object.assign({}, originalConsole, {
+        log: (...args) => {
+          try { logs.push(args.map(a => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ')); } catch(_) {}
+          if (originalConsole && typeof originalConsole.log === 'function') {
+            try { originalConsole.log.apply(originalConsole, args); } catch(_) {}
+          }
+        },
+        error: (...args) => {
+          try { logs.push('ERROR: ' + args.map(String).join(' ')); } catch(_) {}
+          if (originalConsole && typeof originalConsole.error === 'function') {
+            try { originalConsole.error.apply(originalConsole, args); } catch(_) {}
+          }
+        },
+        warn: (...args) => {
+          try { logs.push('WARN: ' + args.map(String).join(' ')); } catch(_) {}
+          if (originalConsole && typeof originalConsole.warn === 'function') {
+            try { originalConsole.warn.apply(originalConsole, args); } catch(_) {}
+          }
+        },
+      });
 
       // 제한된 setTimeout (최대 5초)
       const limitedSetTimeout = (fn, delay) => {
@@ -273,8 +269,16 @@ return result`
         return setTimeout(fn, delay);
       };
 
+      // 안전한 JavaScript 실행 환경 설정 (전역 console 프록시 사용)
+      const fn = new Function(
+        'Math', 'JSON', 'gameContext', 'setTimeout', 'setInterval',
+        `\n"use strict";\n${code}\n`
+      );
+
       // 코드 실행
-      const result = safeEval(mockConsole, Math, JSON, gameContext, limitedSetTimeout, setInterval);
+      let result = null;
+      globalThis.console = mockConsole;
+      result = fn(Math, JSON, gameContext, limitedSetTimeout, setInterval);
 
       // 결과 출력
       const output = [
@@ -309,6 +313,7 @@ return result`
         });
       }
     } finally {
+      try { globalThis.console = originalConsole; } catch(_) {}
       setIsRunning(false);
     }
   }, [code, gameContext, onCodeRun]);
