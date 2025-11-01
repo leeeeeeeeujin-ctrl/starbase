@@ -18,8 +18,29 @@ const GameResourceEditor = ({ onClose, gameData, onGameUpdate, resourceManager }
   const [searchQuery, setSearchQuery] = useState('');
   const fileInputRef = useRef(null);
 
-  // 리소스 매니저가 없으면 전역 인스턴스 사용
-  const resourceMgr = resourceManager || window.gameResourceManager;
+  // 리소스 매니저 인스턴스 확보 (prop -> state -> window 순서)
+  const [mgr, setMgr] = useState(null);
+  const resourceMgr = resourceManager || mgr || (typeof window !== 'undefined' ? window.gameResourceManager : null);
+
+  // 클라이언트에서 전역 매니저 없으면 동적 생성
+  useEffect(() => {
+    if (resourceManager) return; // 외부 주입됨
+    if (typeof window === 'undefined') return;
+    if (window.gameResourceManager) { setMgr(window.gameResourceManager); return; }
+    let mounted = true;
+    (async () => {
+      try {
+        const mod = await import('../../../services/GameResourceManager');
+        const GRM = mod.default || mod;
+        const inst = new GRM();
+        window.gameResourceManager = inst;
+        if (mounted) setMgr(inst);
+      } catch (e) {
+        // ignore
+      }
+    })();
+    return () => { mounted = false; };
+  }, [resourceManager]);
 
   useEffect(() => {
     if (resourceMgr) {

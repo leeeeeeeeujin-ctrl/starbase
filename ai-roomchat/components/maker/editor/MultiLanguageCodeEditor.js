@@ -887,22 +887,38 @@ export default function MultiLanguageCodeEditor({
 
     try {
       if (selectedLanguage === 'javascript') {
-        // JavaScript 실행
-        const originalConsoleLog = console.log;
+        // JavaScript 실행 (전역 console 프록시로 재선언 충돌 방지)
         const logs = [];
+        const originalConsole = globalThis.console;
+        const proxyConsole = Object.assign({}, originalConsole, {
+          log: (...args) => {
+            try { logs.push(args.map(a => (typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a))).join(' ')); } catch(_) {}
+            if (originalConsole && typeof originalConsole.log === 'function') {
+              try { originalConsole.log.apply(originalConsole, args); } catch(_) {}
+            }
+          },
+          error: (...args) => {
+            try { logs.push('ERROR: ' + args.map(String).join(' ')); } catch(_) {}
+            if (originalConsole && typeof originalConsole.error === 'function') {
+              try { originalConsole.error.apply(originalConsole, args); } catch(_) {}
+            }
+          },
+          warn: (...args) => {
+            try { logs.push('WARN: ' + args.map(String).join(' ')); } catch(_) {}
+            if (originalConsole && typeof originalConsole.warn === 'function') {
+              try { originalConsole.warn.apply(originalConsole, args); } catch(_) {}
+            }
+          },
+        });
 
-        console.log = (...args) => {
-          logs.push(
-            args
-              .map(arg => (typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)))
-              .join(' ')
-          );
-          originalConsoleLog(...args);
-        };
-
-        const result = new Function('gameContext', code)(gameContext);
-
-        console.log = originalConsoleLog;
+        let result = null;
+        try {
+          globalThis.console = proxyConsole;
+          const fn = new Function('gameContext', `"use strict";\n${code}\n`);
+          result = fn(gameContext);
+        } finally {
+          try { globalThis.console = originalConsole; } catch(_) {}
+        }
 
         const output = [
           '✅ JavaScript 실행 완료!',

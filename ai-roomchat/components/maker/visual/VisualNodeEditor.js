@@ -249,19 +249,23 @@ const VisualNodeEditor = ({
 
   // 드래그 시작 (터치 이벤트 호환성 포함)
   const handleDragStart = useCallback((e, nodeType) => {
-    e.preventDefault();
+    // HTML5 DnD: dataTransfer 설정 (일부 브라우저는 데이터 없으면 drop 미발생)
+    if (e.dataTransfer && typeof e.dataTransfer.setData === 'function') {
+      try {
+        e.dataTransfer.setData('application/x-visual-node', String(nodeType));
+        e.dataTransfer.effectAllowed = 'copy';
+      } catch (_) {}
+    } else {
+      // 터치 드래그 대비: 기본 동작 취소 후 내부 상태로 처리
+      e.preventDefault();
+    }
 
-    // 터치 이벤트와 마우스 이벤트 통합 처리
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-
     const rect = e.currentTarget.getBoundingClientRect();
     setDraggedNode({
       type: nodeType,
-      offset: {
-        x: clientX - rect.left,
-        y: clientY - rect.top,
-      },
+      offset: { x: clientX - rect.left, y: clientY - rect.top },
     });
   }, []);
 
@@ -269,19 +273,25 @@ const VisualNodeEditor = ({
   const handleCanvasDrop = useCallback(
     e => {
       e.preventDefault();
-      if (!draggedNode || !canvasRef.current) return;
+      if (!canvasRef.current) return;
 
-      // 터치 이벤트와 마우스 이벤트 통합 처리
+      // 노드 타입 결정: 내부 상태 우선, 없으면 dataTransfer에서 복구
+      let nodeType = draggedNode && draggedNode.type;
+      if (!nodeType && e.dataTransfer) {
+        try { nodeType = e.dataTransfer.getData('application/x-visual-node') || null; } catch(_) {}
+      }
+      if (!nodeType) return;
+
       const clientX = e.touches ? e.touches[0].clientX : e.clientX;
       const clientY = e.touches ? e.touches[0].clientY : e.clientY;
 
       const rect = canvasRef.current.getBoundingClientRect();
       const position = {
-        x: clientX - rect.left - draggedNode.offset.x,
-        y: clientY - rect.top - draggedNode.offset.y,
+        x: clientX - rect.left - (draggedNode?.offset.x || 0),
+        y: clientY - rect.top - (draggedNode?.offset.y || 0),
       };
 
-      const newNode = createNode(draggedNode.type, position);
+      const newNode = createNode(nodeType, position);
       if (newNode) {
         setNodes(prev => [...prev, newNode]);
       }
