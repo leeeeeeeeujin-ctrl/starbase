@@ -41,3 +41,7 @@ GitHub Actions workflow `.github/workflows/match-tests.yml` runs unit tests and 
 
 - The devcontainer sets `ADMIN_PORTAL_PASSWORD=localdev` and forwards port 3000.
 - If you add new dependencies, run `npm i <pkg>` in `ai-roomchat/starbase/ai-roomchat` and commit the updated package-lock.
+
+## Workflow TODOs
+
+See `workflows/RUNNER_EXECUTION_AND_TODOS.md` for the current implementation plan, todos, and instructions for CI/secret setup.

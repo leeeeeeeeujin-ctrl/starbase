@@ -222,3 +222,8 @@ if (result.verified && result.ready) {
 - [Capacitor Documentation](https://capacitorjs.com/)
 - [Supabase Realtime](https://supabase.com/docs/guides/realtime)
 - [React Native Performance](https://reactnative.dev/docs/performance)
+
+## Sandbox & Safe Execution (link)
+
+For detailed guidance on safely executing prompt templates and protecting host devices, see `SANDBOX_ARCHITECTURE.md` in this directory. It contains a recommended layered defense (client static checks, edge preview, server ephemeral runs), example container invocation, Wasm-first strategy, and a short sprint checklist for implementing sandboxing and audit logging.
+

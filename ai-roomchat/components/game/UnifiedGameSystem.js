@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { useGameIntegration } from '../GameIntegrationContext';
 import { MobileOptimizationManager } from '../../services/MobileOptimizationManager';
 import { GameResourceManager } from '../../services/GameResourceManager';
 import { compatibilityManager } from '../../utils/compatibilityManager';
@@ -12,6 +13,7 @@ import GameEngine from './logic/GameEngine';
 import PhysicsEngine from './logic/PhysicsEngine';
 import EntityManager from './logic/EntityManager';
 import ScoreManager from './logic/ScoreManager';
+import GameRuntime from './GameRuntime';
 
 /**
  * 🎮 통합 게임 제작 및 실행 시스템 (모듈화된 오케스트레이션 버전)
@@ -93,6 +95,7 @@ export default function UnifiedGameSystem({
   const resourceManager = useRef(new GameResourceManager());
   const gameContainerRef = useRef(null);
   const animationFrameRef = useRef(null);
+  const runtimeRef = useRef(null);
 
   // 이벤트 버스 (모듈 간 통신)
   const eventBus = useRef({
@@ -120,6 +123,121 @@ export default function UnifiedGameSystem({
       });
     },
   });
+
+  // Game integration (editor -> game) hook
+  const gameIntegration = useGameIntegration?.();
+
+  // Subscribe to external runs sent from the editor or other tools
+  useEffect(() => {
+    if (!gameIntegration || typeof gameIntegration.onRun !== 'function') return;
+
+    const unsubscribe = gameIntegration.onRun(run => {
+      try {
+        setGameData(prev => ({
+          ...prev,
+          gameHistory: [
+            ...prev.gameHistory,
+            {
+              turn: (prev.currentTurn && Number(prev.currentTurn)) || 0,
+              nodeId: 'external-run',
+              nodeType: 'external',
+              prompt: run.rendered_prompt || run.prompt || run.text || '',
+              response: run.text || (run.raw && JSON.stringify(run.raw)) || '',
+              timestamp: new Date().toISOString(),
+            },
+          ],
+        }));
+
+        setGameExecutionState(prev => ({ ...prev, lastResponse: run.text || '' }));
+      } catch (err) {
+        console.error('[UnifiedGameSystem] failed to handle external run:', err);
+      }
+    });
+
+    return () => {
+      try {
+        if (typeof unsubscribe === 'function') unsubscribe();
+      } catch (e) {}
+    };
+  }, [gameIntegration]);
+
+  // Command handler: accept structured commands from editor
+  useEffect(() => {
+    if (!gameIntegration || typeof gameIntegration.onCommand !== 'function') return;
+
+    const unsubscribe = gameIntegration.onCommand(({ command, payload }) => {
+      try {
+        switch (String(command)) {
+          case 'addNode': {
+            // payload: { type, template }
+            const { type = 'ai', template = '' } = payload || {};
+            const id = addNode(type, template);
+            console.log('[UnifiedGameSystem] addNode from editor ->', id);
+            break;
+          }
+          case 'updateNode': {
+            const { nodeId, updates } = payload || {};
+            if (nodeId) updateNode(nodeId, updates || {});
+            break;
+          }
+          case 'executeNode': {
+            const { nodeId } = payload || {};
+            if (nodeId) executeNode(nodeId);
+            break;
+          }
+          case 'setVariable': {
+                {
+                  const { key, value } = payload || {};
+                  if (typeof key === 'string') {
+                    // update state and immediately broadcast the authoritative snapshot
+                    setGameData(prev => {
+                      const newVars = { ...(prev.variables || {}), [key]: value };
+                      // broadcast the new variables snapshot to any listeners
+                      try {
+                        gameIntegration.emitVariablesChanged && gameIntegration.emitVariablesChanged(newVars);
+                      } catch (e) {}
+                      return { ...prev, variables: newVars };
+                    });
+                  }
+                }
+            break;
+          }
+          case 'setVariables': {
+                {
+                  const { variables } = payload || {};
+                  if (variables && typeof variables === 'object') {
+                    setGameData(prev => {
+                      const newVars = { ...(prev.variables || {}), ...variables };
+                      try {
+                        gameIntegration.emitVariablesChanged && gameIntegration.emitVariablesChanged(newVars);
+                      } catch (e) {}
+                      return { ...prev, variables: newVars };
+                    });
+                  }
+                }
+            break;
+          }
+          case 'getVariables': {
+                try {
+                  // emit the current authoritative snapshot
+                  gameIntegration.emitVariablesChanged && gameIntegration.emitVariablesChanged({ ...(gameData.variables || {}) });
+                } catch (e) {}
+            break;
+          }
+          default:
+            console.warn('[UnifiedGameSystem] unknown command from editor:', command);
+        }
+      } catch (err) {
+        console.error('[UnifiedGameSystem] failed to process command:', err);
+      }
+    });
+
+    return () => {
+      try {
+        if (typeof unsubscribe === 'function') unsubscribe();
+      } catch (e) {}
+    };
+  }, [gameIntegration, addNode, updateNode, executeNode]);
 
   // 모듈 초기화 함수
   const initializeModules = useCallback(async () => {
@@ -161,6 +279,18 @@ export default function UnifiedGameSystem({
       // 렌더러는 나중에 게임 모드에서 초기화
 
       console.log('[UnifiedGameSystem] 모듈 초기화 완료');
+      // initialize runtime (authoritative instance)
+      runtimeRef.current = new GameRuntime({ variables: gameData.variables, nodes: gameData.nodes });
+      // forward runtime events to eventBus
+      runtimeRef.current.on('run', r => eventBus.current.emit('external:run', r));
+      runtimeRef.current.on('score', s => eventBus.current.emit('score', s));
+      runtimeRef.current.on('variablesChanged', v => {
+        eventBus.current.emit('variablesChanged', v);
+        // also notify integration listeners (editor, tools)
+        try {
+          gameIntegration && gameIntegration.emitVariablesChanged && gameIntegration.emitVariablesChanged(v);
+        } catch (e) {}
+      });
       return true;
     } catch (error) {
       console.error('[UnifiedGameSystem] 모듈 초기화 실패:', error);
@@ -307,6 +437,15 @@ export default function UnifiedGameSystem({
       mounted = false;
     };
   }, [initialCharacter, gameTemplateId, isCompatibilityReady, compatibilityInfo]);
+
+  // keep runtime in sync with gameData variables/nodes
+  useEffect(() => {
+    if (!runtimeRef.current) return;
+    try {
+      runtimeRef.current.setVariables(gameData.variables || {});
+      runtimeRef.current.updateNodes(gameData.nodes || []);
+    } catch (e) {}
+  }, [gameData.variables, gameData.nodes]);
 
   // 캐릭터 변수 등록 (테스트에서 검증된 로직 적용)
   const registerCharacterVariables = useCallback(character => {
@@ -604,68 +743,31 @@ export default function UnifiedGameSystem({
   // AI 응답 생성 (에러 핸들링 강화)
   const generateAIResponse = useCallback(
     async (prompt, gameState) => {
-      const maxRetries = 3;
-      let attempt = 0;
-
-      while (attempt < maxRetries) {
-        try {
-          // IE11 호환성: AbortController가 없을 수 있음
-          let controller = null;
-          let timeoutId = null;
-
-          if (
-            typeof AbortController !== 'undefined' &&
-            compatibilityInfo?.features.abortController
-          ) {
-            controller = new AbortController();
-            timeoutId = setTimeout(() => controller.abort(), 30000); // 30초 타임아웃
-          } else {
-            // IE11에서는 기본 타임아웃만 사용
-            timeoutId = setTimeout(() => {
-              console.warn('[UnifiedGameSystem] 요청 타임아웃 (IE11 호환 모드)');
-            }, 30000);
-          }
-
-          // 호환성 있는 fetch 사용
-          const fetchFn = fetchFunction.current || fetch;
-          const response = await fetchFn('/api/ai-battle-judge', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              prompt: prompt,
-              gameState: gameState,
-              character: gameData.characterData,
-            }),
-            ...(controller && { signal: controller.signal }), // IE11에서는 AbortController 없을 수 있음
-          });
-
-          if (timeoutId) {
-            clearTimeout(timeoutId);
-          }
-
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-          }
-
-          const result = await response.json();
-          return result.narrative || result.response || '응답을 생성할 수 없습니다.';
-        } catch (error) {
-          attempt++;
-          console.warn(`AI 응답 생성 시도 ${attempt}/${maxRetries} 실패:`, error.message);
-
-          if (attempt >= maxRetries) {
-            // 폴백 응답 생성
-            const fallbackResponses = [
-              `${gameData.characterData?.name || '플레이어'}이(가) 신중하게 상황을 살펴봅니다.`,
-              '예상치 못한 상황이 발생했지만, 모험은 계속됩니다.',
-              '잠시 시간이 흘러가며 새로운 기회가 나타납니다.',
-            ];
-            return fallbackResponses[Math.floor(Math.random() * fallbackResponses.length)];
-          }
-
-          // 재시도 전 잠시 대기
-          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+      // Prefer local runtime if available (client-first). Use runtimeRef to simulate AI responses locally.
+      try {
+        if (runtimeRef.current) {
+          const fakeNode = { id: `runtime_${Date.now()}`, template: prompt, type: 'ai' };
+          const res = runtimeRef.current.runNode(fakeNode);
+          return res.response || '';
         }
+      } catch (e) {
+        // fallthrough to server call
+      }
+
+      // fallback to server-side AI endpoint when runtime isn't available
+      try {
+        const fetchFn = fetchFunction.current || fetch;
+        const response = await fetchFn('/api/ai-battle-judge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: prompt, gameState: gameState, character: gameData.characterData }),
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const result = await response.json();
+        return result.narrative || result.response || '';
+      } catch (err) {
+        // simple fallback
+        return `${gameData.characterData?.name || '플레이어'}이(가) 침묵합니다.`;
       }
     },
     [gameData.characterData]
