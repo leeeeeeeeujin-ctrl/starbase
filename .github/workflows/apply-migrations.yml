@@ -4,6 +4,12 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'assistant-sql/**'
+      - 'ai-roomchat/sql/**'
+      - 'ai-roomchat/scripts/apply-migrations.js'
+      - 'ai-roomchat/scripts/run-migrations-ipv4.js'
+      - '.github/workflows/apply-migrations.yml'
   workflow_dispatch: {}
 
 jobs:

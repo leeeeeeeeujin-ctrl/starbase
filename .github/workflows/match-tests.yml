@@ -4,8 +4,14 @@ name: Matchmaking Tests
 on:
   push:
     branches: [main]
+    paths:
+      - 'ai-roomchat/**'
+      - '.github/workflows/match-tests.yml'
   pull_request:
     branches: [main]
+    paths:
+      - 'ai-roomchat/**'
+      - '.github/workflows/match-tests.yml'
   workflow_dispatch:
 
 jobs:

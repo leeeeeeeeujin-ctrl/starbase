@@ -2,15 +2,14 @@
 name: Deploy Supabase Edge Functions
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
     paths:
       - 'supabase/functions/**'
       - 'scripts/deploy-edge-functions.js'
-      - 'package.json'
       - '.github/workflows/edge-functions-deploy.yml'
-  workflow_dispatch:
 
 env:
   # Pin the Supabase CLI version used by the workflow. Change this to a specific release to avoid

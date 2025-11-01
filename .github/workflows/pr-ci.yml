@@ -3,9 +3,9 @@ name: PR CI
 
 on:
   pull_request:
-  push:
-    branches:
-      - main
+    paths:
+      - 'ai-roomchat/**'
+      - '.github/workflows/pr-ci.yml'
   workflow_dispatch:
 
 jobs:

@@ -4,6 +4,10 @@ on:
   workflow_dispatch:
   push:
     branches: [ main ]
+    paths:
+      - 'ai-roomchat/scripts/wasm_*'
+      - 'ai-roomchat/wasm/**'
+      - '.github/workflows/wasm-build.yml'
 
 jobs:
   wasm:

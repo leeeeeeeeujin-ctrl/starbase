@@ -4,6 +4,10 @@ on:
   workflow_dispatch:
   push:
     branches: [ main ]
+    paths:
+      - 'ai-roomchat/proxy/**'
+      - 'ai-roomchat/tests/proxy/**'
+      - '.github/workflows/proxy-e2e.yml'
 
 jobs:
   e2e:

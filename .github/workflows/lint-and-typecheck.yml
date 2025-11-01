@@ -3,9 +3,15 @@ name: Lint and Type Check
 
 on:
   pull_request:
+    paths:
+      - 'ai-roomchat/**'
+      - '.github/workflows/lint-and-typecheck.yml'
   push:
     branches:
       - main
+    paths:
+      - 'ai-roomchat/**'
+      - '.github/workflows/lint-and-typecheck.yml'
   workflow_dispatch:
 
 jobs:
