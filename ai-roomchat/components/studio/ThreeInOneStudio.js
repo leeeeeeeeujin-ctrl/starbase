@@ -1,12 +1,9 @@
-
-import React from 'react';
+import dynamic from 'next/dynamic';
+import { useMemo, useRef, useState } from 'react';
 import { useTemplate } from '../../contexts/TemplateStore';
-import { useMemo, useState } from 'react';
 import { emit } from '../../contexts/StudioBus';
 
-import dynamic from 'next/dynamic';
-import { useRef } from 'react';
-// Load editors client-side only
+// Client-only editors and panels
 const CodeEditor = dynamic(() => import('./CodeEditor'), { ssr: false });
 const NodesEditor = dynamic(() => import('./NodesEditor'), { ssr: false });
 const UIEditor = dynamic(() => import('./UIEditor'), { ssr: false });
@@ -19,6 +16,7 @@ const QuickActions = dynamic(() => import('./QuickActions'), { ssr: false });
 export default function ThreeInOneStudio() {
   const { templateText, setTemplateText, mode, setMode } = useTemplate();
   const fileInputRef = useRef(null);
+
   const info = useMemo(() => {
     try {
       const obj = JSON.parse(templateText || '{}');
@@ -27,35 +25,35 @@ export default function ThreeInOneStudio() {
       const nodes = Array.isArray(obj.nodes) ? obj.nodes : [];
       const edges = Array.isArray(obj.edges) ? obj.edges : [];
       const ids = new Set();
-      nodes.forEach((n,i) => {
+      nodes.forEach((n, i) => {
         if (n?.id && ids.has(n.id)) errors.push(`nodes[${i}]: id 중복(${n.id})`);
         if (n?.id) ids.add(n.id);
       });
-      nodes.forEach((n,i) => {
-        if (!n || !n.id) { errors.push(`nodes[${i}]: id 누락`); issues.push({ type:'node', index:i, id:n?.id, message:'id 누락' }); }
+      nodes.forEach((n, i) => {
+        if (!n || !n.id) { errors.push(`nodes[${i}]: id 누락`); issues.push({ type: 'node', index: i, id: n?.id, message: 'id 누락' }); }
         const p = n?.position;
-        if (!p || typeof p.x !== 'number' || typeof p.y !== 'number') { errors.push(`nodes[${i}]: position.x/y 누락`); issues.push({ type:'node', index:i, id:n?.id, message:'position.x/y 누락' }); }
+        if (!p || typeof p.x !== 'number' || typeof p.y !== 'number') { errors.push(`nodes[${i}]: position.x/y 누락`); issues.push({ type: 'node', index: i, id: n?.id, message: 'position.x/y 누락' }); }
       });
-      edges.forEach((e,i) => {
-        if (!e || !e.id) { errors.push(`edges[${i}]: id 누락`); issues.push({ type:'edge', index:i, id:e?.id, message:'id 누락' }); }
-        if (!ids.has(e?.source)) { errors.push(`edges[${i}]: source 미존재`); issues.push({ type:'edge', index:i, id:e?.id, message:'source 미존재' }); }
-        if (!ids.has(e?.target)) { errors.push(`edges[${i}]: target 미존재`); issues.push({ type:'edge', index:i, id:e?.id, message:'target 미존재' }); }
+      edges.forEach((e, i) => {
+        if (!e || !e.id) { errors.push(`edges[${i}]: id 누락`); issues.push({ type: 'edge', index: i, id: e?.id, message: 'id 누락' }); }
+        if (!ids.has(e?.source)) { errors.push(`edges[${i}]: source 미존재`); issues.push({ type: 'edge', index: i, id: e?.id, message: 'source 미존재' }); }
+        if (!ids.has(e?.target)) { errors.push(`edges[${i}]: target 미존재`); issues.push({ type: 'edge', index: i, id: e?.id, message: 'target 미존재' }); }
       });
-      // resources sanity
       const res = obj.resources || {};
-      ['characters','skills','items','music','backgrounds','custom'].forEach(key => {
-        if (res[key] && !Array.isArray(res[key])) { errors.push(`resources.${key} 은 배열이어야 함`); issues.push({ type:'resource', id:key, message:'배열 아님' }); }
+      ['characters', 'skills', 'items', 'music', 'backgrounds', 'custom'].forEach(key => {
+        if (res[key] && !Array.isArray(res[key])) { errors.push(`resources.${key} 은 배열이어야 함`); issues.push({ type: 'resource', id: key, message: '배열 아님' }); }
       });
       return { ok: errors.length === 0, nodes: nodes.length, edges: edges.length, resources: obj.resources ? Object.keys(obj.resources).length : 0, errors, issues };
     } catch (e) {
       return { ok: false, error: String(e.message || e), errors: [], issues: [] };
     }
   }, [templateText]);
+
   const [showIssues, setShowIssues] = useState(false);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ display: 'flex', gap: 8, padding: 8, borderBottom: '1px solid #eee', alignItems: 'center', flexWrap:'wrap' }}>
+      <div style={{ display: 'flex', gap: 8, padding: 8, borderBottom: '1px solid #eee', alignItems: 'center', flexWrap: 'wrap' }}>
         <button onClick={() => setMode('code')} disabled={mode === 'code'}>Code</button>
         <button onClick={() => setMode('nodes')} disabled={mode === 'nodes'}>Nodes</button>
         <button onClick={() => setMode('ui')} disabled={mode === 'ui'}>UI</button>
@@ -81,7 +79,8 @@ export default function ThreeInOneStudio() {
           e.target.value = '';
         }} />
       </div>
-      <div style={{ padding: '4px 8px', borderBottom: '1px solid #f2f2f2', fontSize: 12, color: info.ok ? '#2d7' : '#d33', display:'flex', gap:12, alignItems:'center' }}>
+
+      <div style={{ padding: '4px 8px', borderBottom: '1px solid #f2f2f2', fontSize: 12, color: info.ok ? '#2d7' : '#d33', display: 'flex', gap: 12, alignItems: 'center' }}>
         <div>
           {info.ok ? `Valid JSON • nodes: ${info.nodes}, edges: ${info.edges}, resource groups: ${info.resources}` : `Invalid JSON: ${info.error}`}
           {!info.ok && info.errors?.length === 0 ? null : (
@@ -89,15 +88,16 @@ export default function ThreeInOneStudio() {
           )}
         </div>
         {info.errors?.length > 0 && (
-          <button style={{ marginLeft: 'auto' }} onClick={() => setShowIssues(v=>!v)}>{showIssues ? '숨기기' : '이슈 보기'}</button>
+          <button style={{ marginLeft: 'auto' }} onClick={() => setShowIssues(v => !v)}>{showIssues ? '숨기기' : '이슈 보기'}</button>
         )}
       </div>
+
       {showIssues && info.errors?.length > 0 && (
-        <div style={{ padding: 8, borderBottom: '1px solid #eee', background:'#fff7ed', color:'#9a3412', fontSize: 13 }}>
-          <div style={{ fontWeight:600, marginBottom:4 }}>검증 이슈</div>
-          <div style={{ display:'grid', gap:6 }}>
+        <div style={{ padding: 8, borderBottom: '1px solid #eee', background: '#fff7ed', color: '#9a3412', fontSize: 13 }}>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>검증 이슈</div>
+          <div style={{ display: 'grid', gap: 6 }}>
             {info.issues.map((it, i) => (
-              <div key={i} style={{ display:'flex', gap:8, alignItems:'center' }}>
+              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <div>{it.type}[{it.index}]: {it.message}</div>
                 <button onClick={() => { setMode('nodes'); emit('studio:focus', it); }}>이동</button>
               </div>
@@ -105,6 +105,7 @@ export default function ThreeInOneStudio() {
           </div>
         </div>
       )}
+
       <div style={{ flex: 1, minHeight: 0 }}>
         {mode === 'code' && (
           <CodeEditor value={templateText} onChange={setTemplateText} />
@@ -116,38 +117,3 @@ export default function ThreeInOneStudio() {
   );
 }
 
-// Placeholder components for now
-const CodeEditor = () => <div>Code Editor Placeholder</div>;
-const NodeEditor = () => <div>Node Editor Placeholder</div>;
-const UiBuilder = () => <div>UI Builder Placeholder</div>;
-
-const ThreeInOneStudio = () => {
-  const { activeEditor, setActiveEditor } = useTemplate();
-
-  const renderEditor = () => {
-    switch (activeEditor) {
-      case 'node':
-        return <NodeEditor />;
-      case 'ui':
-        return <UiBuilder />;
-      case 'code':
-      default:
-        return <CodeEditor />;
-    }
-  };
-
-  return (
-    <div>
-      <header>
-        <button onClick={() => setActiveEditor('code')}>Code</button>
-        <button onClick={() => setActiveEditor('node')}>Nodes</button>
-        <button onClick={() => setActiveEditor('ui')}>UI</button>
-      </header>
-      <main>
-        {renderEditor()}
-      </main>
-    </div>
-  );
-};
-
-export default ThreeInOneStudio;

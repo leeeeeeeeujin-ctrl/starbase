@@ -1,58 +1,22 @@
 {
-  "id": "basic-game",
   "name": "Basic Game Template",
-  "version": "0.1.0",
-  "variables": {
-    "playerName": "Ranger",
-    "difficulty": "normal"
-  },
+  "variables": { "difficulty": "normal" },
   "nodes": [
-    {
-      "id": "start",
-      "type": "prompt",
-      "name": "Intro",
-      "prompt": "You are {{playerName}} entering the dungeon on {{difficulty}} difficulty.",
-      "outputs": ["intro"]
-    },
-    {
-      "id": "decision-1",
-      "type": "decision",
-      "name": "Choose Path",
-      "params": { "paths": ["left", "right"] },
-      "outputs": ["left", "right"]
-    },
-    {
-      "id": "left-room",
-      "type": "prompt",
-      "name": "Left Room",
-      "prompt": "You went left and found a puzzle box.",
-      "outputs": ["leftOutcome"]
-    },
-    {
-      "id": "right-room",
-      "type": "prompt",
-      "name": "Right Room",
-      "prompt": "You went right and met a friendly slime.",
-      "outputs": ["rightOutcome"]
-    },
-    {
-      "id": "the-end",
-      "type": "output",
-      "name": "End",
-      "outputs": []
-    }
-    
+    { "id": "start", "label": "Start", "position": { "x": 60, "y": 60 }, "data": {} },
+    { "id": "battle", "label": "Battle", "position": { "x": 260, "y": 80 }, "data": {} },
+    { "id": "reward", "label": "Reward", "position": { "x": 460, "y": 120 }, "data": {} }
   ],
   "edges": [
-    { "from": "start", "to": "decision-1" },
-    { "from": "decision-1", "to": "left-room", "mapping": { "branch": "left" } },
-    { "from": "decision-1", "to": "right-room", "mapping": { "branch": "right" } },
-    { "from": "left-room", "to": "the-end" },
-    { "from": "right-room", "to": "the-end" }
+    { "id": "e1", "source": "start", "target": "battle", "label": "go" },
+    { "id": "e2", "source": "battle", "target": "reward", "label": "win" }
   ],
-  "testCases": [
-    { "name": "Left path", "variables": { "playerName": "Aria", "difficulty": "hard", "branch": "left" } },
-    { "name": "Right path", "variables": { "playerName": "Bren", "difficulty": "easy", "branch": "right" } }
-  ]
+  "resources": {
+    "characters": [{ "id": "hero", "name": "Hero" }],
+    "skills": [{ "id": "slash", "name": "Slash" }],
+    "items": [{ "id": "potion", "name": "Potion" }],
+    "music": [],
+    "backgrounds": [],
+    "custom": []
+  }
 }
 
