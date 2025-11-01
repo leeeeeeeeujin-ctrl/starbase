@@ -1,4 +1,4 @@
-import { createToken } from '../../../../lib/security/token';
+const { createToken } = require('../../../lib/security/token');
 
 export default function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end('Method Not Allowed');
