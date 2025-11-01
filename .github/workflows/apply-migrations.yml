@@ -1,0 +1,51 @@
+name: Apply DB Migrations
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: {}
+
+jobs:
+  apply-migrations:
+    name: Apply migrations (ai-roomchat)
+    runs-on: ubuntu-latest
+    env:
+      # Expect users to set these secrets in repository settings
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      MASTER_KEY_HEX: ${{ secrets.MASTER_KEY_HEX }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        working-directory: ai-roomchat
+        run: |
+          npm ci
+
+      - name: Run DB migrations
+        working-directory: ai-roomchat
+        env:
+          # Ensure the migration script can pick up the DATABASE_URL or Supabase keys
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: |
+          # This repo provides a migration script at ai-roomchat/scripts/apply-migrations.js
+          # which runs SQL files in ai-roomchat/sql/. The script expects DATABASE_URL or
+          # SUPABASE_SERVICE_ROLE_KEY/SUPABASE_URL to be set as secrets in the repo.
+          if [ -f ./scripts/apply-migrations.js ]; then
+            node ./scripts/apply-migrations.js
+          else
+            echo "No migration script found in ai-roomchat/scripts/apply-migrations.js" && exit 1
+          fi
+
+      - name: Report
+        run: echo "Migrations job finished. Check logs for details."

@@ -228,36 +228,50 @@ jobs:
 
           echo "Uploading $FILE to Supabase bucket: $SUPABASE_BUCKET"
           # Use the storage API: PUT /storage/v1/object/{bucket}/{object}
-          RESP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X PUT "${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/${FILE}" \
+          # Capture response body to file and HTTP status code in RESP_CODE
+          RESP_CODE=$(curl -s -o supabase_upload_response.json -w "%{http_code}" -X PUT "${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/${FILE}" \
             -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
             -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
             -H "Content-Type: application/gzip" \
             --data-binary @"$FILE") || true
 
+          echo "Supabase upload HTTP: $RESP_CODE"
           if [ "$RESP_CODE" = "200" ] || [ "$RESP_CODE" = "201" ]; then
             echo "Supabase upload OK (HTTP $RESP_CODE)"
           else
-            echo "Supabase upload returned HTTP $RESP_CODE; see runner logs for details";
-            echo "Attempting debug upload (non-binary) to show response body..."
-            curl -s -X PUT "${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/${FILE}" \
-              -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
-              -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
-              -H "Content-Type: application/gzip" \
-              --data-binary @"$FILE" || true
+            echo "Supabase upload returned HTTP $RESP_CODE; response body saved to supabase_upload_response.json"
+            # write a short debug summary to stdout for easier log reading
+            echo "--- supabase_upload_response.json ---"
+            cat supabase_upload_response.json || true
+            echo "--- end ---"
           fi
 
-          # upload checksum if available
+          # upload checksum if available and capture response
           if [ -n "$SUMFILE" ] && [ -f "$SUMFILE" ]; then
             echo "Uploading checksum $SUMFILE to Supabase"
-            RESP_CODE2=$(curl -s -o /dev/null -w "%{http_code}" -X PUT "${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/${SUMFILE}" \
+            RESP_CODE2=$(curl -s -o supabase_checksum_response.json -w "%{http_code}" -X PUT "${SUPABASE_URL}/storage/v1/object/${SUPABASE_BUCKET}/${SUMFILE}" \
               -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
               -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
               -H "Content-Type: text/plain" \
               --data-binary @"$SUMFILE") || true
             echo "Checksum upload HTTP: $RESP_CODE2"
+            if [ "$RESP_CODE2" != "200" ] && [ "$RESP_CODE2" != "201" ]; then
+              echo "Checksum upload response body (supabase_checksum_response.json):"
+              cat supabase_checksum_response.json || true
+            fi
           fi
 
           echo "Supabase object path: ${SUPABASE_URL}/storage/v1/object/public/${SUPABASE_BUCKET}/${FILE} (if bucket is public)"
+
+      - name: Upload Supabase debug artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: supabase-upload-debug
+          path: |
+            supabase_upload_response.json
+            supabase_checksum_response.json
+            upload_response_body.txt
 
   apply:
     name: Apply migrations (approval if environment protected)

@@ -13,14 +13,55 @@ export default function EditorMonaco({ initial = '', storageKey = 'editor:templa
   }, [storageKey]);
 
   function save() {
-    localStorage.setItem(storageKey, code);
-    alert('Saved to localStorage');
+    (async () => {
+      try {
+        const name = window.prompt('Template name (short):', 'my-template');
+        if (!name) return;
+        const resp = await fetch('/editor/templates', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ name, code }),
+        });
+        if (!resp.ok) throw new Error('save failed: ' + resp.status);
+        const j = await resp.json();
+        localStorage.setItem(storageKey, code);
+        alert('Saved to server as ' + (j.template && j.template.id));
+      } catch (e) {
+        // fallback to localStorage
+        localStorage.setItem(storageKey, code);
+        alert('Saved locally (server save failed): ' + e.message);
+      }
+    })();
   }
 
   function load() {
-    const saved = localStorage.getItem(storageKey) || '';
-    setCode(saved);
-    alert('Loaded from localStorage');
+    (async () => {
+      try {
+        const resp = await fetch('/editor/templates');
+        if (!resp.ok) throw new Error('list failed: ' + resp.status);
+        const j = await resp.json();
+        const list = (j.templates || []).map(t => `${t.id}: ${t.name}`);
+        if (list.length === 0) {
+          const saved = localStorage.getItem(storageKey) || '';
+          setCode(saved);
+          alert('No server templates found; loaded local copy');
+          return;
+        }
+        const pick = window.prompt('Select template by index:\n' + list.map((l, i) => `${i}) ${l}`).join('\n'));
+        const idx = parseInt(pick, 10);
+        if (Number.isNaN(idx) || idx < 0 || idx >= (j.templates || []).length) { alert('invalid selection'); return; }
+        const id = j.templates[idx].id;
+        const got = await fetch('/editor/templates/' + id);
+        if (!got.ok) throw new Error('fetch template failed');
+        const tj = await got.json();
+        setCode(tj.template.code || '');
+        alert('Loaded template ' + (tj.template && tj.template.name));
+      } catch (e) {
+        const saved = localStorage.getItem(storageKey) || '';
+        setCode(saved);
+        alert('Load failed; loaded local copy. ' + e.message);
+      }
+    })();
   }
 
   async function run() {

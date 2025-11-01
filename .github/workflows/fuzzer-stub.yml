@@ -1,0 +1,32 @@
+name: Fuzzer (stub)
+
+on:
+  pull_request:
+    paths:
+      - 'ai-roomchat/**'
+      - 'scripts/**'
+      - '.github/workflows/**'
+
+jobs:
+  fuzz-fast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      - name: Install deps
+        run: |
+          cd ai-roomchat || exit 1
+          npm ci
+      - name: Run fast fuzz (stub)
+        run: |
+          cd ai-roomchat || exit 1
+          node scripts/fuzz_runner.js --mode=fast || true
+      - name: Upload fuzz artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-artifacts
+          path: ai-roomchat/reports/fuzz/**

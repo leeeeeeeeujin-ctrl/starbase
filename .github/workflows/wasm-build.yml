@@ -25,3 +25,8 @@ jobs:
       - name: Build WASM (PoC)
         run: npm run wasm:build
         working-directory: ai-roomchat
+      - name: Upload WASM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-artifacts
+          path: ai-roomchat/wasm/*.wasm

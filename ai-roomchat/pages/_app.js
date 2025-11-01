@@ -8,6 +8,7 @@ import DebugOverlay from '@/components/DebugOverlay';
 import ClientErrorReporter from '@/components/ClientErrorReporter';
 
 import '../styles/globals.css';
+import { GameIntegrationProvider } from '@/components/GameIntegrationContext';
 
 function OverlayAwareShell({ children }) {
   const router = useRouter();
@@ -36,10 +37,12 @@ function OverlayAwareShell({ children }) {
 
 export default function App({ Component, pageProps }) {
   return (
-    <OverlayAwareShell>
-      <ClientErrorReporter />
-      <DebugOverlay />
-      <Component {...pageProps} />
-    </OverlayAwareShell>
+    <GameIntegrationProvider>
+      <OverlayAwareShell>
+        <ClientErrorReporter />
+        <DebugOverlay />
+        <Component {...pageProps} />
+      </OverlayAwareShell>
+    </GameIntegrationProvider>
   );
 }

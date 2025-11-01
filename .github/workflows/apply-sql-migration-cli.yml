@@ -27,106 +27,159 @@ jobs:
           echo "-- ai-roomchat/sql listing --"
           ls -la ai-roomchat/sql || true
           echo "-- git ls-files matching migration basename --"
-          git ls-files | grep '002_add_devices_and_prompt_runs.sql' || true
+          name: "Apply SQL migration (supabase-cli)"
 
-      - name: Install Supabase CLI (official binary)
-        run: |
-          set -e
-          # Download prebuilt supabase CLI for ubuntu (linux amd64) and install to /usr/local/bin
-          # Using the GitHub releases 'latest' download avoids the unsupported global npm install path.
-          echo "Downloading supabase CLI binary..."
-          curl -L -o /tmp/supabase.tar.gz https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.tar.gz
-          tar -xzf /tmp/supabase.tar.gz -C /tmp
-          sudo mv /tmp/supabase /usr/local/bin/supabase
-          sudo chmod +x /usr/local/bin/supabase
+          on:
+            workflow_dispatch:
+              inputs:
+                sql_file:
+                  description: 'Path to SQL file in the repository (relative)'
+                  required: true
+                  default: 'ai-roomchat/sql/002_add_devices_and_prompt_runs.sql'
 
-      - name: Show supabase version
-        run: supabase --version
+          jobs:
+            apply-sql-cli:
+              runs-on: ubuntu-latest
+              steps:
+                - name: Checkout
+                  uses: actions/checkout@v4
+                  with:
+                    # Ensure the full repository is available (git ls-files, exact paths)
+                    fetch-depth: 0
 
-      - name: Run SQL via Supabase CLI
-        env:
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          SUPABASE_PROJECT_URL: ${{ secrets.SUPABASE_PROJECT_URL }}
-        run: |
-          set -e
-          if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ] || [ -z "$SUPABASE_PROJECT_URL" ]; then
-            echo "Missing SUPABASE_SERVICE_ROLE_KEY or SUPABASE_PROJECT_URL secret" >&2
-            exit 1
-          fi
+                name: "Apply SQL migration (supabase-cli)"
 
-          # Derive project ref from project URL (strip https:// and .supabase.co)
-          PROJECT_REF=$(echo "$SUPABASE_PROJECT_URL" | sed -E 's#https?://([^.]*)\..*#\1#')
-          echo "Project ref: $PROJECT_REF"
+                on:
+                  workflow_dispatch:
+                    inputs:
+                      sql_file:
+                        description: 'Path to SQL file in the repository (relative)'
+                        required: true
+                        default: 'ai-roomchat/sql/002_add_devices_and_prompt_runs.sql'
 
-          # Set access token for supabase CLI
-          export SUPABASE_ACCESS_TOKEN="$SUPABASE_SERVICE_ROLE_KEY"
+                jobs:
+                  apply-sql-cli:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - name: Checkout
+                        uses: actions/checkout@v4
+                        with:
+                          # Ensure the full repository is available (git ls-files, exact paths)
+                          fetch-depth: 0
 
-          # Workflow input available at github.event.inputs.sql_file
-          SQL_FILE="${{ github.event.inputs.sql_file }}"
-          if [ -z "$SQL_FILE" ]; then
-            echo "ERROR: sql_file input is empty" >&2
-            exit 1
-          fi
+                      - name: "Debug: list workspace and SQL path"
+                        run: |
+                          echo "PWD: $(pwd)"
+                          echo "-- root listing --"
+                          ls -la || true
+                          echo "-- ai-roomchat/sql listing --"
+                          ls -la ai-roomchat/sql || true
+                          echo "-- git ls-files matching migration basename --"
+                          git ls-files | grep '002_add_devices_and_prompt_runs.sql' || true
 
-          # Resolve SQL file robustly. Accept explicit path, or try to locate by basename in the repo
-          CANDIDATE="$SQL_FILE"
-          if [ ! -f "$CANDIDATE" ]; then
-            BASENAME=$(basename "$SQL_FILE")
-            echo "SQL file not found at $SQL_FILE; searching repository for $BASENAME"
-            # Prefer exact git-tracked path if available
-            FOUND=$(git ls-files | grep -F "${BASENAME}" | head -n1 || true)
-            if [ -n "$FOUND" ]; then
-              echo "Found candidate via git ls-files: $FOUND"
-              CANDIDATE="$FOUND"
-            else
-              # Fallback common locations
-              if [ -f "ai-roomchat/$SQL_FILE" ]; then
-                CANDIDATE="ai-roomchat/$SQL_FILE"
-              elif [ -f "docs/sql/$SQL_FILE" ]; then
-                CANDIDATE="docs/sql/$SQL_FILE"
-              fi
-            fi
-          fi
+                      - name: "Install Supabase CLI (official binary)"
+                        run: |
+                          set -e
+                          # Download prebuilt supabase CLI for ubuntu (linux amd64) and install to /usr/local/bin
+                          # Using the GitHub releases 'latest' download avoids the unsupported global npm install path.
+                          echo "Downloading supabase CLI binary..."
+                          curl -L -o /tmp/supabase.tar.gz https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.tar.gz
+                          tar -xzf /tmp/supabase.tar.gz -C /tmp
+                          sudo mv /tmp/supabase /usr/local/bin/supabase
+                          sudo chmod +x /usr/local/bin/supabase
 
-          if [ ! -f "$CANDIDATE" ]; then
-            echo "ERROR: SQL file not found at '$SQL_FILE' or common locations (ai-roomchat/$SQL_FILE, docs/sql/$SQL_FILE)" >&2
-            ls -la || true
-            exit 1
-          fi
+                      - name: Show supabase version
+                        run: supabase --version
 
-          echo "Running SQL file: $CANDIDATE"
+                      - name: "Run SQL via Supabase CLI"
+                        env:
+                          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+                          SUPABASE_PROJECT_URL: ${{ secrets.SUPABASE_PROJECT_URL }}
+                        run: |
+                          set -e
+                          if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ] || [ -z "$SUPABASE_PROJECT_URL" ]; then
+                            echo "Missing SUPABASE_SERVICE_ROLE_KEY or SUPABASE_PROJECT_URL secret" >&2
+                            exit 1
+                          fi
 
-          # Try multiple invocation forms for supabase CLI to handle different CLI versions.
-          # We already exported SUPABASE_ACCESS_TOKEN above.
-          set +e
-          echo "Attempt 1: supabase db query --project-ref <ref> --service-role-key <key> (with flags)"
-          cat "$CANDIDATE" | supabase db query --project-ref "$PROJECT_REF" --service-role-key "$SUPABASE_SERVICE_ROLE_KEY" --yes
-          RC=$?
-          if [ $RC -eq 0 ]; then
-            echo "supabase db query succeeded (with flags)"
-            exit 0
-          fi
+                          # Derive project ref from project URL (strip https:// and .supabase.co)
+                          PROJECT_REF=$(echo "$SUPABASE_PROJECT_URL" | sed -E 's#https?://([^.]*)\\..*#\\1#')
+                          echo "Project ref: $PROJECT_REF"
 
-          echo "Attempt 2: supabase db query (stdin, no flags)"
-          cat "$CANDIDATE" | supabase db query --yes
-          RC=$?
-          if [ $RC -eq 0 ]; then
-            echo "supabase db query succeeded (stdin, no flags)"
-            exit 0
-          fi
+                          # Set access token for supabase CLI
+                          export SUPABASE_ACCESS_TOKEN="$SUPABASE_SERVICE_ROLE_KEY"
 
-          echo "Attempt 3: supabase db query --yes (no stdin)" 
-          # Some CLI versions may accept --file or read from STDIN only; try without piping
-          supabase db query --yes < "$CANDIDATE"
-          RC=$?
-          if [ $RC -eq 0 ]; then
-            echo "supabase db query succeeded (stdin via redirection)"
-            exit 0
-          fi
+                          # Workflow input available at github.event.inputs.sql_file
+                          SQL_FILE="${{ github.event.inputs.sql_file }}"
+                          if [ -z "$SQL_FILE" ]; then
+                            echo "ERROR: sql_file input is empty" >&2
+                            exit 1
+                          fi
 
-          echo "All supabase CLI attempts failed. Printing supabase --version and help to assist diagnostics." >&2
-          supabase --version || true
-          supabase db --help || true
-          exit 1
-          set -e
+                          # Resolve SQL file robustly. Accept explicit path, or try to locate by basename in the repo
+                          CANDIDATE="$SQL_FILE"
+                          if [ ! -f "$CANDIDATE" ]; then
+                            BASENAME=$(basename "$SQL_FILE")
+                            echo "SQL file not found at $SQL_FILE; searching repository for $BASENAME"
+                            # Prefer exact git-tracked path if available
+                            FOUND=$(git ls-files | grep -F "${BASENAME}" | head -n1 || true)
+                            if [ -n "$FOUND" ]; then
+                              echo "Found candidate via git ls-files: $FOUND"
+                              CANDIDATE="$FOUND"
+                            else
+                              # Fallback common locations
+                              if [ -f "ai-roomchat/$SQL_FILE" ]; then
+                                CANDIDATE="ai-roomchat/$SQL_FILE"
+                              elif [ -f "docs/sql/$SQL_FILE" ]; then
+                                CANDIDATE="docs/sql/$SQL_FILE"
+                              fi
+                            fi
+                          fi
+
+                          if [ ! -f "$CANDIDATE" ]; then
+                            echo "ERROR: SQL file not found at '$SQL_FILE' or common locations (ai-roomchat/$SQL_FILE, docs/sql/$SQL_FILE)" >&2
+                            ls -la || true
+                            exit 1
+                          fi
+
+                          echo "Running SQL file: $CANDIDATE"
+
+                          # Try multiple invocation forms for supabase CLI to handle different CLI versions.
+                          # We already exported SUPABASE_ACCESS_TOKEN above.
+                          set +e
+                          echo "Attempt 1: supabase db query --project-ref <ref> --service-role-key <key> (with flags)"
+                          cat "$CANDIDATE" | supabase db query --project-ref "$PROJECT_REF" --service-role-key "$SUPABASE_SERVICE_ROLE_KEY" --yes
+                          RC=$?
+                          if [ $RC -eq 0 ]; then
+                            echo "supabase db query succeeded (with flags)"
+                            exit 0
+                          fi
+
+                          echo "Attempt 2: supabase db query (stdin, no flags)"
+                          cat "$CANDIDATE" | supabase db query --yes
+                          RC=$?
+                          if [ $RC -eq 0 ]; then
+                            echo "supabase db query succeeded (stdin, no flags)"
+                            exit 0
+                          fi
+
+                          echo "Attempt 3: supabase db query --yes (no stdin)"
+                          # Some CLI versions may accept --file or read from STDIN only; try without piping
+                          supabase db query --yes < "$CANDIDATE"
+                          RC=$?
+                          if [ $RC -eq 0 ]; then
+                            echo "supabase db query succeeded (stdin via redirection)"
+                            exit 0
+                          fi
+
+                          echo "All supabase CLI attempts failed. Printing supabase --version and help to assist diagnostics." >&2
+                          supabase --version || true
+                          supabase db --help || true
+                          exit 1
+                          set -e
+                          echo "All supabase CLI attempts failed. Printing supabase --version and help to assist diagnostics." >&2
+                          supabase --version || true
+                          supabase db --help || true
+                          exit 1
+                          set -e
 

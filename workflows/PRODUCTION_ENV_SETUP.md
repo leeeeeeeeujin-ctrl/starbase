@@ -43,3 +43,51 @@ Notes & Security
 - Consider limiting runner access and using organization-level required reviewers for higher assurance.
 
 If you'd like, I can prepare a tiny checklist PR template or a CONTRIBUTING note that references this environment creation doc and the PR approval expectations.
+
+## Local / manual run & verification (quick reference)
+
+If you've tested locally and want a short checklist to run migrations or produce a verified backup before requesting `production` approval, use these quick commands. The full step-by-step verification is in `workflows/MIGRATIONS_RUNBOOK.md`.
+
+PowerShell (Windows)
+
+```powershell
+# load local env vars (if you keep them in .env.local)
+Get-Content .\.env.local | ForEach-Object { if ($_ -and -not $_.TrimStart().StartsWith('#') -and $_ -match '=') { $p = $_ -split '=',2; [Environment]::SetEnvironmentVariable($p[0].Trim(), $p[1].Trim(), 'Process') } }
+
+# 1) Create a timestamped dump and compress
+$ts = (Get-Date).ToString('yyyyMMddTHHmmss')
+pg_dump $env:MIGRATE_DATABASE_URL | gzip > "migration-backup-$ts.sql.gz"
+
+# 2) Create a SHA256 checksum
+Get-FileHash -Algorithm SHA256 "migration-backup-$ts.sql.gz" | Select-Object -ExpandProperty Hash > "migration-backup-$ts.sql.gz.sha256"
+
+# 3) (Optional) Upload to Supabase fallback if configured in env
+# $env:SUPABASE_URL = 'https://<project>.supabase.co'
+# $env:SUPABASE_SERVICE_ROLE_KEY = '<service_role_key>'
+curl -X PUT "$($env:SUPABASE_URL)/storage/v1/object/$($env:SUPABASE_BUCKET)/migration-backup-$ts.sql.gz" -H "Authorization: Bearer $($env:SUPABASE_SERVICE_ROLE_KEY)" -H "x-upsert: true" --data-binary @"migration-backup-$ts.sql.gz"
+
+# 4) Verify checksum after download (example path)
+# (use the Supabase download URL or download via API and compare Get-FileHash)
+```
+
+Bash (Linux / macOS)
+
+```bash
+# export env or load from .env
+export MIGRATE_DATABASE_URL="postgresql://user:pass@host:5432/dbname"
+ts=$(date -u +%Y%m%dT%H%M%SZ)
+pg_dump "$MIGRATE_DATABASE_URL" | gzip > migration-backup-$ts.sql.gz
+sha256sum migration-backup-$ts.sql.gz > migration-backup-$ts.sql.gz.sha256
+
+# Upload to Supabase (example)
+curl -X PUT "$SUPABASE_URL/storage/v1/object/$SUPABASE_BUCKET/migration-backup-$ts.sql.gz" \
+	-H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+	-H "x-upsert: true" \
+	--data-binary @migration-backup-$ts.sql.gz
+
+# To verify, download and compare sha256sum
+```
+
+Notes:
+- For a full verification checklist (gzip integrity, header checks, restore smoke test), see `workflows/MIGRATIONS_RUNBOOK.md`.
+- Never commit `.env.local` or secrets. Store `MIGRATE_DATABASE_URL` and any Supabase service keys in the protected `production` Environment for CI.

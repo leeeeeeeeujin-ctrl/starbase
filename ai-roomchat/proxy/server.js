@@ -181,9 +181,56 @@ function mockProvider(prompt) {
 const app = express();
 app.use(bodyParser.json({ limit: '64kb' }));
 
+// Simple filesystem-backed templates store for Editor templates (PoC)
+const fs = require('fs');
+const path = require('path');
+const TEMPLATES_DIR = process.env.TEMPLATES_DIR || path.resolve(__dirname, '../data/templates');
+
+function ensureTemplatesDir() {
+  try {
+    fs.mkdirSync(TEMPLATES_DIR, { recursive: true });
+  } catch (e) {
+    // ignore
+  }
+}
+
+function listTemplates() {
+  ensureTemplatesDir();
+  const files = fs.readdirSync(TEMPLATES_DIR).filter(f => f.endsWith('.json'));
+  return files.map(f => {
+    try {
+      const raw = fs.readFileSync(path.join(TEMPLATES_DIR, f), 'utf8');
+      const parsed = JSON.parse(raw);
+      return parsed;
+    } catch (e) { return null; }
+  }).filter(Boolean);
+}
+
+function saveTemplate({ id, name, code, meta }) {
+  ensureTemplatesDir();
+  const now = Date.now();
+  const tid = id || crypto.randomUUID();
+  const rec = { id: tid, name: name || `template-${tid.slice(0,6)}`, code: code || '', meta: meta || {}, createdAt: (meta && meta.createdAt) || now, updatedAt: now };
+  fs.writeFileSync(path.join(TEMPLATES_DIR, `${tid}.json`), JSON.stringify(rec, null, 2), 'utf8');
+  return rec;
+}
+
+
 // Simple token issuance endpoint (demo only)
 app.post('/token', (req, res) => {
   (async () => {
+    // Require an API key for token issuance in production-like setups.
+    const apiKeyHeader = req.headers['x-api-key'] || req.headers['X-API-KEY'];
+    const ADMIN_API_KEY = process.env.ADMIN_API_KEY || null;
+    if (ADMIN_API_KEY) {
+      if (!apiKeyHeader || apiKeyHeader !== ADMIN_API_KEY) {
+        return res.status(403).json({ error: 'forbidden' });
+      }
+    } else {
+      // No ADMIN_API_KEY configured -> allow in dev but log
+      console.warn('ADMIN_API_KEY not set; /token is open for development. Set ADMIN_API_KEY to restrict.');
+    }
+
     const clientId = req.body.clientId || 'anon';
     const ttl = parseInt(process.env.TOKEN_TTL || '300', 10);
     const issued = issueToken(clientId, ttl);
@@ -202,6 +249,19 @@ app.post('/token', (req, res) => {
       console.warn('token persistence failed:', e.message);
     }
     // Return token and tokenSecret to client (short-lived secret for signing)
+    // Attach owner metadata when API key was used for issuance
+    try {
+      const meta = { clientId, issuedAt: Date.now(), secret: issued.tokenSecret, owner: apiKeyHeader ? ('api-key:' + (apiKeyHeader && apiKeyHeader.slice ? apiKeyHeader.slice(0,6) : 'unknown')) : undefined };
+      if (issued && issued.tokenId) {
+        if (redis) {
+          await storeTokenAsync(issued.tokenId, ttl, meta);
+        } else {
+          storeTokenFallback(issued.tokenId, issued.tokenSecret, ttl, meta);
+        }
+      }
+    } catch (e) {
+      console.warn('token persistence failed:', e.message);
+    }
     console.debug('issued token data:', issued);
     res.json({ token, ttl, secret: issued && issued.tokenSecret ? issued.tokenSecret : undefined });
   })();
@@ -288,33 +348,149 @@ app.post('/v1/gemini', async (req, res) => {
   res.json({ ok: true, clientId: tok.clientId, provider: providerResp });
 });
 
+// Editor templates endpoints (PoC)
+app.get('/editor/templates', (req, res) => {
+  try {
+    // require token
+    const auth = req.headers['authorization'] || '';
+    const parts = auth.split(' ');
+    if (parts.length !== 2 || parts[0] !== 'Bearer') return res.status(401).json({ error: 'missing token' });
+    const token = parts[1];
+    const tok = verifyToken(token);
+    if (!tok) return res.status(401).json({ error: 'invalid token' });
+
+    const list = listTemplates();
+    // filter by owner meta if present
+    const filtered = list.filter(t => !t.meta || !t.meta.owner || t.meta.owner === tok.clientId);
+    res.json({ ok: true, templates: filtered });
+  } catch (e) {
+    res.status(500).json({ error: 'failed' });
+  }
+});
+
+app.get('/editor/templates/:id', (req, res) => {
+  try {
+    const id = req.params.id;
+    ensureTemplatesDir();
+    const p = path.join(TEMPLATES_DIR, `${id}.json`);
+    if (!fs.existsSync(p)) return res.status(404).json({ error: 'not_found' });
+    const raw = fs.readFileSync(p, 'utf8');
+    const parsed = JSON.parse(raw);
+    res.json({ ok: true, template: parsed });
+  } catch (e) {
+    res.status(500).json({ error: 'failed' });
+  }
+});
+
+app.post('/editor/templates', (req, res) => {
+  try {
+    // require token
+    const auth = req.headers['authorization'] || '';
+    const parts = auth.split(' ');
+    if (parts.length !== 2 || parts[0] !== 'Bearer') return res.status(401).json({ error: 'missing token' });
+    const token = parts[1];
+    const tok = verifyToken(token);
+    if (!tok) return res.status(401).json({ error: 'invalid token' });
+
+    const { name, code, meta } = req.body || {};
+    // small server-side validations
+    if (!code || typeof code !== 'string') return res.status(400).json({ error: 'missing code' });
+    const MAX_CODE_BYTES = parseInt(process.env.MAX_CODE_BYTES || '16384', 10);
+    if (Buffer.byteLength(code, 'utf8') > MAX_CODE_BYTES) return res.status(413).json({ error: 'code_too_large' });
+    const fw = (process.env.FORBIDDEN_WORDS || '').split(',').map(s => s.trim()).filter(Boolean);
+    const low = code.toLowerCase();
+    for (const w of fw) {
+      if (w && low.includes(w.toLowerCase())) return res.status(400).json({ error: 'forbidden_content' });
+    }
+
+    const finalMeta = Object.assign({}, meta || {}, { owner: tok.clientId });
+    const rec = saveTemplate({ name, code, meta: finalMeta });
+    res.json({ ok: true, template: rec });
+  } catch (e) {
+    res.status(500).json({ error: 'failed' });
+  }
+});
+
+app.put('/editor/templates/:id', (req, res) => {
+  try {
+    // require token
+    const auth = req.headers['authorization'] || '';
+    const parts = auth.split(' ');
+    if (parts.length !== 2 || parts[0] !== 'Bearer') return res.status(401).json({ error: 'missing token' });
+    const token = parts[1];
+    const tok = verifyToken(token);
+    if (!tok) return res.status(401).json({ error: 'invalid token' });
+
+    const id = req.params.id;
+    const { name, code, meta } = req.body || {};
+    // ownership check
+    const p = path.join(TEMPLATES_DIR, `${id}.json`);
+    if (!fs.existsSync(p)) return res.status(404).json({ error: 'not_found' });
+    const raw = fs.readFileSync(p, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (parsed && parsed.meta && parsed.meta.owner && parsed.meta.owner !== tok.clientId) return res.status(403).json({ error: 'forbidden' });
+
+    const finalMeta = Object.assign({}, parsed.meta || {}, meta || {}, { owner: tok.clientId });
+    const rec = saveTemplate({ id, name, code, meta: finalMeta });
+    res.json({ ok: true, template: rec });
+  } catch (e) {
+    res.status(500).json({ error: 'failed' });
+  }
+});
+
   // Run untrusted JS converted from Blockly in a restricted VM (PoC)
   const vm = require('vm');
   const { performance } = require('perf_hooks');
 
   app.post('/run/blockly', async (req, res) => {
-    const code = req.body && req.body.code;
-    if (!code) return res.status(400).json({ error: 'missing code' });
+      // Require authorization for running untrusted code
+      try {
+        const auth = req.headers['authorization'] || '';
+        const parts = auth.split(' ');
+        if (parts.length !== 2 || parts[0] !== 'Bearer') return res.status(401).json({ error: 'missing token' });
+        const token = parts[1];
+        const tok = verifyToken(token);
+        if (!tok) return res.status(401).json({ error: 'invalid token' });
 
-    // Provide minimal sandboxed context
-    const logs = [];
-    const sandbox = {
-      console: { log: (...args) => logs.push(args.map(a => String(a)).join(' ')) },
-      Date: Date,
-      Math: Math,
-    };
-    try {
-      const script = new vm.Script(code, { filename: 'blockly-run.js', displayErrors: true });
-      const ctx = vm.createContext(sandbox);
-      const start = performance.now();
-      // run with timeout by executing in a Promise and using setTimeout to interrupt isn't trivial here;
-      // use runInContext with small timeout via options (node >= 10 supports timeout)
-      script.runInContext(ctx, { timeout: 1000 });
-      const duration = performance.now() - start;
-      return res.json({ ok: true, logs, duration });
-    } catch (e) {
-      return res.status(500).json({ error: 'execution_error', message: e && e.message, logs });
-    }
+        // rate limit
+        const okRate = await checkRateLimitAsync(tok.clientId);
+        if (!okRate) return res.status(429).json({ error: 'rate_limited' });
+
+        const code = req.body && req.body.code;
+        if (!code) return res.status(400).json({ error: 'missing code' });
+
+        // Size limit (PoC): reject very large payloads
+        const MAX_CODE_BYTES = parseInt(process.env.MAX_CODE_BYTES || '16384', 10); // 16KB default
+        if (Buffer.byteLength(code, 'utf8') > MAX_CODE_BYTES) return res.status(413).json({ error: 'code_too_large' });
+
+        // Forbidden words filter (env-driven)
+        const fw = (process.env.FORBIDDEN_WORDS || '').split(',').map(s => s.trim()).filter(Boolean);
+        const low = code.toLowerCase();
+        for (const w of fw) {
+          if (w && low.includes(w.toLowerCase())) return res.status(400).json({ error: 'forbidden_content' });
+        }
+
+        // Provide minimal sandboxed context
+        const logs = [];
+        const sandbox = {
+          console: { log: (...args) => logs.push(args.map(a => String(a)).join(' ')) },
+          Date: Date,
+          Math: Math,
+        };
+        try {
+          const script = new vm.Script(code, { filename: 'blockly-run.js', displayErrors: true });
+          const ctx = vm.createContext(sandbox);
+          const start = performance.now();
+          script.runInContext(ctx, { timeout: 1000 });
+          const duration = performance.now() - start;
+          return res.json({ ok: true, logs, duration });
+        } catch (e) {
+          return res.status(500).json({ error: 'execution_error', message: e && e.message, logs });
+        }
+      } catch (e) {
+        console.error('run/blockly error:', e && e.message);
+        return res.status(500).json({ error: 'internal' });
+      }
   });
 
 if (require.main === module) {

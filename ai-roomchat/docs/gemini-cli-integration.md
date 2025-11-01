@@ -72,3 +72,7 @@ If you'd like, I can:
 
 - wire a simple job-queue worker to run Gemini invocations off the main request path, or
 - add unit tests for the `geminiCliProvider.js` behaviour (timeout, stdin/file modes).
+
+
+---
+참고: 샌드박스 및 안전 실행 권장 패턴은 `ai-roomchat/docs/SANDBOX_ARCHITECTURE.md` 문서를 확인하세요. 이 문서는 에디터 수준의 정적 검사, 에지 수준의 미리보기, 서버 측의 임시 격리 실행(컨테이너/마이크로VM) 권장 설정과 구현 체크리스트를 포함합니다.
