@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTemplate } from '../../contexts/TemplateStore';
+import { subscribe } from '../../contexts/StudioBus';
 
 function safeParse(text){ try{ return JSON.parse(text||'{}'); }catch{ return null; } }
 function pretty(obj){ try{ return JSON.stringify(obj, null, 2);}catch{ return ''; } }
@@ -15,6 +16,12 @@ export default function AIPanel(){
   const [error, setError] = useState('');
   const [preview, setPreview] = useState('');
   const [diffs, setDiffs] = useState([]);
+
+  // Allow external toggle via StudioBus
+  useEffect(() => {
+    const off = subscribe('studio:ai:toggle', () => setOpen(v => !v));
+    return () => off?.();
+  }, []);
 
   function computeDiff(a, b, path = '') {
     const out = [];
