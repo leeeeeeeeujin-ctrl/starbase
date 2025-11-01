@@ -1,48 +1,23 @@
+import { createContext, useContext, useState } from 'react';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { loadTemplate, saveTemplate } from '../lib/templateStore';
-import { validateTemplate } from '../lib/validator';
-import basicTemplate from '../../public/templates/basic-game.json';
+const TemplateContext = createContext(null);
 
-const TemplateContext = createContext();
-
-export const useTemplate = () => useContext(TemplateContext);
-
-export const TemplateProvider = ({ children }) => {
-  const [template, setTemplate] = useState(null);
-  const [validationResult, setValidationResult] = useState({ ok: true, errors: [] });
-  const [activeEditor, setActiveEditor] = useState('code'); // 'code', 'node', 'ui'
-
-  useEffect(() => {
-    // Load initial template from localStorage or use the basic one
-    const loadedTemplate = loadTemplate('template:current');
-    const initialTemplate = loadedTemplate || basicTemplate;
-    setTemplate(initialTemplate);
-    validateAndSet(initialTemplate);
-  }, []);
-
-  const validateAndSet = (newTemplate) => {
-    const result = validateTemplate(newTemplate);
-    setValidationResult(result);
-    setTemplate(newTemplate);
-  };
-
-  const updateTemplate = (newTemplate) => {
-    validateAndSet(newTemplate);
-    saveTemplate('template:current', newTemplate);
-  };
+export function TemplateProvider({ children }) {
+  const [templateText, setTemplateText] = useState('');
+  const [mode, setMode] = useState('code');
 
   const value = {
-    template,
-    updateTemplate,
-    validationResult,
-    activeEditor,
-    setActiveEditor,
+    templateText,
+    setTemplateText,
+    mode,
+    setMode,
   };
+  return <TemplateContext.Provider value={value}>{children}</TemplateContext.Provider>;
+}
 
-  return (
-    <TemplateContext.Provider value={value}>
-      {children}
-    </TemplateContext.Provider>
-  );
-};
+export function useTemplate() {
+  const ctx = useContext(TemplateContext);
+  if (!ctx) throw new Error('useTemplate must be used within TemplateProvider');
+  return ctx;
+}
+
