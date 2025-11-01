@@ -11,7 +11,12 @@ export default function MonacoJsonEditor({ value, onChange, height = 400 }) {
     let mounted = true;
     (async () => {
       try {
-        const monaco = await import("monaco-editor/esm/vs/editor/editor.api");
+        // Load Monaco via CDN loader to avoid bundling CSS from node_modules
+        const mod = await import("@monaco-editor/loader");
+        const loader = mod.default || mod.loader || mod;
+        // point to a public CDN path for AMD loader
+        loader.config({ paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs" } });
+        const monaco = await loader.init();
         if (!mounted) return;
         monacoRef.current = monaco;
         // Load schema for validation
@@ -92,4 +97,3 @@ export default function MonacoJsonEditor({ value, onChange, height = 400 }) {
     <div ref={containerRef} style={{ width: "100%", height, border: "1px solid #ddd", borderRadius: 4 }} />
   );
 }
-
