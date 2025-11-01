@@ -5,8 +5,7 @@ const fs = require('fs');
 (async function(){
   const infile = path.resolve(__dirname, '..', 'workflows', 'blockly-sample.json');
   const outfile = path.resolve(__dirname, '..', 'workflows', 'blockly-sample.out.js');
-  // ensure converted
-  const conv = require('./blockly_poc'); // note: blockly_poc.js is a CLI; requiring it won't export; instead run it
+  // ensure converted (invoke CLI explicitly)
   const child = require('child_process').spawn(process.execPath, [require.resolve('./blockly_poc.js'), infile, outfile], { stdio: 'inherit' });
   child.on('exit', async (code) => {
     if (code !== 0) {

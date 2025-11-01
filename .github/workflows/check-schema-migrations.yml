@@ -27,7 +27,7 @@ jobs:
         run: |
           docker build -t migration-runner-check -f ai-roomchat/ci/migration-runner/Dockerfile .
 
-      - name: Run schema_migrations check
+      - name: Run schema_migrations check (no-entrypoint)
         env:
           MIGRATE_DATABASE_URL: ${{ secrets.MIGRATE_DATABASE_URL }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -37,4 +37,6 @@ jobs:
             -e MIGRATE_DATABASE_URL="${MIGRATE_DATABASE_URL}" \
             -e DATABASE_URL="${DATABASE_URL}" \
             -e SUPABASE_DB_URL="${SUPABASE_DB_URL}" \
-            migration-runner-check node -e "const {Client}=require('pg');(async()=>{const conn=process.env.MIGRATE_DATABASE_URL||process.env.DATABASE_URL||process.env.SUPABASE_DB_URL;if(!conn){console.error('No DB connection string');process.exit(1);}const c=new Client({connectionString:conn,ssl:{rejectUnauthorized:false}});await c.connect();const r=await c.query('SELECT filename, checksum, applied_at FROM public.schema_migrations ORDER BY applied_at DESC LIMIT 100');console.log(JSON.stringify(r.rows,null,2));await c.end();process.exit(0)})().catch(e=>{console.error(e);process.exit(2)})"
+            --entrypoint node \
+            migration-runner-check \
+            -e "const {Client}=require('pg');(async()=>{const conn=process.env.MIGRATE_DATABASE_URL||process.env.DATABASE_URL||process.env.SUPABASE_DB_URL;if(!conn){console.error('No DB connection string');process.exit(1);}const c=new Client({connectionString:conn,ssl:{rejectUnauthorized:false}});await c.connect();const r=await c.query('SELECT filename, checksum, applied_at FROM public.schema_migrations ORDER BY applied_at DESC LIMIT 100');console.log(JSON.stringify(r.rows,null,2));await c.end();process.exit(0)})().catch(e=>{console.error(e);process.exit(2)})"

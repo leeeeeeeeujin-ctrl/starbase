@@ -46,7 +46,7 @@ jobs:
           # avoid full `npm ci` in CI preflight (lockfile may be out of sync); install only runtime pg driver
           npm install --no-save --no-audit --no-fund pg@^8.10.0 || true
 
-      - name: Run migration dry-run (node helper)
+      - name: Run migration preview (no changes)
         id: run
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -56,8 +56,7 @@ jobs:
           SUPABASE_PROJECT_URL: ${{ secrets.SUPABASE_PROJECT_URL }}
         run: |
           echo "DRY_RUN=${{ github.event.inputs.dry_run }}" > dry_run_flag
-          # prefer MIGRATE_DATABASE_URL when available in helper
-          node ./ai-roomchat/scripts/apply-migrations.js --dry-run || true
+          node ./ai-roomchat/scripts/preview-migrations.js
           echo "done" > preflight_done
         # capture input so later jobs can decide
       - name: Set outputs
