@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { loader } from '@monaco-editor/loader';
+import loader from '@monaco-editor/loader';
 
 // Configure Monaco via CDN AMD loader to avoid bundling CSS from node_modules
 if (typeof window !== 'undefined' && loader && typeof loader.config === 'function') {
@@ -51,4 +51,3 @@ export default function EditorMonaco({ value, onChange, language = 'json', theme
 
   return <div ref={ref} style={{ height, width }} />;
 }
-

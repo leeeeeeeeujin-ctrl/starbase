@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { loader } from '@monaco-editor/loader';
+import loader from '@monaco-editor/loader';
 
 // Configure Monaco via CDN paths (prevents Next from bundling monaco's CSS)
 if (typeof window !== 'undefined' && loader && typeof loader.config === 'function') {
@@ -69,4 +69,3 @@ export default function CodeEditor({ value, onChange, debounceMs = 250 }) {
     </div>
   );
 }
-
