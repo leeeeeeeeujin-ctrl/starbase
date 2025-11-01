@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useTemplate } from '../../contexts/TemplateStore';
+import { useStudioTemplate as useTemplate } from '../../contexts/StudioStore';
 import dynamic from 'next/dynamic';
 import VirtualList from '../common/VirtualList';
 import { subscribe } from '../../contexts/StudioBus';

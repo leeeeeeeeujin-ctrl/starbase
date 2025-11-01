@@ -1,5 +1,5 @@
 import { DEFAULT_TEMPLATE, DEFAULT_TEMPLATE_OBJECT } from '../../contexts/PersistentTemplateProvider.jsx';
-import { useTemplate } from '../../contexts/TemplateStore';
+import { useStudioTemplate as useTemplate } from '../../contexts/StudioStore';
 
 export default function QuickActions(){
   const { templateText, setTemplateText } = useTemplate();
@@ -27,4 +27,3 @@ export default function QuickActions(){
     </div>
   );
 }
-

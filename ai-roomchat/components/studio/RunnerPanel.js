@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useTemplate } from '../../contexts/TemplateStore';
+import { useStudioTemplate as useTemplate } from '../../contexts/StudioStore';
 
 function safeParse(text){ try{ return JSON.parse(text||'{}'); }catch{ return {}; } }
 

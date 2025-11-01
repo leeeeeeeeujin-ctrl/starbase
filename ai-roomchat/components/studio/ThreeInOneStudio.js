@@ -1,6 +1,6 @@
 import dynamic from 'next/dynamic';
 import { useMemo, useRef, useState } from 'react';
-import { useTemplate } from '../../contexts/TemplateStore';
+import { useStudioTemplate } from '../../contexts/StudioStore';
 import { emit } from '../../contexts/StudioBus';
 
 // Client-only editors and panels
@@ -16,7 +16,7 @@ const ImageUiPanel = dynamic(() => import('./ImageUiPanel'), { ssr: false });
 const BlockCodingPanel = dynamic(() => import('./BlockCodingPanel'), { ssr: false });
 
 export default function ThreeInOneStudio() {
-  const { templateText, setTemplateText, mode, setMode } = useTemplate();
+  const { templateText, setTemplateText, mode, setMode } = useStudioTemplate();
   const fileInputRef = useRef(null);
 
   const info = useMemo(() => {

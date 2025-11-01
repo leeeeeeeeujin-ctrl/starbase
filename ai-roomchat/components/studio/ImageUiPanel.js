@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useTemplate } from '../../contexts/TemplateStore';
+import { useStudioTemplate as useTemplate } from '../../contexts/StudioStore';
 
 export default function ImageUiPanel({ onClose }){
   const { templateText, setTemplateText } = useTemplate();
@@ -42,4 +42,3 @@ export default function ImageUiPanel({ onClose }){
     </div>
   );
 }
-

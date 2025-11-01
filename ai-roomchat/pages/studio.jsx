@@ -1,12 +1,12 @@
 import dynamic from 'next/dynamic';
-import PersistentTemplateProvider from '../contexts/PersistentTemplateProvider.jsx';
+import StudioPersistentProvider from '../contexts/StudioPersistentProvider.jsx';
 
 const ThreeInOneStudio = dynamic(() => import('../components/studio/ThreeInOneStudio'), { ssr: false });
 
 export default function StudioPage() {
   return (
-    <PersistentTemplateProvider>
+    <StudioPersistentProvider>
       <ThreeInOneStudio />
-    </PersistentTemplateProvider>
+    </StudioPersistentProvider>
   );
 }

@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import VirtualList from '../common/VirtualList';
-import { useTemplate } from '../../contexts/TemplateStore';
+import { useStudioTemplate as useTemplate } from '../../contexts/StudioStore';
 
 function safeParse(jsonText) {
   try { return JSON.parse(jsonText || '{}'); } catch { return {}; }
