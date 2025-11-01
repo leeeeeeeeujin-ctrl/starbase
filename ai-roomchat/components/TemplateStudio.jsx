@@ -4,6 +4,7 @@ import { validateTemplate } from "../lib/validator";
 import { createRunner } from "../lib/runners";
 import dynamic from "next/dynamic";
 const TemplateGraph = dynamic(() => import("./TemplateGraph"), { ssr: false });
+const MonacoJsonEditor = dynamic(() => import("./MonacoJsonEditor"), { ssr: false });
 
 const STORAGE_KEY = "template:current";
 
@@ -120,11 +121,7 @@ export default function TemplateStudio() {
           <button onClick={runUnified} style={{ padding: "6px 10px" }}>Run</button>
           <input value={endpointUrl} onChange={(e) => setEndpointUrl(e.target.value)} placeholder="Endpoint URL" title="Proxy or CLI endpoint" style={{ flex: 1, padding: 6, border: "1px solid #ddd", borderRadius: 4 }} />
         </div>
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          style={{ flex: 1, width: "100%", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", fontSize: 13, border: "1px solid #ddd", borderRadius: 4, padding: 8 }}
-        />
+        <MonacoJsonEditor value={text} onChange={setText} height={360} />
       </div>
       <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
         <section style={{ marginBottom: 12 }}>
