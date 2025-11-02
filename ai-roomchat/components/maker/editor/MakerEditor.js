@@ -144,6 +144,10 @@ export default function MakerEditor() {
   const { alert: versionAlert, clearAlert: clearVersionAlert } = version;
   const [variableDrawerOpen, setVariableDrawerOpen] = useState(false);
   const [headerCollapsed, setHeaderCollapsed] = useState(true);
+  useEffect(() => {
+    // Lock header as collapsed; never expand
+    if (!headerCollapsed) setHeaderCollapsed(true);
+  }, [headerCollapsed]);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [advancedToolsOpen, setAdvancedToolsOpen] = useState(false);
   const [receiptVisible, setReceiptVisible] = useState(null);
@@ -829,53 +833,37 @@ export default function MakerEditor() {
         }}
       />
 
-      {/* 🚀 코드 에디터(통합 스튜디오 JSON 에디터로 대체) */}
+      {/* 🚀 코드 에디터(통합 스튜디오 JSON 에디터, 본문 영역 전환) */}
       {showMultiLanguageEditor && (
-        <div
+        <section
           style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 240,
-            background: 'rgba(0,0,0,0.65)',
-            display: 'grid',
-            placeItems: 'center',
-            padding: 24,
+            marginTop: 8,
+            border: '1px solid #e5e7eb',
+            borderRadius: 12,
+            overflow: 'hidden',
+            background: '#0b1220',
+            minHeight: 400,
           }}
-          onClick={() => setShowMultiLanguageEditor(false)}
         >
-          <div
-            style={{
-              width: 'min(1200px, 96vw)',
-              height: 'min(760px, 90vh)',
-              background: '#0b1220',
-              borderRadius: 12,
-              overflow: 'hidden',
-              border: '1px solid rgba(148, 163, 184, 0.25)',
-              position: 'relative',
-            }}
-            onClick={e => e.stopPropagation()}
-          >
-            <div style={{ position: 'absolute', right: 10, top: 10, zIndex: 10 }}>
-              <button
-                onClick={() => setShowMultiLanguageEditor(false)}
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 18,
-                  border: '1px solid rgba(148,163,184,0.35)',
-                  background: 'rgba(239, 68, 68, 0.9)',
-                  color: '#fff',
-                  fontWeight: 800,
-                }}
-              >
-                ×
-              </button>
-            </div>
-            <div style={{ height: '100%', width: '100%' }}>
-              <StudioJsonEditor value={templateText} onChange={setTemplateText} />
-            </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', background: 'rgba(2,6,23,0.6)', color: '#e2e8f0' }}>
+            <strong style={{ fontSize: 13 }}>코드 에디터</strong>
+            <button
+              onClick={() => setShowMultiLanguageEditor(false)}
+              style={{
+                padding: '6px 10px',
+                borderRadius: 8,
+                border: '1px solid rgba(148,163,184,0.35)',
+                background: 'rgba(239, 68, 68, 0.9)',
+                color: '#fff',
+                fontWeight: 700,
+                fontSize: 12,
+              }}
+            >닫기</button>
           </div>
-        </div>
+          <div style={{ height: 520 }}>
+            <StudioJsonEditor value={templateText} onChange={setTemplateText} />
+          </div>
+        </section>
       )}
 
       {/* 🎮 게임 시뮬레이터 */}
