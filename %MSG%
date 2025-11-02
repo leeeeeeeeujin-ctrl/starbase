@@ -1,1 +1,1 @@
-fix(build): add missing 'import' for StudioJsonEditor in MakerEditor.js 
+fix(runtime): define snapBtn before use to avoid TDZ minified error 
