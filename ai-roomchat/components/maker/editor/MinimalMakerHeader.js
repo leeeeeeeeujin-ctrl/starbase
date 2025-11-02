@@ -1,0 +1,57 @@
+"use client";
+
+export default function MinimalMakerHeader({
+  busy,
+  onBack,
+  onOpenVariables,
+  onOpenMultiLanguageEditor,
+  onStartSimulation,
+  onSave,
+  onCreateWithAI,
+}) {
+  const btn = (label, onClick, style = {}) => (
+    <button
+      onClick={onClick}
+      style={{
+        padding: '6px 10px',
+        borderRadius: 10,
+        border: '1px solid rgba(148,163,184,.35)',
+        background: 'rgba(255,255,255,.06)',
+        color: '#e2e8f0',
+        fontSize: 12,
+        fontWeight: 700,
+        ...style,
+      }}
+    >
+      {label}
+    </button>
+  );
+
+  return (
+    <header
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        background: 'linear-gradient(180deg, #0f172a 0%, #0b1220 100%)',
+        borderRadius: 18,
+        padding: '10px 12px',
+        color: '#e2e8f0',
+      }}
+    >
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        {btn('← 목록', onBack)}
+        <strong style={{ fontSize: 14 }}>프롬프트 에디터</strong>
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        {btn('변수', onOpenVariables, { background: 'rgba(14,165,233,0.2)', borderColor: '#38bdf8', color: '#e0f2fe' })}
+        {btn('코드', onOpenMultiLanguageEditor, { background: 'rgba(59,130,246,0.15)', borderColor: '#60a5fa', color: '#bfdbfe' })}
+        {btn('테스트', onStartSimulation, { background: 'rgba(34,197,94,0.15)', borderColor: '#10b981', color: '#bbf7d0' })}
+        {btn('저장', onSave, { background: busy ? 'rgba(148,163,184,0.2)' : '#16a34a', color: '#fff', borderColor: busy ? '#64748b' : '#16a34a' })}
+        {/* Single AI button only */}
+        {btn('AI', onCreateWithAI, { width: 40, textAlign: 'center' })}
+      </div>
+    </header>
+  );
+}
+

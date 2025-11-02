@@ -6,7 +6,7 @@ import { useStudioTemplate } from '../../../contexts/StudioStore';
 import { useMakerEditor } from '../../../hooks/maker/useMakerEditor';
 import { exportSet, importSet } from './importExport';
 import MakerEditorCanvas from './MakerEditorCanvas';
-import MakerEditorHeader from './MakerEditorHeader';
+import MinimalMakerHeader from './MinimalMakerHeader';
 import MakerEditorPanel from './MakerEditorPanel';
 import VariableDrawer from './VariableDrawer';
 import AdvancedToolsPanel from './AdvancedToolsPanel';
@@ -505,7 +505,7 @@ export default function MakerEditor() {
           gap: 10,
         }}
       >
-        <MakerEditorHeader
+      <MinimalMakerHeader
           setName={setInfo?.name}
           busy={busy}
           onBack={goToSetList}

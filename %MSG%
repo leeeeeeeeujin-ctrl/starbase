@@ -1,1 +1,1 @@
-fix(ui): lock header collapsed; inline code editor panel; monaco fallbacks 
+fix(ui): force header collapsed and hide 'ÆîÄ¡±â' toggle; inline code editor 
