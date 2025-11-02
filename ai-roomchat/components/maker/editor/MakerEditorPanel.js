@@ -1,7 +1,8 @@
 'use client';
 
 import SidePanel from '../SidePanel';
-import EditorMonaco from '../../EditorMonaco.jsx';
+import EditorMonaco from '../../../EditorMonaco.jsx';
+import { useStudioTemplate } from '../../../contexts/StudioStore';
 
 export default function MakerEditorPanel({
   tabs,
@@ -19,6 +20,11 @@ export default function MakerEditorPanel({
   onRequestAdvancedTools = () => {},
 }) {
   const nodeData = selectedNode?.data || null;
+  // Optional: unify edits with Studio template JSON if provider exists
+  let studio = null;
+  try {
+    studio = useStudioTemplate();
+  } catch {}
 
   return (
     <section
@@ -184,7 +190,25 @@ export default function MakerEditorPanel({
                   <div style={{ height: 220, border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
                     <EditorMonaco
                       value={nodeData.template || ''}
-                      onChange={val => nodeData.onChange?.({ template: val })}
+                      onChange={val => {
+                        // local graph update
+                        nodeData.onChange?.({ template: val });
+                        // studio JSON update
+                        if (studio && typeof studio.setTemplateText === 'function') {
+                          try {
+                            const obj = JSON.parse(studio.templateText || '{}');
+                            if (Array.isArray(obj.nodes)) {
+                              const idx = obj.nodes.findIndex(n => n?.id === selectedNodeId);
+                              if (idx >= 0) {
+                                const n = obj.nodes[idx] || {};
+                                const data = { ...(n.data || {}), template: val };
+                                obj.nodes[idx] = { ...n, data };
+                                studio.setTemplateText(JSON.stringify(obj, null, 2));
+                              }
+                            }
+                          } catch {}
+                        }
+                      }}
                       language="markdown"
                       theme="vs-light"
                       height="100%"
