@@ -41,3 +41,4 @@ artifacts/
 reports/
 tmp/
 assistant-sql/
+.tmp.driveupload/
