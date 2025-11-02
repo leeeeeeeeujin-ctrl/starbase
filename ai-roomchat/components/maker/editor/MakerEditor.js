@@ -20,6 +20,14 @@ const ImageToUIGenerator = dynamic(() => import('../ui/ImageToUIGenerator'), { s
 const GameResourceEditor = dynamic(() => import('../resource/GameResourceEditor'), { ssr: false });
 
 export default function MakerEditor() {
+  const snapBtn = {
+    padding: '6px 10px',
+    borderRadius: 8,
+    border: '1px solid #475569',
+    background: '#0f172a',
+    color: '#e2e8f0',
+    fontSize: 12,
+  };
   const { status, graph, selection, variables, persistence, history, version } = useMakerEditor();
   // Unified studio workspace (single-file source of truth)
   let templateText = '';

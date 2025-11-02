@@ -1,1 +1,1 @@
-feat(ui-persist): localStorage for code/test + split; custom split input; resizer dblclick=50/50 
+fix(build): add missing 'import' for StudioJsonEditor in MakerEditor.js 
