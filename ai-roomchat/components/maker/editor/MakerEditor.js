@@ -30,6 +30,20 @@ export default function MakerEditor() {
 
   const { isReady, loading, setInfo } = status;
 
+  useEffect(() => {
+    // Hide the header toggle button ("펼치기") and any stray duplicate AI openers in header
+    try {
+      const hideTexts = ['펼치기', '게임 제작 도구 펼치기'];
+      const btns = typeof document !== 'undefined' ? document.querySelectorAll('button') : [];
+      btns.forEach(btn => {
+        const txt = (btn.textContent || '').trim();
+        if (hideTexts.some(t => txt.includes(t))) {
+          btn.style.display = 'none';
+        }
+      });
+    } catch {}
+  }, []);
+
   const {
     nodes,
     edges,

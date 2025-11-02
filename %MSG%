@@ -1,1 +1,1 @@
-fix(monaco): client-only init + textarea fallback; default collapse header to hide tiles 
+fix(ui): lock header collapsed; inline code editor panel; monaco fallbacks 
