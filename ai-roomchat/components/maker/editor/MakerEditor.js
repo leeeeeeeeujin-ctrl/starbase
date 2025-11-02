@@ -65,6 +65,8 @@ export default function MakerEditor() {
   const hydratedRef = useRef(false);
   const [splitPct, setSplitPct] = useState(50);
   const [isDraggingSplit, setIsDraggingSplit] = useState(false);
+  const PREF_SPLIT = 'maker:ui:splitPct';
+  const PREF_VIS = 'maker:ui:panels';
 
   const toTemplateObject = useCallback(() => {
     const tpl = (() => { try { return JSON.parse(templateText || '{}'); } catch { return {}; } })();
@@ -110,6 +112,26 @@ export default function MakerEditor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [templateText]);
 
+  // Restore UI prefs (split and panel visibility)
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return;
+      const s = parseInt(localStorage.getItem(PREF_SPLIT) || '50', 10);
+      if (!Number.isNaN(s) && s >= 20 && s <= 80) setSplitPct(s);
+      const visRaw = localStorage.getItem(PREF_VIS);
+      if (visRaw) {
+        const vis = JSON.parse(visRaw);
+        if (typeof vis?.code === 'boolean') {
+          if (vis.code) {
+            window.__INLINE_CODE_IN_PANEL__ = true;
+            setShowMultiLanguageEditor?.(true);
+          }
+        }
+        if (typeof vis?.test === 'boolean') setGameSimulatorOpen?.(!!vis.test);
+      }
+    } catch {}
+  }, []);
+
   useEffect(() => {
     if (!isDraggingSplit) return;
     const onMove = e => {
@@ -130,6 +152,18 @@ export default function MakerEditor() {
       window.removeEventListener('touchend', onUp);
     };
   }, [isDraggingSplit]);
+
+  // Persist UI prefs
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return;
+      localStorage.setItem(PREF_SPLIT, String(splitPct));
+      localStorage.setItem(
+        PREF_VIS,
+        JSON.stringify({ code: !!showMultiLanguageEditor, test: !!gameSimulatorOpen })
+      );
+    } catch {}
+  }, [splitPct, showMultiLanguageEditor, gameSimulatorOpen]);
 
   // Debounced sync to templateText on graph changes
   useEffect(() => {
@@ -932,10 +966,24 @@ export default function MakerEditor() {
           <div style={{ height: 520, display: 'flex', position: 'relative' }}>
             <div style={{ width: gameSimulatorOpen ? `${splitPct}%` : '100%', minWidth: 0 }}>
               <StudioJsonEditor value={templateText} onChange={setTemplateText} />
-              <div style={{ display: 'flex', gap: 6, padding: '6px 10px', background: 'rgba(2,6,23,0.5)' }}>
+              <div style={{ display: 'flex', gap: 6, padding: '6px 10px', background: 'rgba(2,6,23,0.5)', alignItems: 'center' }}>
                 <button onClick={() => setSplitPct(50)} style={snapBtn}>50/50</button>
                 <button onClick={() => setSplitPct(70)} style={snapBtn}>70/30</button>
                 <button onClick={() => setSplitPct(30)} style={snapBtn}>30/70</button>
+                <span style={{ marginLeft: 8, fontSize: 12, color: '#cbd5e1' }}>비율</span>
+                <input
+                  type="number"
+                  min={20}
+                  max={80}
+                  value={splitPct}
+                  onChange={e => {
+                    const v = parseInt(e.target.value || '50', 10);
+                    if (!Number.isNaN(v)) setSplitPct(Math.min(80, Math.max(20, v)));
+                  }}
+                  onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                  style={{ width: 64, padding: '4px 6px', borderRadius: 6, border: '1px solid #475569', background: '#0f172a', color: '#e2e8f0', fontSize: 12 }}
+                />
+                <span style={{ fontSize: 12, color: '#94a3b8' }}>% / 나머지</span>
                 <button onClick={handleCreateWithAI} style={{ ...snapBtn, marginLeft: 'auto' }}>AI</button>
               </div>
             </div>
@@ -944,7 +992,9 @@ export default function MakerEditor() {
                 <div
                   onMouseDown={() => setIsDraggingSplit(true)}
                   onTouchStart={() => setIsDraggingSplit(true)}
-                  style={{ width: 6, cursor: 'col-resize', background: 'rgba(148,163,184,0.35)' }}
+                  onDoubleClick={() => setSplitPct(50)}
+                  style={{ width: 6, cursor: 'col-resize', background: 'rgba(148,163,184,0.45)' }}
+                  title="더블클릭: 50/50"
                 />
                 <div style={{ flex: 1, minWidth: 0, background: '#0a0f1a' }}>
                   <GameSimulator

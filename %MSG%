@@ -1,1 +1,1 @@
-feat(ui): dropdown on right with '코드 에디터'; remove template/resource; show code inline above panel; header opens inline code 
+feat(ui): remove AI from header; open code via tools; inline split code+test with resizer and snap 
