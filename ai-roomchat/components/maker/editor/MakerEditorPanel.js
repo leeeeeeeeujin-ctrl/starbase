@@ -1,7 +1,7 @@
 'use client';
 
 import SidePanel from '../SidePanel';
-import EditorMonaco from '../../../EditorMonaco.jsx';
+import EditorMonaco from '../../EditorMonaco.jsx';
 import { useStudioTemplate } from '../../../contexts/StudioStore';
 
 export default function MakerEditorPanel({
