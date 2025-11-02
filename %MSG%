@@ -1,1 +1,1 @@
-feat(ui): remove AI from header; open code via tools; inline split code+test with resizer and snap 
+feat(ui-persist): localStorage for code/test + split; custom split input; resizer dblclick=50/50 

@@ -12,7 +12,7 @@ import VariableDrawer from './VariableDrawer';
 import AdvancedToolsPanel from './AdvancedToolsPanel';
 import CodeEditor from './CodeEditor';
 import MultiLanguageCodeEditor from './MultiLanguageCodeEditor';
-StudioJsonEditor from '../../studio/CodeEditor';
+import StudioJsonEditor from '../../studio/CodeEditor';
 import GameSimulator from './GameSimulator';
 import dynamic from 'next/dynamic';
 const GameTemplateLibrary = dynamic(() => import('../template/GameTemplateLibrary'), { ssr: false });
