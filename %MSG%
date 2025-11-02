@@ -1,1 +1,1 @@
-fix(tdz): ensure MakerEditor style const declared before render; push#2 
+fix(runtime): drop legacy editors + optional-call usage; simplify imports; safer panel prefs init 

@@ -2,6 +2,20 @@
 
 import { useState, useRef, useEffect } from 'react';
 
+// Define styles before component to avoid any TDZ surprises after bundling
+const itemStyle = {
+  display: 'block',
+  width: '100%',
+  textAlign: 'left',
+  padding: '8px 10px',
+  borderRadius: 8,
+  border: '1px solid transparent',
+  background: 'transparent',
+  color: '#e2e8f0',
+  fontSize: 12,
+  fontWeight: 600,
+};
+
 export default function ToolsDropdown({ onOpenCode, onOpenImageUI }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -53,16 +67,3 @@ export default function ToolsDropdown({ onOpenCode, onOpenImageUI }) {
     </div>
   );
 }
-
-const itemStyle = {
-  display: 'block',
-  width: '100%',
-  textAlign: 'left',
-  padding: '8px 10px',
-  borderRadius: 8,
-  border: '1px solid transparent',
-  background: 'transparent',
-  color: '#e2e8f0',
-  fontSize: 12,
-  fontWeight: 600,
-};
