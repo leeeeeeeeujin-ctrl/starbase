@@ -12,7 +12,7 @@ import AddPromptFab from './AddPromptFab';
 import VariableDrawer from './VariableDrawer';
 import AdvancedToolsPanel from './AdvancedToolsPanel';
 // Removed legacy editors; using StudioJsonEditor for unified JSON
-import StudioJsonEditor from '../../studio/CodeEditor';
+import WorkspaceOverlay from '../../workspace/WorkspaceOverlay.jsx';
 import GameSimulator from './GameSimulator';
 import dynamic from 'next/dynamic';
 const ImageToUIGenerator = dynamic(() => import('../ui/ImageToUIGenerator'), { ssr: false });
@@ -826,44 +826,20 @@ export default function MakerEditor() {
           role="dialog"
           aria-modal="true"
           onClick={() => setShowMultiLanguageEditor(false)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1000, display: 'flex', alignItems: 'stretch', justifyContent: 'stretch', padding: 0 }}
         >
           <div
             onClick={e => e.stopPropagation()}
-            style={{ width: 'min(1200px, 96vw)', height: 'min(80vh, 860px)', background: '#0b1220', borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(148,163,184,0.35)', position: 'relative', display: 'flex', flexDirection: 'column' }}
+            style={{ width: '100%', height: '100%', background: '#0b1220', borderRadius: 0, overflow: 'hidden', borderTop: '1px solid rgba(148,163,184,0.35)', position: 'relative', display: 'flex', flexDirection: 'column' }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', background: 'rgba(2,6,23,0.6)', color: '#e2e8f0' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', background: 'rgba(2,6,23,0.6)', color: '#e2e8f0' }}>
               <strong style={{ fontSize: 13 }}>코드 에디터</strong>
               <div style={{ display:'flex', gap:8, alignItems:'center' }}>
                 <button onClick={() => setShowMultiLanguageEditor(false)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid rgba(148,163,184,0.35)', background: 'rgba(239, 68, 68, 0.9)', color: '#fff', fontWeight: 700, fontSize: 12 }}>닫기</button>
               </div>
             </div>
             <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-              <div style={{ flex: gameSimulatorOpen ? '0 0 60%' : '1 1 auto', minWidth: 0 }}>
-                <StudioJsonEditor value={templateText} onChange={setTemplateText} />
-              </div>
-              {gameSimulatorOpen && (
-                <div style={{ flex: '1 1 auto', minWidth: 0, background: '#0a0f1a' }}>
-                  <GameSimulator
-                    visible={true}
-                    gameData={{
-                      meta: { version: 2, createdAt: new Date().toISOString() },
-                      set: { name: setInfo?.name || '시뮬레이션' },
-                      slots: nodes.map((node, index) => ({
-                        slot_no: parseInt(node.id) || index,
-                        slot_type: node.type || 'ai',
-                        template: node.data?.label || '',
-                        is_start: node.data?.isStart || index === 0,
-                        canvas_x: node.position?.x || 0,
-                        canvas_y: node.position?.y || 0,
-                      })),
-                      bridges: edges.map(edge => ({ from_slot_id: edge.source, to_slot_id: edge.target })),
-                    }}
-                    onClose={() => setGameSimulatorOpen(false)}
-                    onSimulationResult={handleSimulationResult}
-                  />
-                </div>
-              )}
+              <WorkspaceOverlay />
             </div>
           </div>
         </div>
