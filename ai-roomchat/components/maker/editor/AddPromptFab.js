@@ -4,6 +4,8 @@ import { useState } from 'react';
 
 export default function AddPromptFab({ onAdd }) {
   const [open, setOpen] = useState(false);
+  // Hide while code editor open (global flag set by Studio CodeEditor)
+  if (typeof window !== 'undefined' && window.CODE_PANEL_OPEN) return null;
   const btn = {
     padding: '10px 12px',
     borderRadius: 10,
@@ -14,7 +16,7 @@ export default function AddPromptFab({ onAdd }) {
     fontWeight: 700,
   };
   return (
-    <div style={{ position: 'fixed', right: 56, bottom: 72, zIndex: 240 }}>
+    <div data-overlay="prompt-fab" style={{ position: 'fixed', right: 56, bottom: 72, zIndex: 240 }}>
       {open && (
         <div style={{ display: 'grid', gap: 6, marginBottom: 8 }}>
           <button style={{ ...btn, background: '#eef2ff', color: '#3730a3', borderColor: '#c7d2fe' }} onClick={() => { onAdd?.('ai',''); setOpen(false); }}>+ AI 프롬프트</button>

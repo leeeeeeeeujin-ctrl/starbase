@@ -17,6 +17,7 @@ export default function CodeEditor({ value, onChange, debounceMs = 250 }) {
   const [fallback, setFallback] = useState(false);
 
   useEffect(() => {
+    try { if (typeof window !== 'undefined') window.CODE_PANEL_OPEN = true; } catch {}
     let disposed = false;
     let monacoInstance;
     const init = async () => {
@@ -53,6 +54,7 @@ export default function CodeEditor({ value, onChange, debounceMs = 250 }) {
       if (editorRef.current && monacoInstance) {
         try { editorRef.current.dispose(); } catch {}
       }
+      try { if (typeof window !== 'undefined') delete window.CODE_PANEL_OPEN; } catch {}
     };
   }, []);
 

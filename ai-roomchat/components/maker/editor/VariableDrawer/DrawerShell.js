@@ -7,6 +7,7 @@ function DrawerShell({ onClose, children }) {
 
   return (
     <div
+      data-overlay="variable-drawer"
       onClick={handleBackdropClick}
       style={{
         position: 'fixed',

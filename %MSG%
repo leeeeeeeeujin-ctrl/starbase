@@ -1,1 +1,1 @@
-feat(ui): add AddPromptFab (AI/유저/시스템); render code panel without window flag 
+feat(ui): collapsible AI panel (fold to right) with persistence; adjust prompt FAB position; remove header variable button 
