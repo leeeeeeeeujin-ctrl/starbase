@@ -1,4 +1,6 @@
-import { useEffect, useRef } from 'react';
+"use client";
+
+import { useEffect, useRef, useState } from 'react';
 import loader from '@monaco-editor/loader';
 
 // Configure Monaco via CDN paths (prevents Next from bundling monaco's CSS)
@@ -12,16 +14,23 @@ export default function CodeEditor({ value, onChange, debounceMs = 250 }) {
   const containerRef = useRef(null);
   const editorRef = useRef(null);
   const debounceRef = useRef(null);
+  const [fallback, setFallback] = useState(false);
 
   useEffect(() => {
     let disposed = false;
     let monacoInstance;
     const init = async () => {
       if (disposed || !containerRef.current) return;
-      const monaco = await loader.init();
-      monacoInstance = monaco;
+      try {
+        const monaco = await loader.init();
+        monacoInstance = monaco;
+        if (!monaco || !monaco.editor) throw new Error('Monaco not available');
+      } catch (e) {
+        setFallback(true);
+        return;
+      }
       if (disposed || !containerRef.current) return;
-      const editor = monaco.editor.create(containerRef.current, {
+      const editor = monacoInstance.editor.create(containerRef.current, {
         value: value ?? '{\n  "name": "template"\n}',
         language: 'json',
         automaticLayout: true,
@@ -63,6 +72,15 @@ export default function CodeEditor({ value, onChange, debounceMs = 250 }) {
     }
   }, [value]);
 
+  if (fallback) {
+    return (
+      <textarea
+        value={typeof value === 'string' ? value : ''}
+        onChange={e => typeof onChange === 'function' && onChange(e.target.value)}
+        style={{ height: '100%', width: '100%', border: '1px solid #e5e7eb', borderRadius: 8, padding: 8, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', fontSize: 12 }}
+      />
+    );
+  }
   return (
     <div style={{ height: '100%', width: '100%' }}>
       <div ref={containerRef} style={{ height: '100%', width: '100%' }} />

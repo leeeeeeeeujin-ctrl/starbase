@@ -1,4 +1,6 @@
-import React, { useEffect, useRef } from 'react';
+"use client";
+
+import React, { useEffect, useRef, useState } from 'react';
 import loader from '@monaco-editor/loader';
 
 // Configure Monaco via CDN AMD loader to avoid bundling CSS from node_modules
@@ -11,15 +13,22 @@ if (typeof window !== 'undefined' && loader && typeof loader.config === 'functio
 export default function EditorMonaco({ value, onChange, language = 'json', theme = 'vs-dark', height = '100%', width = '100%' }) {
   const ref = useRef(null);
   const editorRef = useRef(null);
+  const [fallback, setFallback] = useState(false);
 
   useEffect(() => {
     let disposed = false;
     let monacoInstance;
     const init = async () => {
-      const monaco = await loader.init();
-      monacoInstance = monaco;
+      try {
+        const monaco = await loader.init();
+        monacoInstance = monaco;
+        if (!monaco || !monaco.editor) throw new Error('Monaco not available');
+      } catch (e) {
+        setFallback(true);
+        return;
+      }
       if (disposed || !ref.current) return;
-      const editor = monaco.editor.create(ref.current, {
+      const editor = monacoInstance.editor.create(ref.current, {
         value: value ?? '',
         language,
         automaticLayout: true,
@@ -49,5 +58,14 @@ export default function EditorMonaco({ value, onChange, language = 'json', theme
     }
   }, [value]);
 
+  if (fallback) {
+    return (
+      <textarea
+        value={typeof value === 'string' ? value : ''}
+        onChange={e => typeof onChange === 'function' && onChange(e.target.value)}
+        style={{ height, width, border: '1px solid #e5e7eb', borderRadius: 8, padding: 8, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', fontSize: 12 }}
+      />
+    );
+  }
   return <div ref={ref} style={{ height, width }} />;
 }

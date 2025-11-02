@@ -143,7 +143,7 @@ export default function MakerEditor() {
 
   const { alert: versionAlert, clearAlert: clearVersionAlert } = version;
   const [variableDrawerOpen, setVariableDrawerOpen] = useState(false);
-  const [headerCollapsed, setHeaderCollapsed] = useState(false);
+  const [headerCollapsed, setHeaderCollapsed] = useState(true);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [advancedToolsOpen, setAdvancedToolsOpen] = useState(false);
   const [receiptVisible, setReceiptVisible] = useState(null);

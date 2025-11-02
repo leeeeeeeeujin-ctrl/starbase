@@ -1,1 +1,1 @@
-feat(prompt-editor): write Monaco edits to Studio template JSON; fix EditorMonaco path 
+fix(build): EditorMonaco import path in MakerEditorPanel 
