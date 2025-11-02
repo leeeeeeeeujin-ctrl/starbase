@@ -1,1 +1,1 @@
-fix(build): correct StudioPersistentProvider import path 
+feat(prompt-editor): write Monaco edits to Studio template JSON; fix EditorMonaco path 
