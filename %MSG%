@@ -1,1 +1,1 @@
-feat(prompt-toolbar): add prompt create buttons (AI/user/system) above panel; disable chat overlays flag 
+feat(ui): dropdown on right with '코드 에디터'; remove template/resource; show code inline above panel; header opens inline code 

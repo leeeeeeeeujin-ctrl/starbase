@@ -12,7 +12,7 @@ import VariableDrawer from './VariableDrawer';
 import AdvancedToolsPanel from './AdvancedToolsPanel';
 import CodeEditor from './CodeEditor';
 import MultiLanguageCodeEditor from './MultiLanguageCodeEditor';
-import StudioJsonEditor from '../../studio/CodeEditor';
+StudioJsonEditor from '../../studio/CodeEditor';
 import GameSimulator from './GameSimulator';
 import dynamic from 'next/dynamic';
 const GameTemplateLibrary = dynamic(() => import('../template/GameTemplateLibrary'), { ssr: false });
@@ -63,6 +63,8 @@ export default function MakerEditor() {
   // Bridge with StudioStore: keep Maker graph <-> templateText in sync
   const syncingRef = useRef(false);
   const hydratedRef = useRef(false);
+  const [splitPct, setSplitPct] = useState(50);
+  const [isDraggingSplit, setIsDraggingSplit] = useState(false);
 
   const toTemplateObject = useCallback(() => {
     const tpl = (() => { try { return JSON.parse(templateText || '{}'); } catch { return {}; } })();
@@ -107,6 +109,27 @@ export default function MakerEditor() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [templateText]);
+
+  useEffect(() => {
+    if (!isDraggingSplit) return;
+    const onMove = e => {
+      const x = e.clientX ?? (e.touches ? e.touches[0].clientX : 0);
+      const vw = typeof window !== 'undefined' ? window.innerWidth : 1000;
+      const pct = Math.min(80, Math.max(20, Math.round((x / vw) * 100)));
+      setSplitPct(pct);
+    };
+    const onUp = () => setIsDraggingSplit(false);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    window.addEventListener('touchmove', onMove);
+    window.addEventListener('touchend', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('touchend', onUp);
+    };
+  }, [isDraggingSplit]);
 
   // Debounced sync to templateText on graph changes
   useEffect(() => {
@@ -906,8 +929,45 @@ export default function MakerEditor() {
               }}
             >닫기</button>
           </div>
-          <div style={{ height: 520 }}>
-            <StudioJsonEditor value={templateText} onChange={setTemplateText} />
+          <div style={{ height: 520, display: 'flex', position: 'relative' }}>
+            <div style={{ width: gameSimulatorOpen ? `${splitPct}%` : '100%', minWidth: 0 }}>
+              <StudioJsonEditor value={templateText} onChange={setTemplateText} />
+              <div style={{ display: 'flex', gap: 6, padding: '6px 10px', background: 'rgba(2,6,23,0.5)' }}>
+                <button onClick={() => setSplitPct(50)} style={snapBtn}>50/50</button>
+                <button onClick={() => setSplitPct(70)} style={snapBtn}>70/30</button>
+                <button onClick={() => setSplitPct(30)} style={snapBtn}>30/70</button>
+                <button onClick={handleCreateWithAI} style={{ ...snapBtn, marginLeft: 'auto' }}>AI</button>
+              </div>
+            </div>
+            {gameSimulatorOpen && (
+              <>
+                <div
+                  onMouseDown={() => setIsDraggingSplit(true)}
+                  onTouchStart={() => setIsDraggingSplit(true)}
+                  style={{ width: 6, cursor: 'col-resize', background: 'rgba(148,163,184,0.35)' }}
+                />
+                <div style={{ flex: 1, minWidth: 0, background: '#0a0f1a' }}>
+                  <GameSimulator
+                    visible={true}
+                    gameData={{
+                      meta: { version: 2, createdAt: new Date().toISOString() },
+                      set: { name: setInfo?.name || '시뮬레이션' },
+                      slots: nodes.map((node, index) => ({
+                        slot_no: parseInt(node.id) || index,
+                        slot_type: node.type || 'ai',
+                        template: node.data?.label || '',
+                        is_start: node.data?.isStart || index === 0,
+                        canvas_x: node.position?.x || 0,
+                        canvas_y: node.position?.y || 0,
+                      })),
+                      bridges: edges.map(edge => ({ from_slot_id: edge.source, to_slot_id: edge.target })),
+                    }}
+                    onClose={() => setGameSimulatorOpen(false)}
+                    onSimulationResult={handleSimulationResult}
+                  />
+                </div>
+              </>
+            )}
           </div>
         </section>
       )}
