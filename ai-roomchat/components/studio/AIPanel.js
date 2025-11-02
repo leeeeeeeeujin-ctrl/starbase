@@ -6,9 +6,6 @@ function safeParse(text){ try{ return JSON.parse(text||'{}'); }catch{ return nul
 function pretty(obj){ try{ return JSON.stringify(obj, null, 2);}catch{ return ''; } }
 
 export default function AIPanel(){
-  if (typeof window !== 'undefined' && window.__DISABLE_CHAT_OVERLAY__) {
-    return null;
-  }
   const { templateText, setTemplateText } = useTemplate();
   const tpl = useMemo(()=> safeParse(templateText) ?? {}, [templateText]);
   const [open, setOpen] = useState(false);
@@ -20,11 +17,18 @@ export default function AIPanel(){
   const [preview, setPreview] = useState('');
   const [diffs, setDiffs] = useState([]);
 
-  // Allow external toggle via StudioBus
+  // Allow external toggle via StudioBus + persist open state
   useEffect(() => {
+    try {
+      const saved = localStorage.getItem('studio.aiPanel.open');
+      if (saved === '1') setOpen(true);
+    } catch {}
     const off = subscribe('studio:ai:toggle', () => setOpen(v => !v));
     return () => off?.();
   }, []);
+  useEffect(() => {
+    try { localStorage.setItem('studio.aiPanel.open', open ? '1' : '0'); } catch {}
+  }, [open]);
 
   function computeDiff(a, b, path = '') {
     const out = [];
@@ -103,7 +107,16 @@ export default function AIPanel(){
 
   return (
     <>
-      <button onClick={()=> setOpen(v=>!v)} style={{ position:'fixed', right:16, top:16, zIndex:29 }}>{open? 'AI 닫기' : 'AI 도우미'}</button>
+      {/* Collapsed handle when closed */}
+      {!open && (
+        <button
+          onClick={()=> setOpen(true)}
+          title="AI 패널 열기"
+          style={{ position:'fixed', right:0, top:'40%', transform:'translateY(-50%)', width:28, height:120, borderTopLeftRadius:8, borderBottomLeftRadius:8, border:'1px solid #ddd', background:'#ffffff', boxShadow:'0 8px 24px rgba(0,0,0,0.15)', zIndex:30 }}
+        >
+          ▶
+        </button>
+      )}
       {open && (
         <div style={{ position:'fixed', right:16, bottom:16, width:420, height:520, background:'#fff', border:'1px solid #ddd', borderRadius:10, boxShadow:'0 8px 28px rgba(0,0,0,0.15)', overflow:'hidden', display:'flex', flexDirection:'column', zIndex:30 }}>
           <div style={{ padding:'8px 12px', borderBottom:'1px solid #eee', display:'flex', gap:8, alignItems:'center' }}>
@@ -114,6 +127,7 @@ export default function AIPanel(){
               <option value="bridge">로컬 브리지</option>
               <option value="manual">수동 JSON 머지</option>
             </select>
+            <button onClick={()=> setOpen(false)} title="접기" style={{ marginLeft:8 }}>접기 ▶</button>
           </div>
           <div style={{ padding:12, flex:1, overflow:'auto' }}>
             {mode === 'mock' && (

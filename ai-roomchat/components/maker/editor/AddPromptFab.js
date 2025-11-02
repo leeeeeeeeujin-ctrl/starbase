@@ -14,7 +14,7 @@ export default function AddPromptFab({ onAdd }) {
     fontWeight: 700,
   };
   return (
-    <div style={{ position: 'fixed', right: 12, bottom: 12, zIndex: 240 }}>
+    <div style={{ position: 'fixed', right: 56, bottom: 72, zIndex: 240 }}>
       {open && (
         <div style={{ display: 'grid', gap: 6, marginBottom: 8 }}>
           <button style={{ ...btn, background: '#eef2ff', color: '#3730a3', borderColor: '#c7d2fe' }} onClick={() => { onAdd?.('ai',''); setOpen(false); }}>+ AI 프롬프트</button>

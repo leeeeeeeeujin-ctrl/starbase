@@ -47,7 +47,6 @@ export default function MinimalMakerHeader({
         <strong style={{ fontSize: 14 }}>프롬프트 에디터</strong>
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        {btn('변수', onOpenVariables, { background: 'rgba(14,165,233,0.2)', borderColor: '#38bdf8', color: '#e0f2fe' })}
         {btn('테스트', onStartSimulation, { background: 'rgba(34,197,94,0.15)', borderColor: '#10b981', color: '#bbf7d0' })}
         {btn('저장', onSave, { background: busy ? 'rgba(148,163,184,0.2)' : '#16a34a', color: '#fff', borderColor: busy ? '#64748b' : '#16a34a' })}
         {/* Tools dropdown at right; AI removed from header (moved into code panel) */}
