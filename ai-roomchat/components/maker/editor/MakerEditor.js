@@ -72,6 +72,9 @@ export default function MakerEditor() {
   const [isDraggingSplit, setIsDraggingSplit] = useState(false);
   const PREF_SPLIT = 'maker:ui:splitPct';
   const PREF_VIS = 'maker:ui:panels';
+  // panels visibility states must be declared before effects that use them
+  const [showMultiLanguageEditor, setShowMultiLanguageEditor] = useState(false);
+  const [gameSimulatorOpen, setGameSimulatorOpen] = useState(false);
 
   const toTemplateObject = useCallback(() => {
     const tpl = (() => { try { return JSON.parse(templateText || '{}'); } catch { return {}; } })();
@@ -260,9 +263,8 @@ export default function MakerEditor() {
   // ⚡ JavaScript 코드 에디터
   const [codeEditorOpen, setCodeEditorOpen] = useState(false);
   const [showCodeEditor, setShowCodeEditor] = useState(false);
-  const [showMultiLanguageEditor, setShowMultiLanguageEditor] = useState(false);
   const [gameCode, setGameCode] = useState('');
-  const [showGameSimulator, setShowGameSimulator] = useState(false);
+  // deprecated: replaced by gameSimulatorOpen
   const [simulationResults, setSimulationResults] = useState(null);
 
   const handleCreateWithAI = useCallback(async () => {
