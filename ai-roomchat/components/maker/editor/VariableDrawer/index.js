@@ -17,8 +17,6 @@ function VariableDrawer({
   onVisibilityChange,
   onToggleInvisible,
 }) {
-  // Hide entirely while code editor is open
-  try { if (typeof window !== 'undefined' && window.CODE_PANEL_OPEN) return null; } catch {}
   if (!open) {
     return null;
   }
