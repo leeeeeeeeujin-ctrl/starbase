@@ -6,13 +6,11 @@ export default function MinimalMakerHeader({
   busy,
   onBack,
   onOpenVariables,
-  onOpenMultiLanguageEditor,
   onStartSimulation,
   onSave,
   onCreateWithAI,
-  onOpenTemplate,
+  onOpenCode,
   onOpenImageUI,
-  onOpenResource,
 }) {
   const btn = (label, onClick, style = {}) => (
     <button
@@ -49,17 +47,13 @@ export default function MinimalMakerHeader({
         <strong style={{ fontSize: 14 }}>프롬프트 에디터</strong>
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <ToolsDropdown
-          onOpenTemplate={onOpenTemplate}
-          onOpenImageUI={onOpenImageUI}
-          onOpenResource={onOpenResource}
-        />
         {btn('변수', onOpenVariables, { background: 'rgba(14,165,233,0.2)', borderColor: '#38bdf8', color: '#e0f2fe' })}
-        {btn('코드', onOpenMultiLanguageEditor, { background: 'rgba(59,130,246,0.15)', borderColor: '#60a5fa', color: '#bfdbfe' })}
         {btn('테스트', onStartSimulation, { background: 'rgba(34,197,94,0.15)', borderColor: '#10b981', color: '#bbf7d0' })}
         {btn('저장', onSave, { background: busy ? 'rgba(148,163,184,0.2)' : '#16a34a', color: '#fff', borderColor: busy ? '#64748b' : '#16a34a' })}
         {/* Single AI button only */}
         {btn('AI', onCreateWithAI, { width: 40, textAlign: 'center' })}
+        {/* Tools dropdown at right */}
+        <ToolsDropdown onOpenCode={onOpenCode} onOpenImageUI={onOpenImageUI} />
       </div>
     </header>
   );

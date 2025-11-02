@@ -547,6 +547,7 @@ export default function MakerEditor() {
           collapsed={headerCollapsed}
           onToggleCollapse={() => setHeaderCollapsed(prev => !prev)}
         onOpenVariables={() => setVariableDrawerOpen(true)}
+        onOpenCode={() => { try { if (typeof window !== 'undefined') window.__INLINE_CODE_IN_PANEL__ = true; } catch {}; setShowMultiLanguageEditor(true); }}
         onOpenTemplate={() => setShowTemplateLibrary(true)}
         onOpenImageUI={() => setShowImageToUI(true)}
         onOpenResource={() => setShowResourceEditor(true)}
@@ -879,7 +880,7 @@ export default function MakerEditor() {
       />
 
       {/* 🚀 코드 에디터(통합 스튜디오 JSON 에디터, 본문 영역 전환) */}
-      {showMultiLanguageEditor && (
+      {showMultiLanguageEditor && !(typeof window !== 'undefined' && window.__INLINE_CODE_IN_PANEL__) && (
         <section
           style={{
             marginTop: 8,

@@ -1,1 +1,1 @@
-feat(ui): ToolsDropdown + compact tools modals; header triggers, body-only switching 
+feat(prompt-toolbar): add prompt create buttons (AI/user/system) above panel; disable chat overlays flag 

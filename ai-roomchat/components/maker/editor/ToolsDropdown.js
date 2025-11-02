@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 
-export default function ToolsDropdown({ onOpenTemplate, onOpenImageUI, onOpenResource }) {
+export default function ToolsDropdown({ onOpenCode, onOpenImageUI }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -46,9 +46,8 @@ export default function ToolsDropdown({ onOpenTemplate, onOpenImageUI, onOpenRes
             zIndex: 40,
           }}
         >
-          <button onClick={onOpenTemplate} style={itemStyle}>게임 템플릿 선택</button>
+          <button onClick={onOpenCode} style={itemStyle}>코드 에디터</button>
           <button onClick={onOpenImageUI} style={itemStyle}>이미지로 UI 생성</button>
-          <button onClick={onOpenResource} style={itemStyle}>게임 리소스 편집</button>
         </div>
       )}
     </div>
@@ -67,4 +66,3 @@ const itemStyle = {
   fontSize: 12,
   fontWeight: 600,
 };
-

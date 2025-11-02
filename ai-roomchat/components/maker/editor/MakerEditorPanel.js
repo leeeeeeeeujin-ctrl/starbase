@@ -3,6 +3,7 @@
 import SidePanel from '../SidePanel';
 import EditorMonaco from '../../EditorMonaco.jsx';
 import { useStudioTemplate } from '../../../contexts/StudioStore';
+import StudioJsonEditor from '../../studio/CodeEditor';
 
 export default function MakerEditorPanel({
   tabs,
@@ -27,6 +28,12 @@ export default function MakerEditorPanel({
     studio = useStudioTemplate();
   } catch {}
 
+  const [inlineCode, setInlineCode] = (() => {
+    let flag = false;
+    try { if (typeof window !== 'undefined') flag = !!window.__INLINE_CODE_IN_PANEL__; } catch {}
+    return [flag, (v) => { try { if (typeof window !== 'undefined') window.__INLINE_CODE_IN_PANEL__ = v; } catch {} }];
+  })();
+
   // Fallback to global actions if prop not provided
   const addPrompt = typeof onAddPrompt === 'function'
     ? onAddPrompt
@@ -46,6 +53,30 @@ export default function MakerEditorPanel({
         width: '100%',
       }}
     >
+      {/* 코드 패널을 패널 상단에 인라인 표시 (요청사항) */}
+      {typeof window !== 'undefined' && window.__INLINE_CODE_IN_PANEL__ && (
+        <section
+          style={{
+            border: '1px solid #e5e7eb',
+            borderRadius: 12,
+            overflow: 'hidden',
+            background: '#0b1220',
+            marginBottom: 10,
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', background: 'rgba(2,6,23,0.6)', color: '#e2e8f0' }}>
+            <strong style={{ fontSize: 13 }}>코드 에디터</strong>
+            <button
+              onClick={() => { try { window.__INLINE_CODE_IN_PANEL__ = false; window.__close_inline_code?.(); } catch {}; }}
+              style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid rgba(148,163,184,0.35)', background: 'rgba(239, 68, 68, 0.9)', color: '#fff', fontWeight: 700, fontSize: 12 }}
+            >닫기</button>
+          </div>
+          <div style={{ height: 420 }}>
+            <StudioJsonEditor value={studio?.templateText || ''} onChange={studio?.setTemplateText || (()=>{})} />
+          </div>
+        </section>
+      )}
+
       {/* 프롬프트 생성 툴바 (패널 열기 버튼 위) */}
       {addPrompt && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
