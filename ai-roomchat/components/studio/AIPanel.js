@@ -6,6 +6,9 @@ function safeParse(text){ try{ return JSON.parse(text||'{}'); }catch{ return nul
 function pretty(obj){ try{ return JSON.stringify(obj, null, 2);}catch{ return ''; } }
 
 export default function AIPanel(){
+  if (typeof window !== 'undefined' && window.__DISABLE_CHAT_OVERLAY__) {
+    return null;
+  }
   const { templateText, setTemplateText } = useTemplate();
   const tpl = useMemo(()=> safeParse(templateText) ?? {}, [templateText]);
   const [open, setOpen] = useState(false);
@@ -100,7 +103,7 @@ export default function AIPanel(){
 
   return (
     <>
-      <button onClick={()=> setOpen(v=>!v)}>{open? 'AI 닫기' : 'AI 도우미'}</button>
+      <button onClick={()=> setOpen(v=>!v)} style={{ position:'fixed', right:16, top:16, zIndex:29 }}>{open? 'AI 닫기' : 'AI 도우미'}</button>
       {open && (
         <div style={{ position:'fixed', right:16, bottom:16, width:420, height:520, background:'#fff', border:'1px solid #ddd', borderRadius:10, boxShadow:'0 8px 28px rgba(0,0,0,0.15)', overflow:'hidden', display:'flex', flexDirection:'column', zIndex:30 }}>
           <div style={{ padding:'8px 12px', borderBottom:'1px solid #eee', display:'flex', gap:8, alignItems:'center' }}>

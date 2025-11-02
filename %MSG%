@@ -1,1 +1,1 @@
-fix(build): remove duplicate gameSimulatorOpen declaration in MakerEditor.js 
+feat(ui): add AddPromptFab (AI/유저/시스템); render code panel without window flag 
