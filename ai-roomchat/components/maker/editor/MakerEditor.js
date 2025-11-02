@@ -10,14 +10,11 @@ import MinimalMakerHeader from './MinimalMakerHeader';
 import MakerEditorPanel from './MakerEditorPanel';
 import VariableDrawer from './VariableDrawer';
 import AdvancedToolsPanel from './AdvancedToolsPanel';
-import CodeEditor from './CodeEditor';
-import MultiLanguageCodeEditor from './MultiLanguageCodeEditor';
+// Removed legacy editors; using StudioJsonEditor for unified JSON
 import StudioJsonEditor from '../../studio/CodeEditor';
 import GameSimulator from './GameSimulator';
 import dynamic from 'next/dynamic';
-const GameTemplateLibrary = dynamic(() => import('../template/GameTemplateLibrary'), { ssr: false });
 const ImageToUIGenerator = dynamic(() => import('../ui/ImageToUIGenerator'), { ssr: false });
-const GameResourceEditor = dynamic(() => import('../resource/GameResourceEditor'), { ssr: false });
 
 export default function MakerEditor() {
   const snapBtn = {
@@ -129,13 +126,11 @@ export default function MakerEditor() {
       const visRaw = localStorage.getItem(PREF_VIS);
       if (visRaw) {
         const vis = JSON.parse(visRaw);
-        if (typeof vis?.code === 'boolean') {
-          if (vis.code) {
-            window.__INLINE_CODE_IN_PANEL__ = true;
-            setShowMultiLanguageEditor?.(true);
-          }
+        if (typeof vis?.code === 'boolean' && vis.code) {
+          window.__INLINE_CODE_IN_PANEL__ = true;
+          setShowMultiLanguageEditor(true);
         }
-        if (typeof vis?.test === 'boolean') setGameSimulatorOpen?.(!!vis.test);
+        if (typeof vis?.test === 'boolean') setGameSimulatorOpen(!!vis.test);
       }
     } catch {}
   }, []);
@@ -933,17 +928,6 @@ export default function MakerEditor() {
         </div>
       )}
 
-      <CodeEditor
-        visible={codeEditorOpen}
-        onCodeRun={handleCodeRun}
-        initialCode={gameCode}
-        gameContext={{
-          nodes: nodes,
-          edges: edges,
-          selectedNode: selectedNode,
-        }}
-      />
-
       {/* 🚀 코드 에디터(통합 스튜디오 JSON 에디터, 본문 영역 전환) */}
       {showMultiLanguageEditor && !(typeof window !== 'undefined' && window.__INLINE_CODE_IN_PANEL__) && (
         <section
@@ -1058,30 +1042,7 @@ export default function MakerEditor() {
         onSimulationResult={handleSimulationResult}
       />
 
-      {/* 코드 에디터 닫기 버튼 */}
-      {codeEditorOpen && (
-        <button
-          onClick={() => setCodeEditorOpen(false)}
-          style={{
-            position: 'fixed',
-            top: 16,
-            right: 16,
-            width: 40,
-            height: 40,
-            borderRadius: '50%',
-            border: 'none',
-            background: '#ef4444',
-            color: '#fff',
-            fontSize: 18,
-            fontWeight: 600,
-            cursor: 'pointer',
-            zIndex: 250,
-            boxShadow: '0 4px 12px rgba(239, 68, 68, 0.4)',
-          }}
-        >
-          ×
-        </button>
-      )}
+      
 
       {/* Tools modals (compact) */}
       {showTemplateLibrary && (

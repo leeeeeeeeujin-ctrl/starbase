@@ -1,1 +1,1 @@
-fix(runtime): define snapBtn before use to avoid TDZ minified error 
+fix(tdz): ensure MakerEditor style const declared before render; push#2 
