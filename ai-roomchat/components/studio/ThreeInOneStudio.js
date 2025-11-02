@@ -1,7 +1,7 @@
 import dynamic from 'next/dynamic';
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, useEffect } from 'react';
 import { useStudioTemplate } from '../../contexts/StudioStore';
-import { emit } from '../../contexts/StudioBus';
+import { emit, subscribe } from '../../contexts/StudioBus';
 
 // Client-only editors and panels
 const CodeEditor = dynamic(() => import('./CodeEditor'), { ssr: false });
@@ -54,6 +54,17 @@ export default function ThreeInOneStudio() {
   const [showIssues, setShowIssues] = useState(false);
   const [showImageUi, setShowImageUi] = useState(false);
   const [showBlocks, setShowBlocks] = useState(false);
+
+  // External event hooks (allow header or other UIs to control this editor)
+  useEffect(() => {
+    const off1 = subscribe('studio:mode:toggle', () => setMode(m => (m === 'code' ? 'nodes' : 'code')));
+    const off2 = subscribe('studio:open:image', () => setShowImageUi(true));
+    const off3 = subscribe('studio:open:blocks', () => setShowBlocks(true));
+    const off4 = subscribe('studio:import', () => fileInputRef.current?.click());
+    return () => {
+      off1?.(); off2?.(); off3?.(); off4?.();
+    };
+  }, [setMode]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>

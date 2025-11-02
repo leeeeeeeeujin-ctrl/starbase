@@ -1320,3 +1320,20 @@ const MobileMakerHeader = ({
     </header>
   );
 };
+import { emit } from '../../../contexts/StudioBus';
+
+// Optional: quick controls to drive the integrated prompt/code editor
+// Place <StudioHeaderControls /> somewhere in this header's JSX to expose actions.
+export function StudioHeaderControls() {
+  const btnStyle = { padding: '6px 10px', borderRadius: 6, border: '1px solid #e5e7eb', background: '#fff' };
+  const wrapStyle = { display: 'flex', gap: 8, alignItems: 'center' };
+  return (
+    <div style={wrapStyle}>
+      <button style={btnStyle} onClick={() => emit('studio:mode:toggle')}>코드↔프롬프트</button>
+      <button style={btnStyle} title="AI 코딩" onClick={() => emit('studio:ai:toggle')}>AI</button>
+      <button style={btnStyle} onClick={() => emit('studio:open:image')}>이미지 UI</button>
+      <button style={btnStyle} onClick={() => emit('studio:open:blocks')}>블록코딩</button>
+      <button style={btnStyle} onClick={() => emit('studio:import')}>Import JSON</button>
+    </div>
+  );
+}

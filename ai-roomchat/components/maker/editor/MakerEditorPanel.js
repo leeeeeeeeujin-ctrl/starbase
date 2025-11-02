@@ -1,6 +1,7 @@
 'use client';
 
 import SidePanel from '../SidePanel';
+import EditorMonaco from '../../EditorMonaco.jsx';
 
 export default function MakerEditorPanel({
   tabs,
@@ -180,21 +181,15 @@ export default function MakerEditorPanel({
                   <label style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
                     프롬프트 내용
                   </label>
-                  <textarea
-                    rows={7}
-                    value={nodeData.template || ''}
-                    onChange={event => nodeData.onChange?.({ template: event.target.value })}
-                    style={{
-                      width: '100%',
-                      borderRadius: 12,
-                      border: '1px solid #e2e8f0',
-                      padding: '10px 12px',
-                      fontSize: 13,
-                      lineHeight: 1.5,
-                      resize: 'vertical',
-                    }}
-                    placeholder="프롬프트 텍스트를 입력하세요"
-                  />
+                  <div style={{ height: 220, border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
+                    <EditorMonaco
+                      value={nodeData.template || ''}
+                      onChange={val => nodeData.onChange?.({ template: val })}
+                      language="markdown"
+                      theme="vs-light"
+                      height="100%"
+                    />
+                  </div>
                 </div>
               </div>
             )}
