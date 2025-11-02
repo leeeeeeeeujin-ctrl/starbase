@@ -8,6 +8,7 @@ import { exportSet, importSet } from './importExport';
 import MakerEditorCanvas from './MakerEditorCanvas';
 import MinimalMakerHeader from './MinimalMakerHeader';
 import MakerEditorPanel from './MakerEditorPanel';
+import AddPromptFab from './AddPromptFab';
 import VariableDrawer from './VariableDrawer';
 import AdvancedToolsPanel from './AdvancedToolsPanel';
 // Removed legacy editors; using StudioJsonEditor for unified JSON
@@ -130,7 +131,6 @@ export default function MakerEditor() {
       if (visRaw) {
         const vis = JSON.parse(visRaw);
         if (typeof vis?.code === 'boolean' && vis.code) {
-          window.__INLINE_CODE_IN_PANEL__ = true;
           setShowMultiLanguageEditor(true);
         }
         if (typeof vis?.test === 'boolean') setGameSimulatorOpen(!!vis.test);
@@ -817,6 +817,9 @@ export default function MakerEditor() {
         </div>
       )}
 
+      {/* Floating prompt add button (bottom-left) */}
+      <AddPromptFab onAdd={(t,templ) => addPromptNode(t, templ)} />
+
       <button
         type="button"
         onClick={() => setVariableDrawerOpen(true)}
@@ -930,7 +933,7 @@ export default function MakerEditor() {
       )}
 
       {/* 🚀 코드 에디터(통합 스튜디오 JSON 에디터, 본문 영역 전환) */}
-      {showMultiLanguageEditor && !(typeof window !== 'undefined' && window.__INLINE_CODE_IN_PANEL__) && (
+      {showMultiLanguageEditor && (
         <section
           style={{
             marginTop: 8,

@@ -1,1 +1,1 @@
-fix(tdz): declare code/test panel states before effects; remove later duplicates 
+fix(build): remove duplicate gameSimulatorOpen declaration in MakerEditor.js 
