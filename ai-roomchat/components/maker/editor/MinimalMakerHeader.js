@@ -1,5 +1,7 @@
 "use client";
 
+import ToolsDropdown from './ToolsDropdown';
+
 export default function MinimalMakerHeader({
   busy,
   onBack,
@@ -8,6 +10,9 @@ export default function MinimalMakerHeader({
   onStartSimulation,
   onSave,
   onCreateWithAI,
+  onOpenTemplate,
+  onOpenImageUI,
+  onOpenResource,
 }) {
   const btn = (label, onClick, style = {}) => (
     <button
@@ -44,6 +49,11 @@ export default function MinimalMakerHeader({
         <strong style={{ fontSize: 14 }}>프롬프트 에디터</strong>
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <ToolsDropdown
+          onOpenTemplate={onOpenTemplate}
+          onOpenImageUI={onOpenImageUI}
+          onOpenResource={onOpenResource}
+        />
         {btn('변수', onOpenVariables, { background: 'rgba(14,165,233,0.2)', borderColor: '#38bdf8', color: '#e0f2fe' })}
         {btn('코드', onOpenMultiLanguageEditor, { background: 'rgba(59,130,246,0.15)', borderColor: '#60a5fa', color: '#bfdbfe' })}
         {btn('테스트', onStartSimulation, { background: 'rgba(34,197,94,0.15)', borderColor: '#10b981', color: '#bbf7d0' })}
@@ -54,4 +64,3 @@ export default function MinimalMakerHeader({
     </header>
   );
 }
-

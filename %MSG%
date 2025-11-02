@@ -1,1 +1,1 @@
-fix(ui): force header collapsed and hide 'ÆîÄ¡±â' toggle; inline code editor 
+feat(ui): use MinimalMakerHeader to remove big tiles; keep single AI button 

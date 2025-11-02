@@ -14,6 +14,10 @@ import CodeEditor from './CodeEditor';
 import MultiLanguageCodeEditor from './MultiLanguageCodeEditor';
 import StudioJsonEditor from '../../studio/CodeEditor';
 import GameSimulator from './GameSimulator';
+import dynamic from 'next/dynamic';
+const GameTemplateLibrary = dynamic(() => import('../template/GameTemplateLibrary'), { ssr: false });
+const ImageToUIGenerator = dynamic(() => import('../ui/ImageToUIGenerator'), { ssr: false });
+const GameResourceEditor = dynamic(() => import('../resource/GameResourceEditor'), { ssr: false });
 
 export default function MakerEditor() {
   const { status, graph, selection, variables, persistence, history, version } = useMakerEditor();
@@ -158,6 +162,9 @@ export default function MakerEditor() {
   const { alert: versionAlert, clearAlert: clearVersionAlert } = version;
   const [variableDrawerOpen, setVariableDrawerOpen] = useState(false);
   const [headerCollapsed, setHeaderCollapsed] = useState(true);
+  const [showTemplateLibrary, setShowTemplateLibrary] = useState(false);
+  const [showImageToUI, setShowImageToUI] = useState(false);
+  const [showResourceEditor, setShowResourceEditor] = useState(false);
   useEffect(() => {
     // Lock header as collapsed; never expand
     if (!headerCollapsed) setHeaderCollapsed(true);
@@ -518,7 +525,10 @@ export default function MakerEditor() {
           onGoLobby={goToLobby}
           collapsed={headerCollapsed}
           onToggleCollapse={() => setHeaderCollapsed(prev => !prev)}
-          onOpenVariables={() => setVariableDrawerOpen(true)}
+        onOpenVariables={() => setVariableDrawerOpen(true)}
+        onOpenTemplate={() => setShowTemplateLibrary(true)}
+        onOpenImageUI={() => setShowImageToUI(true)}
+        onOpenResource={() => setShowResourceEditor(true)}
           onCreateWithAI={handleCreateWithAI}
           onOpenCodeEditor={openCodeEditor}
           onOpenMultiLanguageEditor={() => setShowMultiLanguageEditor(true)}
@@ -931,6 +941,29 @@ export default function MakerEditor() {
         >
           ×
         </button>
+      )}
+
+      {/* Tools modals (compact) */}
+      {showTemplateLibrary && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 260 }} onClick={() => setShowTemplateLibrary(false)}>
+          <div style={{ position: 'absolute', inset: '5% 8% auto 8%', background: '#0b1220', border: '1px solid rgba(148,163,184,.35)', borderRadius: 12, overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+            <GameTemplateLibrary onSelectTemplate={(tpl) => { try { setTemplateText(JSON.stringify(tpl, null, 2)); } catch {}; setShowTemplateLibrary(false); }} onClose={() => setShowTemplateLibrary(false)} />
+          </div>
+        </div>
+      )}
+      {showImageToUI && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 260 }} onClick={() => setShowImageToUI(false)}>
+          <div style={{ position: 'absolute', inset: '8% 10% auto 10%', background: '#0b1220', border: '1px solid rgba(148,163,184,.35)', borderRadius: 12, overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+            <ImageToUIGenerator onClose={() => setShowImageToUI(false)} onGenerateUI={() => setShowImageToUI(false)} />
+          </div>
+        </div>
+      )}
+      {showResourceEditor && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 260 }} onClick={() => setShowResourceEditor(false)}>
+          <div style={{ position: 'absolute', inset: '8% 10% auto 10%', background: '#0b1220', border: '1px solid rgba(148,163,184,.35)', borderRadius: 12, overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+            <GameResourceEditor onClose={() => setShowResourceEditor(false)} gameData={{}} onGameUpdate={() => {}} />
+          </div>
+        </div>
       )}
     </div>
   );

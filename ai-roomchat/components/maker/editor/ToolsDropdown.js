@@ -1,0 +1,70 @@
+"use client";
+
+import { useState, useRef, useEffect } from 'react';
+
+export default function ToolsDropdown({ onOpenTemplate, onOpenImageUI, onOpenResource }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const onDoc = e => {
+      if (!ref.current) return;
+      if (!ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('click', onDoc);
+    return () => document.removeEventListener('click', onDoc);
+  }, []);
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        style={{
+          padding: '6px 10px',
+          borderRadius: 10,
+          border: '1px solid rgba(148,163,184,.35)',
+          background: 'rgba(255,255,255,.06)',
+          color: '#e2e8f0',
+          fontSize: 12,
+          fontWeight: 700,
+        }}
+      >
+        도구 ▾
+      </button>
+      {open && (
+        <div
+          style={{
+            position: 'absolute',
+            right: 0,
+            top: '110%',
+            minWidth: 220,
+            background: '#0b1220',
+            border: '1px solid rgba(148,163,184,.35)',
+            borderRadius: 10,
+            padding: 6,
+            boxShadow: '0 10px 24px rgba(2,6,23,.35)',
+            zIndex: 40,
+          }}
+        >
+          <button onClick={onOpenTemplate} style={itemStyle}>게임 템플릿 선택</button>
+          <button onClick={onOpenImageUI} style={itemStyle}>이미지로 UI 생성</button>
+          <button onClick={onOpenResource} style={itemStyle}>게임 리소스 편집</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const itemStyle = {
+  display: 'block',
+  width: '100%',
+  textAlign: 'left',
+  padding: '8px 10px',
+  borderRadius: 8,
+  border: '1px solid transparent',
+  background: 'transparent',
+  color: '#e2e8f0',
+  fontSize: 12,
+  fontWeight: 600,
+};
+
