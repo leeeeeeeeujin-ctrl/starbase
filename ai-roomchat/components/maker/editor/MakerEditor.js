@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useStudioTemplate } from '../../../contexts/StudioStore';
 
 import { useMakerEditor } from '../../../hooks/maker/useMakerEditor';
 import { exportSet, importSet } from './importExport';
@@ -11,10 +12,21 @@ import VariableDrawer from './VariableDrawer';
 import AdvancedToolsPanel from './AdvancedToolsPanel';
 import CodeEditor from './CodeEditor';
 import MultiLanguageCodeEditor from './MultiLanguageCodeEditor';
+import StudioJsonEditor from '../../studio/CodeEditor';
 import GameSimulator from './GameSimulator';
 
 export default function MakerEditor() {
   const { status, graph, selection, variables, persistence, history, version } = useMakerEditor();
+  // Unified studio workspace (single-file source of truth)
+  let templateText = '';
+  let setTemplateText = () => {};
+  try {
+    const ctx = useStudioTemplate();
+    templateText = ctx.templateText;
+    setTemplateText = ctx.setTemplateText;
+  } catch {
+    // not inside StudioProvider; operate without cross-sync
+  }
 
   const { isReady, loading, setInfo } = status;
 
@@ -29,6 +41,66 @@ export default function MakerEditor() {
     setNodes,
     setEdges,
   } = graph;
+
+  // Bridge with StudioStore: keep Maker graph <-> templateText in sync
+  const syncingRef = useRef(false);
+  const hydratedRef = useRef(false);
+
+  const toTemplateObject = useCallback(() => {
+    const tpl = (() => { try { return JSON.parse(templateText || '{}'); } catch { return {}; } })();
+    const next = {
+      ...tpl,
+      nodes: (nodes || []).map(n => ({
+        id: n.id,
+        type: n.type || 'prompt',
+        position: n.position || { x: 0, y: 0 },
+        label: n.data?.name || n.data?.title || '',
+        data: n.data || {},
+      })),
+      edges: (edges || []).map(e => ({ id: e.id, source: e.source, target: e.target, label: e.label || '' })),
+    };
+    return next;
+  }, [templateText, nodes, edges]);
+
+  const hydrateFromTemplate = useCallback(() => {
+    let obj; try { obj = JSON.parse(templateText || '{}'); } catch { obj = {}; }
+    const tn = Array.isArray(obj.nodes) ? obj.nodes : [];
+    const te = Array.isArray(obj.edges) ? obj.edges : [];
+    if (tn.length === 0 && te.length === 0) return;
+    syncingRef.current = true;
+    try {
+      setNodes(tn.map(n => ({
+        id: n.id || `n_${Math.random().toString(36).slice(2,8)}`,
+        type: n.type || 'prompt',
+        position: n.position || { x: 0, y: 0 },
+        data: n.data || { template: '', slot_type: 'ai' },
+      })));
+      setEdges(te.map(e => ({ id: e.id || `e_${Math.random().toString(36).slice(2,8)}`, source: e.source, target: e.target, label: e.label || '' })));
+      hydratedRef.current = true;
+    } finally {
+      syncingRef.current = false;
+    }
+  }, [templateText, setNodes, setEdges]);
+
+  // Initial hydrate when opening existing template
+  useEffect(() => {
+    if (!hydratedRef.current && typeof setNodes === 'function' && typeof setEdges === 'function') {
+      hydrateFromTemplate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [templateText]);
+
+  // Debounced sync to templateText on graph changes
+  useEffect(() => {
+    if (syncingRef.current) return;
+    const t = setTimeout(() => {
+      try {
+        const obj = toTemplateObject();
+        setTemplateText && setTemplateText(JSON.stringify(obj, null, 2));
+      } catch {}
+    }, 200);
+    return () => clearTimeout(t);
+  }, [nodes, edges, toTemplateObject, setTemplateText]);
 
   const {
     selectedNode,
@@ -757,17 +829,54 @@ export default function MakerEditor() {
         }}
       />
 
-      {/* 🚀 다중 언어 개발 환경 */}
-      <MultiLanguageCodeEditor
-        visible={showMultiLanguageEditor}
-        initialCode={''}
-        gameContext={{
-          nodes: nodes,
-          edges: edges,
-          gameInfo: setInfo,
-        }}
-        onCodeRun={handleMultiLanguageCodeExecution}
-      />
+      {/* 🚀 코드 에디터(통합 스튜디오 JSON 에디터로 대체) */}
+      {showMultiLanguageEditor && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 240,
+            background: 'rgba(0,0,0,0.65)',
+            display: 'grid',
+            placeItems: 'center',
+            padding: 24,
+          }}
+          onClick={() => setShowMultiLanguageEditor(false)}
+        >
+          <div
+            style={{
+              width: 'min(1200px, 96vw)',
+              height: 'min(760px, 90vh)',
+              background: '#0b1220',
+              borderRadius: 12,
+              overflow: 'hidden',
+              border: '1px solid rgba(148, 163, 184, 0.25)',
+              position: 'relative',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ position: 'absolute', right: 10, top: 10, zIndex: 10 }}>
+              <button
+                onClick={() => setShowMultiLanguageEditor(false)}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  border: '1px solid rgba(148,163,184,0.35)',
+                  background: 'rgba(239, 68, 68, 0.9)',
+                  color: '#fff',
+                  fontWeight: 800,
+                }}
+              >
+                ×
+              </button>
+            </div>
+            <div style={{ height: '100%', width: '100%' }}>
+              <StudioJsonEditor value={templateText} onChange={setTemplateText} />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 🎮 게임 시뮬레이터 */}
       <GameSimulator
