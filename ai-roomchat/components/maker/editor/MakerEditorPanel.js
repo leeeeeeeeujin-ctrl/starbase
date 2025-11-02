@@ -18,6 +18,7 @@ export default function MakerEditorPanel({
   setNodes,
   setEdges,
   onRequestAdvancedTools = () => {},
+  onAddPrompt,
 }) {
   const nodeData = selectedNode?.data || null;
   // Optional: unify edits with Studio template JSON if provider exists
@@ -25,6 +26,13 @@ export default function MakerEditorPanel({
   try {
     studio = useStudioTemplate();
   } catch {}
+
+  // Fallback to global actions if prop not provided
+  const addPrompt = typeof onAddPrompt === 'function'
+    ? onAddPrompt
+    : (typeof window !== 'undefined' && window.__makerActions && typeof window.__makerActions.addPromptNode === 'function'
+        ? window.__makerActions.addPromptNode
+        : null);
 
   return (
     <section
@@ -38,6 +46,33 @@ export default function MakerEditorPanel({
         width: '100%',
       }}
     >
+      {/* 프롬프트 생성 툴바 (패널 열기 버튼 위) */}
+      {addPrompt && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button
+            type="button"
+            onClick={() => addPrompt('ai', '')}
+            style={{ padding: '6px 10px', borderRadius: 10, border: '1px solid #c7d2fe', background: '#eef2ff', color: '#3730a3', fontWeight: 700, fontSize: 12 }}
+          >
+            + AI 프롬프트
+          </button>
+          <button
+            type="button"
+            onClick={() => addPrompt('user_action', '')}
+            style={{ padding: '6px 10px', borderRadius: 10, border: '1px solid #bae6fd', background: '#e0f2fe', color: '#075985', fontWeight: 700, fontSize: 12 }}
+          >
+            + 유저 프롬프트
+          </button>
+          <button
+            type="button"
+            onClick={() => addPrompt('system', '')}
+            style={{ padding: '6px 10px', borderRadius: 10, border: '1px solid #fecaca', background: '#fee2e2', color: '#991b1b', fontWeight: 700, fontSize: 12 }}
+          >
+            + 시스템
+          </button>
+        </div>
+      )}
+
       <div
         style={{
           display: 'flex',

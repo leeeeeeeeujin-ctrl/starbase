@@ -160,6 +160,22 @@ export default function MakerEditor() {
   } = history;
 
   const { alert: versionAlert, clearAlert: clearVersionAlert } = version;
+  // Expose minimal actions for panel-level toolbar without prop plumbing
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        window.__makerActions = {
+          addPromptNode,
+          saveAll,
+        };
+      }
+    } catch {}
+    return () => {
+      try {
+        if (typeof window !== 'undefined' && window.__makerActions) delete window.__makerActions;
+      } catch {}
+    };
+  }, [addPromptNode, saveAll]);
   const [variableDrawerOpen, setVariableDrawerOpen] = useState(false);
   const [headerCollapsed, setHeaderCollapsed] = useState(true);
   const [showTemplateLibrary, setShowTemplateLibrary] = useState(false);
@@ -169,6 +185,11 @@ export default function MakerEditor() {
     // Lock header as collapsed; never expand
     if (!headerCollapsed) setHeaderCollapsed(true);
   }, [headerCollapsed]);
+  // Explicitly disable any chat overlays in this editor
+  useEffect(() => {
+    try { if (typeof window !== 'undefined') window.__DISABLE_CHAT_OVERLAY__ = true; } catch {}
+    return () => { try { if (typeof window !== 'undefined') delete window.__DISABLE_CHAT_OVERLAY__; } catch {} };
+  }, []);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [advancedToolsOpen, setAdvancedToolsOpen] = useState(false);
   const [receiptVisible, setReceiptVisible] = useState(null);
