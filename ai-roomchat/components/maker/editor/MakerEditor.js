@@ -372,8 +372,7 @@ export default function MakerEditor() {
     setCodeEditorOpen(true);
   }, []);
 
-  // 🎮 게임 시뮬레이션 상태
-  const [gameSimulatorOpen, setGameSimulatorOpen] = useState(false);
+  // 🎮 게임 시뮬레이션 상태 (declared earlier; duplicate removed)
 
   // 게임 시뮬레이션 시작
   const startGameSimulation = useCallback(() => {
