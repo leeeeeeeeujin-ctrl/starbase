@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 
 // Dynamic import로 큰 컴포넌트 지연 로딩
@@ -56,6 +56,9 @@ export default function MakerEditorHeader({
   gameData = {},
   onGameUpdate,
   existingCode = '',
+  onChangeWorkbenchMode,
+  workbenchMode = 'prompt',
+  onToggleAISidebar,
 }) {
   const [showNLDeveloper, setShowNLDeveloper] = useState(false);
   const [showTemplateLibrary, setShowTemplateLibrary] = useState(false);
@@ -64,6 +67,50 @@ export default function MakerEditorHeader({
   const [showVisualNodeEditor, setShowVisualNodeEditor] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [deviceTier, setDeviceTier] = useState('medium');
+  const [activeMode, setActiveMode] = useState(workbenchMode || 'prompt');
+  const startXRef = useRef(0);
+  const deltaXRef = useRef(0);
+  const draggingRef = useRef(false);
+  const MODES = ['prompt', 'blocks', 'code', 'test'];
+
+  useEffect(() => {
+    setActiveMode(workbenchMode || 'prompt');
+  }, [workbenchMode]);
+
+  const selectMode = useCallback(
+    mode => {
+      setActiveMode(mode);
+      if (typeof onChangeWorkbenchMode === 'function') onChangeWorkbenchMode(mode);
+      if (mode === 'blocks') {
+        setShowVisualNodeEditor(true);
+      } else if (mode === 'code') {
+        onOpenMultiLanguageEditor?.();
+      } else if (mode === 'test') {
+        onStartSimulation?.();
+      }
+    },
+    [onChangeWorkbenchMode, onOpenMultiLanguageEditor, onStartSimulation]
+  );
+
+  const onPointerDown = e => {
+    draggingRef.current = true;
+    startXRef.current = e?.clientX ?? (e?.touches ? e.touches[0].clientX : 0);
+    deltaXRef.current = 0;
+  };
+  const onPointerMove = e => {
+    if (!draggingRef.current) return;
+    const x = e?.clientX ?? (e?.touches ? e.touches[0].clientX : 0);
+    deltaXRef.current = x - startXRef.current;
+  };
+  const onPointerUp = () => {
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
+    const idx = MODES.indexOf(activeMode);
+    const threshold = 40;
+    if (deltaXRef.current > threshold && idx > 0) selectMode(MODES[idx - 1]);
+    else if (deltaXRef.current < -threshold && idx < MODES.length - 1) selectMode(MODES[idx + 1]);
+    deltaXRef.current = 0;
+  };
 
   // 모바일 환경 감지 및 최적화 설정
   useEffect(() => {
@@ -104,6 +151,36 @@ export default function MakerEditorHeader({
           console.log('📱 Mobile optimization event:', optimization);
         }}
       >
+        <div
+          onMouseDown={onPointerDown}
+          onMouseMove={onPointerMove}
+          onMouseUp={onPointerUp}
+          onTouchStart={onPointerDown}
+          onTouchMove={onPointerMove}
+          onTouchEnd={onPointerUp}
+          style={{ position: 'sticky', top: 0, zIndex: 20, background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(6px)', padding: '6px 10px' }}
+        >
+          {['프롬프트·노드', '블록코딩', '코드 에디터', '테스트'].map((label, i) => {
+            const id = ['prompt','blocks','code','test'][i];
+            const active = id === activeMode;
+            return (
+              <button
+                key={id}
+                onClick={() => selectMode(id)}
+                style={{
+                  marginRight: 8,
+                  padding: '6px 10px',
+                  borderRadius: 999,
+                  border: active ? '1px solid #93c5fd' : '1px solid rgba(255,255,255,0.35)',
+                  background: active ? 'rgba(59,130,246,.25)' : 'rgba(0,0,0,0.25)',
+                  color: '#f8fafc',
+                  fontWeight: 700,
+                  fontSize: 12,
+                }}
+              >{label}</button>
+            );
+          })}
+        </div>
         <MobileMakerHeader
           setName={setName}
           collapsed={collapsed}
@@ -878,6 +955,66 @@ export default function MakerEditorHeader({
           deviceTier={deviceTier}
         />
       )}
+      {/* 모드 바(데스크톱)와 AI 토글 - 헤더 오른쪽/왼쪽 상단에 오버레이 */}
+      <div
+        onMouseDown={onPointerDown}
+        onMouseMove={onPointerMove}
+        onMouseUp={onPointerUp}
+        onTouchStart={onPointerDown}
+        onTouchMove={onPointerMove}
+        onTouchEnd={onPointerUp}
+        style={{
+          position: 'absolute',
+          left: 12,
+          top: 10,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          padding: '4px 6px',
+          background: 'rgba(255,255,255,0.06)',
+          border: '1px solid rgba(148,163,184,0.25)',
+          borderRadius: 999,
+        }}
+      >
+        {['프롬프트·노드', '블록코딩', '코드 에디터', '테스트'].map((label, i) => {
+          const id = ['prompt','blocks','code','test'][i];
+          const active = id === activeMode;
+          return (
+            <button
+              key={id}
+              onClick={() => selectMode(id)}
+              style={{
+                padding: '6px 10px',
+                borderRadius: 999,
+                border: active ? '1px solid #60a5fa' : '1px solid rgba(148,163,184,0.35)',
+                background: active ? 'rgba(59,130,246,0.25)' : 'transparent',
+                color: active ? '#bfdbfe' : '#e2e8f0',
+                fontWeight: 700,
+                fontSize: 12,
+              }}
+            >{label}</button>
+          );
+        })}
+        <span style={{ marginLeft: 8, fontSize: 11, color: '#94a3b8' }}>드래그로 전환</span>
+      </div>
+      <button
+        onClick={() => (typeof onToggleAISidebar === 'function' ? onToggleAISidebar() : setShowNLDeveloper(true))}
+        title="AI 자연어 코딩"
+        style={{
+          position: 'absolute',
+          right: 8,
+          top: 8,
+          width: 36,
+          height: 36,
+          borderRadius: 18,
+          border: '1px solid rgba(148,163,184,0.35)',
+          background: 'rgba(59,130,246,0.15)',
+          color: '#e2e8f0',
+          fontWeight: 800,
+        }}
+      >
+        ▶
+      </button>
     </header>
   );
 }
