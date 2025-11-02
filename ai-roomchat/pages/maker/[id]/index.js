@@ -79,8 +79,8 @@ function ModeSwitcher({ mode, onChange }) {
       onTouchStart={onPointerDown}
       onTouchMove={onPointerMove}
       onTouchEnd={onPointerUp}
-      className="sticky top-0 z-20 w-full backdrop-blur bg-white/70 border-b border-gray-200"
-      style={{ userSelect: 'none' }}
+      className="fixed top-0 left-0 right-0 z-40 w-full backdrop-blur bg-white/80 border-b border-gray-200"
+      style={{ userSelect: 'none', touchAction: 'pan-y' }}
     >
       <div className="max-w-screen-xl mx-auto px-3">
         <div className="flex items-center justify-between py-2">
@@ -229,7 +229,7 @@ export default function MakerWorkbenchPage() {
     <div className="min-h-screen bg-gray-50">
       <ModeSwitcher mode={mode} onChange={setMode} />
 
-      <div className="max-w-screen-xl mx-auto px-3 py-4">
+      <div className="max-w-screen-xl mx-auto px-3 pt-16 pb-6">
         {/* Main area switches by mode */}
         {mode === 'prompt' && (
           <div className="relative">
@@ -256,7 +256,7 @@ export default function MakerWorkbenchPage() {
       {/* Right mini arrow button to toggle AI */}
       <button
         onClick={() => setAiOpen(v => !v)}
-        className="fixed right-0 top-24 z-50 w-6 h-12 rounded-l bg-blue-600 text-white shadow hover:bg-blue-700"
+        className="fixed right-0 top-20 z-50 w-6 h-12 rounded-l bg-blue-600 text-white shadow hover:bg-blue-700"
         title="AI 패널 열기"
       >
         {aiOpen ? '▶' : '◀'}
