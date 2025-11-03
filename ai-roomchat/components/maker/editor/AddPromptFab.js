@@ -14,7 +14,7 @@ export default function AddPromptFab({ onAdd }) {
     fontWeight: 700,
   };
   return (
-    <div data-overlay="prompt-fab" style={{ position: 'fixed', right: 120, bottom: 36, zIndex: 240 }}>
+    <div data-overlay="prompt-fab" style={{ position: 'fixed', right: 24, bottom: 16, zIndex: 240 }}>
       <div style={{ position: 'relative', width: 48, height: 48 }}>
         {open && (
         <div style={{ position: 'absolute', right: 0, bottom: 56, display: 'grid', gap: 6 }}>

@@ -14,6 +14,7 @@ export default function EditorMonaco({ value, onChange, language = 'json', theme
   const ref = useRef(null);
   const editorRef = useRef(null);
   const [fallback, setFallback] = useState(false);
+  const applyTimer = useRef(null);
 
   useEffect(() => {
     let disposed = false;
@@ -50,12 +51,19 @@ export default function EditorMonaco({ value, onChange, language = 'json', theme
 
   useEffect(() => {
     if (!editorRef.current) return;
-    const model = editorRef.current.getModel();
-    if (typeof value === 'string' && model && model.getValue() !== value) {
-      editorRef.current.pushUndoStop();
-      editorRef.current.executeEdits('external', [{ range: model.getFullModelRange(), text: value }]);
-      editorRef.current.pushUndoStop();
-    }
+    if (applyTimer.current) clearTimeout(applyTimer.current);
+    // 외부 값 반영 디바운스(깜빡임 완화)
+    applyTimer.current = setTimeout(() => {
+      try {
+        const model = editorRef.current.getModel();
+        if (typeof value === 'string' && model && model.getValue() !== value) {
+          editorRef.current.pushUndoStop();
+          editorRef.current.executeEdits('external', [{ range: model.getFullModelRange(), text: value }]);
+          editorRef.current.pushUndoStop();
+        }
+      } catch {}
+    }, 150);
+    return () => { if (applyTimer.current) clearTimeout(applyTimer.current); };
   }, [value]);
 
   if (fallback) {

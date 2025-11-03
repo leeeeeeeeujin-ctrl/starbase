@@ -20,6 +20,8 @@ export default function AIPanel(){
   // Gemini mode
   const [geminiModel, setGeminiModel] = useState('gemini-2.5-flash');
   const [geminiPrefer, setGeminiPrefer] = useState('keyring'); // keyring | server
+  const [keyringStatus, setKeyringStatus] = useState('unknown'); // unknown | ready | missing | error
+  const [keyringDetail, setKeyringDetail] = useState('');
   const [geminiInstruction, setGeminiInstruction] = useState('다음 JSON 템플릿을 개선하세요. 가능한 한 구조를 유지하고, 누락된 필드를 보강하고, 유효한 JSON만 출력하세요. 출력은 오직 JSON 본문만 포함하십시오.');
 
   // Allow external toggle via StudioBus + persist open state
@@ -133,6 +135,27 @@ export default function AIPanel(){
     finally { setBusy(false); }
   };
 
+  // 사용자 키링 상태 확인(클라이언트에서 쿠키 인증으로 접근)
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch('/api/rank/user-api-key', { method: 'GET', credentials: 'include' });
+        if (!alive) return;
+        if (!res.ok) { setKeyringStatus('missing'); setKeyringDetail('로그인이 필요하거나 키가 없습니다.'); return; }
+        const data = await res.json();
+        // 성공 시 active 키 메타가 온다고 가정
+        setKeyringStatus('ready');
+        setKeyringDetail(data?.sample || data?.modelLabel || '키링 활성화됨');
+      } catch (e) {
+        if (!alive) return;
+        setKeyringStatus('error');
+        setKeyringDetail(String(e?.message||e));
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
   const applyManual = () => {
     setError('');
     const patch = safeParse(manual);
@@ -176,6 +199,9 @@ export default function AIPanel(){
             {false && mode === 'bridge' && <div />} {/* legacy removed */}
             {mode === 'gemini' && (
               <div style={{ display:'grid', gap:8 }}>
+                <div style={{ fontSize:12, color: keyringStatus==='ready' ? '#10b981' : (keyringStatus==='error' ? '#ef4444' : '#f59e0b') }}>
+                  키링 상태: {keyringStatus} {keyringDetail ? `- ${keyringDetail}` : ''}
+                </div>
                 <label>모델</label>
                 <select value={geminiModel} onChange={e=> setGeminiModel(e.target.value)}>
                   <option value="gemini-2.5-flash">gemini-2.5-flash</option>

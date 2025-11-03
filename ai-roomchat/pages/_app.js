@@ -25,7 +25,8 @@ function OverlayAwareShell({ children }) {
 
   const onTitle = pathname === '/' || pathname === '/index' || asPath.startsWith('/title');
   const onRoster = pathname.startsWith('/roster');
-  const hideChatLauncher = onTitle || onRoster;
+  const onMaker = pathname.startsWith('/maker'); // 프롬프트 에디터 영역(채팅 오버레이 비활성화)
+  const hideChatLauncher = onTitle || onRoster || onMaker;
 
   return (
     <>

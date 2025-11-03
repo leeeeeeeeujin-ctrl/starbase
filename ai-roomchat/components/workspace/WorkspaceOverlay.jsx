@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CodeWorkspaceProvider, useWorkspace } from "./CodeWorkspaceProvider.jsx";
 import FileTree from "./FileTree.jsx";
 import EditorMonaco from "../EditorMonaco.jsx";
@@ -50,13 +50,24 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
   const [showTest, setShowTest] = useState(false);
   const [splitPct, setSplitPct] = useState(60); // 에디터:테스트 비율
   const [dragging, setDragging] = useState(false);
+  const [showTree, setShowTree] = useState(true);
+  const [showCodeChat, setShowCodeChat] = useState(false);
+  const treeWidth = 240;
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const w = window.innerWidth || 1200;
+        if (w < 980) setShowTree(false);
+      }
+    } catch {}
+  }, []);
   useEffect(() => {
     if (!dragging) return;
     const onMove = (e) => {
       const x = e.clientX ?? (e.touches ? e.touches[0]?.clientX : 0);
       const vw = typeof window !== 'undefined' ? window.innerWidth : 1000;
-      const pct = Math.min(80, Math.max(20, Math.round(( (x - 240) / (vw - 240)) * 100 )));
-      // 240 = 좌측 파일트리 고정폭
+      const left = showTree ? treeWidth : 0;
+      const pct = Math.min(80, Math.max(20, Math.round(((x - left) / (vw - left)) * 100)));
       setSplitPct(pct);
     };
     const onUp = () => setDragging(false);
@@ -141,6 +152,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
 
     return (
       <div style={{ display: 'flex', gap: 8, padding: '8px', borderBottom: '1px solid #25314a', background: 'rgba(2,6,23,0.5)' }}>
+        <button onClick={() => setShowTree(v=>!v)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: showTree ? '#172033' : '#0b1220', color: '#e2e8f0' }}>파일트리 {showTree ? '숨기기' : '보기'}</button>
         <button onClick={doNewFile} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: '#0b1220', color: '#e2e8f0' }}>새 파일</button>
         <button onClick={doNewFolder} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: '#0b1220', color: '#e2e8f0' }}>새 폴더</button>
         <button onClick={doRename} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: '#0b1220', color: '#e2e8f0' }}>이름 변경</button>
@@ -149,6 +161,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
         <button onClick={doResetRoot} style={{ marginLeft: 'auto', padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: '#0b1220', color: '#e2e8f0' }}>루트로</button>
         <div style={{ width: 8 }} />
         <button onClick={() => setShowTest((v) => !v)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #2563eb', background: showTest ? '#1e293b' : '#0b1220', color: '#93c5fd' }}>테스트 {showTest ? '끄기' : '켜기'}</button>
+        <button onClick={() => setShowCodeChat(v=>!v)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #7c3aed', background: showCodeChat ? '#1e293b' : '#0b1220', color: '#c4b5fd' }}>AI 코드 채팅 {showCodeChat ? '끄기' : '켜기'}</button>
         {showTest && (
           <>
             <button onClick={() => setSplitPct(50)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: '#0b1220', color: '#e2e8f0' }}>50/50</button>
@@ -165,7 +178,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
         <SyncTemplateToVfs text={templateBinding.text} setText={templateBinding.setText} />
       ) : null}
       <div style={{ display: "flex", height: "100%", background: "#0b1220" }}>
-        <FileTree />
+        {showTree ? <FileTree /> : null}
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           <Toolbar />
           <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
@@ -187,6 +200,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
               </>
             )}
           </div>
+          {showCodeChat ? <AICodeChatPanel /> : null}
         </div>
       </div>
     </CodeWorkspaceProvider>
@@ -194,24 +208,107 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
 }
 
 function SyncTemplateToVfs({ text, setText }){
-  // 양방향 동기화: /template.json <-> 외부 템플릿 텍스트
+  // 양방향 동기화 에코 방지
   const { files, writeFile } = useWorkspace();
   const current = files['/template.json']?.content ?? '';
-  // 외부 → VFS
+  const guard = useRef({ toVfs:false, toText:false });
   useEffect(() => {
     try {
-      if (typeof text === 'string' && text !== current) {
+      if (typeof text === 'string' && text !== current && !guard.current.toText) {
+        guard.current.toVfs = true;
         writeFile('/template.json', text);
+        setTimeout(()=>{ guard.current.toVfs = false; },0);
       }
     } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text]);
-  // VFS → 외부
   useEffect(() => {
     try {
-      if (typeof current === 'string' && typeof setText === 'function' && current !== text) {
+      if (typeof current === 'string' && typeof setText === 'function' && current !== text && !guard.current.toVfs) {
+        guard.current.toText = true;
         setText(current);
+        setTimeout(()=>{ guard.current.toText = false; },0);
       }
     } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current]);
   return null;
+}
+
+function AICodeChatPanel(){
+  const { files, activePath, createFile, writeFile, remove, rename } = useWorkspace();
+  const [input, setInput] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [logs, setLogs] = useState([]);
+  const append = (role,msg) => setLogs(l => [...l, { t: Date.now(), role, msg }]);
+  const listFiles = () => Object.keys(files).sort().map(p => ({ path: p, size: (files[p]?.content||'').length, dir: !!files[p]?.dir }));
+  const stripFences = (s) => String(s||'').replace(/^```(?:json)?/i,'').replace(/```$/i,'').trim();
+  const applyActions = (plan) => {
+    const actions = Array.isArray(plan?.actions) ? plan.actions : [];
+    let count = 0;
+    actions.forEach(a => {
+      try {
+        if ((a.type === 'write' || a.type === 'create') && typeof a.path === 'string') {
+          if (a.type === 'create') createFile(a.path, a.content || ''); else writeFile(a.path, a.content || '');
+          count++;
+        } else if (a.type === 'delete' && typeof a.path === 'string') {
+          remove(a.path); count++;
+        } else if (a.type === 'rename' && typeof a.from === 'string' && typeof a.to === 'string') {
+          rename(a.from, a.to); count++;
+        }
+      } catch {}
+    });
+    return count;
+  };
+  const send = async () => {
+    if (!input.trim()) return;
+    setBusy(true);
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data?.session?.access_token || null;
+      if (!token) throw new Error('로그인이 필요합니다.');
+      const sys = [
+        '당신은 파일 시스템 편집 에이전트입니다.',
+        '파일 목록과 일부 내용이 제공됩니다. 아래 JSON 스키마로만 응답하세요.',
+        '{ "actions": [ {"type":"create|write|delete|rename", "path":"/path", "content?":"string", "from?":"/old", "to?":"/new"} ] }',
+        '설명/코드펜스 없이 JSON만 반환하세요.'
+      ].join('\n');
+      const context = {
+        activePath,
+        files: listFiles().slice(0, 200),
+        note: '큰 파일은 내용 생략됨. 필요한 경로만 수정 계획에 포함.'
+      };
+      const prompt = `${sys}\n\n### CONTEXT\n${JSON.stringify(context)}\n\n### USER\n${input}`;
+      append('user', input);
+      setInput('');
+      const res = await fetch('/api/ai/gemini', {
+        method: 'POST',
+        headers: { 'content-type':'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ model: 'gemini-2.5-flash', contents: prompt, prefer: 'keyring' })
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body?.error || `AI ${res.status}`);
+      const text = body?.result?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const raw = stripFences(text);
+      let plan = null; try { plan = JSON.parse(raw); } catch {}
+      const n = applyActions(plan);
+      append('assistant', `수정 ${n}건 적용 완료.`);
+    } catch (e) {
+      append('error', e?.message || String(e));
+    } finally { setBusy(false); }
+  };
+  return (
+    <div style={{ borderTop:'1px solid #25314a', background:'#0c1322' }}>
+      <div style={{ padding:'8px 10px', color:'#e2e8f0', fontWeight:600 }}>AI 코드 채팅</div>
+      <div style={{ maxHeight: 180, overflow:'auto', padding:'0 10px 8px' }}>
+        {logs.map((l,i)=> (
+          <div key={i} style={{ fontSize:12, color: l.role==='error'?'#fecaca': (l.role==='user'?'#e2e8f0':'#a7f3d0') }}>{l.role}: {l.msg}</div>
+        ))}
+      </div>
+      <div style={{ display:'flex', gap:6, padding:10 }}>
+        <input value={input} onChange={e=>setInput(e.target.value)} placeholder="명령을 입력하세요. 예: utils/date.js 생성하고 오늘 날짜 반환 함수 추가" style={{ flex:1, padding:'8px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }} />
+        <button onClick={send} disabled={busy} style={{ padding:'8px 12px', borderRadius:8, border:'1px solid #7c3aed', background:'#0b1220', color:'#c4b5fd' }}>{busy?'전송 중…':'전송'}</button>
+      </div>
+    </div>
+  );
 }
