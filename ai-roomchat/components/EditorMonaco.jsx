@@ -52,14 +52,30 @@ export default function EditorMonaco({ value, onChange, language = 'json', theme
   useEffect(() => {
     if (!editorRef.current) return;
     if (applyTimer.current) clearTimeout(applyTimer.current);
-    // 외부 값 반영 디바운스(깜빡임 완화)
+    // 외부 값 반영 디바운스(깜빡임 완화 + 커서 보존 + 최소 패치)
     applyTimer.current = setTimeout(() => {
       try {
-        const model = editorRef.current.getModel();
-        if (typeof value === 'string' && model && model.getValue() !== value) {
-          editorRef.current.pushUndoStop();
-          editorRef.current.executeEdits('external', [{ range: model.getFullModelRange(), text: value }]);
-          editorRef.current.pushUndoStop();
+        const editor = editorRef.current;
+        const model = editor.getModel();
+        const next = typeof value === 'string' ? value : '';
+        const cur = model ? model.getValue() : '';
+        if (model && next !== cur) {
+          const prevSel = editor.getSelection();
+          // 최소 차이 패치: 공통 접두/접미를 제외한 중앙만 치환
+          let start = 0;
+          const a = cur.length, b = next.length;
+          while (start < a && start < b && cur.charCodeAt(start) === next.charCodeAt(start)) start++;
+          let endA = a - 1, endB = b - 1;
+          while (endA >= start && endB >= start && cur.charCodeAt(endA) === next.charCodeAt(endB)) { endA--; endB--; }
+          const replaceText = next.slice(start, endB + 1);
+          const startPos = model.getPositionAt(start);
+          const endPos = model.getPositionAt(endA + 1);
+          editor.pushUndoStop();
+          editor.executeEdits('external', [{ range: { startLineNumber: startPos.lineNumber, startColumn: startPos.column, endLineNumber: endPos.lineNumber, endColumn: endPos.column }, text: replaceText }]);
+          editor.pushUndoStop();
+          if (prevSel) {
+            try { editor.setSelection(prevSel); } catch {}
+          }
         }
       } catch {}
     }, 150);

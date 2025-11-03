@@ -202,9 +202,12 @@ export default function AIPanel(){
                 <div style={{ fontSize:12, color: keyringStatus==='ready' ? '#10b981' : (keyringStatus==='error' ? '#ef4444' : '#f59e0b') }}>
                   키링 상태: {keyringStatus} {keyringDetail ? `- ${keyringDetail}` : ''}
                 </div>
-                <div>
-                  <a href="/rank" style={{ fontSize:12, color:'#60a5fa', textDecoration:'underline' }}>키 관리로 이동</a>
-                </div>
+                {keyringStatus !== 'ready' && (
+                  <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                    <a href="/rank" style={{ fontSize:12, color:'#60a5fa', textDecoration:'underline' }}>키 관리로 이동</a>
+                    <span style={{ fontSize:12, color:'#94a3b8' }}>(설정 후 다시 시도)</span>
+                  </div>
+                )}
                 <label>모델</label>
                 <select value={geminiModel} onChange={e=> setGeminiModel(e.target.value)}>
                   <option value="gemini-2.5-flash">gemini-2.5-flash</option>

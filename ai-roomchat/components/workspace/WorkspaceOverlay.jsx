@@ -184,7 +184,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button onClick={() => setShowTree(v=>!v)} title="파일트리" style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: showTree ? '#172033' : '#0b1220', color: '#e2e8f0' }}>☰</button>
           <div ref={fileMenuRef} style={{ position:'relative' }}>
-            <MenuButton onClick={() => setFileMenuOpen(v=>!v)} active={fileMenuOpen} label="파일" />
+            <MenuButton onClick={() => setFileMenuOpen(v=>{ const next=!v; if (next) setAiMenuOpen(false); return next; })} active={fileMenuOpen} label="파일" />
             {fileMenuOpen && (
               <div style={{ position:'absolute', zIndex: 20, background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, display:'grid', gap:6 }}>
                 <button onClick={doNewFile} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>새 파일</button>
@@ -195,7 +195,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
             )}
           </div>
           <div ref={aiMenuRef} style={{ position:'relative' }}>
-            <MenuButton onClick={() => setAiMenuOpen(v=>!v)} active={aiMenuOpen} label="AI 코딩" />
+            <MenuButton onClick={() => setAiMenuOpen(v=>{ const next=!v; if (next) setFileMenuOpen(false); return next; })} active={aiMenuOpen} label="AI 코딩" />
             {aiMenuOpen && (
               <div style={{ position:'absolute', zIndex: 20, background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, display:'grid', gap:6 }}>
                 <button onClick={() => { setAiMenuOpen(false); aiQuickEdit(); }} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>AI 수정</button>
@@ -204,7 +204,9 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
             )}
           </div>
           <MenuButton onClick={() => setShowTest(v=>!v)} active={showTest} label="테스트" />
-          <div style={{ marginLeft:'auto' }}>
+          <div style={{ marginLeft:'auto', display:'flex', gap:8 }}>
+            <MenuButton onClick={() => { setShowTree(false); setToolbarCollapsed(true); setShowTest(false); }} active={false} label="모바일 스냅" />
+            <MenuButton onClick={() => { setShowTree(true); setToolbarCollapsed(false); }} active={false} label="데스크톱 스냅" />
             <MenuButton onClick={() => setToolbarCollapsed(v=>!v)} active={toolbarCollapsed} label={toolbarCollapsed?'펼치기':'접기'} />
           </div>
         </div>
