@@ -391,6 +391,8 @@ function AICodeChatPanel({ onClose }){
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const logRef = useRef(null);
+  const [attachActiveContent, setAttachActiveContent] = useState(true);
+  const MAX_INLINE = 4000; // prompt에 포함하는 최대 코드 길이 (문자)
   const SESS_KEY = 'workspace:aiChat:sessions.v1';
   const newSession = () => ({ id: `s_${Date.now()}`, title: '새 대화', createdAt: Date.now(), logs: [] });
   const [sessions, setSessions] = useState([]);
@@ -460,17 +462,30 @@ function AICodeChatPanel({ onClose }){
         '스키마: { "message?": string, "actions?": [ {"type":"create|write|delete|rename", "path":"/path", "content?":"string", "from?":"/old", "to?":"/new"} ] }',
         'message에는 자연어 설명/논의를 담고, 편집이 필요하면 actions를 채워주세요.'
       ].join('\n');
+      const fileMeta = files[activePath];
+      const contentRaw = typeof fileMeta?.content === 'string' ? fileMeta.content : '';
+      const content = attachActiveContent
+        ? (contentRaw.length > MAX_INLINE
+            ? (contentRaw.slice(0, Math.floor(MAX_INLINE*0.6)) + '\n…\n/* …중략… */\n' + contentRaw.slice(-Math.floor(MAX_INLINE*0.35)))
+            : contentRaw)
+        : '';
       const context = {
         activePath,
         files: listFiles().slice(0, 200),
-        note: '큰 파일은 내용 생략됨. 필요한 경로만 수정 계획에 포함.'
+        activeFile: {
+          path: activePath,
+          size: (fileMeta?.content || '').length,
+          attached: attachActiveContent,
+          truncated: attachActiveContent && contentRaw.length > MAX_INLINE,
+        },
+        note: '큰 파일은 내용이 잘려서 제공될 수 있음. 필요한 경로만 수정 계획에 포함.'
       };
       const historyText = logs
         .filter(l => l.role === 'user' || l.role === 'assistant')
         .slice(-12)
         .map(l => `${l.role.toUpperCase()}: ${l.msg}`)
         .join('\n');
-      const prompt = `${sys}\n\n### CONTEXT\n${JSON.stringify(context)}\n\n### HISTORY (최근)\n${historyText}\n\n### USER\n${input}`;
+      const prompt = `${sys}\n\n### CONTEXT\n${JSON.stringify(context)}\n\n### ACTIVE_FILE\nPATH: ${activePath}\nCONTENT:\n${attachActiveContent ? content : '(첨부 안 함)'}\n\n### HISTORY (최근)\n${historyText}\n\n### USER\n${input}`;
       append('user', input);
       setInput('');
       const res = await fetch('/api/ai/gemini', {
@@ -528,7 +543,10 @@ function AICodeChatPanel({ onClose }){
           <div key={i} style={{ fontSize:12, color: l.role==='error'?'#fecaca': (l.role==='user'?'#e2e8f0':'#a7f3d0') }}>{l.role}: {l.msg}</div>
         ))}
       </div>
-      <div style={{ display:'flex', gap:6, padding:10, borderTop:'1px solid #25314a', background:'#0c1322' }}>
+      <div style={{ display:'flex', gap:6, padding:10, borderTop:'1px solid #25314a', background:'#0c1322', alignItems:'center' }}>
+        <label style={{ display:'inline-flex', alignItems:'center', gap:6, color:'#94a3b8', fontSize:12 }}>
+          <input type="checkbox" checked={attachActiveContent} onChange={e=>setAttachActiveContent(e.target.checked)} /> 현재 파일 내용 포함
+        </label>
         <input value={input} onChange={e=>setInput(e.target.value)} placeholder="명령을 입력하세요. 예: utils/date.js 생성하고 오늘 날짜 반환 함수 추가" style={{ flex:1, padding:'8px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }} />
         <button onClick={send} disabled={busy} style={{ padding:'8px 12px', borderRadius:8, border:'1px solid #7c3aed', background:'#0b1220', color:'#c4b5fd' }}>{busy?'전송 중…':'전송'}</button>
       </div>
