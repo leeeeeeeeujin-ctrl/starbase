@@ -26,6 +26,35 @@ export function GameRuntimeProvider({ roomId = "local-room", roles = { players: 
   // logs
   const aiFullLogsRef = useRef([]); // record full prompts/responses (not shown to players)
 
+  // runtime graph/hooks
+  const graphRef = useRef({ nodes: [], edges: [] });
+  const hooksRef = useRef({});
+  const configRef = useRef({});
+  const [currentNodeId, setCurrentNodeId] = useState(null);
+  const waitingRef = useRef(false);
+  const indexById = useRef(new Map());
+  const edgesBySource = useRef(new Map());
+
+  const reindex = useCallback(() => {
+    const map = new Map();
+    (graphRef.current.nodes||[]).forEach((n,i)=>map.set(n.id, i));
+    indexById.current = map;
+    const eMap = new Map();
+    (graphRef.current.edges||[]).forEach(e => {
+      const arr = eMap.get(e.source) || []; arr.push(e); eMap.set(e.source, arr);
+    });
+    edgesBySource.current = eMap;
+  }, []);
+
+  const getNode = useCallback((id) => {
+    const i = indexById.current.get(id);
+    return (i!=null) ? graphRef.current.nodes[i] : null;
+  }, []);
+  const neighborsOf = useCallback((id) => {
+    const list = edgesBySource.current.get(id) || [];
+    return list.map(e => ({ id: e.target, label: e.label || '' }));
+  }, []);
+
   const publish = useCallback((type, payload) => {
     const evt = { type, payload, room, id: makeId("e"), ts: Date.now() };
     try { if (chanRef.current) chanRef.current.send({ type: "broadcast", event: "evt", payload: evt }); } catch {}
@@ -41,6 +70,20 @@ export function GameRuntimeProvider({ roomId = "local-room", roles = { players: 
         return;
       case 'chat:message':
         setChatMessages(m => [...m, evt.payload]);
+        // if waiting for user action, treat this as input and advance
+        try {
+          if (waitingRef.current) {
+            const ctx = window.__GAME_RUNTIME_CTX__;
+            if (ctx) {
+              const hooks = hooksRef.current || {};
+              let nextId = null;
+              try { if (typeof hooks.onUserAction === 'function') nextId = hooks.onUserAction({ node: ctx.getCurrentNode?.() }, evt.payload?.text || ''); } catch {}
+              if (nextId) ctx.setCurrentId(nextId);
+              ctx.setWaiting(false);
+              setTimeout(() => { try { step('user_action'); } catch {} }, 0);
+            }
+          }
+        } catch {}
         return;
       case 'control:startTimer': {
         const until = Date.now() + (Math.max(1, evt.payload.seconds) * 1000);
@@ -60,6 +103,8 @@ export function GameRuntimeProvider({ roomId = "local-room", roles = { players: 
       case 'control:forceNext':
         setNextTriggered(true);
         setDeadline(Date.now());
+        // attempt a step on force
+        try { step('force'); } catch {}
         return;
     }
   }, []);
@@ -135,7 +180,35 @@ export function GameRuntimeProvider({ roomId = "local-room", roles = { players: 
         const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `battlelog_${room}_${Date.now()}.json`; a.click();
       } catch {}
     },
+    // runtime configuration from VFS
+    setRuntime: ({ graph, hooks, config }) => {
+      graphRef.current = graph || { nodes: [], edges: [] };
+      hooksRef.current = hooks || {};
+      configRef.current = config || {};
+      reindex();
+      const entry = config?.entryNode || graphRef.current.nodes?.[0]?.id || null;
+      setCurrentNodeId(entry);
+      waitingRef.current = false;
+      // if entry exists and is not user_action, step immediately
+      if (entry) setTimeout(() => { try { step('init'); } catch {} }, 0);
+    },
   }), [room, connected, durations, secondsLeft, nextTriggered, votes, roles, aiMessages, chatMessages, publish]);
+
+  // expose internal runtime context for helper step()
+  useEffect(() => {
+    try {
+      window.__GAME_RUNTIME_CTX__ = {
+        graphRef, hooksRef, configRef,
+        getCurrentId: () => currentNodeId,
+        setCurrentId: (id) => setCurrentNodeId(id),
+        setWaiting: (b) => { waitingRef.current = !!b; },
+        getNode, neighborsOf,
+        sendAI: (payload, fullPrompt, fullResponse) => api.sendAI(payload, fullPrompt, fullResponse),
+        publish: (type, payload) => publish(type, payload),
+      };
+    } catch {}
+    return () => { try { delete window.__GAME_RUNTIME_CTX__; } catch {} };
+  }, [currentNodeId, getNode, neighborsOf, publish, api]);
 
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>;
 }
@@ -145,3 +218,37 @@ export function useGameRuntime() {
   return v;
 }
 
+// ---- internal helpers (after hooks to avoid re-creation) ----
+function step(reason){
+  // this runs in closure via provider scope; bind to latest refs through window stash
+  try {
+    const ctx = window.__GAME_RUNTIME_CTX__;
+    if (!ctx) return;
+    const { graphRef, hooksRef, configRef, indexById, edgesBySource, getNode, neighborsOf, setCurrentNodeId, sendAI, publish } = ctx;
+    let currentId = ctx.getCurrentId();
+    if (!currentId) return;
+    let guard = 0;
+    while (guard++ < 5) {
+      const node = getNode(currentId);
+      if (!node) break;
+      if (node.type === 'user_action') { ctx.setWaiting(true); break; }
+      if (node.type === 'system') {
+        publish('ai:message', { id: `sys_${Date.now()}`, roleScope: 'system', text: node.label || '', ts: Date.now() });
+      } else {
+        // ai node
+        const hooks = hooksRef.current || {};
+        let prompt = String(node.label || '');
+        try { if (typeof hooks.transformPrompt === 'function') { prompt = hooks.transformPrompt({ node, reason }); } } catch {}
+        sendAI({ id:`ai_${Date.now()}`, roleScope:'players', text: `(thinking)`, ts: Date.now() }, prompt, null);
+      }
+      const neigh = neighborsOf(currentId) || [];
+      const hooks = hooksRef.current || {};
+      let nextId = null;
+      try { if (typeof hooks.selectNext === 'function') nextId = hooks.selectNext({ node: getNode(currentId) }, neigh); } catch {}
+      if (!nextId) nextId = neigh?.[0]?.id || null;
+      if (!nextId) break;
+      setCurrentNodeId(nextId);
+      currentId = nextId;
+    }
+  } catch {}
+}
