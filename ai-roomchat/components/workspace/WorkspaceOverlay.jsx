@@ -390,12 +390,43 @@ function AICodeChatPanel({ onClose }){
   const { files, activePath, createFile, writeFile, remove, rename } = useWorkspace();
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
-  const [logs, setLogs] = useState([]);
   const logRef = useRef(null);
-  const append = (role,msg) => setLogs(l => [...l, { t: Date.now(), role, msg }]);
+  const SESS_KEY = 'workspace:aiChat:sessions.v1';
+  const newSession = () => ({ id: `s_${Date.now()}`, title: '새 대화', createdAt: Date.now(), logs: [] });
+  const [sessions, setSessions] = useState([]);
+  const [currentId, setCurrentId] = useState(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   useEffect(() => {
-    try { const el = logRef?.current; if (el) el.scrollTop = el.scrollHeight; } catch {}
-  }, [logs]);
+    try {
+      const raw = localStorage.getItem(SESS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed.sessions) && parsed.sessions.length > 0) {
+          setSessions(parsed.sessions);
+          setCurrentId(parsed.currentId || parsed.sessions[0].id);
+          return;
+        }
+      }
+    } catch {}
+    const s = newSession();
+    setSessions([s]);
+    setCurrentId(s.id);
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem(SESS_KEY, JSON.stringify({ sessions, currentId })); } catch {}
+  }, [sessions, currentId]);
+  const current = useMemo(() => sessions.find(s => s.id === currentId) || newSession(), [sessions, currentId]);
+  const logs = current.logs || [];
+  useEffect(() => { try { const el = logRef?.current; if (el) el.scrollTop = el.scrollHeight; } catch {} }, [logs]);
+  const append = (role, msg) => {
+    setSessions(prev => prev.map(s => s.id === currentId ? { ...s, title: s.title === '새 대화' && role==='user' ? (msg.slice(0,24) || '대화') : s.title, logs: [...(s.logs||[]), { t: Date.now(), role, msg }] } : s));
+  };
+  const startNewChat = () => {
+    const s = newSession();
+    setSessions(prev => [s, ...prev]);
+    setCurrentId(s.id);
+    setHistoryOpen(false);
+  };
   const listFiles = () => Object.keys(files).sort().map(p => ({ path: p, size: (files[p]?.content||'').length, dir: !!files[p]?.dir }));
   const stripFences = (s) => String(s||'').replace(/^```(?:json)?/i,'').replace(/```$/i,'').trim();
   const applyActions = (plan) => {
@@ -434,7 +465,12 @@ function AICodeChatPanel({ onClose }){
         files: listFiles().slice(0, 200),
         note: '큰 파일은 내용 생략됨. 필요한 경로만 수정 계획에 포함.'
       };
-      const prompt = `${sys}\n\n### CONTEXT\n${JSON.stringify(context)}\n\n### USER\n${input}`;
+      const historyText = logs
+        .filter(l => l.role === 'user' || l.role === 'assistant')
+        .slice(-12)
+        .map(l => `${l.role.toUpperCase()}: ${l.msg}`)
+        .join('\n');
+      const prompt = `${sys}\n\n### CONTEXT\n${JSON.stringify(context)}\n\n### HISTORY (최근)\n${historyText}\n\n### USER\n${input}`;
       append('user', input);
       setInput('');
       const res = await fetch('/api/ai/gemini', {
@@ -469,9 +505,23 @@ function AICodeChatPanel({ onClose }){
   };
   return (
     <div style={{ height:'100%', border:'1px solid #25314a', background:'#0c1322', borderRadius:12, overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 18px 42px -20px rgba(0,0,0,0.5)' }}>
-      <div style={{ padding:'8px 10px', color:'#e2e8f0', fontWeight:600, display:'flex', alignItems:'center', justifyContent:'space-between', background:'rgba(2,6,23,0.6)' }}>
+      <div style={{ padding:'8px 10px', color:'#e2e8f0', fontWeight:600, display:'flex', alignItems:'center', justifyContent:'space-between', background:'rgba(2,6,23,0.6)', position:'relative' }}>
         <span>AI 코드 채팅</span>
-        <button onClick={onClose} title="닫기" style={{ padding:'4px 8px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8' }}>닫기</button>
+        <div style={{ display:'flex', gap:6 }}>
+          <button onClick={() => setHistoryOpen(v=>!v)} title="대화 기록" style={{ padding:'4px 8px', borderRadius:8, border:'1px solid #334155', background: historyOpen ? '#172033' : '#0b1220', color:'#94a3b8' }}>기록</button>
+          <button onClick={startNewChat} title="새 대화" style={{ padding:'4px 8px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8' }}>새 대화</button>
+          <button onClick={onClose} title="닫기" style={{ padding:'4px 8px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8' }}>닫기</button>
+        </div>
+        {historyOpen && (
+          <div style={{ position:'absolute', right:8, top:'100%', marginTop:6, zIndex:30, width:280, maxHeight:260, overflow:'auto', background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6 }}>
+            {sessions.map(s => (
+              <button key={s.id} onClick={() => { setCurrentId(s.id); setHistoryOpen(false); }} style={{ width:'100%', textAlign:'left', padding:'6px 8px', borderRadius:6, border:'1px solid #334155', background: s.id===currentId?'#172033':'#0b1220', color:'#e2e8f0', marginBottom:6 }}>
+                <div style={{ fontSize:12, fontWeight:700 }}>{s.title || '대화'}</div>
+                <div style={{ fontSize:11, color:'#94a3b8' }}>{new Date(s.createdAt).toLocaleString()}</div>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       <div ref={logRef} style={{ flex:1, overflow:'auto', padding:'8px 10px' }}>
         {logs.map((l,i)=> (
