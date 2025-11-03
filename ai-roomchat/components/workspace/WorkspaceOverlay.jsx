@@ -8,30 +8,12 @@ import GameSimulator from "../maker/editor/GameSimulator";
 import { supabase } from "../../lib/supabase";
 
 function EditorPane() {
-  const { files, activePath, writeFile, inferLang, openPaths, close, open, entryPath, setEntryPath } = useWorkspace();
+  const { files, activePath, writeFile, inferLang } = useWorkspace();
   const file = files[activePath];
   const lang = useMemo(() => inferLang(activePath), [activePath, inferLang]);
   if (!file) return <div style={{ padding: 16, color: "#e2e8f0" }}>파일을 선택하세요.</div>;
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: 6, padding: '8px', borderBottom: '1px solid #25314a', background: 'rgba(2,6,23,0.35)' }}>
-        {openPaths.map((p) => {
-          const active = p === activePath;
-          return (
-            <div key={p} style={{ display: 'flex', alignItems: 'center' }}>
-              <button onClick={() => open(p)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: active ? '#172033' : '#0b1220', color: '#e2e8f0', fontSize: 12 }}>
-                {p === entryPath ? '⭐ ' : ''}{p.split('/').pop()}
-              </button>
-              <button onClick={() => close(p)} style={{ marginLeft: -6, padding: '6px 6px', borderRadius: 8, border: '1px solid #334155', background: '#0b1220', color: '#94a3b8' }}>×</button>
-            </div>
-          );
-        })}
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, color: '#94a3b8', fontSize: 12 }}>
-          <span>현재: <strong style={{ color: '#e2e8f0' }}>{activePath}</strong>{file.readonly ? ' (읽기 전용)' : ''}</span>
-          <button title="엔트리 파일 지정" onClick={() => setEntryPath(activePath)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: '#0b1220', color: '#e2e8f0' }}>엔트리로</button>
-        </div>
-      </div>
       <div style={{ flex: 1, minHeight: 0 }}>
         <EditorMonaco
           value={file.content}
@@ -52,6 +34,11 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
   const [dragging, setDragging] = useState(false);
   const [showTree, setShowTree] = useState(true);
   const [showCodeChat, setShowCodeChat] = useState(false);
+  const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
+  const [fileMenuOpen, setFileMenuOpen] = useState(false);
+  const [aiMenuOpen, setAiMenuOpen] = useState(false);
+  const [creating, setCreating] = useState(null); // null | 'file' | 'folder'
+  const [createPath, setCreatePath] = useState('');
   const treeWidth = 240;
   useEffect(() => {
     try {
@@ -83,29 +70,11 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
     };
   }, [dragging]);
   const Toolbar = () => {
-    const { root, normalizeDir, open, createFile, createFolder, rename, remove, files, activePath, writeFile } = useWorkspace();
-    const doNewFile = () => {
-      const def = normalizeDir(root) + 'untitled.js';
-      const p = prompt('새 파일 경로', def);
-      if (!p) return;
-      createFile(p, '\n');
-      open(p);
-    };
-    const doNewFolder = () => {
-      const def = normalizeDir(root) + 'folder/';
-      const p = prompt('새 폴더 경로 (끝에 /)', def);
-      if (!p) return;
-      createFolder(p);
-    };
-    const doRename = () => {
-      const cur = prompt('어느 경로를 변경할까요? (현재 경로 입력)', '');
-      const next = cur ? prompt('새 경로', cur) : null;
-      if (cur && next && cur !== next) rename(cur, next);
-    };
-    const doDelete = () => {
-      const cur = prompt('삭제할 경로', '');
-      if (cur && confirm(`${cur} 를 삭제할까요?`)) remove(cur);
-    };
+    const { root, normalizeDir, open, createFile, createFolder, rename, remove, files, activePath, writeFile, openPaths, close, entryPath, setEntryPath } = useWorkspace();
+    const doNewFile = () => { setCreating('file'); setCreatePath(normalizeDir(root)+'untitled.js'); setFileMenuOpen(false); };
+    const doNewFolder = () => { setCreating('folder'); setCreatePath(normalizeDir(root)+'folder/'); setFileMenuOpen(false); };
+    const doRename = () => { const cur = activePath; if (!cur) return; const next = window.prompt('새 경로', cur); if (next && next!==cur) rename(cur, next); setFileMenuOpen(false); };
+    const doDelete = () => { const cur = activePath; if (!cur) return; if (window.confirm(`${cur} 를 삭제할까요?`)) remove(cur); setFileMenuOpen(false); };
     const doResetRoot = () => {
       open('/');
     };
@@ -150,23 +119,70 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
       }
     };
 
+    const MenuButton = ({ onClick, active, label }) => (
+      <button onClick={onClick} title={label} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: active ? '#172033' : '#0b1220', color: '#e2e8f0' }}>{label}</button>
+    );
+
     return (
-      <div style={{ display: 'flex', gap: 8, padding: '8px', borderBottom: '1px solid #25314a', background: 'rgba(2,6,23,0.5)' }}>
-        <button onClick={() => setShowTree(v=>!v)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: showTree ? '#172033' : '#0b1220', color: '#e2e8f0' }}>파일트리 {showTree ? '숨기기' : '보기'}</button>
-        <button onClick={doNewFile} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: '#0b1220', color: '#e2e8f0' }}>새 파일</button>
-        <button onClick={doNewFolder} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: '#0b1220', color: '#e2e8f0' }}>새 폴더</button>
-        <button onClick={doRename} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: '#0b1220', color: '#e2e8f0' }}>이름 변경</button>
-        <button onClick={doDelete} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #7f1d1d', background: '#0b1220', color: '#fecaca' }}>삭제</button>
-        <button onClick={aiQuickEdit} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #10b981', background: '#0b1220', color: '#34d399' }}>AI 수정</button>
-        <button onClick={doResetRoot} style={{ marginLeft: 'auto', padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: '#0b1220', color: '#e2e8f0' }}>루트로</button>
-        <div style={{ width: 8 }} />
-        <button onClick={() => setShowTest((v) => !v)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #2563eb', background: showTest ? '#1e293b' : '#0b1220', color: '#93c5fd' }}>테스트 {showTest ? '끄기' : '켜기'}</button>
-        <button onClick={() => setShowCodeChat(v=>!v)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #7c3aed', background: showCodeChat ? '#1e293b' : '#0b1220', color: '#c4b5fd' }}>AI 코드 채팅 {showCodeChat ? '끄기' : '켜기'}</button>
-        {showTest && (
+      <div style={{ display: 'grid', gridTemplateRows: toolbarCollapsed ? 'auto' : 'auto auto auto', gap: 6, padding: '8px', borderBottom: '1px solid #25314a', background: 'rgba(2,6,23,0.5)' }}>
+        {/* 1열: 햄버거 / 파일 메뉴 / AI 코딩 / 테스트 */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button onClick={() => setShowTree(v=>!v)} title="파일트리" style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: showTree ? '#172033' : '#0b1220', color: '#e2e8f0' }}>☰</button>
+          <div style={{ position:'relative' }}>
+            <MenuButton onClick={() => setFileMenuOpen(v=>!v)} active={fileMenuOpen} label="파일" />
+            {fileMenuOpen && (
+              <div style={{ position:'absolute', zIndex: 20, background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, display:'grid', gap:6 }}>
+                <button onClick={doNewFile} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>새 파일</button>
+                <button onClick={doNewFolder} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>새 폴더</button>
+                <button onClick={doRename} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>이름 변경</button>
+                <button onClick={doDelete} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #7f1d1d', background:'#0b1220', color:'#fecaca' }}>삭제</button>
+              </div>
+            )}
+          </div>
+          <div style={{ position:'relative' }}>
+            <MenuButton onClick={() => setAiMenuOpen(v=>!v)} active={aiMenuOpen} label="AI 코딩" />
+            {aiMenuOpen && (
+              <div style={{ position:'absolute', zIndex: 20, background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, display:'grid', gap:6 }}>
+                <button onClick={() => { setAiMenuOpen(false); aiQuickEdit(); }} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>AI 수정</button>
+                <button onClick={() => { setShowCodeChat(v=>!v); setAiMenuOpen(false); }} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>{showCodeChat?'AI 코드채팅 끄기':'AI 코드채팅 켜기'}</button>
+              </div>
+            )}
+          </div>
+          <MenuButton onClick={() => setShowTest(v=>!v)} active={showTest} label="테스트" />
+          <div style={{ marginLeft:'auto' }}>
+            <MenuButton onClick={() => setToolbarCollapsed(v=>!v)} active={toolbarCollapsed} label={toolbarCollapsed?'펼치기':'접기'} />
+          </div>
+        </div>
+
+        {/* 새 파일/폴더 입력 UI */}
+        {creating && (
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <span style={{ color:'#e2e8f0', fontSize:12 }}>{creating==='file'?'파일 경로':'폴더 경로'}</span>
+            <input value={createPath} onChange={e=>setCreatePath(e.target.value)} style={{ flex:1, padding:'6px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }} />
+            <button onClick={() => { try { creating==='file'? createFile(createPath,'\n') : createFolder(createPath); open(createPath.replace(/\/$/, '')); } finally { setCreating(null); } }} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>생성</button>
+            <button onClick={() => setCreating(null)} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8' }}>취소</button>
+          </div>
+        )}
+
+        {!toolbarCollapsed && (
           <>
-            <button onClick={() => setSplitPct(50)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: '#0b1220', color: '#e2e8f0' }}>50/50</button>
-            <button onClick={() => setSplitPct(70)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: '#0b1220', color: '#e2e8f0' }}>70/30</button>
-            <button onClick={() => setSplitPct(30)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: '#0b1220', color: '#e2e8f0' }}>30/70</button>
+            {/* 2열: 파일목록(탭) */}
+            <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+              {openPaths.map((p) => {
+                const active = p === activePath;
+                return (
+                  <div key={p} style={{ display:'flex', alignItems:'center' }}>
+                    <button onClick={() => open(p)} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background: active ? '#172033' : '#0b1220', color:'#e2e8f0', fontSize:12 }}>{p.split('/').pop()}</button>
+                    <button onClick={() => close(p)} style={{ marginLeft:-6, padding:'6px 6px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8' }}>×</button>
+                  </div>
+                );
+              })}
+            </div>
+            {/* 3열: 현재 파일 / 엔트리로 / 접기 */}
+            <div style={{ display:'flex', alignItems:'center', gap:8, color:'#94a3b8', fontSize:12 }}>
+              <span>현재: <strong style={{ color:'#e2e8f0' }}>{activePath}</strong></span>
+              <button title="엔트리 파일 지정" onClick={() => setEntryPath(activePath)} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>엔트리로</button>
+            </div>
           </>
         )}
       </div>
