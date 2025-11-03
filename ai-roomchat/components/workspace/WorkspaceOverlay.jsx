@@ -78,8 +78,18 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
         if (aiMenuOpen && am && !am.contains(e.target)) setAiMenuOpen(false);
       } catch {}
     };
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        if (fileMenuOpen) setFileMenuOpen(false);
+        if (aiMenuOpen) setAiMenuOpen(false);
+      }
+    };
     document.addEventListener('click', onDoc);
-    return () => document.removeEventListener('click', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('click', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
   }, [fileMenuOpen, aiMenuOpen]);
   // lock visual height to avoid mobile browser chrome jumps
   useEffect(() => {

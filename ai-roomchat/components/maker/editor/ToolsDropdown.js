@@ -25,8 +25,10 @@ export default function ToolsDropdown({ onOpenCode, onOpenImageUI }) {
       if (!ref.current) return;
       if (!ref.current.contains(e.target)) setOpen(false);
     };
+    const onKey = e => { if (e.key === 'Escape') setOpen(false); };
     document.addEventListener('click', onDoc);
-    return () => document.removeEventListener('click', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('click', onDoc); document.removeEventListener('keydown', onKey); };
   }, []);
 
   return (
