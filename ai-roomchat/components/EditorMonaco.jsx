@@ -10,7 +10,7 @@ if (typeof window !== 'undefined' && loader && typeof loader.config === 'functio
   } catch {}
 }
 
-export default function EditorMonaco({ value, onChange, language = 'json', theme = 'vs-dark', height = '100%', width = '100%' }) {
+export default function EditorMonaco({ value, onChange, language = 'json', theme = 'vs-dark', height = '100%', width = '100%', currentPath = null }) {
   const ref = useRef(null);
   const editorRef = useRef(null);
   const [fallback, setFallback] = useState(false);
@@ -41,6 +41,22 @@ export default function EditorMonaco({ value, onChange, language = 'json', theme
       editor.onDidChangeModelContent(() => {
         if (typeof onChange === 'function') onChange(editor.getValue());
       });
+      // expose current selection for AI chat (optional)
+      try {
+        editor.onDidChangeCursorSelection(() => {
+          try {
+            const sel = editor.getSelection();
+            let text = '';
+            if (sel) {
+              const model = editor.getModel();
+              text = model.getValueInRange(sel) || '';
+            }
+            if (typeof window !== 'undefined') {
+              window.__VFS_ACTIVE_SELECTION__ = { path: currentPath, text, ts: Date.now() };
+            }
+          } catch {}
+        });
+      } catch {}
     };
     init();
     return () => {

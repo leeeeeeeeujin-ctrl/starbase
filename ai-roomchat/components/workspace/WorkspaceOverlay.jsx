@@ -7,7 +7,7 @@ import EditorMonaco from "../EditorMonaco.jsx";
 import GameSimulator from "../maker/editor/GameSimulator";
 import { supabase } from "../../lib/supabase";
 
-function EditorPane() {
+  function EditorPane() {
   const { files, activePath, writeFile, inferLang } = useWorkspace();
   const file = files[activePath];
   const lang = useMemo(() => inferLang(activePath), [activePath, inferLang]);
@@ -21,6 +21,7 @@ function EditorPane() {
           language={lang}
           theme="vs-dark"
           height="100%"
+          currentPath={activePath}
         />
       </div>
     </div>
@@ -392,6 +393,9 @@ function AICodeChatPanel({ onClose }){
   const [busy, setBusy] = useState(false);
   const logRef = useRef(null);
   const [attachActiveContent, setAttachActiveContent] = useState(true);
+  const [attachSelectionOnly, setAttachSelectionOnly] = useState(false);
+  const [attachPickerOpen, setAttachPickerOpen] = useState(false);
+  const [extraAttach, setExtraAttach] = useState([]); // array of file paths
   const MAX_INLINE = 4000; // prompt에 포함하는 최대 코드 길이 (문자)
   const SESS_KEY = 'workspace:aiChat:sessions.v1';
   const newSession = () => ({ id: `s_${Date.now()}`, title: '새 대화', createdAt: Date.now(), logs: [] });
@@ -464,10 +468,13 @@ function AICodeChatPanel({ onClose }){
       ].join('\n');
       const fileMeta = files[activePath];
       const contentRaw = typeof fileMeta?.content === 'string' ? fileMeta.content : '';
+      // 선택 영역 우선
+      let selectionText = '';
+      try { selectionText = (typeof window !== 'undefined' && window.__VFS_ACTIVE_SELECTION__?.path === activePath) ? (window.__VFS_ACTIVE_SELECTION__?.text || '') : ''; } catch {}
       const content = attachActiveContent
-        ? (contentRaw.length > MAX_INLINE
+        ? (attachSelectionOnly ? (selectionText || '') : (contentRaw.length > MAX_INLINE
             ? (contentRaw.slice(0, Math.floor(MAX_INLINE*0.6)) + '\n…\n/* …중략… */\n' + contentRaw.slice(-Math.floor(MAX_INLINE*0.35)))
-            : contentRaw)
+            : contentRaw))
         : '';
       const context = {
         activePath,
@@ -485,7 +492,14 @@ function AICodeChatPanel({ onClose }){
         .slice(-12)
         .map(l => `${l.role.toUpperCase()}: ${l.msg}`)
         .join('\n');
-      const prompt = `${sys}\n\n### CONTEXT\n${JSON.stringify(context)}\n\n### ACTIVE_FILE\nPATH: ${activePath}\nCONTENT:\n${attachActiveContent ? content : '(첨부 안 함)'}\n\n### HISTORY (최근)\n${historyText}\n\n### USER\n${input}`;
+      // 추가 첨부 파일 본문 구성 (최대 5개)
+      const mkBody = (txt) => (txt.length > MAX_INLINE ? (txt.slice(0, Math.floor(MAX_INLINE*0.6)) + '\n…\n/* …중략… */\n' + txt.slice(-Math.floor(MAX_INLINE*0.35))) : txt);
+      const extra = extraAttach.slice(0,5).map(p => {
+        const meta = files[p];
+        const c = typeof meta?.content === 'string' ? mkBody(meta.content) : '';
+        return `- ${p}\n${c}`;
+      }).join('\n\n');
+      const prompt = `${sys}\n\n### CONTEXT\n${JSON.stringify(context)}\n\n### ACTIVE_FILE\nPATH: ${activePath}\nMODE: ${attachSelectionOnly? 'selection-only' : 'full'}\nCONTENT:\n${attachActiveContent ? (content || '(선택된 내용 없음)') : '(첨부 안 함)'}\n\n${extraAttach.length>0?`### ADDITIONAL_FILES\n${extra}`:''}\n\n### HISTORY (최근)\n${historyText}\n\n### USER\n${input}`;
       append('user', input);
       setInput('');
       const res = await fetch('/api/ai/gemini', {
@@ -547,6 +561,24 @@ function AICodeChatPanel({ onClose }){
         <label style={{ display:'inline-flex', alignItems:'center', gap:6, color:'#94a3b8', fontSize:12 }}>
           <input type="checkbox" checked={attachActiveContent} onChange={e=>setAttachActiveContent(e.target.checked)} /> 현재 파일 내용 포함
         </label>
+        <label style={{ display:'inline-flex', alignItems:'center', gap:6, color:'#94a3b8', fontSize:12 }}>
+          <input type="checkbox" checked={attachSelectionOnly} onChange={e=>setAttachSelectionOnly(e.target.checked)} disabled={!attachActiveContent} /> 선택 코드만
+        </label>
+        <div style={{ position:'relative' }}>
+          <button onClick={()=>setAttachPickerOpen(v=>!v)} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>파일 추가</button>
+          {attachPickerOpen && (
+            <div style={{ position:'absolute', right:0, top:'100%', marginTop:6, zIndex:40, width:320, maxHeight:260, overflow:'auto', background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6 }}>
+              {Object.keys(files).sort().map(p => (
+                <label key={p} style={{ display:'flex', alignItems:'center', gap:8, padding:'4px 6px', color:'#e2e8f0', fontSize:12 }}>
+                  <input type="checkbox" checked={extraAttach.includes(p)} onChange={e=>{
+                    setExtraAttach(prev => e.target.checked ? (prev.includes(p)?prev:[...prev,p]) : prev.filter(x=>x!==p));
+                  }} />
+                  <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
         <input value={input} onChange={e=>setInput(e.target.value)} placeholder="명령을 입력하세요. 예: utils/date.js 생성하고 오늘 날짜 반환 함수 추가" style={{ flex:1, padding:'8px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }} />
         <button onClick={send} disabled={busy} style={{ padding:'8px 12px', borderRadius:8, border:'1px solid #7c3aed', background:'#0b1220', color:'#c4b5fd' }}>{busy?'전송 중…':'전송'}</button>
       </div>
