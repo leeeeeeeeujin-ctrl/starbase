@@ -112,7 +112,22 @@ export function CodeWorkspaceProvider({ children }) {
       const raw = localStorage.getItem(KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        setFiles(parsed.files || defaultFiles);
+        const base = parsed.files || {};
+        // merge in any new default files that are missing
+        const merged = { ...defaultFiles, ...base };
+        // if graph missing but template exists, derive minimal graph stub
+        try {
+          if (!merged['/graph/prompt-graph.json'] && typeof merged['/template.json']?.content === 'string') {
+            const obj = JSON.parse(merged['/template.json'].content || '{}');
+            const nodes = Array.isArray(obj.nodes) ? obj.nodes : [];
+            const edges = Array.isArray(obj.edges) ? obj.edges : [];
+            merged['/graph/prompt-graph.json'] = { content: JSON.stringify({
+              nodes: nodes.map(n => ({ id: n.id, type: n.type || 'prompt', label: n.data?.name || n.label || '' })),
+              edges: edges.map(e => ({ id: e.id, source: e.source, target: e.target, label: e.label || '' })),
+            }, null, 2)+'\n', readonly: false };
+          }
+        } catch {}
+        setFiles(merged);
         setRoot(parsed.root || "/");
         setActivePath(parsed.activePath || "/template.json");
         setOpenPaths(parsed.openPaths || ["/template.json"]);

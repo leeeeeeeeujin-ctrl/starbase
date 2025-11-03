@@ -6,6 +6,7 @@ import FileTree from "./FileTree.jsx";
 import EditorMonaco from "../EditorMonaco.jsx";
 import GameSimulator from "../maker/editor/GameSimulator";
 import { supabase } from "../../lib/supabase";
+import GameRealtimeRuntime from "../game/GameRealtimeRuntime.jsx";
 
   function EditorPane() {
   const { files, activePath, writeFile, inferLang } = useWorkspace();
@@ -203,6 +204,35 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
     const doResetRoot = () => {
       open('/');
     };
+    const doLoadSample = () => {
+      try {
+        const g = { nodes: [
+          { id: 'start', type:'system', label:'게임 시작!' },
+          { id: 'intro', type:'ai', label:'플레이어 여러분, 준비되셨나요?' },
+          { id: 'act', type:'user_action', label:'행동을 입력하세요.' },
+          { id: 'end', type:'system', label:'라운드 종료.' }
+        ], edges:[
+          { id:'e1', source:'start', target:'intro', label:'' },
+          { id:'e2', source:'intro', target:'act', label:'' },
+          { id:'e3', source:'act', target:'end', label:'' }
+        ]};
+        writeFile('/graph/prompt-graph.json', JSON.stringify(g, null, 2)+'\n');
+        const cfg = { version:1, roles:['players','observers'], voteThreshold:0.6667, durations:[30,60,90,120,180], entryNode:'start', ai:{ model:'gemini-2.5-flash' } };
+        writeFile('/game/runtime.config.json', JSON.stringify(cfg, null, 2)+'\n');
+        const hooks = [
+          'export function onUserAction(ctx, input){',
+          '  if ((input||"").toLowerCase().includes("다시")) return "intro";',
+          '  return "end";',
+          '}',
+          'export function selectNext(ctx, neighbors){',
+          '  return neighbors?.[0]?.id ?? null;',
+          '}',
+        ].join('\n');
+        writeFile('/game/hooks/automation.js', hooks+'\n');
+        open('/graph/prompt-graph.json');
+      } catch {}
+      setFileMenuOpen(false);
+    };
     const extractGeminiText = (result) => {
       try {
         const cand = result?.candidates?.[0];
@@ -230,6 +260,8 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
                 <button onClick={doNewFolder} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>새 폴더</button>
                 <button onClick={doRename} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>이름 변경</button>
                 <button onClick={doDelete} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #7f1d1d', background:'#0b1220', color:'#fecaca', whiteSpace:'nowrap' }}>삭제</button>
+                <div style={{ height:1, background:'rgba(148,163,184,0.2)', margin:'4px 2px' }} />
+                <button onClick={doLoadSample} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #2563eb', background:'#0b1220', color:'#93c5fd', whiteSpace:'nowrap' }}>샘플 그래프 불러오기</button>
               </div>
             )}
           </div>
@@ -357,6 +389,9 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
           >
             <FileTree />
           </div>
+        )}
+        {overlayTree && showTree && (
+          <div onClick={()=>setShowTree(false)} style={{ position:'absolute', inset:0, background:'rgba(2,6,23,0.4)', backdropFilter:'blur(2px)', zIndex: 250 }} />
         )}
       </div>
       {showCodeChat && (
