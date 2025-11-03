@@ -297,6 +297,14 @@ export default function MakerEditor() {
   // deprecated: replaced by gameSimulatorOpen
   const [simulationResults, setSimulationResults] = useState(null);
 
+  // ESC로 코드 오버레이 닫기 (fullscreen overlay)
+  useEffect(() => {
+    if (!showMultiLanguageEditor) return;
+    const onKey = (e) => { if (e.key === 'Escape') setShowMultiLanguageEditor(false); };
+    try { document.addEventListener('keydown', onKey); } catch {}
+    return () => { try { document.removeEventListener('keydown', onKey); } catch {} };
+  }, [showMultiLanguageEditor]);
+
   const handleCreateWithAI = useCallback(async () => {
     const userPrompt = prompt(
       '🎮 어떤 게임을 만들고 싶으세요?\n\n예시:\n• "중세 기사들이 용과 싸우는 게임"\n• "우주에서 외계인과 전투하는 게임"\n• "좀비 아포칼립스 생존 게임"'

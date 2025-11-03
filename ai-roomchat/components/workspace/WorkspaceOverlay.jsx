@@ -39,9 +39,12 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
   const [aiMenuOpen, setAiMenuOpen] = useState(false);
   const fileMenuRef = useRef(null);
   const aiMenuRef = useRef(null);
+  const treeRef = useRef(null);
   const [creating, setCreating] = useState(null); // null | 'file' | 'folder'
   const [createPath, setCreatePath] = useState('');
   const treeWidth = 240;
+  const PREF_SNAP = 'maker:ui:snap';
+  const PREF_SPLIT = 'workspace:split:pct';
   // 안정적 레이아웃: 상단/하단 패널 높이를 측정해 에디터를 절대 배치
   const toolbarRef = useRef(null);
   const bottomRef = useRef(null);
@@ -50,9 +53,22 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
   useEffect(() => {
     try {
       if (typeof window !== 'undefined') {
-        const w = window.innerWidth || 1200;
-        if (w < 980) { setShowTree(false); setToolbarCollapsed(true); }
+        const saved = localStorage.getItem(PREF_SNAP);
+        if (saved === 'mobile') { setShowTree(false); setToolbarCollapsed(true); setShowTest(false); }
+        else if (saved === 'desktop') { setShowTree(true); setToolbarCollapsed(false); }
+        else {
+          const w = window.innerWidth || 1200;
+          if (w < 980) { setShowTree(false); setToolbarCollapsed(true); }
+        }
       }
+    } catch {}
+  }, []);
+  // split 비율 복원
+  useEffect(() => {
+    try {
+      const s = localStorage.getItem(PREF_SPLIT);
+      const pct = parseInt(s || '60', 10);
+      if (!Number.isNaN(pct)) setSplitPct(Math.min(80, Math.max(20, pct)));
     } catch {}
   }, []);
   useEffect(() => {
@@ -67,30 +83,59 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
       setBottomH(Math.round(h));
     } catch {}
   }, [showCodeChat]);
+  // split 비율 저장
+  useEffect(() => {
+    try { localStorage.setItem(PREF_SPLIT, String(splitPct)); } catch {}
+  }, [splitPct]);
 
   // 클릭 바깥 감지로 드롭다운 자동 닫기
   useEffect(() => {
     const onDoc = (e) => {
       try {
+        const t = e.target;
+        // 에디터 내부 클릭은 드롭다운/트리 닫기에서 제외
+        if (t && (t.closest && (t.closest('.monaco-editor') || t.closest('.overflowingContentWidgets')))) return;
         const fm = fileMenuRef.current;
         const am = aiMenuRef.current;
+        const tr = treeRef.current;
         if (fileMenuOpen && fm && !fm.contains(e.target)) setFileMenuOpen(false);
         if (aiMenuOpen && am && !am.contains(e.target)) setAiMenuOpen(false);
+        // 파일트리가 열려있을 때, 파일트리 영역 밖을 터치하면 닫기
+        if (showTree && tr && !tr.contains(e.target)) setShowTree(false);
       } catch {}
     };
     const onKey = (e) => {
       if (e.key === 'Escape') {
         if (fileMenuOpen) setFileMenuOpen(false);
         if (aiMenuOpen) setAiMenuOpen(false);
+        if (showTree) setShowTree(false);
       }
+    };
+    const onScroll = () => {
+      // 스크롤/터치 이동 시 열린 메뉴/파일트리는 닫기(간단 편의)
+      if (fileMenuOpen) setFileMenuOpen(false);
+      if (aiMenuOpen) setAiMenuOpen(false);
+      if (showTree) setShowTree(false);
     };
     document.addEventListener('click', onDoc);
     document.addEventListener('keydown', onKey);
+    document.addEventListener('scroll', onScroll, true);
+    document.addEventListener('touchmove', onScroll, { passive: true });
     return () => {
       document.removeEventListener('click', onDoc);
       document.removeEventListener('keydown', onKey);
+      document.removeEventListener('scroll', onScroll, true);
+      document.removeEventListener('touchmove', onScroll);
     };
-  }, [fileMenuOpen, aiMenuOpen]);
+  }, [fileMenuOpen, aiMenuOpen, showTree]);
+
+  // 툴바 접힘 시 드롭다운 모두 닫기
+  useEffect(() => {
+    if (toolbarCollapsed) {
+      setFileMenuOpen(false);
+      setAiMenuOpen(false);
+    }
+  }, [toolbarCollapsed]);
   // lock visual height to avoid mobile browser chrome jumps
   useEffect(() => {
     try {
@@ -182,9 +227,9 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
       <div ref={toolbarRef} style={{ display: 'grid', gridTemplateRows: toolbarCollapsed ? 'auto' : 'auto auto auto', gap: 6, padding: '8px', borderBottom: '1px solid #25314a', background: 'rgba(2,6,23,0.5)' }}>
         {/* 1열: 햄버거 / 파일 메뉴 / AI 코딩 / 테스트 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button onClick={() => setShowTree(v=>!v)} title="파일트리" style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: showTree ? '#172033' : '#0b1220', color: '#e2e8f0' }}>☰</button>
+          <button onClick={() => { setFileMenuOpen(false); setAiMenuOpen(false); setShowTree(v=>!v); }} title="파일트리" style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: showTree ? '#172033' : '#0b1220', color: '#e2e8f0' }}>☰</button>
           <div ref={fileMenuRef} style={{ position:'relative' }}>
-            <MenuButton onClick={() => setFileMenuOpen(v=>{ const next=!v; if (next) setAiMenuOpen(false); return next; })} active={fileMenuOpen} label="파일" />
+            <MenuButton onClick={() => setFileMenuOpen(v=>{ const next=!v; if (next) { setAiMenuOpen(false); setShowTree(false); } return next; })} active={fileMenuOpen} label="파일" />
             {fileMenuOpen && (
               <div style={{ position:'absolute', zIndex: 20, background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, display:'grid', gap:6 }}>
                 <button onClick={doNewFile} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>새 파일</button>
@@ -195,7 +240,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
             )}
           </div>
           <div ref={aiMenuRef} style={{ position:'relative' }}>
-            <MenuButton onClick={() => setAiMenuOpen(v=>{ const next=!v; if (next) setFileMenuOpen(false); return next; })} active={aiMenuOpen} label="AI 코딩" />
+            <MenuButton onClick={() => setAiMenuOpen(v=>{ const next=!v; if (next) { setFileMenuOpen(false); setShowTree(false); } return next; })} active={aiMenuOpen} label="AI 코딩" />
             {aiMenuOpen && (
               <div style={{ position:'absolute', zIndex: 20, background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, display:'grid', gap:6 }}>
                 <button onClick={() => { setAiMenuOpen(false); aiQuickEdit(); }} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>AI 수정</button>
@@ -205,8 +250,15 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
           </div>
           <MenuButton onClick={() => setShowTest(v=>!v)} active={showTest} label="테스트" />
           <div style={{ marginLeft:'auto', display:'flex', gap:8 }}>
-            <MenuButton onClick={() => { setShowTree(false); setToolbarCollapsed(true); setShowTest(false); }} active={false} label="모바일 스냅" />
-            <MenuButton onClick={() => { setShowTree(true); setToolbarCollapsed(false); }} active={false} label="데스크톱 스냅" />
+            <MenuButton onClick={() => { setShowTree(false); setToolbarCollapsed(true); setShowTest(false); try { localStorage.setItem(PREF_SNAP, 'mobile'); } catch {} }} active={false} label="모바일 스냅" />
+            <MenuButton onClick={() => { setShowTree(true); setToolbarCollapsed(false); try { localStorage.setItem(PREF_SNAP, 'desktop'); } catch {} }} active={false} label="데스크톱 스냅" />
+            {showTest && (
+              <>
+                <MenuButton onClick={() => setSplitPct(50)} active={false} label="50/50" />
+                <MenuButton onClick={() => setSplitPct(70)} active={false} label="70/30" />
+                <MenuButton onClick={() => setSplitPct(30)} active={false} label="30/70" />
+              </>
+            )}
             <MenuButton onClick={() => setToolbarCollapsed(v=>!v)} active={toolbarCollapsed} label={toolbarCollapsed?'펼치기':'접기'} />
           </div>
         </div>
@@ -251,7 +303,18 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
         <SyncTemplateToVfs text={templateBinding.text} setText={templateBinding.setText} />
       ) : null}
       <div style={{ display: "flex", height: "calc(var(--vh, 1vh) * 100)", background: "#0b1220" }}>
-        {showTree ? <FileTree /> : null}
+        <div
+          ref={treeRef}
+          style={{
+            width: showTree ? treeWidth : 0,
+            transition: 'width 200ms ease, opacity 200ms ease',
+            opacity: showTree ? 1 : 0,
+            overflow: 'hidden',
+            pointerEvents: showTree ? 'auto' : 'none',
+          }}
+        >
+          <FileTree />
+        </div>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           <Toolbar />
           {/* 중앙 영역: 절대 배치로 상단/하단 고정 높이를 제외한 영역 전체를 에디터/테스트가 차지 */}
