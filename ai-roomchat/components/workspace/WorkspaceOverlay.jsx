@@ -378,6 +378,17 @@ function SyncTemplateToVfs({ text, setText }){
       if (typeof text === 'string' && text !== current && !guard.current.toText) {
         guard.current.toVfs = true;
         writeFile('/template.json', text);
+        // also derive graph
+        try {
+          const obj = JSON.parse(text || '{}');
+          const nodes = Array.isArray(obj.nodes) ? obj.nodes : [];
+          const edges = Array.isArray(obj.edges) ? obj.edges : [];
+          const g = {
+            nodes: nodes.map(n => ({ id: n.id, type: n.type || 'prompt', label: n.data?.name || n.label || '' })),
+            edges: edges.map(e => ({ id: e.id, source: e.source, target: e.target, label: e.label || '' })),
+          };
+          writeFile('/graph/prompt-graph.json', JSON.stringify(g, null, 2)+'\n');
+        } catch {}
         setTimeout(()=>{ guard.current.toVfs = false; },0);
       }
     } catch {}

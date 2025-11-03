@@ -36,6 +36,66 @@ const defaultFiles = {
     readonly: true,
   },
   "/template.json": { content: "{}\n", readonly: false },
+  "/graph/prompt-graph.json": { content: "{\n  \"nodes\": [],\n  \"edges\": []\n}\n", readonly: false },
+  "/game/runtime.config.json": {
+    content: JSON.stringify({
+      version: 1,
+      roles: ["players", "observers"],
+      voteThreshold: 0.6667,
+      durations: [30, 60, 90, 120, 180],
+      entryNode: null,
+      ai: { model: "gemini-2.5-flash" }
+    }, null, 2)+"\n",
+    readonly: false,
+  },
+  "/game/hooks/automation.js": {
+    content:
+      [
+        "// User automation hooks for the prompt-graph runtime.",
+        "// Export any of these if you need custom behavior.",
+        "export function onTurnStart(ctx) {",
+        "  // ctx: { turn, activeRole, variables, node, files }",
+        "}",
+        "export function onUserAction(ctx, input) {",
+        "  // return optional next node id or mutation plan",
+        "}",
+        "export function transformPrompt(ctx, promptText) {",
+        "  return promptText;",
+        "}",
+        "export function selectNext(ctx, neighbors) {",
+        "  // neighbors: [{ id, label, type }]",
+        "  return neighbors?.[0]?.id ?? null;",
+        "}",
+        "",
+      ].join("\n")+"\n",
+    readonly: false,
+  },
+  "/docs/AI_GUIDE.md": {
+    content:
+      [
+        "# AI Coding Guide (Workspace)",
+        "\n",
+        "## Files",
+        "- /template.json — raw studio template (nodes/edges)",
+        "- /graph/prompt-graph.json — normalized graph produced from template",
+        "- /game/runtime.config.json — runtime params (roles, durations, entry)",
+        "- /game/hooks/automation.js — user-defined hooks",
+        "\n",
+        "## Edit Actions JSON (for AI Code Chat)",
+        "Return JSON only: { \"message?\": string, \"actions?\": [ { \"type\":\"create|write|delete|rename\", ... } ] }",
+        "\n",
+        "## Prompt Graph",
+        "Each node has: { id, type: 'ai'|'user_action'|'system', label }. Edges define transitions.",
+        "Use hooks to transform prompt or select next node.",
+        "\n",
+        "## Typical Workflow",
+        "1. Modify /template.json or /graph/prompt-graph.json",
+        "2. Adjust /game/runtime.config.json (entryNode, durations, roles)",
+        "3. Implement /game/hooks/automation.js to handle user actions",
+        "4. Test via the Editor's runtime panel",
+      ].join("\n")+"\n",
+    readonly: false,
+  },
 };
 
 const WorkspaceCtx = createContext(null);
