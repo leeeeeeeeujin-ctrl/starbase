@@ -34,18 +34,47 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
   const [dragging, setDragging] = useState(false);
   const [showTree, setShowTree] = useState(true);
   const [showCodeChat, setShowCodeChat] = useState(false);
-  const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
+  const [toolbarCollapsed, setToolbarCollapsed] = useState(true);
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [aiMenuOpen, setAiMenuOpen] = useState(false);
   const [creating, setCreating] = useState(null); // null | 'file' | 'folder'
   const [createPath, setCreatePath] = useState('');
   const treeWidth = 240;
+  // 안정적 레이아웃: 상단/하단 패널 높이를 측정해 에디터를 절대 배치
+  const toolbarRef = useRef(null);
+  const bottomRef = useRef(null);
+  const [toolbarH, setToolbarH] = useState(0);
+  const [bottomH, setBottomH] = useState(0);
   useEffect(() => {
     try {
       if (typeof window !== 'undefined') {
         const w = window.innerWidth || 1200;
-        if (w < 980) setShowTree(false);
+        if (w < 980) { setShowTree(false); setToolbarCollapsed(true); }
       }
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try {
+      const h = toolbarRef.current ? toolbarRef.current.getBoundingClientRect().height : 0;
+      setToolbarH(Math.round(h));
+    } catch {}
+  }, [toolbarCollapsed, fileMenuOpen, aiMenuOpen, creating, showTree]);
+  useEffect(() => {
+    try {
+      const h = bottomRef.current ? bottomRef.current.getBoundingClientRect().height : 0;
+      setBottomH(Math.round(h));
+    } catch {}
+  }, [showCodeChat]);
+  // lock visual height to avoid mobile browser chrome jumps
+  useEffect(() => {
+    try {
+      const setVh = () => {
+        const vh = window.innerHeight * 0.01;
+        document.documentElement.style.setProperty('--vh', `${vh}px`);
+      };
+      setVh();
+      window.addEventListener('resize', setVh);
+      return () => window.removeEventListener('resize', setVh);
     } catch {}
   }, []);
   useEffect(() => {
@@ -124,7 +153,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
     );
 
     return (
-      <div style={{ display: 'grid', gridTemplateRows: toolbarCollapsed ? 'auto' : 'auto auto auto', gap: 6, padding: '8px', borderBottom: '1px solid #25314a', background: 'rgba(2,6,23,0.5)' }}>
+      <div ref={toolbarRef} style={{ display: 'grid', gridTemplateRows: toolbarCollapsed ? 'auto' : 'auto auto auto', gap: 6, padding: '8px', borderBottom: '1px solid #25314a', background: 'rgba(2,6,23,0.5)' }}>
         {/* 1열: 햄버거 / 파일 메뉴 / AI 코딩 / 테스트 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button onClick={() => setShowTree(v=>!v)} title="파일트리" style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: showTree ? '#172033' : '#0b1220', color: '#e2e8f0' }}>☰</button>
@@ -193,30 +222,33 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
       {templateBinding ? (
         <SyncTemplateToVfs text={templateBinding.text} setText={templateBinding.setText} />
       ) : null}
-      <div style={{ display: "flex", height: "100%", background: "#0b1220" }}>
+      <div style={{ display: "flex", height: "calc(var(--vh, 1vh) * 100)", background: "#0b1220" }}>
         {showTree ? <FileTree /> : null}
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           <Toolbar />
-          <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-            <div style={{ width: showTest ? `${splitPct}%` : '100%', minWidth: 0 }}>
-              <EditorPane />
+          {/* 중앙 영역: 절대 배치로 상단/하단 고정 높이를 제외한 영역 전체를 에디터/테스트가 차지 */}
+          <div style={{ position:'relative', flex: 1, minHeight: 0 }}>
+            <div style={{ position:'absolute', inset: `${toolbarH}px 0 ${bottomH}px 0`, display:'flex', minHeight:0 }}>
+              <div style={{ width: showTest ? `${splitPct}%` : '100%', minWidth: 0 }}>
+                <EditorPane />
+              </div>
+              {showTest && (
+                <>
+                  <div
+                    onMouseDown={() => setDragging(true)}
+                    onTouchStart={() => setDragging(true)}
+                    onDoubleClick={() => setSplitPct(50)}
+                    title="더블클릭: 50/50"
+                    style={{ width: 6, cursor: 'col-resize', background: 'rgba(148,163,184,0.3)' }}
+                  />
+                  <div style={{ flex: 1, minWidth: 0, background: '#0a0f1a' }}>
+                    <GameSimulator visible={true} gameData={gameData} />
+                  </div>
+                </>
+              )}
             </div>
-            {showTest && (
-              <>
-                <div
-                  onMouseDown={() => setDragging(true)}
-                  onTouchStart={() => setDragging(true)}
-                  onDoubleClick={() => setSplitPct(50)}
-                  title="더블클릭: 50/50"
-                  style={{ width: 6, cursor: 'col-resize', background: 'rgba(148,163,184,0.3)' }}
-                />
-                <div style={{ flex: 1, minWidth: 0, background: '#0a0f1a' }}>
-                  <GameSimulator visible={true} gameData={gameData} />
-                </div>
-              </>
-            )}
           </div>
-          {showCodeChat ? <AICodeChatPanel /> : null}
+          {showCodeChat ? <div ref={bottomRef}><AICodeChatPanel /></div> : <div ref={bottomRef} />}
         </div>
       </div>
     </CodeWorkspaceProvider>
