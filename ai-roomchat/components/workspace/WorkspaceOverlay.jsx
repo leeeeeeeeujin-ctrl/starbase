@@ -326,7 +326,16 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
                     style={{ width: 6, cursor: 'col-resize', background: 'rgba(148,163,184,0.3)' }}
                   />
                   <div style={{ flex: 1, minWidth: 0, background: '#0a0f1a' }}>
-                    <GameSimulator visible={true} gameData={gameData} />
+                    {/* Realtime runtime preview (prototype). Replace or toggle with GameSimulator as needed. */}
+                    {true ? (
+                      <div style={{ height:'100%', padding:8 }}>
+                        <div style={{ height:'100%' }}>
+                          <GameRealtimeRuntime roomId={'editor-preview'} roles={{ players:['local','ai1','ai2'], observers:[] }} currentUser={{ id:'local', role:'players' }} />
+                        </div>
+                      </div>
+                    ) : (
+                      <GameSimulator visible={true} gameData={gameData} />
+                    )}
                   </div>
                 </>
               )}
