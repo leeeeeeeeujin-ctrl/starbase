@@ -35,7 +35,7 @@ export default function FileTree() {
   };
 
   return (
-    <div style={{ width: 240, borderRight: "1px solid #25314a", background: "#0b1220" }}>
+    <div style={{ width: '100%', borderRight: "1px solid #25314a", background: "#0b1220" }}>
       <div style={{ padding: 8, color: "#e2e8f0", fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span>파일</span>
         <button onClick={goUp} title="상위 폴더" style={{ fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid #475569', background: '#0f172a', color: '#e2e8f0' }}>⬆</button>

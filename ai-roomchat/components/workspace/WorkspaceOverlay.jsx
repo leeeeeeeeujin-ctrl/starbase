@@ -177,7 +177,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
     const onMove = (e) => {
       const x = e.clientX ?? (e.touches ? e.touches[0]?.clientX : 0);
       const vw = typeof window !== 'undefined' ? window.innerWidth : 1000;
-      const left = showTree ? treeWidth : 0;
+      const left = (!overlayTree && showTree) ? treeWidth : 0;
       const pct = Math.min(80, Math.max(20, Math.round(((x - left) / (vw - left)) * 100)));
       setSplitPct(pct);
     };
