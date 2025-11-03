@@ -37,6 +37,8 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
   const [toolbarCollapsed, setToolbarCollapsed] = useState(true);
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [aiMenuOpen, setAiMenuOpen] = useState(false);
+  const fileMenuRef = useRef(null);
+  const aiMenuRef = useRef(null);
   const [creating, setCreating] = useState(null); // null | 'file' | 'folder'
   const [createPath, setCreatePath] = useState('');
   const treeWidth = 240;
@@ -65,6 +67,20 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
       setBottomH(Math.round(h));
     } catch {}
   }, [showCodeChat]);
+
+  // 클릭 바깥 감지로 드롭다운 자동 닫기
+  useEffect(() => {
+    const onDoc = (e) => {
+      try {
+        const fm = fileMenuRef.current;
+        const am = aiMenuRef.current;
+        if (fileMenuOpen && fm && !fm.contains(e.target)) setFileMenuOpen(false);
+        if (aiMenuOpen && am && !am.contains(e.target)) setAiMenuOpen(false);
+      } catch {}
+    };
+    document.addEventListener('click', onDoc);
+    return () => document.removeEventListener('click', onDoc);
+  }, [fileMenuOpen, aiMenuOpen]);
   // lock visual height to avoid mobile browser chrome jumps
   useEffect(() => {
     try {
@@ -157,7 +173,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
         {/* 1열: 햄버거 / 파일 메뉴 / AI 코딩 / 테스트 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button onClick={() => setShowTree(v=>!v)} title="파일트리" style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: showTree ? '#172033' : '#0b1220', color: '#e2e8f0' }}>☰</button>
-          <div style={{ position:'relative' }}>
+          <div ref={fileMenuRef} style={{ position:'relative' }}>
             <MenuButton onClick={() => setFileMenuOpen(v=>!v)} active={fileMenuOpen} label="파일" />
             {fileMenuOpen && (
               <div style={{ position:'absolute', zIndex: 20, background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, display:'grid', gap:6 }}>
@@ -168,7 +184,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
               </div>
             )}
           </div>
-          <div style={{ position:'relative' }}>
+          <div ref={aiMenuRef} style={{ position:'relative' }}>
             <MenuButton onClick={() => setAiMenuOpen(v=>!v)} active={aiMenuOpen} label="AI 코딩" />
             {aiMenuOpen && (
               <div style={{ position:'absolute', zIndex: 20, background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, display:'grid', gap:6 }}>
