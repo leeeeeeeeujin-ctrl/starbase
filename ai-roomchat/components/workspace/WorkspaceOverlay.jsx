@@ -49,6 +49,13 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
     return Math.round(Math.max(180, Math.min(320, vw * 0.22)));
   };
   const [treeWidth, setTreeWidth] = useState(computeTreeWidth());
+  // On narrow screens, show tree as overlay so editor keeps full width
+  const computeOverlayTree = () => {
+    if (typeof window === 'undefined') return false;
+    const vw = window.innerWidth || 1200;
+    return vw < 1280; // overlay mode under 1280px
+  };
+  const [overlayTree, setOverlayTree] = useState(computeOverlayTree());
   const PREF_SNAP = 'maker:ui:snap';
   const PREF_SPLIT = 'workspace:split:pct';
   // 안정적 레이아웃: 상단/하단 패널 높이를 측정해 에디터를 절대 배치
@@ -58,7 +65,10 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
   const [bottomH, setBottomH] = useState(0);
   // keep tree width responsive on resize
   useEffect(() => {
-    const onResize = () => setTreeWidth(computeTreeWidth());
+    const onResize = () => {
+      setTreeWidth(computeTreeWidth());
+      setOverlayTree(computeOverlayTree());
+    };
     try {
       if (typeof window !== 'undefined') {
         window.addEventListener('resize', onResize);
@@ -282,19 +292,21 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
       {templateBinding ? (
         <SyncTemplateToVfs text={templateBinding.text} setText={templateBinding.setText} />
       ) : null}
-      <div style={{ display: "flex", height: "calc(var(--vh, 1vh) * 100)", background: "#0b1220" }}>
-        <div
-          ref={treeRef}
-          style={{
-            width: showTree ? treeWidth : 0,
-            transition: 'width 200ms ease, opacity 200ms ease',
-            opacity: showTree ? 1 : 0,
-            overflow: 'hidden',
-            pointerEvents: showTree ? 'auto' : 'none',
-          }}
-        >
-          <FileTree />
-        </div>
+      <div style={{ position:'relative', display: "flex", height: "calc(var(--vh, 1vh) * 100)", background: "#0b1220" }}>
+        {!overlayTree && (
+          <div
+            ref={treeRef}
+            style={{
+              width: showTree ? treeWidth : 0,
+              transition: 'width 200ms ease, opacity 200ms ease',
+              opacity: showTree ? 1 : 0,
+              overflow: 'hidden',
+              pointerEvents: showTree ? 'auto' : 'none',
+            }}
+          >
+            <FileTree />
+          </div>
+        )}
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           <Toolbar />
           {/* 중앙 영역: 절대 배치로 상단/하단 고정 높이를 제외한 영역 전체를 에디터/테스트가 차지 */}
@@ -322,6 +334,20 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
           {/* Floating chat overlay (independent of editor layout) */}
           <div ref={bottomRef} />
         </div>
+        {overlayTree && showTree && (
+          <div
+            ref={treeRef}
+            style={{
+              position:'absolute', left:0, top: toolbarH, bottom:0,
+              width: treeWidth, background:'#0b1220', borderRight:'1px solid #25314a',
+              boxShadow:'8px 0 24px -12px rgba(0,0,0,0.4)',
+              transition:'opacity 200ms ease',
+              zIndex: 300,
+            }}
+          >
+            <FileTree />
+          </div>
+        )}
       </div>
       {showCodeChat && (
         <div style={{ position:'fixed', right:16, bottom:16, zIndex: 1200, width: 'clamp(300px, 42vw, 560px)', height: 'clamp(260px, 38vh, 520px)' }}>
@@ -365,7 +391,11 @@ function AICodeChatPanel({ onClose }){
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [logs, setLogs] = useState([]);
+  const logRef = useRef(null);
   const append = (role,msg) => setLogs(l => [...l, { t: Date.now(), role, msg }]);
+  useEffect(() => {
+    try { const el = logRef?.current; if (el) el.scrollTop = el.scrollHeight; } catch {}
+  }, [logs]);
   const listFiles = () => Object.keys(files).sort().map(p => ({ path: p, size: (files[p]?.content||'').length, dir: !!files[p]?.dir }));
   const stripFences = (s) => String(s||'').replace(/^```(?:json)?/i,'').replace(/```$/i,'').trim();
   const applyActions = (plan) => {
@@ -443,7 +473,7 @@ function AICodeChatPanel({ onClose }){
         <span>AI 코드 채팅</span>
         <button onClick={onClose} title="닫기" style={{ padding:'4px 8px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8' }}>닫기</button>
       </div>
-      <div style={{ flex:1, overflow:'auto', padding:'8px 10px' }}>
+      <div ref={logRef} style={{ flex:1, overflow:'auto', padding:'8px 10px' }}>
         {logs.map((l,i)=> (
           <div key={i} style={{ fontSize:12, color: l.role==='error'?'#fecaca': (l.role==='user'?'#e2e8f0':'#a7f3d0') }}>{l.role}: {l.msg}</div>
         ))}
