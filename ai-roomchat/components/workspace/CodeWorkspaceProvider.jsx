@@ -45,6 +45,7 @@ export function CodeWorkspaceProvider({ children }) {
   const [root, setRoot] = useState("/");
   const [activePath, setActivePath] = useState("/template.json");
   const [openPaths, setOpenPaths] = useState(["/template.json"]);
+  const [entryPath, setEntryPath] = useState("/template.json");
 
   useEffect(() => {
     try {
@@ -55,6 +56,7 @@ export function CodeWorkspaceProvider({ children }) {
         setRoot(parsed.root || "/");
         setActivePath(parsed.activePath || "/template.json");
         setOpenPaths(parsed.openPaths || ["/template.json"]);
+        setEntryPath(parsed.entryPath || "/template.json");
       } else {
         setFiles(defaultFiles);
       }
@@ -67,13 +69,23 @@ export function CodeWorkspaceProvider({ children }) {
     try {
       localStorage.setItem(
         KEY,
-        JSON.stringify({ files, root, activePath, openPaths })
+        JSON.stringify({ files, root, activePath, openPaths, entryPath })
       );
     } catch {}
-  }, [files, root, activePath, openPaths]);
+  }, [files, root, activePath, openPaths, entryPath]);
 
   const api = useMemo(() => {
     const exists = (path) => Boolean(files[path]);
+    const isDir = (path) => {
+      if (!path) return false;
+      if (path.endsWith('/')) return true;
+      const meta = files[path];
+      return meta && meta.dir === true;
+    };
+    const normalizeDir = (path) => {
+      if (!path) return '/';
+      return path.endsWith('/') ? path : path + '/';
+    };
     const inferLang = (path) => {
       if (!path) return "plaintext";
       const ext = (path.split(".").pop() || "").toLowerCase();
@@ -89,9 +101,17 @@ export function CodeWorkspaceProvider({ children }) {
       root,
       activePath,
       openPaths,
+      entryPath,
+      setEntryPath,
       setRoot,
+      isDir,
+      normalizeDir,
       inferLang,
       open: (path) => {
+        if (isDir(path)) {
+          setRoot(normalizeDir(path));
+          return;
+        }
         if (!exists(path)) return;
         if (!openPaths.includes(path)) setOpenPaths((arr) => [...arr, path]);
         setActivePath(path);
@@ -100,6 +120,8 @@ export function CodeWorkspaceProvider({ children }) {
         setOpenPaths((arr) => arr.filter((p) => p !== path)),
       createFile: (path, content = "") =>
         setFiles((m) => ({ ...m, [path]: { content, readonly: false } })),
+      createFolder: (path) =>
+        setFiles((m) => ({ ...m, [normalizeDir(path)]: { dir: true, readonly: true } })),
       writeFile: (path, content) =>
         setFiles((m) => {
           const f = m[path];
@@ -107,19 +129,27 @@ export function CodeWorkspaceProvider({ children }) {
           if (f.readonly) return m;
           return { ...m, [path]: { ...f, content } };
         }),
-      rename: (oldPath, newPath) =>
+      rename: (oldPath, newPath) => {
         setFiles((m) => {
           if (!m[oldPath]) return m;
           const { [oldPath]: old, ...rest } = m;
           return { ...rest, [newPath]: old };
-        }),
-      remove: (path) =>
+        });
+        setOpenPaths((arr) => arr.map((p) => (p === oldPath ? newPath : p)));
+        setActivePath((p) => (p === oldPath ? newPath : p));
+        setEntryPath((p) => (p === oldPath ? newPath : p));
+      },
+      remove: (path) => {
         setFiles((m) => {
           const { [path]: _drop, ...rest } = m;
           return rest;
-        }),
+        });
+        setOpenPaths((arr) => arr.filter((p) => p !== path));
+        setActivePath((p) => (p === path ? "/template.json" : p));
+        setEntryPath((p) => (p === path ? "/template.json" : p));
+      },
     };
-  }, [files, root, activePath, openPaths]);
+  }, [files, root, activePath, openPaths, entryPath]);
 
   return (
     <WorkspaceCtx.Provider value={api}>{children}</WorkspaceCtx.Provider>
@@ -131,4 +161,3 @@ export function useWorkspace() {
   if (!ctx) throw new Error("useWorkspace must be used within CodeWorkspaceProvider");
   return ctx;
 }
-

@@ -1,22 +1,36 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CodeWorkspaceProvider, useWorkspace } from "./CodeWorkspaceProvider.jsx";
 import FileTree from "./FileTree.jsx";
 import EditorMonaco from "../EditorMonaco.jsx";
+import GameSimulator from "../maker/editor/GameSimulator";
+import { supabase } from "../../lib/supabase";
 
 function EditorPane() {
-  const { files, activePath, writeFile, inferLang } = useWorkspace();
+  const { files, activePath, writeFile, inferLang, openPaths, close, open, entryPath, setEntryPath } = useWorkspace();
   const file = files[activePath];
   const lang = useMemo(() => inferLang(activePath), [activePath, inferLang]);
   if (!file) return <div style={{ padding: 16, color: "#e2e8f0" }}>파일을 선택하세요.</div>;
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <div style={{ padding: "6px 10px", borderBottom: "1px solid #25314a", color: "#e2e8f0" }}>
-        <strong>{activePath}</strong>
-        {file.readonly && (
-          <span style={{ marginLeft: 8, fontSize: 12, color: "#94a3b8" }}>(읽기 전용)</span>
-        )}
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 6, padding: '8px', borderBottom: '1px solid #25314a', background: 'rgba(2,6,23,0.35)' }}>
+        {openPaths.map((p) => {
+          const active = p === activePath;
+          return (
+            <div key={p} style={{ display: 'flex', alignItems: 'center' }}>
+              <button onClick={() => open(p)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: active ? '#172033' : '#0b1220', color: '#e2e8f0', fontSize: 12 }}>
+                {p === entryPath ? '⭐ ' : ''}{p.split('/').pop()}
+              </button>
+              <button onClick={() => close(p)} style={{ marginLeft: -6, padding: '6px 6px', borderRadius: 8, border: '1px solid #334155', background: '#0b1220', color: '#94a3b8' }}>×</button>
+            </div>
+          );
+        })}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, color: '#94a3b8', fontSize: 12 }}>
+          <span>현재: <strong style={{ color: '#e2e8f0' }}>{activePath}</strong>{file.readonly ? ' (읽기 전용)' : ''}</span>
+          <button title="엔트리 파일 지정" onClick={() => setEntryPath(activePath)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: '#0b1220', color: '#e2e8f0' }}>엔트리로</button>
+        </div>
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>
         <EditorMonaco
@@ -31,16 +45,173 @@ function EditorPane() {
   );
 }
 
-export default function WorkspaceOverlay() {
+export default function WorkspaceOverlay({ gameData, templateBinding }) {
+  // 오른쪽 영역에서 코드/테스트 동시 표시 + 리사이저
+  const [showTest, setShowTest] = useState(false);
+  const [splitPct, setSplitPct] = useState(60); // 에디터:테스트 비율
+  const [dragging, setDragging] = useState(false);
+  useEffect(() => {
+    if (!dragging) return;
+    const onMove = (e) => {
+      const x = e.clientX ?? (e.touches ? e.touches[0]?.clientX : 0);
+      const vw = typeof window !== 'undefined' ? window.innerWidth : 1000;
+      const pct = Math.min(80, Math.max(20, Math.round(( (x - 240) / (vw - 240)) * 100 )));
+      // 240 = 좌측 파일트리 고정폭
+      setSplitPct(pct);
+    };
+    const onUp = () => setDragging(false);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    window.addEventListener('touchmove', onMove);
+    window.addEventListener('touchend', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('touchend', onUp);
+    };
+  }, [dragging]);
+  const Toolbar = () => {
+    const { root, normalizeDir, open, createFile, createFolder, rename, remove, files, activePath, writeFile } = useWorkspace();
+    const doNewFile = () => {
+      const def = normalizeDir(root) + 'untitled.js';
+      const p = prompt('새 파일 경로', def);
+      if (!p) return;
+      createFile(p, '\n');
+      open(p);
+    };
+    const doNewFolder = () => {
+      const def = normalizeDir(root) + 'folder/';
+      const p = prompt('새 폴더 경로 (끝에 /)', def);
+      if (!p) return;
+      createFolder(p);
+    };
+    const doRename = () => {
+      const cur = prompt('어느 경로를 변경할까요? (현재 경로 입력)', '');
+      const next = cur ? prompt('새 경로', cur) : null;
+      if (cur && next && cur !== next) rename(cur, next);
+    };
+    const doDelete = () => {
+      const cur = prompt('삭제할 경로', '');
+      if (cur && confirm(`${cur} 를 삭제할까요?`)) remove(cur);
+    };
+    const doResetRoot = () => {
+      open('/');
+    };
+    const extractGeminiText = (result) => {
+      try {
+        const cand = result?.candidates?.[0];
+        const parts = cand?.content?.parts || [];
+        const textPart = parts.find(p => typeof p?.text === 'string')?.text || '';
+        return String(textPart || '');
+      } catch { return ''; }
+    };
+    const stripFences = (t) => t.replace(/^```(?:[a-z]+)?/i, '').replace(/```$/i, '').trim();
+    const aiQuickEdit = async () => {
+      try {
+        const file = files[activePath];
+        if (!file) return alert('파일을 먼저 선택하세요.');
+        if (file.readonly) return alert('읽기 전용 파일입니다.');
+        const instruction = prompt('AI 수정 지시문을 입력하세요 (현재 파일 내용을 기반으로 수정합니다):');
+        if (!instruction) return;
+        const prompt = [
+          '다음 파일 내용을 지시문에 맞게 수정하세요. 결과는 오직 코드 본문만 출력하세요. 설명/마크다운/코드펜스 금지.',
+          '\n\n--- 지시문 ---\n', instruction,
+          '\n\n--- 파일 경로 ---\n', activePath,
+          '\n\n--- 현재 내용 ---\n', file.content || ''
+        ].join('');
+        let token = null;
+        try { const { data } = await supabase.auth.getSession(); token = data?.session?.access_token || null; } catch {}
+        if (!token) return alert('로그인이 필요합니다.');
+        const res = await fetch('/api/ai/gemini', {
+          method: 'POST', headers: { 'content-type':'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ model: 'gemini-2.5-flash', contents: prompt, prefer: 'keyring' })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || `AI 호출 실패: ${res.status}`);
+        let out = extractGeminiText(data?.result) || (typeof data?.result === 'string' ? data.result : '');
+        if (!out) throw new Error('AI 결과가 비었습니다.');
+        out = stripFences(out);
+        writeFile(activePath, out);
+        alert('AI 수정이 적용되었습니다.');
+      } catch (e) {
+        alert(e?.message || 'AI 수정 실패');
+      }
+    };
+
+    return (
+      <div style={{ display: 'flex', gap: 8, padding: '8px', borderBottom: '1px solid #25314a', background: 'rgba(2,6,23,0.5)' }}>
+        <button onClick={doNewFile} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: '#0b1220', color: '#e2e8f0' }}>새 파일</button>
+        <button onClick={doNewFolder} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: '#0b1220', color: '#e2e8f0' }}>새 폴더</button>
+        <button onClick={doRename} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: '#0b1220', color: '#e2e8f0' }}>이름 변경</button>
+        <button onClick={doDelete} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #7f1d1d', background: '#0b1220', color: '#fecaca' }}>삭제</button>
+        <button onClick={aiQuickEdit} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #10b981', background: '#0b1220', color: '#34d399' }}>AI 수정</button>
+        <button onClick={doResetRoot} style={{ marginLeft: 'auto', padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: '#0b1220', color: '#e2e8f0' }}>루트로</button>
+        <div style={{ width: 8 }} />
+        <button onClick={() => setShowTest((v) => !v)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #2563eb', background: showTest ? '#1e293b' : '#0b1220', color: '#93c5fd' }}>테스트 {showTest ? '끄기' : '켜기'}</button>
+        {showTest && (
+          <>
+            <button onClick={() => setSplitPct(50)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: '#0b1220', color: '#e2e8f0' }}>50/50</button>
+            <button onClick={() => setSplitPct(70)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: '#0b1220', color: '#e2e8f0' }}>70/30</button>
+            <button onClick={() => setSplitPct(30)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: '#0b1220', color: '#e2e8f0' }}>30/70</button>
+          </>
+        )}
+      </div>
+    );
+  };
   return (
     <CodeWorkspaceProvider>
+      {templateBinding ? (
+        <SyncTemplateToVfs text={templateBinding.text} setText={templateBinding.setText} />
+      ) : null}
       <div style={{ display: "flex", height: "100%", background: "#0b1220" }}>
         <FileTree />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <EditorPane />
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+          <Toolbar />
+          <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+            <div style={{ width: showTest ? `${splitPct}%` : '100%', minWidth: 0 }}>
+              <EditorPane />
+            </div>
+            {showTest && (
+              <>
+                <div
+                  onMouseDown={() => setDragging(true)}
+                  onTouchStart={() => setDragging(true)}
+                  onDoubleClick={() => setSplitPct(50)}
+                  title="더블클릭: 50/50"
+                  style={{ width: 6, cursor: 'col-resize', background: 'rgba(148,163,184,0.3)' }}
+                />
+                <div style={{ flex: 1, minWidth: 0, background: '#0a0f1a' }}>
+                  <GameSimulator visible={true} gameData={gameData} />
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </CodeWorkspaceProvider>
   );
 }
 
+function SyncTemplateToVfs({ text, setText }){
+  // 양방향 동기화: /template.json <-> 외부 템플릿 텍스트
+  const { files, writeFile } = useWorkspace();
+  const current = files['/template.json']?.content ?? '';
+  // 외부 → VFS
+  useEffect(() => {
+    try {
+      if (typeof text === 'string' && text !== current) {
+        writeFile('/template.json', text);
+      }
+    } catch {}
+  }, [text]);
+  // VFS → 외부
+  useEffect(() => {
+    try {
+      if (typeof current === 'string' && typeof setText === 'function' && current !== text) {
+        setText(current);
+      }
+    } catch {}
+  }, [current]);
+  return null;
+}

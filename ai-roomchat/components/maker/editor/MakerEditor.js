@@ -15,6 +15,7 @@ import AdvancedToolsPanel from './AdvancedToolsPanel';
 import WorkspaceOverlay from '../../workspace/WorkspaceOverlay.jsx';
 import GameSimulator from './GameSimulator';
 import dynamic from 'next/dynamic';
+import AutoUpdateListener from '../../infra/AutoUpdateListener.jsx';
 const ImageToUIGenerator = dynamic(() => import('../ui/ImageToUIGenerator'), { ssr: false });
 
 export default function MakerEditor() {
@@ -113,6 +114,27 @@ export default function MakerEditor() {
     }
   }, [templateText, setNodes, setEdges]);
 
+  // Overlay용 테스트 데이터 구성기 (에디터 노드 → 시뮬레이터 슬롯)
+  const overlayGameData = useMemo(() => {
+    try {
+      return {
+        meta: { version: 2, createdAt: new Date().toISOString() },
+        set: { name: setInfo?.name || '시뮬레이션' },
+        slots: nodes.map((node, index) => ({
+          slot_no: parseInt(node.id) || index,
+          slot_type: node.type || 'ai',
+          template: node.data?.label || '',
+          is_start: node.data?.isStart || index === 0,
+          var_rules_global: node.data?.var_rules_global || {},
+          var_rules_local: node.data?.var_rules_local || {},
+        })),
+        bridges: edges.map(e => ({ id: e.id, source: e.source, target: e.target, label: e.label || '' })),
+      };
+    } catch {
+      return null;
+    }
+  }, [nodes, edges, setInfo?.name]);
+
   // Initial hydrate when opening existing template
   useEffect(() => {
     if (!hydratedRef.current && typeof setNodes === 'function' && typeof setEdges === 'function') {
@@ -137,6 +159,14 @@ export default function MakerEditor() {
       }
     } catch {}
   }, []);
+
+  // Close code overlay on Escape
+  useEffect(() => {
+    if (!showMultiLanguageEditor) return;
+    const onKey = (e) => { if (e.key === 'Escape') setShowMultiLanguageEditor(false); };
+    try { window.addEventListener('keydown', onKey); } catch {}
+    return () => { try { window.removeEventListener('keydown', onKey); } catch {} };
+  }, [showMultiLanguageEditor]);
 
   useEffect(() => {
     if (!isDraggingSplit) return;
@@ -581,6 +611,7 @@ export default function MakerEditor() {
     <div
       style={{ height: '100vh', background: '#f1f5f9', display: 'flex', flexDirection: 'column' }}
     >
+      <AutoUpdateListener intervalMs={60000} auto={false} />
       <div
         style={{
           flex: '1 1 auto',
@@ -839,33 +870,13 @@ export default function MakerEditor() {
               </div>
             </div>
             <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-              <WorkspaceOverlay />
+              <WorkspaceOverlay gameData={overlayGameData} templateBinding={{ text: templateText, setText: setTemplateText }} />
             </div>
           </div>
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={() => setVariableDrawerOpen(true)}
-        style={{
-          position: 'fixed',
-          right: 16,
-          bottom: 28,
-          width: 56,
-          height: 56,
-          borderRadius: '50%',
-          background: '#2563eb',
-          color: '#fff',
-          fontWeight: 700,
-          border: 'none',
-          boxShadow: '0 18px 45px -20px rgba(37, 99, 235, 0.65)',
-          zIndex: 55,
-        }}
-        aria-label="변수 설정 열기"
-      >
-        변수
-      </button>
+      {/* 하단 우측 변수 오버레이 버튼은 중복이므로 제거 (패널/헤더에서 접근) */}
       <VariableDrawer
         open={variableDrawerOpen}
         onClose={() => setVariableDrawerOpen(false)}
@@ -957,8 +968,8 @@ export default function MakerEditor() {
         </div>
       )}
 
-      {/* 🚀 코드 에디터(통합 스튜디오 JSON 에디터, 본문 영역 전환) */}
-      {showMultiLanguageEditor && (
+      {/* 🚀 (disabled) 과거 인라인 코드 에디터 섹션 - 오버레이로 대체됨 */}
+      {false && showMultiLanguageEditor && (
         <section
           style={{
             marginTop: 8,

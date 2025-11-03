@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useStudioTemplate as useTemplate } from '../../contexts/StudioStore';
 import { subscribe } from '../../contexts/StudioBus';
+import { supabase } from '../../lib/supabase';
 
 function safeParse(text){ try{ return JSON.parse(text||'{}'); }catch{ return null; } }
 function pretty(obj){ try{ return JSON.stringify(obj, null, 2);}catch{ return ''; } }
@@ -9,13 +10,17 @@ export default function AIPanel(){
   const { templateText, setTemplateText } = useTemplate();
   const tpl = useMemo(()=> safeParse(templateText) ?? {}, [templateText]);
   const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState('mock'); // mock | bridge | manual
+  const [mode, setMode] = useState('mock'); // mock | manual | gemini
   const [bridgeUrl, setBridgeUrl] = useState('http://127.0.0.1:4311/run-template');
   const [manual, setManual] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [preview, setPreview] = useState('');
   const [diffs, setDiffs] = useState([]);
+  // Gemini mode
+  const [geminiModel, setGeminiModel] = useState('gemini-2.5-flash');
+  const [geminiPrefer, setGeminiPrefer] = useState('keyring'); // keyring | server
+  const [geminiInstruction, setGeminiInstruction] = useState('다음 JSON 템플릿을 개선하세요. 가능한 한 구조를 유지하고, 누락된 필드를 보강하고, 유효한 JSON만 출력하세요. 출력은 오직 JSON 본문만 포함하십시오.');
 
   // Allow external toggle via StudioBus + persist open state
   useEffect(() => {
@@ -78,21 +83,52 @@ export default function AIPanel(){
     finally { setBusy(false); }
   };
 
-  const runBridge = async () => {
-    setError(''); setBusy(true);
+  // removed legacy bridge; use unified /api/ai/gemini
+
+  const extractGeminiText = (result) => {
     try {
-      const res = await fetch(bridgeUrl, {
+      const cand = result?.candidates?.[0];
+      const parts = cand?.content?.parts || [];
+      const textPart = parts.find(p => typeof p?.text === 'string')?.text || '';
+      return String(textPart || '');
+    } catch { return ''; }
+  };
+
+  const tryParseJsonFromText = (text) => {
+    let body = text.trim();
+    // strip markdown fences if any
+    body = body.replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
+    try { return JSON.parse(body); } catch { return null; }
+  };
+
+  const runGemini = async () => {
+    setError(''); setBusy(true); setPreview(''); setDiffs([]);
+    try {
+      const prompt = [
+        geminiInstruction,
+        '\n\n--- 현재 템플릿(JSON) ---\n',
+        pretty(tpl),
+        '\n\n--- 규칙 ---\n',
+        '결과는 유효한 JSON만을 출력하세요. 설명/마크다운/코드펜스 없음.',
+      ].join('');
+
+      // unified: call /api/ai/gemini using user keyring by default
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token || null;
+      if (!token) throw new Error('로그인이 필요합니다.');
+      const res = await fetch('/api/ai/gemini', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ template: tpl }),
+        headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ model: geminiModel, contents: prompt, prefer: geminiPrefer }),
       });
-      if (!res.ok) throw new Error(`bridge ${res.status}`);
       const data = await res.json();
-      if (data && data.template) {
-        const next = data.template;
-        setPreview(pretty(next));
-        try { setDiffs(computeDiff(tpl, next)); } catch { setDiffs([]); }
-      }
+      if (!res.ok) throw new Error(data?.error || `gemini ${res.status}`);
+      const text = extractGeminiText(data?.result) || (typeof data?.result === 'string' ? data.result : '');
+      if (!text) throw new Error('응답을 파싱할 수 없습니다.');
+      const obj = tryParseJsonFromText(text);
+      if (!obj || typeof obj !== 'object') throw new Error('JSON 응답이 아닙니다.');
+      setPreview(pretty(obj));
+      try { setDiffs(computeDiff(tpl, obj)); } catch { setDiffs([]); }
     } catch(e){ setError(String(e.message||e)); }
     finally { setBusy(false); }
   };
@@ -124,8 +160,8 @@ export default function AIPanel(){
             <span style={{ flex:1 }} />
             <select value={mode} onChange={e=> setMode(e.target.value)}>
               <option value="mock">모의</option>
-              <option value="bridge">로컬 브리지</option>
               <option value="manual">수동 JSON 머지</option>
+              <option value="gemini">Gemini</option>
             </select>
             <button onClick={()=> setOpen(false)} title="접기" style={{ marginLeft:8 }}>접기 ▶</button>
           </div>
@@ -137,11 +173,23 @@ export default function AIPanel(){
                 <button disabled={busy} onClick={()=> runMock('scaffoldResources')}>리소스 스캐폴드</button>
               </div>
             )}
-            {mode === 'bridge' && (
+            {false && mode === 'bridge' && <div />} {/* legacy removed */}
+            {mode === 'gemini' && (
               <div style={{ display:'grid', gap:8 }}>
-                <label>브리지 URL</label>
-                <input value={bridgeUrl} onChange={e=> setBridgeUrl(e.target.value)} />
-                <button disabled={busy} onClick={runBridge}>실행</button>
+                <label>모델</label>
+                <select value={geminiModel} onChange={e=> setGeminiModel(e.target.value)}>
+                  <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+                  <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+                  <option value="gemini-1.5-flash">gemini-1.5-flash</option>
+                </select>
+                <label>전송 방식</label>
+                <select value={geminiPrefer} onChange={e=> setGeminiPrefer(e.target.value)}>
+                  <option value="keyring">사용자 키링</option>
+                  <option value="server">서버 키(허용 시)</option>
+                </select>
+                <label>지시문</label>
+                <textarea rows={6} value={geminiInstruction} onChange={e=> setGeminiInstruction(e.target.value)} style={{ width:'100%', fontFamily:'monospace' }} />
+                <button disabled={busy} onClick={runGemini}>실행</button>
                 {preview && (
                   <>
                     <label>결과 미리보기</label>
@@ -162,7 +210,7 @@ export default function AIPanel(){
                     </div>
                   </>
                 )}
-                <div style={{ fontSize:12, color:'#666' }}>로컬 툴에서 템플릿을 입력받아 수정된 템플릿을 반환하도록 구현하세요. POST {{ template }} → {{ template }}</div>
+                <div style={{ fontSize:12, color:'#666' }}>통합 엔드포인트 /api/ai/gemini 사용. 기본은 사용자 키링, 필요 시 서버 키(환경변수 허용)로 폴백.</div>
               </div>
             )}
             {mode === 'manual' && (

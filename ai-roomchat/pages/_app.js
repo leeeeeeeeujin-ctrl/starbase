@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import Head from 'next/head';
 import { useRouter } from 'next/router';
 
 import dynamic from 'next/dynamic';
@@ -37,8 +38,32 @@ function OverlayAwareShell({ children }) {
 }
 
 export default function App({ Component, pageProps }) {
+  // Register service worker for PWA (if supported)
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+        // defer to window load to avoid blocking initial paint
+        const onLoad = () => {
+          navigator.serviceWorker
+            .register('/sw.js')
+            .catch(() => {});
+        };
+        window.addEventListener('load', onLoad);
+        return () => window.removeEventListener('load', onLoad);
+      }
+    } catch {}
+  }, []);
+
   return (
     <GameIntegrationProvider>
+      <Head>
+        <link rel="manifest" href="/manifest.json" />
+        <link rel="icon" href="/icon.png" />
+        <link rel="apple-touch-icon" href="/icon.png" />
+        <meta name="theme-color" content="#0b1220" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+      </Head>
       <OverlayAwareShell>
         <ClientErrorReporter />
         <DebugOverlay />

@@ -1,1 +1,0 @@
-feat(ui): fullscreen code editor overlay (zIndex 1000); persist-fold AIPanel; adjust prompt FAB; keep overlays mounted 
