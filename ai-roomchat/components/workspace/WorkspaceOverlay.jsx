@@ -187,40 +187,9 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
       } catch { return ''; }
     };
     const stripFences = (t) => t.replace(/^```(?:[a-z]+)?/i, '').replace(/```$/i, '').trim();
-    const aiQuickEdit = async () => {
-      try {
-        const file = files[activePath];
-        if (!file) return alert('파일을 먼저 선택하세요.');
-        if (file.readonly) return alert('읽기 전용 파일입니다.');
-        const instruction = prompt('AI 수정 지시문을 입력하세요 (현재 파일 내용을 기반으로 수정합니다):');
-        if (!instruction) return;
-        const prompt = [
-          '다음 파일 내용을 지시문에 맞게 수정하세요. 결과는 오직 코드 본문만 출력하세요. 설명/마크다운/코드펜스 금지.',
-          '\n\n--- 지시문 ---\n', instruction,
-          '\n\n--- 파일 경로 ---\n', activePath,
-          '\n\n--- 현재 내용 ---\n', file.content || ''
-        ].join('');
-        let token = null;
-        try { const { data } = await supabase.auth.getSession(); token = data?.session?.access_token || null; } catch {}
-        if (!token) return alert('로그인이 필요합니다.');
-        const res = await fetch('/api/ai/gemini', {
-          method: 'POST', headers: { 'content-type':'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ model: 'gemini-2.5-flash', contents: prompt, prefer: 'keyring' })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.error || `AI 호출 실패: ${res.status}`);
-        let out = extractGeminiText(data?.result) || (typeof data?.result === 'string' ? data.result : '');
-        if (!out) throw new Error('AI 결과가 비었습니다.');
-        out = stripFences(out);
-        writeFile(activePath, out);
-        alert('AI 수정이 적용되었습니다.');
-      } catch (e) {
-        alert(e?.message || 'AI 수정 실패');
-      }
-    };
 
     const MenuButton = ({ onClick, active, label }) => (
-      <button onClick={onClick} title={label} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: active ? '#172033' : '#0b1220', color: '#e2e8f0' }}>{label}</button>
+      <button onClick={onClick} title={label} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: active ? '#172033' : '#0b1220', color: '#e2e8f0', whiteSpace: 'nowrap' }}>{label}</button>
     );
 
     return (
@@ -231,27 +200,24 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
           <div ref={fileMenuRef} style={{ position:'relative' }}>
             <MenuButton onClick={() => setFileMenuOpen(v=>{ const next=!v; if (next) { setAiMenuOpen(false); setShowTree(false); } return next; })} active={fileMenuOpen} label="파일" />
             {fileMenuOpen && (
-              <div style={{ position:'absolute', zIndex: 20, background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, display:'grid', gap:6 }}>
-                <button onClick={doNewFile} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>새 파일</button>
-                <button onClick={doNewFolder} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>새 폴더</button>
-                <button onClick={doRename} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>이름 변경</button>
-                <button onClick={doDelete} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #7f1d1d', background:'#0b1220', color:'#fecaca' }}>삭제</button>
+              <div style={{ position:'absolute', zIndex: 20, background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, display:'grid', gap:6, minWidth:180 }}>
+                <button onClick={doNewFile} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>새 파일</button>
+                <button onClick={doNewFolder} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>새 폴더</button>
+                <button onClick={doRename} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>이름 변경</button>
+                <button onClick={doDelete} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #7f1d1d', background:'#0b1220', color:'#fecaca', whiteSpace:'nowrap' }}>삭제</button>
               </div>
             )}
           </div>
           <div ref={aiMenuRef} style={{ position:'relative' }}>
             <MenuButton onClick={() => setAiMenuOpen(v=>{ const next=!v; if (next) { setFileMenuOpen(false); setShowTree(false); } return next; })} active={aiMenuOpen} label="AI 코딩" />
             {aiMenuOpen && (
-              <div style={{ position:'absolute', zIndex: 20, background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, display:'grid', gap:6 }}>
-                <button onClick={() => { setAiMenuOpen(false); aiQuickEdit(); }} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>AI 수정</button>
-                <button onClick={() => { setShowCodeChat(v=>!v); setAiMenuOpen(false); }} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>{showCodeChat?'AI 코드채팅 끄기':'AI 코드채팅 켜기'}</button>
+              <div style={{ position:'absolute', zIndex: 20, background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, display:'grid', gap:6, minWidth:180 }}>
+                <button onClick={() => { setShowCodeChat(v=>!v); setAiMenuOpen(false); }} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>{showCodeChat?'AI 코드채팅 끄기':'AI 코드채팅 켜기'}</button>
               </div>
             )}
           </div>
           <MenuButton onClick={() => setShowTest(v=>!v)} active={showTest} label="테스트" />
           <div style={{ marginLeft:'auto', display:'flex', gap:8 }}>
-            <MenuButton onClick={() => { setShowTree(false); setToolbarCollapsed(true); setShowTest(false); try { localStorage.setItem(PREF_SNAP, 'mobile'); } catch {} }} active={false} label="모바일 스냅" />
-            <MenuButton onClick={() => { setShowTree(true); setToolbarCollapsed(false); try { localStorage.setItem(PREF_SNAP, 'desktop'); } catch {} }} active={false} label="데스크톱 스냅" />
             {showTest && (
               <>
                 <MenuButton onClick={() => setSplitPct(50)} active={false} label="50/50" />
@@ -429,22 +395,32 @@ function AICodeChatPanel(){
       if (!res.ok) throw new Error(body?.error || `AI ${res.status}`);
       const text = body?.result?.candidates?.[0]?.content?.parts?.[0]?.text || '';
       const raw = stripFences(text);
-      let plan = null; try { plan = JSON.parse(raw); } catch {}
-      const n = applyActions(plan);
-      append('assistant', `수정 ${n}건 적용 완료.`);
+      let plan = null; let applied = 0; let parsed = false;
+      try { plan = JSON.parse(raw); parsed = true; } catch {}
+      if (parsed && plan && Array.isArray(plan.actions)) {
+        applied = applyActions(plan);
+        const msg = typeof plan.message === 'string' && plan.message.trim().length > 0
+          ? plan.message.trim()
+          : `수정 ${applied}건 적용 완료.`;
+        append('assistant', msg);
+      } else {
+        // 일반 대화로 처리: 원문을 그대로 노출
+        const say = (raw && raw.length > 0) ? raw : (text || '(응답 없음)');
+        append('assistant', say);
+      }
     } catch (e) {
       append('error', e?.message || String(e));
     } finally { setBusy(false); }
   };
   return (
-    <div style={{ borderTop:'1px solid #25314a', background:'#0c1322' }}>
+    <div style={{ borderTop:'1px solid #25314a', background:'#0c1322', position:'relative' }}>
       <div style={{ padding:'8px 10px', color:'#e2e8f0', fontWeight:600 }}>AI 코드 채팅</div>
-      <div style={{ maxHeight: 180, overflow:'auto', padding:'0 10px 8px' }}>
+      <div style={{ maxHeight: 220, overflow:'auto', padding:'0 10px 8px' }}>
         {logs.map((l,i)=> (
           <div key={i} style={{ fontSize:12, color: l.role==='error'?'#fecaca': (l.role==='user'?'#e2e8f0':'#a7f3d0') }}>{l.role}: {l.msg}</div>
         ))}
       </div>
-      <div style={{ display:'flex', gap:6, padding:10 }}>
+      <div style={{ display:'flex', gap:6, padding:10, position:'sticky', bottom:0, background:'#0c1322', borderTop:'1px solid #25314a' }}>
         <input value={input} onChange={e=>setInput(e.target.value)} placeholder="명령을 입력하세요. 예: utils/date.js 생성하고 오늘 날짜 반환 함수 추가" style={{ flex:1, padding:'8px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }} />
         <button onClick={send} disabled={busy} style={{ padding:'8px 12px', borderRadius:8, border:'1px solid #7c3aed', background:'#0b1220', color:'#c4b5fd' }}>{busy?'전송 중…':'전송'}</button>
       </div>
