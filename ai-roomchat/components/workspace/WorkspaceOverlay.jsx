@@ -42,7 +42,13 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
   const treeRef = useRef(null);
   const [creating, setCreating] = useState(null); // null | 'file' | 'folder'
   const [createPath, setCreatePath] = useState('');
-  const treeWidth = 240;
+  // Responsive tree width: clamp(180px, 22vw, 320px)
+  const computeTreeWidth = () => {
+    if (typeof window === 'undefined') return 240;
+    const vw = window.innerWidth || 1200;
+    return Math.round(Math.max(180, Math.min(320, vw * 0.22)));
+  };
+  const [treeWidth, setTreeWidth] = useState(computeTreeWidth());
   const PREF_SNAP = 'maker:ui:snap';
   const PREF_SPLIT = 'workspace:split:pct';
   // 안정적 레이아웃: 상단/하단 패널 높이를 측정해 에디터를 절대 배치
@@ -50,6 +56,18 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
   const bottomRef = useRef(null);
   const [toolbarH, setToolbarH] = useState(0);
   const [bottomH, setBottomH] = useState(0);
+  // keep tree width responsive on resize
+  useEffect(() => {
+    const onResize = () => setTreeWidth(computeTreeWidth());
+    try {
+      if (typeof window !== 'undefined') {
+        window.addEventListener('resize', onResize);
+      }
+    } catch {}
+    return () => {
+      try { if (typeof window !== 'undefined') window.removeEventListener('resize', onResize); } catch {}
+    };
+  }, []);
   useEffect(() => {
     try {
       if (typeof window !== 'undefined') {
@@ -77,12 +95,8 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
       setToolbarH(Math.round(h));
     } catch {}
   }, [toolbarCollapsed, fileMenuOpen, aiMenuOpen, creating, showTree]);
-  useEffect(() => {
-    try {
-      const h = bottomRef.current ? bottomRef.current.getBoundingClientRect().height : 0;
-      setBottomH(Math.round(h));
-    } catch {}
-  }, [showCodeChat]);
+  // Chat panel is now floating overlay; editor area bottom inset remains 0
+  useEffect(() => { setBottomH(0); }, [showCodeChat]);
   // split 비율 저장
   useEffect(() => {
     try { localStorage.setItem(PREF_SPLIT, String(splitPct)); } catch {}
@@ -305,9 +319,15 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
               )}
             </div>
           </div>
-          {showCodeChat ? <div ref={bottomRef}><AICodeChatPanel /></div> : <div ref={bottomRef} />}
+          {/* Floating chat overlay (independent of editor layout) */}
+          <div ref={bottomRef} />
         </div>
       </div>
+      {showCodeChat && (
+        <div style={{ position:'fixed', right:16, bottom:16, zIndex: 1200, width: 'clamp(300px, 42vw, 560px)', height: 'clamp(260px, 38vh, 520px)' }}>
+          <AICodeChatPanel onClose={() => setShowCodeChat(false)} />
+        </div>
+      )}
     </CodeWorkspaceProvider>
   );
 }
@@ -340,7 +360,7 @@ function SyncTemplateToVfs({ text, setText }){
   return null;
 }
 
-function AICodeChatPanel(){
+function AICodeChatPanel({ onClose }){
   const { files, activePath, createFile, writeFile, remove, rename } = useWorkspace();
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -374,9 +394,10 @@ function AICodeChatPanel(){
       if (!token) throw new Error('로그인이 필요합니다.');
       const sys = [
         '당신은 파일 시스템 편집 에이전트입니다.',
-        '파일 목록과 일부 내용이 제공됩니다. 아래 JSON 스키마로만 응답하세요.',
-        '{ "actions": [ {"type":"create|write|delete|rename", "path":"/path", "content?":"string", "from?":"/old", "to?":"/new"} ] }',
-        '설명/코드펜스 없이 JSON만 반환하세요.'
+        '파일 목록과 일부 내용이 제공됩니다.',
+        '반드시 JSON으로만 응답하세요(코드펜스/마크다운 금지).',
+        '스키마: { "message?": string, "actions?": [ {"type":"create|write|delete|rename", "path":"/path", "content?":"string", "from?":"/old", "to?":"/new"} ] }',
+        'message에는 자연어 설명/논의를 담고, 편집이 필요하면 actions를 채워주세요.'
       ].join('\n');
       const context = {
         activePath,
@@ -397,14 +418,18 @@ function AICodeChatPanel(){
       const raw = stripFences(text);
       let plan = null; let applied = 0; let parsed = false;
       try { plan = JSON.parse(raw); parsed = true; } catch {}
-      if (parsed && plan && Array.isArray(plan.actions)) {
-        applied = applyActions(plan);
-        const msg = typeof plan.message === 'string' && plan.message.trim().length > 0
-          ? plan.message.trim()
-          : `수정 ${applied}건 적용 완료.`;
-        append('assistant', msg);
+      if (parsed && plan) {
+        if (typeof plan.message === 'string' && plan.message.trim().length > 0) {
+          append('assistant', plan.message.trim());
+        }
+        if (Array.isArray(plan.actions) && plan.actions.length > 0) {
+          applied = applyActions(plan);
+          append('assistant', `수정 ${applied}건 적용 완료.`);
+        }
+        if ((!plan.message || plan.message.trim().length === 0) && (!plan.actions || plan.actions.length === 0)) {
+          append('assistant', '(변경 없음)');
+        }
       } else {
-        // 일반 대화로 처리: 원문을 그대로 노출
         const say = (raw && raw.length > 0) ? raw : (text || '(응답 없음)');
         append('assistant', say);
       }
@@ -413,14 +438,17 @@ function AICodeChatPanel(){
     } finally { setBusy(false); }
   };
   return (
-    <div style={{ borderTop:'1px solid #25314a', background:'#0c1322', position:'relative' }}>
-      <div style={{ padding:'8px 10px', color:'#e2e8f0', fontWeight:600 }}>AI 코드 채팅</div>
-      <div style={{ maxHeight: 220, overflow:'auto', padding:'0 10px 8px' }}>
+    <div style={{ height:'100%', border:'1px solid #25314a', background:'#0c1322', borderRadius:12, overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 18px 42px -20px rgba(0,0,0,0.5)' }}>
+      <div style={{ padding:'8px 10px', color:'#e2e8f0', fontWeight:600, display:'flex', alignItems:'center', justifyContent:'space-between', background:'rgba(2,6,23,0.6)' }}>
+        <span>AI 코드 채팅</span>
+        <button onClick={onClose} title="닫기" style={{ padding:'4px 8px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8' }}>닫기</button>
+      </div>
+      <div style={{ flex:1, overflow:'auto', padding:'8px 10px' }}>
         {logs.map((l,i)=> (
           <div key={i} style={{ fontSize:12, color: l.role==='error'?'#fecaca': (l.role==='user'?'#e2e8f0':'#a7f3d0') }}>{l.role}: {l.msg}</div>
         ))}
       </div>
-      <div style={{ display:'flex', gap:6, padding:10, position:'sticky', bottom:0, background:'#0c1322', borderTop:'1px solid #25314a' }}>
+      <div style={{ display:'flex', gap:6, padding:10, borderTop:'1px solid #25314a', background:'#0c1322' }}>
         <input value={input} onChange={e=>setInput(e.target.value)} placeholder="명령을 입력하세요. 예: utils/date.js 생성하고 오늘 날짜 반환 함수 추가" style={{ flex:1, padding:'8px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }} />
         <button onClick={send} disabled={busy} style={{ padding:'8px 12px', borderRadius:8, border:'1px solid #7c3aed', background:'#0b1220', color:'#c4b5fd' }}>{busy?'전송 중…':'전송'}</button>
       </div>
