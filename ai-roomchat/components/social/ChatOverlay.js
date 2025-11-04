@@ -38,6 +38,7 @@ import {
 } from '@/lib/chat/messages';
 import { supabase } from '@/lib/supabase';
 import { uploadAsset } from '@/utils/uploader';
+import { getResourceBlob, putResourceBlob, fetchToCache } from '@/utils/resourceCache';
 import { useHeroSocialBootstrap } from '@/hooks/social/useHeroSocialBootstrap';
 import { useFriendActions } from '@/hooks/social/useFriendActions';
 import { readHeroSelection } from '@/lib/heroes/selectedHeroStorage';
@@ -1509,17 +1510,16 @@ async function fetchAttachmentBlob(attachment) {
   if (!bucket || !path) {
     throw new Error('첨부 파일 위치를 확인할 수 없습니다.');
   }
-
-  // R2 객체는 공개 URL을 직접 사용할 수 있으므로 서명 URL 없이 바로 요청
-  const base = (process.env.NEXT_PUBLIC_R2_PUBLIC_BASE_URL || process.env.R2_PUBLIC_BASE_URL || '').replace(/\/$/, '');
-  const url = /^https?:/i.test(path) ? path : (base ? `${base}/${String(path).replace(/^\//,'')}` : path);
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error('첨부 파일을 다운로드할 수 없습니다.');
+  const id = attachment.hash ? `hash:${attachment.hash}` : `key:${path}`;
+  // Try persistent cache first
+  let raw = await getResourceBlob(id);
+  if (!raw) {
+    const base = (process.env.NEXT_PUBLIC_R2_PUBLIC_BASE_URL || process.env.R2_PUBLIC_BASE_URL || '').replace(/\/$/, '');
+    const url = /^https?:/i.test(path) ? path : (base ? `${base}/${String(path).replace(/^\//,'')}` : path);
+    raw = await fetchToCache(id, url);
   }
-
-  const blob = await response.blob();
-  return decompressBlob(blob, attachment.encoding);
+  const blob = await decompressBlob(raw, attachment.encoding);
+  return blob;
 }
 
 const normalizeMessageRecord = record => {

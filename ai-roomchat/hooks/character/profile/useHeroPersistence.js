@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 
 import { supabase } from '../../../lib/supabase';
+import { uploadAsset } from '../../../utils/uploader';
 import { withTable } from '../../../lib/supabaseTables';
 import { sanitizeFileName } from '../../../utils/characterAssets';
 import { clearHeroCache, writeHeroCache } from '../../../utils/heroCache';
@@ -28,16 +29,10 @@ export function useHeroPersistence({
 
         let backgroundUrl = source.background_url || null;
         if (backgroundBlob) {
-          const extension = (backgroundBlob.type && backgroundBlob.type.split('/')[1]) || 'jpg';
-          const path = `hero-background/${Date.now()}-${sanitizeFileName(source.name || hero?.name || 'background')}.${extension}`;
-          const { error: bgUploadError } = await supabase.storage
-            .from('heroes')
-            .upload(path, backgroundBlob, {
-              upsert: true,
-              contentType: backgroundBlob.type || 'image/jpeg',
-            });
-          if (bgUploadError) throw bgUploadError;
-          backgroundUrl = supabase.storage.from('heroes').getPublicUrl(path).data.publicUrl;
+          const ext = (backgroundBlob.type && backgroundBlob.type.split('/')[1]) || 'jpg';
+          const file = new File([backgroundBlob], `${sanitizeFileName(source.name || hero?.name || 'background')}.${ext}`, { type: backgroundBlob.type || 'image/jpeg' });
+          const up = await uploadAsset(file, { gameId: 'heroes' });
+          backgroundUrl = up.url;
         }
 
         let bgmUrl = source.bgm_url || null;
@@ -45,13 +40,10 @@ export function useHeroPersistence({
           bgmDuration != null ? bgmDuration : hero?.bgm_duration_seconds || null;
         let bgmMimeValue = bgmMime || hero?.bgm_mime || null;
         if (bgmBlob) {
-          const extension = (bgmBlob.type && bgmBlob.type.split('/')[1]) || 'mp3';
-          const path = `hero-bgm/${Date.now()}-${sanitizeFileName(source.name || hero?.name || 'bgm')}.${extension}`;
-          const { error: bgmUploadError } = await supabase.storage
-            .from('heroes')
-            .upload(path, bgmBlob, { upsert: true, contentType: bgmBlob.type || 'audio/mpeg' });
-          if (bgmUploadError) throw bgmUploadError;
-          bgmUrl = supabase.storage.from('heroes').getPublicUrl(path).data.publicUrl;
+          const ext = (bgmBlob.type && bgmBlob.type.split('/')[1]) || 'mp3';
+          const file = new File([bgmBlob], `${sanitizeFileName(source.name || hero?.name || 'bgm')}.${ext}`, { type: bgmBlob.type || 'audio/mpeg' });
+          const up = await uploadAsset(file, { gameId: 'heroes' });
+          bgmUrl = up.url;
           bgmDurationSeconds = bgmDuration != null ? bgmDuration : bgmDurationSeconds;
           bgmMimeValue = bgmMime || bgmBlob.type || bgmMimeValue;
         }
