@@ -49,6 +49,8 @@
     "studio:test:cli": "node tools/test_cli_bridge.js"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.673.0",
+    "@aws-sdk/s3-request-presigner": "^3.673.0",
     "@monaco-editor/loader": "^1.4.1",
     "@sentry/nextjs": "^7.50.0",
     "@supabase/auth-helpers-nextjs": "^0.10.0",
@@ -125,5 +127,3 @@
     ]
   }
 }
-    "@aws-sdk/client-s3": "^3.673.0",
-    "@aws-sdk/s3-request-presigner": "^3.673.0",
