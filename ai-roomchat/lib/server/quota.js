@@ -61,34 +61,40 @@ export async function incClassA(delta = 1) {
   const admin = await getAdmin(); if (!admin) return;
   const mk = monthKey();
   await ensureRow(admin, mk);
-  await admin.rpc('increment_quota_counter', { p_month_key: mk, p_field: 'class_a_ops', p_delta: delta }).catch(async () => {
+  try {
+    await admin.rpc('increment_quota_counter', { p_month_key: mk, p_field: 'class_a_ops', p_delta: delta });
+  } catch {
     // Fallback if RPC not present: naive read-then-update
     const { data } = await admin.from('asset_usage_quota').select('class_a_ops').eq('month_key', mk).maybeSingle();
     const cur = data?.class_a_ops || 0;
     await admin.from('asset_usage_quota').update({ class_a_ops: cur + delta, updated_at: new Date().toISOString() }).eq('month_key', mk);
-  });
+  }
 }
 
 export async function incClassB(delta = 1) {
   const admin = await getAdmin(); if (!admin) return;
   const mk = monthKey();
   await ensureRow(admin, mk);
-  await admin.rpc('increment_quota_counter', { p_month_key: mk, p_field: 'class_b_ops', p_delta: delta }).catch(async () => {
+  try {
+    await admin.rpc('increment_quota_counter', { p_month_key: mk, p_field: 'class_b_ops', p_delta: delta });
+  } catch {
     const { data } = await admin.from('asset_usage_quota').select('class_b_ops').eq('month_key', mk).maybeSingle();
     const cur = data?.class_b_ops || 0;
     await admin.from('asset_usage_quota').update({ class_b_ops: cur + delta, updated_at: new Date().toISOString() }).eq('month_key', mk);
-  });
+  }
 }
 
 export async function addStorageBytes(delta = 0) {
   const admin = await getAdmin(); if (!admin) return;
   const mk = monthKey();
   await ensureRow(admin, mk);
-  await admin.rpc('increment_quota_counter', { p_month_key: mk, p_field: 'storage_bytes', p_delta: delta }).catch(async () => {
+  try {
+    await admin.rpc('increment_quota_counter', { p_month_key: mk, p_field: 'storage_bytes', p_delta: delta });
+  } catch {
     const { data } = await admin.from('asset_usage_quota').select('storage_bytes').eq('month_key', mk).maybeSingle();
     const cur = data?.storage_bytes || 0;
     await admin.from('asset_usage_quota').update({ storage_bytes: cur + delta, updated_at: new Date().toISOString() }).eq('month_key', mk);
-  });
+  }
 }
 
 export async function decStorageBytes(delta = 0) {
