@@ -14,8 +14,8 @@ import GameRealtimeRuntime from "../game/GameRealtimeRuntime.jsx";
   const lang = useMemo(() => inferLang(activePath), [activePath, inferLang]);
   if (!file) return <div style={{ padding: 16, color: "#e2e8f0" }}>파일을 선택하세요.</div>;
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <div style={{ flex: 1, minHeight: 0 }}>
+    <div style={{ position:'relative', height:'100%', width:'100%' }}>
+      <div style={{ position:'absolute', inset:0 }}>
         <EditorMonaco
           value={file.content}
           onChange={(val) => !file.readonly && writeFile(activePath, val)}
@@ -27,7 +27,7 @@ import GameRealtimeRuntime from "../game/GameRealtimeRuntime.jsx";
       </div>
     </div>
   );
-}
+  }
 
 export default function WorkspaceOverlay({ gameData, templateBinding }) {
   // 오른쪽 영역에서 코드/테스트 동시 표시 + 리사이저
@@ -36,6 +36,31 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
   const [dragging, setDragging] = useState(false);
   const [showTree, setShowTree] = useState(true);
   const [showCodeChat, setShowCodeChat] = useState(false);
+  const [chatSize, setChatSize] = useState(() => {
+    try {
+      const raw = localStorage.getItem('workspace:chat:size');
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return { w: 420, h: 360 };
+  });
+  useEffect(() => {
+    try { localStorage.setItem('workspace:chat:size', JSON.stringify(chatSize)); } catch {}
+  }, [chatSize]);
+  const [resizing, setResizing] = useState(false);
+  useEffect(() => {
+    if (!resizing) return;
+    const onMove = (e) => {
+      const dx = -(e.movementX || 0);
+      const dy = -(e.movementY || 0);
+      setChatSize(s => ({ w: Math.min(Math.max(320, s.w - dx), 900), h: Math.min(Math.max(240, s.h - dy), 900) }));
+    };
+    const onUp = () => setResizing(false);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    window.addEventListener('touchmove', onMove);
+    window.addEventListener('touchend', onUp);
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); window.removeEventListener('touchmove', onMove); window.removeEventListener('touchend', onUp); };
+  }, [resizing]);
   const [toolbarCollapsed, setToolbarCollapsed] = useState(true);
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [aiMenuOpen, setAiMenuOpen] = useState(false);
@@ -395,8 +420,11 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
         )}
       </div>
       {showCodeChat && (
-        <div style={{ position:'fixed', right:16, bottom:16, zIndex: 1200, width: 'clamp(300px, 42vw, 560px)', height: 'clamp(260px, 38vh, 520px)' }}>
-          <AICodeChatPanel onClose={() => setShowCodeChat(false)} />
+        <div style={{ position:'fixed', right:16, bottom:16, zIndex: 1200, width: chatSize.w, height: chatSize.h, background:'transparent' }}>
+          <div style={{ position:'absolute', inset:0 }}>
+            <AICodeChatPanel onClose={() => setShowCodeChat(false)} />
+            <div onMouseDown={()=>setResizing(true)} onTouchStart={()=>setResizing(true)} title="드래그로 크기 조절" style={{ position:'absolute', left:8, bottom:8, width:16, height:16, border:'1px solid #334155', background:'#0b1220', borderRadius:4, cursor:'nwse-resize', opacity:0.9 }} />
+          </div>
         </div>
       )}
     </CodeWorkspaceProvider>
@@ -447,8 +475,7 @@ function AICodeChatPanel({ onClose }){
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const logRef = useRef(null);
-  const [attachActiveContent, setAttachActiveContent] = useState(true);
-  const [attachSelectionOnly, setAttachSelectionOnly] = useState(false);
+  // removed checkboxes; always attach selection or current file
   const [attachPickerOpen, setAttachPickerOpen] = useState(false);
   const [extraAttach, setExtraAttach] = useState([]); // array of file paths
   const MAX_INLINE = 4000; // prompt에 포함하는 최대 코드 길이 (문자)
@@ -526,20 +553,20 @@ function AICodeChatPanel({ onClose }){
       // 선택 영역 우선
       let selectionText = '';
       try { selectionText = (typeof window !== 'undefined' && window.__VFS_ACTIVE_SELECTION__?.path === activePath) ? (window.__VFS_ACTIVE_SELECTION__?.text || '') : ''; } catch {}
-      const content = attachActiveContent
-        ? (attachSelectionOnly ? (selectionText || '') : (contentRaw.length > MAX_INLINE
+      const content = (selectionText && selectionText.length>0)
+        ? selectionText
+        : (contentRaw.length > MAX_INLINE
             ? (contentRaw.slice(0, Math.floor(MAX_INLINE*0.6)) + '\n…\n/* …중략… */\n' + contentRaw.slice(-Math.floor(MAX_INLINE*0.35)))
-            : contentRaw))
-        : '';
+            : contentRaw);
       const context = {
         activePath,
         files: listFiles().slice(0, 200),
         activeFile: {
           path: activePath,
           size: (fileMeta?.content || '').length,
-          attached: attachActiveContent,
-          truncated: attachActiveContent && contentRaw.length > MAX_INLINE,
-        },
+          attached: true,
+          truncated: contentRaw.length > MAX_INLINE,
+          },
         note: '큰 파일은 내용이 잘려서 제공될 수 있음. 필요한 경로만 수정 계획에 포함.'
       };
       const historyText = logs
@@ -554,7 +581,7 @@ function AICodeChatPanel({ onClose }){
         const c = typeof meta?.content === 'string' ? mkBody(meta.content) : '';
         return `- ${p}\n${c}`;
       }).join('\n\n');
-      const prompt = `${sys}\n\n### CONTEXT\n${JSON.stringify(context)}\n\n### ACTIVE_FILE\nPATH: ${activePath}\nMODE: ${attachSelectionOnly? 'selection-only' : 'full'}\nCONTENT:\n${attachActiveContent ? (content || '(선택된 내용 없음)') : '(첨부 안 함)'}\n\n${extraAttach.length>0?`### ADDITIONAL_FILES\n${extra}`:''}\n\n### HISTORY (최근)\n${historyText}\n\n### USER\n${input}`;
+      const prompt = `${sys}\n\n### CONTEXT\n${JSON.stringify(context)}\n\n### ACTIVE_FILE\nPATH: ${activePath}\nCONTENT:\n${content || '(빈 파일)'}\n\n${extraAttach.length>0?`### ADDITIONAL_FILES\n${extra}`:''}\n\n### HISTORY (최근)\n${historyText}\n\n### USER\n${input}`;
       append('user', input);
       setInput('');
       const res = await fetch('/api/ai/gemini', {
@@ -607,18 +634,12 @@ function AICodeChatPanel({ onClose }){
           </div>
         )}
       </div>
-      <div ref={logRef} style={{ flex:1, overflow:'auto', padding:'8px 10px' }}>
-        {logs.map((l,i)=> (
+      <div ref={logRef} onScroll={(e)=>{ try { const el=e.currentTarget; const nearBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 20; setScrolledUp(!nearBottom); } catch {} }} style={{ flex:1, overflow:'auto', padding:'8px 10px' }}>
+        {(scrolledUp ? logs : logs.slice(-50)).map((l,i)=> (
           <div key={i} style={{ fontSize:12, color: l.role==='error'?'#fecaca': (l.role==='user'?'#e2e8f0':'#a7f3d0') }}>{l.role}: {l.msg}</div>
         ))}
       </div>
       <div style={{ display:'flex', gap:6, padding:10, borderTop:'1px solid #25314a', background:'#0c1322', alignItems:'center' }}>
-        <label style={{ display:'inline-flex', alignItems:'center', gap:6, color:'#94a3b8', fontSize:12 }}>
-          <input type="checkbox" checked={attachActiveContent} onChange={e=>setAttachActiveContent(e.target.checked)} /> 현재 파일 내용 포함
-        </label>
-        <label style={{ display:'inline-flex', alignItems:'center', gap:6, color:'#94a3b8', fontSize:12 }}>
-          <input type="checkbox" checked={attachSelectionOnly} onChange={e=>setAttachSelectionOnly(e.target.checked)} disabled={!attachActiveContent} /> 선택 코드만
-        </label>
         <div style={{ position:'relative' }}>
           <button onClick={()=>setAttachPickerOpen(v=>!v)} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>파일 추가</button>
           {attachPickerOpen && (
