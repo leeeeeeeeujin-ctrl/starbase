@@ -46,7 +46,9 @@
     "lint:json": "eslint public/templates/*.json --ext .json",
     "studio:bridge": "node mobile/cli-bridge.js",
     "studio:test:mock": "node tools/test_mock_runner.js",
-    "studio:test:cli": "node tools/test_cli_bridge.js"
+    "studio:test:cli": "node tools/test_cli_bridge.js",
+    "r2:cors:set": "node scripts/set-r2-cors.js",
+    "r2:cors:get": "node scripts/get-r2-cors.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.673.0",
@@ -125,5 +127,9 @@
       "eslint --fix",
       "git add"
     ]
+  },
+  
+  "r2": {
+    "note": "Run these with CF_API_TOKEN, R2_ACCOUNT_ID, R2_BUCKET set"
   }
 }

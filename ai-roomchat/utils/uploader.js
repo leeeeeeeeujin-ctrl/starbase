@@ -27,9 +27,23 @@ export async function uploadAsset(file, { gameId, key, signal } = {}) {
   if (!r.ok) throw new Error(j?.error || 'upload-url failed');
   const putUrl = j.url; const headers = j.headers || { 'Content-Type': contentType };
 
-  // 3) PUT file
-  const put = await fetch(putUrl, { method:'PUT', headers, body: file, signal });
-  if (!put.ok) throw new Error(`PUT failed ${put.status}`);
+  // 3) PUT file (direct to R2). If CORS blocks, fall back to proxy upload.
+  let putOk = false;
+  try {
+    const put = await fetch(putUrl, { method:'PUT', headers, body: file, signal });
+    putOk = put.ok;
+  } catch (e) {
+    putOk = false;
+  }
+  if (!putOk) {
+    // Fallback: proxy upload via our API to bypass CORS
+    const buf = await file.arrayBuffer();
+    const b64 = base64FromArrayBuffer(buf);
+    const proxy = await fetch('/api/assets/upload', { method:'POST', headers: { 'content-type':'application/json', ...(auth?{Authorization:auth}:{}) }, body: JSON.stringify({ name: file.name, contentType, dataBase64: b64, gameId, sha256 }), signal });
+    const pj = await proxy.json();
+    if (!proxy.ok) throw new Error(pj?.error || 'proxy upload failed');
+    return { url: pj.url, key: pj.key, hash: sha256, size, mime: contentType, existed: false };
+  }
 
   // 4) commit
   const commit = await fetch('/api/assets/commit', { method:'POST', headers: { 'content-type':'application/json', ...(auth?{Authorization:auth}:{}) }, body: JSON.stringify({ key: finalKey, hash: sha256, size, mime: contentType, gameId }), signal });
@@ -50,6 +64,14 @@ function hex(buf) {
   return s;
 }
 
+function base64FromArrayBuffer(buf) {
+  let binary = '';
+  const bytes = new Uint8Array(buf);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
 async function bearerOrNull() {
   try {
     // integrate with Supabase auth session if available
@@ -59,4 +81,3 @@ async function bearerOrNull() {
     const token = data?.session?.access_token; return token ? `Bearer ${token}` : null;
   } catch { return null; }
 }
-
