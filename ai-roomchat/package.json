@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "next dev",
     "dev:runner-test": "node scripts/run-runner-and-test.js",
-    "build": "cross-env NODE_OPTIONS=--require=./polyfills/global-url-preload.js next build",
+    "build": "cross-env NODE_OPTIONS=\"--require=./polyfills/global-url-preload.js --trace-uncaught --trace-warnings\" next build",
     "build:compatibility": "npm run build && npm run test:compatibility",
     "start": "next start",
     "vercel:env": "node scripts/syncVercelEnv.js",
