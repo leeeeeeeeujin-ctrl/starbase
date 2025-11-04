@@ -17,6 +17,14 @@ try {
           }
         } catch {}
       }
+      // If Promise/thenable detection mistakenly calls this as `then(resolve, reject)`
+      if (typeof u === 'function' && (b === undefined || typeof b === 'function')) {
+        try {
+          // Immediately resolve to avoid breaking thenable resolution during build tooling
+          if (typeof u === 'function') u();
+        } catch {}
+        return; // behave as a benign no-op
+      }
       // Log on failure to help locate culprit
       try { return new NativeURL(u, b); } catch (e) {
         try {
