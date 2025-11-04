@@ -1,12 +1,9 @@
 'use client';
 
-import { useRef, useState } from 'react';
-import { uploadAsset } from '../../utils/uploader';
+import { useRef } from 'react';
 
-export default function HeroImageUploadCard({ preview, onSelect, onUploaded }) {
+export default function HeroImageUploadCard({ preview, onSelect }) {
   const inputRef = useRef(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
@@ -45,7 +42,7 @@ export default function HeroImageUploadCard({ preview, onSelect, onUploaded }) {
             fontWeight: 700,
           }}
         >
-          {busy ? '업로드 중…' : '이미지 업로드'}
+          이미지 선택
         </button>
         <input
           ref={inputRef}
@@ -53,17 +50,10 @@ export default function HeroImageUploadCard({ preview, onSelect, onUploaded }) {
           accept="image/*"
           onChange={event => {
             const file = event.target.files?.[0];
-            if (!file) return;
-            onSelect?.(file);
-            setBusy(true); setError('');
-            uploadAsset(file, { gameId: 'characters' })
-              .then(res => { onUploaded?.(res); })
-              .catch(e => { setError(e?.message || '업로드 실패'); })
-              .finally(() => setBusy(false));
+            if (file) onSelect?.(file);
           }}
           style={{ display: 'none' }}
         />
-        {error ? <span style={{ color:'#fca5a5', fontSize:12 }}>{error}</span> : null}
         <span style={{ fontSize: 12, color: '#cbd5f5' }}>정사각형 이미지가 가장 잘 어울려요.</span>
       </div>
     </div>

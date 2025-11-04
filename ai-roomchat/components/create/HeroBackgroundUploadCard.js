@@ -1,12 +1,9 @@
 'use client';
 
-import { useRef, useState } from 'react';
-import { uploadAsset } from '../../utils/uploader';
+import { useRef } from 'react';
 
-export default function HeroBackgroundUploadCard({ preview, error, onSelect, onReset, onUploaded }) {
+export default function HeroBackgroundUploadCard({ preview, error, onSelect, onReset }) {
   const inputRef = useRef(null);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState('');
 
   const handleReset = () => {
     onReset();
@@ -55,7 +52,7 @@ export default function HeroBackgroundUploadCard({ preview, error, onSelect, onR
             fontWeight: 700,
           }}
         >
-          {busy ? '업로드 중…' : '배경 업로드'}
+          배경 선택
         </button>
         <button
           type="button"
@@ -75,21 +72,10 @@ export default function HeroBackgroundUploadCard({ preview, error, onSelect, onR
         ref={inputRef}
         type="file"
         accept="image/*"
-        onChange={async event => {
-          const file = event.target.files?.[0] || null;
-          onSelect?.(file);
-          if (!file) return;
-          setBusy(true); setErr('');
-          try {
-            const res = await uploadAsset(file, { gameId: 'backgrounds' });
-            onUploaded?.(res);
-          } catch (e) { setErr(e?.message || '업로드 실패'); }
-          finally { setBusy(false); }
-        }}
+        onChange={event => onSelect?.(event.target.files?.[0] || null)}
         style={{ display: 'none' }}
       />
       {error && <div style={{ color: '#fca5a5', fontSize: 12 }}>{error}</div>}
-      {err && <div style={{ color: '#fca5a5', fontSize: 12 }}>{err}</div>}
     </div>
   );
 }
