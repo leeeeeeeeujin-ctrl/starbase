@@ -7,9 +7,12 @@ import { uploadAsset } from '../../utils/uploader';
 import { withTable } from '../../lib/supabaseTables';
 
 function revokeUrl(url) {
-  if (url) {
-    URL.revokeObjectURL(url);
-  }
+  try {
+    if (!url) return;
+    if (typeof window === 'undefined') return;
+    const URL_ = (window.URL || window.webkitURL);
+    URL_ && URL_.revokeObjectURL && URL_.revokeObjectURL(url);
+  } catch {}
 }
 
 export function useHeroCreator({ onSaved } = {}) {
@@ -65,7 +68,10 @@ export function useHeroCreator({ onSaved } = {}) {
         revokeUrl(preview);
       }
       setImageBlob(blob);
-      setPreview(URL.createObjectURL(blob));
+      if (typeof window !== 'undefined') {
+        const URL_ = (window.URL || window.webkitURL);
+        setPreview(URL_ && URL_.createObjectURL ? URL_.createObjectURL(blob) : null);
+      }
     },
     [preview]
   );
@@ -123,7 +129,8 @@ export function useHeroCreator({ onSaved } = {}) {
         setBgmError('파일 크기가 너무 큽니다. 15MB 이하로 줄여주세요.');
         return;
       }
-      const tempUrl = URL.createObjectURL(file);
+      const URL_ = (typeof window !== 'undefined') ? (window.URL || window.webkitURL) : null;
+      const tempUrl = URL_ && URL_.createObjectURL ? URL_.createObjectURL(file) : '';
       try {
         const duration = await new Promise((resolve, reject) => {
           const audio = document.createElement('audio');
@@ -152,7 +159,7 @@ export function useHeroCreator({ onSaved } = {}) {
       } catch (error) {
         setBgmError(error.message || '오디오를 분석할 수 없습니다.');
       } finally {
-        URL.revokeObjectURL(tempUrl);
+        try { if (URL_ && URL_.revokeObjectURL) URL_.revokeObjectURL(tempUrl); } catch {}
       }
     },
     [clearBgm]
