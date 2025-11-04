@@ -18,12 +18,13 @@ function walk(dir, out = []) {
 
 function scan(file) {
   const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/);
+  const reBare = /(^|[^.\w$])URL\s*\(/; // excludes URL.createObjectURL etc.
+  const reNew = /new\s+URL\s*\(/;
   lines.forEach((line, i) => {
-    if (/URL\s*\(/.test(line) && !/new\s+URL\s*\(/.test(line)) {
+    if (reBare.test(line) && !reNew.test(line)) {
       console.log(`${file}:${i + 1}:${line.trim()}`);
     }
   });
 }
 
 for (const f of walk(ROOT)) scan(f);
-
