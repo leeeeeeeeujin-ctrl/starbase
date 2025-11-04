@@ -30,6 +30,7 @@ export function GameRuntimeProvider({ roomId = "local-room", roles = { players: 
   const graphRef = useRef({ nodes: [], edges: [] });
   const hooksRef = useRef({});
   const configRef = useRef({});
+  const filesRef = useRef({});
   const [currentNodeId, setCurrentNodeId] = useState(null);
   const waitingRef = useRef(false);
   const indexById = useRef(new Map());
@@ -181,10 +182,11 @@ export function GameRuntimeProvider({ roomId = "local-room", roles = { players: 
       } catch {}
     },
     // runtime configuration from VFS
-    setRuntime: ({ graph, hooks, config }) => {
+    setRuntime: ({ graph, hooks, config, files }) => {
       graphRef.current = graph || { nodes: [], edges: [] };
       hooksRef.current = hooks || {};
       configRef.current = config || {};
+      filesRef.current = files || {};
       reindex();
       const entry = config?.entryNode || graphRef.current.nodes?.[0]?.id || null;
       setCurrentNodeId(entry);
@@ -203,6 +205,7 @@ export function GameRuntimeProvider({ roomId = "local-room", roles = { players: 
         setCurrentId: (id) => setCurrentNodeId(id),
         setWaiting: (b) => { waitingRef.current = !!b; },
         getNode, neighborsOf,
+        filesRef,
         sendAI: (payload, fullPrompt, fullResponse) => api.sendAI(payload, fullPrompt, fullResponse),
         publish: (type, payload) => publish(type, payload),
       };

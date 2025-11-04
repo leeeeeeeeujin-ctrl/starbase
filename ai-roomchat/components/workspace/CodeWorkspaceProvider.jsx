@@ -59,8 +59,13 @@ const defaultFiles = {
         "export function onUserAction(ctx, input) {",
         "  // return optional next node id or mutation plan",
         "}",
-        "export function transformPrompt(ctx, promptText) {",
-        "  return promptText;",
+        "export function transformPrompt(ctx) {",
+        "  // You can return string or { prompt, ui }.",
+        "  // Inline include markers are supported: {{file:/path}} or {{code:/path#L10-20}}.",
+        "  const base = String(ctx?.node?.label || '');",
+        "  // Example: inject code snippet from another file",
+        "  const header = '[[Intro]]';",
+        "  return `${header}\n\n${base}\n\nSee: {{code:/game/hooks/automation.js#L1-40}}`;",
         "}",
         "export function selectNext(ctx, neighbors) {",
         "  // neighbors: [{ id, label, type }]",
@@ -81,6 +86,13 @@ const defaultFiles = {
         "- /game/runtime.config.json — runtime params (roles, durations, entry)",
         "- /game/hooks/automation.js — user-defined hooks",
         "\n",
+        "## Prompt Composition",
+        "- transformPrompt(ctx) can return string or { prompt, ui }.",
+        "- Inline include markers are supported in prompt:",
+        "  - {{file:/path/to/file.ext}} — embed whole file (truncated if large)",
+        "  - {{code:/path/to/file.ext#Lstart-Lend}} — embed specific line range",
+        "- Hooks receive ctx.files for direct access if needed.",
+        "\n",
         "## Edit Actions JSON (for AI Code Chat)",
         "Return JSON only: { \"message?\": string, \"actions?\": [ { \"type\":\"create|write|delete|rename\", ... } ] }",
         "\n",
@@ -93,7 +105,51 @@ const defaultFiles = {
         "2. Adjust /game/runtime.config.json (entryNode, durations, roles)",
         "3. Implement /game/hooks/automation.js to handle user actions",
         "4. Test via the Editor's runtime panel",
+        "\n",
+        "## Pages (optional)",
+        "- /game/pages/index.json — page registry: { \"main\": { \"title\": \"Main\", \"type\": \"ui|script\", \"path\": \"/game/pages/ui/main.json\" } }",
+        "- UI page: JSON schema rendered by the editor (vstack/hstack/text/button/image/card).",
+        "- Script page: JS file exporting function render(ctx) => { schema, handlers }.",
+        "  - handlers[eventName] can be triggered from buttons.",
       ].join("\n")+"\n",
+    readonly: false,
+  },
+  "/game/pages/index.json": {
+    content: JSON.stringify({
+      main: { title: "Main", type: "ui", path: "/game/pages/ui/main.json" },
+      script: { title: "ScriptDemo", type: "script", path: "/game/pages/scripts/main.js" }
+    }, null, 2)+"\n",
+    readonly: false,
+  },
+  "/game/pages/ui/main.json": {
+    content: JSON.stringify({
+      type: "vstack",
+      gap: 10,
+      children: [
+        { type: "text", value: "🎮 Page: Main", fontSize: 16, bold: true },
+        { type: "card", children: [
+          { type: "text", value: "이 영역은 UI JSON 스키마로 작성됩니다.", color: "#cbd5e1" },
+          { type: "button", label: "이벤트 전송", event: "ping", payload: { msg: "hello" } }
+        ]}
+      ]
+    }, null, 2)+"\n",
+    readonly: false,
+  },
+  "/game/pages/scripts/main.js": {
+    content: [
+      "export function render(ctx){",
+      "  const schema = {",
+      "    type: 'vstack', gap: 10, children: [",
+      "      { type:'text', value:'🧩 Script Page', fontSize:16, bold:true },",
+      "      { type:'button', label:'자원보기', event:'showResources' }",
+      "    ]",
+      "  };",
+      "  const handlers = {",
+      "    showResources(){ console.log('resources', Object.keys(ctx.files||{})); }",
+      "  };",
+      "  return { schema, handlers };",
+      "}",
+    ].join('\n')+"\n",
     readonly: false,
   },
 };
