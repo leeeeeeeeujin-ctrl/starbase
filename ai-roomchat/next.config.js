@@ -10,11 +10,59 @@ const webpack = require('webpack');
     let needsWrap = false;
     try { NU('http://example.com'); needsWrap = true; } catch { needsWrap = true; }
     if (!needsWrap) return;
-    function URLWrapper(u, b) { return new NU(u, b); }
+    let __logged = 0;
+    function URLWrapper(u, b) {
+      if (!new.target) {
+        try {
+          if (__logged < 5) {
+            __logged++;
+            const err = new Error('[URL-wrapper] URL called without new (next.config)');
+            // keep stack short
+            console.warn(err.stack.split('\n').slice(0, 6).join('\n'));
+          }
+        } catch {}
+      }
+      return new NU(u, b);
+    }
     try { URLWrapper.prototype = NU.prototype; } catch {}
     try { if (NU.createObjectURL) URLWrapper.createObjectURL = NU.createObjectURL.bind(NU); } catch {}
     try { if (NU.revokeObjectURL) URLWrapper.revokeObjectURL = NU.revokeObjectURL.bind(NU); } catch {}
     g.URL = URLWrapper;
+  } catch {}
+})();
+
+// Intercept Node's require('url') very early to wrap URL for any loader that uses it during build
+(() => {
+  try {
+    const Module = require('module');
+    const origLoad = Module._load;
+    Module._load = function(request, parent, isMain) {
+      const mod = origLoad.apply(this, arguments);
+      if (request === 'url' || request === 'node:url') {
+        try {
+          if (mod && mod.URL && typeof mod.URL === 'function' && !mod.URL.__wrappedForNoNew) {
+            const NativeURL = mod.URL;
+            let __logged = 0;
+            function URLWrapper(u, b) {
+              if (!new.target) {
+                try {
+                  if (__logged < 5) {
+                    __logged++;
+                    const err = new Error('[URL-wrapper] URL called without new (require-hook)');
+                    console.warn(err.stack.split('\n').slice(0, 6).join('\n'));
+                  }
+                } catch {}
+              }
+              return new NativeURL(u, b);
+            }
+            try { URLWrapper.prototype = NativeURL.prototype; } catch {}
+            URLWrapper.__wrappedForNoNew = true;
+            mod.URL = URLWrapper;
+          }
+        } catch {}
+      }
+      return mod;
+    };
   } catch {}
 })();
 

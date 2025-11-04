@@ -6,18 +6,19 @@
     if (!g) return;
     const NativeURL = g.URL;
     if (!NativeURL || typeof NativeURL !== 'function') return;
-    let needsWrap = false;
-    try {
-      // In Node, calling without new throws.
-      // We attempt to call; if it throws, we will wrap.
-      // eslint-disable-next-line no-new
-      NativeURL('http://example.com');
-      needsWrap = true;
-    } catch (e) {
-      needsWrap = true;
-    }
+    let needsWrap = true;
     if (!needsWrap) return;
+    let __loggedCount = 0;
     const URLWrapper = function URLWrapper(u, b) {
+      if (!new.target) {
+        try {
+          if (__loggedCount < 5) {
+            __loggedCount++;
+            const err = new Error('[URL-wrapper] URL called without new (browser/global)');
+            console.warn(err.stack.split('\n').slice(0, 6).join('\n'));
+          }
+        } catch {}
+      }
       return new NativeURL(u, b);
     };
     URLWrapper.prototype = NativeURL.prototype;
@@ -32,4 +33,3 @@
     g.URL = URLWrapper;
   } catch {}
 })();
-

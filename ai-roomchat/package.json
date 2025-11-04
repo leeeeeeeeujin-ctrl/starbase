@@ -3,13 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "engines": {
-    "node": ">=16.0.0",
+    "node": "18.x",
     "npm": ">=8.0.0"
   },
   "scripts": {
     "dev": "next dev",
     "dev:runner-test": "node scripts/run-runner-and-test.js",
-    "build": "next build",
+    "build": "node -r ./polyfills/global-url-preload.js ./node_modules/next/dist/bin/next build",
     "build:compatibility": "npm run build && npm run test:compatibility",
     "start": "next start",
     "vercel:env": "node scripts/syncVercelEnv.js",
