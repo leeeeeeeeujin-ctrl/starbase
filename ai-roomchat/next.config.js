@@ -1,4 +1,8 @@
 const path = require('path');
+// Load safe default envs so build doesn't depend on project secrets
+try {
+  require('dotenv').config({ path: path.resolve(__dirname, '.env.defaults'), override: false });
+} catch {}
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
