@@ -14,6 +14,39 @@ export default async function handler(req, res) {
   try {
     const { name, contentType, dataBase64, gameId, sha256 } = req.body || {};
     if (!dataBase64 || !name) return res.status(400).json({ error: 'name and dataBase64 required' });
+    // Enforce size limit
+    const maxBytes = parseInt(process.env.UPLOAD_MAX_BYTES || '26214400', 10); // 25MB default
+    const b64 = String(dataBase64||'');
+    const approxBytes = Math.floor((b64.length * 3) / 4); // rough
+    if (maxBytes && approxBytes > maxBytes) return res.status(413).json({ error: 'payload too large' });
+    // Enforce allowed mime
+    const allow = String(process.env.UPLOAD_ALLOWED_MIME || '').split(',').map(s=>s.trim()).filter(Boolean);
+    if (allow.length && contentType && !allow.includes(contentType)) return res.status(415).json({ error: 'mime not allowed' });
+    // Simple user-based rate limit via Supabase (best-effort)
+    const auth = req.headers.authorization || '';
+    const token = auth.startsWith('Bearer ')? auth.slice(7): null;
+    if (token) {
+      try {
+        const { createClient } = await import('@supabase/supabase-js');
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+        const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+        if (supabaseUrl && anon) {
+          const anonClient = createClient(supabaseUrl, anon, { auth: { persistSession: false }, global: { headers: { Authorization: `Bearer ${token}` } } });
+          const { data: userData } = await anonClient.auth.getUser();
+          const uid = userData?.user?.id || null;
+          const limit = parseInt(process.env.UPLOAD_RATE_PER_MIN || '5', 10);
+          if (uid && limit > 0) {
+            const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE;
+            if (serviceKey) {
+              const svc = createClient(supabaseUrl, serviceKey);
+              const since = new Date(Date.now() - 60 * 1000).toISOString();
+              const { data: recent } = await svc.from('assets').select('id, created_at, created_by').gte('created_at', since).eq('created_by', uid);
+              if (Array.isArray(recent) && recent.length >= limit) return res.status(429).json({ error: 'rate limit exceeded' });
+            }
+          }
+        }
+      } catch {}
+    }
     const Bucket = process.env.R2_BUCKET;
     const endpoint = process.env.R2_S3_ENDPOINT || `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`;
     if (!Bucket || !endpoint) return res.status(500).json({ error: 'R2 not configured' });
@@ -34,8 +67,8 @@ export default async function handler(req, res) {
 
     // decode base64 (data:...;base64,xxxx or pure base64)
     const raw = String(dataBase64||'');
-    const b64 = raw.includes(',') ? raw.split(',').pop() : raw;
-    const bin = Buffer.from(b64, 'base64');
+    const b64data = raw.includes(',') ? raw.split(',').pop() : raw;
+    const bin = Buffer.from(b64data, 'base64');
 
     const meta = sha256 ? { sha256 } : undefined;
     await client.send(new PutObjectCommand({ Bucket, Key, Body: bin, ContentType: contentType||'application/octet-stream', Metadata: meta }));
@@ -47,7 +80,19 @@ export default async function handler(req, res) {
       const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE;
       if (supabaseUrl && supabaseKey) {
         const supabase = createClient(supabaseUrl, supabaseKey);
-        await supabase.from('assets').upsert({ hash: sha256||null, key: Key, size: bin.length, mime: contentType||null, game_id: gameId||null, visibility: 'public', ref_count: 1 }, { onConflict: 'hash' });
+        // Try to resolve created_by from token
+        let created_by = null;
+        if (token) {
+          try {
+            const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+            if (anon) {
+              const anonClient = createClient(supabaseUrl, anon, { auth: { persistSession: false }, global: { headers: { Authorization: `Bearer ${token}` } } });
+              const { data: userData } = await anonClient.auth.getUser();
+              created_by = userData?.user?.id || null;
+            }
+          } catch {}
+        }
+        await supabase.from('assets').upsert({ hash: sha256||null, key: Key, size: bin.length, mime: contentType||null, game_id: gameId||null, visibility: 'public', ref_count: 1, created_by }, { onConflict: 'hash' });
       }
     } catch {}
 
@@ -58,4 +103,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: e?.message || 'upload failed' });
   }
 }
-

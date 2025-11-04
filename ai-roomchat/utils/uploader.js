@@ -20,7 +20,9 @@ export async function uploadAsset(file, { gameId, key, signal } = {}) {
   const sha256 = await sha256File(file);
 
   // If proxy-first is desired, attempt proxy upload immediately
-  const FORCE_PROXY = true; // main path switched to proxy
+  const FORCE_PROXY = (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_UPLOAD_PROXY_ALWAYS)
+    ? String(process.env.NEXT_PUBLIC_UPLOAD_PROXY_ALWAYS).toLowerCase() !== 'false'
+    : true; // default to proxy-first
   if (FORCE_PROXY) {
     try {
       const auth = await bearerOrNull();
@@ -36,6 +38,10 @@ export async function uploadAsset(file, { gameId, key, signal } = {}) {
   }
 
   // 1) exists (presign flow)
+  // Client-side size limit guard
+  const maxBytes = (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_UPLOAD_MAX_BYTES)
+    ? parseInt(process.env.NEXT_PUBLIC_UPLOAD_MAX_BYTES, 10) : (25 * 1024 * 1024);
+  if (maxBytes && size > maxBytes) throw new Error('파일이 너무 큽니다. 용량을 줄여주세요.');
   const auth = await bearerOrNull();
   let r = await fetch('/api/assets/exists', { method:'POST', headers: { 'content-type':'application/json', ...(auth?{Authorization:auth}:{}) }, body: JSON.stringify({ hash: sha256 }), signal });
   let j = await r.json();

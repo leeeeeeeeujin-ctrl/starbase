@@ -164,8 +164,25 @@ export default function CreateHeroScreen() {
                 transition: 'transform 0.2s ease',
               }}
             >
-              {state.loading ? '저장 중…' : '캐릭터 생성'}
+              {state.loading ? (state.savingMsg || '저장 중…') : '캐릭터 생성'}
             </button>
+            {state.loading ? (
+              <button
+                type="button"
+                onClick={actions.cancelSave}
+                style={{
+                  padding: '12px 28px',
+                  borderRadius: 999,
+                  border: '1px solid rgba(239,68,68,0.55)',
+                  background: 'rgba(239,68,68,0.12)',
+                  color: '#fecaca',
+                  fontWeight: 700,
+                  minWidth: 150,
+                }}
+              >
+                업로드 취소
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => router.back()}
