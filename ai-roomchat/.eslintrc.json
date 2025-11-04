@@ -1,5 +1,14 @@
 {
   "extends": ["next/core-web-vitals"],
+  "rules": {
+    "no-restricted-syntax": [
+      "error,",
+      {
+        "selector": "CallExpression[callee.name='URL']",
+        "message": "Use 'new URL(...)' instead of calling URL as a function"
+      }
+    ]
+  },
   "overrides": [
     {
       "files": ["**/*.json"],
@@ -12,4 +21,3 @@
     }
   ]
 }
-
