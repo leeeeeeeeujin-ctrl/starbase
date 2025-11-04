@@ -9,7 +9,9 @@ export default async function handler(req, res) {
     await enforceBeforeClassA({ size });
     const url = await getSignedPutUrl({ key, contentType, sha256 });
     await incClassA(1);
-    return res.json({ url, headers: { 'Content-Type': contentType } });
+    const headers = { 'Content-Type': contentType };
+    if (sha256) headers['x-amz-meta-sha256'] = sha256;
+    return res.json({ url, headers });
   } catch (e) {
     const sc = e?.statusCode || 500;
     return res.status(sc).json({ error: e?.message || 'presign failed', code: e?.code });
