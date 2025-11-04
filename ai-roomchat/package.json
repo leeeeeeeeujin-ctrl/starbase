@@ -50,7 +50,7 @@
     "studio:test:cli": "node tools/test_cli_bridge.js",
     "r2:cors:set": "node scripts/set-r2-cors.js",
     "r2:cors:get": "node scripts/get-r2-cors.js",
-    "postinstall": "patch-package"
+  "postinstall": "node -e \"if(!process.env.VERCEL && !process.env.CI){require('child_process').execSync('npx patch-package',{stdio:'inherit'})} else {console.log('Skipping patch-package on CI/Vercel');}\""
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.673.0",
