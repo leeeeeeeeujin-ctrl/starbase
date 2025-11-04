@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "next dev",
     "dev:runner-test": "node scripts/run-runner-and-test.js",
-  "build": "node scripts/build-with-url-trace.js",
+  "build": "next build",
     "postbuild": "node scripts/verify-next-output.js",
     "build:compatibility": "npm run build && npm run test:compatibility",
     "start": "next start",
