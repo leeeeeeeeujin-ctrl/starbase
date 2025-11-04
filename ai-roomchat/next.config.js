@@ -6,16 +6,14 @@ const nextConfig = {
   // Fix workspace root inference when multiple lockfiles exist
   outputFileTracingRoot: path.resolve(__dirname),
   // Reduce file-tracing surface: exclude large, unused trees from the server bundle graph
-  experimental: {
-    outputFileTracingExcludes: {
-      '*': [
-        '**/docs/**',
-        '**/reference_data/**',
-        '**/__tests__/**',
-        '**/repo-mirror.git/**',
-        '**/.git/**',
-      ],
-    },
+  outputFileTracingExcludes: {
+    '*': [
+      '**/docs/**',
+      '**/reference_data/**',
+      '**/__tests__/**',
+      '**/repo-mirror.git/**',
+      '**/.git/**',
+    ],
   },
   webpack: (config, { webpack }) => {
     // Show build progress to identify where it stalls

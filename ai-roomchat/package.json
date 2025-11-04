@@ -48,7 +48,8 @@
     "studio:test:mock": "node tools/test_mock_runner.js",
     "studio:test:cli": "node tools/test_cli_bridge.js",
     "r2:cors:set": "node scripts/set-r2-cors.js",
-    "r2:cors:get": "node scripts/get-r2-cors.js"
+    "r2:cors:get": "node scripts/get-r2-cors.js",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.673.0",
@@ -82,8 +83,6 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    
-    "cross-env": "^7.0.3",
     "@babel/core": "^7.24.5",
     "@babel/plugin-proposal-class-properties": "^7.18.6",
     "@babel/plugin-proposal-nullish-coalescing-operator": "^7.18.6",
@@ -106,6 +105,7 @@
     "babel-plugin-transform-define": "^2.1.4",
     "babel-plugin-transform-imports": "^2.0.0",
     "babel-plugin-transform-remove-console": "^6.9.4",
+    "cross-env": "^7.0.3",
     "eslint": "^9.38.0",
     "eslint-plugin-import": "^2.27.5",
     "eslint-plugin-jsonc": "^2.15.0",
@@ -116,6 +116,7 @@
     "jest-junit": "^16.0.0",
     "jsonc-eslint-parser": "^2.4.0",
     "lint-staged": "^16.2.6",
+    "patch-package": "^8.0.1",
     "pg": "^8.10.0",
     "postcss": "^8.4.38",
     "postcss-preset-env": "^9.5.14",
@@ -130,7 +131,6 @@
       "git add"
     ]
   },
-  
   "r2": {
     "note": "Run these with CF_API_TOKEN, R2_ACCOUNT_ID, R2_BUCKET set"
   }
