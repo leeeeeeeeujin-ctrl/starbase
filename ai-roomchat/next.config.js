@@ -1,6 +1,23 @@
 const path = require('path');
 const webpack = require('webpack');
 
+// Guard URL at build-time Node context as well (Next loads this file first)
+(() => {
+  try {
+    const g = global;
+    const NU = g && g.URL;
+    if (!NU || typeof NU !== 'function') return;
+    let needsWrap = false;
+    try { NU('http://example.com'); needsWrap = true; } catch { needsWrap = true; }
+    if (!needsWrap) return;
+    function URLWrapper(u, b) { return new NU(u, b); }
+    try { URLWrapper.prototype = NU.prototype; } catch {}
+    try { if (NU.createObjectURL) URLWrapper.createObjectURL = NU.createObjectURL.bind(NU); } catch {}
+    try { if (NU.revokeObjectURL) URLWrapper.revokeObjectURL = NU.revokeObjectURL.bind(NU); } catch {}
+    g.URL = URLWrapper;
+  } catch {}
+})();
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   eslint: {
@@ -35,6 +52,13 @@ const nextConfig = {
     // Prepend a tiny banner to every chunk to ensure global URL is callable early
     const banner = `(()=>{try{var g=(typeof globalThis!=='undefined')?globalThis:(typeof self!=='undefined'?self:window);if(!g)return;var NU=g.URL;if(!NU||typeof NU!=='function')return;var wrap=function(u,b){return new NU(u,b)};try{wrap.prototype=NU.prototype;}catch(e){};try{if(NU.createObjectURL)wrap.createObjectURL=NU.createObjectURL.bind(NU);}catch(e){};try{if(NU.revokeObjectURL)wrap.revokeObjectURL=NU.revokeObjectURL.bind(NU);}catch(e){};g.URL=wrap;}catch(e){}})();`;
     config.plugins.push(new webpack.BannerPlugin({ banner, raw: true, entryOnly: false }));
+
+    // Alias Node's url module to a shim that relaxes URL(...) calls
+    config.resolve = config.resolve || {};
+    config.resolve.alias = Object.assign({}, config.resolve.alias, {
+      'url': path.resolve(__dirname, 'polyfills/url-shim-for-node.js'),
+      'node:url': path.resolve(__dirname, 'polyfills/url-shim-for-node.js'),
+    });
 
     return config;
   },
