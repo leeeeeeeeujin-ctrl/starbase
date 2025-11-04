@@ -33,4 +33,29 @@ try {
   }
 } catch {}
 
-// (Intentionally avoid hooking require('url') to reduce side effects in third-party tooling.)
+// Hook Node's module loader to wrap URL exports from 'url', 'node:url' and Next's compiled native-url
+try {
+  const Module = require('module');
+  const origLoad = Module._load;
+  Module._load = function(request, parent, isMain) {
+    const mod = origLoad.apply(this, arguments);
+    try {
+      if (request === 'url' || request === 'node:url') {
+        if (mod && mod.URL && typeof mod.URL === 'function' && !mod.URL.__wrappedBareCallable) {
+          const NativeURL = mod.URL;
+          function URLWrapper(u, b) {
+            if (!new.target) {
+              return new NativeURL(u, b);
+            }
+            return new NativeURL(u, b);
+          }
+          try { URLWrapper.prototype = NativeURL.prototype; } catch {}
+          // Mark to avoid double-wrap
+          URLWrapper.__wrappedBareCallable = true;
+          mod.URL = URLWrapper;
+        }
+      }
+    } catch {}
+    return mod;
+  };
+} catch {}
