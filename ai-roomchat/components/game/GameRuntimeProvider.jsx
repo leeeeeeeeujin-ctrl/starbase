@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
+import { prefetchResources, getResourceUrl, cleanupGameResources } from "../../utils/resourceCache.js";
 
 const Ctx = createContext(null);
 
@@ -194,6 +195,10 @@ export function GameRuntimeProvider({ roomId = "local-room", roles = { players: 
       // if entry exists and is not user_action, step immediately
       if (entry) setTimeout(() => { try { step('init'); } catch {} }, 0);
     },
+    // Resource cache API
+    prefetchResources: ({ gameId, baseUrl, manifest, onProgress }) => prefetchResources({ gameId, baseUrl, manifest, onProgress }),
+    getResourceUrl: (hash) => getResourceUrl(hash),
+    cleanupResources: (gameId) => cleanupGameResources(gameId),
   }), [room, connected, durations, secondsLeft, nextTriggered, votes, roles, aiMessages, chatMessages, publish]);
 
   // expose internal runtime context for helper step()
@@ -242,7 +247,36 @@ function step(reason){
         const hooks = hooksRef.current || {};
         let prompt = String(node.label || '');
         try { if (typeof hooks.transformPrompt === 'function') { prompt = hooks.transformPrompt({ node, reason }); } } catch {}
-        sendAI({ id:`ai_${Date.now()}`, roleScope:'players', text: `(thinking)`, ts: Date.now() }, prompt, null);
+        const thinkId = `ai_${Date.now()}`;
+        // 1) show placeholder immediately
+        sendAI({ id: thinkId, roleScope: 'players', text: `(thinking)`, ts: Date.now() }, prompt, null);
+        // 2) fetch real response async; log full prompt/response
+        (async () => {
+          let answer = '';
+          try {
+            const model = (configRef.current?.ai?.model) || 'gemini-2.5-flash';
+            const body = { model, prefer: 'server', contents: [{ parts: [{ text: String(prompt||'') }] }] };
+            let resp = await fetch('/api/ai/gemini', { method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify(body) });
+            if (!resp.ok) {
+              // try keyring if server key not allowed
+              const body2 = { ...body, prefer: 'keyring' };
+              resp = await fetch('/api/ai/gemini', { method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify(body2) });
+            }
+            const j = await resp.json();
+            const pick = (o) => {
+              try {
+                const c = o?.result?.candidates?.[0]?.content?.parts || [];
+                const texts = c.map(p=>p?.text).filter(Boolean);
+                return texts.join('\n').trim();
+              } catch { return ''; }
+            };
+            answer = pick(j) || '';
+          } catch (e) {
+            answer = '';
+          }
+          if (!answer) answer = '(no response)';
+          sendAI({ id: `ai_${Date.now()}`, roleScope: 'players', text: answer, ts: Date.now() }, prompt, answer);
+        })();
       }
       const neigh = neighborsOf(currentId) || [];
       const hooks = hooksRef.current || {};

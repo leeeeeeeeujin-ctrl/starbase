@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { compressString, decompressToString } from "../../utils/compress.js";
 
 const KEY = "workspace.vfs.v1";
 
@@ -207,6 +208,14 @@ export function CodeWorkspaceProvider({ children }) {
 
   const api = useMemo(() => {
     const exists = (path) => Boolean(files[path]);
+    const MAX_VFS_BYTES = 15 * 1024 * 1024; // 15MB soft limit
+    const isAssetPath = (p) => /^\/(assets|resources)\//.test(p) || /\.(png|jpe?g|gif|webp|svg|mp3|wav|ogg|mp4)$/i.test(p||'');
+    const totalBytes = () => Object.entries(files).reduce((sum, [p, meta]) => {
+      if (!meta) return sum;
+      if (meta.compressed && meta.data) return sum + (meta.rawLen || meta.compLen || (meta.data.length*0.75));
+      const c = (typeof meta.content === 'string') ? meta.content.length : 0;
+      return sum + c;
+    }, 0);
     const isDir = (path) => {
       if (!path) return false;
       if (path.endsWith('/')) return true;
@@ -255,10 +264,40 @@ export function CodeWorkspaceProvider({ children }) {
         setFiles((m) => ({ ...m, [normalizeDir(path)]: { dir: true, readonly: true } })),
       writeFile: (path, content) =>
         setFiles((m) => {
-          const f = m[path];
-          if (!f) return m;
+          const f = m[path] || { readonly: false };
           if (f.readonly) return m;
-          return { ...m, [path]: { ...f, content } };
+          const next = { ...m };
+          const curTotal = totalBytes();
+          const isAsset = isAssetPath(path);
+          let entry;
+          if (isAsset && typeof window !== 'undefined') {
+            // compress assets; large text also compressed
+            // note: async compress; here we store placeholder then finalize in microtask
+            entry = { ...f, pending: true };
+            next[path] = entry;
+            queueMicrotask(async () => {
+              const r = await compressString(String(content||''));
+              const after = { ...entry, pending: false, compressed: true, algo: r.algo, data: r.data, rawLen: r.rawLen, compLen: r.compLen };
+              // size check
+              const delta = (r.rawLen || 0) - ((typeof f.content === 'string') ? f.content.length : (f.rawLen||0));
+              if (curTotal + Math.max(0, delta) > MAX_VFS_BYTES) {
+                alert('최대 게임 파일 크기(15MB)를 초과하여 저장할 수 없습니다.');
+                // revert
+                setFiles((mm) => ({ ...mm, [path]: f }));
+                return;
+              }
+              setFiles((mm) => ({ ...mm, [path]: after }));
+            });
+          } else {
+            entry = { ...f, content: String(content||''), compressed: false, data: undefined };
+            const delta = entry.content.length - ((typeof f.content === 'string') ? f.content.length : 0);
+            if (curTotal + Math.max(0, delta) > MAX_VFS_BYTES) {
+              alert('최대 게임 파일 크기(15MB)를 초과하여 저장할 수 없습니다.');
+              return m;
+            }
+            next[path] = entry;
+          }
+          return next;
         }),
       rename: (oldPath, newPath) => {
         setFiles((m) => {

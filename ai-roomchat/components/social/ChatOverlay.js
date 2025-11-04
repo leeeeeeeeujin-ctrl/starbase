@@ -37,6 +37,7 @@ import {
   subscribeToMessages,
 } from '@/lib/chat/messages';
 import { supabase } from '@/lib/supabase';
+import { uploadAsset } from '@/utils/uploader';
 import { useHeroSocialBootstrap } from '@/hooks/social/useHeroSocialBootstrap';
 import { useFriendActions } from '@/hooks/social/useFriendActions';
 import { readHeroSelection } from '@/lib/heroes/selectedHeroStorage';
@@ -91,6 +92,14 @@ const ATTACHMENT_ICONS = {
   video: '🎬',
   file: '📄',
 };
+
+// R2 uploader wrapper for chat attachments/backgrounds
+async function r2Upload(file, { folder = 'chat', name } = {}) {
+  const safeName = (name || file?.name || 'file').replace(/[^a-zA-Z0-9_.-]/g, '_');
+  const key = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2,8)}-${safeName}`;
+  const res = await uploadAsset(file, { gameId: 'chat', key });
+  return { url: res.url, key: res.key, hash: res.hash };
+}
 
 const AI_ASSISTANT_NAME = 'AI 어시스턴트';
 const DEFAULT_VIEWPORT = { width: 1280, height: 800 };
@@ -518,24 +527,9 @@ async function uploadBackgroundImage({ file, roomId = null, ownerToken = null })
     lastError = error;
   }
 
-  if (!uploaded) {
-    const { error } = await supabase.storage.from(CHAT_ATTACHMENT_BUCKET).upload(objectPath, file, {
-      contentType: file.type || 'image/webp',
-      cacheControl: '3600',
-      upsert: false,
-    });
-
-    if (error) {
-      throw error || lastError || new Error('배경 이미지를 업로드할 수 없습니다.');
-    }
-  }
-
-  const { data } = supabase.storage.from(CHAT_ATTACHMENT_BUCKET).getPublicUrl(objectPath);
-  if (!data?.publicUrl) {
-    throw new Error('업로드한 배경의 공개 URL을 생성할 수 없습니다.');
-  }
-
-  return data.publicUrl;
+  // R2로 업로드 및 공개 URL 반환
+  const up = await r2Upload(file, { folder: 'chat/backgrounds', name: file?.name });
+  return up.url;
 }
 
 const DEFAULT_THEME_CONFIG = {
@@ -1496,19 +1490,12 @@ function sameMinute(a, b) {
 async function uploadAttachmentDraft({ blob, name, encoding, contentType }) {
   const safeName = sanitizeFileName(name);
   const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName}.gz`;
-  const { error } = await supabase.storage.from(CHAT_ATTACHMENT_BUCKET).upload(path, blob, {
-    cacheControl: '3600',
-    contentType: 'application/octet-stream',
-    upsert: false,
-  });
-
-  if (error) {
-    throw error;
-  }
+  const fileWrap = new File([blob], path, { type: 'application/octet-stream' });
+  const up = await r2Upload(fileWrap, { folder: 'chat/attachments', name: fileWrap.name });
 
   return {
-    bucket: CHAT_ATTACHMENT_BUCKET,
-    path,
+    bucket: 'r2',
+    path: up.key,
     encoding,
     content_type: contentType,
     name,
@@ -1523,12 +1510,10 @@ async function fetchAttachmentBlob(attachment) {
     throw new Error('첨부 파일 위치를 확인할 수 없습니다.');
   }
 
-  const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 60);
-  if (error || !data?.signedUrl) {
-    throw error || new Error('첨부 파일 URL을 생성하지 못했습니다.');
-  }
-
-  const response = await fetch(data.signedUrl);
+  // R2 객체는 공개 URL을 직접 사용할 수 있으므로 서명 URL 없이 바로 요청
+  const base = (process.env.NEXT_PUBLIC_R2_PUBLIC_BASE_URL || process.env.R2_PUBLIC_BASE_URL || '').replace(/\/$/, '');
+  const url = /^https?:/i.test(path) ? path : (base ? `${base}/${String(path).replace(/^\//,'')}` : path);
+  const response = await fetch(url);
   if (!response.ok) {
     throw new Error('첨부 파일을 다운로드할 수 없습니다.');
   }
@@ -4187,6 +4172,9 @@ function getMessageAttachments(message) {
   const metadata = typeof message.metadata === 'object' ? message.metadata : null;
   if (!metadata) return [];
   const attachments = Array.isArray(metadata.attachments) ? metadata.attachments : [];
+  const hidden = (typeof window !== 'undefined' && window.__CHAT_HIDDEN_ATTACHMENTS__ instanceof Set)
+    ? window.__CHAT_HIDDEN_ATTACHMENTS__
+    : null;
   return attachments
     .map((item, index) => {
       if (!item || typeof item !== 'object') return null;
@@ -4205,7 +4193,15 @@ function getMessageAttachments(message) {
         layoutHint: item.layout_hint || item.layoutHint || null,
       };
     })
-    .filter(attachment => attachment && (attachment.path || attachment.preview_url));
+    .filter(attachment => {
+      if (!attachment) return false;
+      if (!(attachment.path || attachment.preview_url)) return false;
+      if (hidden) {
+        if (attachment.path && hidden.has(attachment.path)) return false;
+        if (attachment.hash && hidden.has(attachment.hash)) return false;
+      }
+      return true;
+    });
 }
 
 function getAiMetadata(message) {
@@ -9536,6 +9532,52 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     setViewerAttachment(null);
   }, []);
 
+  const handleDeleteViewerAttachment = useCallback(async () => {
+    try {
+      const att = viewerAttachment?.attachment;
+      if (!att || !att.path) return;
+      if (typeof window !== 'undefined') {
+        const ok = window.confirm('이 첨부 파일을 삭제할까요? 이 작업은 되돌릴 수 없습니다.');
+        if (!ok) return;
+      }
+      // hide immediately in UI
+      try {
+        if (typeof window !== 'undefined') {
+          if (!(window.__CHAT_HIDDEN_ATTACHMENTS__ instanceof Set)) window.__CHAT_HIDDEN_ATTACHMENTS__ = new Set();
+          if (att.path) window.__CHAT_HIDDEN_ATTACHMENTS__.add(att.path);
+          if (att.hash) window.__CHAT_HIDDEN_ATTACHMENTS__.add(att.hash);
+        }
+        // also update in-memory messages list to drop the attachment entry
+        if (viewerAttachment?.messageId) {
+          setMessages(prev =>
+            prev.map(m => {
+              const mid = m.id || m.local_id;
+              if (mid !== viewerAttachment.messageId) return m;
+              const meta = (m && m.metadata && typeof m.metadata === 'object') ? m.metadata : {};
+              const list = Array.isArray(meta.attachments) ? meta.attachments : [];
+              const filtered = list.filter(x => {
+                if (!x) return false;
+                if (att.path && x.path === att.path) return false;
+                if (att.hash && x.hash && x.hash === att.hash) return false;
+                return true;
+              });
+              return { ...m, metadata: { ...meta, attachments: filtered } };
+            })
+          );
+        }
+      } catch {}
+      await fetch('/api/assets/delete', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ key: att.path, hash: att.hash || null }),
+      });
+    } catch (e) {
+      // no-op; optionally surface error UI later
+    } finally {
+      setViewerAttachment(null);
+    }
+  }, [viewerAttachment]);
+
   const handleDrawerMediaSelect = useCallback(
     entry => {
       if (!entry) return;
@@ -11414,6 +11456,13 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
               onClick={() => handleDownloadAttachment(viewerAttachment.attachment)}
             >
               다운로드
+            </button>
+            <button
+              type="button"
+              style={{ ...modalStyles.closeButton, background: 'rgba(239, 68, 68, 0.35)' }}
+              onClick={handleDeleteViewerAttachment}
+            >
+              삭제
             </button>
             <button type="button" style={modalStyles.closeButton} onClick={handleCloseViewer}>
               닫기

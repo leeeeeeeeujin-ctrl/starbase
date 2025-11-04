@@ -6,6 +6,7 @@ const MAX_FILE_BYTES = 8 * 1024 * 1024;
 import { parseCookies } from '@/lib/server/cookies';
 import { isMissingSupabaseTable } from '@/lib/server/supabaseErrors';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { enforceBeforeClassA, incClassA, reconcileStorageOnCommit } from '@/lib/server/quota';
 
 const COOKIE_NAME = 'rank_admin_portal_session';
 const TABLE_NAME = 'rank_title_settings';
@@ -183,7 +184,8 @@ async function handlePut(req, res) {
         return respondError(res, 400, '이미지 파일을 해석하지 못했습니다. 다시 업로드해주세요.');
       }
 
-      if (decoded.buffer.length > MAX_FILE_BYTES) {
+      const size = decoded.buffer.length;
+      if (size > MAX_FILE_BYTES) {
         return respondError(
           res,
           400,
@@ -192,49 +194,40 @@ async function handlePut(req, res) {
         );
       }
 
+      // Enforce R2 monthly caps and upload directly to R2
+      try { await enforceBeforeClassA({ size }); } catch (e) { return respondError(res, e.statusCode||429, e.message, { code: e.code }); }
+
       const extension = normaliseExtension(name, type || decoded.mime);
-      const objectPath = `main/${Date.now()}-${crypto.randomUUID()}.${extension}`;
-      const { error: uploadError } = await supabaseAdmin.storage
-        .from(STORAGE_BUCKET)
-        .upload(objectPath, decoded.buffer, {
-          contentType: type || decoded.mime || 'image/jpeg',
-          upsert: true,
+      const hash = crypto.createHash('sha256').update(decoded.buffer).digest('hex');
+      const objectPath = `titles/main/${hash}.${extension}`;
+
+      try {
+        const { S3Client, PutObjectCommand } = await import('@aws-sdk/client-s3');
+        const endpoint = process.env.R2_S3_ENDPOINT || `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`;
+        const client = new S3Client({
+          region: 'auto', endpoint,
+          credentials: { accessKeyId: process.env.R2_ACCESS_KEY_ID, secretAccessKey: process.env.R2_SECRET_ACCESS_KEY },
         });
-
-      if (uploadError) {
-        const message = uploadError?.message || '';
-        const status = uploadError?.status || null;
-        const missingBucketPhrase =
-          /does not exist|not found|bucket name|No such file or directory/i;
-        const missingBucket = status === 404 || missingBucketPhrase.test(message);
-        meta = { ...meta, missingBucket };
-        console.error('Failed to upload title background:', uploadError);
-        return respondError(
-          res,
-          500,
-          missingBucket
-            ? '스토리지 버킷을 먼저 준비해주세요.'
-            : '배경 이미지를 업로드하지 못했습니다.',
-          {
-            supabase: { code: uploadError?.code || null, message: uploadError?.message || null },
-            ...meta,
-          }
-        );
+        const Bucket = process.env.R2_BUCKET;
+        const Key = objectPath.replace(/^\//,'');
+        const ContentType = type || decoded.mime || 'image/jpeg';
+        await client.send(new PutObjectCommand({ Bucket, Key, Body: decoded.buffer, ContentType, Metadata: { sha256: hash } }));
+        await incClassA(1);
+      } catch (e) {
+        console.error('R2 upload failed:', e);
+        return respondError(res, 500, '배경 이미지를 업로드하지 못했습니다.');
       }
 
-      const { data: publicData } = supabaseAdmin.storage
-        .from(STORAGE_BUCKET)
-        .getPublicUrl(objectPath);
-      if (!publicData?.publicUrl) {
-        return respondError(
-          res,
-          500,
-          '업로드한 이미지를 공개 URL로 변환하지 못했습니다. 버킷 공개 정책을 확인해주세요.',
-          meta
-        );
-      }
+      // Upsert into assets and reconcile storage usage
+      try {
+        const { data: _d, error: _e } = await supabaseAdmin
+          .from('assets')
+          .upsert({ hash, key: objectPath, size, mime: type || decoded.mime || 'image/jpeg', game_id: 'admin', visibility: 'public', ref_count: 1 }, { onConflict: 'hash' });
+      } catch {}
+      try { await reconcileStorageOnCommit({ hash, size }); } catch {}
 
-      nextBackgroundUrl = publicData.publicUrl;
+      const base = (process.env.R2_PUBLIC_BASE_URL || '').replace(/\/$/, '');
+      nextBackgroundUrl = base ? `${base}/${objectPath}` : '';
     }
 
     if (!nextBackgroundUrl) {

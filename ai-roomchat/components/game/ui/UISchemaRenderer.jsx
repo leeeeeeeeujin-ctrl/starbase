@@ -1,6 +1,6 @@
 "use client";
 
-export default function UISchemaRenderer({ schema, onEvent }){
+export default function UISchemaRenderer({ schema, onEvent, resolveAsset }){
   if (!schema) return null;
   const renderNode = (node) => {
     if (!node) return null;
@@ -15,7 +15,7 @@ export default function UISchemaRenderer({ schema, onEvent }){
       case 'button':
         return <button onClick={()=>onEvent?.(node.event||node.id||'click', node.payload||{})} style={{ padding:'8px 12px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>{node.label||'Button'}</button>;
       case 'image':
-        return <img src={node.src} alt={node.alt||''} style={{ maxWidth:'100%', borderRadius: node.radius??8, border: node.border? '1px solid #334155':'none' }} />;
+        return <img src={resolveAsset? resolveAsset(node.src) : node.src} alt={node.alt||''} style={{ maxWidth:'100%', borderRadius: node.radius??8, border: node.border? '1px solid #334155':'none' }} />;
       case 'spacer':
         return <div style={{ height: node.size||8 }} />;
       case 'card':
@@ -28,4 +28,3 @@ export default function UISchemaRenderer({ schema, onEvent }){
   };
   return <div>{renderNode(schema)}</div>;
 }
-
