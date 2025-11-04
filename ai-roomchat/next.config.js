@@ -1,3 +1,6 @@
+const path = require('path');
+const webpack = require('webpack');
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   webpack: (config) => {
@@ -16,9 +19,17 @@ const nextConfig = {
       Object.keys(entries).forEach(maybeInject);
       return entries;
     };
+
+    // Provide a safe URL wrapper for any bare `URL(...)` references at build/SSR time
+    config.plugins = config.plugins || [];
+    config.plugins.push(
+      new webpack.ProvidePlugin({
+        URL: path.resolve(__dirname, 'polyfills/url-wrapper.js'),
+      })
+    );
+
     return config;
   },
 };
 
 module.exports = nextConfig;
-
