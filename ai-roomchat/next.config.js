@@ -5,6 +5,8 @@ const nextConfig = {
   eslint: { ignoreDuringBuilds: true },
   // Fix workspace root inference when multiple lockfiles exist
   outputFileTracingRoot: path.resolve(__dirname),
+  // Emit a self-contained server output to ensure manifests are written
+  output: 'standalone',
   // Reduce file-tracing surface: exclude large, unused trees from the server bundle graph
   outputFileTracingExcludes: {
     '*': [
