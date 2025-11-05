@@ -14,6 +14,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
   const [extraAttach, setExtraAttach] = useState([]); // array of file paths
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const menuBtn = { padding:'6px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#cbd5e1', textAlign:'left' };
   const PREF_SOURCE_KEY = 'workspace:aiChat:preferSource';
   const [preferSource, setPreferSource] = useState(() => {
@@ -43,6 +44,26 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
   const [apiKeysLoading, setApiKeysLoading] = useState(false);
   const [apiKeyError, setApiKeyError] = useState(null);
   const [apiKeyInput, setApiKeyInput] = useState('');
+  const detectProviderFromKey = (k) => {
+    const v = String(k||'').trim();
+    if (v.startsWith('AIza')) return 'gemini';
+    if (v.startsWith('sk-ant-')) return 'anthropic';
+    if (v.startsWith('sk-')) return 'openai';
+    return 'unknown';
+  };
+  useEffect(() => {
+    const p = detectProviderFromKey(apiKeyInput);
+    if (p === 'gemini') {
+      try { setApiVersion && setApiVersion('gemini'); } catch {}
+      try {
+        if (!geminiModel) {
+          const preferred = (geminiModelOptions||[]).find(o => (o.id||o.name||'').includes('2.5-flash')) || (geminiModelOptions||[])[0];
+          if (preferred) setGeminiModel(preferred.id || preferred.name);
+        }
+      } catch {}
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiKeyInput, geminiModelOptions]);
   const refreshApiKeyring = async () => {
     setApiKeysLoading(true);
     setApiKeyError(null);
@@ -261,7 +282,10 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
     <div style={{ height:'100%', border:'1px solid #334155', background:'#0b1220', borderRadius:12, overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 24px 64px rgba(0,0,0,0.6)' }}>
       <div onMouseDown={onDragHandleDown} onTouchStart={onDragHandleDown} onDoubleClick={onToggleFullscreen} onTouchEnd={onHeaderTouchEnd} style={{ padding:'8px 10px', color:'#e2e8f0', fontWeight:600, display:'flex', alignItems:'center', justifyContent:'space-between', background:'linear-gradient(180deg, rgba(2,6,23,0.8) 0%, rgba(2,6,23,0.6) 100%)', position:'relative', cursor:'move' }}>
         <span>AI 코드 채팅</span>
-        <div style={{ display:'flex', gap:6 }}>
+        <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+          <button onClick={()=>setHistoryOpen(v=>!v)} title="대화 기록" style={{ padding:'3px 8px', borderRadius:6, border:'1px solid #334155', background: historyOpen ? '#172033' : '#0b1220', color:'#94a3b8', fontSize:12 }}>기록</button>
+          <button onClick={startNewChat} title="새 대화" style={{ padding:'3px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8', fontSize:12 }}>새 대화</button>
+          {enableFullscreenButton && <button onClick={onToggleFullscreen} title="전체/창 전환" style={{ padding:'3px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8', fontSize:12 }}>전환</button>}
           <button onClick={()=>setActionsOpen(v=>!v)} title="옵션" style={{ padding:'4px 8px', borderRadius:8, border:'1px solid #334155', background: actionsOpen ? '#172033' : '#0b1220', color:'#94a3b8' }}>⋮</button>
           <button onClick={onClose} title="닫기" style={{ padding:'4px 8px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8' }}>×</button>
         </div>
@@ -272,7 +296,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
             <button onClick={()=>{ setSettingsOpen(v=>!v); setActionsOpen(false); }} style={menuBtn}>설정</button>
             <button onClick={()=>{ startNewChat(); setActionsOpen(false); }} style={menuBtn}>새 대화</button>
             {enableMinimizeButton && <button onClick={()=>{ onMinimize && onMinimize(); setActionsOpen(false); }} style={menuBtn}>축소</button>}
-            <button onClick={()=>{ onClose && onClose(); setActionsOpen(false); }} style={{ ...menuBtn, border:'1px solid #7f1d1d', color:'#fecaca' }}>닫기</button>
+            <button onClick={()=> setActionsOpen(false)} style={{ ...menuBtn, border:'1px solid #334155', color:'#cbd5e1' }}>메뉴 닫기</button>
           </div>
         )}
         {historyOpen && (
@@ -286,7 +310,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
           </div>
         )}
         {settingsOpen && (
-          <div style={{ position:'absolute', right:8, top:'100%', marginTop:6, zIndex:40, width:360, maxHeight:320, overflow:'auto', background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:8, display:'grid', gap:8 }}>
+          <div style={{ position:'absolute', right:8, top:'100%', marginTop:6, zIndex:40, width:320, maxHeight:320, overflow:'auto', background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:8, display:'grid', gap:8 }}>
             <div style={{ color:'#e2e8f0', fontWeight:700, fontSize:12 }}>API 키 설정</div>
             <div style={{ display:'grid', gap:6 }}>
               <label style={{ fontSize:12, color:'#cbd5e1' }}>사용 소스</label>
@@ -300,24 +324,10 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
               </div>
             </div>
             <div style={{ display:'grid', gap:6 }}>
-              <label style={{ fontSize:12, color:'#cbd5e1' }}>API 버전</label>
-              <select value={apiVersion} onChange={e=>setApiVersion(e.target.value)} style={{ padding:'6px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>
-                <option value="gemini">gemini</option>
-              </select>
-            </div>
-            <div style={{ display:'grid', gap:6 }}>
-              <label style={{ fontSize:12, color:'#cbd5e1' }}>Gemini 모델</label>
-              <select value={geminiModel} onChange={e=>setGeminiModel(e.target.value)} disabled={geminiModelLoading} style={{ padding:'6px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>
-                {(geminiModelOptions||[]).map(opt => (
-                  <option key={opt.id || opt.name} value={(opt.id||opt.name)}>{opt.label || opt.name || opt.id}</option>
-                ))}
-              </select>
-            </div>
-            <div style={{ display:'grid', gap:6 }}>
               <label style={{ fontSize:12, color:'#cbd5e1' }}>내 키링</label>
               {apiKeyError && <div style={{ fontSize:12, color:'#fca5a5' }}>{apiKeyError}</div>}
               <div style={{ display:'flex', gap:6 }}>
-                <input type="password" value={apiKeyInput} onChange={e=>setApiKeyInput(e.target.value)} placeholder="sk-..." style={{ flex:1, padding:'6px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }} />
+                <input type="password" value={apiKeyInput} onChange={e=>setApiKeyInput(e.target.value)} placeholder="API 키 (붙여넣기만 하면 자동 설정)" style={{ flex:1, padding:'6px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }} />
                 <button onClick={handleAddApiKey} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #2563eb', background:'#1d4ed8', color:'#fff' }}>추가</button>
               </div>
               <div style={{ maxHeight:160, overflow:'auto', border:'1px solid #334155', borderRadius:6, padding:6 }}>
@@ -326,11 +336,22 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
                 ) : (apiKeys||[]).length ? (
                   <ul style={{ margin:0, padding:'0 0 0 0' }}>
                     {(apiKeys||[]).map(entry => (
-                      <li key={entry.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, padding:'6px 4px', borderBottom:'1px solid rgba(51,65,85,0.4)' }}>
+                      <li key={entry.id} style={{ display:'grid', gridTemplateColumns:'1fr auto', alignItems:'center', gap:8, padding:'6px 4px', borderBottom:'1px solid rgba(51,65,85,0.4)' }}>
                         <div style={{ fontSize:12, color:'#e2e8f0' }}>
-                          {(entry.label || entry.provider || 'key')} <span style={{ color:'#94a3b8' }}>{entry.sample || (entry.last4 ? ('…'+entry.last4) : '')}</span> {entry.isActive ? <span style={{ color:'#10b981' }}>(활성)</span> : null}
+                          <div>
+                            {(entry.label || entry.provider || 'key')}
+                            {' '}
+                            <span style={{ color:'#94a3b8' }}>{entry.sample || (entry.last4 ? ('…'+entry.last4) : '')}</span>
+                            {' '}
+                            {entry.isActive ? <span style={{ color:'#10b981' }}>(활성)</span> : null}
+                          </div>
+                          <div style={{ fontSize:11, color:'#94a3b8' }}>
+                            {entry.provider ? `제공자: ${entry.provider}` : ''}
+                            {entry.modelName ? `  ·  모델: ${entry.modelName}` : ''}
+                            {entry.createdAt ? `  ·  등록: ${new Date(entry.createdAt).toLocaleString()}` : ''}
+                          </div>
                         </div>
-                        <div style={{ display:'flex', gap:6 }}>
+                        <div style={{ display:'flex', gap:6, justifySelf:'end' }}>
                           <button onClick={()=>handleToggleApiKey(entry, entry.isActive?'deactivate':'activate')} style={{ padding:'4px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>{entry.isActive?'해제':'활성화'}</button>
                           <button onClick={()=>handleDeleteApiKey(entry.id)} style={{ padding:'4px 8px', borderRadius:6, border:'1px solid #7f1d1d', background:'#0b1220', color:'#fecaca' }}>삭제</button>
                         </div>
@@ -342,6 +363,25 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
                 )}
               </div>
             </div>
+            <button onClick={()=>setShowAdvanced(v=>!v)} style={{ padding:'6px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#cbd5e1', fontSize:12 }}>{showAdvanced?'고급 숨기기':'고급 설정 보기'}</button>
+            {showAdvanced && (
+              <div style={{ display:'grid', gap:6 }}>
+                <div style={{ display:'grid', gap:6 }}>
+                  <label style={{ fontSize:12, color:'#cbd5e1' }}>API 버전</label>
+                  <select value={apiVersion} onChange={e=>setApiVersion(e.target.value)} style={{ padding:'6px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>
+                    <option value="gemini">gemini</option>
+                  </select>
+                </div>
+                <div style={{ display:'grid', gap:6 }}>
+                  <label style={{ fontSize:12, color:'#cbd5e1' }}>Gemini 모델</label>
+                  <select value={geminiModel} onChange={e=>setGeminiModel(e.target.value)} disabled={geminiModelLoading} style={{ padding:'6px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>
+                    {(geminiModelOptions||[]).map(opt => (
+                      <option key={opt.id || opt.name} value={(opt.id||opt.name)}>{opt.label || opt.name || opt.id}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
             <div style={{ fontSize:12, color:'#94a3b8' }}>
               현재 API: <strong style={{ color:'#e2e8f0' }}>{apiVersion}</strong> / 모델 <strong style={{ color:'#e2e8f0' }}>{geminiModel}</strong> / 소스 <strong style={{ color:'#e2e8f0' }}>{preferSource}</strong>
             </div>
