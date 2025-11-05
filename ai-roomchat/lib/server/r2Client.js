@@ -1,5 +1,3 @@
-'use server';
-
 // R2 (S3-compatible) client factory for server-side usage
 // Uses AWS SDK v3 against Cloudflare R2 endpoint.
 
