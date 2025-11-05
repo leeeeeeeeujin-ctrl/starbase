@@ -13,6 +13,8 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
   const [attachPickerOpen, setAttachPickerOpen] = useState(false);
   const [extraAttach, setExtraAttach] = useState([]); // array of file paths
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const menuBtn = { padding:'6px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#cbd5e1', textAlign:'left' };
   const PREF_SOURCE_KEY = 'workspace:aiChat:preferSource';
   const [preferSource, setPreferSource] = useState(() => {
     try { return localStorage.getItem(PREF_SOURCE_KEY) || 'keyring'; } catch { return 'keyring'; }
@@ -45,7 +47,13 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
     setApiKeysLoading(true);
     setApiKeyError(null);
     try {
-      const res = await fetch('/api/rank/user-api-keyring');
+      const { data } = await supabase.auth.getSession();
+      const token = data?.session?.access_token || null;
+      const res = await fetch('/api/rank/user-api-keyring', {
+        method: 'GET',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'include',
+      });
       if (!res.ok) {
         const payload = await res.json().catch(()=>({}));
         throw new Error(payload?.detail || payload?.error || 'API 키 목록을 불러올 수 없습니다.');
@@ -65,8 +73,10 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
     const trimmed = (apiKeyInput||'').trim();
     if (!trimmed) { setApiKeyError('API 키를 입력해 주세요.'); return; }
     try {
+      const { data } = await supabase.auth.getSession();
+      const token = data?.session?.access_token || null;
       const res = await fetch('/api/rank/user-api-keyring', {
-        method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ apiKey: trimmed, activate: true })
+        method:'POST', headers:{ 'Content-Type':'application/json', ...(token?{Authorization:`Bearer ${token}`}:{}) }, credentials:'include', body: JSON.stringify({ apiKey: trimmed, activate: true })
       });
       const payload = await res.json().catch(()=>({}));
       if (!res.ok) throw new Error(payload?.detail || payload?.error || 'API 키를 저장할 수 없습니다.');
@@ -79,8 +89,10 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
   const handleToggleApiKey = async (entry, action) => {
     if (!entry?.id) return;
     try {
+      const { data } = await supabase.auth.getSession();
+      const token = data?.session?.access_token || null;
       const res = await fetch('/api/rank/user-api-keyring', {
-        method:'PATCH', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ id: entry.id, action: action==='deactivate'?'deactivate':'activate' })
+        method:'PATCH', headers:{ 'Content-Type':'application/json', ...(token?{Authorization:`Bearer ${token}`}:{}) }, credentials:'include', body: JSON.stringify({ id: entry.id, action: action==='deactivate'?'deactivate':'activate' })
       });
       const payload = await res.json().catch(()=>({}));
       if (!res.ok) throw new Error(payload?.detail || payload?.error || 'API 키 상태를 변경할 수 없습니다.');
@@ -90,8 +102,10 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
   const handleDeleteApiKey = async (entryId) => {
     if (!entryId) return;
     try {
+      const { data } = await supabase.auth.getSession();
+      const token = data?.session?.access_token || null;
       const res = await fetch('/api/rank/user-api-keyring', {
-        method:'DELETE', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ id: entryId })
+        method:'DELETE', headers:{ 'Content-Type':'application/json', ...(token?{Authorization:`Bearer ${token}`}:{}) }, credentials:'include', body: JSON.stringify({ id: entryId })
       });
       const payload = await res.json().catch(()=>({}));
       if (!res.ok) throw new Error(payload?.detail || payload?.error || 'API 키를 삭제할 수 없습니다.');
@@ -248,13 +262,19 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
       <div onMouseDown={onDragHandleDown} onTouchStart={onDragHandleDown} onDoubleClick={onToggleFullscreen} onTouchEnd={onHeaderTouchEnd} style={{ padding:'8px 10px', color:'#e2e8f0', fontWeight:600, display:'flex', alignItems:'center', justifyContent:'space-between', background:'linear-gradient(180deg, rgba(2,6,23,0.8) 0%, rgba(2,6,23,0.6) 100%)', position:'relative', cursor:'move' }}>
         <span>AI 코드 채팅</span>
         <div style={{ display:'flex', gap:6 }}>
-          <button onClick={() => setHistoryOpen(v=>!v)} title="대화 기록" style={{ padding:'4px 8px', borderRadius:8, border:'1px solid #334155', background: historyOpen ? '#172033' : '#0b1220', color:'#94a3b8' }}>기록</button>
-          {enableFullscreenButton && <button onClick={onToggleFullscreen} title="전체화면" style={{ padding:'4px 8px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8' }}>전체화면</button>}
-          <button onClick={() => setSettingsOpen(v=>!v)} title="설정" style={{ padding:'4px 8px', borderRadius:8, border:'1px solid #334155', background: settingsOpen ? '#172033' : '#0b1220', color:'#93c5fd' }}>설정</button>
-          <button onClick={startNewChat} title="새 대화" style={{ padding:'4px 8px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8' }}>새 대화</button>
-          {enableMinimizeButton && <button onClick={onMinimize} title="축소" style={{ padding:'4px 8px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8' }}>축소</button>}
-          <button onClick={onClose} title="닫기" style={{ padding:'4px 8px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8' }}>닫기</button>
+          <button onClick={()=>setActionsOpen(v=>!v)} title="옵션" style={{ padding:'4px 8px', borderRadius:8, border:'1px solid #334155', background: actionsOpen ? '#172033' : '#0b1220', color:'#94a3b8' }}>⋮</button>
+          <button onClick={onClose} title="닫기" style={{ padding:'4px 8px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8' }}>×</button>
         </div>
+        {actionsOpen && (
+          <div style={{ position:'absolute', right:8, top:'100%', marginTop:6, zIndex:50, width:220, background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, display:'grid', gap:6 }}>
+            <button onClick={()=>{ setHistoryOpen(v=>!v); setActionsOpen(false); }} style={menuBtn}>대화 기록</button>
+            {enableFullscreenButton && <button onClick={()=>{ onToggleFullscreen && onToggleFullscreen(); setActionsOpen(false); }} style={menuBtn}>전체화면 전환</button>}
+            <button onClick={()=>{ setSettingsOpen(v=>!v); setActionsOpen(false); }} style={menuBtn}>설정</button>
+            <button onClick={()=>{ startNewChat(); setActionsOpen(false); }} style={menuBtn}>새 대화</button>
+            {enableMinimizeButton && <button onClick={()=>{ onMinimize && onMinimize(); setActionsOpen(false); }} style={menuBtn}>축소</button>}
+            <button onClick={()=>{ onClose && onClose(); setActionsOpen(false); }} style={{ ...menuBtn, border:'1px solid #7f1d1d', color:'#fecaca' }}>닫기</button>
+          </div>
+        )}
         {historyOpen && (
           <div style={{ position:'absolute', right:8, top:'100%', marginTop:6, zIndex:30, width:280, maxHeight:260, overflow:'auto', background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6 }}>
             {sessions.map(s => (
@@ -329,9 +349,17 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
         )}
       </div>
       <div ref={logRef} onScroll={(e)=>{ try { const el=e.currentTarget; const nearBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 20; setScrolledUp(!nearBottom); } catch {} }} style={{ flex:1, overflow:'auto', padding:'8px 10px' }}>
-        {(scrolledUp ? logs : logs.slice(-50)).map((l,i)=> (
-          <div key={i} style={{ fontSize:12, color: l.role==='error'?'#fecaca': (l.role==='user'?'#e2e8f0':'#a7f3d0') }}>{l.role}: {l.msg}</div>
-        ))}
+        {(scrolledUp ? logs : logs.slice(-50)).map((l,i,arr)=> {
+          const prev = i>0 ? arr[i-1] : null;
+          const roleChanged = prev && prev.role !== l.role;
+          const mt = roleChanged ? 12 : 6;
+          const color = l.role==='error'?'#fecaca': (l.role==='user'?'#e2e8f0':'#a7f3d0');
+          return (
+            <div key={i} style={{ fontSize:12, color, marginTop: mt, lineHeight: 1.5 }}>
+              {l.role}: {l.msg}
+            </div>
+          );
+        })}
       </div>
       <div style={{ display:'flex', gap:6, padding:10, borderTop:'1px solid #25314a', background:'#0c1322', alignItems:'center' }}>
         <div style={{ position:'relative' }}>
