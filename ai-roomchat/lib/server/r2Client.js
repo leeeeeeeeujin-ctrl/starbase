@@ -3,9 +3,9 @@
 // R2 (S3-compatible) client factory for server-side usage
 // Uses AWS SDK v3 against Cloudflare R2 endpoint.
 
-const { S3Client } = require('@aws-sdk/client-s3');
+import { S3Client } from '@aws-sdk/client-s3';
 
-function getR2Client() {
+export function getR2Client() {
   const {
     R2_ACCOUNT_ID,
     R2_ACCESS_KEY_ID,
@@ -30,4 +30,4 @@ function getR2Client() {
   });
 }
 
-module.exports = { getR2Client };
+export default getR2Client;
