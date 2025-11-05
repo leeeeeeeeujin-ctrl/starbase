@@ -676,9 +676,8 @@ export default function MakerEditor() {
         onOpenVariables={() => setVariableDrawerOpen(true)}
         onOpenCode={() => { try { if (typeof window !== 'undefined') window.__INLINE_CODE_IN_PANEL__ = true; } catch {}; setShowMultiLanguageEditor(true); }}
         onOpenTemplate={() => setShowTemplateLibrary(true)}
-        onOpenImageUI={() => setShowImageToUI(true)}
-  onOpenPlay={() => setShowPlayOverlay(true)}
-  onInsertMainUiPreset={insertMainUiPreset}
+    onOpenImageUI={() => setShowImageToUI(true)}
+    onInsertMainUiPreset={insertMainUiPreset}
         onOpenResource={() => setShowResourceEditor(true)}
           onCreateWithAI={handleCreateWithAI}
           onOpenCodeEditor={openCodeEditor}

@@ -4,9 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { CodeWorkspaceProvider, useWorkspace } from "./CodeWorkspaceProvider.jsx";
 import FileTree from "./FileTree.jsx";
 import EditorMonaco from "../EditorMonaco.jsx";
-import GameSimulator from "../maker/editor/GameSimulator";
 import { supabase } from "../../lib/supabase";
-import GameRealtimeRuntime from "../game/GameRealtimeRuntime.jsx";
 import dynamic from 'next/dynamic';
 const MainGameMobileUI = dynamic(() => import('../game/MainGameMobileUI.jsx'), { ssr: false });
 
@@ -32,13 +30,8 @@ const MainGameMobileUI = dynamic(() => import('../game/MainGameMobileUI.jsx'), {
   }
 
 export default function WorkspaceOverlay({ gameData, templateBinding }) {
-  // 오른쪽 영역에서 코드/테스트 동시 표시 + 리사이저
-  const [showTest, setShowTest] = useState(false);
-  const [previewMode, setPreviewMode] = useState(() => {
-    try { return localStorage.getItem('workspace:preview:mode') || 'realtime'; } catch { return 'realtime'; }
-  }); // 'realtime' | 'main'
-  const [splitPct, setSplitPct] = useState(60); // 에디터:테스트 비율
-  const [dragging, setDragging] = useState(false);
+  // 코드 에디터 전면 플레이 오버레이
+  const [showPlay, setShowPlay] = useState(false);
   const [showTree, setShowTree] = useState(true);
   const [showCodeChat, setShowCodeChat] = useState(false);
   const [chatSize, setChatSize] = useState(() => {
@@ -51,9 +44,6 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
   useEffect(() => {
     try { localStorage.setItem('workspace:chat:size', JSON.stringify(chatSize)); } catch {}
   }, [chatSize]);
-  useEffect(() => {
-    try { localStorage.setItem('workspace:preview:mode', previewMode); } catch {}
-  }, [previewMode]);
   const [resizing, setResizing] = useState(false);
   useEffect(() => {
     if (!resizing) return;
@@ -92,7 +82,6 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
   };
   const [overlayTree, setOverlayTree] = useState(computeOverlayTree());
   const PREF_SNAP = 'maker:ui:snap';
-  const PREF_SPLIT = 'workspace:split:pct';
   // 안정적 레이아웃: 상단/하단 패널 높이를 측정해 에디터를 절대 배치
   const toolbarRef = useRef(null);
   const bottomRef = useRef(null);
@@ -117,21 +106,13 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
     try {
       if (typeof window !== 'undefined') {
         const saved = localStorage.getItem(PREF_SNAP);
-        if (saved === 'mobile') { setShowTree(false); setToolbarCollapsed(true); setShowTest(false); }
+        if (saved === 'mobile') { setShowTree(false); setToolbarCollapsed(true); }
         else if (saved === 'desktop') { setShowTree(true); setToolbarCollapsed(false); }
         else {
           const w = window.innerWidth || 1200;
           if (w < 980) { setShowTree(false); setToolbarCollapsed(true); }
         }
       }
-    } catch {}
-  }, []);
-  // split 비율 복원
-  useEffect(() => {
-    try {
-      const s = localStorage.getItem(PREF_SPLIT);
-      const pct = parseInt(s || '60', 10);
-      if (!Number.isNaN(pct)) setSplitPct(Math.min(80, Math.max(20, pct)));
     } catch {}
   }, []);
   useEffect(() => {
@@ -142,10 +123,6 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
   }, [toolbarCollapsed, fileMenuOpen, aiMenuOpen, creating, showTree]);
   // Chat panel is now floating overlay; editor area bottom inset remains 0
   useEffect(() => { setBottomH(0); }, [showCodeChat]);
-  // split 비율 저장
-  useEffect(() => {
-    try { localStorage.setItem(PREF_SPLIT, String(splitPct)); } catch {}
-  }, [splitPct]);
 
   // 클릭 바깥 감지로 드롭다운 자동 닫기
   useEffect(() => {
@@ -207,27 +184,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
       return () => window.removeEventListener('resize', setVh);
     } catch {}
   }, []);
-  useEffect(() => {
-    if (!dragging) return;
-    const onMove = (e) => {
-      const x = e.clientX ?? (e.touches ? e.touches[0]?.clientX : 0);
-      const vw = typeof window !== 'undefined' ? window.innerWidth : 1000;
-      const left = (!overlayTree && showTree) ? treeWidth : 0;
-      const pct = Math.min(80, Math.max(20, Math.round(((x - left) / (vw - left)) * 100)));
-      setSplitPct(pct);
-    };
-    const onUp = () => setDragging(false);
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-    window.addEventListener('touchmove', onMove);
-    window.addEventListener('touchend', onUp);
-    return () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-      window.removeEventListener('touchmove', onMove);
-      window.removeEventListener('touchend', onUp);
-    };
-  }, [dragging]);
+  // no split dragging in overlay mode
   const Toolbar = () => {
     const { root, normalizeDir, open, createFile, createFolder, rename, remove, files, activePath, writeFile, openPaths, close, entryPath, setEntryPath } = useWorkspace();
     const doNewFile = () => { setCreating('file'); setCreatePath(normalizeDir(root)+'untitled.js'); setFileMenuOpen(false); };
@@ -306,16 +263,8 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
               </div>
             )}
           </div>
-          <MenuButton onClick={() => setShowTest(v=>!v)} active={showTest} label="테스트" />
+          <MenuButton onClick={() => setShowPlay(true)} active={showPlay} label="플레이" />
           <div style={{ marginLeft:'auto', display:'flex', gap:8 }}>
-            {showTest && (
-              <>
-                <MenuButton onClick={() => setSplitPct(50)} active={false} label="50/50" />
-                <MenuButton onClick={() => setSplitPct(70)} active={false} label="70/30" />
-                <MenuButton onClick={() => setSplitPct(30)} active={false} label="30/70" />
-                <MenuButton onClick={() => setPreviewMode(m => m==='realtime'?'main':'realtime')} active={false} label={previewMode==='realtime' ? '미리보기: 메인 UI' : '미리보기: 실시간'} />
-              </>
-            )}
             <MenuButton onClick={() => setToolbarCollapsed(v=>!v)} active={toolbarCollapsed} label={toolbarCollapsed?'펼치기':'접기'} />
           </div>
         </div>
@@ -379,41 +328,9 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
           {/* 중앙 영역: 절대 배치로 상단/하단 고정 높이를 제외한 영역 전체를 에디터/테스트가 차지 */}
           <div style={{ position:'relative', flex: 1, minHeight: 0 }}>
             <div style={{ position:'absolute', inset: `${toolbarH}px 0 ${bottomH}px 0`, display:'flex', minHeight:0 }}>
-              <div style={{ width: showTest ? `${splitPct}%` : '100%', minWidth: 0 }}>
+              <div style={{ width: '100%', minWidth: 0 }}>
                 <EditorPane />
               </div>
-              {showTest && (
-                <>
-                  <div
-                    onMouseDown={() => setDragging(true)}
-                    onTouchStart={() => setDragging(true)}
-                    onDoubleClick={() => setSplitPct(50)}
-                    title="더블클릭: 50/50"
-                    style={{ width: 6, cursor: 'col-resize', background: 'rgba(148,163,184,0.3)' }}
-                  />
-                  <div style={{ flex: 1, minWidth: 0, background: '#0a0f1a' }}>
-                    {previewMode === 'main' ? (
-                      <div style={{ height:'100%' }}>
-                        {(() => {
-                          try {
-                            const tplText = (useWorkspace()?.files?.['/template.json']?.content) || (templateBinding?.text) || '{}';
-                            const tpl = JSON.parse(tplText || '{}');
-                            return <MainGameMobileUI template={tpl} />;
-                          } catch {
-                            return <div style={{ padding:12, color:'#94a3b8' }}>템플릿을 불러올 수 없습니다.</div>;
-                          }
-                        })()}
-                      </div>
-                    ) : (
-                      <div style={{ height:'100%', padding:8 }}>
-                        <div style={{ height:'100%' }}>
-                          <GameRealtimeRuntime roomId={'editor-preview'} roles={{ players:['local','ai1','ai2'], observers:[] }} currentUser={{ id:'local', role:'players' }} />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
             </div>
           </div>
           {/* Floating chat overlay (independent of editor layout) */}
@@ -437,6 +354,19 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
           <div onClick={()=>setShowTree(false)} style={{ position:'absolute', inset:0, background:'rgba(2,6,23,0.4)', backdropFilter:'blur(2px)', zIndex: 250 }} />
         )}
       </div>
+      {/* Fullscreen Play Overlay */}
+      {showPlay && (
+        <div style={{ position:'fixed', inset:0, zIndex: 1600, background:'rgba(2,6,23,0.94)' }}>
+          <div style={{ position:'absolute', left:0, top:0, right:0, bottom:0, paddingTop:'env(safe-area-inset-top)', paddingBottom:'env(safe-area-inset-bottom)', paddingLeft:'env(safe-area-inset-left)', paddingRight:'env(safe-area-inset-right)' }}>
+            <button onClick={() => setShowPlay(false)} title="닫기" style={{ position:'absolute', top:'calc(env(safe-area-inset-top) + 10px)', right:'calc(env(safe-area-inset-right) + 10px)', zIndex: 10, padding:'8px 10px', borderRadius:10, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', boxShadow:'0 8px 24px rgba(0,0,0,0.5)' }}>닫기</button>
+            <div style={{ height:'calc(var(--vh, 1vh) * 100)', display:'flex', alignItems:'stretch', justifyContent:'center' }}>
+              <div style={{ flex:1, minWidth:0 }}>
+                <PlayOverlayContent templateBinding={templateBinding} />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {showCodeChat && (
         <div style={{ position:'fixed', right:16, bottom:16, zIndex: 1200, width: chatSize.w, height: chatSize.h, background:'transparent' }}>
           <div style={{ position:'absolute', inset:0 }}>
@@ -486,6 +416,23 @@ function SyncTemplateToVfs({ text, setText }){
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current]);
   return null;
+}
+
+function PlayOverlayContent({ templateBinding }){
+  const { files } = useWorkspace();
+  try {
+    const tplText = (typeof templateBinding?.text === 'string' && templateBinding.text.length > 0)
+      ? templateBinding.text
+      : (files?.['/template.json']?.content || '{}');
+    const tpl = JSON.parse(tplText || '{}');
+    return (
+      <div style={{ height:'100%', width:'100%' }}>
+        <MainGameMobileUI template={tpl} />
+      </div>
+    );
+  } catch (e) {
+    return <div style={{ padding:16, color:'#94a3b8' }}>템플릿을 불러올 수 없습니다.</div>;
+  }
 }
 
 function AICodeChatPanel({ onClose }){
