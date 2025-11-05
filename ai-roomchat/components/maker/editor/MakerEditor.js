@@ -278,6 +278,21 @@ export default function MakerEditor() {
   const [showImageToUI, setShowImageToUI] = useState(false);
   const [showResourceEditor, setShowResourceEditor] = useState(false);
   const [showPlayOverlay, setShowPlayOverlay] = useState(false);
+  // Lock background scroll when code editor overlay is open
+  useEffect(() => {
+    try {
+      const b = document?.body; if (!b) return;
+      if (showMultiLanguageEditor) {
+        const prev = b.style.overflow;
+        b.dataset.prevOverflow = prev;
+        b.style.overflow = 'hidden';
+      } else {
+        if (b.dataset.prevOverflow !== undefined) b.style.overflow = b.dataset.prevOverflow;
+        else b.style.overflow = '';
+        delete b.dataset.prevOverflow;
+      }
+    } catch {}
+  }, [showMultiLanguageEditor]);
   useEffect(() => {
     // Lock header as collapsed; never expand
     if (!headerCollapsed) setHeaderCollapsed(true);
@@ -893,15 +908,15 @@ export default function MakerEditor() {
           role="dialog"
           aria-modal="true"
           onClick={() => setShowMultiLanguageEditor(false)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1000, display: 'flex', alignItems: 'stretch', justifyContent: 'stretch', padding: 0 }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.65)', zIndex: 1600, display: 'flex', alignItems: 'stretch', justifyContent: 'stretch', padding: 0 }}
         >
       {/* 메인게임 UI 플레이 오버레이 */}
       {showPlayOverlay && (
-        <div style={{ position: 'fixed', inset: 0, background: '#0b1220', zIndex: 1100 }}>
-          <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 1200, display: 'flex', gap: 8 }}>
+        <div style={{ position: 'fixed', inset: 0, background: '#0b1220', zIndex: 1700 }}>
+          <div style={{ position: 'absolute', top: 'calc(env(safe-area-inset-top) + 10px)', right: 'calc(env(safe-area-inset-right) + 10px)', zIndex: 1200, display: 'flex', gap: 8 }}>
             <button onClick={() => setShowPlayOverlay(false)} style={{ padding: '8px 12px', borderRadius: 10, border: '1px solid rgba(148,163,184,.35)', background: 'rgba(239, 68, 68, 0.95)', color: '#fff', fontWeight: 700 }}>닫기</button>
           </div>
-          <div style={{ position: 'absolute', inset: 0 }}>
+          <div style={{ position: 'absolute', left:0, top:0, right:0, bottom:0, paddingTop:'env(safe-area-inset-top)', paddingBottom:'env(safe-area-inset-bottom)', paddingLeft:'env(safe-area-inset-left)', paddingRight:'env(safe-area-inset-right)' }}>
             {(() => {
               try {
                 const obj = JSON.parse(templateText || '{}');
@@ -915,7 +930,21 @@ export default function MakerEditor() {
       )}
           <div
             onClick={e => e.stopPropagation()}
-            style={{ width: '100%', height: '100%', background: '#0b1220', borderRadius: 0, overflow: 'hidden', borderTop: '1px solid rgba(148,163,184,0.35)', position: 'relative', display: 'flex', flexDirection: 'column' }}
+            style={{
+              width: '100%',
+              height: 'calc(var(--vh, 1vh) * 100)',
+              background: '#0b1220',
+              borderRadius: 0,
+              overflow: 'hidden',
+              borderTop: '1px solid rgba(148,163,184,0.35)',
+              position: 'relative',
+              display: 'flex',
+              flexDirection: 'column',
+              paddingTop: 'env(safe-area-inset-top)',
+              paddingBottom: 'env(safe-area-inset-bottom)',
+              paddingLeft: 'env(safe-area-inset-left)',
+              paddingRight: 'env(safe-area-inset-right)'
+            }}
           >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', background: 'rgba(2,6,23,0.6)', color: '#e2e8f0' }}>
               <strong style={{ fontSize: 13 }}>코드 에디터</strong>
