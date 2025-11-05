@@ -16,7 +16,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown }){
   const PREF_SOURCE_KEY = 'workspace:aiChat:preferSource';
   const [preferSource, setPreferSource] = useState(() => {
     try { return localStorage.getItem(PREF_SOURCE_KEY) || 'keyring'; } catch { return 'keyring'; }
-  });
+  }); // 'keyring' | 'server'
   useEffect(() => { try { localStorage.setItem(PREF_SOURCE_KEY, preferSource); } catch {} }, [preferSource]);
 
   // API Key manager
@@ -35,6 +35,69 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown }){
     geminiModelLoading,
     persistApiKeyOnServer,
   } = useStartApiKeyManager({});
+
+  // 사용자 키링(여러 키 관리)
+  const [apiKeys, setApiKeys] = useState([]);
+  const [apiKeysLoading, setApiKeysLoading] = useState(false);
+  const [apiKeyError, setApiKeyError] = useState(null);
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const refreshApiKeyring = async () => {
+    setApiKeysLoading(true);
+    setApiKeyError(null);
+    try {
+      const res = await fetch('/api/rank/user-api-keyring');
+      if (!res.ok) {
+        const payload = await res.json().catch(()=>({}));
+        throw new Error(payload?.detail || payload?.error || 'API 키 목록을 불러올 수 없습니다.');
+      }
+      const payload = await res.json().catch(()=>({}));
+      const entries = Array.isArray(payload?.keys) ? payload.keys : (Array.isArray(payload?.entries) ? payload.entries : []);
+      setApiKeys(entries);
+    } catch (e) {
+      setApiKeyError(e?.message || 'API 키 목록을 불러올 수 없습니다.');
+    } finally {
+      setApiKeysLoading(false);
+    }
+  };
+  useEffect(() => { if (settingsOpen) refreshApiKeyring(); }, [settingsOpen]);
+
+  const handleAddApiKey = async () => {
+    const trimmed = (apiKeyInput||'').trim();
+    if (!trimmed) { setApiKeyError('API 키를 입력해 주세요.'); return; }
+    try {
+      const res = await fetch('/api/rank/user-api-keyring', {
+        method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ apiKey: trimmed, activate: true })
+      });
+      const payload = await res.json().catch(()=>({}));
+      if (!res.ok) throw new Error(payload?.detail || payload?.error || 'API 키를 저장할 수 없습니다.');
+      setApiKeyInput('');
+      await refreshApiKeyring();
+    } catch (e) {
+      setApiKeyError(e?.message || 'API 키를 저장할 수 없습니다.');
+    }
+  };
+  const handleToggleApiKey = async (entry, action) => {
+    if (!entry?.id) return;
+    try {
+      const res = await fetch('/api/rank/user-api-keyring', {
+        method:'PATCH', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ id: entry.id, action: action==='deactivate'?'deactivate':'activate' })
+      });
+      const payload = await res.json().catch(()=>({}));
+      if (!res.ok) throw new Error(payload?.detail || payload?.error || 'API 키 상태를 변경할 수 없습니다.');
+      await refreshApiKeyring();
+    } catch (e) { setApiKeyError(e?.message || 'API 키 상태를 변경할 수 없습니다.'); }
+  };
+  const handleDeleteApiKey = async (entryId) => {
+    if (!entryId) return;
+    try {
+      const res = await fetch('/api/rank/user-api-keyring', {
+        method:'DELETE', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ id: entryId })
+      });
+      const payload = await res.json().catch(()=>({}));
+      if (!res.ok) throw new Error(payload?.detail || payload?.error || 'API 키를 삭제할 수 없습니다.');
+      await refreshApiKeyring();
+    } catch (e) { setApiKeyError(e?.message || 'API 키를 삭제할 수 없습니다.'); }
+  };
   const MAX_INLINE = 4000; // prompt에 포함하는 최대 코드 길이 (문자)
   const SESS_KEY = 'workspace:aiChat:sessions.v1';
   const newSession = () => ({ id: `s_${Date.now()}`, title: '새 대화', createdAt: Date.now(), logs: [] });
@@ -143,7 +206,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown }){
       const res = await fetch('/api/ai/gemini', {
         method: 'POST',
         headers: { 'content-type':'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ model: geminiModel || 'gemini-2.5-flash', contents: prompt, prefer: (preferSource==='user' ? 'user' : 'keyring') })
+        body: JSON.stringify({ model: geminiModel || 'gemini-2.5-flash', contents: prompt, prefer: (preferSource==='server' ? 'server' : 'keyring') })
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body?.error || `AI ${res.status}`);
@@ -197,10 +260,10 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown }){
               <label style={{ fontSize:12, color:'#cbd5e1' }}>사용 소스</label>
               <div style={{ display:'flex', gap:8 }}>
                 <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:'#e2e8f0' }}>
-                  <input type="radio" name="preferSource" checked={preferSource==='keyring'} onChange={()=>setPreferSource('keyring')} /> 서버 키(키링)
+                  <input type="radio" name="preferSource" checked={preferSource==='keyring'} onChange={()=>setPreferSource('keyring')} /> 사용자 키링
                 </label>
                 <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:'#e2e8f0' }}>
-                  <input type="radio" name="preferSource" checked={preferSource==='user'} onChange={()=>setPreferSource('user')} /> 사용자 키
+                  <input type="radio" name="preferSource" checked={preferSource==='server'} onChange={()=>setPreferSource('server')} /> 서버 키
                 </label>
               </div>
             </div>
@@ -219,16 +282,36 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown }){
               </select>
             </div>
             <div style={{ display:'grid', gap:6 }}>
-              <label style={{ fontSize:12, color:'#cbd5e1' }}>사용자 API 키</label>
-              <input type="password" value={apiKey || ''} onChange={e=>setApiKey(e.target.value)} placeholder="sk-..." style={{ padding:'6px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }} />
+              <label style={{ fontSize:12, color:'#cbd5e1' }}>내 키링</label>
+              {apiKeyError && <div style={{ fontSize:12, color:'#fca5a5' }}>{apiKeyError}</div>}
               <div style={{ display:'flex', gap:6 }}>
-                <button onClick={async()=>{ await persistApiKeyOnServer(apiKey, apiVersion, { geminiModel }); setSettingsOpen(false); }} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #2563eb', background:'#1d4ed8', color:'#fff' }}>서버에 저장</button>
-                <button onClick={()=>{ setApiKey(''); setSettingsOpen(false); }} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #7f1d1d', background:'#0b1220', color:'#fecaca' }}>해제</button>
+                <input type="password" value={apiKeyInput} onChange={e=>setApiKeyInput(e.target.value)} placeholder="sk-..." style={{ flex:1, padding:'6px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }} />
+                <button onClick={handleAddApiKey} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #2563eb', background:'#1d4ed8', color:'#fff' }}>추가</button>
               </div>
-              {apiKeyWarning && <div style={{ fontSize:12, color:'#fde68a' }}>{apiKeyWarning}</div>}
+              <div style={{ maxHeight:160, overflow:'auto', border:'1px solid #334155', borderRadius:6, padding:6 }}>
+                {apiKeysLoading ? (
+                  <div style={{ fontSize:12, color:'#94a3b8' }}>불러오는 중…</div>
+                ) : (apiKeys||[]).length ? (
+                  <ul style={{ margin:0, padding:'0 0 0 0' }}>
+                    {(apiKeys||[]).map(entry => (
+                      <li key={entry.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, padding:'6px 4px', borderBottom:'1px solid rgba(51,65,85,0.4)' }}>
+                        <div style={{ fontSize:12, color:'#e2e8f0' }}>
+                          {(entry.label || entry.provider || 'key')} <span style={{ color:'#94a3b8' }}>{entry.sample || (entry.last4 ? ('…'+entry.last4) : '')}</span> {entry.isActive ? <span style={{ color:'#10b981' }}>(활성)</span> : null}
+                        </div>
+                        <div style={{ display:'flex', gap:6 }}>
+                          <button onClick={()=>handleToggleApiKey(entry, entry.isActive?'deactivate':'activate')} style={{ padding:'4px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>{entry.isActive?'해제':'활성화'}</button>
+                          <button onClick={()=>handleDeleteApiKey(entry.id)} style={{ padding:'4px 8px', borderRadius:6, border:'1px solid #7f1d1d', background:'#0b1220', color:'#fecaca' }}>삭제</button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div style={{ fontSize:12, color:'#94a3b8' }}>등록된 키가 없습니다.</div>
+                )}
+              </div>
             </div>
             <div style={{ fontSize:12, color:'#94a3b8' }}>
-              현재 사용: <strong style={{ color:'#e2e8f0' }}>{apiVersion}</strong> / 모델 <strong style={{ color:'#e2e8f0' }}>{geminiModel}</strong> / 키 <strong style={{ color:'#e2e8f0' }}>{effectiveApiKey ? ('…'+effectiveApiKey.slice(-4)) : '(없음)'}</strong>
+              현재 API: <strong style={{ color:'#e2e8f0' }}>{apiVersion}</strong> / 모델 <strong style={{ color:'#e2e8f0' }}>{geminiModel}</strong> / 소스 <strong style={{ color:'#e2e8f0' }}>{preferSource}</strong>
             </div>
           </div>
         )}
