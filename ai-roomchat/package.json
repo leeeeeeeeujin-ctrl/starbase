@@ -12,6 +12,9 @@
     "build": "next build",
     "build:compatibility": "npm run build && npm run test:compatibility",
     "start": "next start",
+    "env:pull": "vercel env pull .env.local --environment=development",
+    "env:pull:preview": "vercel env pull .env.local --environment=preview",
+    "env:pull:prod": "vercel env pull .env.local --environment=production",
     "vercel:env": "node scripts/syncVercelEnv.js",
     "refresh:blueprint-progress": "node scripts/refresh-rank-blueprint-progress.js",
     "check:blueprint-progress-freshness": "node scripts/check-rank-blueprint-progress-freshness.js",
@@ -51,6 +54,7 @@
     "r2:cors:get": "node scripts/get-r2-cors.js"
   },
   "dependencies": {
+    "@ffmpeg/ffmpeg": "^0.12.10",
     "@aws-sdk/client-s3": "^3.673.0",
     "@aws-sdk/s3-request-presigner": "^3.673.0",
     "@monaco-editor/loader": "^1.4.1",

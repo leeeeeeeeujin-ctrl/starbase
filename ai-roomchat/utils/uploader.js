@@ -5,6 +5,32 @@
 
 export async function uploadAsset(file, { gameId, key, signal } = {}) {
   if (!file) throw new Error('file required');
+  // Optional client-side compression for images/videos (logic-only; UI unchanged)
+  try {
+    if (file && typeof file.type === 'string') {
+      if (file.type.startsWith('image/') && !/gif/i.test(file.type)) {
+        const mod = await import('../lib/client/media/compress');
+        if (mod?.compressImage) {
+          const compressed = await mod.compressImage(file, { maxWidth: 1920, maxHeight: 1080, quality: 0.82, mime: 'image/webp' });
+          if (compressed && compressed.size > 0) {
+            file = compressed;
+          }
+        }
+      } else if (file.type.startsWith('video/')) {
+        // Best-effort video compression; falls back silently
+        try {
+          const mod = await import('../lib/client/media/compress');
+          if (mod?.compressVideo) {
+            const compressed = await mod.compressVideo(file, { maxWidth: 1280, maxHeight: 720, targetBitrate: '1200k', format: 'mp4', timeoutMs: 60000 });
+            if (compressed && compressed.size > 0 && compressed.size <= file.size) {
+              file = compressed;
+            }
+          }
+        } catch { /* ignore */ }
+      }
+    }
+  } catch { /* ignore compression errors */ }
+
   const contentType = file.type || 'application/octet-stream';
   const size = file.size || 0;
   const sha256 = await sha256File(file);

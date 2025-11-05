@@ -18,3 +18,5 @@ local_credentials.json
  upload_response_body.txt
  bucket_list*.json
  list*.json
+
+.vercel
