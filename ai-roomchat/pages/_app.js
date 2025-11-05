@@ -8,6 +8,7 @@ const ActiveMatchOverlay = dynamic(() => import('@/components/rank/ActiveMatchOv
 const GlobalChatLauncher = dynamic(() => import('@/components/social/GlobalChatLauncher'), { ssr: false });
 const DebugOverlay = dynamic(() => import('@/components/DebugOverlay'), { ssr: false });
 const ClientErrorReporter = dynamic(() => import('@/components/ClientErrorReporter'), { ssr: false });
+const QuotaExceededNotice = dynamic(() => import('@/components/common/QuotaExceededNotice'), { ssr: false });
 
 import '../styles/globals.css';
 import { GameIntegrationProvider } from '@/components/GameIntegrationContext';
@@ -68,6 +69,8 @@ export default function App({ Component, pageProps }) {
       <OverlayAwareShell>
         <ClientErrorReporter />
         <DebugOverlay />
+        {/* Global quota notice for all upload surfaces (chat, studio, etc.) */}
+        <QuotaExceededNotice />
         <Component {...pageProps} />
       </OverlayAwareShell>
     </GameIntegrationProvider>
