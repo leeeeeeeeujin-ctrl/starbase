@@ -15,6 +15,10 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showImageUi, setShowImageUi] = useState(false);
+  const [imageUiPrompt, setImageUiPrompt] = useState('');
+  const [imageUiBusy, setImageUiBusy] = useState(false);
+  const [imageUiError, setImageUiError] = useState('');
   const menuBtn = { padding:'6px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#cbd5e1', textAlign:'left' };
   const PREF_SOURCE_KEY = 'workspace:aiChat:preferSource';
   const [preferSource, setPreferSource] = useState(() => {
@@ -196,6 +200,73 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
     });
   };
   const listFiles = () => Object.keys(files).sort().map(p => ({ path: p, size: (files[p]?.content||'').length, dir: !!files[p]?.dir }));
+  // Template helpers
+  const TEMPLATE_PATH = '/template.json';
+  const getTemplateText = () => {
+    try { return String(files?.[TEMPLATE_PATH]?.content || '{}'); } catch { return '{}'; }
+  };
+  const setTemplateText = (text) => {
+    try {
+      if (!files[TEMPLATE_PATH]) {
+        createFile(TEMPLATE_PATH, String(text||'{}') + (String(text||'').endsWith('\n')?'':'\n'));
+      } else {
+        writeFile(TEMPLATE_PATH, String(text||'{}') + (String(text||'').endsWith('\n')?'':'\n'));
+      }
+    } catch {}
+  };
+  const applyMainUiPreset = () => {
+    try {
+      const obj = JSON.parse(getTemplateText() || '{}');
+      const next = {
+        ...obj,
+        ui: {
+          ...(obj.ui||{}),
+          main: {
+            modules: [
+              { type:'MainGameChat', id:'gameChat' },
+              { type:'SharedChat', id:'sharedChat', enabled:true, realtimeOnly:true },
+              { type:'NextBar', id:'nextBar', policy:{ timeoutSec:60, roleThreshold:0.5 } },
+              { type:'CharacterCards', id:'charCards', behavior:{ tapCycle:['desc','abilities','score','image'], darkenOnOverlay:true } },
+              { type:'WidgetRow', id:'widgetRow' },
+            ],
+          }
+        }
+      };
+      setTemplateText(JSON.stringify(next, null, 2));
+      append('assistant', 'UI 기본 모듈을 template.json에 적용했습니다.');
+    } catch (e) {
+      append('error', 'UI 적용 실패: ' + String(e?.message||e));
+    }
+  };
+  const generateImageUi = async () => {
+    setImageUiBusy(true); setImageUiError('');
+    try {
+      const obj = JSON.parse(getTemplateText() || '{}');
+      const bg = Array.isArray(obj?.resources?.backgrounds) ? obj.resources.backgrounds : [];
+      const id = `bg_${Math.random().toString(36).slice(2,8)}`;
+      const next = {
+        ...obj,
+        ui: {
+          ...(obj.ui||{}),
+          main: {
+            modules: [
+              { type:'MainGameChat', id:'gameChat' },
+              { type:'SharedChat', id:'sharedChat', enabled:true, realtimeOnly:true },
+              { type:'NextBar', id:'nextBar', policy:{ timeoutSec:60, roleThreshold:0.5 } },
+              { type:'CharacterCards', id:'charCards', behavior:{ tapCycle:['desc','abilities','score','image'], darkenOnOverlay:true } },
+              { type:'WidgetRow', id:'widgetRow' },
+            ],
+          }
+        },
+        resources: { ...(obj.resources||{}), backgrounds: [...bg, { id, name: imageUiPrompt || 'Generated', image: '' }] }
+      };
+      setTemplateText(JSON.stringify(next, null, 2));
+      setShowImageUi(false); setImageUiPrompt('');
+      append('assistant', '배경 리소스를 추가하고 기본 UI 모듈을 적용했습니다.');
+    } catch (e) {
+      setImageUiError(String(e?.message||e));
+    } finally { setImageUiBusy(false); }
+  };
   const stripFences = (s) => String(s||'').replace(/^```(?:json)?/i,'').replace(/```$/i,'').trim();
   const applyActions = (plan) => {
     const actions = Array.isArray(plan?.actions) ? plan.actions : [];
@@ -315,6 +386,8 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
         </div>
         {actionsOpen && (
           <div style={{ position:'absolute', right:8, top:'100%', marginTop:6, zIndex:50, width:220, background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, display:'grid', gap:6 }}>
+            <button onClick={()=>{ applyMainUiPreset(); setActionsOpen(false); }} style={menuBtn}>UI 제작(메인 기본) 적용</button>
+            <button onClick={()=>{ setShowImageUi(true); setActionsOpen(false); }} style={menuBtn}>이미지로 UI 생성</button>
             <button onClick={()=>{ setHistoryOpen(v=>!v); setActionsOpen(false); }} style={menuBtn}>대화 기록</button>
             {enableFullscreenButton && <button onClick={()=>{ onToggleFullscreen && onToggleFullscreen(); setActionsOpen(false); }} style={menuBtn}>전체화면 전환</button>}
             <button onClick={()=>{ setSettingsOpen(v=>!v); setActionsOpen(false); }} style={menuBtn}>설정</button>
@@ -450,6 +523,23 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
         <input value={input} onChange={e=>setInput(e.target.value)} placeholder="명령을 입력하세요. 예: utils/date.js 생성하고 오늘 날짜 반환 함수 추가" style={{ flex:1, padding:'8px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }} />
         <button onClick={send} disabled={busy} style={{ padding:'8px 12px', borderRadius:8, border:'1px solid #7c3aed', background:'#0b1220', color:'#c4b5fd' }}>{busy?'전송 중…':'전송'}</button>
       </div>
+      {showImageUi && (
+        <div style={{ position:'absolute', inset:0, background:'rgba(0,0,0,0.35)', zIndex:60 }}>
+          <div style={{ position:'absolute', right:12, top:12, width:360, background:'#0b1220', border:'1px solid #334155', borderRadius:10, boxShadow:'0 12px 32px rgba(0,0,0,0.6)', padding:10 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', color:'#e2e8f0' }}>
+              <strong>이미지로 UI 생성</strong>
+              <button onClick={()=>setShowImageUi(false)} style={{ padding:'4px 6px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8' }}>닫기</button>
+            </div>
+            <div style={{ marginTop:8, display:'grid', gap:8 }}>
+              <label style={{ fontSize:12, color:'#cbd5e1' }}>프롬프트</label>
+              <textarea rows={6} value={imageUiPrompt} onChange={e=> setImageUiPrompt(e.target.value)} style={{ width:'100%', padding:8, borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', fontFamily:'monospace', fontSize:12 }} />
+              <button disabled={imageUiBusy} onClick={generateImageUi} style={{ padding:'8px 10px', borderRadius:8, border:'1px solid #2563eb', background:'#1d4ed8', color:'#fff' }}>{imageUiBusy?'생성 중…':'생성(스텁)'}</button>
+              {imageUiError && <div style={{ color:'#fca5a5', fontSize:12 }}>{imageUiError}</div>}
+              <div style={{ fontSize:11, color:'#94a3b8' }}>현재는 스텁으로 template.json의 resources.backgrounds에 항목을 추가하고 기본 UI 모듈을 적용합니다. 실제 이미지 생성 연동은 이후 브리지/스토리지와 연결하세요.</div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
