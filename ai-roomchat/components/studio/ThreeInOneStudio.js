@@ -81,6 +81,9 @@ export default function ThreeInOneStudio() {
         minHeight: '100vh',
         // Keep internal UI (headers/content) within visible area left of the AI panel
         paddingRight: RIGHT_GUTTER,
+        // Prevent any child from expanding the container due to intrinsic width
+        maxWidth: '100vw',
+        boxSizing: 'border-box',
       }}
     >
       <div
@@ -122,7 +125,7 @@ export default function ThreeInOneStudio() {
         }} />
       </div>
 
-  <div style={{ padding: '4px 8px', borderBottom: '1px solid #f2f2f2', fontSize: 12, color: info.ok ? '#2d7' : '#d33', display: 'flex', gap: 12, alignItems: 'center', overflow: 'hidden' }}>
+      <div style={{ padding: '4px 8px', borderBottom: '1px solid #f2f2f2', fontSize: 12, color: info.ok ? '#2d7' : '#d33', display: 'flex', gap: 12, alignItems: 'center', overflow: 'hidden', minWidth: 0 }}>
         <div>
           {info.ok ? `Valid JSON • nodes: ${info.nodes}, edges: ${info.edges}, resource groups: ${info.resources}` : `Invalid JSON: ${info.error}`}
           {!info.ok && info.errors?.length === 0 ? null : (
@@ -148,13 +151,15 @@ export default function ThreeInOneStudio() {
         </div>
       )}
 
-      <div style={{ flex: 1, minHeight: 0, position:'relative' }}>
+      <div style={{ flex: 1, minHeight: 0, minWidth: 0, position:'relative', overflow: 'hidden' }}>
         {mode === 'code' && (
-          <div style={{ height: '100%', position:'relative' }}>
+          <div style={{ height: '100%', position:'relative', minWidth: 0, overflow: 'hidden' }}>
             <div style={{ position:'absolute', left:8, top:'50%', transform:'translate(0, -50%)', zIndex:5 }}>
               <button title="AI 코딩" onClick={() => emit('studio:ai:toggle')}>{'<'}</button>
             </div>
-            <CodeEditor value={templateText} onChange={setTemplateText} />
+            <div style={{ position:'absolute', inset:0, minWidth: 0, overflow:'hidden' }}>
+              <CodeEditor value={templateText} onChange={setTemplateText} />
+            </div>
             <div style={{ position:'absolute', right: 12, bottom: 12 }}>
               <RunnerPanel />
             </div>
