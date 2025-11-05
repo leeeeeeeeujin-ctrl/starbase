@@ -388,10 +388,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
           <div style={{ position:'absolute', right:8, top:'100%', marginTop:6, zIndex:50, width:220, background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, display:'grid', gap:6 }}>
             <button onClick={()=>{ applyMainUiPreset(); setActionsOpen(false); }} style={menuBtn}>UI 제작(메인 기본) 적용</button>
             <button onClick={()=>{ setShowImageUi(true); setActionsOpen(false); }} style={menuBtn}>이미지로 UI 생성</button>
-            <button onClick={()=>{ setHistoryOpen(v=>!v); setActionsOpen(false); }} style={menuBtn}>대화 기록</button>
-            {enableFullscreenButton && <button onClick={()=>{ onToggleFullscreen && onToggleFullscreen(); setActionsOpen(false); }} style={menuBtn}>전체화면 전환</button>}
             <button onClick={()=>{ setSettingsOpen(v=>!v); setActionsOpen(false); }} style={menuBtn}>설정</button>
-            <button onClick={()=>{ startNewChat(); setActionsOpen(false); }} style={menuBtn}>새 대화</button>
             {enableMinimizeButton && <button onClick={()=>{ onMinimize && onMinimize(); setActionsOpen(false); }} style={menuBtn}>축소</button>}
             <button onClick={()=> setActionsOpen(false)} style={{ ...menuBtn, border:'1px solid #334155', color:'#cbd5e1' }}>메뉴 닫기</button>
           </div>
