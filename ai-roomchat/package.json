@@ -128,6 +128,7 @@
       "git add"
     ]
   },
+  
   "r2": {
     "note": "Run these with CF_API_TOKEN, R2_ACCOUNT_ID, R2_BUCKET set"
   }

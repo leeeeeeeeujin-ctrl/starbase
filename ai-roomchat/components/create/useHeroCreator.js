@@ -7,12 +7,9 @@ import { uploadAsset } from '../../utils/uploader';
 import { withTable } from '../../lib/supabaseTables';
 
 function revokeUrl(url) {
-  try {
-    if (!url) return;
-    if (typeof window === 'undefined') return;
-    const URL_ = (window.URL || window.webkitURL);
-    URL_ && URL_.revokeObjectURL && URL_.revokeObjectURL(url);
-  } catch {}
+  if (url) {
+    URL.revokeObjectURL(url);
+  }
 }
 
 export function useHeroCreator({ onSaved } = {}) {
@@ -36,8 +33,6 @@ export function useHeroCreator({ onSaved } = {}) {
   const [ability4, setAbility4] = useState('');
 
   const [loading, setLoading] = useState(false);
-  const [savingMsg, setSavingMsg] = useState('');
-  const [abortCtrl, setAbortCtrl] = useState(null);
 
   useEffect(() => {
     return () => {
@@ -68,10 +63,7 @@ export function useHeroCreator({ onSaved } = {}) {
         revokeUrl(preview);
       }
       setImageBlob(blob);
-      if (typeof window !== 'undefined') {
-        const URL_ = (window.URL || window.webkitURL);
-        setPreview(URL_ && URL_.createObjectURL ? URL_.createObjectURL(blob) : null);
-      }
+      setPreview(URL.createObjectURL(blob));
     },
     [preview]
   );
@@ -129,8 +121,7 @@ export function useHeroCreator({ onSaved } = {}) {
         setBgmError('파일 크기가 너무 큽니다. 15MB 이하로 줄여주세요.');
         return;
       }
-      const URL_ = (typeof window !== 'undefined') ? (window.URL || window.webkitURL) : null;
-      const tempUrl = URL_ && URL_.createObjectURL ? URL_.createObjectURL(file) : '';
+      const tempUrl = URL.createObjectURL(file);
       try {
         const duration = await new Promise((resolve, reject) => {
           const audio = document.createElement('audio');
@@ -159,7 +150,7 @@ export function useHeroCreator({ onSaved } = {}) {
       } catch (error) {
         setBgmError(error.message || '오디오를 분석할 수 없습니다.');
       } finally {
-        try { if (URL_ && URL_.revokeObjectURL) URL_.revokeObjectURL(tempUrl); } catch {}
+        URL.revokeObjectURL(tempUrl);
       }
     },
     [clearBgm]
@@ -167,7 +158,6 @@ export function useHeroCreator({ onSaved } = {}) {
 
   const save = useCallback(async () => {
     setLoading(true);
-    setSavingMsg('준비 중…');
     try {
       const {
         data: { user },
@@ -182,35 +172,29 @@ export function useHeroCreator({ onSaved } = {}) {
       let bgmUrl = null;
       let bgmDurationSeconds = null;
       let bgmMime = null;
-      const controller = new AbortController();
-      setAbortCtrl(controller);
 
       if (imageBlob) {
         const file = new File([imageBlob], `${sanitizeFileName(name)}.jpg`, { type: imageBlob.type || 'image/jpeg' });
-        setSavingMsg('이미지 압축/업로드 중…');
-        const up = await uploadAsset(file, { gameId: 'heroes', signal: controller.signal });
+        const up = await uploadAsset(file, { gameId: 'heroes' });
         imageUrl = up.url;
       }
 
       if (backgroundBlob) {
         const ext = (backgroundBlob.type && backgroundBlob.type.split('/')[1]) || 'jpg';
         const file = new File([backgroundBlob], `${sanitizeFileName(name, 'background')}.${ext}`, { type: backgroundBlob.type || 'image/jpeg' });
-        setSavingMsg('배경 이미지 압축/업로드 중…');
-        const up = await uploadAsset(file, { gameId: 'heroes', signal: controller.signal });
+        const up = await uploadAsset(file, { gameId: 'heroes' });
         backgroundUrl = up.url;
       }
 
       if (bgmBlob) {
         const ext = (bgmBlob.type && bgmBlob.type.split('/')[1]) || 'mp3';
         const file = new File([bgmBlob], `${sanitizeFileName(name, 'bgm')}.${ext}`, { type: bgmBlob.type || 'audio/mpeg' });
-        setSavingMsg('브금 압축/업로드 중…');
-        const up = await uploadAsset(file, { gameId: 'heroes', signal: controller.signal });
+        const up = await uploadAsset(file, { gameId: 'heroes' });
         bgmUrl = up.url;
         bgmDurationSeconds = Number.isFinite(bgmDuration) ? bgmDuration : null;
         bgmMime = bgmBlob.type || null;
       }
 
-      setSavingMsg('캐릭터 저장 중…');
       const { error: insertError } = await withTable(supabase, 'heroes', table =>
         supabase.from(table).insert({
           owner_id: user.id,
@@ -236,8 +220,6 @@ export function useHeroCreator({ onSaved } = {}) {
       alert('저장 실패: ' + (error.message || error));
     } finally {
       setLoading(false);
-      setSavingMsg('');
-      setAbortCtrl(null);
     }
   }, [
     ability1,
@@ -269,7 +251,6 @@ export function useHeroCreator({ onSaved } = {}) {
       ability3,
       ability4,
       loading,
-      savingMsg,
     },
     actions: {
       setName,
@@ -284,7 +265,6 @@ export function useHeroCreator({ onSaved } = {}) {
       selectBgm,
       clearBgm,
       save,
-      cancelSave: () => { try { abortCtrl?.abort(); } catch {} },
     },
   };
 }
