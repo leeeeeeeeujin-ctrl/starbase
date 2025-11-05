@@ -67,7 +67,18 @@ export default function ThreeInOneStudio() {
   }, [setMode]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        // Ensure full-bleed horizontally to screen edges even if a parent has max-width constraints
+        width: '100vw',
+        marginLeft: 'calc(50% - 50vw)',
+        marginRight: 'calc(50% - 50vw)',
+        // Ensure the workbench fills the viewport vertically
+        minHeight: '100vh',
+      }}
+    >
       <div style={{ display: 'flex', gap: 8, padding: 8, borderBottom: '1px solid #eee', alignItems: 'center', flexWrap: 'wrap' }}>
         <button onClick={() => setMode(mode === 'code' ? 'nodes' : 'code')}>{mode === 'code' ? '프롬프트 편집으로' : '코드 편집으로'}</button>
         <span style={{ flex: 1 }} />
@@ -122,7 +133,7 @@ export default function ThreeInOneStudio() {
       <div style={{ flex: 1, minHeight: 0, position:'relative' }}>
         {mode === 'code' && (
           <div style={{ height: '100%', position:'relative' }}>
-            <div style={{ position:'absolute', left:0, top:'50%', transform:'translate(-30%, -50%)', zIndex:5 }}>
+            <div style={{ position:'absolute', left:8, top:'50%', transform:'translate(0, -50%)', zIndex:5 }}>
               <button title="AI 코딩" onClick={() => emit('studio:ai:toggle')}>{'<'}</button>
             </div>
             <CodeEditor value={templateText} onChange={setTemplateText} />
