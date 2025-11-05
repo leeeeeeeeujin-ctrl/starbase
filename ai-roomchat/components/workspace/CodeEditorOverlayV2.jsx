@@ -48,7 +48,7 @@ function EditorPane() {
   );
 }
 
-export default function CodeEditorOverlayV2({ templateBinding }){
+export default function CodeEditorOverlayV2({ templateBinding, onRequestClose }){
   const [showTree, setShowTree] = useState(true);
   const [toolbarCollapsed, setToolbarCollapsed] = useState(true);
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
@@ -128,7 +128,8 @@ export default function CodeEditorOverlayV2({ templateBinding }){
   );
 
   const TabsBar = () => {
-    const { openPaths, activePath, open, close } = useWorkspace();
+    const { openPaths, activePath, open, close, isDirty, saveFile } = useWorkspace();
+    const [confirm, setConfirm] = useState(null); // { path }
     return (
       <div style={{ display:'flex', alignItems:'center', gap:6 }}>
         {openPaths.map((p) => {
@@ -136,16 +137,19 @@ export default function CodeEditorOverlayV2({ templateBinding }){
           return (
             <div key={p} style={{ display:'flex', alignItems:'center' }}>
               <button onClick={() => open(p)} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background: active ? '#172033' : '#0b1220', color:'#e2e8f0', fontSize:12, maxWidth:220, overflow:'hidden', textOverflow:'ellipsis' }}>{p.split('/').pop()}</button>
-              <button onClick={() => close(p)} style={{ marginLeft:-6, padding:'6px 6px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8' }}>×</button>
+              <button onClick={() => { if (isDirty(p)) setConfirm({ path: p }); else close(p); }} style={{ marginLeft:-6, padding:'6px 6px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8' }}>×</button>
             </div>
           );
         })}
+        {confirm && (
+          <ConfirmCloseOne path={confirm.path} onSave={() => { saveFile(confirm.path); close(confirm.path); setConfirm(null); }} onDiscard={() => { close(confirm.path); setConfirm(null); }} onCancel={() => setConfirm(null)} />
+        )}
       </div>
     );
   };
 
   const Toolbar = () => {
-    const { root, normalizeDir, open, createFile, createFolder, rename, remove, files, activePath, writeFile, entryPath, setEntryPath } = useWorkspace();
+    const { root, normalizeDir, open, createFile, createFolder, rename, remove, files, activePath, writeFile, entryPath, setEntryPath, openPaths, isDirty, saveAll } = useWorkspace();
     const doNewFile = () => { setCreating('file'); setCreatePath(normalizeDir(root)+'untitled.js'); setFileMenuOpen(false); };
     const doNewFolder = () => { setCreating('folder'); setCreatePath(normalizeDir(root)+'folder/'); setFileMenuOpen(false); };
     const doRename = () => { const cur = activePath; if (!cur) return; const next = window.prompt('새 경로', cur); if (next && next!==cur) rename(cur, next); setFileMenuOpen(false); };
@@ -180,6 +184,13 @@ export default function CodeEditorOverlayV2({ templateBinding }){
       setFileMenuOpen(false);
     };
 
+    // Overlay close with dirty check
+    const requestClose = () => {
+      const dirtyList = (openPaths||[]).filter(p => isDirty(p));
+      if (dirtyList.length === 0) { onRequestClose && onRequestClose(); return; }
+      setCloseConfirm({ paths: dirtyList });
+    };
+
     return (
       <div style={{ display:'grid', gridTemplateRows: toolbarCollapsed ? 'auto' : 'auto auto auto', gap:6, padding:'8px', borderBottom:'1px solid #25314a', background:'rgba(2,6,23,0.5)' }}>
         <div style={{ display:'flex', alignItems:'center', gap:8 }}>
@@ -206,6 +217,7 @@ export default function CodeEditorOverlayV2({ templateBinding }){
             )}
           </div>
           <ToolbarButton onClick={() => setShowPlay(true)} active={showPlay} title="플레이">플레이</ToolbarButton>
+          <ToolbarButton onClick={requestClose} title="닫기">닫기</ToolbarButton>
           <div style={{ marginLeft:'auto', display:'flex', gap:8 }}>
             <ToolbarButton onClick={() => setToolbarCollapsed(v=>!v)} active={toolbarCollapsed} title={toolbarCollapsed?'펼치기':'접기'}>{toolbarCollapsed?'펼치기':'접기'}</ToolbarButton>
           </div>
@@ -216,6 +228,7 @@ export default function CodeEditorOverlayV2({ templateBinding }){
             <div style={{ display:'flex', alignItems:'center', gap:8, color:'#94a3b8', fontSize:12 }}>
               <span>현재: <strong style={{ color:'#e2e8f0' }}>{useWorkspace().activePath}</strong></span>
               <button title="엔트리 파일 지정" onClick={() => useWorkspace().setEntryPath(useWorkspace().activePath)} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>엔트리로</button>
+              <button title="모두 저장" onClick={() => saveAll()} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>모두 저장</button>
             </div>
           </>
         )}
@@ -230,6 +243,8 @@ export default function CodeEditorOverlayV2({ templateBinding }){
       </div>
     );
   };
+
+  const [closeConfirm, setCloseConfirm] = useState(null); // { paths: [] }
 
   return (
     <CodeWorkspaceProvider>
@@ -271,6 +286,14 @@ export default function CodeEditorOverlayV2({ templateBinding }){
           </div>
         </div>
       )}
+      {closeConfirm && (
+        <ConfirmCloseMany
+          paths={closeConfirm.paths}
+          onSaveAll={() => { const { saveAll } = useWorkspace(); saveAll(); setCloseConfirm(null); onRequestClose && onRequestClose(); }}
+          onDiscard={() => { setCloseConfirm(null); onRequestClose && onRequestClose(); }}
+          onCancel={() => setCloseConfirm(null)}
+        />
+      )}
       {showCodeChat && (
         <div style={{ position:'fixed', right:16, bottom:16, zIndex: 1200, width: chatSize.w, height: chatSize.h, background:'transparent' }}>
           <div style={{ position:'absolute', inset:0 }}>
@@ -286,3 +309,56 @@ export default function CodeEditorOverlayV2({ templateBinding }){
 const menuItem = {
   textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap'
 };
+
+function ConfirmDialogShell({ title, children, actions }){
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(2,6,23,0.6)', zIndex: 2000, display:'flex', alignItems:'center', justifyContent:'center', padding:'env(safe-area-inset-top) 12px env(safe-area-inset-bottom)' }}>
+      <div style={{ width:'min(560px, 96vw)', background:'#0b1220', border:'1px solid #334155', borderRadius:12, overflow:'hidden', boxShadow:'0 24px 64px rgba(0,0,0,0.5)' }}>
+        <div style={{ padding:'12px 14px', borderBottom:'1px solid #25314a', color:'#e2e8f0', fontWeight:700 }}>{title}</div>
+        <div style={{ padding:12 }}>{children}</div>
+        <div style={{ padding:12, borderTop:'1px solid #25314a', display:'flex', gap:8, justifyContent:'flex-end' }}>
+          {actions}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConfirmCloseOne({ path, onSave, onDiscard, onCancel }){
+  return (
+    <ConfirmDialogShell
+      title="파일을 닫기 전에 저장할까요?"
+      children={<div style={{ color:'#cbd5e1', fontSize:13 }}>변경 사항이 있는 파일: <strong style={{ color:'#e2e8f0' }}>{path}</strong></div>}
+      actions={
+        <>
+          <button onClick={onDiscard} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #7f1d1d', background:'#0b1220', color:'#fecaca' }}>저장 안 함</button>
+          <button onClick={onCancel} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8' }}>취소</button>
+          <button onClick={onSave} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #2563eb', background:'#1d4ed8', color:'#fff' }}>저장</button>
+        </>
+      }
+    />
+  );
+}
+
+function ConfirmCloseMany({ paths, onSaveAll, onDiscard, onCancel }){
+  return (
+    <ConfirmDialogShell
+      title="코드 에디터를 닫기 전에 저장할까요?"
+      children={
+        <div style={{ color:'#cbd5e1', fontSize:13 }}>
+          <div style={{ marginBottom:8 }}>변경 사항이 있는 파일:</div>
+          <ul style={{ margin:0, padding:'0 0 0 18px', maxHeight:200, overflow:'auto' }}>
+            {paths.map(p => (<li key={p} style={{ marginBottom:4 }}><span style={{ color:'#e2e8f0' }}>{p}</span></li>))}
+          </ul>
+        </div>
+      }
+      actions={
+        <>
+          <button onClick={onDiscard} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #7f1d1d', background:'#0b1220', color:'#fecaca' }}>저장 안 함</button>
+          <button onClick={onCancel} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8' }}>취소</button>
+          <button onClick={onSaveAll} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #2563eb', background:'#1d4ed8', color:'#fff' }}>모두 저장</button>
+        </>
+      }
+    />
+  );
+}

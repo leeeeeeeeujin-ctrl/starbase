@@ -163,6 +163,7 @@ export function CodeWorkspaceProvider({ children }) {
   const [activePath, setActivePath] = useState("/template.json");
   const [openPaths, setOpenPaths] = useState(["/template.json"]);
   const [entryPath, setEntryPath] = useState("/template.json");
+  const [dirty, setDirty] = useState({}); // { [path]: true }
 
   useEffect(() => {
     try {
@@ -189,6 +190,7 @@ export function CodeWorkspaceProvider({ children }) {
         setActivePath(parsed.activePath || "/template.json");
         setOpenPaths(parsed.openPaths || ["/template.json"]);
         setEntryPath(parsed.entryPath || "/template.json");
+        setDirty(parsed.dirty || {});
       } else {
         setFiles(defaultFiles);
       }
@@ -201,10 +203,10 @@ export function CodeWorkspaceProvider({ children }) {
     try {
       localStorage.setItem(
         KEY,
-        JSON.stringify({ files, root, activePath, openPaths, entryPath })
+        JSON.stringify({ files, root, activePath, openPaths, entryPath, dirty })
       );
     } catch {}
-  }, [files, root, activePath, openPaths, entryPath]);
+  }, [files, root, activePath, openPaths, entryPath, dirty]);
 
   const api = useMemo(() => {
     const exists = (path) => Boolean(files[path]);
@@ -242,6 +244,14 @@ export function CodeWorkspaceProvider({ children }) {
       activePath,
       openPaths,
       entryPath,
+      dirty,
+      isDirty: (path) => !!dirty[path],
+      saveFile: (path) => setDirty((m) => ({ ...m, [path]: false })),
+      saveAll: () => setDirty((m) => {
+        const next = { ...m };
+        Object.keys(next).forEach((k) => { next[k] = false; });
+        return next;
+      }),
       setEntryPath,
       setRoot,
       isDir,
@@ -259,7 +269,7 @@ export function CodeWorkspaceProvider({ children }) {
       close: (path) =>
         setOpenPaths((arr) => arr.filter((p) => p !== path)),
       createFile: (path, content = "") =>
-        setFiles((m) => ({ ...m, [path]: { content, readonly: false } })),
+        { setFiles((m) => ({ ...m, [path]: { content, readonly: false } })); setDirty((d) => ({ ...d, [path]: true })); },
       createFolder: (path) =>
         setFiles((m) => ({ ...m, [normalizeDir(path)]: { dir: true, readonly: true } })),
       writeFile: (path, content) =>
@@ -287,6 +297,7 @@ export function CodeWorkspaceProvider({ children }) {
                 return;
               }
               setFiles((mm) => ({ ...mm, [path]: after }));
+              setDirty((d) => ({ ...d, [path]: true }));
             });
           } else {
             entry = { ...f, content: String(content||''), compressed: false, data: undefined };
@@ -297,6 +308,8 @@ export function CodeWorkspaceProvider({ children }) {
             }
             next[path] = entry;
           }
+          // mark dirty on write
+          queueMicrotask(() => setDirty((d) => ({ ...d, [path]: true })));
           return next;
         }),
       rename: (oldPath, newPath) => {
@@ -308,6 +321,10 @@ export function CodeWorkspaceProvider({ children }) {
         setOpenPaths((arr) => arr.map((p) => (p === oldPath ? newPath : p)));
         setActivePath((p) => (p === oldPath ? newPath : p));
         setEntryPath((p) => (p === oldPath ? newPath : p));
+        setDirty((d) => {
+          const { [oldPath]: _drop, ...rest } = d || {};
+          return { ...rest, [newPath]: d?.[oldPath] || false };
+        });
       },
       remove: (path) => {
         setFiles((m) => {
@@ -317,6 +334,10 @@ export function CodeWorkspaceProvider({ children }) {
         setOpenPaths((arr) => arr.filter((p) => p !== path));
         setActivePath((p) => (p === path ? "/template.json" : p));
         setEntryPath((p) => (p === path ? "/template.json" : p));
+        setDirty((d) => {
+          const { [path]: _drop, ...rest } = d || {};
+          return rest;
+        });
       },
     };
   }, [files, root, activePath, openPaths, entryPath]);
