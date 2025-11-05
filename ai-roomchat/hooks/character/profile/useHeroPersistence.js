@@ -26,6 +26,8 @@ export function useHeroPersistence({
       setSaving(true);
       try {
         const source = nextEdit || edit;
+        const oldBackgroundUrl = hero?.background_url || null;
+        const oldBgmUrl = hero?.bgm_url || null;
 
         let backgroundUrl = source.background_url || null;
         if (backgroundBlob) {
@@ -98,6 +100,27 @@ export function useHeroPersistence({
         completeBackgroundSave(backgroundUrl);
         completeBgmSave({ url: bgmUrl, duration: bgmDurationSeconds, mime: bgmMimeValue });
 
+        // Best-effort cleanup: delete replaced assets from R2 after successful DB update
+        try {
+          const headers = await authHeader();
+          const toDelete = [];
+          if (oldBackgroundUrl && oldBackgroundUrl !== (backgroundUrl || '')) {
+            toDelete.push(oldBackgroundUrl);
+          }
+          if (oldBgmUrl && oldBgmUrl !== (bgmUrl || '')) {
+            toDelete.push(oldBgmUrl);
+          }
+          for (const url of toDelete) {
+            await fetch('/api/storage/delete', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json', ...(headers || {}) },
+              body: JSON.stringify({ url }),
+            }).catch(() => {});
+          }
+        } catch (cleanupError) {
+          console.warn('[hero] cleanup skipped:', cleanupError);
+        }
+
         alert('저장 완료');
       } catch (error) {
         alert(error.message || error);
@@ -139,4 +162,15 @@ export function useHeroPersistence({
     onSave: handleSave,
     onDelete: handleDelete,
   };
+}
+
+async function authHeader() {
+  try {
+    const { supabase } = await import('../../../lib/supabase');
+    const { data } = await supabase.auth.getSession();
+    const token = data?.session?.access_token;
+    return token ? { Authorization: `Bearer ${token}` } : null;
+  } catch {
+    return null;
+  }
 }
