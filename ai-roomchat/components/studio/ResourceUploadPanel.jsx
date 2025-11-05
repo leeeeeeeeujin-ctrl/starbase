@@ -10,6 +10,13 @@ export default function ResourceUploadPanel({ onClose }) {
   const [files, setFiles] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const setId = useMemo(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const u = new URL(window.location.href);
+      return u.searchParams.get('setId') || u.searchParams.get('pset') || null;
+    } catch { return null; }
+  }, []);
 
   const pick = useCallback(() => inputRef.current?.click(), []);
 
@@ -75,8 +82,9 @@ export default function ResourceUploadPanel({ onClose }) {
       const results = [];
       for (const f of files) {
         const compressed = await compressIfNeeded(f);
-        const keyFolder = 'studio/resources';
-        const res = await uploadAsset(compressed, { gameId: 'studio', key: `${keyFolder}/${Date.now()}-${safeName(compressed.name || 'file')}` });
+        const baseFolder = 'studio/resources';
+        const folder = setId ? `${baseFolder}/${setId}` : baseFolder;
+        const res = await uploadAsset(compressed, { gameId: 'studio', key: `${folder}/${Date.now()}-${safeName(compressed.name || 'file')}` });
         results.push({
           id: `res_${Math.random().toString(36).slice(2,8)}`,
           name: compressed.name || f.name,
@@ -86,6 +94,7 @@ export default function ResourceUploadPanel({ onClose }) {
           hash: res.hash,
           mime: compressed.type || f.type || 'application/octet-stream',
           size: compressed.size || f.size || 0,
+          setId: setId || undefined,
         });
       }
       addToTemplate(results);

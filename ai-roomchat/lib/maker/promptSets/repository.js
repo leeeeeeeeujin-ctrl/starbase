@@ -62,6 +62,14 @@ export const promptSetsRepository = {
       return failure(asError(error, '세트를 삭제하지 못했습니다.'));
     }
 
+    // Best-effort: cleanup studio resources under set-scoped folder if any
+    try {
+      await fetch('/api/storage/delete-prefix', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ prefix: `studio/resources/${id}/`, max: 1000 })
+      });
+    } catch {}
+
     return success(true);
   },
 };
