@@ -1,5 +1,8 @@
 import { useCallback, useRef, useState } from 'react';
 
+import { compressAudio } from '@/lib/client/media/compress';
+import { AUDIO_LIMITS } from '@/config/mediaLimits';
+
 import { extractFileName } from '../../../utils/characterAssets';
 
 const MAX_BGM_SIZE = 10 * 1024 * 1024;
@@ -39,13 +42,10 @@ export function useHeroBgmManager({ setEdit }) {
         setBgmError('오디오 파일만 업로드할 수 있습니다.');
         return;
       }
-      if (file.size > MAX_BGM_SIZE) {
-        setBgmError('오디오 파일은 10MB를 넘을 수 없습니다.');
-        return;
-      }
       const tempUrl = URL.createObjectURL(file);
       (async () => {
         try {
+          // 1) Inspect duration first
           const duration = await new Promise((resolve, reject) => {
             const audio = document.createElement('audio');
             audio.preload = 'metadata';
@@ -63,12 +63,20 @@ export function useHeroBgmManager({ setEdit }) {
             setBgmError('BGM은 4분(240초)을 넘을 수 없습니다.');
             return;
           }
-          const buffer = await file.arrayBuffer();
-          const blobFile = new Blob([new Uint8Array(buffer)], { type: file.type });
-          setBgmBlob(blobFile);
+
+          // 2) Always try to compress using our shared pipeline (mp3 96k / 44.1kHz; AAC fallback inside)
+          const compressed = await compressAudio(file);
+          // Prefer the stricter shared AUDIO_LIMITS budget if defined
+          const overBudget = (AUDIO_LIMITS?.maxBytes && compressed.size > AUDIO_LIMITS.maxBytes) || compressed.size > MAX_BGM_SIZE;
+          if (overBudget) {
+            setBgmError('압축 후에도 파일이 너무 큽니다. 6MB~10MB 이하로 줄여주세요.');
+            return;
+          }
+
+          setBgmBlob(compressed);
           setBgmDuration(Math.round(duration));
-          setBgmMime(file.type || null);
-          setBgmLabel(file.name || '배경 음악');
+          setBgmMime(compressed.type || file.type || null);
+          setBgmLabel(compressed.name || file.name || '배경 음악');
           setEdit(prev => ({ ...prev, bgm_url: '' }));
         } catch (error) {
           setBgmError(error.message || '오디오를 분석할 수 없습니다.');
