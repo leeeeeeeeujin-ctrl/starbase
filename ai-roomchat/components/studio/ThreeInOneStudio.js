@@ -66,6 +66,8 @@ export default function ThreeInOneStudio() {
     };
   }, [setMode]);
 
+  // Reserve a safe right gutter so content (toolbar/editor) does not extend under the AI panel's close button area.
+  const RIGHT_GUTTER = 16 + 420 + 16; // panel right margin + width + inner gap
   return (
     <div
       style={{
@@ -77,6 +79,8 @@ export default function ThreeInOneStudio() {
         marginRight: 'calc(50% - 50vw)',
         // Ensure the workbench fills the viewport vertically
         minHeight: '100vh',
+        // Keep internal UI (headers/content) within visible area left of the AI panel
+        paddingRight: RIGHT_GUTTER,
       }}
     >
       <div
