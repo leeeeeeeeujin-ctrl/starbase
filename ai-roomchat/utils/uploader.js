@@ -47,7 +47,10 @@ export async function uploadAsset(file, { gameId, key, signal, contentEncoding }
   const finalKey = (typeof key === 'string' && key) ? key : defKey;
   r = await fetch('/api/assets/upload-url', { method:'POST', headers: { 'content-type':'application/json', ...(auth?{Authorization:auth}:{}) }, body: JSON.stringify({ key: finalKey, contentType, size, sha256, contentEncoding }), signal });
   j = await r.json();
-  if (!r.ok) throw new Error(j?.error || 'upload-url failed');
+  if (!r.ok) {
+    maybeShowQuota(j, r.status);
+    throw new Error(j?.error || 'upload-url failed');
+  }
   const putUrl = j.url; const headers = j.headers || { 'Content-Type': contentType };
 
   // 3) PUT file (direct to R2). If CORS blocks, fall back to proxy upload.
@@ -73,14 +76,20 @@ export async function uploadAsset(file, { gameId, key, signal, contentEncoding }
       const msg = `proxy upload failed (${proxy.status})${snippet ? `: ${snippet}` : ''}`;
       throw new Error(msg);
     }
-    if (!proxy.ok) throw new Error(pj?.error || 'proxy upload failed');
+    if (!proxy.ok) {
+      maybeShowQuota(pj, proxy.status);
+      throw new Error(pj?.error || 'proxy upload failed');
+    }
     return { url: pj.url, key: pj.key, hash: sha256, size, mime: contentType, existed: false };
   }
 
   // 4) commit
   const commit = await fetch('/api/assets/commit', { method:'POST', headers: { 'content-type':'application/json', ...(auth?{Authorization:auth}:{}) }, body: JSON.stringify({ key: finalKey, hash: sha256, size, mime: contentType, gameId }), signal });
   const cj = await commit.json();
-  if (!commit.ok) throw new Error(cj?.error || 'commit failed');
+  if (!commit.ok) {
+    maybeShowQuota(cj, commit.status);
+    throw new Error(cj?.error || 'commit failed');
+  }
   return { url: cj.url, key: finalKey, hash: sha256, size, mime: contentType, existed: false };
 }
 
@@ -112,4 +121,15 @@ async function bearerOrNull() {
     const { data } = await sb.auth.getSession();
     const token = data?.session?.access_token; return token ? `Bearer ${token}` : null;
   } catch { return null; }
+}
+
+function maybeShowQuota(body, status) {
+  try {
+    const code = (body && (body.code || body.error)) || '';
+    const msg = String(body && body.error ? body.error : '').toLowerCase();
+    const quotaLike = /quota/.test(code) || /quota/.test(msg) || status === 403 || status === 429;
+    if (quotaLike && typeof window !== 'undefined') {
+      import('../utils/quotaNotice').then(mod => mod?.showQuotaExceeded && mod.showQuotaExceeded());
+    }
+  } catch {}
 }

@@ -5,6 +5,7 @@ import { uploadAsset } from '../../../utils/uploader';
 import { withTable } from '../../../lib/supabaseTables';
 import { sanitizeFileName } from '../../../utils/characterAssets';
 import { clearHeroCache, writeHeroCache } from '../../../utils/heroCache';
+import { showQuotaExceeded } from '../../../utils/quotaNotice';
 
 export function useHeroPersistence({
   heroId,
@@ -123,7 +124,12 @@ export function useHeroPersistence({
 
         alert('저장 완료');
       } catch (error) {
-        alert(error.message || error);
+        const msg = String(error?.message || error || '').toLowerCase();
+        if (msg.includes('quota')) {
+          try { showQuotaExceeded(); } catch {}
+        } else {
+          alert(error.message || error);
+        }
       } finally {
         setSaving(false);
       }
