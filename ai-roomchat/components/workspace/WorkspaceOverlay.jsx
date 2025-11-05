@@ -273,6 +273,8 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
                 <button onClick={() => { try { open('/game/runtime.config.json'); } catch {} finally { setToolsMenuOpen(false); } }} data-test-id="open-runtime-config" style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>런타임 설정 열기</button>
                 <div style={{ height:1, background:'rgba(148,163,184,0.2)', margin:'4px 2px' }} />
                 <button onClick={() => { try { setShowCodeChat(true); } finally { setToolsMenuOpen(false); } }} data-test-id="open-ai-agent" style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #2563eb', background:'#0b1220', color:'#93c5fd', whiteSpace:'nowrap' }}>AI 에이전트</button>
+                <button onClick={() => { try { window.location.href = '/game/dev-local'; } catch {} finally { setToolsMenuOpen(false); } }} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>메인게임 (dev-local)</button>
+                <button onClick={() => { try { window.location.href = '/game/dev-graph'; } catch {} finally { setToolsMenuOpen(false); } }} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>메인게임 (dev-graph)</button>
               </div>
             )}
           </div>
