@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useStudioTemplate as useTemplate } from '../../contexts/StudioStore';
 import { subscribe } from '../../contexts/StudioBus';
 import { supabase } from '../../lib/supabase';
+import useIsMobile from '../../utils/useIsMobile';
 
 function safeParse(text){ try{ return JSON.parse(text||'{}'); }catch{ return null; } }
 function pretty(obj){ try{ return JSON.stringify(obj, null, 2);}catch{ return ''; } }
@@ -10,6 +11,7 @@ export default function AIPanel(){
   const { templateText, setTemplateText } = useTemplate();
   const tpl = useMemo(()=> safeParse(templateText) ?? {}, [templateText]);
   const [open, setOpen] = useState(false);
+  const isMobile = useIsMobile(820);
   const [mode, setMode] = useState('mock'); // mock | manual | gemini
   const [bridgeUrl, setBridgeUrl] = useState('http://127.0.0.1:4311/run-template');
   const [manual, setManual] = useState('');
@@ -171,13 +173,13 @@ export default function AIPanel(){
         <button
           onClick={()=> setOpen(true)}
           title="AI 패널 열기"
-          style={{ position:'fixed', right:0, top:'40%', transform:'translateY(-50%)', width:28, height:120, borderTopLeftRadius:8, borderBottomLeftRadius:8, border:'1px solid #ddd', background:'#ffffff', boxShadow:'0 8px 24px rgba(0,0,0,0.15)', zIndex:30 }}
+          style={{ position:'fixed', right: isMobile ? 12 : 0, bottom: isMobile ? 'calc(env(safe-area-inset-bottom) + 12px)' : 'auto', top: isMobile ? 'auto' : '40%', transform: isMobile ? 'none' : 'translateY(-50%)', width: isMobile ? 44 : 28, height: isMobile ? 44 : 120, borderRadius: isMobile ? 22 : 0, borderTopLeftRadius: isMobile ? 22 : 8, borderBottomLeftRadius: isMobile ? 22 : 8, border:'1px solid #ddd', background:'#ffffff', boxShadow:'0 8px 24px rgba(0,0,0,0.15)', zIndex:30 }}
         >
           ▶
         </button>
       )}
       {open && (
-        <div style={{ position:'fixed', right:16, bottom:16, width:420, height:520, background:'#fff', border:'1px solid #ddd', borderRadius:10, boxShadow:'0 8px 28px rgba(0,0,0,0.15)', overflow:'hidden', display:'flex', flexDirection:'column', zIndex:30 }}>
+        <div style={{ position:'fixed', right: isMobile ? 0 : 16, left: isMobile ? 0 : 'auto', bottom: isMobile ? 0 : 16, width: isMobile ? '100vw' : 420, height: isMobile ? '60svh' : 520, background:'#fff', border:'1px solid #ddd', borderRadius: isMobile ? '16px 16px 0 0' : 10, boxShadow:'0 8px 28px rgba(0,0,0,0.15)', overflow:'hidden', display:'flex', flexDirection:'column', zIndex:30 }}>
           <div style={{ padding:'8px 12px', borderBottom:'1px solid #eee', display:'flex', gap:8, alignItems:'center' }}>
             <strong>AI 도우미</strong>
             <span style={{ flex:1 }} />

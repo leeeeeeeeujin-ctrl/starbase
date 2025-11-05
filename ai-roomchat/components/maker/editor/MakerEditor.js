@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useStudioTemplate } from '../../../contexts/StudioStore';
+import useIsMobile from '../../../utils/useIsMobile';
 
 import { useMakerEditor } from '../../../hooks/maker/useMakerEditor';
 import { exportSet, importSet } from './importExport';
@@ -19,6 +20,7 @@ import AutoUpdateListener from '../../infra/AutoUpdateListener.jsx';
 const ImageToUIGenerator = dynamic(() => import('../ui/ImageToUIGenerator'), { ssr: false });
 
 export default function MakerEditor() {
+  const isMobile = useIsMobile(820);
   const snapBtn = {
     padding: '6px 10px',
     borderRadius: 8,
@@ -617,7 +619,7 @@ export default function MakerEditor() {
 
   return (
     <div
-      style={{ height: '100vh', background: '#f1f5f9', display: 'flex', flexDirection: 'column' }}
+      style={{ height: '100svh', background: '#f1f5f9', display: 'flex', flexDirection: 'column', width: '100vw', overflow: 'hidden' }}
     >
       <AutoUpdateListener intervalMs={60000} auto={false} />
       <div
@@ -625,10 +627,10 @@ export default function MakerEditor() {
           flex: '1 1 auto',
           display: 'flex',
           flexDirection: 'column',
-          maxWidth: 900,
+          maxWidth: isMobile ? '100%' : 900,
           width: '100%',
-          margin: '0 auto',
-          padding: '12px 16px 110px',
+          margin: isMobile ? 0 : '0 auto',
+          padding: isMobile ? '10px 12px calc(env(safe-area-inset-bottom) + 80px)' : '12px 16px 110px',
           boxSizing: 'border-box',
           gap: 10,
         }}
@@ -743,7 +745,7 @@ export default function MakerEditor() {
         style={{
           position: 'fixed',
           left: 16,
-          bottom: 28,
+          bottom: 'calc(env(safe-area-inset-bottom) + 28px)',
           padding: '10px 18px',
           borderRadius: 999,
           background: inspectorOpen ? '#1d4ed8' : '#111827',
@@ -764,7 +766,7 @@ export default function MakerEditor() {
           style={{
             position: 'fixed',
             right: 16,
-            bottom: 110,
+            bottom: 'calc(env(safe-area-inset-bottom) + 110px)',
             width: 'min(420px, calc(100vw - 32px))',
             maxHeight: 'min(70vh, 600px)',
             zIndex: 90,
@@ -857,7 +859,7 @@ export default function MakerEditor() {
       )}
 
       {/* Floating prompt add button (bottom-left) */}
-      <AddPromptFab onAdd={(t,templ) => addPromptNode(t, templ)} />
+  <AddPromptFab onAdd={(t,templ) => addPromptNode(t, templ)} />
 
       {/* Fullscreen overlay Code Editor (covers all overlays) */}
       {showMultiLanguageEditor && (
@@ -908,7 +910,7 @@ export default function MakerEditor() {
           style={{
             position: 'fixed',
             left: '50%',
-            bottom: 24,
+            bottom: 'calc(env(safe-area-inset-bottom) + 24px)',
             transform: 'translateX(-50%)',
             background: '#0f172a',
             color: '#f8fafc',

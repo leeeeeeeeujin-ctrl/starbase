@@ -75,40 +75,23 @@ export default function ResourceUploadPanel({ onClose }) {
     }
   }, [templateText, setTemplateText]);
 
-  const doUpload = useCallback(async () => {
+  const doStage = useCallback(async () => {
     if (!files.length) return;
     setBusy(true); setError('');
     try {
-      const results = [];
-      for (const f of files) {
-        const compressed = await compressIfNeeded(f);
-        const baseFolder = 'studio/resources';
-        const folder = setId ? `${baseFolder}/${setId}` : baseFolder;
-        const res = await uploadAsset(compressed, { gameId: 'studio', key: `${folder}/${Date.now()}-${safeName(compressed.name || 'file')}` });
-        results.push({
-          id: `res_${Math.random().toString(36).slice(2,8)}`,
-          name: compressed.name || f.name,
-          type: classifyType(compressed.type || f.type || 'application/octet-stream'),
-          url: res.url,
-          key: res.key,
-          hash: res.hash,
-          mime: compressed.type || f.type || 'application/octet-stream',
-          size: compressed.size || f.size || 0,
-          setId: setId || undefined,
-        });
-      }
-      addToTemplate(results);
+      const { stageFiles, listStaged } = await import('@/utils/resourceStaging');
+      await stageFiles(files);
+      // update staged count via parent close handler side-effect
       onClose?.();
     } catch (e) {
-      // uploader will raise a global quota notice; we also show a local error
       setError(String(e?.message || e));
     } finally {
       setBusy(false);
     }
-  }, [files, addToTemplate, compressIfNeeded, onClose]);
+  }, [files, onClose]);
 
   const hint = useMemo(() => {
-    return '이미지/오디오/비디오/기타 파일을 업로드하면 template.resources.files에 추가됩니다.';
+    return '이미지/오디오/비디오/기타 파일을 선택해 로컬에 임시 보관합니다. 이후 "저장(업로드)" 시 스토리지로 업로드되어 template.resources.files에 반영됩니다.';
   }, []);
 
   return (
@@ -147,8 +130,8 @@ export default function ResourceUploadPanel({ onClose }) {
         {error && <div style={{ color: '#b91c1c', fontSize: 12 }}>{error}</div>}
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={buttonGhost}>취소</button>
-          <button onClick={doUpload} disabled={!files.length || busy} style={button}>
-            {busy ? '업로드 중…' : '업로드'}
+          <button onClick={doStage} disabled={!files.length || busy} style={button}>
+            {busy ? '보관 중…' : '로컬 보관'}
           </button>
         </div>
       </div>

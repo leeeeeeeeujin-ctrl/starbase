@@ -2,6 +2,7 @@ import dynamic from 'next/dynamic';
 import { useMemo, useRef, useState, useEffect } from 'react';
 import { useStudioTemplate } from '../../contexts/StudioStore';
 import { emit, subscribe } from '../../contexts/StudioBus';
+import useIsMobile from '../../utils/useIsMobile';
 
 // Client-only editors and panels
 const CodeEditor = dynamic(() => import('./CodeEditor'), { ssr: false });
@@ -14,10 +15,13 @@ const RunnerPanel = dynamic(() => import('./RunnerPanel'), { ssr: false });
 const QuickActions = dynamic(() => import('./QuickActions'), { ssr: false });
 const ImageUiPanel = dynamic(() => import('./ImageUiPanel'), { ssr: false });
 const BlockCodingPanel = dynamic(() => import('./BlockCodingPanel'), { ssr: false });
+const ResourceUploadPanel = dynamic(() => import('./ResourceUploadPanel'), { ssr: false });
+const ResourceManagerPanel = dynamic(() => import('./ResourceManagerPanel'), { ssr: false });
 
 export default function ThreeInOneStudio() {
   const { templateText, setTemplateText, mode, setMode } = useStudioTemplate();
   const fileInputRef = useRef(null);
+  const isMobile = useIsMobile(820);
 
   const info = useMemo(() => {
     try {
@@ -54,6 +58,9 @@ export default function ThreeInOneStudio() {
   const [showIssues, setShowIssues] = useState(false);
   const [showImageUi, setShowImageUi] = useState(false);
   const [showBlocks, setShowBlocks] = useState(false);
+  const [showResourceUpload, setShowResourceUpload] = useState(false);
+  const [showResourceManager, setShowResourceManager] = useState(false);
+  const [stagedCount, setStagedCount] = useState(0);
 
   // External event hooks (allow header or other UIs to control this editor)
   useEffect(() => {
@@ -67,18 +74,21 @@ export default function ThreeInOneStudio() {
   }, [setMode]);
 
   // Reserve a safe right gutter so content (toolbar/editor) does not extend under the AI panel's close button area.
-  const RIGHT_GUTTER = 16 + 420 + 16; // panel right margin + width + inner gap
+  const RIGHT_GUTTER = isMobile ? 0 : (16 + 420 + 16); // panel right margin + width + inner gap (no gutter on mobile)
   return (
     <div
       style={{
         display: 'flex',
         flexDirection: 'column',
-        // Ensure full-bleed horizontally to screen edges even if a parent has max-width constraints
+        // Full-bleed
         width: '100vw',
-        marginLeft: 'calc(50% - 50vw)',
-        marginRight: 'calc(50% - 50vw)',
-        // Ensure the workbench fills the viewport vertically
-        minHeight: '100vh',
+        marginLeft: isMobile ? 0 : 'calc(50% - 50vw)',
+        marginRight: isMobile ? 0 : 'calc(50% - 50vw)',
+        // Viewport fill
+        minHeight: '100svh',
+        // Safe-area paddings for mobile
+        paddingTop: isMobile ? 'env(safe-area-inset-top)' : 0,
+        paddingBottom: isMobile ? 'calc(env(safe-area-inset-bottom) + 8px)' : 0,
         // Keep internal UI (headers/content) within visible area left of the AI panel
         paddingRight: RIGHT_GUTTER,
         // Prevent any child from expanding the container due to intrinsic width
@@ -90,32 +100,82 @@ export default function ThreeInOneStudio() {
         style={{
           display: 'flex',
           gap: 8,
-          padding: 8,
+          padding: isMobile ? '10px 12px' : 8,
           borderBottom: '1px solid #eee',
           alignItems: 'center',
-          // Keep toolbar in a single row; if items overflow, allow horizontal scroll instead of wrapping
+          // Single row with horizontal scroll
           flexWrap: 'nowrap',
           overflowX: 'auto',
           whiteSpace: 'nowrap',
-          // Prevent the toolbar from increasing overall layout height when content grows
+          // Sticky on mobile for full-screen app feel
+          position: isMobile ? 'sticky' : 'relative',
+          top: isMobile ? 0 : 'auto',
+          zIndex: isMobile ? 9 : 'auto',
+          background: isMobile ? '#ffffff' : 'transparent',
           maxHeight: 48,
         }}
       >
-        <button onClick={() => setMode(mode === 'code' ? 'nodes' : 'code')}>{mode === 'code' ? '프롬프트 편집으로' : '코드 편집으로'}</button>
+        <button onClick={() => setMode(mode === 'code' ? 'nodes' : 'code')} style={{ padding: isMobile ? '6px 10px' : undefined }}>{mode === 'code' ? '프롬프트' : '코드'}</button>
         <span style={{ flex: 1 }} />
-        <UndoRedoBar />
-        <QuickActions />
-        <button onClick={() => setShowImageUi(true)}>이미지로 UI 생성</button>
-        <button onClick={() => setShowBlocks(true)}>블록코딩</button>
-        <button onClick={() => fileInputRef.current?.click()}>Import JSON</button>
+        {!isMobile && <UndoRedoBar />}
+        {!isMobile && <QuickActions />}
+        {!isMobile && <button onClick={() => setShowImageUi(true)}>이미지로 UI 생성</button>}
+        {!isMobile && <button onClick={() => setShowBlocks(true)}>블록코딩</button>}
+        {/* Resource staging & management */}
+        <button onClick={() => setShowResourceUpload(true)} style={{ padding: isMobile ? '6px 10px' : undefined }}>리소스 추가</button>
+        <button onClick={async () => {
+          // commit staged -> upload
+          try {
+            const { commitStaged, listStaged } = await import('@/utils/resourceStaging');
+            const setId = (() => {
+              try { const u = new URL(window.location.href); return u.searchParams.get('setId') || u.searchParams.get('pset') || null; } catch { return null; }
+            })();
+            const res = await commitStaged({ getTemplateText: () => templateText, setTemplateText, setId });
+            try { const ls = await listStaged(); setStagedCount(ls.length); } catch {}
+            if (res?.uploaded > 0) {
+              // brief success hint (non-blocking)
+              console.info(`[staging] committed ${res.uploaded} file(s)`);
+            }
+          } catch (e) { console.warn('[staging] commit failed', e); }
+        }} style={{ padding: isMobile ? '6px 10px' : undefined }}>저장(업로드)</button>
+        {stagedCount > 0 && (
+          <span style={{ fontSize: 11, color: '#475569' }}>대기 {stagedCount}</span>
+        )}
+        <button onClick={() => setShowResourceManager(true)} style={{ padding: isMobile ? '6px 10px' : undefined }}>리소스 관리</button>
+        <button onClick={() => fileInputRef.current?.click()} style={{ padding: isMobile ? '6px 10px' : undefined }}>Import</button>
         <button onClick={() => {
           const blob = new Blob([templateText || '{}'], { type: 'application/json' });
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = url; a.download = 'template.json'; a.click();
           setTimeout(() => URL.revokeObjectURL(url), 2000);
-        }}>Export JSON</button>
-        <VariablesPanel />
+        }} style={{ padding: isMobile ? '6px 10px' : undefined }}>Export</button>
+        <button onClick={async () => {
+          try {
+            const text = templateText || '{}';
+            const blob = new Blob([text], { type: 'application/json' });
+            const file = new File([blob], 'template.json', { type: 'application/json' });
+            const { uploadAsset } = await import('@/utils/uploader');
+            const res = await uploadAsset(file, { gameId: 'studio', key: `games/templates/${Date.now()}-template.json` });
+            console.info('[publish] template uploaded', res);
+            let msg = `퍼블리시 완료\nKey: ${res.key}\nURL: ${res.url}`;
+            try {
+              // Create a stateless play id based on the published URL (prod-safe)
+              const r = await fetch('/api/game/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: res.url }) });
+              if (r.ok) {
+                const data = await r.json();
+                if (data?.id) {
+                  msg += `\n\n플레이 링크: /game/play/${data.id}`;
+                }
+              }
+            } catch {}
+            msg += `\n모바일 뷰어: /game/mobile?tpl=${encodeURIComponent(res.url)}`;
+            alert(msg);
+          } catch (e) {
+            alert('퍼블리시에 실패했습니다: ' + (e?.message || e));
+          }
+        }} style={{ padding: isMobile ? '6px 10px' : undefined }}>퍼블리시(실험)</button>
+        {!isMobile && <VariablesPanel />}
         <input ref={fileInputRef} type="file" accept="application/json" style={{ display: 'none' }} onChange={async (e) => {
           const f = e.target.files?.[0];
           if (!f) return;
@@ -154,15 +214,19 @@ export default function ThreeInOneStudio() {
       <div style={{ flex: 1, minHeight: 0, minWidth: 0, position:'relative', overflow: 'hidden' }}>
         {mode === 'code' && (
           <div style={{ height: '100%', position:'relative', minWidth: 0, overflow: 'hidden' }}>
-            <div style={{ position:'absolute', left:8, top:'50%', transform:'translate(0, -50%)', zIndex:5 }}>
-              <button title="AI 코딩" onClick={() => emit('studio:ai:toggle')}>{'<'}</button>
-            </div>
+            {!isMobile && (
+              <div style={{ position:'absolute', left:8, top:'50%', transform:'translate(0, -50%)', zIndex:5 }}>
+                <button title="AI 코딩" onClick={() => emit('studio:ai:toggle')}>{'<'}</button>
+              </div>
+            )}
             <div style={{ position:'absolute', inset:0, minWidth: 0, overflow:'hidden' }}>
               <CodeEditor value={templateText} onChange={setTemplateText} />
             </div>
-            <div style={{ position:'absolute', right: 12, bottom: 12 }}>
-              <RunnerPanel />
-            </div>
+            {!isMobile && (
+              <div style={{ position:'absolute', right: 12, bottom: 12 }}>
+                <RunnerPanel />
+              </div>
+            )}
           </div>
         )}
         {mode === 'nodes' && <NodesEditor />}
@@ -172,6 +236,16 @@ export default function ThreeInOneStudio() {
       <AIPanel />
       {showImageUi && <ImageUiPanel onClose={() => setShowImageUi(false)} />}
       {showBlocks && <BlockCodingPanel onClose={() => setShowBlocks(false)} />}
+      {showResourceUpload && (
+        <ResourceUploadPanel onClose={async () => {
+          setShowResourceUpload(false);
+          try {
+            const { listStaged } = await import('@/utils/resourceStaging');
+            const ls = await listStaged(); setStagedCount(ls.length);
+          } catch {}
+        }} />
+      )}
+      {showResourceManager && <ResourceManagerPanel onClose={() => setShowResourceManager(false)} />}
     </div>
   );
 }
