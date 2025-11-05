@@ -64,8 +64,10 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
   const [toolbarCollapsed, setToolbarCollapsed] = useState(true);
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [aiMenuOpen, setAiMenuOpen] = useState(false);
+  const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
   const fileMenuRef = useRef(null);
   const aiMenuRef = useRef(null);
+  const toolsMenuRef = useRef(null);
   const treeRef = useRef(null);
   const [creating, setCreating] = useState(null); // null | 'file' | 'folder'
   const [createPath, setCreatePath] = useState('');
@@ -128,8 +130,10 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
         const fm = fileMenuRef.current;
         const am = aiMenuRef.current;
         const tr = treeRef.current;
+        const tm = toolsMenuRef.current;
         if (fileMenuOpen && fm && !fm.contains(e.target)) setFileMenuOpen(false);
         if (aiMenuOpen && am && !am.contains(e.target)) setAiMenuOpen(false);
+        if (toolsMenuOpen && tm && !tm.contains(e.target)) setToolsMenuOpen(false);
         // 파일트리가 열려있을 때, 파일트리 영역 밖을 터치하면 닫기
         if (showTree && tr && !tr.contains(e.target)) setShowTree(false);
       } catch {}
@@ -138,6 +142,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
       if (e.key === 'Escape') {
         if (fileMenuOpen) setFileMenuOpen(false);
         if (aiMenuOpen) setAiMenuOpen(false);
+        if (toolsMenuOpen) setToolsMenuOpen(false);
         if (showTree) setShowTree(false);
       }
     };
@@ -164,6 +169,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
     if (toolbarCollapsed) {
       setFileMenuOpen(false);
       setAiMenuOpen(false);
+      setToolsMenuOpen(false);
     }
   }, [toolbarCollapsed]);
   // lock visual height to avoid mobile browser chrome jumps
@@ -258,6 +264,16 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
             )}
           </div>
           <MenuButton onClick={() => setShowPlay(true)} active={showPlay} label="플레이" />
+          <div ref={toolsMenuRef} style={{ position:'relative' }}>
+            <MenuButton onClick={() => setToolsMenuOpen(v=>{ const next=!v; if (next) { setFileMenuOpen(false); setAiMenuOpen(false); setShowTree(false); } return next; })} active={toolsMenuOpen} label="도구" />
+            {toolsMenuOpen && (
+              <div style={{ position:'absolute', zIndex: 20, background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, display:'grid', gap:6, minWidth:200 }}>
+                <button onClick={() => { try { window.location.href = '/prompts'; } catch {} finally { setToolsMenuOpen(false); } }} data-test-id="open-prompt-editor" style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>프롬프트 에디터</button>
+                <button onClick={() => { try { open('/graph/prompt-graph.json'); } catch {} finally { setToolsMenuOpen(false); } }} data-test-id="open-prompt-graph" style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>프롬프트 그래프 열기</button>
+                <button onClick={() => { try { open('/game/runtime.config.json'); } catch {} finally { setToolsMenuOpen(false); } }} data-test-id="open-runtime-config" style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>런타임 설정 열기</button>
+              </div>
+            )}
+          </div>
           <div style={{ marginLeft:'auto', display:'flex', gap:8 }}>
             <MenuButton onClick={() => setToolbarCollapsed(v=>!v)} active={toolbarCollapsed} label={toolbarCollapsed?'펼치기':'접기'} />
           </div>
