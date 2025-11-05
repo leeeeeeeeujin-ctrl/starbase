@@ -2,6 +2,8 @@ export const config = {
   api: { bodyParser: { sizeLimit: '25mb' } },
 };
 
+import { enforceBeforeClassA, incClassA } from '../../../lib/server/quota.js';
+
 function extFromNameOrType(name = '', type = '') {
   const n = String(name||'');
   if (n.includes('.')) return n.split('.').pop();
@@ -37,8 +39,19 @@ export default async function handler(req, res) {
     const b64 = raw.includes(',') ? raw.split(',').pop() : raw;
     const bin = Buffer.from(b64, 'base64');
 
+    // Enforce quota before performing server-side PUT
+    try {
+      await enforceBeforeClassA({ size: bin.length });
+    } catch (e) {
+      const sc = e?.statusCode || 403;
+      return res.status(sc).json({ error: e?.message || 'quota exceeded', code: e?.code || 'quota' });
+    }
+
     const meta = sha256 ? { sha256 } : undefined;
-    await client.send(new PutObjectCommand({ Bucket, Key, Body: bin, ContentType: contentType||'application/octet-stream', Metadata: meta }));
+  await client.send(new PutObjectCommand({ Bucket, Key, Body: bin, ContentType: contentType||'application/octet-stream', Metadata: meta }));
+
+  // Count one Class A op for proxy upload
+  try { await incClassA(1); } catch {}
 
     // record in Supabase (best-effort)
     try {
