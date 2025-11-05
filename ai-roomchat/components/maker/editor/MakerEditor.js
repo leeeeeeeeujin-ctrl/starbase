@@ -911,29 +911,16 @@ export default function MakerEditor() {
       )}
           <div
             onClick={e => e.stopPropagation()}
-            style={{
-              width: '100%',
-              height: 'calc(var(--vh, 1vh) * 100)',
-              background: '#0b1220',
-              borderRadius: 0,
-              overflow: 'hidden',
-              borderTop: '1px solid rgba(148,163,184,0.35)',
-              position: 'relative',
-              display: 'flex',
-              flexDirection: 'column',
-              paddingTop: 'env(safe-area-inset-top)',
-              paddingBottom: 'env(safe-area-inset-bottom)',
-              paddingLeft: 'env(safe-area-inset-left)',
-              paddingRight: 'env(safe-area-inset-right)'
-            }}
+            style={{ position: 'absolute', inset: 0 }}
           >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', background: 'rgba(2,6,23,0.6)', color: '#e2e8f0' }}>
-              <strong style={{ fontSize: 13 }}>코드 에디터</strong>
-              <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-                <button onClick={() => setShowMultiLanguageEditor(false)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid rgba(148,163,184,0.35)', background: 'rgba(239, 68, 68, 0.9)', color: '#fff', fontWeight: 700, fontSize: 12 }}>닫기</button>
-              </div>
-            </div>
-            <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+            {/* 닫기 버튼 (오버레이 상단 고정) */}
+            <button
+              onClick={() => setShowMultiLanguageEditor(false)}
+              title="닫기"
+              style={{ position: 'absolute', top: 'calc(env(safe-area-inset-top) + 10px)', right: 'calc(env(safe-area-inset-right) + 10px)', zIndex: 10, padding: '8px 10px', borderRadius: 10, border: '1px solid rgba(148,163,184,0.35)', background: 'rgba(239, 68, 68, 0.95)', color: '#fff', fontWeight: 700 }}
+            >닫기</button>
+            {/* V2 전체화면 코드 에디터 */}
+            <div style={{ position: 'absolute', inset: 0 }}>
               <CodeEditorOverlayV2 templateBinding={{ text: templateText, setText: setTemplateText }} />
             </div>
           </div>
