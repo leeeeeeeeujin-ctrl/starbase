@@ -95,10 +95,10 @@ const ATTACHMENT_ICONS = {
 };
 
 // R2 uploader wrapper for chat attachments/backgrounds
-async function r2Upload(file, { folder = 'chat', name } = {}) {
+async function r2Upload(file, { folder = 'chat', name, contentEncoding } = {}) {
   const safeName = (name || file?.name || 'file').replace(/[^a-zA-Z0-9_.-]/g, '_');
   const key = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2,8)}-${safeName}`;
-  const res = await uploadAsset(file, { gameId: 'chat', key });
+  const res = await uploadAsset(file, { gameId: 'chat', key, contentEncoding });
   return { url: res.url, key: res.key, hash: res.hash };
 }
 
@@ -1488,18 +1488,34 @@ function sameMinute(a, b) {
   }
 }
 
+function extFromMime(m) {
+  if (!m) return '';
+  const t = m.toLowerCase();
+  if (t.includes('webp')) return 'webp';
+  if (t.includes('jpeg') || t.includes('jpg')) return 'jpg';
+  if (t.includes('png')) return 'png';
+  if (t.includes('gif')) return 'gif';
+  if (t.includes('mp4')) return 'mp4';
+  if (t.includes('webm')) return 'webm';
+  if (t.includes('ogg')) return 'ogg';
+  return '';
+}
+
 async function uploadAttachmentDraft({ blob, name, encoding, contentType }) {
-  const safeName = sanitizeFileName(name);
-  const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName}.gz`;
-  const fileWrap = new File([blob], path, { type: 'application/octet-stream' });
-  const up = await r2Upload(fileWrap, { folder: 'chat/attachments', name: fileWrap.name });
+  const base = sanitizeFileName(name || 'attachment');
+  const desiredExt = extFromMime(contentType) || (base.includes('.') ? base.split('.').pop() : 'bin');
+  const stem = base.replace(/\.[^.]+$/, '');
+  const finalName = `${stem}.${desiredExt}`;
+  // Keep original contentType; store gzip via Content-Encoding so clients can auto-decompress
+  const fileWrap = new File([blob], finalName, { type: contentType || 'application/octet-stream' });
+  const up = await r2Upload(fileWrap, { folder: 'chat/attachments', name: finalName, contentEncoding: encoding && encoding !== 'none' ? encoding : undefined });
 
   return {
     bucket: 'r2',
     path: up.key,
     encoding,
     content_type: contentType,
-    name,
+    name: finalName,
     size: blob.size,
   };
 }

@@ -3,7 +3,7 @@
 // High-level client uploader for R2 via our API.
 // Flow: sha256 -> POST /api/assets/exists -> if !exists then POST /api/assets/upload-url -> PUT -> POST /api/assets/commit
 
-export async function uploadAsset(file, { gameId, key, signal } = {}) {
+export async function uploadAsset(file, { gameId, key, signal, contentEncoding } = {}) {
   if (!file) throw new Error('file required');
   // Optional client-side compression for images/videos (logic-only; UI unchanged)
   try {
@@ -48,7 +48,7 @@ export async function uploadAsset(file, { gameId, key, signal } = {}) {
   const ext = name.includes('.') ? name.split('.').pop() : 'bin';
   const defKey = `games/${gameId||'common'}/${sha256}.${ext}`;
   const finalKey = (typeof key === 'string' && key) ? key : defKey;
-  r = await fetch('/api/assets/upload-url', { method:'POST', headers: { 'content-type':'application/json', ...(auth?{Authorization:auth}:{}) }, body: JSON.stringify({ key: finalKey, contentType, size, sha256 }), signal });
+  r = await fetch('/api/assets/upload-url', { method:'POST', headers: { 'content-type':'application/json', ...(auth?{Authorization:auth}:{}) }, body: JSON.stringify({ key: finalKey, contentType, size, sha256, contentEncoding }), signal });
   j = await r.json();
   if (!r.ok) throw new Error(j?.error || 'upload-url failed');
   const putUrl = j.url; const headers = j.headers || { 'Content-Type': contentType };
