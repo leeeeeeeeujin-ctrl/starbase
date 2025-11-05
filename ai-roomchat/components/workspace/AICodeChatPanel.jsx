@@ -19,6 +19,11 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
   const [imageUiPrompt, setImageUiPrompt] = useState('');
   const [imageUiBusy, setImageUiBusy] = useState(false);
   const [imageUiError, setImageUiError] = useState('');
+  const [isFullscreenUi, setIsFullscreenUi] = useState(false);
+  const rootRef = useRef(null);
+  const historyRef = useRef(null);
+  const settingsRef = useRef(null);
+  const actionsRef = useRef(null);
   const menuBtn = { padding:'6px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#cbd5e1', textAlign:'left' };
   const PREF_SOURCE_KEY = 'workspace:aiChat:preferSource';
   const [preferSource, setPreferSource] = useState(() => {
@@ -368,24 +373,53 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
   const onHeaderTouchEnd = () => {
     const now = Date.now();
     if (now - (lastTapRef.current || 0) < 320) {
-      onToggleFullscreen && onToggleFullscreen();
+      if (onToggleFullscreen) onToggleFullscreen();
+      setIsFullscreenUi(v=>!v);
     }
     lastTapRef.current = now;
   };
+  const handleToggleFullscreen = () => {
+    if (onToggleFullscreen) onToggleFullscreen();
+    setIsFullscreenUi(v=>!v);
+  };
+
+  // Close popovers when clicking outside their area for convenience
+  useEffect(() => {
+    const onDoc = (e) => {
+      try {
+        const t = e.target;
+        if (historyOpen) {
+          const el = historyRef.current; if (el && !el.contains(t)) setHistoryOpen(false);
+        }
+        if (settingsOpen) {
+          const el = settingsRef.current; if (el && !el.contains(t)) setSettingsOpen(false);
+        }
+        if (actionsOpen) {
+          const el = actionsRef.current; if (el && !el.contains(t)) setActionsOpen(false);
+        }
+      } catch {}
+    };
+    document.addEventListener('mousedown', onDoc, true);
+    document.addEventListener('touchstart', onDoc, { passive: true, capture: true });
+    return () => {
+      document.removeEventListener('mousedown', onDoc, true);
+      document.removeEventListener('touchstart', onDoc, true);
+    };
+  }, [historyOpen, settingsOpen, actionsOpen]);
 
   return (
-    <div style={{ height:'100%', border:'1px solid #334155', background:'#0b1220', borderRadius:12, overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 24px 64px rgba(0,0,0,0.6)' }}>
+  <div ref={rootRef} style={{ height:'100%', border:'1px solid #334155', background:'#0b1220', borderRadius:12, overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 24px 64px rgba(0,0,0,0.6)' }}>
       <div onMouseDown={onDragHandleDown} onTouchStart={onDragHandleDown} onDoubleClick={onToggleFullscreen} onTouchEnd={onHeaderTouchEnd} style={{ padding:'8px 10px', color:'#e2e8f0', fontWeight:600, display:'flex', alignItems:'center', justifyContent:'space-between', background:'linear-gradient(180deg, rgba(2,6,23,0.8) 0%, rgba(2,6,23,0.6) 100%)', position:'relative', cursor:'move' }}>
         <span>AI 코드 채팅</span>
         <div style={{ display:'flex', gap:6, alignItems:'center' }}>
           <button onClick={()=>setHistoryOpen(v=>!v)} title="대화 기록" style={{ padding:'3px 8px', borderRadius:6, border:'1px solid #334155', background: historyOpen ? '#172033' : '#0b1220', color:'#94a3b8', fontSize:12 }}>기록</button>
           <button onClick={startNewChat} title="새 대화" style={{ padding:'3px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8', fontSize:12 }}>새 대화</button>
-          {enableFullscreenButton && <button onClick={onToggleFullscreen} title="전체/창 전환" style={{ padding:'3px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8', fontSize:12 }}>전환</button>}
+          {enableFullscreenButton && <button onClick={handleToggleFullscreen} title={isFullscreenUi?"창으로":"전체화면으로"} style={{ padding:'3px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8', fontSize:12 }}>{isFullscreenUi ? '−' : '+'}</button>}
           <button onClick={()=>setActionsOpen(v=>!v)} title="옵션" style={{ padding:'4px 8px', borderRadius:8, border:'1px solid #334155', background: actionsOpen ? '#172033' : '#0b1220', color:'#94a3b8' }}>⋮</button>
           <button onClick={onClose} title="닫기" style={{ padding:'4px 8px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8' }}>×</button>
         </div>
         {actionsOpen && (
-          <div style={{ position:'absolute', right:8, top:'100%', marginTop:6, zIndex:50, width:220, background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, display:'grid', gap:6 }}>
+          <div ref={actionsRef} style={{ position:'absolute', right:8, top:'100%', marginTop:6, zIndex:50, width:220, background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, display:'grid', gap:6 }}>
             <button onClick={()=>{ applyMainUiPreset(); setActionsOpen(false); }} style={menuBtn}>UI 제작(메인 기본) 적용</button>
             <button onClick={()=>{ setShowImageUi(true); setActionsOpen(false); }} style={menuBtn}>이미지로 UI 생성</button>
             <button onClick={()=>{ setSettingsOpen(v=>!v); setActionsOpen(false); }} style={menuBtn}>설정</button>
@@ -394,7 +428,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
           </div>
         )}
         {historyOpen && (
-          <div style={{ position:'absolute', right:8, top:'100%', marginTop:6, zIndex:30, width:300, maxHeight:260, overflow:'auto', background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6 }}>
+          <div ref={historyRef} style={{ position:'absolute', right:8, top:'100%', marginTop:6, zIndex:30, width:300, maxHeight:260, overflow:'auto', background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6 }}>
             {(sessions||[]).filter(s => Array.isArray(s.logs) && s.logs.length > 0).map(s => (
               <div key={s.id} style={{ display:'grid', gridTemplateColumns:'1fr auto', alignItems:'center', gap:8, padding:'6px 8px', borderRadius:6, border:'1px solid #334155', background: s.id===currentId?'#172033':'#0b1220', color:'#e2e8f0', marginBottom:6 }}>
                 <button onClick={() => { setCurrentId(s.id); setHistoryOpen(false); }} style={{ textAlign:'left', background:'transparent', border:'none', color:'#e2e8f0', padding:0 }}>
@@ -410,7 +444,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
           </div>
         )}
         {settingsOpen && (
-          <div style={{ position:'absolute', right:8, top:'100%', marginTop:6, zIndex:40, width:320, maxHeight:320, overflow:'auto', background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:8, display:'grid', gap:8 }}>
+          <div ref={settingsRef} style={{ position:'absolute', right:8, top:'100%', marginTop:6, zIndex:40, width:320, maxHeight:320, overflow:'auto', background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:8, display:'grid', gap:8 }}>
             <div style={{ color:'#e2e8f0', fontWeight:700, fontSize:12 }}>API 키 설정</div>
             <div style={{ display:'grid', gap:6 }}>
               <label style={{ fontSize:12, color:'#cbd5e1' }}>사용 소스</label>
