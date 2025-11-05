@@ -17,6 +17,7 @@ const ImageUiPanel = dynamic(() => import('./ImageUiPanel'), { ssr: false });
 const BlockCodingPanel = dynamic(() => import('./BlockCodingPanel'), { ssr: false });
 const ResourceUploadPanel = dynamic(() => import('./ResourceUploadPanel'), { ssr: false });
 const ResourceManagerPanel = dynamic(() => import('./ResourceManagerPanel'), { ssr: false });
+const PlayOverlay = dynamic(() => import('./PlayOverlay.jsx'), { ssr: false });
 
 export default function ThreeInOneStudio() {
   const { templateText, setTemplateText, mode, setMode } = useStudioTemplate();
@@ -61,6 +62,7 @@ export default function ThreeInOneStudio() {
   const [showResourceUpload, setShowResourceUpload] = useState(false);
   const [showResourceManager, setShowResourceManager] = useState(false);
   const [stagedCount, setStagedCount] = useState(0);
+  const [showPlay, setShowPlay] = useState(false);
 
   // External event hooks (allow header or other UIs to control this editor)
   useEffect(() => {
@@ -116,6 +118,7 @@ export default function ThreeInOneStudio() {
         }}
       >
         <button onClick={() => setMode(mode === 'code' ? 'nodes' : 'code')} style={{ padding: isMobile ? '6px 10px' : undefined }}>{mode === 'code' ? '프롬프트' : '코드'}</button>
+  <button onClick={() => setShowPlay(true)} title="메인게임 오버레이 미리보기" style={{ padding: isMobile ? '6px 10px' : undefined }}>플레이(오버레이)</button>
         <span style={{ flex: 1 }} />
         {!isMobile && <UndoRedoBar />}
         {!isMobile && <QuickActions />}
@@ -234,6 +237,7 @@ export default function ThreeInOneStudio() {
 
       {/* Floating panels */}
       <AIPanel />
+  {showPlay && <PlayOverlay onClose={() => setShowPlay(false)} />}
       {showImageUi && <ImageUiPanel onClose={() => setShowImageUi(false)} />}
       {showBlocks && <BlockCodingPanel onClose={() => setShowBlocks(false)} />}
       {showResourceUpload && (

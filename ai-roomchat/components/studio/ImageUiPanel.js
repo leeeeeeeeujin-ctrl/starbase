@@ -10,12 +10,24 @@ export default function ImageUiPanel({ onClose }){
   const generate = async () => {
     setBusy(true); setError('');
     try {
-      // Stub: append a resource entry to backgrounds with the prompt for now
       const obj = JSON.parse(templateText || '{}');
+      // Install main-game UI preset by default, alongside a stub background
       const bg = obj.resources?.backgrounds || [];
       const id = `bg_${Math.random().toString(36).slice(2,8)}`;
       const next = {
         ...obj,
+        ui: {
+          ...(obj.ui||{}),
+          main: {
+            modules: [
+              { type:'MainGameChat', id:'gameChat' },
+              { type:'SharedChat', id:'sharedChat', enabled:true, realtimeOnly:true },
+              { type:'NextBar', id:'nextBar', policy:{ timeoutSec:60, roleThreshold:0.5 } },
+              { type:'CharacterCards', id:'charCards', behavior:{ tapCycle:['desc','abilities','score','image'], darkenOnOverlay:true } },
+              { type:'WidgetRow', id:'widgetRow' },
+            ],
+          }
+        },
         resources: { ...(obj.resources||{}), backgrounds: [...bg, { id, name: prompt || 'Generated', image: '' }] }
       };
       setTemplateText(JSON.stringify(next, null, 2));

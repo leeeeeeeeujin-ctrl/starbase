@@ -15,6 +15,7 @@ function Inner({ children, externalText, onExternalChange }){
   const fileInputRef = useRef(null);
   const [showImageUi, setShowImageUi] = useState(false);
   const [showBlocks, setShowBlocks] = useState(false);
+  const [showPlay, setShowPlay] = useState(false);
 
   // Bridge external prop/state if provided
   useEffect(() => {
@@ -45,8 +46,40 @@ function Inner({ children, externalText, onExternalChange }){
       <div style={{ display:'flex', gap:8, padding:8, borderBottom:'1px solid #eee', alignItems:'center', flexWrap:'wrap' }}>
         <button onClick={() => setMode(mode === 'code' ? 'nodes' : 'code')}>{mode === 'code' ? '프롬프트 편집으로' : '코드 편집으로'}</button>
         <span style={{ flex:1 }} />
-        <button onClick={() => setShowImageUi(true)}>이미지로 UI 생성</button>
-        <button onClick={() => setShowBlocks(true)}>블록코딩</button>
+        <button onClick={() => setShowPlay(true)}>플레이(오버레이)</button>
+        <select onChange={e => {
+          const v = e.target.value; e.target.selectedIndex = 0;
+          if (v === 'ui-preset-main') {
+            try {
+              const obj = JSON.parse(templateText || '{}');
+              const next = {
+                ...obj,
+                ui: {
+                  ...(obj.ui||{}),
+                  main: {
+                    modules: [
+                      { type:'MainGameChat', id:'gameChat' },
+                      { type:'SharedChat', id:'sharedChat', enabled:true, realtimeOnly:true },
+                      { type:'NextBar', id:'nextBar', policy:{ timeoutSec:60, roleThreshold:0.5 } },
+                      { type:'CharacterCards', id:'charCards', behavior:{ tapCycle:['desc','abilities','score','image'], darkenOnOverlay:true } },
+                      { type:'WidgetRow', id:'widgetRow' },
+                    ],
+                  }
+                }
+              };
+              setTemplateText(JSON.stringify(next, null, 2));
+            } catch {}
+          } else if (v === 'image-ui') {
+            setShowImageUi(true);
+          } else if (v === 'blocks') {
+            setShowBlocks(true);
+          }
+        }} defaultValue="">
+          <option value="" disabled>도구…</option>
+          <option value="ui-preset-main">UI 제작(메인게임 기본)</option>
+          <option value="image-ui">이미지로 UI 생성</option>
+          <option value="blocks">블록코딩</option>
+        </select>
         <button onClick={() => fileInputRef.current?.click()}>Import JSON</button>
         <button onClick={() => {
           const blob = new Blob([templateText || '{}'], { type:'application/json' });
@@ -85,6 +118,25 @@ function Inner({ children, externalText, onExternalChange }){
 
       {/* floating panels */}
       <AIPanel />
+      {showPlay && (
+        <div style={{ position:'fixed', inset:0, background:'#fff', zIndex:1000 }}>
+          <div style={{ position:'absolute', top:8, right:8 }}>
+            <button onClick={() => setShowPlay(false)}>닫기</button>
+          </div>
+          {/* Embedding via dynamic import to avoid SSR */}
+          <div style={{ height:'100%' }}>
+            {(() => {
+              const Comp = dynamic(() => import('../game/MainGameMobileUI.jsx'), { ssr:false });
+              try {
+                const obj = JSON.parse(templateText || '{}');
+                return <Comp template={obj} />;
+              } catch {
+                return <Comp template={{}} />;
+              }
+            })()}
+          </div>
+        </div>
+      )}
       {showImageUi && <ImageUiPanel onClose={() => setShowImageUi(false)} />}
       {showBlocks && <BlockCodingPanel onClose={() => setShowBlocks(false)} />}
     </div>
