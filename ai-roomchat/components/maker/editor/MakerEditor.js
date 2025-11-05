@@ -13,7 +13,7 @@ import AddPromptFab from './AddPromptFab';
 import VariableDrawer from './VariableDrawer';
 import AdvancedToolsPanel from './AdvancedToolsPanel';
 // Removed legacy editors; using StudioJsonEditor for unified JSON
-import WorkspaceOverlay from '../../workspace/WorkspaceOverlay.jsx';
+import CodeEditorOverlayV2 from '../../workspace/CodeEditorOverlayV2.jsx';
 import GameSimulator from './GameSimulator';
 import dynamic from 'next/dynamic';
 import AutoUpdateListener from '../../infra/AutoUpdateListener.jsx';
@@ -117,26 +117,7 @@ export default function MakerEditor() {
     }
   }, [templateText, setNodes, setEdges]);
 
-  // Overlay용 테스트 데이터 구성기 (에디터 노드 → 시뮬레이터 슬롯)
-  const overlayGameData = useMemo(() => {
-    try {
-      return {
-        meta: { version: 2, createdAt: new Date().toISOString() },
-        set: { name: setInfo?.name || '시뮬레이션' },
-        slots: nodes.map((node, index) => ({
-          slot_no: parseInt(node.id) || index,
-          slot_type: node.type || 'ai',
-          template: node.data?.label || '',
-          is_start: node.data?.isStart || index === 0,
-          var_rules_global: node.data?.var_rules_global || {},
-          var_rules_local: node.data?.var_rules_local || {},
-        })),
-        bridges: edges.map(e => ({ id: e.id, source: e.source, target: e.target, label: e.label || '' })),
-      };
-    } catch {
-      return null;
-    }
-  }, [nodes, edges, setInfo?.name]);
+  // (removed) overlayGameData: handled inside V2 overlay when needed
 
   // Initial hydrate when opening existing template
   useEffect(() => {
@@ -953,7 +934,7 @@ export default function MakerEditor() {
               </div>
             </div>
             <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-              <WorkspaceOverlay gameData={overlayGameData} templateBinding={{ text: templateText, setText: setTemplateText }} />
+              <CodeEditorOverlayV2 templateBinding={{ text: templateText, setText: setTemplateText }} />
             </div>
           </div>
         </div>
