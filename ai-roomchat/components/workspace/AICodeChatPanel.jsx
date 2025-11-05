@@ -146,8 +146,15 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed.sessions) && parsed.sessions.length > 0) {
-          setSessions(parsed.sessions);
-          setCurrentId(parsed.currentId || parsed.sessions[0].id);
+          // 초기 로딩 시, 내용이 전혀 없는 세션은 제외
+          const cleaned = parsed.sessions.filter(s => Array.isArray(s.logs) && s.logs.length > 0);
+          if (cleaned.length > 0) {
+            setSessions(cleaned);
+            setCurrentId(parsed.currentId && cleaned.find(x=>x.id===parsed.currentId)?.id || cleaned[0].id);
+          } else {
+            // 모두 비어있다면 새 세션만 생성
+            const s = newSession(); setSessions([s]); setCurrentId(s.id);
+          }
           return;
         }
       }
@@ -157,7 +164,11 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
     setCurrentId(s.id);
   }, []);
   useEffect(() => {
-    try { localStorage.setItem(SESS_KEY, JSON.stringify({ sessions, currentId })); } catch {}
+    try {
+      // 저장 시에도, 현재 세션을 제외하고 비어있는 세션은 저장하지 않음
+      const toSave = (sessions||[]).filter(s => (Array.isArray(s.logs) && s.logs.length > 0) || s.id === currentId);
+      localStorage.setItem(SESS_KEY, JSON.stringify({ sessions: toSave, currentId }));
+    } catch {}
   }, [sessions, currentId]);
   const current = useMemo(() => sessions.find(s => s.id === currentId) || newSession(), [sessions, currentId]);
   const logs = current.logs || [];
@@ -167,9 +178,22 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
   };
   const startNewChat = () => {
     const s = newSession();
-    setSessions(prev => [s, ...prev]);
+    // 새로 만들 때, 내용이 전혀 없는 기존 세션은 정리
+    setSessions(prev => [s, ...prev.filter(p => Array.isArray(p.logs) && p.logs.length > 0)]);
     setCurrentId(s.id);
     setHistoryOpen(false);
+  };
+  const deleteSession = (id) => {
+    setSessions(prev => {
+      const next = prev.filter(s => s.id !== id);
+      // 현재 세션을 지웠다면 대체 세션 선택
+      if (id === currentId) {
+        const fallback = next.find(s => Array.isArray(s.logs) && s.logs.length > 0) || newSession();
+        if (!next.find(s => s.id === fallback.id)) next.unshift(fallback);
+        setCurrentId(fallback.id);
+      }
+      return next;
+    });
   };
   const listFiles = () => Object.keys(files).sort().map(p => ({ path: p, size: (files[p]?.content||'').length, dir: !!files[p]?.dir }));
   const stripFences = (s) => String(s||'').replace(/^```(?:json)?/i,'').replace(/```$/i,'').trim();
@@ -300,13 +324,19 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
           </div>
         )}
         {historyOpen && (
-          <div style={{ position:'absolute', right:8, top:'100%', marginTop:6, zIndex:30, width:280, maxHeight:260, overflow:'auto', background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6 }}>
-            {sessions.map(s => (
-              <button key={s.id} onClick={() => { setCurrentId(s.id); setHistoryOpen(false); }} style={{ width:'100%', textAlign:'left', padding:'6px 8px', borderRadius:6, border:'1px solid #334155', background: s.id===currentId?'#172033':'#0b1220', color:'#e2e8f0', marginBottom:6 }}>
-                <div style={{ fontSize:12, fontWeight:700 }}>{s.title || '대화'}</div>
-                <div style={{ fontSize:11, color:'#94a3b8' }}>{new Date(s.createdAt).toLocaleString()}</div>
-              </button>
+          <div style={{ position:'absolute', right:8, top:'100%', marginTop:6, zIndex:30, width:300, maxHeight:260, overflow:'auto', background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6 }}>
+            {(sessions||[]).filter(s => Array.isArray(s.logs) && s.logs.length > 0).map(s => (
+              <div key={s.id} style={{ display:'grid', gridTemplateColumns:'1fr auto', alignItems:'center', gap:8, padding:'6px 8px', borderRadius:6, border:'1px solid #334155', background: s.id===currentId?'#172033':'#0b1220', color:'#e2e8f0', marginBottom:6 }}>
+                <button onClick={() => { setCurrentId(s.id); setHistoryOpen(false); }} style={{ textAlign:'left', background:'transparent', border:'none', color:'#e2e8f0', padding:0 }}>
+                  <div style={{ fontSize:12, fontWeight:700 }}>{s.title || '대화'}</div>
+                  <div style={{ fontSize:11, color:'#94a3b8' }}>{new Date(s.createdAt).toLocaleString()}</div>
+                </button>
+                <button onClick={(e)=>{ e.stopPropagation(); deleteSession(s.id); }} title="삭제" style={{ padding:'4px 8px', borderRadius:6, border:'1px solid #7f1d1d', background:'#0b1220', color:'#fecaca' }}>삭제</button>
+              </div>
             ))}
+            {((sessions||[]).filter(s => Array.isArray(s.logs) && s.logs.length > 0).length === 0) && (
+              <div style={{ fontSize:12, color:'#94a3b8', padding:'6px 8px' }}>저장된 대화가 없습니다.</div>
+            )}
           </div>
         )}
         {settingsOpen && (
