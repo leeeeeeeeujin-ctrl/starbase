@@ -82,10 +82,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
   };
   const [overlayTree, setOverlayTree] = useState(computeOverlayTree());
   const PREF_SNAP = 'maker:ui:snap';
-  // 안정적 레이아웃: 상단/하단 패널 높이를 측정해 에디터를 절대 배치
-  const toolbarRef = useRef(null);
-  const bottomRef = useRef(null);
-  const [toolbarH, setToolbarH] = useState(0);
+  // 안정적 레이아웃: 자연 플렉스 레이아웃으로 상단/본문 배치
   const [bottomH, setBottomH] = useState(0);
   // keep tree width responsive on resize
   useEffect(() => {
@@ -115,12 +112,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
       }
     } catch {}
   }, []);
-  useEffect(() => {
-    try {
-      const h = toolbarRef.current ? toolbarRef.current.getBoundingClientRect().height : 0;
-      setToolbarH(Math.round(h));
-    } catch {}
-  }, [toolbarCollapsed, fileMenuOpen, aiMenuOpen, creating, showTree]);
+  // 툴바 높이 측정 없이 자연 레이아웃 사용
   // Chat panel is now floating overlay; editor area bottom inset remains 0
   useEffect(() => { setBottomH(0); }, [showCodeChat]);
 
@@ -238,7 +230,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
     );
 
     return (
-      <div ref={toolbarRef} style={{ display: 'grid', gridTemplateRows: toolbarCollapsed ? 'auto' : 'auto auto auto', gap: 6, padding: '8px', borderBottom: '1px solid #25314a', background: 'rgba(2,6,23,0.5)' }}>
+      <div style={{ display: 'grid', gridTemplateRows: toolbarCollapsed ? 'auto' : 'auto auto auto', gap: 6, padding: '8px', borderBottom: '1px solid #25314a', background: 'rgba(2,6,23,0.5)' }}>
         {/* 1열: 햄버거 / 파일 메뉴 / AI 코딩 / 테스트 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button onClick={() => { setFileMenuOpen(false); setAiMenuOpen(false); setShowTree(v=>!v); }} title="파일트리" style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: showTree ? '#172033' : '#0b1220', color: '#e2e8f0' }}>☰</button>
@@ -323,36 +315,35 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
             <FileTree />
           </div>
         )}
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', paddingTop:'env(safe-area-inset-top)', paddingBottom:'env(safe-area-inset-bottom)', paddingLeft:'env(safe-area-inset-left)', paddingRight:'env(safe-area-inset-right)' }}>
           <Toolbar />
-          {/* 중앙 영역: 절대 배치로 상단/하단 고정 높이를 제외한 영역 전체를 에디터/테스트가 차지 */}
-          <div style={{ position:'relative', flex: 1, minHeight: 0 }}>
-            <div style={{ position:'absolute', inset: `${toolbarH}px 0 ${bottomH}px 0`, display:'flex', minHeight:0 }}>
-              <div style={{ width: '100%', minWidth: 0 }}>
-                <EditorPane />
-              </div>
+          {/* 중앙 영역: 툴바 아래 컨텐츠가 1fr로 동작, 에디터는 100% 채움 */}
+          <div style={{ position:'relative', flex: 1, minHeight: 0, overflow:'hidden' }}>
+            <div style={{ position:'absolute', inset: 0 }}>
+              <EditorPane />
             </div>
+            {/* overlayTree 모드의 파일트리를 컨텐츠 영역 위에 오버레이 */}
+            {overlayTree && showTree && (
+              <div
+                ref={treeRef}
+                style={{
+                  position:'absolute', left:0, top:0, bottom:0,
+                  width: treeWidth, background:'#0b1220', borderRight:'1px solid #25314a',
+                  boxShadow:'8px 0 24px -12px rgba(0,0,0,0.4)',
+                  transition:'opacity 200ms ease',
+                  zIndex: 300,
+                }}
+              >
+                <FileTree />
+              </div>
+            )}
+            {overlayTree && showTree && (
+              <div onClick={()=>setShowTree(false)} style={{ position:'absolute', inset:0, background:'rgba(2,6,23,0.4)', backdropFilter:'blur(2px)', zIndex: 250 }} />
+            )}
           </div>
           {/* Floating chat overlay (independent of editor layout) */}
-          <div ref={bottomRef} />
+          <div />
         </div>
-        {overlayTree && showTree && (
-          <div
-            ref={treeRef}
-            style={{
-              position:'absolute', left:0, top: toolbarH, bottom:0,
-              width: treeWidth, background:'#0b1220', borderRight:'1px solid #25314a',
-              boxShadow:'8px 0 24px -12px rgba(0,0,0,0.4)',
-              transition:'opacity 200ms ease',
-              zIndex: 300,
-            }}
-          >
-            <FileTree />
-          </div>
-        )}
-        {overlayTree && showTree && (
-          <div onClick={()=>setShowTree(false)} style={{ position:'absolute', inset:0, background:'rgba(2,6,23,0.4)', backdropFilter:'blur(2px)', zIndex: 250 }} />
-        )}
       </div>
       {/* Fullscreen Play Overlay */}
       {showPlay && (
