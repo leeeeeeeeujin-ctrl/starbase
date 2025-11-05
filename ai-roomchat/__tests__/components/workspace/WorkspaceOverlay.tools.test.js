@@ -48,5 +48,11 @@ describe('WorkspaceOverlay Tools menu', () => {
       n => n.type === 'button' && n.props && n.props['data-test-id'] === 'open-prompt-editor'
     );
     expect(openPromptEditor.length).toBeGreaterThan(0);
+
+    // Also contains AI Agent entry
+    const openAIAgent = root.findAll(
+      n => n.type === 'button' && n.props && n.props['data-test-id'] === 'open-ai-agent'
+    );
+    expect(openAIAgent.length).toBeGreaterThan(0);
   });
 });

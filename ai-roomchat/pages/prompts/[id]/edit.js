@@ -1,6 +1,8 @@
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import PromptEditor from '../../../components/PromptEditor';
+import AICodeChatPanel from '../../../components/workspace/AICodeChatPanel.jsx';
+import { CodeWorkspaceProvider } from '../../../components/workspace/CodeWorkspaceProvider.jsx';
 import Link from 'next/link';
 
 export default function PromptEditPage() {
@@ -10,6 +12,7 @@ export default function PromptEditPage() {
   const [aiResult, setAiResult] = useState(null);
   const [editorBody, setEditorBody] = useState(prompt.body || '');
   const [saving, setSaving] = useState(false);
+  const [showAgent, setShowAgent] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -112,10 +115,11 @@ export default function PromptEditPage() {
     <div style={{ padding: 20 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1>Edit Prompt — {prompt.id}</h1>
-        <div>
+        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
           <Link href="/prompts">
             <a>Back to list</a>
           </Link>
+          <button onClick={()=> setShowAgent(true)} data-test-id="open-ai-agent-from-prompt" style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>AI 에이전트</button>
         </div>
       </div>
 
@@ -158,6 +162,16 @@ export default function PromptEditPage() {
         </button>
         <span style={{ marginLeft: 12 }}>{prompt.version ? `Version: ${prompt.version}` : ''}</span>
       </div>
+
+      {showAgent && (
+        <div style={{ position:'fixed', right:16, bottom:16, zIndex:1200, width:420, height:360 }}>
+          <CodeWorkspaceProvider>
+            <div style={{ position:'absolute', inset:0 }}>
+              <AICodeChatPanel onClose={()=> setShowAgent(false)} />
+            </div>
+          </CodeWorkspaceProvider>
+        </div>
+      )}
     </div>
   );
 }

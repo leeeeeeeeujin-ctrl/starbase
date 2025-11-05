@@ -14,6 +14,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
   const [extraAttach, setExtraAttach] = useState([]); // array of file paths
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
+  const [contextOpen, setContextOpen] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showImageUi, setShowImageUi] = useState(false);
   const [imageUiPrompt, setImageUiPrompt] = useState('');
@@ -24,6 +25,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
   const historyRef = useRef(null);
   const settingsRef = useRef(null);
   const actionsRef = useRef(null);
+  const contextRef = useRef(null);
   const menuBtn = { padding:'6px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#cbd5e1', textAlign:'left' };
   const PREF_SOURCE_KEY = 'workspace:aiChat:preferSource';
   const [preferSource, setPreferSource] = useState(() => {
@@ -263,7 +265,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
             ],
           }
         },
-        resources: { ...(obj.resources||{}), backgrounds: [...bg, { id, name: imageUiPrompt || 'Generated', image: '' }] }
+        resources: { ...(obj.resources||{}), backgrounds: [...bg, { id, name: imageUiName || (imageUiPrompt || 'Generated'), image: imageUiUrl || '' }] }
       };
       setTemplateText(JSON.stringify(next, null, 2));
       setShowImageUi(false); setImageUiPrompt('');
@@ -322,7 +324,14 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
           attached: true,
           truncated: contentRaw.length > MAX_INLINE,
           },
-        note: '큰 파일은 내용이 잘려서 제공될 수 있음. 필요한 경로만 수정 계획에 포함.'
+        runtime: { model: runtimeCfg?.ai?.model || null, entryNode: runtimeCfg?.entryNode || null, roles: runtimeCfg?.roles || null },
+        graph: { nodes: Array.isArray(graphObj?.nodes) ? graphObj.nodes.length : 0, edges: Array.isArray(graphObj?.edges) ? graphObj.edges.length : 0 },
+        tokens: {
+          capability: tokenCapability ? { last4: tokenCapability.last4, length: tokenCapability.length } : null,
+          device: tokenDevice ? { last4: tokenDevice.last4, length: tokenDevice.length } : null,
+          signing: tokenSigning ? { last4: tokenSigning.last4, length: tokenSigning.length } : null,
+        },
+        note: '큰 파일은 내용이 잘려서 제공될 수 있음. 필요한 경로만 수정 계획에 포함. 토큰 값은 마스킹되어 제공됩니다.'
       };
       const historyText = logs
         .filter(l => l.role === 'user' || l.role === 'assistant')
@@ -397,6 +406,9 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
         if (actionsOpen) {
           const el = actionsRef.current; if (el && !el.contains(t)) setActionsOpen(false);
         }
+        if (contextOpen) {
+          const el = contextRef.current; if (el && !el.contains(t)) setContextOpen(false);
+        }
       } catch {}
     };
     document.addEventListener('mousedown', onDoc, true);
@@ -405,7 +417,66 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
       document.removeEventListener('mousedown', onDoc, true);
       document.removeEventListener('touchstart', onDoc, true);
     };
-  }, [historyOpen, settingsOpen, actionsOpen]);
+  }, [historyOpen, settingsOpen, actionsOpen, contextOpen]);
+
+  // Prompt-graph helper: minimal auto-generation from description
+  const [showAutoGraph, setShowAutoGraph] = useState(false);
+  const [autoGraphDesc, setAutoGraphDesc] = useState('');
+  const [autoGraphBusy, setAutoGraphBusy] = useState(false);
+  const [autoGraphError, setAutoGraphError] = useState('');
+  const generatePromptGraph = async () => {
+    setAutoGraphBusy(true); setAutoGraphError('');
+    try {
+      const desc = String(autoGraphDesc || '').trim();
+      // naive parse: derive 3-4 nodes based on keywords
+      const nodes = [
+        { id:'start', type:'system', label:'시작' },
+        { id:'prompt', type:'ai', label: desc ? desc.slice(0, 60) : '설명을 입력하세요' },
+        { id:'action', type:'user_action', label:'사용자 입력' },
+        { id:'end', type:'system', label:'종료' },
+      ];
+      const edges = [
+        { id:'e1', source:'start', target:'prompt', label:'' },
+        { id:'e2', source:'prompt', target:'action', label:'' },
+        { id:'e3', source:'action', target:'end', label:'' },
+      ];
+      const graph = { nodes, edges };
+      writeFile('/graph/prompt-graph.json', JSON.stringify(graph, null, 2)+'\n');
+      // ensure runtime config entry points at start
+      try {
+        const cfgRaw = String(files['/game/runtime.config.json']?.content || '{}');
+        const cfg = JSON.parse(cfgRaw || '{}');
+        const nextCfg = { ...cfg, entryNode: 'start' };
+        writeFile('/game/runtime.config.json', JSON.stringify(nextCfg, null, 2)+'\n');
+      } catch {}
+      append('assistant', '프롬프트-노드 그래프를 생성했습니다. /graph/prompt-graph.json 을 확인하세요.');
+      setShowAutoGraph(false); setAutoGraphDesc('');
+    } catch (e) {
+      setAutoGraphError(String(e?.message||e));
+    } finally { setAutoGraphBusy(false); }
+  };
+
+  // Context: variables, visibility, tokens
+  const safeJson = (path) => { try { return JSON.parse(String(files?.[path]?.content || 'null')); } catch { return null; } };
+  const runtimeCfg = safeJson('/game/runtime.config.json') || {};
+  const graphObj = safeJson('/graph/prompt-graph.json') || {};
+  const ctxPlayer = safeJson('/context/player.json') || null;
+  const ctxOwner = safeJson('/context/owner.json') || null;
+  const getTokenInfo = (key) => {
+    try {
+      const v = (typeof window !== 'undefined' && window.localStorage && localStorage.getItem(key)) || '';
+      if (!v) return null;
+      const last4 = v.slice(-4);
+      return { key, present: true, length: v.length, last4 };
+    } catch { return null; }
+  };
+  const tokenCapability = getTokenInfo('prompt-editor:capabilityToken');
+  const tokenDevice = getTokenInfo('prompt-editor:deviceToken');
+  const tokenSigning = getTokenInfo('prompt-editor:signingSecret');
+
+  // Image UI: name/url fields
+  const [imageUiName, setImageUiName] = useState('');
+  const [imageUiUrl, setImageUiUrl] = useState('');
 
   return (
   <div ref={rootRef} style={{ height:'100%', border:'1px solid #334155', background:'#0b1220', borderRadius:12, overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 24px 64px rgba(0,0,0,0.6)' }}>
@@ -414,14 +485,37 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
         <div style={{ display:'flex', gap:6, alignItems:'center' }}>
           <button onClick={()=>setHistoryOpen(v=>!v)} title="대화 기록" style={{ padding:'3px 8px', borderRadius:6, border:'1px solid #334155', background: historyOpen ? '#172033' : '#0b1220', color:'#94a3b8', fontSize:12 }}>기록</button>
           <button onClick={startNewChat} title="새 대화" style={{ padding:'3px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8', fontSize:12 }}>새 대화</button>
+          <button onClick={()=>setContextOpen(v=>!v)} title="컨텍스트" style={{ padding:'3px 8px', borderRadius:6, border:'1px solid #334155', background: contextOpen ? '#172033' : '#0b1220', color:'#94a3b8', fontSize:12 }}>정보</button>
           {enableFullscreenButton && <button onClick={handleToggleFullscreen} title={isFullscreenUi?"창으로":"전체화면으로"} style={{ padding:'3px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8', fontSize:12 }}>{isFullscreenUi ? '−' : '+'}</button>}
           <button onClick={()=>setActionsOpen(v=>!v)} title="옵션" style={{ padding:'4px 8px', borderRadius:8, border:'1px solid #334155', background: actionsOpen ? '#172033' : '#0b1220', color:'#94a3b8' }}>⋮</button>
           <button onClick={onClose} title="닫기" style={{ padding:'4px 8px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8' }}>×</button>
         </div>
+        {contextOpen && (
+          <div ref={contextRef} style={{ position:'absolute', right:8, top:'100%', marginTop:6, zIndex:45, width:340, maxHeight:320, overflow:'auto', background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:8, display:'grid', gap:8 }}>
+            <div style={{ color:'#e2e8f0', fontWeight:700, fontSize:12 }}>컨텍스트</div>
+            <div style={{ fontSize:12, color:'#cbd5e1' }}>
+              <div><strong style={{ color:'#e2e8f0' }}>런타임</strong>: 모델 {String(runtimeCfg?.ai?.model||'')}, entry {String(runtimeCfg?.entryNode||'없음')}, roles {Array.isArray(runtimeCfg?.roles)? runtimeCfg.roles.join(', ') : '없음'}</div>
+              <div style={{ marginTop:4 }}><strong style={{ color:'#e2e8f0' }}>그래프</strong>: 노드 {Array.isArray(graphObj?.nodes)? graphObj.nodes.length : 0}개, 엣지 {Array.isArray(graphObj?.edges)? graphObj.edges.length : 0}개</div>
+            </div>
+            <div style={{ fontSize:12, color:'#cbd5e1' }}>
+              <div><strong style={{ color:'#e2e8f0' }}>변수(샘플)</strong></div>
+              <pre style={{ whiteSpace:'pre-wrap', background:'#0c1322', padding:6, borderRadius:6, border:'1px solid #334155', color:'#e2e8f0', maxHeight:120, overflow:'auto' }}>{JSON.stringify({ player: ctxPlayer, owner: ctxOwner }, null, 2)}</pre>
+            </div>
+            <div style={{ fontSize:12, color:'#cbd5e1' }}>
+              <div><strong style={{ color:'#e2e8f0' }}>토큰</strong> (마스킹 표시)</div>
+              <ul style={{ margin:0, paddingLeft:16 }}>
+                {tokenCapability ? <li>Capability: …{tokenCapability.last4} ({tokenCapability.length}자)</li> : <li>Capability: 없음</li>}
+                {tokenDevice ? <li>Device: …{tokenDevice.last4} ({tokenDevice.length}자)</li> : <li>Device: 없음</li>}
+                {tokenSigning ? <li>Signing: …{tokenSigning.last4} ({tokenSigning.length}자)</li> : <li>Signing: 없음</li>}
+              </ul>
+            </div>
+          </div>
+        )}
         {actionsOpen && (
           <div ref={actionsRef} style={{ position:'absolute', right:8, top:'100%', marginTop:6, zIndex:50, width:220, background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, display:'grid', gap:6 }}>
             <button onClick={()=>{ applyMainUiPreset(); setActionsOpen(false); }} style={menuBtn}>UI 제작(메인 기본) 적용</button>
             <button onClick={()=>{ setShowImageUi(true); setActionsOpen(false); }} style={menuBtn}>이미지로 UI 생성</button>
+            <button onClick={()=>{ setShowAutoGraph(true); setActionsOpen(false); }} style={menuBtn}>프롬프트-노드 자동생성</button>
             <button onClick={()=>{ setSettingsOpen(v=>!v); setActionsOpen(false); }} style={menuBtn}>설정</button>
             {enableMinimizeButton && <button onClick={()=>{ onMinimize && onMinimize(); setActionsOpen(false); }} style={menuBtn}>축소</button>}
             <button onClick={()=> setActionsOpen(false)} style={{ ...menuBtn, border:'1px solid #334155', color:'#cbd5e1' }}>메뉴 닫기</button>
@@ -562,11 +656,32 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
               <button onClick={()=>setShowImageUi(false)} style={{ padding:'4px 6px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8' }}>닫기</button>
             </div>
             <div style={{ marginTop:8, display:'grid', gap:8 }}>
-              <label style={{ fontSize:12, color:'#cbd5e1' }}>프롬프트</label>
-              <textarea rows={6} value={imageUiPrompt} onChange={e=> setImageUiPrompt(e.target.value)} style={{ width:'100%', padding:8, borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', fontFamily:'monospace', fontSize:12 }} />
+              <label style={{ fontSize:12, color:'#cbd5e1' }}>이미지 이름</label>
+              <input value={imageUiName} onChange={e=> setImageUiName(e.target.value)} placeholder="예: 배경-바다" style={{ width:'100%', padding:8, borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }} />
+              <label style={{ fontSize:12, color:'#cbd5e1' }}>이미지 URL</label>
+              <input value={imageUiUrl} onChange={e=> setImageUiUrl(e.target.value)} placeholder="https://..." style={{ width:'100%', padding:8, borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }} />
+              <label style={{ fontSize:12, color:'#cbd5e1' }}>프롬프트(선택)</label>
+              <textarea rows={4} value={imageUiPrompt} onChange={e=> setImageUiPrompt(e.target.value)} style={{ width:'100%', padding:8, borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', fontFamily:'monospace', fontSize:12 }} />
               <button disabled={imageUiBusy} onClick={generateImageUi} style={{ padding:'8px 10px', borderRadius:8, border:'1px solid #2563eb', background:'#1d4ed8', color:'#fff' }}>{imageUiBusy?'생성 중…':'생성(스텁)'}</button>
               {imageUiError && <div style={{ color:'#fca5a5', fontSize:12 }}>{imageUiError}</div>}
               <div style={{ fontSize:11, color:'#94a3b8' }}>현재는 스텁으로 template.json의 resources.backgrounds에 항목을 추가하고 기본 UI 모듈을 적용합니다. 실제 이미지 생성 연동은 이후 브리지/스토리지와 연결하세요.</div>
+            </div>
+          </div>
+        </div>
+      )}
+      {showAutoGraph && (
+        <div style={{ position:'absolute', inset:0, background:'rgba(0,0,0,0.35)', zIndex:60 }}>
+          <div style={{ position:'absolute', right:12, top:12, width:380, background:'#0b1220', border:'1px solid #334155', borderRadius:10, boxShadow:'0 12px 32px rgba(0,0,0,0.6)', padding:10 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', color:'#e2e8f0' }}>
+              <strong>프롬프트-노드 자동생성</strong>
+              <button onClick={()=>setShowAutoGraph(false)} style={{ padding:'4px 6px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8' }}>닫기</button>
+            </div>
+            <div style={{ marginTop:8, display:'grid', gap:8 }}>
+              <label style={{ fontSize:12, color:'#cbd5e1' }}>설명(말로 써 보세요)</label>
+              <textarea rows={6} value={autoGraphDesc} onChange={e=> setAutoGraphDesc(e.target.value)} placeholder="예: 3라운드 게임, 먼저 시스템 안내 → AI 설명 → 사용자 행동 입력 → 결과 요약" style={{ width:'100%', padding:8, borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', fontFamily:'monospace', fontSize:12 }} />
+              <button disabled={autoGraphBusy} onClick={generatePromptGraph} style={{ padding:'8px 10px', borderRadius:8, border:'1px solid #10b981', background:'#065f46', color:'#d1fae5' }}>{autoGraphBusy?'생성 중…':'그래프 생성'}</button>
+              {autoGraphError && <div style={{ color:'#fca5a5', fontSize:12 }}>{autoGraphError}</div>}
+              <div style={{ fontSize:11, color:'#94a3b8' }}>간단한 설명으로 /graph/prompt-graph.json 스켈레톤을 생성합니다. 이후 세부 내용은 직접 편집하세요.</div>
             </div>
           </div>
         </div>
