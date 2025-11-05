@@ -79,7 +79,21 @@ export default function ThreeInOneStudio() {
         minHeight: '100vh',
       }}
     >
-      <div style={{ display: 'flex', gap: 8, padding: 8, borderBottom: '1px solid #eee', alignItems: 'center', flexWrap: 'wrap' }}>
+      <div
+        style={{
+          display: 'flex',
+          gap: 8,
+          padding: 8,
+          borderBottom: '1px solid #eee',
+          alignItems: 'center',
+          // Keep toolbar in a single row; if items overflow, allow horizontal scroll instead of wrapping
+          flexWrap: 'nowrap',
+          overflowX: 'auto',
+          whiteSpace: 'nowrap',
+          // Prevent the toolbar from increasing overall layout height when content grows
+          maxHeight: 48,
+        }}
+      >
         <button onClick={() => setMode(mode === 'code' ? 'nodes' : 'code')}>{mode === 'code' ? '프롬프트 편집으로' : '코드 편집으로'}</button>
         <span style={{ flex: 1 }} />
         <UndoRedoBar />
@@ -104,7 +118,7 @@ export default function ThreeInOneStudio() {
         }} />
       </div>
 
-      <div style={{ padding: '4px 8px', borderBottom: '1px solid #f2f2f2', fontSize: 12, color: info.ok ? '#2d7' : '#d33', display: 'flex', gap: 12, alignItems: 'center' }}>
+  <div style={{ padding: '4px 8px', borderBottom: '1px solid #f2f2f2', fontSize: 12, color: info.ok ? '#2d7' : '#d33', display: 'flex', gap: 12, alignItems: 'center', overflow: 'hidden' }}>
         <div>
           {info.ok ? `Valid JSON • nodes: ${info.nodes}, edges: ${info.edges}, resource groups: ${info.resources}` : `Invalid JSON: ${info.error}`}
           {!info.ok && info.errors?.length === 0 ? null : (
