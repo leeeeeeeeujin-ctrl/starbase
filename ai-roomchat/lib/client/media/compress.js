@@ -2,33 +2,74 @@
 'use client';
 
 // Client-side media compressors
-import { IMAGE_LIMITS, VIDEO_LIMITS, AUDIO_LIMITS, withinBudget } from '@/config/mediaLimits';
+import { IMAGE_LIMITS, VIDEO_LIMITS, AUDIO_LIMITS } from '@/config/mediaLimits';
 
 export async function compressImage(file, opts = {}) {
   const {
     maxWidth = IMAGE_LIMITS.maxWidth,
     maxHeight = IMAGE_LIMITS.maxHeight,
-    quality = IMAGE_LIMITS.quality, // JPEG/WebP quality
+    quality: startQuality = IMAGE_LIMITS.quality, // JPEG/WebP quality
     mime = 'image/webp',
   } = opts;
 
   if (!file || !file.type.startsWith('image/')) return file;
-  const blob = await fileToImageBlob(file);
-  const bitmap = await createImageBitmap(blob);
+  const srcBlob = await fileToImageBlob(file);
+  const bitmap = await createImageBitmap(srcBlob);
 
-  const { width, height } = constrain(bitmap.width, bitmap.height, maxWidth, maxHeight);
-  const canvas = new OffscreenCanvas(width, height);
-  const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
-  ctx.drawImage(bitmap, 0, 0, width, height);
-  const outBlob = await canvas.convertToBlob({ type: mime, quality });
-  if (!withinBudget(outBlob.size, IMAGE_LIMITS.maxBytes)) {
-    // Try one more pass with slightly lower quality if too big
-    const fallback = await canvas.convertToBlob({ type: mime, quality: Math.max(0.6, quality - 0.12) });
-    if (fallback && withinBudget(fallback.size, IMAGE_LIMITS.maxBytes)) {
-      return new File([fallback], replaceExt(file.name, mime), { type: mime, lastModified: Date.now() });
+  // First bound by maxWxH
+  let { width, height } = constrain(bitmap.width, bitmap.height, maxWidth, maxHeight);
+  let q = startQuality;
+  let attempt = 0;
+  let bestBlob = null;
+
+  while (attempt < 6) {
+    const canvas = new OffscreenCanvas(width, height);
+    const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    const outBlob = await canvas.convertToBlob({ type: mime, quality: q });
+
+    // Accept if within target ~100KB
+    if (outBlob.size <= IMAGE_LIMITS.targetBytes) {
+      return new File([outBlob], replaceExt(file.name, mime), { type: mime, lastModified: Date.now() });
     }
+
+    // Track smallest so far as fallback
+    if (!bestBlob || outBlob.size < bestBlob.size) {
+      bestBlob = outBlob;
+    }
+
+    // First, lower quality until minQuality
+    if (q > IMAGE_LIMITS.minQuality + 1e-6) {
+      q = Math.max(IMAGE_LIMITS.minQuality, q - IMAGE_LIMITS.qualityStep);
+      attempt += 1;
+      continue;
+    }
+
+    // Then, downscale proportionally but not below min WxH
+    const scale = Math.max(
+      0.5,
+      Math.min(
+        0.95,
+        Math.sqrt(IMAGE_LIMITS.targetBytes / outBlob.size) * 0.92 // heuristic
+      )
+    );
+    const next = constrain(width * scale, height * scale, width, height);
+    const minW = IMAGE_LIMITS.minWidth || 320;
+    const minH = IMAGE_LIMITS.minHeight || 320;
+    const nextW = Math.max(minW, Math.floor(next.width));
+    const nextH = Math.max(minH, Math.floor(next.height));
+    // Stop if no effective progress
+    if (nextW >= width && nextH >= height) {
+      break;
+    }
+    width = nextW;
+    height = nextH;
+    attempt += 1;
   }
-  return new File([outBlob], replaceExt(file.name, mime), { type: mime, lastModified: Date.now() });
+
+  // Fallback to the smallest we produced if we couldn't hit the target
+  const finalBlob = bestBlob || srcBlob;
+  return new File([finalBlob], replaceExt(file.name, mime), { type: mime, lastModified: Date.now() });
 }
 
 export async function compressVideo(file, opts = {}) {
@@ -76,7 +117,7 @@ export async function compressVideo(file, opts = {}) {
   const data = ffmpeg.FS('readFile', outputName);
   const blob = new Blob([data.buffer], { type: 'video/' + format });
   // Best-effort size budget check
-  if (!withinBudget(blob.size, VIDEO_LIMITS.maxBytes)) {
+  if (VIDEO_LIMITS.maxBytes && blob.size > VIDEO_LIMITS.maxBytes) {
     // Try a lower bitrate pass once
     const lower = ['480k', '420k', '360k'];
     for (const b of lower) {
@@ -92,7 +133,7 @@ export async function compressVideo(file, opts = {}) {
         ]);
         const d2 = ffmpeg.FS('readFile', outputName);
         const blob2 = new Blob([d2.buffer], { type: 'video/' + format });
-        if (withinBudget(blob2.size, VIDEO_LIMITS.maxBytes)) {
+        if (!VIDEO_LIMITS.maxBytes || blob2.size <= VIDEO_LIMITS.maxBytes) {
           return new File([blob2], replaceExt(file.name, 'video/' + format), { type: 'video/' + format });
         }
       } catch {}

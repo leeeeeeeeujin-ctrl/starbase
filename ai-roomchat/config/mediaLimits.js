@@ -2,10 +2,15 @@
 // Adjust here to tune compression and validation across the app
 
 export const IMAGE_LIMITS = {
-  maxWidth: 1600,        // px
-  maxHeight: 1600,       // px
-  quality: 0.82,         // 0..1 for WebP/JPEG
-  maxBytes: 2 * 1024 * 1024, // 2MB target cap (best-effort)
+  // Aim for ~80–100KB per image. We'll iterate quality/scale to hit targetBytes best-effort.
+  maxWidth: 1280,             // px (upper bound before iterative downscale)
+  maxHeight: 1280,            // px
+  minWidth: 640,              // px (do not downscale below this unless unavoidable)
+  minHeight: 640,             // px
+  quality: 0.78,              // starting quality for WebP/JPEG
+  minQuality: 0.5,            // lower bound to avoid severe artifacts
+  qualityStep: 0.08,          // decrement per attempt if over budget
+  targetBytes: 100 * 1024,    // 100KB target
 };
 
 // 480p = 854x480 (16:9). We cap to 480p and a modest bitrate to keep under ~20MB for 4 minutes.
