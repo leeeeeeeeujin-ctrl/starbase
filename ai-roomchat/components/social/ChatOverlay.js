@@ -36,6 +36,7 @@ import {
   insertMessage,
   subscribeToMessages,
 } from '@/lib/chat/messages';
+import { listBlockedOwners, blockOwner, unblockOwner } from '@/lib/social/blocks';
 import { supabase } from '@/lib/supabase';
 import { uploadAsset } from '@/utils/uploader';
 import { getResourceBlob, putResourceBlob, fetchToCache } from '@/utils/resourceCache';
@@ -4602,6 +4603,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     busy: false,
     error: null,
   });
+  const [blockedOwners, setBlockedOwners] = useState([]);
   const [settingsOverlayOpen, setSettingsOverlayOpen] = useState(false);
   const [roomBans, setRoomBans] = useState([]);
   const [roomBansLoading, setRoomBansLoading] = useState(false);
@@ -6300,6 +6302,25 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     };
   }, [open, applyRoomOverrides, commitUnreadState, syncUnreadFromCollections]);
 
+  // Load blocklist on open/viewer readiness
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const ids = await listBlockedOwners();
+        if (!cancelled) setBlockedOwners(ids);
+      } catch (e) {
+        // ignore
+      }
+    };
+    if (open && viewerReady) {
+      run();
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [open, viewerReady]);
+
   useEffect(() => {
     if (!open || !context) {
       if (unsubscribeRef.current) {
@@ -6320,9 +6341,15 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           matchInstanceId: context.matchInstanceId || null,
           chatRoomId: context.chatRoomId || null,
           scope: context.scope || null,
+          targetOwnerId: context.targetOwnerId || null,
+          targetHeroId: context.targetHeroId || null,
         });
         if (cancelled) return;
-        const nextMessages = Array.isArray(result.messages) ? result.messages : [];
+        const baseMessages = Array.isArray(result.messages) ? result.messages : [];
+        const nextMessages = baseMessages.filter(m => {
+          const owner = normalizeId(m?.owner_id || m?.user_id);
+          return !owner || !blockedOwners.includes(owner);
+        });
         setMessages(upsertMessageList([], nextMessages));
         if (context?.type === 'chat-room' && context.chatRoomId) {
           const latestRecord = nextMessages.length ? nextMessages[nextMessages.length - 1] : null;
@@ -6342,6 +6369,11 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
 
         unsubscribeRef.current = subscribeToMessages({
           onInsert: record => {
+            const ownerIdRaw = record?.owner_id || record?.user_id;
+            const ownerId = normalizeId(ownerIdRaw);
+            if (ownerId && blockedOwners.includes(ownerId)) {
+              return; // ignore blocked sender
+            }
             setMessages(prev => upsertMessageList(prev, record));
             const recordRoomId = normalizeId(record?.chat_room_id || record?.room_id || null);
             const messageOwnerId = normalizeId(record?.owner_id || record?.user_id);
@@ -6349,7 +6381,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
               viewerToken && messageOwnerId && viewerToken === messageOwnerId
             );
 
-            if (!recordRoomId) {
+            if (!recordRoomId && (context?.scope !== 'whisper')) {
               return;
             }
 
@@ -6370,6 +6402,9 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
                 }
               }
               updateRoomMetadata(context.chatRoomId, { latestMessage: record });
+            } else if (context?.scope === 'whisper') {
+              // DM context: ignore room unread; no room metadata to update
+              return;
             } else {
               const currentUnread = getRoomUnreadCount(recordRoomId);
               const nextUnread = fromSelf ? currentUnread : currentUnread + 1;
@@ -6387,6 +6422,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           scope: context.scope || null,
           ownerId: viewer?.id || null,
           userId: viewer?.id || null,
+          targetOwnerId: context.targetOwnerId || null,
+          targetHeroId: context.targetHeroId || null,
         });
       } catch (error) {
         if (cancelled) return;
@@ -6412,6 +6449,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     roomStats?.participantCount,
     getRoomUnreadCount,
     updateRoomMetadata,
+    blockedOwners,
   ]);
 
   useEffect(() => {
@@ -8425,13 +8463,61 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     }
   }, [addFriend, profileSheet.participant]);
 
-  const handleStartDirectMessage = useCallback(() => {
-    alert('1대1 대화는 곧 지원될 예정입니다.');
-  }, []);
+  const handleStartDirectMessage = useCallback(async () => {
+    const target = profileSheet.participant;
+    if (!target) return;
+    const targetHeroId = target.heroId || target.hero_id || null;
+    const targetOwnerId =
+      target.ownerToken || target.owner_id || target.ownerId || target.user_id || target.userId;
+    if (!targetHeroId && !targetOwnerId) {
+      setProfileSheet(prev => ({ ...prev, error: '대상 정보를 찾을 수 없습니다.' }));
+      return;
+    }
+    // Switch context to whisper (DM) targeting hero/owner
+    setContext(prev => ({
+      ...(prev || {}),
+      type: 'dm',
+      scope: 'whisper',
+      sessionId: null,
+      matchInstanceId: null,
+      chatRoomId: null,
+      targetHeroId: targetHeroId || null,
+      targetOwnerId: targetOwnerId || null,
+    }));
+    setMessages([]);
+    setProfileSheet(prev => ({ ...prev, open: false, busy: false, error: null }));
+    setActiveTab('chat');
+  }, [profileSheet.participant]);
 
-  const handleBlockParticipant = useCallback(() => {
-    alert('차단 기능은 곧 제공될 예정입니다.');
-  }, []);
+  const handleBlockParticipant = useCallback(async () => {
+    const target = profileSheet.participant;
+    if (!target) return;
+    const targetOwnerId =
+      target.ownerToken || target.owner_id || target.ownerId || target.user_id || target.userId;
+    if (!targetOwnerId) {
+      setProfileSheet(prev => ({ ...prev, error: '차단할 대상을 찾을 수 없습니다.' }));
+      return;
+    }
+    try {
+      setProfileSheet(prev => ({ ...prev, busy: true, error: null }));
+      const already = blockedOwners.includes(targetOwnerId);
+      if (already) {
+        await unblockOwner({ ownerId: targetOwnerId });
+      } else {
+        await blockOwner({ ownerId: targetOwnerId });
+      }
+      const next = await listBlockedOwners();
+      setBlockedOwners(next);
+      setProfileSheet(prev => ({ ...prev, busy: false, error: null }));
+    } catch (error) {
+      console.error('[chat] block/unblock failed', error);
+      setProfileSheet(prev => ({
+        ...prev,
+        busy: false,
+        error: error?.message || '차단/해제에 실패했습니다.',
+      }));
+    }
+  }, [blockedOwners, profileSheet.participant]);
 
   const handleBanParticipant = useCallback(() => {
     if (!context?.chatRoomId || !profileSheet.participant) {
@@ -8667,6 +8753,13 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
   const handleSendMessage = useCallback(
     async (options = {}) => {
       if (!context) return null;
+      if (context.scope === 'whisper') {
+        const targetOwner = normalizeId(context.targetOwnerId || null);
+        if (targetOwner && blockedOwners.includes(targetOwner)) {
+          setSendError(new Error('차단한 사용자에게는 메시지를 보낼 수 없습니다.'));
+          return null;
+        }
+      }
       const textSource = typeof options.text === 'string' ? options.text : messageInput;
       const text = (textSource || '').trim();
       const attachmentsSource = Array.isArray(options.attachments)
@@ -8739,6 +8832,8 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
             text,
             scope: context.scope || 'global',
             hero_id: selectedHero || null,
+            // For DM (whisper), the server requires target_hero_id
+            target_hero_id: context.scope === 'whisper' ? context.targetHeroId || null : null,
             attachments: uploadedAttachments,
             metadata: metadataOverride || undefined,
           },
@@ -8772,7 +8867,7 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
         setSending(false);
       }
     },
-    [composerAttachments, context, messageInput, selectedHero]
+    [composerAttachments, context, messageInput, selectedHero, blockedOwners]
   );
 
   const handleRemoveAttachment = useCallback(id => {
@@ -9472,6 +9567,21 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     });
 
     try {
+      // For images, prefer opening the same preview to keep UX consistent and fast
+      if (attachment.type === 'image') {
+        const previewUrl = attachment.preview_url || attachment.previewUrl || null;
+        if (previewUrl) {
+          setViewerAttachment({
+            messageId: message?.id || message?.local_id || null,
+            attachment,
+            status: 'ready',
+            url: previewUrl,
+            error: null,
+          });
+          return;
+        }
+      }
+
       let cached = attachmentCacheRef.current.get(key);
       if (!cached) {
         const blob = await fetchAttachmentBlob(attachment);
@@ -9581,10 +9691,19 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           );
         }
       } catch {}
+      // include auth token and message id for server-side authorization
+      let accessToken = null;
+      try {
+        const { data } = await supabase.auth.getSession();
+        accessToken = data?.session?.access_token || null;
+      } catch {}
       await fetch('/api/assets/delete', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ key: att.path, hash: att.hash || null }),
+        headers: {
+          'content-type': 'application/json',
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
+        body: JSON.stringify({ key: att.path, hash: att.hash || null, messageId: viewerAttachment?.messageId || null }),
       });
     } catch (e) {
       // no-op; optionally surface error UI later
@@ -11454,6 +11573,94 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
     </div>
   ) : null;
 
+  // compute delete permission: only message owner can delete
+  const canDeleteViewerAttachment = useMemo(() => {
+    if (!viewerAttachment?.messageId) return false;
+    const msg = (Array.isArray(messages) ? messages : []).find(m => {
+      const mid = m?.id || m?.local_id;
+      return mid && mid === viewerAttachment.messageId;
+    });
+    if (!msg) return false;
+    const ownerId = msg.owner_id || msg.user_id || null;
+    const viewerId = viewer?.id || viewer?.owner_id || null;
+    if (!ownerId || !viewerId) return false;
+    return String(ownerId).trim() === String(viewerId).trim();
+  }, [messages, viewer, viewerAttachment?.messageId]);
+
+  // pinch-to-zoom state for image viewer
+  const viewerScaleRef = useRef(1);
+  const [viewerScale, setViewerScale] = useState(1);
+  const [viewerTranslate, setViewerTranslate] = useState({ x: 0, y: 0 });
+  const gestureRef = useRef({ pointers: new Map(), initialDistance: 0, startScale: 1, lastPos: null });
+
+  const resetViewerTransform = useCallback(() => {
+    gestureRef.current.pointers.clear();
+    gestureRef.current.initialDistance = 0;
+    gestureRef.current.startScale = 1;
+    gestureRef.current.lastPos = null;
+    viewerScaleRef.current = 1;
+    setViewerScale(1);
+    setViewerTranslate({ x: 0, y: 0 });
+  }, []);
+
+  useEffect(() => {
+    resetViewerTransform();
+  }, [viewerAttachment, resetViewerTransform]);
+
+  const onViewerPointerDown = useCallback(event => {
+    const el = event.currentTarget;
+    el.setPointerCapture?.(event.pointerId);
+    gestureRef.current.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (gestureRef.current.pointers.size === 2) {
+      const pts = Array.from(gestureRef.current.pointers.values());
+      const dx = pts[1].x - pts[0].x;
+      const dy = pts[1].y - pts[0].y;
+      gestureRef.current.initialDistance = Math.hypot(dx, dy);
+      gestureRef.current.startScale = viewerScaleRef.current;
+    } else if (gestureRef.current.pointers.size === 1) {
+      gestureRef.current.lastPos = { x: event.clientX, y: event.clientY };
+    }
+  }, []);
+
+  const onViewerPointerMove = useCallback(event => {
+    if (!gestureRef.current.pointers.has(event.pointerId)) return;
+    gestureRef.current.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (gestureRef.current.pointers.size === 2) {
+      const pts = Array.from(gestureRef.current.pointers.values());
+      const dx = pts[1].x - pts[0].x;
+      const dy = pts[1].y - pts[0].y;
+      const dist = Math.hypot(dx, dy) || 1;
+      const base = gestureRef.current.initialDistance || 1;
+      let nextScale = gestureRef.current.startScale * (dist / base);
+      nextScale = Math.max(1, Math.min(4, nextScale));
+      viewerScaleRef.current = nextScale;
+      setViewerScale(nextScale);
+    } else if (gestureRef.current.pointers.size === 1 && viewerScaleRef.current > 1) {
+      const last = gestureRef.current.lastPos;
+      if (last) {
+        const dx = event.clientX - last.x;
+        const dy = event.clientY - last.y;
+        setViewerTranslate(prev => ({ x: prev.x + dx, y: prev.y + dy }));
+      }
+      gestureRef.current.lastPos = { x: event.clientX, y: event.clientY };
+    }
+  }, []);
+
+  const onViewerPointerEnd = useCallback(event => {
+    const el = event.currentTarget;
+    el.releasePointerCapture?.(event.pointerId);
+    gestureRef.current.pointers.delete(event.pointerId);
+    if (gestureRef.current.pointers.size < 2) {
+      gestureRef.current.initialDistance = 0;
+    }
+    if (!gestureRef.current.pointers.size) {
+      gestureRef.current.lastPos = null;
+      if (viewerScaleRef.current <= 1.01) {
+        resetViewerTransform();
+      }
+    }
+  }, [resetViewerTransform]);
+
   const attachmentViewerOverlay = viewerAttachment ? (
     <div style={modalStyles.backdrop} onClick={handleCloseViewer}>
       <div
@@ -11472,13 +11679,15 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
             >
               다운로드
             </button>
-            <button
-              type="button"
-              style={{ ...modalStyles.closeButton, background: 'rgba(239, 68, 68, 0.35)' }}
-              onClick={handleDeleteViewerAttachment}
-            >
-              삭제
-            </button>
+            {canDeleteViewerAttachment ? (
+              <button
+                type="button"
+                style={{ ...modalStyles.closeButton, background: 'rgba(239, 68, 68, 0.35)' }}
+                onClick={handleDeleteViewerAttachment}
+              >
+                삭제
+              </button>
+            ) : null}
             <button type="button" style={modalStyles.closeButton} onClick={handleCloseViewer}>
               닫기
             </button>
@@ -11490,11 +11699,38 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
           ) : viewerAttachment.status === 'error' ? (
             <span style={{ color: '#fca5a5' }}>첨부 파일을 열 수 없습니다.</span>
           ) : viewerAttachment.attachment?.type === 'image' ? (
-            <img
-              src={viewerAttachment.url}
-              alt={viewerAttachment.attachment?.name}
-              style={{ maxWidth: '100%', maxHeight: '65vh', borderRadius: 18 }}
-            />
+            <div
+              role="img"
+              aria-label={viewerAttachment.attachment?.name || '이미지'}
+              onPointerDown={onViewerPointerDown}
+              onPointerMove={onViewerPointerMove}
+              onPointerUp={onViewerPointerEnd}
+              onPointerCancel={onViewerPointerEnd}
+              style={{
+                maxWidth: '100%',
+                maxHeight: '65vh',
+                overflow: 'hidden',
+                borderRadius: 18,
+                touchAction: 'none',
+                cursor: viewerScale > 1 ? 'move' : 'auto',
+              }}
+            >
+              <img
+                src={viewerAttachment.url}
+                alt={viewerAttachment.attachment?.name}
+                draggable={false}
+                style={{
+                  maxWidth: '100%',
+                  maxHeight: '65vh',
+                  transform: `translate(${Math.round(viewerTranslate.x)}px, ${Math.round(viewerTranslate.y)}px) scale(${viewerScale})`,
+                  transformOrigin: 'center center',
+                  transition: viewerScale === 1 ? 'transform 0.15s ease-out' : 'none',
+                  userSelect: 'none',
+                  pointerEvents: 'none',
+                  display: 'block',
+                }}
+              />
+            </div>
           ) : viewerAttachment.attachment?.type === 'video' ? (
             <video
               src={viewerAttachment.url}
@@ -11914,7 +12150,13 @@ export default function ChatOverlay({ open, onClose, onUnreadChange }) {
               disabled={profileSheet.busy}
               onClick={handleBlockParticipant}
             >
-              차단하기
+              {(() => {
+                const p = profileSheet.participant || {};
+                const oid = normalizeId(
+                  p.ownerToken || p.owner_id || p.ownerId || p.user_id || p.userId
+                );
+                return oid && blockedOwners.includes(oid) ? '차단 해제' : '차단하기';
+              })()}
             </button>
             {viewerOwnsRoom && profileSheet.participant.role !== 'owner' ? (
               <>

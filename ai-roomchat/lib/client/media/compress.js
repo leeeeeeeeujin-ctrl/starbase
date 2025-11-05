@@ -86,8 +86,9 @@ export async function compressVideo(file, opts = {}) {
   // Lazy import to avoid heavy bundle cost
   let ffmpeg, fetchFile;
   try {
-    const mod = await import(/* webpackIgnore: true */'@ffmpeg/ffmpeg');
-    ffmpeg = mod.createFFmpeg({ log: false });
+    const mod = await import('@ffmpeg/ffmpeg');
+    const corePath = getFfmpegCorePath();
+    ffmpeg = mod.createFFmpeg({ log: false, corePath });
     fetchFile = mod.fetchFile;
   } catch {
     console.warn('[compressVideo] ffmpeg.wasm not available, skipping compression');
@@ -153,8 +154,9 @@ export async function compressAudio(file, opts = {}) {
 
   let ffmpeg, fetchFile;
   try {
-    const mod = await import(/* webpackIgnore: true */'@ffmpeg/ffmpeg');
-    ffmpeg = mod.createFFmpeg({ log: false });
+    const mod = await import('@ffmpeg/ffmpeg');
+    const corePath = getFfmpegCorePath();
+    ffmpeg = mod.createFFmpeg({ log: false, corePath });
     fetchFile = mod.fetchFile;
   } catch {
     console.warn('[compressAudio] ffmpeg.wasm not available, skipping');
@@ -162,26 +164,60 @@ export async function compressAudio(file, opts = {}) {
   }
 
   const inputName = 'in.' + (file.name.split('.').pop() || 'wav');
-  const ext = codec === 'mp3' ? 'mp3' : 'm4a';
-  const mime = codec === 'mp3' ? 'audio/mpeg' : 'audio/mp4';
-  const outputName = 'out.' + ext;
+  let chosenCodec = codec;
+  let ext = codec === 'mp3' ? 'mp3' : 'm4a';
+  let mime = codec === 'mp3' ? 'audio/mpeg' : 'audio/mp4';
+  let outputName = 'out.' + ext;
   await ffmpeg.load();
   ffmpeg.FS('writeFile', inputName, await fetchFile(file));
 
-  const args = [
-    '-i', inputName,
-    '-ar', String(sampleRate),
-    ...(codec === 'mp3' ? ['-c:a', 'libmp3lame', '-b:a', bitrate] : ['-c:a', 'aac', '-b:a', bitrate]),
-    outputName,
-  ];
+  async function tryEncode(targetCodec) {
+    const useMp3 = targetCodec === 'mp3';
+    const args = [
+      '-i', inputName,
+      '-ar', String(sampleRate),
+      ...(useMp3 ? ['-c:a', 'libmp3lame', '-b:a', bitrate] : ['-c:a', 'aac', '-b:a', bitrate]),
+      outputName,
+    ];
+    await Promise.race([
+      ffmpeg.run(...args),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('ffmpeg timeout')), timeoutMs)),
+    ]);
+  }
 
-  await Promise.race([
-    ffmpeg.run(...args),
-    new Promise((_, rej) => setTimeout(() => rej(new Error('ffmpeg timeout')), timeoutMs)),
-  ]);
+  try {
+    await tryEncode(chosenCodec);
+  } catch (e) {
+    // Fallback to AAC/m4a if MP3 encoder isn't available
+    if (chosenCodec === 'mp3') {
+      try {
+        chosenCodec = 'aac';
+        ext = 'm4a';
+        mime = 'audio/mp4';
+        outputName = 'out.' + ext;
+        await tryEncode(chosenCodec);
+      } catch (e2) {
+        console.warn('[compressAudio] encode failed; returning original file', e2);
+        return file;
+      }
+    } else {
+      console.warn('[compressAudio] encode failed; returning original file', e);
+      return file;
+    }
+  }
 
   const data = ffmpeg.FS('readFile', outputName);
   const blob = new Blob([data.buffer], { type: mime });
+  try {
+    console.info('[compressAudio] done', {
+      inputBytes: file?.size || null,
+      outputBytes: blob.size,
+      codec: chosenCodec,
+      bitrate,
+      sampleRate,
+      mime,
+    });
+  } catch {}
   return new File([blob], replaceExt(file.name, mime), { type: mime });
 }
 
@@ -209,5 +245,14 @@ function mimeToExt(m) {
   if (m.includes('png')) return 'png';
   if (m.includes('gif')) return 'gif';
   if (m.includes('mp4')) return 'mp4';
+  if (m.includes('mpeg')) return 'mp3';
+  if (m.includes('audio/mp4') || m.includes('m4a')) return 'm4a';
   return '';
+}
+
+function getFfmpegCorePath() {
+  // Prefer configurable CDN path; fallback to unpkg with matching version
+  // NOTE: keep in sync with package.json @ffmpeg/ffmpeg version if pinned
+  const envPath = typeof process !== 'undefined' && process.env && process.env.NEXT_PUBLIC_FFMPEG_CORE_CDN;
+  return envPath || 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/ffmpeg-core.js';
 }

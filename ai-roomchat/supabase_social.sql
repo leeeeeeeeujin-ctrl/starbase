@@ -83,3 +83,37 @@ create trigger friend_requests_set_updated_at
 before update on public.friend_requests
 for each row
 execute function public.set_updated_at();
+
+-- =========================================
+--  사용자 차단 (블록) 기능
+-- =========================================
+create table if not exists public.user_blocks (
+  id uuid primary key default gen_random_uuid(),
+  blocker_id uuid not null references auth.users(id) on delete cascade,
+  blocked_id uuid not null references auth.users(id) on delete cascade,
+  reason text,
+  created_at timestamptz not null default now()
+);
+
+create unique index if not exists user_blocks_unique_pair
+  on public.user_blocks (blocker_id, blocked_id);
+
+create index if not exists user_blocks_blocker on public.user_blocks (blocker_id);
+create index if not exists user_blocks_blocked on public.user_blocks (blocked_id);
+
+alter table public.user_blocks enable row level security;
+
+-- 자신이 차단한 목록만 조회 가능
+create policy if not exists user_blocks_select_blocker
+on public.user_blocks for select to authenticated
+using (auth.uid() = blocker_id);
+
+-- 본인만 차단 생성 가능
+create policy if not exists user_blocks_insert_blocker
+on public.user_blocks for insert to authenticated
+with check (auth.uid() = blocker_id);
+
+-- 본인만 차단 해제 가능
+create policy if not exists user_blocks_delete_blocker
+on public.user_blocks for delete to authenticated
+using (auth.uid() = blocker_id);

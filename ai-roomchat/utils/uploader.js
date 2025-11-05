@@ -63,7 +63,16 @@ export async function uploadAsset(file, { gameId, key, signal, contentEncoding }
     const buf = await file.arrayBuffer();
     const b64 = base64FromArrayBuffer(buf);
     const proxy = await fetch('/api/assets/upload', { method:'POST', headers: { 'content-type':'application/json', ...(auth?{Authorization:auth}:{}) }, body: JSON.stringify({ name: file.name, contentType, dataBase64: b64, gameId, sha256 }), signal });
-    const pj = await proxy.json();
+    let pj = null;
+    try {
+      pj = await proxy.json();
+    } catch (e) {
+      // Non-JSON response (e.g., 404 HTML or 413 text). Surface status and snippet.
+      const text = await proxy.text().catch(() => '');
+      const snippet = text ? text.slice(0, 120) : '';
+      const msg = `proxy upload failed (${proxy.status})${snippet ? `: ${snippet}` : ''}`;
+      throw new Error(msg);
+    }
     if (!proxy.ok) throw new Error(pj?.error || 'proxy upload failed');
     return { url: pj.url, key: pj.key, hash: sha256, size, mime: contentType, existed: false };
   }
