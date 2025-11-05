@@ -18,6 +18,7 @@ import GameSimulator from './GameSimulator';
 import dynamic from 'next/dynamic';
 import AutoUpdateListener from '../../infra/AutoUpdateListener.jsx';
 const ImageToUIGenerator = dynamic(() => import('../ui/ImageToUIGenerator'), { ssr: false });
+const MainGameMobileUI = dynamic(() => import('../../game/MainGameMobileUI.jsx'), { ssr: false });
 
 export default function MakerEditor() {
   const isMobile = useIsMobile(820);
@@ -276,6 +277,7 @@ export default function MakerEditor() {
   const [showTemplateLibrary, setShowTemplateLibrary] = useState(false);
   const [showImageToUI, setShowImageToUI] = useState(false);
   const [showResourceEditor, setShowResourceEditor] = useState(false);
+  const [showPlayOverlay, setShowPlayOverlay] = useState(false);
   useEffect(() => {
     // Lock header as collapsed; never expand
     if (!headerCollapsed) setHeaderCollapsed(true);
@@ -411,6 +413,29 @@ export default function MakerEditor() {
   const openCodeEditor = useCallback(() => {
     setCodeEditorOpen(true);
   }, []);
+
+  // 메인 게임 UI 기본 프리셋 주입
+  const insertMainUiPreset = useCallback(() => {
+    try {
+      const obj = (() => { try { return JSON.parse(templateText || '{}'); } catch { return {}; } })();
+      const next = {
+        ...obj,
+        ui: {
+          ...(obj.ui || {}),
+          main: {
+            modules: [
+              { type: 'MainGameChat', id: 'gameChat' },
+              { type: 'SharedChat', id: 'sharedChat', enabled: true, realtimeOnly: true },
+              { type: 'NextBar', id: 'nextBar', policy: { timeoutSec: 60, roleThreshold: 0.5 } },
+              { type: 'CharacterCards', id: 'charCards', behavior: { tapCycle: ['desc','abilities','score','image'], darkenOnOverlay: true } },
+              { type: 'WidgetRow', id: 'widgetRow' },
+            ],
+          },
+        },
+      };
+      setTemplateText && setTemplateText(JSON.stringify(next, null, 2));
+    } catch {}
+  }, [templateText, setTemplateText]);
 
   // 🎮 게임 시뮬레이션 상태 (declared earlier; duplicate removed)
 
@@ -652,6 +677,8 @@ export default function MakerEditor() {
         onOpenCode={() => { try { if (typeof window !== 'undefined') window.__INLINE_CODE_IN_PANEL__ = true; } catch {}; setShowMultiLanguageEditor(true); }}
         onOpenTemplate={() => setShowTemplateLibrary(true)}
         onOpenImageUI={() => setShowImageToUI(true)}
+  onOpenPlay={() => setShowPlayOverlay(true)}
+  onInsertMainUiPreset={insertMainUiPreset}
         onOpenResource={() => setShowResourceEditor(true)}
           onCreateWithAI={handleCreateWithAI}
           onOpenCodeEditor={openCodeEditor}
@@ -869,6 +896,24 @@ export default function MakerEditor() {
           onClick={() => setShowMultiLanguageEditor(false)}
           style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1000, display: 'flex', alignItems: 'stretch', justifyContent: 'stretch', padding: 0 }}
         >
+      {/* 메인게임 UI 플레이 오버레이 */}
+      {showPlayOverlay && (
+        <div style={{ position: 'fixed', inset: 0, background: '#0b1220', zIndex: 1100 }}>
+          <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 1200, display: 'flex', gap: 8 }}>
+            <button onClick={() => setShowPlayOverlay(false)} style={{ padding: '8px 12px', borderRadius: 10, border: '1px solid rgba(148,163,184,.35)', background: 'rgba(239, 68, 68, 0.95)', color: '#fff', fontWeight: 700 }}>닫기</button>
+          </div>
+          <div style={{ position: 'absolute', inset: 0 }}>
+            {(() => {
+              try {
+                const obj = JSON.parse(templateText || '{}');
+                return <MainGameMobileUI template={obj} />;
+              } catch {
+                return <MainGameMobileUI template={{}} />;
+              }
+            })()}
+          </div>
+        </div>
+      )}
           <div
             onClick={e => e.stopPropagation()}
             style={{ width: '100%', height: '100%', background: '#0b1220', borderRadius: 0, overflow: 'hidden', borderTop: '1px solid rgba(148,163,184,0.35)', position: 'relative', display: 'flex', flexDirection: 'column' }}

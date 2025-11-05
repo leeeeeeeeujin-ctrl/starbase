@@ -7,6 +7,8 @@ import EditorMonaco from "../EditorMonaco.jsx";
 import GameSimulator from "../maker/editor/GameSimulator";
 import { supabase } from "../../lib/supabase";
 import GameRealtimeRuntime from "../game/GameRealtimeRuntime.jsx";
+import dynamic from 'next/dynamic';
+const MainGameMobileUI = dynamic(() => import('../game/MainGameMobileUI.jsx'), { ssr: false });
 
   function EditorPane() {
   const { files, activePath, writeFile, inferLang } = useWorkspace();
@@ -32,6 +34,9 @@ import GameRealtimeRuntime from "../game/GameRealtimeRuntime.jsx";
 export default function WorkspaceOverlay({ gameData, templateBinding }) {
   // 오른쪽 영역에서 코드/테스트 동시 표시 + 리사이저
   const [showTest, setShowTest] = useState(false);
+  const [previewMode, setPreviewMode] = useState(() => {
+    try { return localStorage.getItem('workspace:preview:mode') || 'realtime'; } catch { return 'realtime'; }
+  }); // 'realtime' | 'main'
   const [splitPct, setSplitPct] = useState(60); // 에디터:테스트 비율
   const [dragging, setDragging] = useState(false);
   const [showTree, setShowTree] = useState(true);
@@ -46,6 +51,9 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
   useEffect(() => {
     try { localStorage.setItem('workspace:chat:size', JSON.stringify(chatSize)); } catch {}
   }, [chatSize]);
+  useEffect(() => {
+    try { localStorage.setItem('workspace:preview:mode', previewMode); } catch {}
+  }, [previewMode]);
   const [resizing, setResizing] = useState(false);
   useEffect(() => {
     if (!resizing) return;
@@ -305,6 +313,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
                 <MenuButton onClick={() => setSplitPct(50)} active={false} label="50/50" />
                 <MenuButton onClick={() => setSplitPct(70)} active={false} label="70/30" />
                 <MenuButton onClick={() => setSplitPct(30)} active={false} label="30/70" />
+                <MenuButton onClick={() => setPreviewMode(m => m==='realtime'?'main':'realtime')} active={false} label={previewMode==='realtime' ? '미리보기: 메인 UI' : '미리보기: 실시간'} />
               </>
             )}
             <MenuButton onClick={() => setToolbarCollapsed(v=>!v)} active={toolbarCollapsed} label={toolbarCollapsed?'펼치기':'접기'} />
@@ -383,15 +392,24 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
                     style={{ width: 6, cursor: 'col-resize', background: 'rgba(148,163,184,0.3)' }}
                   />
                   <div style={{ flex: 1, minWidth: 0, background: '#0a0f1a' }}>
-                    {/* Realtime runtime preview (prototype). Replace or toggle with GameSimulator as needed. */}
-                    {true ? (
+                    {previewMode === 'main' ? (
+                      <div style={{ height:'100%' }}>
+                        {(() => {
+                          try {
+                            const tplText = (useWorkspace()?.files?.['/template.json']?.content) || (templateBinding?.text) || '{}';
+                            const tpl = JSON.parse(tplText || '{}');
+                            return <MainGameMobileUI template={tpl} />;
+                          } catch {
+                            return <div style={{ padding:12, color:'#94a3b8' }}>템플릿을 불러올 수 없습니다.</div>;
+                          }
+                        })()}
+                      </div>
+                    ) : (
                       <div style={{ height:'100%', padding:8 }}>
                         <div style={{ height:'100%' }}>
                           <GameRealtimeRuntime roomId={'editor-preview'} roles={{ players:['local','ai1','ai2'], observers:[] }} currentUser={{ id:'local', role:'players' }} />
                         </div>
                       </div>
-                    ) : (
-                      <GameSimulator visible={true} gameData={gameData} />
                     )}
                   </div>
                 </>

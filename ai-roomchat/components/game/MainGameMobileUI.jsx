@@ -10,6 +10,11 @@ export default function MainGameMobileUI({ template, user = null, onNext = () =>
   const [gameChat, setGameChat] = useState(() => [{ role: 'system', text: '게임이 시작되었습니다.' }]);
   const [chat, setChat] = useState([]);
   const [chatText, setChatText] = useState('');
+  const uiConfig = useMemo(() => readUiConfig(template), [template]);
+  const nextPolicy = uiConfig?.nextBar?.policy || { timeoutSec: null, roleThreshold: null };
+  const [secondsLeft, setSecondsLeft] = useState(() => (typeof nextPolicy.timeoutSec === 'number' ? nextPolicy.timeoutSec : null));
+  // character view mode for tap-cycle
+  const [charViewIdx, setCharViewIdx] = useState(0);
 
   const character = useMemo(() => pickCharacter(template), [template]);
   const imageUrl = character?.image || pickFirstImage(template);
@@ -29,7 +34,18 @@ export default function MainGameMobileUI({ template, user = null, onNext = () =>
   const triggerNext = useCallback(() => {
     setGameChat(prev => [...prev, { role: 'system', text: '다음 단계로 진행합니다.' }]);
     try { onNext?.(); } catch {}
+    // reset next timer if configured
+    if (typeof nextPolicy.timeoutSec === 'number') setSecondsLeft(nextPolicy.timeoutSec);
   }, [onNext]);
+
+  // NextBar timeout countdown
+  useEffect(() => {
+    if (!(typeof nextPolicy.timeoutSec === 'number') || nextPolicy.timeoutSec <= 0) return;
+    if (!(typeof secondsLeft === 'number')) return;
+    if (secondsLeft <= 0) { triggerNext(); return; }
+    const t = setTimeout(() => setSecondsLeft(s => (typeof s === 'number' ? s - 1 : s)), 1000);
+    return () => clearTimeout(t);
+  }, [secondsLeft, nextPolicy?.timeoutSec, triggerNext]);
 
   // Simple reorder helpers for layout editing
   const move = useCallback((id, dir) => {
@@ -51,7 +67,7 @@ export default function MainGameMobileUI({ template, user = null, onNext = () =>
         <GameChat key="gameChat" items={gameChat} />
       ),
       nextBar: (
-        <NextBar key="nextBar" onNext={triggerNext} />
+        <NextBar key="nextBar" onNext={triggerNext} secondsLeft={secondsLeft} />
       ),
       playerChat: (
         <PlayerChat key="playerChat" items={chat} text={chatText} setText={setChatText} onSend={sendChat} />
@@ -60,7 +76,16 @@ export default function MainGameMobileUI({ template, user = null, onNext = () =>
         <WidgetRow key="widgets" template={template} />
       ),
       character: (
-        <CharacterCard key="character" name={character?.name||'캐릭터'} image={imageUrl} desc={character?.desc||'설명'} stats={character?.stats||[10,10,10,10]} />
+        <CharacterCard
+          key="character"
+          name={character?.name||'캐릭터'}
+          image={imageUrl}
+          desc={character?.desc||'설명'}
+          stats={character?.stats||[10,10,10,10]}
+          cycle={uiConfig?.character?.behavior?.tapCycle || ['desc','abilities','score','image']}
+          viewIdx={charViewIdx}
+          setViewIdx={setCharViewIdx}
+        />
       ),
     };
     return layout.order.map(id => defs[id]).filter(Boolean);
@@ -112,10 +137,15 @@ function GameChat({ items }) {
   );
 }
 
-function NextBar({ onNext }) {
+function NextBar({ onNext, secondsLeft }) {
   return (
     <div style={{ display:'flex', justifyContent:'flex-end' }}>
-      <button onClick={onNext} style={btnPrimary}>다음 ▶</button>
+      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+        {typeof secondsLeft === 'number' && secondsLeft >= 0 && (
+          <span style={{ fontSize:12, color:'#93c5fd' }}>자동 진행: {secondsLeft}s</span>
+        )}
+        <button onClick={onNext} style={btnPrimary}>다음 ▶</button>
+      </div>
     </div>
   );
 }
@@ -150,20 +180,31 @@ function WidgetRow({ template }) {
   );
 }
 
-function CharacterCard({ name, image, desc, stats = [] }) {
+function CharacterCard({ name, image, desc, stats = [], cycle = ['desc','abilities','score','image'], viewIdx = 0, setViewIdx = () => {} }) {
+  const onTap = useCallback(() => {
+    try { setViewIdx((i) => (i + 1) % Math.max(1, cycle.length)); } catch {}
+  }, [setViewIdx, cycle]);
+  const mode = cycle?.[viewIdx] || 'desc';
   return (
-    <div style={{ display:'grid', gridTemplateColumns:'72px 1fr', gap:10, alignItems:'center', background:'#0a1220', border:'1px solid rgba(148,163,184,0.25)', borderRadius:12, padding:10 }}>
+    <div onClick={onTap} title="탭하여 전환" style={{ display:'grid', gridTemplateColumns:'72px 1fr', gap:10, alignItems:'center', background:'#0a1220', border:'1px solid rgba(148,163,184,0.25)', borderRadius:12, padding:10 }}>
       <div style={{ width:72, height:72, borderRadius:8, background:'#111827', overflow:'hidden' }}>
-        {image ? <img src={image} alt={name} style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : null}
+        {image && mode==='image' ? <img src={image} alt={name} style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : null}
       </div>
       <div style={{ minWidth:0 }}>
         <div style={{ fontWeight:700, fontSize:14 }}>{name}</div>
-        <div style={{ fontSize:12, color:'#cbd5e1', marginTop:4, lineHeight:1.5, maxHeight:48, overflow:'hidden' }}>{desc}</div>
-        <div style={{ display:'flex', gap:8, marginTop:8 }}>
-          {stats.slice(0,4).map((s,i) => (
-            <div key={i} style={{ fontSize:12, color:'#93c5fd' }}>능력{i+1}: <span style={{ color:'#e2e8f0' }}>{s}</span></div>
-          ))}
-        </div>
+        {mode==='desc' && (
+          <div style={{ fontSize:12, color:'#cbd5e1', marginTop:4, lineHeight:1.5, maxHeight:48, overflow:'hidden' }}>{desc}</div>
+        )}
+        {mode==='abilities' && (
+          <div style={{ display:'flex', gap:8, marginTop:8 }}>
+            {stats.slice(0,4).map((s,i) => (
+              <div key={i} style={{ fontSize:12, color:'#93c5fd' }}>능력{i+1}: <span style={{ color:'#e2e8f0' }}>{s}</span></div>
+            ))}
+          </div>
+        )}
+        {mode==='score' && (
+          <div style={{ fontSize:12, color:'#93c5fd', marginTop:8 }}>점수: <span style={{ color:'#e2e8f0' }}>{(stats[0]||0) + (stats[1]||0)}</span></div>
+        )}
       </div>
     </div>
   );
@@ -191,6 +232,19 @@ function pickFirstImage(template){
     return img?.url || null;
   }catch{}
   return null;
+}
+
+function readUiConfig(template){
+  try{
+    const ui = template?.ui?.main?.modules || [];
+    const nextBar = ui.find(m => m?.type === 'NextBar') || null;
+    const character = ui.find(m => m?.type === 'CharacterCards') || null;
+    return {
+      nextBar,
+      character,
+    };
+  }catch{}
+  return {};
 }
 
 function buildDefaultWidgets(template){
