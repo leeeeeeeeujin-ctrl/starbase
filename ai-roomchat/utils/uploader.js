@@ -7,26 +7,23 @@ export async function uploadAsset(file, { gameId, key, signal, contentEncoding }
   if (!file) throw new Error('file required');
   // Optional client-side compression for images/videos (logic-only; UI unchanged)
   try {
-    if (file && typeof file.type === 'string') {
+    if (!contentEncoding && file && typeof file.type === 'string') {
+      const mod = await import('../lib/client/media/compress');
       if (file.type.startsWith('image/') && !/gif/i.test(file.type)) {
-        const mod = await import('../lib/client/media/compress');
         if (mod?.compressImage) {
-          const compressed = await mod.compressImage(file, { maxWidth: 1920, maxHeight: 1080, quality: 0.82, mime: 'image/webp' });
-          if (compressed && compressed.size > 0) {
-            file = compressed;
-          }
+          const compressed = await mod.compressImage(file, {});
+          if (compressed && compressed.size > 0) file = compressed;
         }
       } else if (file.type.startsWith('video/')) {
-        // Best-effort video compression; falls back silently
-        try {
-          const mod = await import('../lib/client/media/compress');
-          if (mod?.compressVideo) {
-            const compressed = await mod.compressVideo(file, { maxWidth: 1280, maxHeight: 720, targetBitrate: '1200k', format: 'mp4', timeoutMs: 60000 });
-            if (compressed && compressed.size > 0 && compressed.size <= file.size) {
-              file = compressed;
-            }
-          }
-        } catch { /* ignore */ }
+        if (mod?.compressVideo) {
+          const compressed = await mod.compressVideo(file, { format: 'mp4' });
+          if (compressed && compressed.size > 0) file = compressed;
+        }
+      } else if (file.type.startsWith('audio/')) {
+        if (mod?.compressAudio) {
+          const compressed = await mod.compressAudio(file, {});
+          if (compressed && compressed.size > 0) file = compressed;
+        }
       }
     }
   } catch { /* ignore compression errors */ }

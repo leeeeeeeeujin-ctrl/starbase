@@ -1,12 +1,14 @@
+
 'use client';
 
 // Client-side media compressors
+import { IMAGE_LIMITS, VIDEO_LIMITS, AUDIO_LIMITS, withinBudget } from '@/config/mediaLimits';
 
 export async function compressImage(file, opts = {}) {
   const {
-    maxWidth = 1920,
-    maxHeight = 1080,
-    quality = 0.82, // JPEG/WebP quality
+    maxWidth = IMAGE_LIMITS.maxWidth,
+    maxHeight = IMAGE_LIMITS.maxHeight,
+    quality = IMAGE_LIMITS.quality, // JPEG/WebP quality
     mime = 'image/webp',
   } = opts;
 
@@ -19,15 +21,22 @@ export async function compressImage(file, opts = {}) {
   const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
   ctx.drawImage(bitmap, 0, 0, width, height);
   const outBlob = await canvas.convertToBlob({ type: mime, quality });
+  if (!withinBudget(outBlob.size, IMAGE_LIMITS.maxBytes)) {
+    // Try one more pass with slightly lower quality if too big
+    const fallback = await canvas.convertToBlob({ type: mime, quality: Math.max(0.6, quality - 0.12) });
+    if (fallback && withinBudget(fallback.size, IMAGE_LIMITS.maxBytes)) {
+      return new File([fallback], replaceExt(file.name, mime), { type: mime, lastModified: Date.now() });
+    }
+  }
   return new File([outBlob], replaceExt(file.name, mime), { type: mime, lastModified: Date.now() });
 }
 
 export async function compressVideo(file, opts = {}) {
   // Best-effort video compression using ffmpeg.wasm (lazy-loaded)
   const {
-    targetBitrate = '1200k',
-    maxWidth = 1280,
-    maxHeight = 720,
+    targetBitrate = VIDEO_LIMITS.targetBitrate,
+    maxWidth = VIDEO_LIMITS.maxWidth,
+    maxHeight = VIDEO_LIMITS.maxHeight,
     format = 'mp4',
     timeoutMs = 60_000,
   } = opts;
@@ -66,7 +75,73 @@ export async function compressVideo(file, opts = {}) {
 
   const data = ffmpeg.FS('readFile', outputName);
   const blob = new Blob([data.buffer], { type: 'video/' + format });
+  // Best-effort size budget check
+  if (!withinBudget(blob.size, VIDEO_LIMITS.maxBytes)) {
+    // Try a lower bitrate pass once
+    const lower = ['480k', '420k', '360k'];
+    for (const b of lower) {
+      try {
+        await ffmpeg.run(...[
+          '-i', inputName,
+          '-vf', `scale='min(${maxWidth},iw)':'min(${maxHeight},ih)':force_original_aspect_ratio=decrease`,
+          '-b:v', b,
+          '-preset', 'fast',
+          '-movflags', 'faststart',
+          '-c:a', 'aac',
+          outputName,
+        ]);
+        const d2 = ffmpeg.FS('readFile', outputName);
+        const blob2 = new Blob([d2.buffer], { type: 'video/' + format });
+        if (withinBudget(blob2.size, VIDEO_LIMITS.maxBytes)) {
+          return new File([blob2], replaceExt(file.name, 'video/' + format), { type: 'video/' + format });
+        }
+      } catch {}
+    }
+  }
   return new File([blob], replaceExt(file.name, 'video/' + format), { type: 'video/' + format });
+}
+
+export async function compressAudio(file, opts = {}) {
+  const {
+    codec = AUDIO_LIMITS.codec,
+    bitrate = AUDIO_LIMITS.bitrate, // e.g., '96k'
+    sampleRate = AUDIO_LIMITS.sampleRate, // 44100
+    timeoutMs = 60_000,
+  } = opts;
+  if (!file || !file.type.startsWith('audio/')) return file;
+
+  let ffmpeg, fetchFile;
+  try {
+    const mod = await import(/* webpackIgnore: true */'@ffmpeg/ffmpeg');
+    ffmpeg = mod.createFFmpeg({ log: false });
+    fetchFile = mod.fetchFile;
+  } catch {
+    console.warn('[compressAudio] ffmpeg.wasm not available, skipping');
+    return file;
+  }
+
+  const inputName = 'in.' + (file.name.split('.').pop() || 'wav');
+  const ext = codec === 'mp3' ? 'mp3' : 'm4a';
+  const mime = codec === 'mp3' ? 'audio/mpeg' : 'audio/mp4';
+  const outputName = 'out.' + ext;
+  await ffmpeg.load();
+  ffmpeg.FS('writeFile', inputName, await fetchFile(file));
+
+  const args = [
+    '-i', inputName,
+    '-ar', String(sampleRate),
+    ...(codec === 'mp3' ? ['-c:a', 'libmp3lame', '-b:a', bitrate] : ['-c:a', 'aac', '-b:a', bitrate]),
+    outputName,
+  ];
+
+  await Promise.race([
+    ffmpeg.run(...args),
+    new Promise((_, rej) => setTimeout(() => rej(new Error('ffmpeg timeout')), timeoutMs)),
+  ]);
+
+  const data = ffmpeg.FS('readFile', outputName);
+  const blob = new Blob([data.buffer], { type: mime });
+  return new File([blob], replaceExt(file.name, mime), { type: mime });
 }
 
 function constrain(w, h, maxW, maxH) {

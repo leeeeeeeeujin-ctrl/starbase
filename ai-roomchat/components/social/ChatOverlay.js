@@ -851,8 +851,8 @@ async function createImageAttachmentDraft(file) {
     canvas.height = Math.max(1, Math.round(image.height * scale));
     const ctx = canvas.getContext('2d');
     ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-    const processedBlob = await blobFromCanvas(canvas);
-    const { blob: compressedBlob, encoding } = await compressBlob(processedBlob);
+  const processedBlob = await blobFromCanvas(canvas);
+  const encoding = 'none';
 
     const previewCanvas = document.createElement('canvas');
     const previewMax = 360;
@@ -868,9 +868,9 @@ async function createImageAttachmentDraft(file) {
       type: 'image',
       name: file.name,
       originalSize: file.size,
-      size: compressedBlob.size,
+      size: processedBlob.size,
       encoding,
-      blob: compressedBlob,
+      blob: processedBlob,
       contentType: 'image/webp',
       width: canvas.width,
       height: canvas.height,
@@ -916,8 +916,7 @@ async function createVideoAttachmentDraft(file) {
   if (Number.isFinite(duration) && duration > MAX_VIDEO_DURATION) {
     throw new Error('4분을 초과하는 동영상은 업로드할 수 없습니다.');
   }
-
-  const { blob: compressedBlob, encoding } = await compressBlob(file);
+  const encoding = 'none';
 
   let previewUrl = '';
   const videoUrl = URL.createObjectURL(file);
@@ -951,9 +950,9 @@ async function createVideoAttachmentDraft(file) {
     type: 'video',
     name: file.name,
     originalSize: file.size,
-    size: compressedBlob.size,
+    size: file.size,
     encoding,
-    blob: compressedBlob,
+    blob: file,
     contentType: file.type || 'video/mp4',
     previewUrl,
     duration,
