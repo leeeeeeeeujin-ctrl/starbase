@@ -5,7 +5,7 @@ import { useWorkspace } from './CodeWorkspaceProvider.jsx';
 import { supabase } from '../../lib/supabase';
 import { useStartApiKeyManager } from '../rank/StartClient/hooks/useStartApiKeyManager';
 
-export default function AICodeChatPanel({ onClose, onDragHandleDown }){
+export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFullscreen, onMinimize, enableFullscreenButton, enableMinimizeButton }){
   const { files, activePath, createFile, writeFile, remove, rename } = useWorkspace();
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -233,14 +233,26 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown }){
       append('error', e?.message || String(e));
     } finally { setBusy(false); }
   };
+  // simple double-tap detection for touch
+  const lastTapRef = useRef(0);
+  const onHeaderTouchEnd = () => {
+    const now = Date.now();
+    if (now - (lastTapRef.current || 0) < 320) {
+      onToggleFullscreen && onToggleFullscreen();
+    }
+    lastTapRef.current = now;
+  };
+
   return (
     <div style={{ height:'100%', border:'1px solid #334155', background:'#0b1220', borderRadius:12, overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 24px 64px rgba(0,0,0,0.6)' }}>
-      <div onMouseDown={onDragHandleDown} onTouchStart={onDragHandleDown} style={{ padding:'8px 10px', color:'#e2e8f0', fontWeight:600, display:'flex', alignItems:'center', justifyContent:'space-between', background:'linear-gradient(180deg, rgba(2,6,23,0.8) 0%, rgba(2,6,23,0.6) 100%)', position:'relative', cursor:'move' }}>
+      <div onMouseDown={onDragHandleDown} onTouchStart={onDragHandleDown} onDoubleClick={onToggleFullscreen} onTouchEnd={onHeaderTouchEnd} style={{ padding:'8px 10px', color:'#e2e8f0', fontWeight:600, display:'flex', alignItems:'center', justifyContent:'space-between', background:'linear-gradient(180deg, rgba(2,6,23,0.8) 0%, rgba(2,6,23,0.6) 100%)', position:'relative', cursor:'move' }}>
         <span>AI 코드 채팅</span>
         <div style={{ display:'flex', gap:6 }}>
           <button onClick={() => setHistoryOpen(v=>!v)} title="대화 기록" style={{ padding:'4px 8px', borderRadius:8, border:'1px solid #334155', background: historyOpen ? '#172033' : '#0b1220', color:'#94a3b8' }}>기록</button>
+          {enableFullscreenButton && <button onClick={onToggleFullscreen} title="전체화면" style={{ padding:'4px 8px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8' }}>전체화면</button>}
           <button onClick={() => setSettingsOpen(v=>!v)} title="설정" style={{ padding:'4px 8px', borderRadius:8, border:'1px solid #334155', background: settingsOpen ? '#172033' : '#0b1220', color:'#93c5fd' }}>설정</button>
           <button onClick={startNewChat} title="새 대화" style={{ padding:'4px 8px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8' }}>새 대화</button>
+          {enableMinimizeButton && <button onClick={onMinimize} title="축소" style={{ padding:'4px 8px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8' }}>축소</button>}
           <button onClick={onClose} title="닫기" style={{ padding:'4px 8px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8' }}>닫기</button>
         </div>
         {historyOpen && (

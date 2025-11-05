@@ -60,10 +60,14 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
   const treeRef = useRef(null);
   const [showPlay, setShowPlay] = useState(false);
   const [showCodeChat, setShowCodeChat] = useState(false);
-  const [chatSize, setChatSize] = useState({ w: 420, h: 360 });
+  const [chatSize, setChatSize] = useState({ w: 360, h: 360 });
   const [resizing, setResizing] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [chatPos, setChatPos] = useState({ x: 16, y: 16 });
+  const [chatFullscreen, setChatFullscreen] = useState(false);
+  const [chatMinimized, setChatMinimized] = useState(false);
+  const dragLastRef = useRef(null);
+  const resizeLastRef = useRef(null);
   const [playKey, setPlayKey] = useState(0);
 
   const LS_CHAT_POS = 'workspace:aiChat:pos';
@@ -136,12 +140,19 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
 
   useEffect(() => {
     if (!resizing) return;
-    const onMove = (e) => {
-      const dx = -(e.movementX || 0);
-      const dy = -(e.movementY || 0);
-      setChatSize(s => ({ w: Math.min(Math.max(320, s.w - dx), 900), h: Math.min(Math.max(240, s.h - dy), 900) }));
+    const getPoint = (e) => {
+      if (e.touches && e.touches[0]) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      return { x: e.clientX, y: e.clientY };
     };
-    const onUp = () => setResizing(false);
+    const onMove = (e) => {
+      const p = getPoint(e);
+      const last = resizeLastRef.current || p;
+      const dx = p.x - last.x;
+      const dy = p.y - last.y;
+      resizeLastRef.current = p;
+      setChatSize(s => ({ w: Math.min(Math.max(320, s.w + dx), 900), h: Math.min(Math.max(240, s.h + dy), 1200) }));
+    };
+    const onUp = () => { setResizing(false); resizeLastRef.current = null; };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
     window.addEventListener('touchmove', onMove);
@@ -151,24 +162,31 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
 
   useEffect(() => {
     if (!dragging) return;
+    const getPoint = (e) => {
+      if (e.touches && e.touches[0]) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      return { x: e.clientX, y: e.clientY };
+    };
     const onMove = (e) => {
-      const dx = (e.movementX || 0);
-      const dy = (e.movementY || 0);
-      setChatPos(p => {
+      const p = getPoint(e);
+      const last = dragLastRef.current || p;
+      const dx = p.x - last.x;
+      const dy = p.y - last.y;
+      dragLastRef.current = p;
+      setChatPos(prev => {
         try {
           const w = window.innerWidth || 1200;
           const h = window.innerHeight || 800;
-          const nx = Math.min(Math.max(0, (p.x||0) + dx), Math.max(0, w - (chatSize.w||420)));
-          const ny = Math.min(Math.max(0, (p.y||0) + dy), Math.max(0, h - (chatSize.h||360)));
-          const np = { ...(p||{}), x: nx, y: ny, __init: true };
+          const nx = Math.min(Math.max(0, (prev.x||0) + dx), Math.max(0, w - (chatSize.w||360)));
+          const ny = Math.min(Math.max(0, (prev.y||0) + dy), Math.max(0, h - (chatSize.h||360)));
+          const np = { ...(prev||{}), x: nx, y: ny, __init: true };
           try { localStorage.setItem(LS_CHAT_POS, JSON.stringify({ x: np.x, y: np.y })); } catch {}
           return np;
         } catch {
-          return { ...(p||{}), x: (p.x||0)+dx, y: (p.y||0)+dy };
+          return { ...(prev||{}), x: (prev.x||0)+dx, y: (prev.y||0)+dy };
         }
       });
     };
-    const onUp = () => setDragging(false);
+    const onUp = () => { setDragging(false); dragLastRef.current = null; };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
     window.addEventListener('touchmove', onMove);
@@ -385,13 +403,28 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
           onCancel={() => setCloseConfirm(null)}
         />
       )}
-      {showCodeChat && (
-        <div style={{ position:'fixed', left: (chatPos.x||16), top: (chatPos.y||16), zIndex: 1200, width: chatSize.w, height: chatSize.h, background:'transparent' }}>
-          <div style={{ position:'absolute', inset:0 }}>
-            <AICodeChatPanel onClose={() => setShowCodeChat(false)} onDragHandleDown={() => setDragging(true)} />
-            <div onMouseDown={()=>setResizing(true)} onTouchStart={()=>setResizing(true)} title="드래그로 크기 조절" style={{ position:'absolute', left:8, bottom:8, width:16, height:16, border:'1px solid #334155', background:'#0b1220', borderRadius:4, cursor:'nwse-resize', opacity:0.9 }} />
+      {showCodeChat && !chatMinimized && (
+        <div style={chatFullscreen
+          ? { position:'fixed', left:0, top:0, right:0, bottom:0, zIndex: 1400, paddingTop:'env(safe-area-inset-top)', paddingBottom:'env(safe-area-inset-bottom)', paddingLeft:'env(safe-area-inset-left)', paddingRight:'env(safe-area-inset-right)' }
+          : { position:'fixed', left: (chatPos.x||16), top: (chatPos.y||16), zIndex: 1200, width: chatSize.w, height: chatSize.h, background:'transparent' }
+        }>
+          <div style={chatFullscreen ? { position:'absolute', inset:0 } : { position:'absolute', inset:0 }}>
+            <AICodeChatPanel
+              onClose={() => setShowCodeChat(false)}
+              onDragHandleDown={(e) => { setDragging(true); dragLastRef.current = null; }}
+              onToggleFullscreen={() => setChatFullscreen(v=>!v)}
+              onMinimize={() => setChatMinimized(true)}
+              enableFullscreenButton
+              enableMinimizeButton
+            />
+            {!chatFullscreen && (
+              <div onMouseDown={(e)=>{ resizeLastRef.current = { x: e.clientX, y: e.clientY }; setResizing(true); }} onTouchStart={(e)=>{ const t=e.touches?.[0]; resizeLastRef.current = t?{x:t.clientX,y:t.clientY}:null; setResizing(true); }} title="드래그로 크기 조절" style={{ position:'absolute', left:8, bottom:8, width:16, height:16, border:'1px solid #334155', background:'#0b1220', borderRadius:4, cursor:'nwse-resize', opacity:0.9 }} />
+            )}
           </div>
         </div>
+      )}
+      {showCodeChat && chatMinimized && (
+        <button onClick={() => setChatMinimized(false)} title="AI 채팅 열기" style={{ position:'fixed', right:'calc(env(safe-area-inset-right) + 12px)', bottom:'calc(env(safe-area-inset-bottom) + 12px)', zIndex:1500, width:48, height:48, borderRadius:24, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', boxShadow:'0 10px 24px rgba(0,0,0,0.5)' }}>AI</button>
       )}
     </CodeWorkspaceProvider>
   );
