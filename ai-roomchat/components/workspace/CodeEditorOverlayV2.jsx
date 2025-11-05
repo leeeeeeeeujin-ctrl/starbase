@@ -62,6 +62,13 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
   const [showCodeChat, setShowCodeChat] = useState(false);
   const [chatSize, setChatSize] = useState({ w: 420, h: 360 });
   const [resizing, setResizing] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const [chatPos, setChatPos] = useState({ x: 16, y: 16 });
+  const [playKey, setPlayKey] = useState(0);
+
+  const LS_CHAT_POS = 'workspace:aiChat:pos';
+  const LS_CHAT_SIZE = 'workspace:aiChat:size';
+  const LS_SHOW_TREE = 'workspace:showTree';
 
   const computeTreeWidth = () => {
     if (typeof window === 'undefined') return 240;
@@ -85,6 +92,42 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
         const vh = window.innerHeight * 0.01;
         document.documentElement.style.setProperty('--vh', `${vh}px`);
       } catch {}
+
+      // initialize chat position near bottom-right if not dragged yet
+      try {
+        setChatPos(pos => {
+          if (pos && pos.__init) return pos; // already initialized
+          // try restore from localStorage first
+          try {
+            const raw = localStorage.getItem(LS_CHAT_POS);
+            if (raw) {
+              const p = JSON.parse(raw);
+              return { ...(p||{}), __init: true };
+            }
+          } catch {}
+          const w = window.innerWidth || 1200;
+          const h = window.innerHeight || 800;
+          return { x: Math.max(8, w - (chatSize.w||420) - 16), y: Math.max(8, h - (chatSize.h||360) - 16), __init: true };
+        });
+        // also try restore size once
+        setChatSize(sz => {
+          try {
+            if (sz && sz.__init) return sz;
+            const raw = localStorage.getItem(LS_CHAT_SIZE);
+            if (raw) {
+              const s = JSON.parse(raw);
+              return { ...(s||{}), __init: true };
+            }
+          } catch {}
+          return { ...sz, __init: true };
+        });
+        // restore file tree visibility
+        try {
+          const sv = localStorage.getItem(LS_SHOW_TREE);
+          if (sv === '0') setShowTree(false);
+          else if (sv === '1') setShowTree(true);
+        } catch {}
+      } catch {}
     };
     onResize();
     window.addEventListener('resize', onResize);
@@ -105,6 +148,46 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
     window.addEventListener('touchend', onUp);
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); window.removeEventListener('touchmove', onMove); window.removeEventListener('touchend', onUp); };
   }, [resizing]);
+
+  useEffect(() => {
+    if (!dragging) return;
+    const onMove = (e) => {
+      const dx = (e.movementX || 0);
+      const dy = (e.movementY || 0);
+      setChatPos(p => {
+        try {
+          const w = window.innerWidth || 1200;
+          const h = window.innerHeight || 800;
+          const nx = Math.min(Math.max(0, (p.x||0) + dx), Math.max(0, w - (chatSize.w||420)));
+          const ny = Math.min(Math.max(0, (p.y||0) + dy), Math.max(0, h - (chatSize.h||360)));
+          const np = { ...(p||{}), x: nx, y: ny, __init: true };
+          try { localStorage.setItem(LS_CHAT_POS, JSON.stringify({ x: np.x, y: np.y })); } catch {}
+          return np;
+        } catch {
+          return { ...(p||{}), x: (p.x||0)+dx, y: (p.y||0)+dy };
+        }
+      });
+    };
+    const onUp = () => setDragging(false);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    window.addEventListener('touchmove', onMove);
+    window.addEventListener('touchend', onUp);
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); window.removeEventListener('touchmove', onMove); window.removeEventListener('touchend', onUp); };
+  }, [dragging, chatSize.w, chatSize.h]);
+
+  useEffect(() => {
+    // persist size
+    try {
+      const { w, h } = chatSize || {};
+      if (w && h) localStorage.setItem(LS_CHAT_SIZE, JSON.stringify({ w, h }));
+    } catch {}
+  }, [chatSize.w, chatSize.h]);
+
+  useEffect(() => {
+    // persist showTree
+    try { localStorage.setItem(LS_SHOW_TREE, showTree ? '1' : '0'); } catch {}
+  }, [showTree]);
 
   useEffect(() => {
     const onDoc = (e) => {
@@ -134,9 +217,12 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
       <div style={{ display:'flex', alignItems:'center', gap:6 }}>
         {openPaths.map((p) => {
           const active = p === activePath;
+          const dirty = isDirty(p);
           return (
             <div key={p} style={{ display:'flex', alignItems:'center' }}>
-              <button onClick={() => open(p)} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background: active ? '#172033' : '#0b1220', color:'#e2e8f0', fontSize:12, maxWidth:220, overflow:'hidden', textOverflow:'ellipsis' }}>{p.split('/').pop()}</button>
+              <button onClick={() => open(p)} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background: active ? '#172033' : '#0b1220', color:'#e2e8f0', fontSize:12, maxWidth:220, overflow:'hidden', textOverflow:'ellipsis' }}>
+                {p.split('/').pop()} {dirty ? '•' : ''}
+              </button>
               <button onClick={() => { if (isDirty(p)) setConfirm({ path: p }); else close(p); }} style={{ marginLeft:-6, padding:'6px 6px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8' }}>×</button>
             </div>
           );
@@ -229,6 +315,8 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
               <span>현재: <strong style={{ color:'#e2e8f0' }}>{useWorkspace().activePath}</strong></span>
               <button title="엔트리 파일 지정" onClick={() => useWorkspace().setEntryPath(useWorkspace().activePath)} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>엔트리로</button>
               <button title="모두 저장" onClick={() => saveAll()} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>모두 저장</button>
+              <button title="프롬프트 편집기 열기" onClick={() => open('/graph/prompt-graph.json')} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>프롬프트</button>
+              <button title="런타임 설정 열기" onClick={() => open('/game/runtime.config.json')} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>런타임</button>
             </div>
           </>
         )}
@@ -278,9 +366,12 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
         <div style={{ position:'absolute', inset:0, zIndex: 1600, background:'rgba(2,6,23,0.94)' }}>
           <div style={{ position:'absolute', left:0, top:0, right:0, bottom:0, paddingTop:'env(safe-area-inset-top)', paddingBottom:'env(safe-area-inset-bottom)', paddingLeft:'env(safe-area-inset-left)', paddingRight:'env(safe-area-inset-right)' }}>
             <button onClick={() => setShowPlay(false)} title="닫기" style={{ position:'absolute', top:'calc(env(safe-area-inset-top) + 10px)', right:'calc(env(safe-area-inset-right) + 10px)', zIndex: 10, padding:'8px 10px', borderRadius:10, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', boxShadow:'0 8px 24px rgba(0,0,0,0.5)' }}>닫기</button>
+            <button onClick={() => setPlayKey(k=>k+1)} title="재시작" style={{ position:'absolute', top:'calc(env(safe-area-inset-top) + 10px)', left:'calc(env(safe-area-inset-left) + 10px)', zIndex: 10, padding:'8px 10px', borderRadius:10, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', boxShadow:'0 8px 24px rgba(0,0,0,0.5)' }}>재시작</button>
             <div style={{ height:'calc(var(--vh, 1vh) * 100)', display:'flex', alignItems:'stretch', justifyContent:'center' }}>
               <div style={{ flex:1, minWidth:0 }}>
-                <PlayOverlayContent templateBinding={templateBinding} />
+                <div key={playKey} style={{ height:'100%', width:'100%' }}>
+                  <PlayOverlayContent templateBinding={templateBinding} />
+                </div>
               </div>
             </div>
           </div>
@@ -295,9 +386,9 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
         />
       )}
       {showCodeChat && (
-        <div style={{ position:'fixed', right:16, bottom:16, zIndex: 1200, width: chatSize.w, height: chatSize.h, background:'transparent' }}>
+        <div style={{ position:'fixed', left: (chatPos.x||16), top: (chatPos.y||16), zIndex: 1200, width: chatSize.w, height: chatSize.h, background:'transparent' }}>
           <div style={{ position:'absolute', inset:0 }}>
-            <AICodeChatPanel onClose={() => setShowCodeChat(false)} />
+            <AICodeChatPanel onClose={() => setShowCodeChat(false)} onDragHandleDown={() => setDragging(true)} />
             <div onMouseDown={()=>setResizing(true)} onTouchStart={()=>setResizing(true)} title="드래그로 크기 조절" style={{ position:'absolute', left:8, bottom:8, width:16, height:16, border:'1px solid #334155', background:'#0b1220', borderRadius:4, cursor:'nwse-resize', opacity:0.9 }} />
           </div>
         </div>
@@ -362,3 +453,5 @@ function ConfirmCloseMany({ paths, onSaveAll, onDiscard, onCancel }){
     />
   );
 }
+
+// (모바일 전용) 단축키는 제외
