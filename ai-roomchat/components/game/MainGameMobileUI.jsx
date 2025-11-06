@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import useIsMobile from '@/utils/useIsMobile';
 
-export default function MainGameMobileUI({ template, user = null, onNext = () => {} }) {
+export default function MainGameMobileUI({ template, user = null, onNext = () => {}, runtimeFeed = null, runtimeSecondsLeft = null, onForceNext = null, onPlayerChat = null }) {
   const isMobile = useIsMobile(820);
   const [layout, setLayout] = useState(() => loadLayout());
   const [edit, setEdit] = useState(false);
@@ -27,25 +27,34 @@ export default function MainGameMobileUI({ template, user = null, onNext = () =>
 
   const sendChat = useCallback(() => {
     const t = (chatText || '').trim(); if (!t) return;
-    setChat(prev => [...prev, { role: 'me', text: t, at: Date.now() }]);
+    if (typeof onPlayerChat === 'function') {
+      try { onPlayerChat({ text: t }); } catch {}
+    } else {
+      setChat(prev => [...prev, { role: 'me', text: t, at: Date.now() }]);
+    }
     setChatText('');
-  }, [chatText]);
+  }, [chatText, onPlayerChat]);
 
   const triggerNext = useCallback(() => {
-    setGameChat(prev => [...prev, { role: 'system', text: '다음 단계로 진행합니다.' }]);
+    if (typeof onForceNext === 'function') {
+      try { onForceNext(); } catch {}
+    } else {
+      setGameChat(prev => [...prev, { role: 'system', text: '다음 단계로 진행합니다.' }]);
+    }
     try { onNext?.(); } catch {}
-    // reset next timer if configured
-    if (typeof nextPolicy.timeoutSec === 'number') setSecondsLeft(nextPolicy.timeoutSec);
-  }, [onNext]);
+    // reset next timer if configured (only for local timer mode)
+    if (onForceNext == null && typeof nextPolicy.timeoutSec === 'number') setSecondsLeft(nextPolicy.timeoutSec);
+  }, [onNext, onForceNext, nextPolicy?.timeoutSec]);
 
   // NextBar timeout countdown
   useEffect(() => {
     if (!(typeof nextPolicy.timeoutSec === 'number') || nextPolicy.timeoutSec <= 0) return;
+    if (onForceNext != null) return; // external runtime controls timer
     if (!(typeof secondsLeft === 'number')) return;
     if (secondsLeft <= 0) { triggerNext(); return; }
     const t = setTimeout(() => setSecondsLeft(s => (typeof s === 'number' ? s - 1 : s)), 1000);
     return () => clearTimeout(t);
-  }, [secondsLeft, nextPolicy?.timeoutSec, triggerNext]);
+  }, [secondsLeft, nextPolicy?.timeoutSec, triggerNext, onForceNext]);
 
   // Simple reorder helpers for layout editing
   const move = useCallback((id, dir) => {
@@ -64,10 +73,10 @@ export default function MainGameMobileUI({ template, user = null, onNext = () =>
         <Header key="header" userLabel={userLabel} edit={edit} setEdit={setEdit} />
       ),
       gameChat: (
-        <GameChat key="gameChat" items={gameChat} />
+        <GameChat key="gameChat" items={Array.isArray(runtimeFeed) ? runtimeFeed.map(m => ({ role: (m.roleScope==='system'?'system':'ai'), text: m.text })) : gameChat} />
       ),
       nextBar: (
-        <NextBar key="nextBar" onNext={triggerNext} secondsLeft={secondsLeft} />
+        <NextBar key="nextBar" onNext={triggerNext} secondsLeft={(onForceNext != null && typeof runtimeSecondsLeft === 'number') ? runtimeSecondsLeft : secondsLeft} />
       ),
       playerChat: (
         <PlayerChat key="playerChat" items={chat} text={chatText} setText={setChatText} onSend={sendChat} />
@@ -89,7 +98,7 @@ export default function MainGameMobileUI({ template, user = null, onNext = () =>
       ),
     };
     return layout.order.map(id => defs[id]).filter(Boolean);
-  }, [layout.order, userLabel, edit, gameChat, triggerNext, chat, chatText, template, character, imageUrl, sendChat]);
+  }, [layout.order, userLabel, edit, gameChat, runtimeFeed, triggerNext, chat, chatText, template, character, imageUrl, sendChat, onForceNext, runtimeSecondsLeft]);
 
   return (
     <div style={{ position:'fixed', inset:0, background:'#0b1220', color:'#e2e8f0', display:'flex', flexDirection:'column' }}>

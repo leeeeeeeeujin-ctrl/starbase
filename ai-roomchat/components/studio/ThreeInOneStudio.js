@@ -117,7 +117,8 @@ export default function ThreeInOneStudio() {
           maxHeight: 48,
         }}
       >
-        <button onClick={() => setMode(mode === 'code' ? 'nodes' : 'code')} style={{ padding: isMobile ? '6px 10px' : undefined }}>{mode === 'code' ? '프롬프트' : '코드'}</button>
+  <button onClick={() => setMode(mode === 'code' ? 'nodes' : 'code')} style={{ padding: isMobile ? '6px 10px' : undefined }}>{mode === 'code' ? '프롬프트' : '코드'}</button>
+  <button onClick={() => setMode('ui')} style={{ padding: isMobile ? '6px 10px' : undefined }} disabled={mode==='ui'}>UI</button>
   <button onClick={() => setShowPlay(true)} title="메인게임 오버레이 미리보기" style={{ padding: isMobile ? '6px 10px' : undefined }}>플레이(오버레이)</button>
         <span style={{ flex: 1 }} />
         {!isMobile && <UndoRedoBar />}
@@ -232,7 +233,8 @@ export default function ThreeInOneStudio() {
             )}
           </div>
         )}
-        {mode === 'nodes' && <NodesEditor />}
+  {mode === 'nodes' && <NodesEditor />}
+  {mode === 'ui' && <UIEditor />}
       </div>
 
       {/* Floating panels */}

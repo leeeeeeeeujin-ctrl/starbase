@@ -1,10 +1,38 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/router';
+import { GameRuntimeProvider, useGameRuntime } from '@/components/game/GameRuntimeProvider.jsx';
 
 const MainGameMobileUI = dynamic(() => import('@/components/game/MainGameMobileUI.jsx'), { ssr: false });
+
+function Runner({ tpl }){
+  const api = useGameRuntime();
+  // derive graph from template.nodes/edges if present
+  const graph = useMemo(() => {
+    try {
+      const nodes = Array.isArray(tpl?.nodes) ? tpl.nodes.map(n => ({ id: n.id, type: n.type || 'system', label: n.label || n.text || '' })) : [];
+      const edges = Array.isArray(tpl?.edges) ? tpl.edges.map(e => ({ id: e.id || `${e.source}-${e.target}`, source: e.source, target: e.target, label: e.label || '' })) : [];
+      return { nodes, edges };
+    } catch { return { nodes: [], edges: [] }; }
+  }, [tpl]);
+
+  useEffect(() => {
+    if (!tpl) return;
+    api.setRuntime({ graph, hooks: {}, config: tpl?.runtime?.config || {}, files: {} });
+  }, [tpl, graph, api]);
+
+  return (
+    <MainGameMobileUI
+      template={tpl}
+      runtimeFeed={api.aiMessages}
+      runtimeSecondsLeft={api.secondsLeft}
+      onForceNext={() => api.forceNext()}
+      onPlayerChat={({ text }) => api.sendChat({ id:`c_${Date.now()}`, from:'player', to:'all', text, ts:Date.now() })}
+    />
+  );
+}
 
 export default function PlayByIdPage(){
   const router = useRouter();
@@ -45,5 +73,9 @@ export default function PlayByIdPage(){
     return <div style={{ padding:20, color:'#b91c1c' }}>로드 오류: {error}</div>;
   }
 
-  return <MainGameMobileUI template={tpl} />;
+  return (
+    <GameRuntimeProvider>
+      <Runner tpl={tpl} />
+    </GameRuntimeProvider>
+  );
 }

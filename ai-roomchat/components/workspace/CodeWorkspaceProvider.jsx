@@ -153,6 +153,20 @@ const defaultFiles = {
     ].join('\n')+"\n",
     readonly: false,
   },
+  "/characters/sample.json": {
+    content: JSON.stringify({
+      id: "char_sample",
+      name: "샘플 캐릭터",
+      description: "비실시간 조우용 샘플 캐릭터",
+      image_url: "",
+      background_url: "",
+      ability1: "민첩",
+      ability2: "지능",
+      ability3: "체력",
+      ability4: "행운"
+    }, null, 2)+"\n",
+    readonly: false,
+  },
 };
 
 const WorkspaceCtx = createContext(null);
