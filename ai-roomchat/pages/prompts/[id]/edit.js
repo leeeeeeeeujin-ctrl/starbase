@@ -5,7 +5,6 @@ import AICodeChatPanel from '../../../components/workspace/AICodeChatPanel.jsx';
 import { CodeWorkspaceProvider, useWorkspace } from '../../../components/workspace/CodeWorkspaceProvider.jsx';
 import Link from 'next/link';
 import { applyMainUiPresetObject, getMainUiModules } from '../../../utils/uiPresets';
-import { applyMainUiPresetObject } from '../../../utils/uiPresets';
 function ToolsDropdown({ onOpenUiSettings }) {
   return (
     <select
@@ -17,7 +16,7 @@ function ToolsDropdown({ onOpenUiSettings }) {
     </select>
   );
 }
-}
+
 function UiSettingsPanel({ onClose }) {
   const { files, writeFile } = useWorkspace();
   const [imageName, setImageName] = useState('');
