@@ -29,9 +29,7 @@ describe('AICodeChatPanel UI builder integration', () => {
     expect(buttons.length).toBeGreaterThan(0);
     await act(async () => { buttons[0].props.onClick(); await Promise.resolve(); });
 
-    const uiPresetBtns = root.findAll(n => n.type === 'button' && typeof n.props.children === 'string' && n.props.children.includes('UI 제작(메인 기본)'));
-    const imageUiBtns = root.findAll(n => n.type === 'button' && typeof n.props.children === 'string' && n.props.children.includes('이미지로 UI 생성'));
-    expect(uiPresetBtns.length).toBeGreaterThan(0);
-    expect(imageUiBtns.length).toBeGreaterThan(0);
+    const uiSettingsBtns = root.findAll(n => n.type === 'button' && typeof n.props.children === 'string' && n.props.children.includes('UI 설정'));
+    expect(uiSettingsBtns.length).toBeGreaterThan(0);
   });
 });

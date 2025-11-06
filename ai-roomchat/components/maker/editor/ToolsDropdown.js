@@ -16,7 +16,7 @@ const itemStyle = {
   fontWeight: 600,
 };
 
-export default function ToolsDropdown({ onOpenCode, onOpenImageUI, onInsertMainUiPreset }) {
+export default function ToolsDropdown({ onOpenCode, onOpenUiSettings }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -64,8 +64,7 @@ export default function ToolsDropdown({ onOpenCode, onOpenImageUI, onInsertMainU
         >
           <button onClick={onOpenCode} style={itemStyle}>코드 에디터</button>
           <div style={{ height: 1, background: 'rgba(148,163,184,0.25)', margin: '4px 2px' }} />
-          <button onClick={onInsertMainUiPreset} style={itemStyle}>UI 제작(메인게임 기본)</button>
-          <button onClick={onOpenImageUI} style={itemStyle}>이미지로 UI 생성</button>
+          <button onClick={onOpenUiSettings} style={itemStyle}>UI 설정</button>
         </div>
       )}
     </div>

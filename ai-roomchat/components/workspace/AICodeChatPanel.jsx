@@ -494,8 +494,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
         )}
         {actionsOpen && (
           <div ref={actionsRef} style={{ position:'absolute', right:8, top:'100%', marginTop:6, zIndex:50, width:220, background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, display:'grid', gap:6 }}>
-            <button onClick={()=>{ applyMainUiPreset(); setActionsOpen(false); }} style={menuBtn}>UI 제작(메인 기본) 적용</button>
-            <button onClick={()=>{ setShowImageUi(true); setActionsOpen(false); }} style={menuBtn}>이미지로 UI 생성</button>
+            <button onClick={()=>{ setShowImageUi(true); setActionsOpen(false); }} style={menuBtn}>UI 설정</button>
             <button onClick={()=>{ setShowAutoGraph(true); setActionsOpen(false); }} style={menuBtn}>프롬프트-노드 자동생성</button>
             <button onClick={()=>{ setSettingsOpen(v=>!v); setActionsOpen(false); }} style={menuBtn}>설정</button>
             {enableMinimizeButton && <button onClick={()=>{ onMinimize && onMinimize(); setActionsOpen(false); }} style={menuBtn}>축소</button>}
@@ -631,21 +630,27 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
       </div>
       {showImageUi && (
         <div style={{ position:'absolute', inset:0, background:'rgba(0,0,0,0.35)', zIndex:60 }}>
-          <div style={{ position:'absolute', right:12, top:12, width:360, background:'#0b1220', border:'1px solid #334155', borderRadius:10, boxShadow:'0 12px 32px rgba(0,0,0,0.6)', padding:10 }}>
+          <div style={{ position:'absolute', right:12, top:12, width:380, background:'#0b1220', border:'1px solid #334155', borderRadius:10, boxShadow:'0 12px 32px rgba(0,0,0,0.6)', padding:10 }}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', color:'#e2e8f0' }}>
-              <strong>이미지로 UI 생성</strong>
+              <strong>UI 설정</strong>
               <button onClick={()=>setShowImageUi(false)} style={{ padding:'4px 6px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8' }}>닫기</button>
             </div>
-            <div style={{ marginTop:8, display:'grid', gap:8 }}>
-              <label style={{ fontSize:12, color:'#cbd5e1' }}>이미지 이름</label>
-              <input value={imageUiName} onChange={e=> setImageUiName(e.target.value)} placeholder="예: 배경-바다" style={{ width:'100%', padding:8, borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }} />
-              <label style={{ fontSize:12, color:'#cbd5e1' }}>이미지 URL</label>
-              <input value={imageUiUrl} onChange={e=> setImageUiUrl(e.target.value)} placeholder="https://..." style={{ width:'100%', padding:8, borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }} />
-              <label style={{ fontSize:12, color:'#cbd5e1' }}>프롬프트(선택)</label>
-              <textarea rows={4} value={imageUiPrompt} onChange={e=> setImageUiPrompt(e.target.value)} style={{ width:'100%', padding:8, borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', fontFamily:'monospace', fontSize:12 }} />
-              <button disabled={imageUiBusy} onClick={generateImageUi} style={{ padding:'8px 10px', borderRadius:8, border:'1px solid #2563eb', background:'#1d4ed8', color:'#fff' }}>{imageUiBusy?'생성 중…':'생성(스텁)'}</button>
-              {imageUiError && <div style={{ color:'#fca5a5', fontSize:12 }}>{imageUiError}</div>}
-              <div style={{ fontSize:11, color:'#94a3b8' }}>현재는 스텁으로 template.json의 resources.backgrounds에 항목을 추가하고 기본 UI 모듈을 적용합니다. 실제 이미지 생성 연동은 이후 브리지/스토리지와 연결하세요.</div>
+            <div style={{ marginTop:8, display:'grid', gap:10 }}>
+              <div style={{ display:'grid', gap:6 }}>
+                <div style={{ fontSize:12, color:'#cbd5e1' }}>빠른 작업</div>
+                <button onClick={()=>{ applyMainUiPreset(); }} style={{ padding:'8px 10px', borderRadius:8, border:'1px solid #2563eb', background:'#1d4ed8', color:'#fff' }}>메인 프리셋 적용</button>
+              </div>
+              <div style={{ height:1, background:'rgba(51,65,85,0.6)' }} />
+              <div style={{ display:'grid', gap:6 }}>
+                <div style={{ fontSize:12, color:'#cbd5e1' }}>배경 이미지 추가</div>
+                <label style={{ fontSize:12, color:'#cbd5e1' }}>이미지 이름</label>
+                <input value={imageUiName} onChange={e=> setImageUiName(e.target.value)} placeholder="예: 배경-바다" style={{ width:'100%', padding:8, borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }} />
+                <label style={{ fontSize:12, color:'#cbd5e1' }}>이미지 URL</label>
+                <input value={imageUiUrl} onChange={e=> setImageUiUrl(e.target.value)} placeholder="https://..." style={{ width:'100%', padding:8, borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }} />
+                <button disabled={imageUiBusy} onClick={generateImageUi} style={{ padding:'8px 10px', borderRadius:8, border:'1px solid #10b981', background:'#065f46', color:'#d1fae5' }}>{imageUiBusy?'추가 중…':'배경 추가'}</button>
+                {imageUiError && <div style={{ color:'#fca5a5', fontSize:12 }}>{imageUiError}</div>}
+                <div style={{ fontSize:11, color:'#94a3b8' }}>팁: 배경 이미지를 추가하면 기본 UI 모듈이 없을 경우 자동으로 적용됩니다.</div>
+              </div>
             </div>
           </div>
         </div>

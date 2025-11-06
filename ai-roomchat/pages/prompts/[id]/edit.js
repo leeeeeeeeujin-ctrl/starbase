@@ -1,5 +1,5 @@
 import { useRouter } from 'next/router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import PromptEditor from '../../../components/PromptEditor';
 import AICodeChatPanel from '../../../components/workspace/AICodeChatPanel.jsx';
 import { CodeWorkspaceProvider, useWorkspace } from '../../../components/workspace/CodeWorkspaceProvider.jsx';
@@ -22,6 +22,11 @@ function UiSettingsPanel({ onClose }) {
   const [imageName, setImageName] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [busy, setBusy] = useState(false);
+  const justOpenedRef = useRef(true);
+  useEffect(() => {
+    const t = setTimeout(() => { justOpenedRef.current = false; }, 80);
+    return () => clearTimeout(t);
+  }, []);
   const getTpl = () => {
     try { return JSON.parse(String(files?.['/template.json']?.content || '{}')); } catch { return {}; }
   };
@@ -65,7 +70,7 @@ function UiSettingsPanel({ onClose }) {
   };
   return (
     <div style={{ position:'fixed', inset:0, zIndex:1600, background:'rgba(2,6,23,0.65)' }}>
-      <div onClick={onClose} style={{ position:'absolute', inset:0 }} />
+      <div onClick={() => { if (justOpenedRef.current) return; onClose(); }} style={{ position:'absolute', inset:0 }} />
       <div
         role="dialog"
         aria-modal="true"
