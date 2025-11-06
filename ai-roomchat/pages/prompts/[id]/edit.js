@@ -2,10 +2,32 @@ import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
 import PromptEditor from '../../../components/PromptEditor';
 import AICodeChatPanel from '../../../components/workspace/AICodeChatPanel.jsx';
-import { CodeWorkspaceProvider } from '../../../components/workspace/CodeWorkspaceProvider.jsx';
+import { CodeWorkspaceProvider, useWorkspace } from '../../../components/workspace/CodeWorkspaceProvider.jsx';
 import Link from 'next/link';
+import { applyMainUiPresetObject } from '../../../utils/uiPresets';
 
-export default function PromptEditPage() {
+function ToolsDropdown() {
+  const { files, writeFile } = useWorkspace();
+  const applyMainUiPreset = () => {
+    try {
+      const txt = String(files?.['/template.json']?.content || '{}');
+      const obj = JSON.parse(txt || '{}');
+      const next = applyMainUiPresetObject(obj);
+      writeFile('/template.json', JSON.stringify(next, null, 2) + '\n');
+      alert('UI 제작(메인게임 기본) 프리셋을 /template.json 에 적용했습니다. 메인게임/오버레이에서 확인하세요.');
+    } catch (e) {
+      alert('프리셋 적용 실패: ' + String(e?.message || e));
+    }
+  };
+  return (
+    <select onChange={(e) => { const v = e.target.value; e.target.selectedIndex = 0; if (v === 'ui-preset-main') applyMainUiPreset(); }} defaultValue="">
+      <option value="" disabled>도구…</option>
+      <option value="ui-preset-main">UI 제작(메인게임 기본)</option>
+    </select>
+  );
+}
+
+function PromptEditInner() {
   const router = useRouter();
   const { id } = router.query;
   const [prompt, setPrompt] = useState({ id: id || 'new', name: '', body: '' });
@@ -119,6 +141,8 @@ export default function PromptEditPage() {
           <Link href="/prompts">
             <a>Back to list</a>
           </Link>
+          {/* Prompt Editor Tools dropdown */}
+          <ToolsDropdown />
           <button onClick={()=> setShowAgent(true)} data-test-id="open-ai-agent-from-prompt" style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>AI 에이전트</button>
         </div>
       </div>
@@ -165,14 +189,21 @@ export default function PromptEditPage() {
 
       {showAgent && (
         <div style={{ position:'fixed', right:16, bottom:16, zIndex:1200, width:420, height:360 }}>
-          <CodeWorkspaceProvider>
-            <div style={{ position:'absolute', inset:0 }}>
-              <AICodeChatPanel onClose={()=> setShowAgent(false)} />
-            </div>
-          </CodeWorkspaceProvider>
+          <div style={{ position:'absolute', inset:0 }}>
+            <AICodeChatPanel onClose={()=> setShowAgent(false)} />
+          </div>
         </div>
       )}
     </div>
+  );
+}
+
+export default function PromptEditPage(){
+  // Provide VFS to enable ToolsDropdown to read/write /template.json
+  return (
+    <CodeWorkspaceProvider>
+      <PromptEditInner />
+    </CodeWorkspaceProvider>
   );
 }
 

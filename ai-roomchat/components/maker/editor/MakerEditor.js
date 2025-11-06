@@ -19,6 +19,7 @@ import dynamic from 'next/dynamic';
 import AutoUpdateListener from '../../infra/AutoUpdateListener.jsx';
 const ImageToUIGenerator = dynamic(() => import('../ui/ImageToUIGenerator'), { ssr: false });
 const MainGameMobileUI = dynamic(() => import('../../game/MainGameMobileUI.jsx'), { ssr: false });
+import { applyMainUiPresetObject } from '../../../utils/uiPresets';
 
 export default function MakerEditor() {
   const isMobile = useIsMobile(820);
@@ -414,21 +415,7 @@ export default function MakerEditor() {
   const insertMainUiPreset = useCallback(() => {
     try {
       const obj = (() => { try { return JSON.parse(templateText || '{}'); } catch { return {}; } })();
-      const next = {
-        ...obj,
-        ui: {
-          ...(obj.ui || {}),
-          main: {
-            modules: [
-              { type: 'MainGameChat', id: 'gameChat' },
-              { type: 'SharedChat', id: 'sharedChat', enabled: true, realtimeOnly: true },
-              { type: 'NextBar', id: 'nextBar', policy: { timeoutSec: 60, roleThreshold: 0.5 } },
-              { type: 'CharacterCards', id: 'charCards', behavior: { tapCycle: ['desc','abilities','score','image'], darkenOnOverlay: true } },
-              { type: 'WidgetRow', id: 'widgetRow' },
-            ],
-          },
-        },
-      };
+      const next = applyMainUiPresetObject(obj);
       setTemplateText && setTemplateText(JSON.stringify(next, null, 2));
     } catch {}
   }, [templateText, setTemplateText]);

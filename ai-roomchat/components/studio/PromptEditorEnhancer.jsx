@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import StudioPersistentProvider, { } from '../../contexts/StudioPersistentProvider.jsx';
 import { useStudioTemplate } from '../../contexts/StudioStore';
 import { emit } from '../../contexts/StudioBus';
+import { applyMainUiPresetObject } from '../../utils/uiPresets';
 
 const CodeEditor = dynamic(() => import('./CodeEditor'), { ssr: false });
 const AIPanel = dynamic(() => import('./AIPanel'), { ssr: false });
@@ -52,21 +53,7 @@ function Inner({ children, externalText, onExternalChange }){
           if (v === 'ui-preset-main') {
             try {
               const obj = JSON.parse(templateText || '{}');
-              const next = {
-                ...obj,
-                ui: {
-                  ...(obj.ui||{}),
-                  main: {
-                    modules: [
-                      { type:'MainGameChat', id:'gameChat' },
-                      { type:'SharedChat', id:'sharedChat', enabled:true, realtimeOnly:true },
-                      { type:'NextBar', id:'nextBar', policy:{ timeoutSec:60, roleThreshold:0.5 } },
-                      { type:'CharacterCards', id:'charCards', behavior:{ tapCycle:['desc','abilities','score','image'], darkenOnOverlay:true } },
-                      { type:'WidgetRow', id:'widgetRow' },
-                    ],
-                  }
-                }
-              };
+              const next = applyMainUiPresetObject(obj);
               setTemplateText(JSON.stringify(next, null, 2));
             } catch {}
           } else if (v === 'image-ui') {

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useWorkspace } from './CodeWorkspaceProvider.jsx';
+import { applyMainUiPresetObject, getMainUiModules } from '../../utils/uiPresets';
 import { supabase } from '../../lib/supabase';
 import { useStartApiKeyManager } from '../rank/StartClient/hooks/useStartApiKeyManager';
 
@@ -224,21 +225,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
   const applyMainUiPreset = () => {
     try {
       const obj = JSON.parse(getTemplateText() || '{}');
-      const next = {
-        ...obj,
-        ui: {
-          ...(obj.ui||{}),
-          main: {
-            modules: [
-              { type:'MainGameChat', id:'gameChat' },
-              { type:'SharedChat', id:'sharedChat', enabled:true, realtimeOnly:true },
-              { type:'NextBar', id:'nextBar', policy:{ timeoutSec:60, roleThreshold:0.5 } },
-              { type:'CharacterCards', id:'charCards', behavior:{ tapCycle:['desc','abilities','score','image'], darkenOnOverlay:true } },
-              { type:'WidgetRow', id:'widgetRow' },
-            ],
-          }
-        }
-      };
+      const next = applyMainUiPresetObject(obj);
       setTemplateText(JSON.stringify(next, null, 2));
       append('assistant', 'UI 기본 모듈을 template.json에 적용했습니다.');
     } catch (e) {
@@ -256,13 +243,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
         ui: {
           ...(obj.ui||{}),
           main: {
-            modules: [
-              { type:'MainGameChat', id:'gameChat' },
-              { type:'SharedChat', id:'sharedChat', enabled:true, realtimeOnly:true },
-              { type:'NextBar', id:'nextBar', policy:{ timeoutSec:60, roleThreshold:0.5 } },
-              { type:'CharacterCards', id:'charCards', behavior:{ tapCycle:['desc','abilities','score','image'], darkenOnOverlay:true } },
-              { type:'WidgetRow', id:'widgetRow' },
-            ],
+            modules: getMainUiModules(),
           }
         },
         resources: { ...(obj.resources||{}), backgrounds: [...bg, { id, name: imageUiName || (imageUiPrompt || 'Generated'), image: imageUiUrl || '' }] }

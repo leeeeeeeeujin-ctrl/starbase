@@ -231,13 +231,25 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
   const TabsBar = () => {
     const { openPaths, activePath, open, close, isDirty, saveFile } = useWorkspace();
     const [confirm, setConfirm] = useState(null); // { path }
+    const containerRef = useRef(null);
+    useEffect(() => {
+      // Ensure active tab stays visible when many files are open
+      try {
+        const el = containerRef.current;
+        if (!el) return;
+        const target = el.querySelector(`[data-path="${CSS && CSS.escape ? CSS.escape(activePath || '') : (activePath || '').replace(/"/g, '\\"')}"]`);
+        if (target && typeof target.scrollIntoView === 'function') {
+          target.scrollIntoView({ inline: 'nearest', block: 'nearest', behavior: 'instant' });
+        }
+      } catch {}
+    }, [activePath, openPaths]);
     return (
-      <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+      <div ref={containerRef} style={{ display:'flex', alignItems:'center', gap:6, overflowX:'auto', overflowY:'hidden', paddingBottom:2, scrollbarWidth:'thin', WebkitOverflowScrolling:'touch', maxWidth:'100%' }}>
         {openPaths.map((p) => {
           const active = p === activePath;
           const dirty = isDirty(p);
           return (
-            <div key={p} style={{ display:'flex', alignItems:'center' }}>
+            <div key={p} data-path={p} style={{ display:'flex', alignItems:'center', flex:'0 0 auto' }}>
               <button onClick={() => open(p)} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background: active ? '#172033' : '#0b1220', color:'#e2e8f0', fontSize:12, maxWidth:220, overflow:'hidden', textOverflow:'ellipsis' }}>
                 {p.split('/').pop()} {dirty ? '•' : ''}
               </button>
