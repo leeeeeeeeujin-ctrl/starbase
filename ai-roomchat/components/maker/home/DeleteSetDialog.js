@@ -41,8 +41,8 @@ export default function DeleteSetDialog({
           ) : null}
         </div>
         <div style={footer}>
-          <button onClick={onCancel} style={btnGhost}>취소</button>
-          <button onClick={onConfirm} disabled={busy} style={btnDanger}>{busy?'삭제 중…':'삭제'}</button>
+          <button type="button" onClick={onCancel} style={btnGhost}>취소</button>
+          <button type="button" onClick={onConfirm} disabled={busy} style={btnDanger}>{busy?'삭제 중…':'삭제'}</button>
         </div>
       </div>
     </div>
