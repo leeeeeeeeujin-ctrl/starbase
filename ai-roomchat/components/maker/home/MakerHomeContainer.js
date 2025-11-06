@@ -11,7 +11,7 @@ import { useSharedPromptSetStorage } from '../../../hooks/shared/useSharedPrompt
 export default function MakerHomeContainer() {
   const router = useRouter();
   const [returnHeroId, setReturnHeroId] = useState('');
-  const { backgroundUrl, setPromptSetId } = useSharedPromptSetStorage();
+  const { backgroundUrl, promptSetId, setPromptSetId } = useSharedPromptSetStorage();
 
   const handleUnauthorized = useCallback(() => {
     router.replace('/');
@@ -87,12 +87,18 @@ export default function MakerHomeContainer() {
 
       try {
         await deleteSet(id);
+        // If the deleted set was currently selected in shared storage, clear it
+        try {
+          if (promptSetId && String(promptSetId) === String(id)) {
+            setPromptSetId('');
+          }
+        } catch {}
       } catch (err) {
         console.error(err);
         alert(err instanceof Error ? err.message : '세트를 삭제하지 못했습니다.');
       }
     },
-    [deleteSet]
+    [deleteSet, promptSetId, setPromptSetId]
   );
 
   const handleCreateSet = useCallback(async () => {
