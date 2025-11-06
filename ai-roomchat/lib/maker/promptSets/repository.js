@@ -94,6 +94,20 @@ export const promptSetsRepository = {
       });
     } catch {}
 
+    // Best-effort: cleanup any game-scoped resources under games/*/{setId}/
+    try {
+      // Attempt multiple passes to ensure all pages are covered (bounded)
+      for (let i = 0; i < 5; i++) {
+        const resp = await fetch('/api/storage/delete-by-set', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ setId: id, totalLimit: 5000, pageSize: 1000 })
+        });
+        if (!resp.ok) break;
+        const j = await resp.json().catch(() => ({ deleted: 0 }));
+        if (!j || !j.deleted || j.deleted <= 0) break;
+      }
+    } catch {}
+
     return success(true);
   },
 };

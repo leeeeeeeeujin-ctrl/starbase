@@ -3,7 +3,7 @@
 // High-level client uploader for R2 via our API.
 // Flow: sha256 -> POST /api/assets/exists -> if !exists then POST /api/assets/upload-url -> PUT -> POST /api/assets/commit
 
-export async function uploadAsset(file, { gameId, key, signal, contentEncoding } = {}) {
+export async function uploadAsset(file, { gameId, setId, key, signal, contentEncoding } = {}) {
   if (!file) throw new Error('file required');
   // Optional client-side compression for images/videos (logic-only; UI unchanged)
   try {
@@ -43,7 +43,8 @@ export async function uploadAsset(file, { gameId, key, signal, contentEncoding }
   // 2) upload-url
   const name = file.name || `file_${Date.now()}`;
   const ext = name.includes('.') ? name.split('.').pop() : 'bin';
-  const defKey = `games/${gameId||'common'}/${sha256}.${ext}`;
+  const setPart = setId ? `${String(setId).trim().replace(/[^a-zA-Z0-9_-]/g,'')}/` : '';
+  const defKey = `games/${gameId||'common'}/${setPart}${sha256}.${ext}`;
   const finalKey = (typeof key === 'string' && key) ? key : defKey;
   r = await fetch('/api/assets/upload-url', { method:'POST', headers: { 'content-type':'application/json', ...(auth?{Authorization:auth}:{}) }, body: JSON.stringify({ key: finalKey, contentType, size, sha256, contentEncoding }), signal });
   j = await r.json();
@@ -65,7 +66,7 @@ export async function uploadAsset(file, { gameId, key, signal, contentEncoding }
     // Fallback: proxy upload via our API to bypass CORS
     const buf = await file.arrayBuffer();
     const b64 = base64FromArrayBuffer(buf);
-    const proxy = await fetch('/api/assets/upload', { method:'POST', headers: { 'content-type':'application/json', ...(auth?{Authorization:auth}:{}) }, body: JSON.stringify({ name: file.name, contentType, dataBase64: b64, gameId, sha256 }), signal });
+  const proxy = await fetch('/api/assets/upload', { method:'POST', headers: { 'content-type':'application/json', ...(auth?{Authorization:auth}:{}) }, body: JSON.stringify({ name: file.name, contentType, dataBase64: b64, gameId, sha256, key: finalKey }), signal });
     let pj = null;
     try {
       pj = await proxy.json();
