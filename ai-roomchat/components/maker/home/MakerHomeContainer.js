@@ -7,6 +7,7 @@ import { useMakerHome } from '../../../hooks/maker/useMakerHome';
 import MakerHomeView from './MakerHomeView';
 import { readHeroSelection } from '../../../lib/heroes/selectedHeroStorage';
 import { useSharedPromptSetStorage } from '../../../hooks/shared/useSharedPromptSetStorage';
+import DeleteSetDialog from './DeleteSetDialog';
 
 export default function MakerHomeContainer() {
   const router = useRouter();
@@ -37,6 +38,7 @@ export default function MakerHomeContainer() {
   const [editingName, setEditingName] = useState('');
   const [savingRename, setSavingRename] = useState(false);
   const [actionSheetOpen, setActionSheetOpen] = useState(false);
+  const [deleteDialog, setDeleteDialog] = useState({ open: false, id: null, name: '', busy: false, error: '' });
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const selection = readHeroSelection();
@@ -80,26 +82,31 @@ export default function MakerHomeContainer() {
   );
 
   const handleDeleteSet = useCallback(
-    async id => {
-      if (!confirm('세트를 삭제할까요? (프롬프트/브릿지 포함)')) {
-        return;
-      }
-
-      try {
-        await deleteSet(id);
-        // If the deleted set was currently selected in shared storage, clear it
-        try {
-          if (promptSetId && String(promptSetId) === String(id)) {
-            setPromptSetId('');
-          }
-        } catch {}
-      } catch (err) {
-        console.error(err);
-        alert(err instanceof Error ? err.message : '세트를 삭제하지 못했습니다.');
-      }
+    id => {
+      const row = (rows||[]).find(r => String(r.id) === String(id));
+      setDeleteDialog({ open: true, id, name: row?.name || '', busy: false, error: '' });
     },
-    [deleteSet, promptSetId, setPromptSetId]
+    [rows]
   );
+
+  const confirmDelete = useCallback(async () => {
+    const { id } = deleteDialog;
+    if (!id) { setDeleteDialog(prev => ({ ...prev, open:false })); return; }
+    setDeleteDialog(prev => ({ ...prev, busy: true, error: '' }));
+    try {
+      await deleteSet(id);
+      // Clear shared selection if needed
+      try { if (promptSetId && String(promptSetId) === String(id)) setPromptSetId(''); } catch {}
+      setDeleteDialog({ open:false, id:null, name:'', busy:false, error:'' });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setDeleteDialog(prev => ({ ...prev, busy:false, error: msg || '세트를 삭제하지 못했습니다.' }));
+    }
+  }, [deleteDialog, deleteSet, promptSetId, setPromptSetId]);
+
+  const cancelDelete = useCallback(() => {
+    setDeleteDialog({ open:false, id:null, name:'', busy:false, error:'' });
+  }, []);
 
   const handleCreateSet = useCallback(async () => {
     try {
@@ -165,33 +172,43 @@ export default function MakerHomeContainer() {
   }
 
   return (
-    <MakerHomeView
-      backgroundImage={backgroundUrl}
-      listHeader={listHeader}
-      errorMessage={errorMessage}
-      noticeMessage={noticeMessage}
-      loading={loading}
-      rows={rows}
-      editingId={editingId}
-      editingName={editingName}
-      savingRename={savingRename}
-      actionSheetOpen={actionSheetOpen}
-      onEditingNameChange={setEditingName}
-      onBeginRename={handleBeginRename}
-      onSubmitRename={handleSubmitRename}
-      onCancelRename={handleCancelRename}
-      onDeleteSet={handleDeleteSet}
-      onOpenSet={id => {
-        setPromptSetId(id);
-        router.push(`/maker/${id}`);
-      }}
-      onExportSet={handleExportSet}
-      onImportFile={handleImportFile}
-      onCreateSet={handleCreateSet}
-      onRefresh={handleRefresh}
-      onToggleActionSheet={setActionSheetOpen}
-      onGoBack={handleGoBack}
-    />
+    <>
+      <MakerHomeView
+        backgroundImage={backgroundUrl}
+        listHeader={listHeader}
+        errorMessage={errorMessage}
+        noticeMessage={noticeMessage}
+        loading={loading}
+        rows={rows}
+        editingId={editingId}
+        editingName={editingName}
+        savingRename={savingRename}
+        actionSheetOpen={actionSheetOpen}
+        onEditingNameChange={setEditingName}
+        onBeginRename={handleBeginRename}
+        onSubmitRename={handleSubmitRename}
+        onCancelRename={handleCancelRename}
+        onDeleteSet={handleDeleteSet}
+        onOpenSet={id => {
+          setPromptSetId(id);
+          router.push(`/maker/${id}`);
+        }}
+        onExportSet={handleExportSet}
+        onImportFile={handleImportFile}
+        onCreateSet={handleCreateSet}
+        onRefresh={handleRefresh}
+        onToggleActionSheet={setActionSheetOpen}
+        onGoBack={handleGoBack}
+      />
+      <DeleteSetDialog
+        open={deleteDialog.open}
+        setName={deleteDialog.name}
+        busy={deleteDialog.busy}
+        error={deleteDialog.error}
+        onConfirm={confirmDelete}
+        onCancel={cancelDelete}
+      />
+    </>
   );
 }
 

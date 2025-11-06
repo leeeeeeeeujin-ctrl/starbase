@@ -54,6 +54,30 @@ export const promptSetsRepository = {
   },
 
   async remove(id) {
+    // Guard: don't allow delete when set is registered to a game
+    try {
+      const { data: usageRows, error: usageError } = await withTableQuery(
+        supabase,
+        'rank_games',
+        from => from.select('id').eq('prompt_set_id', id).limit(1)
+      );
+      if (!usageError) {
+        const used = Array.isArray(usageRows)
+          ? usageRows.length > 0
+          : Boolean(usageRows && usageRows.id);
+        if (used) {
+          return failure(
+            new Error('현재 게임에 등록된 세트는 삭제할 수 없습니다. 먼저 게임 등록을 해제하세요.')
+          );
+        }
+      }
+    } catch (e) {
+      // If usage check fails unexpectedly, be conservative and block deletion to avoid breaking games
+      return failure(
+        asError(e, '세트 삭제 사전 검사에 실패했습니다. 잠시 후 다시 시도해 주세요.')
+      );
+    }
+
     const { error } = await withTableQuery(supabase, 'prompt_sets', from =>
       from.delete().eq('id', id)
     );
