@@ -93,7 +93,6 @@ function UiSettingsPanel({ onClose }) {
             <div style={{ fontSize:13, color:'#cbd5e1' }}>빠른 작업</div>
             <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
               <button onClick={onApplyPreset} style={{ padding:'8px 12px', borderRadius:10, border:'1px solid #2563eb', background:'#1d4ed8', color:'#fff', fontWeight:600 }}>메인 프리셋 적용</button>
-              <a href="/studio?mode=ui" target="_blank" rel="noreferrer" style={{ padding:'8px 12px', borderRadius:10, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', textDecoration:'none' }}>UI 편집기 열기</a>
             </div>
           </div>
           <div style={{ height:1, background:'rgba(148,163,184,0.2)' }} />
