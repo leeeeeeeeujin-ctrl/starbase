@@ -4,7 +4,7 @@
  */
 
 // public/sw.js
-const CACHE_NAME = 'starbase-ai-game-v1.0.1';
+const CACHE_NAME = 'starbase-ai-game-v1.0.2';
 
 // 캐시할 리소스들
 const STATIC_RESOURCES = [
@@ -344,6 +344,14 @@ async function handleAIAPI(request) {
 
 // 정적 리소스 캐시-퍼스트 전략
 async function handleStaticRequest(request) {
+  // Avoid caching range requests; Cache API doesn't support 206 (Partial Content)
+  try {
+    const range = request.headers && request.headers.get && request.headers.get('Range');
+    if (range) {
+      // Pass-through without touching cache
+      return fetch(request);
+    }
+  } catch {}
   const cache = await caches.open(CACHE_NAME);
   const cachedResponse = await cache.match(request);
 
@@ -354,9 +362,9 @@ async function handleStaticRequest(request) {
   try {
     const response = await fetch(request);
 
-    // 성공한 응답은 캐시에 저장
-    if (response.ok) {
-      cache.put(request, response.clone());
+    // Only cache full successful responses (200). 206 is unsupported by Cache.put
+    if (response && response.status === 200) {
+      try { await cache.put(request, response.clone()); } catch (e) { /* ignore cache put errors */ }
     }
 
     return response;

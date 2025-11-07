@@ -314,7 +314,10 @@ export function CodeWorkspaceProvider({ children }) {
               setDirty((d) => ({ ...d, [path]: true }));
             });
           } else {
-            entry = { ...f, content: String(content||''), compressed: false, data: undefined };
+            const newContent = String(content||'');
+            // If content didn't actually change, no-op and don't mark dirty
+            if (typeof f.content === 'string' && f.content === newContent) return m;
+            entry = { ...f, content: newContent, compressed: false, data: undefined };
             const delta = entry.content.length - ((typeof f.content === 'string') ? f.content.length : 0);
             if (curTotal + Math.max(0, delta) > MAX_VFS_BYTES) {
               alert('최대 게임 파일 크기(15MB)를 초과하여 저장할 수 없습니다.');
