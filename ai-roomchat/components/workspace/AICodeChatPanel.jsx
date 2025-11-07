@@ -21,10 +21,15 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
   const [uiImage, setUiImage] = useState(null); // { dataUrl, w, h }
   const [uiSel, setUiSel] = useState(null); // { x, y, w, h } in px
   const [pendingUiPreviews, setPendingUiPreviews] = useState([]); // previews to include with next send
+  const uploadInputRef = useRef(null);
+  const [attachFilter, setAttachFilter] = useState('');
   const [isFullscreenUi, setIsFullscreenUi] = useState(false);
   const [pendingPlan, setPendingPlan] = useState(null); // last AI plan awaiting confirmation
   const [pendingPlanMeta, setPendingPlanMeta] = useState(null); // summaries/diffs
   const [recentUiPreviews, setRecentUiPreviews] = useState([]); // last few previews for reuse
+  // Upload status
+  const [uploading, setUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState('');
   // Auto apply/continue (trusted mode)
   const AUTO_LS_KEY = 'workspace:aiChat:autoApply.v1';
   const AUTO_LIMIT_KEY = 'workspace:aiChat:autoLimit.v1';
@@ -306,9 +311,23 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
     } catch { return null; }
   };
   const uploadFilesToVfs = async (fileList) => {
+    const MAX_UPLOAD_BYTES = 2 * 1024 * 1024; // 2MB per file cap
+    const dataUrlSizeBytes = (dataUrl) => {
+      try {
+        const comma = dataUrl.indexOf(',');
+        if (comma === -1) return 0;
+        const b64 = dataUrl.slice(comma + 1);
+        // Base64 size approximation
+        return Math.floor((b64.length * 3) / 4);
+      } catch { return 0; }
+    };
     const arr = Array.from(fileList || []);
     const createdPaths = [];
-    for (const f of arr) {
+    setUploading(true);
+    setUploadStatus(`처리 중… (0/${arr.length})`);
+    for (let idx = 0; idx < arr.length; idx++) {
+      const f = arr[idx];
+      setUploadStatus(`처리 중… (${idx+1}/${arr.length})`);
       const name = (f.name||'file').replace(/[^a-zA-Z0-9_.-]+/g,'_');
       const ts = Date.now();
       const ext = (name.split('.').pop()||'').toLowerCase();
@@ -326,22 +345,33 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
 
       try {
         if (isImage) {
+          // For images: allow compression even if raw exceeds cap, then enforce cap on compressed result
           const webp = await processImageToWebp(f);
           const content = webp || (await fileToBase64(f));
-          if (!files[finalPath]) createFile(finalPath, content); else writeFile(finalPath, content);
+          if (dataUrlSizeBytes(content) > MAX_UPLOAD_BYTES) {
+            append('error', `업로드 실패(용량 초과): ${name} — 압축 후에도 ${Math.round(dataUrlSizeBytes(content)/1024)}KB > 2048KB`);
+          } else {
+            if (!files[finalPath]) createFile(finalPath, content); else writeFile(finalPath, content);
+            createdPaths.push(finalPath);
+          }
         } else if (isAudio) {
+          if (f.size > MAX_UPLOAD_BYTES) { append('error', `업로드 실패(용량 초과): ${name} — ${Math.round(f.size/1024)}KB > 2048KB`); continue; }
           const b64 = await readAsArrayBufferB64(f);
           const content = `data:${f.type||'audio/*'};base64,${b64}`;
           if (!files[finalPath]) createFile(finalPath, content); else writeFile(finalPath, content);
+          createdPaths.push(finalPath);
         } else if (isText) {
+          if (f.size > MAX_UPLOAD_BYTES) { append('error', `업로드 실패(용량 초과): ${name} — ${Math.round(f.size/1024)}KB > 2048KB`); continue; }
           const text = await f.text();
           if (!files[finalPath]) createFile(finalPath, text); else writeFile(finalPath, text);
+          createdPaths.push(finalPath);
         } else {
+          if (f.size > MAX_UPLOAD_BYTES) { append('error', `업로드 실패(용량 초과): ${name} — ${Math.round(f.size/1024)}KB > 2048KB`); continue; }
           const b64 = await readAsArrayBufferB64(f);
           const content = `data:application/octet-stream;base64,${b64}`;
           if (!files[finalPath]) createFile(finalPath, content); else writeFile(finalPath, content);
+          createdPaths.push(finalPath);
         }
-        createdPaths.push(finalPath);
       } catch (e) {
         append('error', `업로드 실패: ${name} — ${String(e?.message||e)}`);
       }
@@ -350,6 +380,8 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
       setExtraAttach(prev => Array.from(new Set([...(prev||[]), ...createdPaths])));
       append('assistant', `업로드 완료: ${createdPaths.length}개 파일을 추가했습니다.`);
     }
+    setUploadStatus('');
+    setUploading(false);
   };
   // Template helpers
   const TEMPLATE_PATH = '/template.json';
@@ -1141,17 +1173,27 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
         <div style={{ position:'relative' }}>
           <button onClick={()=>setAttachPickerOpen(v=>!v)} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>파일 추가</button>
           {attachPickerOpen && (
-            <div style={{ position:'absolute', right:0, bottom:'100%', marginBottom:6, zIndex:40, width:260, maxHeight:200, overflow:'auto', background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, boxShadow:'0 12px 24px rgba(0,0,0,0.6)', display:'grid', gap:6 }}>
-              <input type="file" multiple accept="image/*,audio/*,.js,.jsx,.ts,.tsx,.json,.md,.txt,.css" onChange={async (e)=>{ try { await uploadFilesToVfs(e.target.files); e.target.value=''; } catch {} }} style={{ padding:'6px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }} />
+            <div style={{ position:'absolute', left:0, bottom:'100%', marginBottom:6, zIndex:50, width:240, maxHeight:240, background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, boxShadow:'0 12px 24px rgba(0,0,0,0.6)', display:'grid', gap:6 }}>
+              <input ref={uploadInputRef} type="file" multiple accept="image/*,audio/*,.js,.jsx,.ts,.tsx,.json,.md,.txt,.css" onChange={async (e)=>{ try { await uploadFilesToVfs(e.target.files); if (uploadInputRef.current) uploadInputRef.current.value=''; } catch {} }} style={{ display:'none' }} />
+              <button onClick={()=>{ try { uploadInputRef.current?.click(); } catch {} }} style={menuBtn}>파일 업로드…</button>
+              <input value={attachFilter} onChange={e=>setAttachFilter(e.target.value)} placeholder="검색" style={{ padding:'6px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', fontSize:12 }} />
+              {uploading && (
+                <div style={{ fontSize:11, color:'#94a3b8' }}>{uploadStatus || '업로드 처리 중…'}</div>
+              )}
               <div style={{ height:1, background:'rgba(148,163,184,0.2)' }} />
-              {Object.keys(files).sort().map(p => (
-                <label key={p} style={{ display:'flex', alignItems:'center', gap:6, padding:'2px 4px', color:'#e2e8f0', fontSize:12 }}>
-                  <input type="checkbox" checked={extraAttach.includes(p)} onChange={e=>{
-                    setExtraAttach(prev => e.target.checked ? (prev.includes(p)?prev:[...prev,p]) : prev.filter(x=>x!==p));
-                  }} />
-                  <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p}</span>
-                </label>
-              ))}
+              <div style={{ maxHeight:120, overflow:'auto', display:'grid', gap:2 }}>
+                {Object.keys(files).sort().filter(p => !attachFilter || p.toLowerCase().includes(attachFilter.toLowerCase())).map(p => (
+                  <label key={p} style={{ display:'flex', alignItems:'center', gap:6, padding:'2px 4px', color:'#e2e8f0', fontSize:12 }}>
+                    <input type="checkbox" checked={extraAttach.includes(p)} onChange={e=>{
+                      setExtraAttach(prev => e.target.checked ? (prev.includes(p)?prev:[...prev,p]) : prev.filter(x=>x!==p));
+                    }} />
+                    <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p}</span>
+                  </label>
+                ))}
+              </div>
+              <div style={{ display:'flex', gap:6, justifyContent:'flex-end' }}>
+                <button onClick={()=> setAttachPickerOpen(false)} style={{ padding:'4px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', fontSize:12 }}>닫기</button>
+              </div>
             </div>
           )}
         </div>
