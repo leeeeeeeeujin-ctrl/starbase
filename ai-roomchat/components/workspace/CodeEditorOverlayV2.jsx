@@ -485,15 +485,8 @@ function ConfirmCloseMany({ paths, onAfterSaveAll, onDiscard, onCancel }){
   };
   return (
     <ConfirmDialogShell
-      title="코드 에디터를 닫기 전에 저장할까요?"
-      children={
-        <div style={{ color:'#cbd5e1', fontSize:13 }}>
-          <div style={{ marginBottom:8 }}>변경 사항이 있는 파일:</div>
-          <ul style={{ margin:0, padding:'0 0 0 18px', maxHeight:200, overflow:'auto' }}>
-            {paths.map(p => (<li key={p} style={{ marginBottom:4 }}><span style={{ color:'#e2e8f0' }}>{p}</span></li>))}
-          </ul>
-        </div>
-      }
+      title="수정사항을 저장하시겠습니까?"
+      children={<div style={{ color:'#cbd5e1', fontSize:13 }}>작성 중인 변경 사항이 있습니다. 저장하시겠습니까?</div>}
       actions={
         <>
           <button onClick={onDiscard} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #7f1d1d', background:'#0b1220', color:'#fecaca' }}>저장 안 함</button>

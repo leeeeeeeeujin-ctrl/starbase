@@ -1141,13 +1141,11 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
         <div style={{ position:'relative' }}>
           <button onClick={()=>setAttachPickerOpen(v=>!v)} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>파일 추가</button>
           {attachPickerOpen && (
-            <div style={{ position:'absolute', right:0, bottom:'100%', marginBottom:6, zIndex:40, width:360, maxHeight:360, overflow:'auto', background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:8, boxShadow:'0 12px 32px rgba(0,0,0,0.6)', display:'grid', gap:8 }}>
-              <div style={{ color:'#e2e8f0', fontWeight:700, fontSize:12 }}>파일 업로드</div>
+            <div style={{ position:'absolute', right:0, bottom:'100%', marginBottom:6, zIndex:40, width:260, maxHeight:200, overflow:'auto', background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, boxShadow:'0 12px 24px rgba(0,0,0,0.6)', display:'grid', gap:6 }}>
               <input type="file" multiple accept="image/*,audio/*,.js,.jsx,.ts,.tsx,.json,.md,.txt,.css" onChange={async (e)=>{ try { await uploadFilesToVfs(e.target.files); e.target.value=''; } catch {} }} style={{ padding:'6px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }} />
               <div style={{ height:1, background:'rgba(148,163,184,0.2)' }} />
-              <div style={{ color:'#e2e8f0', fontWeight:700, fontSize:12 }}>워크스페이스 파일</div>
               {Object.keys(files).sort().map(p => (
-                <label key={p} style={{ display:'flex', alignItems:'center', gap:8, padding:'4px 6px', color:'#e2e8f0', fontSize:12 }}>
+                <label key={p} style={{ display:'flex', alignItems:'center', gap:6, padding:'2px 4px', color:'#e2e8f0', fontSize:12 }}>
                   <input type="checkbox" checked={extraAttach.includes(p)} onChange={e=>{
                     setExtraAttach(prev => e.target.checked ? (prev.includes(p)?prev:[...prev,p]) : prev.filter(x=>x!==p));
                   }} />
