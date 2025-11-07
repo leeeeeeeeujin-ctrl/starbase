@@ -25,6 +25,20 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
   const [pendingPlan, setPendingPlan] = useState(null); // last AI plan awaiting confirmation
   const [pendingPlanMeta, setPendingPlanMeta] = useState(null); // summaries/diffs
   const [recentUiPreviews, setRecentUiPreviews] = useState([]); // last few previews for reuse
+  // Auto apply/continue (trusted mode)
+  const AUTO_LS_KEY = 'workspace:aiChat:autoApply.v1';
+  const AUTO_LIMIT_KEY = 'workspace:aiChat:autoLimit.v1';
+  const [autoApply, setAutoApply] = useState(false);
+  const [autoLimit, setAutoLimit] = useState(2);
+  const autoIterRef = useRef(0);
+  useEffect(()=>{
+    try {
+      const a = localStorage.getItem(AUTO_LS_KEY); if (a !== null) setAutoApply(a === '1');
+      const l = parseInt(localStorage.getItem(AUTO_LIMIT_KEY)||''); if (!Number.isNaN(l) && l>=1 && l<=10) setAutoLimit(l);
+    } catch {}
+  },[]);
+  useEffect(()=>{ try { localStorage.setItem(AUTO_LS_KEY, autoApply ? '1' : '0'); } catch {} }, [autoApply]);
+  useEffect(()=>{ try { localStorage.setItem(AUTO_LIMIT_KEY, String(autoLimit)); } catch {} }, [autoLimit]);
   const rootRef = useRef(null);
   const historyRef = useRef(null);
   const settingsRef = useRef(null);
@@ -259,6 +273,37 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
     });
     return count;
   };
+  const collectActionsFromSteps = (plan) => {
+    try {
+      const list = [];
+      if (Array.isArray(plan?.actions)) list.push(...plan.actions);
+      if (Array.isArray(plan?.steps)) {
+        plan.steps.forEach(step => {
+          if (Array.isArray(step?.actions)) list.push(...step.actions);
+        });
+      }
+      return list;
+    } catch { return []; }
+  };
+  const isSafeAction = (a) => {
+    try {
+      const allowedPrefixes = ['/template.json', '/graph/', '/game/', '/components/', '/pages/', '/styles/', '/utils/', '/lib/', '/hooks/', '/services/', '/contexts/', '/context/', '/modules/'];
+      const t = a?.type; if (!t) return false;
+      const p = a?.path || a?.to || a?.from; if (!p || typeof p !== 'string') return false;
+      if (!allowedPrefixes.some(pref => p === pref || p.startsWith(pref))) return false;
+      if ((t === 'create' || t === 'write') && typeof a?.content === 'string' && a.content.length > 200000) return false; // 200KB cap per file
+      return true;
+    } catch { return false; }
+  };
+  const applyActionsSafely = (actions) => {
+    const MAX_ACTIONS = 20;
+    if (!Array.isArray(actions)) return { applied:0, safe:false };
+    if (actions.length > MAX_ACTIONS) return { applied:0, safe:false };
+    if (!actions.every(isSafeAction)) return { applied:0, safe:false };
+    let plan = { actions };
+    const applied = applyActions(plan);
+    return { applied, safe:true };
+  };
   const summarizePlan = (plan) => {
     const actions = Array.isArray(plan?.actions) ? plan.actions : [];
     const items = actions.slice(0, 20).map((a,i) => {
@@ -307,18 +352,22 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
         '당신은 파일 시스템 편집 에이전트입니다.',
         '파일 목록과 일부 내용이 제공됩니다.',
         '반드시 JSON으로만 응답하세요(코드펜스/마크다운 금지).',
-        '스키마 v2: {',
+        '스키마 v3: {',
         '  "mode": "chat" | "work",',
         '  "message?": string,',
         '  "questions?": string[],',
-        '  "actions?": [ {"type":"create|write|delete|rename", "path":"/path", "content?":"string", "from?":"/old", "to?":"/new"} ]',
+        '  "actions?": [ {"type":"create|write|delete|rename", "path":"/path", "content?":"string", "from?":"/old", "to?":"/new"} ],',
+        '  "steps?": [ { "mode": "chat|work", "message?": string, "actions?": [ ...same as above ] } ],',
+        '  "autoContinue?": boolean,',
+        '  "followup?": string',
         '}',
         '- chat 모드: 정보가 부족하거나 우선 질의가 필요하면 questions 배열로 물어보고, actions는 비웁니다.',
         '- work 모드: 편집이 확정되면 actions를 채우고 message는 간결 요약만 포함하세요. 수다/해설을 actions 안에 넣지 마세요.',
+        '- 여러 작업을 이어서 수행해야 한다면 steps 배열로 묶어서 한 번에 제시하세요. 꼭 필요한 경우에만 질문을 하되, 가능하면 스스로 다음 작업을 이어가세요.',
         '- 항상 프로젝트 안전수칙을 준수: 외부 URL 이미지는 제안하지 말 것, 이미지 포맷은 .webp 만 사용, 서버/비밀키/토큰을 추출하거나 하드코딩하지 말 것.',
         '- 경로는 워크스페이스 내부만: /template.json, /graph/**, /game/**, /components/**, /pages/**, /styles/** 등. 루트 밖이나 시스템 경로 금지.',
         '- UI PREVIEWS 섹션이 있을 수 있습니다. 각 항목은 이미지 크기(image), 선택 영역(region: 정규화 좌표), 팔레트, ASCII 요약, 코멘트를 포함합니다.',
-        '- 사용자가 UI 생성/편집을 요청했다면, template.json의 UI 설정 또는 graph/prompt-graph.json에 필요한 변경을 actions로 제안하세요.',
+        '- 사용자가 UI 생성/편집을 요청했다면, template.json의 UI 설정 또는 graph/prompt-graph.json에 필요한 변경을 actions/steps로 제안하세요.',
         '- 형식/변수 가이드: 캐릭터 슬롯, 이름/설명/역할 등 게임 변수는 GAME CONTEXT SUMMARY를 참고하여 누락 시 questions로 요청하세요.'
       ].join('\n');
       const fileMeta = files[activePath];
@@ -465,13 +514,40 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
         if (typeof plan.message === 'string' && plan.message.trim().length > 0) {
           append('assistant', plan.message.trim());
         }
-        if (mode === 'work' && Array.isArray(plan.actions) && plan.actions.length > 0) {
-          // Hold changes for preview instead of immediate apply
-          const summary = summarizePlan(plan);
-          const filePreviews = buildPlanFilePreviews(plan);
-          setPendingPlan(plan);
-          setPendingPlanMeta({ summary, filePreviews });
-          append('assistant', `변경 제안 ${summary.count}건이 도착했습니다. 아래 카드에서 적용하거나 추가 지시를 선택하세요.`);
+        // Aggregate actions from top-level and steps
+        const allActions = collectActionsFromSteps(plan);
+        if (mode === 'work' && Array.isArray(allActions) && allActions.length > 0) {
+          if (autoApply) {
+            // Trusted mode: apply within guardrails, else fall back to preview
+            const { applied:ap, safe } = applyActionsSafely(allActions);
+            if (safe) {
+              append('assistant', `자동 적용 완료: ${ap}건`);
+              // Auto-continue if requested and under iteration cap
+              if (plan.autoContinue && (autoIterRef.current < Math.max(1, autoLimit))) {
+                autoIterRef.current++;
+                const follow = typeof plan.followup === 'string' && plan.followup.trim().length>0 ? plan.followup.trim() : input;
+                setTimeout(()=>{ try { setInput(follow); send(); } catch {} }, 0);
+              } else {
+                autoIterRef.current = 0;
+              }
+            } else {
+              const hold = { actions: allActions };
+              const summary = summarizePlan(hold);
+              const filePreviews = buildPlanFilePreviews(hold);
+              setPendingPlan(hold);
+              setPendingPlanMeta({ summary, filePreviews });
+              append('assistant', `안전 제한으로 인해 자동 적용 대신 미리보기를 표시합니다. 변경 제안 ${summary.count}건.`);
+              autoIterRef.current = 0;
+            }
+          } else {
+            // Hold changes for preview instead of immediate apply
+            const hold = { actions: allActions };
+            const summary = summarizePlan(hold);
+            const filePreviews = buildPlanFilePreviews(hold);
+            setPendingPlan(hold);
+            setPendingPlanMeta({ summary, filePreviews });
+            append('assistant', `변경 제안 ${summary.count}건이 도착했습니다. 아래 카드에서 적용하거나 추가 지시를 선택하세요.`);
+          }
         } else if (!plan.message || plan.message.trim().length === 0) {
           append('assistant', '(변경 없음)');
         }
@@ -585,7 +661,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
   return (
   <div ref={rootRef} style={{ height:'100%', border:'1px solid #334155', background:'#0b1220', borderRadius:12, overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 24px 64px rgba(0,0,0,0.6)' }}>
       <div onMouseDown={onDragHandleDown} onTouchStart={onDragHandleDown} onDoubleClick={onToggleFullscreen} onTouchEnd={onHeaderTouchEnd} style={{ padding:'8px 10px', color:'#e2e8f0', fontWeight:600, display:'flex', alignItems:'center', justifyContent:'space-between', background:'linear-gradient(180deg, rgba(2,6,23,0.8) 0%, rgba(2,6,23,0.6) 100%)', position:'relative', cursor:'move' }}>
-        <span>AI 코드 채팅</span>
+        <span>AI 코드 채팅{autoApply ? ' · 자동 진행' : ''}</span>
         <div style={{ display:'flex', gap:6, alignItems:'center' }}>
           <button onClick={()=>setHistoryOpen(v=>!v)} title="대화 기록" style={{ padding:'3px 8px', borderRadius:6, border:'1px solid #334155', background: historyOpen ? '#172033' : '#0b1220', color:'#94a3b8', fontSize:12 }}>기록</button>
           <button onClick={startNewChat} title="새 대화" style={{ padding:'3px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8', fontSize:12 }}>새 대화</button>
@@ -619,6 +695,17 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
           <div ref={actionsRef} style={{ position:'absolute', right:8, top:'100%', marginTop:6, zIndex:50, width:220, background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, display:'grid', gap:6 }}>
             <button onClick={()=>{ setShowImageUi(true); setActionsOpen(false); }} style={menuBtn}>UI 설정</button>
             <button onClick={()=>{ setShowAutoGraph(true); setActionsOpen(false); }} style={menuBtn}>프롬프트-노드 자동생성</button>
+            <div style={{ display:'grid', gap:6, padding:'6px 8px', border:'1px solid #334155', borderRadius:6 }}>
+              <label style={{ display:'flex', alignItems:'center', justifyContent:'space-between', color:'#e2e8f0', fontSize:12 }}>
+                <span>자동 진행(신뢰 모드)</span>
+                <input type="checkbox" checked={autoApply} onChange={e=>setAutoApply(e.target.checked)} />
+              </label>
+              <label style={{ display:'grid', gap:4, fontSize:12, color:'#cbd5e1' }}>
+                반복 횟수(최대 10)
+                <input type="number" min={1} max={10} value={autoLimit} onChange={e=>setAutoLimit(Math.max(1, Math.min(10, parseInt(e.target.value||'1'))))} style={{ padding:'4px 6px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }} />
+              </label>
+              <div style={{ fontSize:11, color:'#94a3b8' }}>안전 제한 초과 시 자동 적용 대신 미리보기로 전환됩니다.</div>
+            </div>
             <button onClick={()=>{ setSettingsOpen(v=>!v); setActionsOpen(false); }} style={menuBtn}>설정</button>
             {enableMinimizeButton && <button onClick={()=>{ onMinimize && onMinimize(); setActionsOpen(false); }} style={menuBtn}>축소</button>}
             <button onClick={()=> setActionsOpen(false)} style={{ ...menuBtn, border:'1px solid #334155', color:'#cbd5e1' }}>메뉴 닫기</button>
