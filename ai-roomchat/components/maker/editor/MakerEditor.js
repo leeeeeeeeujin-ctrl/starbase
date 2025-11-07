@@ -1147,9 +1147,7 @@ export default function MakerEditor() {
 }
 
 function UiSettingsPanelMaker({ onClose, templateText, setTemplateText }) {
-  const [imageName, setImageName] = useState('');
-  const [imageUrl, setImageUrl] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [aiImageAssist, setAiImageAssist] = useState(false);
   const justOpenedRef = useRef(true);
   useEffect(() => {
     const t = setTimeout(() => { justOpenedRef.current = false; }, 80);
@@ -1157,6 +1155,14 @@ function UiSettingsPanelMaker({ onClose, templateText, setTemplateText }) {
   }, []);
   const getTpl = () => { try { return JSON.parse(templateText || '{}'); } catch { return {}; } };
   const saveTpl = (obj) => { try { setTemplateText && setTemplateText(JSON.stringify(obj, null, 2)); } catch {} };
+  useEffect(() => {
+    try {
+      const obj = getTpl();
+      const flag = !!(obj?.ai?.imageToUi?.enabled);
+      setAiImageAssist(flag);
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [templateText]);
   const onApplyPreset = () => {
     try {
       const next = applyMainUiPresetObject(getTpl());
@@ -1164,28 +1170,16 @@ function UiSettingsPanelMaker({ onClose, templateText, setTemplateText }) {
       alert('메인 UI 프리셋을 적용했습니다.');
     } catch (e) { alert('적용 실패: ' + String(e?.message||e)); }
   };
-  const onAddBackground = () => {
-    if (!String(imageUrl||'').trim()) { alert('이미지 URL을 입력하세요.'); return; }
-    setBusy(true);
+  const onToggleAiAssist = (checked) => {
     try {
+      setAiImageAssist(!!checked);
       const obj = getTpl();
-      const bg = Array.isArray(obj?.resources?.backgrounds) ? obj.resources.backgrounds : [];
-      const id = `bg_${Math.random().toString(36).slice(2,8)}`;
-      const next = {
-        ...obj,
-        ui: {
-          ...(obj.ui||{}),
-          main: {
-            modules: Array.isArray(obj?.ui?.main?.modules) && obj.ui.main.modules.length > 0 ? obj.ui.main.modules : getMainUiModules(),
-          },
-        },
-        resources: { ...(obj.resources||{}), backgrounds: [...bg, { id, name: imageName || '배경', image: imageUrl }] },
-      };
-      saveTpl(next);
-      setImageName(''); setImageUrl('');
-      alert('배경 이미지를 추가했습니다.');
-    } catch (e) { alert('추가 실패: ' + String(e?.message||e)); }
-    finally { setBusy(false); }
+      const base = { ...obj, ai: { ...(obj.ai||{}), imageToUi: { ...(obj.ai?.imageToUi||{}), enabled: !!checked } } };
+      const ensured = Array.isArray(base?.ui?.main?.modules) && base.ui.main.modules.length > 0
+        ? base
+        : { ...base, ui: { ...(base.ui||{}), main: { ...(base.ui?.main||{}), modules: getMainUiModules() } } };
+      saveTpl(ensured);
+    } catch {}
   };
   return (
     <div style={{ position:'fixed', inset:0, zIndex:1600, background:'rgba(2,6,23,0.65)' }}>
@@ -1201,15 +1195,14 @@ function UiSettingsPanelMaker({ onClose, templateText, setTemplateText }) {
           </div>
           <div style={{ height:1, background:'rgba(148,163,184,0.2)' }} />
           <div style={{ display:'grid', gap:8 }}>
-            <div style={{ fontSize:13, color:'#cbd5e1' }}>배경 이미지 추가</div>
-            <label style={{ fontSize:12, color:'#94a3b8' }}>이름</label>
-            <input value={imageName} onChange={e=>setImageName(e.target.value)} placeholder="예: 숲-아침" style={{ width:'100%', padding:8, borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }} />
-            <label style={{ fontSize:12, color:'#94a3b8' }}>이미지 URL</label>
-            <input value={imageUrl} onChange={e=>setImageUrl(e.target.value)} placeholder="https://..." style={{ width:'100%', padding:8, borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }} />
-            <div>
-              <button onClick={onAddBackground} disabled={busy} style={{ padding:'8px 12px', borderRadius:10, border:'1px solid #10b981', background:'#065f46', color:'#d1fae5', fontWeight:700 }}>{busy?'추가 중…':'배경 추가'}</button>
+            <div style={{ fontSize:13, color:'#cbd5e1' }}>AI 이미지 기반 UI 만들기</div>
+            <label style={{ display:'flex', alignItems:'center', gap:8, fontSize:12, color:'#e2e8f0' }}>
+              <input type="checkbox" checked={aiImageAssist} onChange={e=>onToggleAiAssist(e.target.checked)} />
+              AI 코드 채팅에서 첨부한 이미지를 참고해 UI를 구성하도록 허용
+            </label>
+            <div style={{ fontSize:11, color:'#94a3b8' }}>
+              이미지를 URL로 직접 입력할 필요가 없습니다. 코드 에디터의 AI 채팅 패널에서 이미지를 첨부하세요.
             </div>
-            <div style={{ fontSize:11, color:'#94a3b8' }}>팁: 이미지 추가 시 메인 UI 모듈이 비어 있다면 기본 프리셋을 자동 적용합니다.</div>
           </div>
         </div>
         <div style={{ padding:12, borderTop:'1px solid #25314a', display:'flex', justifyContent:'flex-end' }}>
