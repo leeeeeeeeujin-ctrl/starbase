@@ -200,6 +200,19 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
   }, [sessions, currentId]);
   const current = useMemo(() => sessions.find(s => s.id === currentId) || newSession(), [sessions, currentId]);
   const logs = current.logs || [];
+  // Long-message readability helpers
+  const [expandedMsgs, setExpandedMsgs] = useState(()=> new Set());
+  const toggleExpand = (id) => setExpandedMsgs(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const previewText = (s) => {
+    try {
+      const maxChars = 480, maxLines = 12;
+      if (!s) return '';
+      if (s.length <= maxChars) return s;
+      const lines = s.split('\n');
+      if (lines.length <= maxLines) return s.length > maxChars ? (s.slice(0, maxChars) + '\n… (생략)') : s;
+      return lines.slice(0, maxLines).join('\n') + '\n… (생략)';
+    } catch { return s; }
+  };
   useEffect(() => { try { const el = logRef?.current; if (el) el.scrollTop = el.scrollHeight; } catch {} }, [logs]);
   const append = (role, msg) => {
     setSessions(prev => prev.map(s => s.id === currentId ? { ...s, title: s.title === '새 대화' && role==='user' ? (msg.slice(0,24) || '대화') : s.title, logs: [...(s.logs||[]), { t: Date.now(), role, msg }] } : s));
@@ -364,6 +377,13 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
         '- chat 모드: 정보가 부족하거나 우선 질의가 필요하면 questions 배열로 물어보고, actions는 비웁니다.',
         '- work 모드: 편집이 확정되면 actions를 채우고 message는 간결 요약만 포함하세요. 수다/해설을 actions 안에 넣지 마세요.',
         '- 여러 작업을 이어서 수행해야 한다면 steps 배열로 묶어서 한 번에 제시하세요. 꼭 필요한 경우에만 질문을 하되, 가능하면 스스로 다음 작업을 이어가세요.',
+        '',
+        'RESPONSE STYLE (message 전용):',
+        '- 한국어로 짧고 읽기 쉽게 답하세요.',
+        '- 헤더 3~4개(예: 요약, 핵심 변경, 다음 단계, 주의/리스크)와 각 3~5줄 이내의 불릿을 사용하세요.',
+        '- 한 줄은 120자 이내로 유지하세요. 표/코드펜스/마크다운 꾸밈은 사용하지 마세요.',
+        '- work 모드에서는 message를 1~2줄로 간결히 요약하고 상세 해설은 생략하세요.',
+        '- 길어질 경우 가장 중요한 3~5개의 포인트만 남기고 나머지는 생략(… 생략) 표시를 사용하세요.',
         '- 항상 프로젝트 안전수칙을 준수: 외부 URL 이미지는 제안하지 말 것, 이미지 포맷은 .webp 만 사용, 서버/비밀키/토큰을 추출하거나 하드코딩하지 말 것.',
         '- 경로는 워크스페이스 내부만: /template.json, /graph/**, /game/**, /components/**, /pages/**, /styles/** 등. 루트 밖이나 시스템 경로 금지.',
         '- UI PREVIEWS 섹션이 있을 수 있습니다. 각 항목은 이미지 크기(image), 선택 영역(region: 정규화 좌표), 팔레트, ASCII 요약, 코멘트를 포함합니다.',
@@ -851,9 +871,19 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
               </div>
             );
           }
+          const id = l?.t || i;
+          const raw = String(l.msg);
+          const long = raw.length > 480 || (raw.split('\n').length > 12);
+          const expanded = expandedMsgs.has(id);
+          const shown = (long && !expanded) ? previewText(raw) : raw;
           return (
             <div key={i} style={{ fontSize:12, color, marginTop: mt, lineHeight: 1.5 }}>
-              {l.role}: {String(l.msg)}
+              <div style={{ whiteSpace:'pre-wrap' }}>{l.role}: {shown}</div>
+              {long && (
+                <button onClick={()=>toggleExpand(id)} style={{ marginTop:4, padding:'2px 6px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8', fontSize:11 }}>
+                  {expanded ? '접기' : '더보기'}
+                </button>
+              )}
             </div>
           );
         })}
