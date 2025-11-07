@@ -6,27 +6,54 @@
 export async function uploadAsset(file, { gameId, setId, key, signal, contentEncoding } = {}) {
   if (!file) throw new Error('file required');
   // Optional client-side compression for images/videos (logic-only; UI unchanged)
+  let imageOffloadMeta = null;
+  let audioFeaturesMeta = null;
   try {
     if (!contentEncoding && file && typeof file.type === 'string') {
-      const mod = await import('../lib/client/media/compress');
-      if (file.type.startsWith('image/') && !/gif/i.test(file.type)) {
-        if (mod?.compressImage) {
-          const compressed = await mod.compressImage(file, {});
-          if (compressed && compressed.size > 0) file = compressed;
+      // First attempt lightweight offload path (canvas/WebAudio) for image/audio.
+      try {
+        if (file.type.startsWith('image/') && !/gif/i.test(file.type)) {
+          const offMod = await import('../lib/client/offload/imageAudioOffload.js');
+          if (offMod?.offloadImageCompress) {
+            const r = await offMod.offloadImageCompress(file, { maxWidth: 1280, quality: 0.82 });
+            if (r?.offloaded && r?.blob && r.blob.size > 0 && r.blob.size < file.size) {
+              file = new File([r.blob], ensureWebpName(file.name), { type: 'image/webp' });
+              imageOffloadMeta = r;
+            } else if (r?.offloaded) {
+              imageOffloadMeta = r; // record attempt even if not smaller
+            }
+          }
+        } else if (file.type.startsWith('audio/')) {
+          const offMod = await import('../lib/client/offload/imageAudioOffload.js');
+          if (offMod?.offloadAudioFeatures) {
+            const r = await offMod.offloadAudioFeatures(file, {});
+            if (r?.offloaded) audioFeaturesMeta = r;
+          }
         }
-      } else if (file.type.startsWith('video/')) {
-        if (mod?.compressVideo) {
-          const compressed = await mod.compressVideo(file, { format: 'mp4' });
-          if (compressed && compressed.size > 0) file = compressed;
+      } catch { /* ignore offload errors */ }
+
+      // Heavier compression pipeline (ffmpeg.wasm / multi-pass image) as fallback/improvement.
+      try {
+        const mod = await import('../lib/client/media/compress');
+        if (file.type.startsWith('image/') && !/gif/i.test(file.type)) {
+          if (mod?.compressImage) {
+            const compressed = await mod.compressImage(file, {});
+            if (compressed && compressed.size > 0 && compressed.size <= file.size) file = compressed;
+          }
+        } else if (file.type.startsWith('video/')) {
+          if (mod?.compressVideo) {
+            const compressed = await mod.compressVideo(file, { format: 'mp4' });
+            if (compressed && compressed.size > 0 && compressed.size <= file.size) file = compressed;
+          }
+        } else if (file.type.startsWith('audio/')) {
+          if (mod?.compressAudio) {
+            const compressed = await mod.compressAudio(file, {});
+            if (compressed && compressed.size > 0 && compressed.size <= file.size) file = compressed;
+          }
         }
-      } else if (file.type.startsWith('audio/')) {
-        if (mod?.compressAudio) {
-          const compressed = await mod.compressAudio(file, {});
-          if (compressed && compressed.size > 0) file = compressed;
-        }
-      }
+      } catch { /* ignore heavy compression errors */ }
     }
-  } catch { /* ignore compression errors */ }
+  } catch { /* ignore top-level compression errors */ }
 
   const contentType = file.type || 'application/octet-stream';
   const size = file.size || 0;
@@ -37,7 +64,7 @@ export async function uploadAsset(file, { gameId, setId, key, signal, contentEnc
   let r = await fetch('/api/assets/exists', { method:'POST', headers: { 'content-type':'application/json', ...(auth?{Authorization:auth}:{}) }, body: JSON.stringify({ hash: sha256 }), signal });
   let j = await r.json();
   if (j?.exists && j?.url) {
-    return { url: j.url, key: j.key, hash: sha256, size, mime: contentType, existed: true };
+    return { url: j.url, key: j.key, hash: sha256, size, mime: contentType, existed: true, offload: { image: imageOffloadMeta, audio: audioFeaturesMeta } };
   }
 
   // 2) upload-url
@@ -81,7 +108,7 @@ export async function uploadAsset(file, { gameId, setId, key, signal, contentEnc
       maybeShowQuota(pj, proxy.status);
       throw new Error(pj?.error || 'proxy upload failed');
     }
-    return { url: pj.url, key: pj.key, hash: sha256, size, mime: contentType, existed: false };
+    return { url: pj.url, key: pj.key, hash: sha256, size, mime: contentType, existed: false, offload: { image: imageOffloadMeta, audio: audioFeaturesMeta } };
   }
 
   // 4) commit
@@ -91,7 +118,7 @@ export async function uploadAsset(file, { gameId, setId, key, signal, contentEnc
     maybeShowQuota(cj, commit.status);
     throw new Error(cj?.error || 'commit failed');
   }
-  return { url: cj.url, key: finalKey, hash: sha256, size, mime: contentType, existed: false };
+  return { url: cj.url, key: finalKey, hash: sha256, size, mime: contentType, existed: false, offload: { image: imageOffloadMeta, audio: audioFeaturesMeta } };
 }
 
 export async function sha256File(file) {
@@ -133,4 +160,11 @@ function maybeShowQuota(body, status) {
       import('../utils/quotaNotice').then(mod => mod?.showQuotaExceeded && mod.showQuotaExceeded());
     }
   } catch {}
+}
+
+// Ensure resulting file name ends with .webp when we transcode.
+function ensureWebpName(name) {
+  const dot = name.lastIndexOf('.');
+  const base = dot >= 0 ? name.slice(0, dot) : name;
+  return base + '.webp';
 }

@@ -8,7 +8,7 @@ import HistoryPanel from "./HistoryPanel.jsx";
 import Dummy2D from "./engines/Dummy2D.jsx";
 import Dummy3D from "./engines/Dummy3D.jsx";
 import UISchemaRenderer from "./ui/UISchemaRenderer.jsx";
-import { prefetchResources } from "../../utils/resourceCache.js";
+import { prefetchResources, cleanupGameResources } from "../../utils/resourceCache.js";
 import { decompressToString } from "../../utils/compress.js";
 
 function useResponsiveCols() {
@@ -26,8 +26,9 @@ import * as React from 'react';
 import { useWorkspace } from "../workspace/CodeWorkspaceProvider.jsx";
 
 function RuntimeLoader() {
-  const { files } = useWorkspace();
+  const { files, createFile, writeFile, remove } = useWorkspace();
   const assetUrlCacheRef = React.useRef({});
+  const injectedRef = React.useRef({ roomId: null, paths: new Set(), originals: new Map() });
   // Build cache of blob URLs for compressed assets (async)
   React.useEffect(() => {
     let alive = true;
@@ -88,6 +89,97 @@ function RuntimeLoader() {
       } catch {}
     })();
     return () => { aborted = true; };
+  }, [rt?.roomId]);
+
+  // Fetch and overlay remote game documents (graph/config/hooks/pages) into workspace on join
+  React.useEffect(() => {
+    let aborted = false;
+    const prev = injectedRef.current;
+    // If room changed, restore previous overlays first
+    if (prev.roomId && prev.paths.size) {
+      try {
+        for (const p of prev.paths) {
+          const orig = prev.originals.get(p);
+          if (orig && typeof orig.content === 'string') {
+            writeFile(p, orig.content);
+          } else {
+            // remove injected file if it didn't exist before
+            remove(p);
+          }
+        }
+      } catch {}
+      injectedRef.current = { roomId: null, paths: new Set(), originals: new Map() };
+    }
+    (async () => {
+      const roomId = rt?.roomId;
+      if (!roomId) return;
+      try {
+        // Try primary endpoint
+        let docs = null;
+        try {
+          const r1 = await fetch(`/api/games/${encodeURIComponent(roomId)}/docs`);
+          if (r1.ok) docs = await r1.json();
+        } catch {}
+        // Fallback endpoint
+        if (!docs) {
+          try {
+            const r2 = await fetch(`/api/games/${encodeURIComponent(roomId)}/bundle.json`);
+            if (r2.ok) docs = await r2.json();
+          } catch {}
+        }
+        if (aborted || !docs) return;
+        // Expected shapes:
+        // - { files: [{ path, content }...] }
+        // - { files: { [path]: content } }
+        const list = Array.isArray(docs?.files)
+          ? docs.files
+          : (docs?.files && typeof docs.files === 'object'
+              ? Object.entries(docs.files).map(([path, content]) => ({ path, content }))
+              : []);
+        if (!list.length) return;
+        const toOverlay = ['/template.json', '/graph/prompt-graph.json', '/game/runtime.config.json', '/game/hooks/automation.js'];
+        // Also include any pages/* files found in list
+        const pageEntries = list.filter((f) => String(f?.path || '').startsWith('/game/pages/'));
+        const targets = new Set([...toOverlay, ...pageEntries.map((e)=>e.path)]);
+        const originals = new Map();
+        for (const p of targets) {
+          const meta = files[p];
+          if (meta) originals.set(p, { content: typeof meta.content === 'string' ? meta.content : '' });
+        }
+        for (const { path, content } of list) {
+          if (!targets.has(path)) continue;
+          const exists = !!files[path];
+          try {
+            if (!exists) createFile(path, String(content ?? ''));
+            else writeFile(path, String(content ?? ''));
+            injectedRef.current.paths.add(path);
+          } catch {}
+        }
+        injectedRef.current.roomId = roomId;
+        injectedRef.current.originals = originals;
+      } catch {}
+    })();
+    return () => { aborted = true; };
+  }, [rt?.roomId]);
+
+  // Cleanup resources on leave/unmount
+  React.useEffect(() => {
+    const roomId = rt?.roomId;
+    return () => {
+      try { if (roomId) cleanupGameResources(roomId); } catch {}
+      // restore overlays on unmount
+      const prev = injectedRef.current;
+      if (prev.paths.size) {
+        try {
+          for (const p of prev.paths) {
+            const orig = prev.originals.get(p);
+            if (orig && typeof orig.content === 'string') writeFile(p, orig.content);
+            else remove(p);
+          }
+        } catch {}
+        injectedRef.current = { roomId: null, paths: new Set(), originals: new Map() };
+      }
+    };
   }, [rt?.roomId]);
   React.useEffect(() => {
     try {

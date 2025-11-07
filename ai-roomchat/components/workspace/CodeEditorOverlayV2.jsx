@@ -342,8 +342,8 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
           <>
             <TabsBar />
             <div style={{ display:'flex', alignItems:'center', gap:8, color:'#94a3b8', fontSize:12 }}>
-              <span>현재: <strong style={{ color:'#e2e8f0' }}>{useWorkspace().activePath}</strong></span>
-              <button title="엔트리 파일 지정" onClick={() => useWorkspace().setEntryPath(useWorkspace().activePath)} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>엔트리로</button>
+              <span>현재: <strong style={{ color:'#e2e8f0' }}>{activePath}</strong></span>
+              <button title="엔트리 파일 지정" onClick={() => setEntryPath(activePath)} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>엔트리로</button>
               <button title="모두 저장" onClick={() => saveAll()} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>모두 저장</button>
               <button title="프롬프트 편집기 열기" onClick={() => open('/graph/prompt-graph.json')} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>프롬프트</button>
               <button title="런타임 설정 열기" onClick={() => open('/game/runtime.config.json')} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>런타임</button>
@@ -410,7 +410,7 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
       {closeConfirm && (
         <ConfirmCloseMany
           paths={closeConfirm.paths}
-          onSaveAll={() => { const { saveAll } = useWorkspace(); saveAll(); setCloseConfirm(null); onRequestClose && onRequestClose(); }}
+          onAfterSaveAll={() => { setCloseConfirm(null); onRequestClose && onRequestClose(); }}
           onDiscard={() => { setCloseConfirm(null); onRequestClose && onRequestClose(); }}
           onCancel={() => setCloseConfirm(null)}
         />
@@ -476,7 +476,13 @@ function ConfirmCloseOne({ path, onSave, onDiscard, onCancel }){
   );
 }
 
-function ConfirmCloseMany({ paths, onSaveAll, onDiscard, onCancel }){
+function ConfirmCloseMany({ paths, onAfterSaveAll, onDiscard, onCancel }){
+  // Access workspace context at component top-level (valid hook usage)
+  const { saveAll } = useWorkspace();
+  const handleSaveAll = () => {
+    try { saveAll(); } catch (e) { console.error('saveAll failed', e); }
+    onAfterSaveAll && onAfterSaveAll();
+  };
   return (
     <ConfirmDialogShell
       title="코드 에디터를 닫기 전에 저장할까요?"
@@ -492,7 +498,7 @@ function ConfirmCloseMany({ paths, onSaveAll, onDiscard, onCancel }){
         <>
           <button onClick={onDiscard} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #7f1d1d', background:'#0b1220', color:'#fecaca' }}>저장 안 함</button>
           <button onClick={onCancel} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8' }}>취소</button>
-          <button onClick={onSaveAll} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #2563eb', background:'#1d4ed8', color:'#fff' }}>모두 저장</button>
+          <button onClick={handleSaveAll} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #2563eb', background:'#1d4ed8', color:'#fff' }}>모두 저장</button>
         </>
       }
     />

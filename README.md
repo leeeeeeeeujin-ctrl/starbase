@@ -45,3 +45,7 @@ GitHub Actions workflow `.github/workflows/match-tests.yml` runs unit tests and 
 ## Workflow TODOs
 
 See `workflows/RUNNER_EXECUTION_AND_TODOS.md` for the current implementation plan, todos, and instructions for CI/secret setup.
+
+## Additional Docs
+
+- Mobile Endpoints Setup (Capacitor/PWA): `docs/MOBILE_ENDPOINTS.md`

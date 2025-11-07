@@ -2,10 +2,10 @@
 // Provide a simple deterministic computation to emulate server logic.
 // In production replace with real WASM or JS port of server rules.
 
-import { detectCapabilities } from '@/lib/client/capabilities/detect';
-import { ensureSandbox, runRuleSimInSandbox } from '@/lib/client/sandbox/iframeSandbox';
-import { runRuleSimInWorker } from '@/lib/client/sandbox/workerRunner';
-import { recordRun, recordSkip } from '@/lib/client/offload/metrics';
+import { detectCapabilities } from '../capabilities/detect';
+import { ensureSandbox, runRuleSimInSandbox } from '../sandbox/iframeSandbox';
+import { runRuleSimInWorker } from '../sandbox/workerRunner';
+import { recordRun, recordSkip } from './metrics';
 
 const MAX_UNITS = 400; // heuristic guard
 const MAX_EST_COST = 150000; // arbitrary compute budget units
