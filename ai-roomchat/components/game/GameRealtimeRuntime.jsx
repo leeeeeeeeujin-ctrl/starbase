@@ -2,6 +2,7 @@
 
 import { GameRuntimeProvider, useGameRuntime } from "./GameRuntimeProvider.jsx";
 import MainGameUI from "./MainGameUI.jsx";
+import DynamicSlot from "./slots/DynamicSlot.jsx";
 import GameChatPanel from "./GameChatPanel.jsx";
 import CountdownNextBar from "./CountdownNextBar.jsx";
 import HistoryPanel from "./HistoryPanel.jsx";
@@ -323,11 +324,11 @@ export default function GameRealtimeRuntime({ roomId = 'local-demo', currentUser
         <CountdownNextBar currentUser={currentUser} />
         <div style={{ display:'grid', gridTemplateColumns: cols, gap:8, minHeight:0 }}>
           <div style={{ display:'grid', gridTemplateRows: narrow ? 'auto auto' : '1fr 1fr', gap:8, minHeight:0 }}>
-            <MainGameUI currentUser={currentUser} />
-            <HistoryPanel currentUser={currentUser} />
+            <DynamicSlot slotId="mainTop" files={files} resolveAsset={resolveAsset} defaultRender={() => <MainGameUI currentUser={currentUser} resolveAsset={resolveAsset} />} />
+            <DynamicSlot slotId="history" files={files} resolveAsset={resolveAsset} defaultRender={() => <HistoryPanel currentUser={currentUser} />} />
           </div>
           <div style={{ display:'grid', gridTemplateRows: narrow ? 'auto auto' : '1fr 1fr', gap:8, minHeight:0 }}>
-            <GameChatPanel currentUser={currentUser} />
+            <DynamicSlot slotId="chat" files={files} resolveAsset={resolveAsset} defaultRender={() => <GameChatPanel currentUser={currentUser} />} />
             <div style={{ display:'grid', gridTemplateRows:'auto 1fr', gap:8, minHeight:0, border:'1px solid #25314a', borderRadius:12, overflow:'hidden' }}>
               <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 10px', background:'rgba(2,6,23,0.6)', color:'#e2e8f0' }}>
                 <strong style={{ fontSize:13 }}>Pages</strong>
