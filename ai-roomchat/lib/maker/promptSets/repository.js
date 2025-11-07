@@ -54,60 +54,74 @@ export const promptSetsRepository = {
   },
 
   async remove(id) {
-    // Guard: don't allow delete when set is registered to a game
+    // Prefer server-side deletion to avoid client query-builder issues across environments
     try {
-      const { data: usageRows, error: usageError } = await withTableQuery(
-        supabase,
-        'rank_games',
-        from => from.select('id').eq('prompt_set_id', id).limit(1)
-      );
-      if (!usageError) {
-        const used = Array.isArray(usageRows)
-          ? usageRows.length > 0
-          : Boolean(usageRows && usageRows.id);
-        if (used) {
-          return failure(
-            new Error('현재 게임에 등록된 세트는 삭제할 수 없습니다. 먼저 게임 등록을 해제하세요.')
-          );
-        }
-      }
-    } catch (e) {
-      // If usage check fails unexpectedly, be conservative and block deletion to avoid breaking games
-      return failure(
-        asError(e, '세트 삭제 사전 검사에 실패했습니다. 잠시 후 다시 시도해 주세요.')
-      );
-    }
-
-    const { error } = await withTableQuery(supabase, 'prompt_sets', from =>
-      from.delete().eq('id', id)
-    );
-
-    if (error) {
-      return failure(asError(error, '세트를 삭제하지 못했습니다.'));
-    }
-
-    // Best-effort: cleanup studio resources under set-scoped folder if any
-    try {
-      await fetch('/api/storage/delete-prefix', {
-        method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ prefix: `studio/resources/${id}/`, max: 1000 })
+      const resp = await fetch('/api/maker/prompt-sets/remove', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id }),
       });
-    } catch {}
-
-    // Best-effort: cleanup any game-scoped resources under games/*/{setId}/
-    try {
-      // Attempt multiple passes to ensure all pages are covered (bounded)
-      for (let i = 0; i < 5; i++) {
-        const resp = await fetch('/api/storage/delete-by-set', {
-          method: 'POST', headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ setId: id, totalLimit: 5000, pageSize: 1000 })
-        });
-        if (!resp.ok) break;
-        const j = await resp.json().catch(() => ({ deleted: 0 }));
-        if (!j || !j.deleted || j.deleted <= 0) break;
+      if (resp.ok) {
+        return success(true);
       }
-    } catch {}
+      const j = await resp.json().catch(() => ({}));
+      return failure(asError(j?.error || '세트를 삭제하지 못했습니다.'));
+    } catch (e) {
+      // Fallback to legacy client-side flow for local/dev environments
+      // Guard: don't allow delete when set is registered to a game
+      try {
+        const { data: usageRows, error: usageError } = await withTableQuery(
+          supabase,
+          'rank_games',
+          from => from.select('id').eq('prompt_set_id', id).limit(1)
+        );
+        if (!usageError) {
+          const used = Array.isArray(usageRows)
+            ? usageRows.length > 0
+            : Boolean(usageRows && usageRows.id);
+          if (used) {
+            return failure(
+              new Error('현재 게임에 등록된 세트는 삭제할 수 없습니다. 먼저 게임 등록을 해제하세요.')
+            );
+          }
+        }
+      } catch (pre) {
+        return failure(
+          asError(pre, '세트 삭제 사전 검사에 실패했습니다. 잠시 후 다시 시도해 주세요.')
+        );
+      }
 
-    return success(true);
+      const { error } = await withTableQuery(supabase, 'prompt_sets', from =>
+        from.delete().eq('id', id)
+      );
+      if (error) {
+        return failure(asError(error, '세트를 삭제하지 못했습니다.'));
+      }
+
+      // Best-effort cleanup (studio resources)
+      try {
+        await fetch('/api/storage/delete-prefix', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ prefix: `studio/resources/${id}/`, max: 1000 }),
+        });
+      } catch {}
+
+      // Best-effort cleanup (games/*/{setId}/)
+      try {
+        for (let i = 0; i < 5; i++) {
+          const resp = await fetch('/api/storage/delete-by-set', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ setId: id, totalLimit: 5000, pageSize: 1000 }),
+          });
+          if (!resp.ok) break;
+          const j = await resp.json().catch(() => ({ deleted: 0 }));
+          if (!j || !j.deleted || j.deleted <= 0) break;
+        }
+      } catch {}
+
+      return success(true);
+    }
   },
 };

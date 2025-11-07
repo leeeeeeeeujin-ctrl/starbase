@@ -11,6 +11,7 @@ export default function MinimalMakerHeader({
   onCreateWithAI,
   onOpenCode,
   onOpenUiSettings,
+  onOpenDelete,
 }) {
   const btn = (label, onClick, style = {}) => (
     <button
@@ -50,7 +51,7 @@ export default function MinimalMakerHeader({
         {btn('테스트', onStartSimulation, { background: 'rgba(34,197,94,0.15)', borderColor: '#10b981', color: '#bbf7d0' })}
         {btn('저장', onSave, { background: busy ? 'rgba(148,163,184,0.2)' : '#16a34a', color: '#fff', borderColor: busy ? '#64748b' : '#16a34a' })}
         {/* Tools dropdown at right; AI removed from header (moved into code panel) */}
-        <ToolsDropdown onOpenCode={onOpenCode} onOpenUiSettings={onOpenUiSettings} />
+        <ToolsDropdown onOpenCode={onOpenCode} onOpenUiSettings={onOpenUiSettings} onOpenDelete={onOpenDelete} />
       </div>
     </header>
   );

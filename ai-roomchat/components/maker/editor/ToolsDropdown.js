@@ -16,7 +16,7 @@ const itemStyle = {
   fontWeight: 600,
 };
 
-export default function ToolsDropdown({ onOpenCode, onOpenUiSettings }) {
+export default function ToolsDropdown({ onOpenCode, onOpenUiSettings, onOpenDelete }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -65,6 +65,15 @@ export default function ToolsDropdown({ onOpenCode, onOpenUiSettings }) {
           <button onClick={onOpenCode} style={itemStyle}>코드 에디터</button>
           <div style={{ height: 1, background: 'rgba(148,163,184,0.25)', margin: '4px 2px' }} />
           <button onClick={onOpenUiSettings} style={itemStyle}>UI 설정</button>
+          <div style={{ height: 1, background: 'rgba(148,163,184,0.25)', margin: '4px 2px' }} />
+          <button
+            onClick={onOpenDelete}
+            style={{
+              ...itemStyle,
+              color: '#fecaca',
+              borderColor: 'transparent',
+            }}
+          >세트 삭제…</button>
         </div>
       )}
     </div>
