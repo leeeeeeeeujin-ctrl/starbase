@@ -3,6 +3,7 @@ export const config = {
 };
 
 import { enforceBeforeClassA, incClassA } from '../../../lib/server/quota.js';
+import { parseAndValidateAssetKey, validateBudget, ensureImageExtensionWebp, isImage } from '../../../lib/server/assets/validation.js';
 
 function extFromNameOrType(name = '', type = '') {
   const n = String(name||'');
@@ -14,8 +15,8 @@ function extFromNameOrType(name = '', type = '') {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   try {
-    const { name, contentType, dataBase64, gameId, sha256 } = req.body || {};
-    if (!dataBase64 || !name) return res.status(400).json({ error: 'name and dataBase64 required' });
+  const { name, contentType, dataBase64, gameId, sha256, key: providedKey } = req.body || {};
+  if (!dataBase64 || !name) return res.status(400).json({ error: 'name and dataBase64 required' });
     const Bucket = process.env.R2_BUCKET;
     const endpoint = process.env.R2_S3_ENDPOINT || `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`;
     if (!Bucket || !endpoint) return res.status(500).json({ error: 'R2 not configured' });
@@ -30,25 +31,59 @@ export default async function handler(req, res) {
       },
     });
 
-    const ext = extFromNameOrType(name, contentType);
-    const base = (sha256 && /^[a-f0-9]{32,}$/.test(sha256)) ? sha256 : Math.random().toString(36).slice(2);
-    const Key = `games/${gameId||'common'}/${base}.${ext}`.replace(/\/+/, '/');
+    // Determine target key. Prefer client-provided finalKey (validated), else fallback to games/{gameId}/...
+    let Key = null;
+    if (providedKey) {
+      const { key: safeKey } = parseAndValidateAssetKey(providedKey);
+      Key = safeKey;
+    } else {
+      const ext = extFromNameOrType(name, contentType);
+      const base = (sha256 && /^[a-f0-9]{32,}$/.test(sha256)) ? sha256 : Math.random().toString(36).slice(2);
+      Key = `games/${gameId||'common'}/${base}.${ext}`.replace(/\/+/, '/');
+    }
 
     // decode base64 (data:...;base64,xxxx or pure base64)
     const raw = String(dataBase64||'');
     const b64 = raw.includes(',') ? raw.split(',').pop() : raw;
     const bin = Buffer.from(b64, 'base64');
 
-    // Enforce quota before performing server-side PUT
+    // Enforce budget/quota before performing server-side PUT
     try {
+      validateBudget({ mime: contentType, size: bin.length });
       await enforceBeforeClassA({ size: bin.length });
     } catch (e) {
       const sc = e?.statusCode || 403;
       return res.status(sc).json({ error: e?.message || 'quota exceeded', code: e?.code || 'quota' });
     }
 
+    let body = bin;
+    let outContentType = contentType || 'application/octet-stream';
+
+    // If image and not gif, try to transcode to webp + resize using sharp (best-effort)
+    if (isImage(contentType) && !/gif/i.test(contentType || '')) {
+      try {
+        const sharp = (await import('sharp')).default;
+        const limits = await import('../../../config/mediaLimits.js');
+        const { IMAGE_LIMITS } = limits;
+        const img = sharp(bin, { failOnError: false });
+        const metaInfo = await img.metadata();
+        const maxW = IMAGE_LIMITS?.maxWidth || 1280;
+        const maxH = IMAGE_LIMITS?.maxHeight || 1280;
+        const q = Math.round(((IMAGE_LIMITS?.quality || 0.78) * 100));
+        const resized = await img.resize({ width: maxW, height: maxH, fit: 'inside', withoutEnlargement: true })
+          .webp({ quality: q, smartSubsample: true })
+          .toBuffer();
+        body = resized;
+        outContentType = 'image/webp';
+        // Ensure .webp extension in key
+        Key = ensureImageExtensionWebp(Key);
+      } catch (e) {
+        // If sharp not available or fails, continue with original bin
+      }
+    }
+
     const meta = sha256 ? { sha256 } : undefined;
-  await client.send(new PutObjectCommand({ Bucket, Key, Body: bin, ContentType: contentType||'application/octet-stream', Metadata: meta }));
+    await client.send(new PutObjectCommand({ Bucket, Key, Body: body, ContentType: outContentType, Metadata: meta }));
 
   // Count one Class A op for proxy upload
   try { await incClassA(1); } catch {}
@@ -66,7 +101,7 @@ export default async function handler(req, res) {
 
     const baseUrl = (process.env.R2_PUBLIC_BASE_URL || '').replace(/\/$/, '');
     const url = baseUrl ? `${baseUrl}/${Key}` : null;
-    return res.status(200).json({ ok: true, url, key: Key, hash: sha256||null, size: bin.length, mime: contentType||null });
+    return res.status(200).json({ ok: true, url, key: Key, hash: sha256||null, size: body.length || bin.length, mime: outContentType || null });
   } catch (e) {
     return res.status(500).json({ error: e?.message || 'upload failed' });
   }

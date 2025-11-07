@@ -54,6 +54,7 @@
     "r2:cors:get": "node scripts/get-r2-cors.js"
   },
   "dependencies": {
+  "sharp": "^0.32.6",
     "@ffmpeg/ffmpeg": "^0.12.10",
     "@aws-sdk/client-s3": "^3.673.0",
     "@aws-sdk/s3-request-presigner": "^3.673.0",
