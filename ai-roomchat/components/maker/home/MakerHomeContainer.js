@@ -38,7 +38,7 @@ export default function MakerHomeContainer() {
   const [editingName, setEditingName] = useState('');
   const [savingRename, setSavingRename] = useState(false);
   const [actionSheetOpen, setActionSheetOpen] = useState(false);
-  const [deleteDialog, setDeleteDialog] = useState({ open: false, id: null, name: '', busy: false, error: '' });
+  const [deleteDialog, setDeleteDialog] = useState({ open: false, id: null, name: '', busy: false, error: '', errorDetails: '' });
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const selection = readHeroSelection();
@@ -84,7 +84,7 @@ export default function MakerHomeContainer() {
   const handleDeleteSet = useCallback(
     id => {
       const row = (rows||[]).find(r => String(r.id) === String(id));
-      setDeleteDialog({ open: true, id, name: row?.name || '', busy: false, error: '' });
+      setDeleteDialog({ open: true, id, name: row?.name || '', busy: false, error: '', errorDetails: '' });
     },
     [rows]
   );
@@ -92,20 +92,39 @@ export default function MakerHomeContainer() {
   const confirmDelete = useCallback(async () => {
     const { id } = deleteDialog;
     if (!id) { setDeleteDialog(prev => ({ ...prev, open:false })); return; }
-    setDeleteDialog(prev => ({ ...prev, busy: true, error: '' }));
+    setDeleteDialog(prev => ({ ...prev, busy: true, error: '', errorDetails: '' }));
     try {
       await deleteSet(id);
       // Clear shared selection if needed
       try { if (promptSetId && String(promptSetId) === String(id)) setPromptSetId(''); } catch {}
-      setDeleteDialog({ open:false, id:null, name:'', busy:false, error:'' });
+      setDeleteDialog({ open:false, id:null, name:'', busy:false, error:'', errorDetails:'' });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setDeleteDialog(prev => ({ ...prev, busy:false, error: msg || '세트를 삭제하지 못했습니다.' }));
+      const now = new Date();
+      const ts = isNaN(now.getTime()) ? '' : now.toISOString();
+      const errName = err && err.name ? String(err.name) : '';
+      const errMsg = err instanceof Error ? err.message : String(err);
+      const errStack = err && err.stack ? String(err.stack) : '';
+      const route = typeof window !== 'undefined' ? (window.location?.pathname || '') : '';
+      const ua = typeof navigator !== 'undefined' ? (navigator.userAgent || '') : '';
+      const details = [
+        `action: deleteSet`,
+        `timestamp: ${ts}`,
+        route ? `route: ${route}` : '',
+        `setId: ${String(id)}`,
+        `setName: ${String(deleteDialog?.name || '')}`,
+        promptSetId ? `currentPromptSetId: ${String(promptSetId)}` : '',
+        ua ? `userAgent: ${ua}` : '',
+        errName ? `error.name: ${errName}` : '',
+        errMsg ? `error.message: ${errMsg}` : '',
+        errStack ? `error.stack:\n${errStack}` : '',
+      ].filter(Boolean).join('\n');
+      const msg = errMsg || '세트를 삭제하지 못했습니다.';
+      setDeleteDialog(prev => ({ ...prev, busy:false, error: msg, errorDetails: details }));
     }
   }, [deleteDialog, deleteSet, promptSetId, setPromptSetId]);
 
   const cancelDelete = useCallback(() => {
-    setDeleteDialog({ open:false, id:null, name:'', busy:false, error:'' });
+    setDeleteDialog({ open:false, id:null, name:'', busy:false, error:'', errorDetails:'' });
   }, []);
 
   const handleCreateSet = useCallback(async () => {
@@ -205,6 +224,7 @@ export default function MakerHomeContainer() {
         setName={deleteDialog.name}
         busy={deleteDialog.busy}
         error={deleteDialog.error}
+        errorDetails={deleteDialog.errorDetails}
         onConfirm={confirmDelete}
         onCancel={cancelDelete}
       />

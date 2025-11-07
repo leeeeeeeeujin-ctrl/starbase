@@ -9,14 +9,42 @@ export default function DeleteSetDialog({
   onCancel,
   busy = false,
   error = '',
+  errorDetails = '',
 }) {
   const [justOpened, setJustOpened] = useState(true);
   const bgRef = useRef(null);
+  const [showDetails, setShowDetails] = useState(false);
+  const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (!open) return;
     setJustOpened(true);
     const t = setTimeout(() => setJustOpened(false), 80);
     return () => clearTimeout(t);
+  }, [open]);
+  // Prevent unintended form submissions bubbling from ancestor forms
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e) => {
+      // Block Enter to avoid triggering any outer <form> submit handlers
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        onCancel?.();
+      }
+    };
+    // capture phase to intercept before React/Next form handling
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => document.removeEventListener('keydown', onKeyDown, true);
+  }, [open, onCancel]);
+  useEffect(() => {
+    if (!open) return;
+    // reset details state on open
+    setShowDetails(false);
+    setCopied(false);
   }, [open]);
   if (!open) return null;
   return (
@@ -36,7 +64,45 @@ export default function DeleteSetDialog({
           </div>
           {error ? (
             <div style={errorBox}>
-              {error}
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:8 }}>
+                <div style={{ whiteSpace:'pre-wrap' }}>{error}</div>
+                {errorDetails ? (
+                  <div style={{ display:'flex', gap:6 }}>
+                    <button type="button" onClick={()=>setShowDetails(v=>!v)} style={btnTiny}>
+                      {showDetails ? '세부 숨기기' : '세부 보기'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async()=>{
+                        try {
+                          await navigator.clipboard?.writeText(errorDetails);
+                          setCopied(true);
+                          setTimeout(()=>setCopied(false), 1200);
+                        } catch {
+                          try {
+                            const ta = document.createElement('textarea');
+                            ta.value = errorDetails;
+                            ta.style.position = 'fixed';
+                            ta.style.left = '-9999px';
+                            document.body.appendChild(ta);
+                            ta.select();
+                            document.execCommand('copy');
+                            document.body.removeChild(ta);
+                            setCopied(true);
+                            setTimeout(()=>setCopied(false), 1200);
+                          } catch {}
+                        }
+                      }}
+                      style={btnTiny}
+                    >
+                      {copied ? '복사됨' : '로그 복사'}
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+              {showDetails && errorDetails ? (
+                <pre style={preDetails}>{errorDetails}</pre>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -57,3 +123,5 @@ const footer = { display:'flex', justifyContent:'flex-end', gap:8, borderTop:'1p
 const btnGhost = { padding:'8px 12px', borderRadius:10, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8' };
 const btnDanger = { padding:'8px 12px', borderRadius:10, border:'1px solid #7f1d1d', background:'#7f1d1d', color:'#fecaca', fontWeight:800 };
 const errorBox = { padding:'8px 10px', border:'1px solid #fecaca', background:'#3f1d1d', color:'#fecaca', borderRadius:8, fontSize:12 };
+const btnTiny = { padding:'6px 8px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#cbd5e1', fontSize:11 };
+const preDetails = { marginTop:8, maxHeight:180, overflow:'auto', background:'#0b1220', border:'1px solid #334155', color:'#e2e8f0', borderRadius:8, padding:'8px 10px', whiteSpace:'pre-wrap', fontSize:11 };
