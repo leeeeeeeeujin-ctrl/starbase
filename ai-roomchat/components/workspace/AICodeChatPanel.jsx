@@ -213,6 +213,26 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
       return lines.slice(0, maxLines).join('\n') + '\n… (생략)';
     } catch { return s; }
   };
+  // Chat background (character background) from template.json
+  const chatBg = useMemo(() => {
+    try {
+      const obj = JSON.parse(getTemplateText()||'{}');
+      const bg = obj?.ui?.chat?.background || {};
+      const color = typeof bg.color === 'string' ? bg.color : null;
+      const image = typeof bg.image === 'string' ? bg.image : null; // e.g., '/public/bg.webp'
+      return { color, image };
+    } catch { return { color:null, image:null }; }
+  }, [files['/template.json']?.content]);
+  const pickTextColor = (hex) => {
+    try {
+      if (!hex) return '#e2e8f0';
+      const h = hex.replace('#','');
+      const r = parseInt(h.substring(0,2),16), g=parseInt(h.substring(2,4),16), b=parseInt(h.substring(4,6),16);
+      const lum = 0.2126*r + 0.7152*g + 0.0722*b;
+      return lum > 140 ? '#0b1220' : '#e2e8f0';
+    } catch { return '#e2e8f0'; }
+  };
+  const chatTextColor = useMemo(()=> pickTextColor(chatBg.color), [chatBg.color]);
   useEffect(() => { try { const el = logRef?.current; if (el) el.scrollTop = el.scrollHeight; } catch {} }, [logs]);
   const append = (role, msg) => {
     setSessions(prev => prev.map(s => s.id === currentId ? { ...s, title: s.title === '새 대화' && role==='user' ? (msg.slice(0,24) || '대화') : s.title, logs: [...(s.logs||[]), { t: Date.now(), role, msg }] } : s));
@@ -509,7 +529,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
         return `- ${p}\n${c}`;
       }).join('\n\n');
   const uiBlock = (previewsForThisSend||[]).length ? `\n\n### UI PREVIEWS\n${JSON.stringify(previewsForThisSend.map(p=>({ id:p.id, comment:p.comment, image:{ w:p.imageW, h:p.imageH }, region:{ x:p.region.x, y:p.region.y, w:p.region.w, h:p.region.h, normalized:true }, palette:p.palette||[], ascii:p.ascii||'' })), null, 2)}` : '';
-  const gameBlock = `\n\n### GAME CONTEXT SUMMARY\n${JSON.stringify(gameContextSummary, null, 2)}\n\n### PROMPT WRITING HINTS\n- 캐릭터/슬롯/변수가 부족하면 questions로 먼저 물어보세요.\n- UI 변경은 가능한 한 template.json의 ui.* 섹션 또는 prompt-graph.json의 nodes/edges로 반영하세요.\n- 코드 편집은 최소 범위만 제안하고, 생성 파일은 루트 하위 폴더에 위치시키세요.\n- 이미지/미디어는 .webp만 사용하고 URL 경로 제안은 금지됩니다.`;
+  const gameBlock = `\n\n### GAME CONTEXT SUMMARY\n${JSON.stringify(gameContextSummary, null, 2)}\n\n### PROMPT WRITING HINTS\n- 캐릭터/슬롯/변수가 부족하면 questions로 먼저 물어보세요.\n- UI 변경은 가능한 한 template.json의 ui.* 섹션 또는 prompt-graph.json의 nodes/edges로 반영하세요.\n- 코드 편집은 최소 범위만 제안하고, 생성 파일은 루트 하위 폴더에 위치시키세요.\n- 이미지/미디어는 .webp만 사용하고 URL 경로 제안은 금지됩니다.\n\n### AVAILABLE QUICK CHECKS\n- graph: 노드 id 중복/엣지의 source/target 유효성 검사\n- template: JSON 파싱/주요 키 존재 유무(예: ui, characters) 점검\n- files: 생성/수정 파일 수와 크기 한도 확인\n\n### SELF-TEST GUIDE\n- work 제안 전, 위 QUICK CHECKS를 통과할 수 있도록 설계를 점검하세요.\n- 필요시 steps의 마지막에 followup으로 자체 점검 결과를 요청해 다음 턴에서 검증할 수 있게 하세요.`;
   const prompt = `${sys}\n\n### CONTEXT\n${JSON.stringify(context)}\n${gameBlock}\n\n### ACTIVE_FILE\nPATH: ${activePath}\nCONTENT:\n${content || '(빈 파일)'}\n\n${extraAttach.length>0?`### ADDITIONAL_FILES\n${extra}`:''}${uiBlock}\n\n### HISTORY (최근)\n${historyText}\n\n### USER\n${input}`;
       append('user', input);
       setInput('');
@@ -715,6 +735,30 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
           <div ref={actionsRef} style={{ position:'absolute', right:8, top:'100%', marginTop:6, zIndex:50, width:220, background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, display:'grid', gap:6 }}>
             <button onClick={()=>{ setShowImageUi(true); setActionsOpen(false); }} style={menuBtn}>UI 설정</button>
             <button onClick={()=>{ setShowAutoGraph(true); setActionsOpen(false); }} style={menuBtn}>프롬프트-노드 자동생성</button>
+            <button onClick={()=>{ try {
+              // run quick checks and append result
+              const report = (()=>{
+                try {
+                  const out = [];
+                  // graph checks
+                  const g = JSON.parse(String(files['/graph/prompt-graph.json']?.content||'{}'));
+                  const nodes = Array.isArray(g?.nodes) ? g.nodes : [];
+                  const edges = Array.isArray(g?.edges) ? g.edges : [];
+                  const ids = new Set(); let dup=false; nodes.forEach(n=>{ if(ids.has(n.id)) dup=true; ids.add(n.id); });
+                  const edgeOk = edges.every(e => ids.has(e.source) && ids.has(e.target));
+                  out.push(`graph: nodes=${nodes.length}, edges=${edges.length}, dupId=${dup?'yes':'no'}, edgesValid=${edgeOk?'yes':'no'}`);
+                  // template checks
+                  const t = JSON.parse(getTemplateText()||'{}');
+                  const hasUi = !!t?.ui; const hasChars = Array.isArray(t?.characters);
+                  out.push(`template: ui=${hasUi?'yes':'no'}, characters=${hasChars? t.characters.length : 0}`);
+                  // files checks
+                  const lf = listFiles(); const big = lf.filter(f=>!f.dir && f.size>200000).length;
+                  out.push(`files: count=${lf.length}, big(>200KB)=${big}`);
+                  return out.join('\n');
+                } catch (e) { return 'checks failed: '+ String(e?.message||e); }
+              })();
+              append('assistant', '자체 테스트 결과:\n'+report);
+            } catch {} setActionsOpen(false); }} style={menuBtn}>빠른 점검 실행</button>
             <div style={{ display:'grid', gap:6, padding:'6px 8px', border:'1px solid #334155', borderRadius:6 }}>
               <label style={{ display:'flex', alignItems:'center', justifyContent:'space-between', color:'#e2e8f0', fontSize:12 }}>
                 <span>자동 진행(신뢰 모드)</span>
@@ -831,7 +875,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
             </div>
           </div>
           <div style={{ display:'grid', gap:8 }}>
-            <div style={{ fontSize:12, color:'#cbd5e1', whiteSpace:'pre-wrap' }}>{pendingPlanMeta.summary.lines.join('\n')}</div>
+            <div style={{ fontSize:12, color:'#cbd5e1', whiteSpace:'pre-wrap', textShadow: chatBg.image ? '0 1px 2px rgba(0,0,0,0.4)' : undefined }}>{pendingPlanMeta.summary.lines.join('\n')}</div>
             {pendingPlanMeta.filePreviews.map(fp => (
               <div key={fp.path} style={{ border:'1px solid #334155', borderRadius:8, overflow:'hidden' }}>
                 <div style={{ padding:'6px 8px', background:'#0b1220', color:'#e2e8f0', fontSize:12, fontWeight:700 }}>{fp.path}</div>
@@ -852,7 +896,10 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
           </div>
         </div>
       )}
-      <div ref={logRef} onScroll={(e)=>{ try { const el=e.currentTarget; const nearBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 20; setScrolledUp(!nearBottom); } catch {} }} style={{ flex:1, overflow:'auto', padding:'8px 10px' }}>
+      <div ref={logRef} onScroll={(e)=>{ try { const el=e.currentTarget; const nearBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 20; setScrolledUp(!nearBottom); } catch {} }}
+           style={{ flex:1, overflow:'auto', padding:'8px 10px', position:'relative',
+                    color: chatTextColor,
+                    background: chatBg.image ? `url(${chatBg.image}) center/cover no-repeat` : (chatBg.color || undefined) }}>
         {(scrolledUp ? logs : logs.slice(-50)).map((l,i,arr)=> {
           const prev = i>0 ? arr[i-1] : null;
           const roleChanged = prev && prev.role !== l.role;
@@ -876,9 +923,46 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
           const long = raw.length > 480 || (raw.split('\n').length > 12);
           const expanded = expandedMsgs.has(id);
           const shown = (long && !expanded) ? previewText(raw) : raw;
+          // Minimal formatting: headers (#, ##) and bullets (-, *, •) for assistant readability
+          const renderFormatted = (text) => {
+            try {
+              const lines = String(text||'').split('\n');
+              const out = [];
+              let bullets = [];
+              const flushBullets = () => {
+                if (bullets.length === 0) return;
+                out.push(
+                  <ul key={'ul_'+out.length} style={{ margin:'6px 0 6px 18px', padding:0 }}>
+                    {bullets.map((t,idx)=>(<li key={idx} style={{ margin:'2px 0' }}>{t}</li>))}
+                  </ul>
+                );
+                bullets = [];
+              };
+              lines.forEach((ln, idx) => {
+                const ltrim = ln.trim();
+                if (ltrim.startsWith('## ')) {
+                  flushBullets();
+                  out.push(<div key={'h2_'+idx} style={{ fontWeight:800, fontSize:13, marginTop:6 }}>{ltrim.slice(3)}</div>);
+                } else if (ltrim.startsWith('# ')) {
+                  flushBullets();
+                  out.push(<div key={'h1_'+idx} style={{ fontWeight:900, fontSize:14, marginTop:8 }}>{ltrim.slice(2)}</div>);
+                } else if (ltrim.startsWith('- ') || ltrim.startsWith('* ') || ltrim.startsWith('• ')) {
+                  bullets.push(ltrim.replace(/^[-*•]\s+/, ''));
+                } else if (ltrim === '') {
+                  flushBullets();
+                  out.push(<div key={'br_'+idx} style={{ height:6 }} />);
+                } else {
+                  flushBullets();
+                  out.push(<div key={'p_'+idx} style={{ whiteSpace:'pre-wrap' }}>{ln}</div>);
+                }
+              });
+              flushBullets();
+              return out;
+            } catch { return (<div style={{ whiteSpace:'pre-wrap' }}>{text}</div>); }
+          };
           return (
-            <div key={i} style={{ fontSize:12, color, marginTop: mt, lineHeight: 1.5 }}>
-              <div style={{ whiteSpace:'pre-wrap' }}>{l.role}: {shown}</div>
+            <div key={i} style={{ fontSize:12, color, marginTop: mt, lineHeight: 1.5, textShadow: chatBg.image ? '0 1px 2px rgba(0,0,0,0.6)' : undefined }}>
+              <div>{l.role}: {l.role==='assistant' ? renderFormatted(shown) : (<span style={{ whiteSpace:'pre-wrap' }}>{shown}</span>)}</div>
               {long && (
                 <button onClick={()=>toggleExpand(id)} style={{ marginTop:4, padding:'2px 6px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8', fontSize:11 }}>
                   {expanded ? '접기' : '더보기'}
