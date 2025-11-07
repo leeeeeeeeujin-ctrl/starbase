@@ -10,6 +10,10 @@ export default function OffloadDebug() {
   const [audioResult, setAudioResult] = useState(null);
   const [simResult, setSimResult] = useState(null);
   const [metrics, setMetrics] = useState(getMetricsSnapshot());
+  // Persist last snapshot to localStorage so admin page can load it.
+  useEffect(() => {
+    try { localStorage.setItem('offload_metrics_last', JSON.stringify(metrics)); } catch {}
+  }, [metrics]);
   const [loadingImg, setLoadingImg] = useState(false);
   const [loadingAudio, setLoadingAudio] = useState(false);
   const [loadingSim, setLoadingSim] = useState(false);
