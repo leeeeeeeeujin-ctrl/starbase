@@ -18,18 +18,23 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
   const [contextOpen, setContextOpen] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showImageUi, setShowImageUi] = useState(false);
+  const [uiImage, setUiImage] = useState(null); // { dataUrl, w, h }
+  const [uiSel, setUiSel] = useState(null); // { x, y, w, h } in px
+  const [pendingUiPreviews, setPendingUiPreviews] = useState([]); // previews to include with next send
   const [isFullscreenUi, setIsFullscreenUi] = useState(false);
+  const [pendingPlan, setPendingPlan] = useState(null); // last AI plan awaiting confirmation
+  const [pendingPlanMeta, setPendingPlanMeta] = useState(null); // summaries/diffs
+  const [recentUiPreviews, setRecentUiPreviews] = useState([]); // last few previews for reuse
   const rootRef = useRef(null);
   const historyRef = useRef(null);
   const settingsRef = useRef(null);
   const actionsRef = useRef(null);
   const contextRef = useRef(null);
   const menuBtn = { padding:'6px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#cbd5e1', textAlign:'left' };
+  // Always prefer user keyring; server key is not provided. Persist as 'keyring' for consistency.
   const PREF_SOURCE_KEY = 'workspace:aiChat:preferSource';
-  const [preferSource, setPreferSource] = useState(() => {
-    try { return localStorage.getItem(PREF_SOURCE_KEY) || 'keyring'; } catch { return 'keyring'; }
-  }); // 'keyring' | 'server'
-  useEffect(() => { try { localStorage.setItem(PREF_SOURCE_KEY, preferSource); } catch {} }, [preferSource]);
+  const [preferSource] = useState('keyring');
+  useEffect(() => { try { localStorage.setItem(PREF_SOURCE_KEY, 'keyring'); } catch {} }, []);
 
   // API Key manager
   const {
@@ -185,6 +190,13 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
   const append = (role, msg) => {
     setSessions(prev => prev.map(s => s.id === currentId ? { ...s, title: s.title === '새 대화' && role==='user' ? (msg.slice(0,24) || '대화') : s.title, logs: [...(s.logs||[]), { t: Date.now(), role, msg }] } : s));
   };
+  const appendPreview = (preview) => {
+    // preview: { id, comment, thumbDataUrl }
+    setSessions(prev => prev.map(s => s.id === currentId ? {
+      ...s,
+      logs: [...(s.logs||[]), { t: Date.now(), role: 'user', msg: { type:'uiPreview', ...preview } }]
+    } : s));
+  };
   const startNewChat = () => {
     const s = newSession();
     // 새로 만들 때, 내용이 전혀 없는 기존 세션은 정리
@@ -247,6 +259,42 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
     });
     return count;
   };
+  const summarizePlan = (plan) => {
+    const actions = Array.isArray(plan?.actions) ? plan.actions : [];
+    const items = actions.slice(0, 20).map((a,i) => {
+      const t = a?.type || 'unknown';
+      if (t === 'rename') return `#${i+1} rename ${a?.from} → ${a?.to}`;
+      if (t === 'delete') return `#${i+1} delete ${a?.path}`;
+      if (t === 'create') return `#${i+1} create ${a?.path} (${(a?.content||'').length} chars)`;
+      if (t === 'write') return `#${i+1} write ${a?.path} (${(a?.content||'').length} chars)`;
+      return `#${i+1} ${t}`;
+    });
+    return { count: actions.length, lines: items };
+  };
+  const buildPlanFilePreviews = (plan) => {
+    try {
+      const actions = Array.isArray(plan?.actions) ? plan.actions : [];
+      const filesSet = new Map();
+      actions.forEach(a => {
+        const t = a?.type; const path = a?.path || a?.to || a?.from; if (!path) return;
+        if (!filesSet.has(path)) filesSet.set(path, { path, previews: [] });
+        const entry = filesSet.get(path);
+        if (t === 'create' || t === 'write') {
+          const before = String(files?.[path]?.content || '');
+          const after = String(a?.content || '');
+          const head = (s, n=10) => s.split('\n').slice(0, n).join('\n');
+          entry.previews.push({ type: t, beforeHead: head(before), afterHead: head(after) });
+        } else if (t === 'delete') {
+          const before = String(files?.[path]?.content || '');
+          const head = (s, n=10) => s.split('\n').slice(0, n).join('\n');
+          entry.previews.push({ type: t, beforeHead: head(before), afterHead: '' });
+        } else if (t === 'rename') {
+          entry.previews.push({ type: t, beforeHead: '', afterHead: '' });
+        }
+      });
+      return Array.from(filesSet.values());
+    } catch { return []; }
+  };
   const send = async () => {
     if (!input.trim()) return;
     setBusy(true);
@@ -259,9 +307,66 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
         '파일 목록과 일부 내용이 제공됩니다.',
         '반드시 JSON으로만 응답하세요(코드펜스/마크다운 금지).',
         '스키마: { "message?": string, "actions?": [ {"type":"create|write|delete|rename", "path":"/path", "content?":"string", "from?":"/old", "to?":"/new"} ] }',
-        'message에는 자연어 설명/논의를 담고, 편집이 필요하면 actions를 채워주세요.'
+        'message에는 자연어 설명/논의를 담고, 편집이 필요하면 actions를 채워주세요.',
+        'UI PREVIEWS 섹션이 제공될 수 있습니다. 각 항목은 이미지 크기(image), 선택 영역(region: 정규화 좌표), 팔레트, ASCII 요약, 코멘트를 포함합니다.',
+        '사용자가 UI 생성/편집을 요청했다면, /template.json 또는 /graph/prompt-graph.json 수정에 필요한 actions를 생성하세요.',
+        '정보가 충분하지 않다면 message로 부족한 점을 설명하고, 필요한 스냅샷/영역/컴포넌트 명세를 요청하세요(이 경우 actions는 비워두세요).'
       ].join('\n');
       const fileMeta = files[activePath];
+
+      // If an image is loaded but no region preview is attached, auto-attach a full-image preview for this send.
+      let previewsForThisSend = [...(pendingUiPreviews||[])];
+      if ((!previewsForThisSend || previewsForThisSend.length === 0) && uiImage) {
+        try {
+          const payload = await (async () => {
+            const img = new Image(); img.src = uiImage.dataUrl;
+            return await new Promise((resolve) => {
+              img.onload = () => {
+                const regionNorm = { x:0, y:0, w:1, h:1 };
+                const sx = 0, sy = 0, sw = img.width, sh = img.height;
+                const maxThumb = 128;
+                const scale = Math.min(maxThumb / sw, maxThumb / sh, 1);
+                const dw = Math.max(1, Math.floor(sw * scale));
+                const dh = Math.max(1, Math.floor(sh * scale));
+                const c = document.createElement('canvas'); c.width = dw; c.height = dh;
+                const cx = c.getContext('2d');
+                cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = 'high';
+                cx.drawImage(img, sx, sy, sw, sh, 0, 0, dw, dh);
+                const { data } = cx.getImageData(0,0,dw,dh);
+                let r=0,g=0,b=0,count=0; for (let i=0;i<data.length;i+=4){ r+=data[i]; g+=data[i+1]; b+=data[i+2]; count++; }
+                r=Math.round(r/count); g=Math.round(g/count); b=Math.round(b/count);
+                const toHex = (n)=> ('0'+n.toString(16)).slice(-2);
+                const avg = `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+                const ascii = (()=>{
+                  try {
+                    const cols=28, rows=16;
+                    const c2=document.createElement('canvas'); c2.width=cols; c2.height=rows;
+                    const ctx2=c2.getContext('2d'); ctx2.drawImage(c,0,0,cols,rows);
+                    const { data: d2 } = ctx2.getImageData(0,0,cols,rows);
+                    const chars=' .:-=+*#%@'; let out='';
+                    for (let y=0;y<rows;y++){
+                      for (let x=0;x<cols;x++){
+                        const i=(y*cols + x)*4; const rr=d2[i], gg=d2[i+1], bb=d2[i+2];
+                        const lum=(0.2126*rr + 0.7152*gg + 0.0722*bb)/255;
+                        const idx=Math.min(chars.length-1, Math.max(0, Math.round(lum*(chars.length-1))));
+                        out += chars[idx];
+                      }
+                      out+='\n';
+                    }
+                    return out;
+                  } catch { return ''; }
+                })();
+                const thumbDataUrl = c.toDataURL('image/webp', 0.6);
+                resolve({ thumbDataUrl, palette:[avg], ascii, regionPx:{ x:sx, y:sy, w:sw, h:sh }, regionNorm });
+              };
+            });
+          })();
+          const id = 'prev_'+Date.now();
+          const p = { id, comment: '(전체 이미지)', thumbDataUrl: payload.thumbDataUrl, imageW: uiImage.w, imageH: uiImage.h, region: payload.regionNorm, palette: payload.palette, ascii: payload.ascii };
+          previewsForThisSend.push(p);
+          appendPreview(p);
+        } catch {}
+      }
       const contentRaw = typeof fileMeta?.content === 'string' ? fileMeta.content : '';
       let selectionText = '';
       try { selectionText = (typeof window !== 'undefined' && window.__VFS_ACTIVE_SELECTION__?.path === activePath) ? (window.__VFS_ACTIVE_SELECTION__?.text || '') : ''; } catch {}
@@ -299,13 +404,14 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
         const c = typeof meta?.content === 'string' ? mkBody(meta.content) : '';
         return `- ${p}\n${c}`;
       }).join('\n\n');
-      const prompt = `${sys}\n\n### CONTEXT\n${JSON.stringify(context)}\n\n### ACTIVE_FILE\nPATH: ${activePath}\nCONTENT:\n${content || '(빈 파일)'}\n\n${extraAttach.length>0?`### ADDITIONAL_FILES\n${extra}`:''}\n\n### HISTORY (최근)\n${historyText}\n\n### USER\n${input}`;
+  const uiBlock = (previewsForThisSend||[]).length ? `\n\n### UI PREVIEWS\n${JSON.stringify(previewsForThisSend.map(p=>({ id:p.id, comment:p.comment, image:{ w:p.imageW, h:p.imageH }, region:{ x:p.region.x, y:p.region.y, w:p.region.w, h:p.region.h, normalized:true }, palette:p.palette||[], ascii:p.ascii||'' })), null, 2)}` : '';
+  const prompt = `${sys}\n\n### CONTEXT\n${JSON.stringify(context)}\n\n### ACTIVE_FILE\nPATH: ${activePath}\nCONTENT:\n${content || '(빈 파일)'}\n\n${extraAttach.length>0?`### ADDITIONAL_FILES\n${extra}`:''}${uiBlock}\n\n### HISTORY (최근)\n${historyText}\n\n### USER\n${input}`;
       append('user', input);
       setInput('');
       const res = await fetch('/api/ai/gemini', {
         method: 'POST',
         headers: { 'content-type':'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ model: geminiModel || 'gemini-2.5-flash', contents: prompt, prefer: (preferSource==='server' ? 'server' : 'keyring') })
+        body: JSON.stringify({ model: geminiModel || 'gemini-2.5-flash', contents: prompt, prefer: 'keyring' })
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body?.error || `AI ${res.status}`);
@@ -318,10 +424,13 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
           append('assistant', plan.message.trim());
         }
         if (Array.isArray(plan.actions) && plan.actions.length > 0) {
-          applied = applyActions(plan);
-          append('assistant', `수정 ${applied}건 적용 완료.`);
-        }
-        if ((!plan.message || plan.message.trim().length === 0) && (!plan.actions || plan.actions.length === 0)) {
+          // Hold changes for preview instead of immediate apply
+          const summary = summarizePlan(plan);
+          const filePreviews = buildPlanFilePreviews(plan);
+          setPendingPlan(plan);
+          setPendingPlanMeta({ summary, filePreviews });
+          append('assistant', `변경 제안 ${summary.count}건이 도착했습니다. 아래 카드에서 적용하거나 추가 지시를 선택하세요.`);
+        } else if (!plan.message || plan.message.trim().length === 0) {
           append('assistant', '(변경 없음)');
         }
       } else {
@@ -330,7 +439,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
       }
     } catch (e) {
       append('error', e?.message || String(e));
-    } finally { setBusy(false); }
+    } finally { setBusy(false); setPendingUiPreviews([]); }
   };
   // simple double-tap detection for touch
   const lastTapRef = useRef(0);
@@ -494,14 +603,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
             <div style={{ color:'#e2e8f0', fontWeight:700, fontSize:12 }}>API 키 설정</div>
             <div style={{ display:'grid', gap:6 }}>
               <label style={{ fontSize:12, color:'#cbd5e1' }}>사용 소스</label>
-              <div style={{ display:'flex', gap:8 }}>
-                <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:'#e2e8f0' }}>
-                  <input type="radio" name="preferSource" checked={preferSource==='keyring'} onChange={()=>setPreferSource('keyring')} /> 사용자 키링
-                </label>
-                <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:'#e2e8f0' }}>
-                  <input type="radio" name="preferSource" checked={preferSource==='server'} onChange={()=>setPreferSource('server')} /> 서버 키
-                </label>
-              </div>
+              <div style={{ fontSize:12, color:'#e2e8f0' }}>사용자 키링 (기본)</div>
             </div>
             <div style={{ display:'grid', gap:6 }}>
               <label style={{ fontSize:12, color:'#cbd5e1' }}>내 키링</label>
@@ -568,19 +670,80 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
           </div>
         )}
       </div>
+      {/* Pending AI plan diff/preview card */}
+      {pendingPlan && pendingPlanMeta && (
+        <div style={{ borderTop:'1px solid #25314a', background:'#0c1322', padding:'8px 10px', display:'grid', gap:8 }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+            <div style={{ color:'#e2e8f0', fontWeight:700, fontSize:12 }}>변경 미리보기 ({pendingPlanMeta.summary.count}건)</div>
+            <div style={{ display:'flex', gap:6 }}>
+              <button onClick={()=>{ const c = applyActions(pendingPlan); setPendingPlan(null); setPendingPlanMeta(null); append('assistant', `수정 ${c}건 적용 완료.`); }} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #10b981', background:'#065f46', color:'#d1fae5' }}>적용</button>
+              <button onClick={()=>{ setPendingPlan(null); setPendingPlanMeta(null); }} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>취소</button>
+              <button onClick={()=>{ setShowImageUi(true); /* user can add region comment to refine */ setTimeout(()=>{ try { append('assistant', '변경 제안에 대해 특정 영역 지시를 첨부해 주세요.'); } catch {} }, 0); }} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #2563eb', background:'#1d4ed8', color:'#fff' }}>영역 지시</button>
+            </div>
+          </div>
+          <div style={{ display:'grid', gap:8 }}>
+            <div style={{ fontSize:12, color:'#cbd5e1', whiteSpace:'pre-wrap' }}>{pendingPlanMeta.summary.lines.join('\n')}</div>
+            {pendingPlanMeta.filePreviews.map(fp => (
+              <div key={fp.path} style={{ border:'1px solid #334155', borderRadius:8, overflow:'hidden' }}>
+                <div style={{ padding:'6px 8px', background:'#0b1220', color:'#e2e8f0', fontSize:12, fontWeight:700 }}>{fp.path}</div>
+                {fp.previews.map((pv, idx) => (
+                  <div key={idx} style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, padding:8, background:'#0c1322' }}>
+                    <div>
+                      <div style={{ fontSize:11, color:'#94a3b8', marginBottom:4 }}>이전</div>
+                      <pre style={{ margin:0, padding:8, background:'#0b1220', color:'#e2e8f0', border:'1px solid #334155', borderRadius:6, maxHeight:160, overflow:'auto' }}>{pv.beforeHead || '(없음)'}</pre>
+                    </div>
+                    <div>
+                      <div style={{ fontSize:11, color:'#94a3b8', marginBottom:4 }}>변경 후</div>
+                      <pre style={{ margin:0, padding:8, background:'#0b1220', color:'#e2e8f0', border:'1px solid #334155', borderRadius:6, maxHeight:160, overflow:'auto' }}>{pv.afterHead || '(없음)'}</pre>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <div ref={logRef} onScroll={(e)=>{ try { const el=e.currentTarget; const nearBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 20; setScrolledUp(!nearBottom); } catch {} }} style={{ flex:1, overflow:'auto', padding:'8px 10px' }}>
         {(scrolledUp ? logs : logs.slice(-50)).map((l,i,arr)=> {
           const prev = i>0 ? arr[i-1] : null;
           const roleChanged = prev && prev.role !== l.role;
           const mt = roleChanged ? 12 : 6;
           const color = l.role==='error'?'#fecaca': (l.role==='user'?'#e2e8f0':'#a7f3d0');
+          if (l && typeof l.msg === 'object' && l.msg?.type === 'uiPreview') {
+            return (
+              <div key={i} style={{ marginTop: mt, display:'flex', alignItems:'flex-start', gap:8 }}>
+                <div style={{ width:84, height:84, border:'1px solid #334155', borderRadius:8, overflow:'hidden', background:'#0c1322' }}>
+                  {l.msg.thumbDataUrl ? <img src={l.msg.thumbDataUrl} alt="UI 미리보기" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : null}
+                </div>
+                <div style={{ fontSize:12, color }}>
+                  <div style={{ color:'#94a3b8' }}>UI 미리보기</div>
+                  <div>{l.msg.comment || '(설명 없음)'}</div>
+                </div>
+              </div>
+            );
+          }
           return (
             <div key={i} style={{ fontSize:12, color, marginTop: mt, lineHeight: 1.5 }}>
-              {l.role}: {l.msg}
+              {l.role}: {String(l.msg)}
             </div>
           );
         })}
       </div>
+      {/* Pending UI previews inline */}
+      {pendingUiPreviews.length > 0 && (
+        <div style={{ padding:'6px 10px', display:'flex', gap:8, flexWrap:'wrap', borderTop:'1px solid #25314a', background:'#0c1322' }}>
+          {pendingUiPreviews.map(p => (
+            <div key={p.id} style={{ display:'flex', alignItems:'center', gap:6, border:'1px solid #334155', borderRadius:8, padding:6, background:'#0b1220' }}>
+              <img src={p.thumbDataUrl} alt="prev" style={{ width:48, height:48, borderRadius:6, objectFit:'cover' }} />
+              <div style={{ maxWidth:240 }}>
+                <div style={{ fontSize:11, color:'#94a3b8' }}>영역: ({p.region.x.toFixed(2)}, {p.region.y.toFixed(2)}) {p.region.w.toFixed(2)}×{p.region.h.toFixed(2)}</div>
+                <div style={{ fontSize:12, color:'#e2e8f0', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{p.comment}</div>
+              </div>
+              <button onClick={()=> setPendingUiPreviews(prev => prev.filter(x => x.id !== p.id))} style={{ padding:'4px 6px', borderRadius:6, border:'1px solid #7f1d1d', background:'#0b1220', color:'#fecaca' }}>제거</button>
+            </div>
+          ))}
+        </div>
+      )}
       <div style={{ display:'flex', gap:6, padding:10, borderTop:'1px solid #25314a', background:'#0c1322', alignItems:'center' }}>
         <div style={{ position:'relative' }}>
           <button onClick={()=>setAttachPickerOpen(v=>!v)} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>파일 추가</button>
@@ -612,12 +775,60 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
                 <div style={{ fontSize:12, color:'#cbd5e1' }}>빠른 작업</div>
                 <button onClick={()=>{ applyMainUiPreset(); }} style={{ padding:'8px 10px', borderRadius:8, border:'1px solid #2563eb', background:'#1d4ed8', color:'#fff' }}>메인 프리셋 적용</button>
               </div>
+              <div style={{ display:'grid', gap:8 }}>
+                <div style={{ fontSize:12, color:'#cbd5e1' }}>이미지 미리보기 & 코멘트</div>
+                {!uiImage && (
+                  <label style={{ display:'grid', gap:6, fontSize:12, color:'#cbd5e1' }}>
+                    <input type="file" accept="image/*" onChange={async (e)=>{
+                      try {
+                        const f = e.target.files?.[0]; if (!f) return;
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                          const img = new Image();
+                          img.onload = () => {
+                            setUiImage({ dataUrl: reader.result, w: img.width, h: img.height });
+                            setUiSel({ x:0.1, y:0.1, w:0.8, h:0.8 });
+                          };
+                          img.src = reader.result;
+                        };
+                        reader.readAsDataURL(f);
+                      } catch {}
+                    }} />
+                    <span style={{ fontSize:11, color:'#94a3b8' }}>업로드 없이 브라우저에서만 미리봅니다. 저장 시 서버에서 압축/변환됩니다.</span>
+                  </label>
+                )}
+                {uiImage && (
+                  <UiImageAnnotator uiImage={uiImage} uiSel={uiSel} setUiSel={setUiSel} onReset={()=>{ setUiImage(null); setUiSel(null); }} onAttach={(payload)=>{
+                    // payload: { comment, regionPx, regionNorm, thumbDataUrl, palette, ascii }
+                    const id = 'prev_'+Date.now();
+                    const p = { id, comment: payload.comment, thumbDataUrl: payload.thumbDataUrl, imageW: uiImage.w, imageH: uiImage.h, region: payload.regionNorm, palette: payload.palette, ascii: payload.ascii };
+                    setPendingUiPreviews(prev => [...prev, p]);
+                    appendPreview(p);
+                    setShowImageUi(false);
+                    setUiImage(null); setUiSel(null);
+                  }} />
+                )}
+              </div>
               <div style={{ fontSize:11, color:'#94a3b8' }}>
-                이미지 URL 입력은 제거되었습니다. 코드 에디터의 AI 채팅에서 이미지를 첨부하면,
-                UI 설정의 토글(ai.imageToUi.enabled)이 활성인 경우 시스템이 이미지를 참고해 UI를 구성합니다.
+                이미지 URL 입력은 제거되었습니다. 이미지 코멘트를 첨부하면 다음 전송 때 AI에게 요약(좌표/팔레트/ASCII)과 함께 전달됩니다.
               </div>
             </div>
           </div>
+        </div>
+      )}
+      {/* Recent previews (reuse) */}
+      {recentUiPreviews.length > 0 && (
+        <div style={{ padding:'6px 10px', background:'#0c1322', borderTop:'1px solid #25314a', display:'flex', gap:8, flexWrap:'wrap' }}>
+          {recentUiPreviews.map(p => (
+            <div key={p.id} style={{ display:'flex', alignItems:'center', gap:6, border:'1px solid #334155', borderRadius:8, padding:6, background:'#0b1220' }}>
+              <img src={p.thumbDataUrl} alt="prev" style={{ width:36, height:36, borderRadius:6, objectFit:'cover' }} />
+              <div style={{ maxWidth:200 }}>
+                <div style={{ fontSize:11, color:'#94a3b8' }}>{p.label || '영역'}</div>
+                <div style={{ fontSize:12, color:'#e2e8f0', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{p.comment}</div>
+              </div>
+              <button onClick={()=> setPendingUiPreviews(prev => [...prev, p])} style={{ padding:'4px 6px', borderRadius:6, border:'1px solid #2563eb', background:'#0b1220', color:'#93c5fd' }}>다시 첨부</button>
+            </div>
+          ))}
         </div>
       )}
       {showAutoGraph && (
@@ -639,4 +850,153 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
       )}
     </div>
   );
+}
+
+// Inline component: image annotator with rectangle selection and comment
+function UiImageAnnotator({ uiImage, uiSel, setUiSel, onReset, onAttach }){
+  const canvasRef = useRef(null);
+  const commentRef = useRef(null);
+  const [label, setLabel] = useState('영역');
+  const [dragging, setDragging] = useState(false);
+  const [startPos, setStartPos] = useState(null);
+
+  useEffect(() => {
+    try {
+      const canvas = canvasRef.current; if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const img = new Image(); img.src = uiImage.dataUrl;
+      img.onload = () => {
+        // Fit image into canvas while keeping aspect ratio
+        const maxW = 340, maxH = 220;
+        let dw = img.width, dh = img.height;
+        const scale = Math.min(maxW / dw, maxH / dh, 1);
+        dw = Math.floor(dw * scale); dh = Math.floor(dh * scale);
+        canvas.width = dw; canvas.height = dh;
+        ctx.clearRect(0,0,dw,dh);
+        ctx.drawImage(img, 0, 0, dw, dh);
+        if (uiSel) {
+          const rx = uiSel.x * dw, ry = uiSel.y * dh, rw = uiSel.w * dw, rh = uiSel.h * dh;
+          ctx.strokeStyle = '#93c5fd'; ctx.lineWidth = 2; ctx.strokeRect(rx, ry, rw, rh);
+          ctx.fillStyle = 'rgba(147,197,253,0.15)'; ctx.fillRect(rx, ry, rw, rh);
+        }
+      };
+    } catch {}
+  }, [uiImage, uiSel]);
+
+  const onDown = (e) => {
+    try {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const x = (e.clientX - rect.left) / rect.width;
+      const y = (e.clientY - rect.top) / rect.height;
+      setDragging(true); setStartPos({ x, y }); setUiSel({ x, y, w: 0, h: 0 });
+    } catch {}
+  };
+  const onMove = (e) => {
+    if (!dragging || !startPos) return;
+    try {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const x = (e.clientX - rect.left) / rect.width;
+      const y = (e.clientY - rect.top) / rect.height;
+      const nx = Math.max(0, Math.min(startPos.x, x));
+      const ny = Math.max(0, Math.min(startPos.y, y));
+      const nw = Math.min(1, Math.max(startPos.x, x)) - nx;
+      const nh = Math.min(1, Math.max(startPos.y, y)) - ny;
+      setUiSel({ x: nx, y: ny, w: nw, h: nh });
+    } catch {}
+  };
+  const onUp = () => { setDragging(false); setStartPos(null); };
+
+  const computePreviewPayload = () => {
+    try {
+      // Create a thumbnail of selected region and color palette
+      const maxThumb = 128;
+      // draw full image into offscreen to compute region
+      const img = new Image(); img.src = uiImage.dataUrl;
+      const regionNorm = uiSel || { x:0, y:0, w:1, h:1 };
+      return new Promise((resolve) => {
+        img.onload = () => {
+          const sx = Math.floor(regionNorm.x * img.width);
+          const sy = Math.floor(regionNorm.y * img.height);
+          const sw = Math.max(1, Math.floor(regionNorm.w * img.width));
+          const sh = Math.max(1, Math.floor(regionNorm.h * img.height));
+          const scale = Math.min(maxThumb / sw, maxThumb / sh, 1);
+          const dw = Math.max(1, Math.floor(sw * scale));
+          const dh = Math.max(1, Math.floor(sh * scale));
+          const c = document.createElement('canvas'); c.width = dw; c.height = dh;
+          const cx = c.getContext('2d');
+          cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = 'high';
+          cx.drawImage(img, sx, sy, sw, sh, 0, 0, dw, dh);
+          // palette (average color)
+          const { data } = cx.getImageData(0,0,dw,dh);
+          let r=0,g=0,b=0,count=0; for (let i=0;i<data.length;i+=4){ r+=data[i]; g+=data[i+1]; b+=data[i+2]; count++; }
+          r=Math.round(r/count); g=Math.round(g/count); b=Math.round(b/count);
+          const toHex = (n)=> ('0'+n.toString(16)).slice(-2);
+          const avg = `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+          // ascii
+          const ascii = canvasToAscii(c, 28, 16);
+          const thumbDataUrl = c.toDataURL('image/webp', 0.6);
+          resolve({ thumbDataUrl, palette:[avg], ascii, regionPx:{ x:sx, y:sy, w:sw, h:sh }, regionNorm });
+        };
+      });
+    } catch {
+      return Promise.resolve(null);
+    }
+  };
+
+  const onClickAttach = async () => {
+    const payload = await computePreviewPayload();
+    const comment = String(commentRef.current?.value || '').trim();
+    if (!payload) return;
+    onAttach({ ...payload, comment, label });
+  };
+
+  return (
+    <div style={{ border:'1px solid #334155', borderRadius:8, padding:8, display:'grid', gap:8 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr auto', alignItems:'center', gap:8 }}>
+        <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+          {/* Comment presets */}
+          {['헤더 고정','12열 그리드','CTA 오른쪽 정렬','폰트 굵게','카드 간격 축소'].map(txt => (
+            <button key={txt} onClick={()=>{ try { commentRef.current.value = (commentRef.current.value? (commentRef.current.value+' ') : '') + txt; } catch {} }} style={{ padding:'4px 6px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', fontSize:11 }}>{txt}</button>
+          ))}
+        </div>
+        <select value={label} onChange={e=>setLabel(e.target.value)} style={{ padding:'4px 6px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', fontSize:12 }}>
+          {['영역','헤더','내비','사이드바','푸터','카드','버튼','폼'].map(opt => (
+            <option key={opt} value={opt}>{opt}</option>
+          ))}
+        </select>
+      </div>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+        <div style={{ fontSize:11, color:'#94a3b8' }}>이미지 위를 드래그하여 영역을 지정하세요.</div>
+        <button onClick={onReset} style={{ padding:'4px 6px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>다시 선택</button>
+      </div>
+      <div style={{ border:'1px solid #334155', borderRadius:8, overflow:'hidden', maxWidth: 340 }}>
+        <canvas ref={canvasRef} onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} style={{ display:'block', width:'100%', height:'auto', cursor:'crosshair' }} />
+      </div>
+      <input ref={commentRef} placeholder="이 영역에 대한 설명/요청을 입력" style={{ padding:'6px 8px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }} />
+      <button onClick={onClickAttach} style={{ padding:'8px 10px', borderRadius:8, border:'1px solid #10b981', background:'#065f46', color:'#d1fae5' }}>미리보기 첨부</button>
+    </div>
+  );
+}
+
+function canvasToAscii(canvas, cols=32, rows=16){
+  try {
+    const w = Math.max(2, cols), h = Math.max(2, rows);
+    const c2 = document.createElement('canvas'); c2.width = w; c2.height = h;
+    const ctx = c2.getContext('2d');
+    ctx.drawImage(canvas, 0, 0, w, h);
+    const { data } = ctx.getImageData(0,0,w,h);
+    const chars = ' .:-=+*#%@';
+    let out = '';
+    for (let y=0; y<h; y++){
+      for (let x=0; x<w; x++){
+        const i = (y*w + x)*4;
+        const r=data[i], g=data[i+1], b=data[i+2];
+        const lum = (0.2126*r + 0.7152*g + 0.0722*b)/255;
+        const idx = Math.min(chars.length-1, Math.max(0, Math.round(lum*(chars.length-1))));
+        out += chars[idx];
+      }
+      out += '\n';
+    }
+    return out;
+  } catch { return ''; }
 }

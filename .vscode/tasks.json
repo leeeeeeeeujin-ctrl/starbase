@@ -147,6 +147,23 @@
 			],
 			"isBackground": false,
 			"group": "build"
+		},
+		{
+			"label": "sandbox: test",
+			"type": "shell",
+			"command": "node",
+			"args": [
+				"ai-roomchat/scripts/test_sandbox_run.js"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "git: push merge-main (sandbox + play gating)",
+			"type": "shell",
+			"command": "git status; git add .; git commit -m \"play: hide widgets by default; dev-graph: gate inline hooks; add tests\"; git push origin merge-main",
+			"isBackground": false,
+			"group": "build"
 		}
 	]
 }

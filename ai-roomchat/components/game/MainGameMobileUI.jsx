@@ -68,6 +68,9 @@ export default function MainGameMobileUI({ template, user = null, onNext = () =>
   }, [layout]);
 
   const modules = useMemo(() => {
+    // Determine optional play widgets (hidden by default unless explicitly enabled in template)
+    const widgetFlags = readWidgetFlags(template);
+    const playWidgets = buildDefaultWidgets(template, widgetFlags);
     const defs = {
       header: (
         <Header key="header" userLabel={userLabel} edit={edit} setEdit={setEdit} />
@@ -81,9 +84,10 @@ export default function MainGameMobileUI({ template, user = null, onNext = () =>
       playerChat: (
         <PlayerChat key="playerChat" items={chat} text={chatText} setText={setChatText} onSend={sendChat} />
       ),
-      widgets: (
-        <WidgetRow key="widgets" template={template} />
-      ),
+      // Only include the widgets module if there are enabled widgets to show
+      ...(playWidgets.length > 0 ? { widgets: (
+        <WidgetRow key="widgets" widgets={playWidgets} />
+      ) } : {}),
       character: (
         <CharacterCard
           key="character"
@@ -98,7 +102,7 @@ export default function MainGameMobileUI({ template, user = null, onNext = () =>
       ),
     };
     return layout.order.map(id => defs[id]).filter(Boolean);
-  }, [layout.order, userLabel, edit, gameChat, runtimeFeed, triggerNext, chat, chatText, template, character, imageUrl, sendChat, onForceNext, runtimeSecondsLeft]);
+  }, [layout.order, userLabel, edit, gameChat, runtimeFeed, triggerNext, chat, chatText, template, character, imageUrl, sendChat, onForceNext, runtimeSecondsLeft, uiConfig, charViewIdx]);
 
   return (
     <div style={{ position:'fixed', inset:0, background:'#0b1220', color:'#e2e8f0', display:'flex', flexDirection:'column' }}>
@@ -175,8 +179,7 @@ function PlayerChat({ items, text, setText, onSend }) {
   );
 }
 
-function WidgetRow({ template }) {
-  const widgets = useMemo(() => buildDefaultWidgets(template), [template]);
+function WidgetRow({ widgets = [] }) {
   return (
     <div style={{ display:'flex', gap:8, overflowX:'auto' }}>
       {widgets.map((w, i) => (
@@ -256,14 +259,35 @@ function readUiConfig(template){
   return {};
 }
 
-function buildDefaultWidgets(template){
+function buildDefaultWidgets(template, flags){
   const list = [];
-  // Resource preview
-  const image = pickFirstImage(template);
-  list.push({ title: '리소스 미리보기', body: image ? <img src={image} alt="res" style={{ width:'100%', height:120, objectFit:'cover', borderRadius:8 }} /> : <div style={{ fontSize:12, color:'#94a3b8' }}>이미지가 없습니다.</div> });
-  // Code runner placeholder (future: plug real runner)
-  list.push({ title: '사용자 지정 코드', body: <div style={{ fontSize:12, color:'#94a3b8' }}>코드 실행 위젯 (연결 예정)</div> });
+  // Resource preview (only if explicitly enabled)
+  if (flags?.resourcePreviewEnabled) {
+    const image = pickFirstImage(template);
+    list.push({ title: '리소스 미리보기', body: image ? <img src={image} alt="res" style={{ width:'100%', height:120, objectFit:'cover', borderRadius:8 }} /> : <div style={{ fontSize:12, color:'#94a3b8' }}>이미지가 없습니다.</div> });
+  }
+  // Code runner placeholder (only if explicitly enabled)
+  if (flags?.codeRunnerEnabled) {
+    list.push({ title: '사용자 지정 코드', body: <div style={{ fontSize:12, color:'#94a3b8' }}>코드 실행 위젯 (연결 예정)</div> });
+  }
   return list;
+}
+
+function readWidgetFlags(template){
+  const safe = (v) => v === true || v === 'true' || v === 1;
+  try{
+    const ui = template?.ui || {};
+    // Check a few possible locations to consider the widget as "included"
+    const main = ui?.main || {};
+    const mainWidgets = main?.widgets || {};
+    const generic = ui?.widgets || {};
+    const play = ui?.play || {};
+    const playWidgets = play?.widgets || {};
+    const resourcePreviewEnabled = safe(mainWidgets?.resourcePreview?.enabled) || safe(generic?.resourcePreview?.enabled) || safe(playWidgets?.resourcePreview?.enabled) || safe(mainWidgets?.resourcePreview) || safe(generic?.resourcePreview) || safe(playWidgets?.resourcePreview);
+    const codeRunnerEnabled = safe(mainWidgets?.codeRunner?.enabled) || safe(generic?.codeRunner?.enabled) || safe(playWidgets?.codeRunner?.enabled) || safe(mainWidgets?.codeRunner) || safe(generic?.codeRunner) || safe(playWidgets?.codeRunner);
+    return { resourcePreviewEnabled, codeRunnerEnabled };
+  }catch{}
+  return { resourcePreviewEnabled: false, codeRunnerEnabled: false };
 }
 
 function loadLayout(){
@@ -271,7 +295,8 @@ function loadLayout(){
     const raw = localStorage.getItem('mainGame:layout');
     if (raw) return JSON.parse(raw);
   }catch{}
-  return { order: ['header','gameChat','nextBar','playerChat','widgets','character'] };
+  // Default order excludes optional 'widgets' section; it will be added only when explicitly enabled
+  return { order: ['header','gameChat','nextBar','playerChat','character'] };
 }
 function saveLayout(layout){
   try{ localStorage.setItem('mainGame:layout', JSON.stringify(layout)); }catch{}

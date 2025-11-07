@@ -7,11 +7,14 @@ import { GameRuntimeProvider, useGameRuntime } from '@/components/game/GameRunti
 
 const MainGameMobileUI = dynamic(() => import('@/components/game/MainGameMobileUI.jsx'), { ssr: false });
 
-function HooksLoader({ text }){
-  // Very small sandbox: expose only an exports object
+function HooksLoader({ text, enabled = false }){
+  // Inline code execution is disabled by default. Only allow when explicitly enabled via config.
+  // NOTE: This path is for local dev only. For production, prefer sandboxed execution (Web Worker / iframe with sandbox) with RPC.
   return useMemo(() => {
+    if (!enabled) return {};
     try {
       const src = String(text||'');
+      // UNSAFE: new Function — kept behind a config flag for local dev. Do NOT enable in production.
       const factory = new Function('exports', `${src}; return exports;`);
       const out = factory({});
       const allowed = ['onTurnStart','onUserAction','transformPrompt','selectNext'];
@@ -21,7 +24,7 @@ function HooksLoader({ text }){
     } catch (e) {
       return {};
     }
-  }, [text]);
+  }, [text, enabled]);
 }
 
 function RuntimeControls(){
@@ -47,7 +50,7 @@ function DevGraphRunner(){
   const graph = useMemo(() => { try { return JSON.parse(String(files?.['/graph/prompt-graph.json']?.content || '{"nodes":[],"edges":[]}')); } catch { return { nodes:[], edges:[] }; } }, [files]);
   const cfg = useMemo(() => { try { return JSON.parse(String(files?.['/game/runtime.config.json']?.content || '{}')); } catch { return {}; } }, [files]);
   const hooksText = String(files?.['/game/hooks/automation.js']?.content || '');
-  const hooks = HooksLoader({ text: hooksText });
+  const hooks = HooksLoader({ text: hooksText, enabled: !!(cfg?.sandbox?.allowInlineHooks === true) });
   const api = useGameRuntime();
   const [started, setStarted] = useState(false);
 
