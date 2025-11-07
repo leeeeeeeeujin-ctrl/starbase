@@ -20,7 +20,6 @@ import AutoUpdateListener from '../../infra/AutoUpdateListener.jsx';
 const ImageToUIGenerator = dynamic(() => import('../ui/ImageToUIGenerator'), { ssr: false });
 const MainGameMobileUI = dynamic(() => import('../../game/MainGameMobileUI.jsx'), { ssr: false });
 import { applyMainUiPresetObject, getMainUiModules } from '../../../utils/uiPresets';
-import DeleteSetDialog from '../home/DeleteSetDialog';
 import { promptSetsRepository } from '../../../lib/maker/promptSets';
 
 export default function MakerEditor() {
@@ -61,45 +60,6 @@ export default function MakerEditor() {
     } catch {}
   }, []);
 
-  const openDeleteDialog = useCallback(() => {
-    setDeleteDialog({ open: true, busy: false, error: '', errorDetails: '' });
-  }, []);
-
-  const confirmDelete = useCallback(async () => {
-    if (!setInfo?.id) { setDeleteDialog({ open:false, busy:false, error:'', errorDetails:'' }); return; }
-    setDeleteDialog(prev => ({ ...prev, busy: true, error: '', errorDetails: '' }));
-    try {
-      const res = await promptSetsRepository.remove(setInfo.id);
-      if (res && res.ok === false) throw res.error || new Error('세트를 삭제하지 못했습니다.');
-      if (res && res.error) throw res.error;
-      try { if (typeof window !== 'undefined') window.location.assign('/maker'); } catch {}
-    } catch (err) {
-      const now = new Date();
-      const ts = isNaN(now.getTime()) ? '' : now.toISOString();
-      const errName = err && err.name ? String(err.name) : '';
-      const errMsg = err instanceof Error ? err.message : String(err);
-      const errStack = err && err.stack ? String(err.stack) : '';
-      const route = typeof window !== 'undefined' ? (window.location?.pathname || '') : '';
-      const ua = typeof navigator !== 'undefined' ? (navigator.userAgent || '') : '';
-      const details = [
-        `action: deleteSet`,
-        `timestamp: ${ts}`,
-        route ? `route: ${route}` : '',
-        `setId: ${String(setInfo?.id || '')}`,
-        `setName: ${String(setInfo?.name || '')}`,
-        ua ? `userAgent: ${ua}` : '',
-        errName ? `error.name: ${errName}` : '',
-        errMsg ? `error.message: ${errMsg}` : '',
-        errStack ? `error.stack:\n${errStack}` : '',
-      ].filter(Boolean).join('\n');
-      const msg = errMsg || '세트를 삭제하지 못했습니다.';
-      setDeleteDialog(prev => ({ ...prev, busy:false, error: msg, errorDetails: details }));
-    }
-  }, [setInfo]);
-
-  const cancelDelete = useCallback(() => {
-    setDeleteDialog({ open:false, busy:false, error:'', errorDetails:'' });
-  }, []);
 
   const {
     nodes,
@@ -303,7 +263,6 @@ export default function MakerEditor() {
   const [showResourceEditor, setShowResourceEditor] = useState(false);
   const [showUiSettings, setShowUiSettings] = useState(false);
   const [showPlayOverlay, setShowPlayOverlay] = useState(false);
-  const [deleteDialog, setDeleteDialog] = useState({ open: false, busy: false, error: '', errorDetails: '' });
   // Lock background scroll when code editor overlay is open
   useEffect(() => {
     try {
@@ -704,7 +663,7 @@ export default function MakerEditor() {
         onOpenCode={() => { try { if (typeof window !== 'undefined') window.__INLINE_CODE_IN_PANEL__ = true; } catch {}; setShowMultiLanguageEditor(true); }}
         onOpenTemplate={() => setShowTemplateLibrary(true)}
         onOpenUiSettings={() => setShowUiSettings(true)}
-        onOpenDelete={openDeleteDialog}
+        
         onOpenResource={() => setShowResourceEditor(true)}
           onCreateWithAI={handleCreateWithAI}
           onOpenCodeEditor={openCodeEditor}
@@ -1182,15 +1141,7 @@ export default function MakerEditor() {
           </div>
         </div>
       )}
-      <DeleteSetDialog
-        open={deleteDialog.open}
-        setName={setInfo?.name || ''}
-        busy={deleteDialog.busy}
-        error={deleteDialog.error}
-        errorDetails={deleteDialog.errorDetails}
-        onConfirm={confirmDelete}
-        onCancel={cancelDelete}
-      />
+      
     </div>
   );
 }
