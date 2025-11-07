@@ -302,15 +302,24 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
       const { data } = await supabase.auth.getSession();
       const token = data?.session?.access_token || null;
       if (!token) throw new Error('로그인이 필요합니다.');
+      // System contract: strict schema, separation of chat vs work, and project-specific guidance
       const sys = [
         '당신은 파일 시스템 편집 에이전트입니다.',
         '파일 목록과 일부 내용이 제공됩니다.',
         '반드시 JSON으로만 응답하세요(코드펜스/마크다운 금지).',
-        '스키마: { "message?": string, "actions?": [ {"type":"create|write|delete|rename", "path":"/path", "content?":"string", "from?":"/old", "to?":"/new"} ] }',
-        'message에는 자연어 설명/논의를 담고, 편집이 필요하면 actions를 채워주세요.',
-        'UI PREVIEWS 섹션이 제공될 수 있습니다. 각 항목은 이미지 크기(image), 선택 영역(region: 정규화 좌표), 팔레트, ASCII 요약, 코멘트를 포함합니다.',
-        '사용자가 UI 생성/편집을 요청했다면, /template.json 또는 /graph/prompt-graph.json 수정에 필요한 actions를 생성하세요.',
-        '정보가 충분하지 않다면 message로 부족한 점을 설명하고, 필요한 스냅샷/영역/컴포넌트 명세를 요청하세요(이 경우 actions는 비워두세요).'
+        '스키마 v2: {',
+        '  "mode": "chat" | "work",',
+        '  "message?": string,',
+        '  "questions?": string[],',
+        '  "actions?": [ {"type":"create|write|delete|rename", "path":"/path", "content?":"string", "from?":"/old", "to?":"/new"} ]',
+        '}',
+        '- chat 모드: 정보가 부족하거나 우선 질의가 필요하면 questions 배열로 물어보고, actions는 비웁니다.',
+        '- work 모드: 편집이 확정되면 actions를 채우고 message는 간결 요약만 포함하세요. 수다/해설을 actions 안에 넣지 마세요.',
+        '- 항상 프로젝트 안전수칙을 준수: 외부 URL 이미지는 제안하지 말 것, 이미지 포맷은 .webp 만 사용, 서버/비밀키/토큰을 추출하거나 하드코딩하지 말 것.',
+        '- 경로는 워크스페이스 내부만: /template.json, /graph/**, /game/**, /components/**, /pages/**, /styles/** 등. 루트 밖이나 시스템 경로 금지.',
+        '- UI PREVIEWS 섹션이 있을 수 있습니다. 각 항목은 이미지 크기(image), 선택 영역(region: 정규화 좌표), 팔레트, ASCII 요약, 코멘트를 포함합니다.',
+        '- 사용자가 UI 생성/편집을 요청했다면, template.json의 UI 설정 또는 graph/prompt-graph.json에 필요한 변경을 actions로 제안하세요.',
+        '- 형식/변수 가이드: 캐릭터 슬롯, 이름/설명/역할 등 게임 변수는 GAME CONTEXT SUMMARY를 참고하여 누락 시 questions로 요청하세요.'
       ].join('\n');
       const fileMeta = files[activePath];
 
@@ -375,6 +384,32 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
         : (contentRaw.length > MAX_INLINE
             ? (contentRaw.slice(0, Math.floor(MAX_INLINE*0.6)) + '\n…\n/* …중략… */\n' + contentRaw.slice(-Math.floor(MAX_INLINE*0.35)))
             : contentRaw);
+      // Derived context: include richer graph and game summaries for better read comprehension
+      const templateObj = (()=>{ try { return JSON.parse(getTemplateText()||'{}'); } catch { return {}; } })();
+      const readCharacters = () => {
+        try {
+          const arr = Array.isArray(templateObj?.characters) ? templateObj.characters : [];
+          return arr.slice(0, 12).map(c => ({
+            id: c.id || c.key || c.name || null,
+            name: c.name || null,
+            slot: c.slot || c.role || null,
+            desc: c.description || c.desc || null,
+            tags: Array.isArray(c.tags)? c.tags.slice(0,8) : undefined
+          }));
+        } catch { return []; }
+      };
+      const readGraphSummary = () => {
+        try {
+          const nodes = Array.isArray(graphObj?.nodes) ? graphObj.nodes : [];
+          return nodes.slice(0, 24).map(n => ({ id:n.id, label:n.label, type:n.type, slot:n.slot, hidden:!!n.hidden }));
+        } catch { return []; }
+      };
+      const gameContextSummary = {
+        runtime: { model: runtimeCfg?.ai?.model || null, entryNode: runtimeCfg?.entryNode || null, roles: runtimeCfg?.roles || null },
+        graph: { nodes: Array.isArray(graphObj?.nodes) ? graphObj.nodes.length : 0, edges: Array.isArray(graphObj?.edges) ? graphObj.edges.length : 0, sample: readGraphSummary() },
+        variables: { player: ctxPlayer ? Object.keys(ctxPlayer) : [], owner: ctxOwner ? Object.keys(ctxOwner) : [] },
+        characters: readCharacters()
+      };
       const context = {
         activePath,
         files: listFiles().slice(0, 200),
@@ -405,7 +440,8 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
         return `- ${p}\n${c}`;
       }).join('\n\n');
   const uiBlock = (previewsForThisSend||[]).length ? `\n\n### UI PREVIEWS\n${JSON.stringify(previewsForThisSend.map(p=>({ id:p.id, comment:p.comment, image:{ w:p.imageW, h:p.imageH }, region:{ x:p.region.x, y:p.region.y, w:p.region.w, h:p.region.h, normalized:true }, palette:p.palette||[], ascii:p.ascii||'' })), null, 2)}` : '';
-  const prompt = `${sys}\n\n### CONTEXT\n${JSON.stringify(context)}\n\n### ACTIVE_FILE\nPATH: ${activePath}\nCONTENT:\n${content || '(빈 파일)'}\n\n${extraAttach.length>0?`### ADDITIONAL_FILES\n${extra}`:''}${uiBlock}\n\n### HISTORY (최근)\n${historyText}\n\n### USER\n${input}`;
+  const gameBlock = `\n\n### GAME CONTEXT SUMMARY\n${JSON.stringify(gameContextSummary, null, 2)}\n\n### PROMPT WRITING HINTS\n- 캐릭터/슬롯/변수가 부족하면 questions로 먼저 물어보세요.\n- UI 변경은 가능한 한 template.json의 ui.* 섹션 또는 prompt-graph.json의 nodes/edges로 반영하세요.\n- 코드 편집은 최소 범위만 제안하고, 생성 파일은 루트 하위 폴더에 위치시키세요.\n- 이미지/미디어는 .webp만 사용하고 URL 경로 제안은 금지됩니다.`;
+  const prompt = `${sys}\n\n### CONTEXT\n${JSON.stringify(context)}\n${gameBlock}\n\n### ACTIVE_FILE\nPATH: ${activePath}\nCONTENT:\n${content || '(빈 파일)'}\n\n${extraAttach.length>0?`### ADDITIONAL_FILES\n${extra}`:''}${uiBlock}\n\n### HISTORY (최근)\n${historyText}\n\n### USER\n${input}`;
       append('user', input);
       setInput('');
       const res = await fetch('/api/ai/gemini', {
@@ -420,10 +456,16 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
       let plan = null; let applied = 0; let parsed = false;
       try { plan = JSON.parse(raw); parsed = true; } catch {}
       if (parsed && plan) {
+        // Show questions proactively to keep chat vs work separated
+        if (Array.isArray(plan.questions) && plan.questions.length > 0) {
+          append('assistant', `질문:\n- ${plan.questions.map(q=>String(q)).join('\n- ')}`);
+        }
+        // Respect explicit mode if provided
+        const mode = (plan.mode === 'work' || plan.mode === 'chat') ? plan.mode : (Array.isArray(plan.actions) && plan.actions.length>0 ? 'work' : 'chat');
         if (typeof plan.message === 'string' && plan.message.trim().length > 0) {
           append('assistant', plan.message.trim());
         }
-        if (Array.isArray(plan.actions) && plan.actions.length > 0) {
+        if (mode === 'work' && Array.isArray(plan.actions) && plan.actions.length > 0) {
           // Hold changes for preview instead of immediate apply
           const summary = summarizePlan(plan);
           const filePreviews = buildPlanFilePreviews(plan);
