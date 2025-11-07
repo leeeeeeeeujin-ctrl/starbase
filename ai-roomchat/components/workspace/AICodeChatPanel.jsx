@@ -18,9 +18,6 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
   const [contextOpen, setContextOpen] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showImageUi, setShowImageUi] = useState(false);
-  const [imageUiPrompt, setImageUiPrompt] = useState('');
-  const [imageUiBusy, setImageUiBusy] = useState(false);
-  const [imageUiError, setImageUiError] = useState('');
   const [isFullscreenUi, setIsFullscreenUi] = useState(false);
   const rootRef = useRef(null);
   const historyRef = useRef(null);
@@ -232,29 +229,6 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
       append('error', 'UI 적용 실패: ' + String(e?.message||e));
     }
   };
-  const generateImageUi = async () => {
-    setImageUiBusy(true); setImageUiError('');
-    try {
-      const obj = JSON.parse(getTemplateText() || '{}');
-      const bg = Array.isArray(obj?.resources?.backgrounds) ? obj.resources.backgrounds : [];
-      const id = `bg_${Math.random().toString(36).slice(2,8)}`;
-      const next = {
-        ...obj,
-        ui: {
-          ...(obj.ui||{}),
-          main: {
-            modules: getMainUiModules(),
-          }
-        },
-        resources: { ...(obj.resources||{}), backgrounds: [...bg, { id, name: imageUiName || (imageUiPrompt || 'Generated'), image: imageUiUrl || '' }] }
-      };
-      setTemplateText(JSON.stringify(next, null, 2));
-      setShowImageUi(false); setImageUiPrompt('');
-      append('assistant', '배경 리소스를 추가하고 기본 UI 모듈을 적용했습니다.');
-    } catch (e) {
-      setImageUiError(String(e?.message||e));
-    } finally { setImageUiBusy(false); }
-  };
   const stripFences = (s) => String(s||'').replace(/^```(?:json)?/i,'').replace(/```$/i,'').trim();
   const applyActions = (plan) => {
     const actions = Array.isArray(plan?.actions) ? plan.actions : [];
@@ -455,9 +429,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
   const tokenDevice = getTokenInfo('prompt-editor:deviceToken');
   const tokenSigning = getTokenInfo('prompt-editor:signingSecret');
 
-  // Image UI: name/url fields
-  const [imageUiName, setImageUiName] = useState('');
-  const [imageUiUrl, setImageUiUrl] = useState('');
+  // (removed) URL 기반 이미지 추가는 지원하지 않습니다. AI 첨부 기반으로만 동작합니다.
 
   return (
   <div ref={rootRef} style={{ height:'100%', border:'1px solid #334155', background:'#0b1220', borderRadius:12, overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 24px 64px rgba(0,0,0,0.6)' }}>
@@ -640,16 +612,9 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
                 <div style={{ fontSize:12, color:'#cbd5e1' }}>빠른 작업</div>
                 <button onClick={()=>{ applyMainUiPreset(); }} style={{ padding:'8px 10px', borderRadius:8, border:'1px solid #2563eb', background:'#1d4ed8', color:'#fff' }}>메인 프리셋 적용</button>
               </div>
-              <div style={{ height:1, background:'rgba(51,65,85,0.6)' }} />
-              <div style={{ display:'grid', gap:6 }}>
-                <div style={{ fontSize:12, color:'#cbd5e1' }}>배경 이미지 추가</div>
-                <label style={{ fontSize:12, color:'#cbd5e1' }}>이미지 이름</label>
-                <input value={imageUiName} onChange={e=> setImageUiName(e.target.value)} placeholder="예: 배경-바다" style={{ width:'100%', padding:8, borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }} />
-                <label style={{ fontSize:12, color:'#cbd5e1' }}>이미지 URL</label>
-                <input value={imageUiUrl} onChange={e=> setImageUiUrl(e.target.value)} placeholder="https://..." style={{ width:'100%', padding:8, borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }} />
-                <button disabled={imageUiBusy} onClick={generateImageUi} style={{ padding:'8px 10px', borderRadius:8, border:'1px solid #10b981', background:'#065f46', color:'#d1fae5' }}>{imageUiBusy?'추가 중…':'배경 추가'}</button>
-                {imageUiError && <div style={{ color:'#fca5a5', fontSize:12 }}>{imageUiError}</div>}
-                <div style={{ fontSize:11, color:'#94a3b8' }}>팁: 배경 이미지를 추가하면 기본 UI 모듈이 없을 경우 자동으로 적용됩니다.</div>
+              <div style={{ fontSize:11, color:'#94a3b8' }}>
+                이미지 URL 입력은 제거되었습니다. 코드 에디터의 AI 채팅에서 이미지를 첨부하면,
+                UI 설정의 토글(ai.imageToUi.enabled)이 활성인 경우 시스템이 이미지를 참고해 UI를 구성합니다.
               </div>
             </div>
           </div>
