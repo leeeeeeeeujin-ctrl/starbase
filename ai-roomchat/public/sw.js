@@ -362,11 +362,13 @@ async function handleStaticRequest(request) {
   try {
     const response = await fetch(request);
 
-    // Only cache full successful responses (200). 206 is unsupported by Cache.put
-    if (response && response.status === 200) {
-      try { await cache.put(request, response.clone()); } catch (e) { /* ignore cache put errors */ }
+    // Guard against partial/opaque responses
+    const status = response ? response.status : 0;
+    const isPartial = status === 206 || (response && response.headers && response.headers.get('content-range'));
+    const isOpaque = response && response.type === 'opaque';
+    if (response && status === 200 && !isPartial && !isOpaque) {
+      try { await cache.put(request, response.clone()); } catch (e) { /* cache put might fail silently */ }
     }
-
     return response;
   } catch (error) {
     // 오프라인 시 오프라인 페이지 반환
@@ -430,14 +432,28 @@ async function syncGameData() {
 
 // 헬퍼 함수들
 async function generateCacheKey(request) {
-  const body = request.method === 'POST' ? await request.clone().text() : '';
+  let body = '';
+  if (request.method === 'POST') {
+    try {
+      // If body already consumed, skip cloning; use empty string as part of key.
+      if (!request.bodyUsed) {
+        body = await request.clone().text();
+      }
+    } catch (e) {
+      body = ''; // fallback
+    }
+  }
   const keyString = request.url + request.method + body;
-
-  const msgBuffer = new TextEncoder().encode(keyString);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  try {
+    const msgBuffer = new TextEncoder().encode(keyString);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch {
+    // Fallback: simple string hash
+    let h = 0; for (let i=0;i<keyString.length;i++){ h = ((h<<5)-h) + keyString.charCodeAt(i); h|=0; }
+    return 'F'+(h>>>0).toString(16);
+  }
 }
 
 async function cacheAIResponse(key, data) {
