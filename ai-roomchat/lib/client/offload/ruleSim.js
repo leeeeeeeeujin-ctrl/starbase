@@ -5,6 +5,7 @@
 import { detectCapabilities } from '@/lib/client/capabilities/detect';
 import { ensureSandbox, runRuleSimInSandbox } from '@/lib/client/sandbox/iframeSandbox';
 import { runRuleSimInWorker } from '@/lib/client/sandbox/workerRunner';
+import { recordRun, recordSkip } from '@/lib/client/offload/metrics';
 
 const MAX_UNITS = 400; // heuristic guard
 const MAX_EST_COST = 150000; // arbitrary compute budget units
@@ -17,14 +18,19 @@ function estimateCost(units) {
 export async function simulateMatchLocally(state, opts = {}) {
   const caps = await detectCapabilities();
   const deviceTier = caps.deviceTier;
-  if (deviceTier === 'low') return { simulated: false, reason: 'low_tier' };
+  if (deviceTier === 'low') {
+    recordSkip('low_tier');
+    return { simulated: false, reason: 'low_tier' };
+  }
 
   const units = Array.isArray(state?.units) ? state.units : [];
   if (units.length > MAX_UNITS) {
+    recordSkip('unit_limit');
     return { simulated: false, reason: 'over_budget', units: units.length, maxUnits: MAX_UNITS };
   }
   const est = estimateCost(units);
   if (est > MAX_EST_COST) {
+    recordSkip('est_cost');
     return { simulated: false, reason: 'over_budget', estimate: est, maxEstimate: MAX_EST_COST };
   }
 
@@ -35,13 +41,17 @@ export async function simulateMatchLocally(state, opts = {}) {
     try {
       const sandboxResult = await runRuleSimInSandbox(state, { timeout: opts.timeout || 1800 });
       const t1 = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
-      return { ...sandboxResult, simulated: true, deviceTier, method: 'sandbox', durationMs: Math.round(t1 - t0) };
+  const durationMs = Math.round(t1 - t0);
+  recordRun({ method: 'sandbox', durationMs });
+  return { ...sandboxResult, simulated: true, deviceTier, method: 'sandbox', durationMs };
     } catch (e) {
       // Try worker fallback before inline
       try {
         const workerResult = await runRuleSimInWorker(state, { timeout: opts.timeout || 1800 });
         const t1 = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
-        return { ...workerResult, simulated: true, deviceTier, method: 'worker', durationMs: Math.round(t1 - t0) };
+  const durationMs = Math.round(t1 - t0);
+  recordRun({ method: 'worker', durationMs });
+  return { ...workerResult, simulated: true, deviceTier, method: 'worker', durationMs };
       } catch (e2) {
         // continue to inline below
       }
@@ -61,7 +71,10 @@ export async function simulateMatchLocally(state, opts = {}) {
     }
     const winner = scoreA === scoreB ? 'draw' : (scoreA > scoreB ? 'A' : 'B');
     const t1 = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
-    return { simulated: true, winner, scoreA: Math.round(scoreA), scoreB: Math.round(scoreB), deviceTier, method: useSandbox ? 'fallback-inline' : 'inline', durationMs: Math.round(t1 - t0) };
+  const method = useSandbox ? 'fallback-inline' : 'inline';
+  const durationMs = Math.round(t1 - t0);
+  recordRun({ method: method === 'fallback-inline' ? 'inline' : method, durationMs });
+  return { simulated: true, winner, scoreA: Math.round(scoreA), scoreB: Math.round(scoreB), deviceTier, method, durationMs };
   } catch (e) {
     return { simulated: false, error: e.message };
   }
