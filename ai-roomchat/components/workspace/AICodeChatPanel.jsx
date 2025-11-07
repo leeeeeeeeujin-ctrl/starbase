@@ -382,19 +382,20 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
       if (!token) throw new Error('로그인이 필요합니다.');
       // System contract: strict schema, separation of chat vs work, and project-specific guidance
       const sys = [
-        '당신은 파일 시스템 편집 에이전트입니다.',
-        '파일 목록과 일부 내용이 제공됩니다.',
+        '당신은 파일 시스템 편집 + 읽기 에이전트입니다.',
+        '파일 목록과 일부 내용이 제공되며, 필요하면 read 액션을 통해 추가 파일 내용을 요청할 수 있습니다.',
         '반드시 JSON으로만 응답하세요(코드펜스/마크다운 금지).',
         '스키마 v3: {',
         '  "mode": "chat" | "work",',
         '  "message?": string,',
         '  "questions?": string[],',
-        '  "actions?": [ {"type":"create|write|delete|rename", "path":"/path", "content?":"string", "from?":"/old", "to?":"/new"} ],',
+        '  "actions?": [ {"type":"create|write|delete|rename|read", "path":"/path", "content?":"string", "from?":"/old", "to?":"/new"} ],',
         '  "steps?": [ { "mode": "chat|work", "message?": string, "actions?": [ ...same as above ] } ],',
         '  "autoContinue?": boolean,',
         '  "followup?": string',
         '}',
         '- chat 모드: 정보가 부족하거나 우선 질의가 필요하면 questions 배열로 물어보고, actions는 비웁니다.',
+        '- read 액션: 최대 8개 파일까지 요청 가능. 너무 크거나(>120KB) 바이너리 추정 파일은 잘립니다. read 이후 후속 편집이 확정되면 work 모드로 actions(create/write 등)을 제안하세요.',
         '- work 모드: 편집이 확정되면 actions를 채우고 message는 간결 요약만 포함하세요. 수다/해설을 actions 안에 넣지 마세요.',
         '- 여러 작업을 이어서 수행해야 한다면 steps 배열로 묶어서 한 번에 제시하세요. 꼭 필요한 경우에만 질문을 하되, 가능하면 스스로 다음 작업을 이어가세요.',
         '',
@@ -544,6 +545,8 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
       const raw = stripFences(text);
       let plan = null; let applied = 0; let parsed = false;
       try { plan = JSON.parse(raw); parsed = true; } catch {}
+      // Helper for inline body truncation (shared by read responses)
+      const mkBodyLocal = (txt) => (txt.length > MAX_INLINE ? (txt.slice(0, Math.floor(MAX_INLINE*0.6)) + '\n…\n/* …중략… */\n' + txt.slice(-Math.floor(MAX_INLINE*0.35))) : txt);
       if (parsed && plan) {
         // Show questions proactively to keep chat vs work separated
         if (Array.isArray(plan.questions) && plan.questions.length > 0) {
@@ -556,10 +559,42 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
         }
         // Aggregate actions from top-level and steps
         const allActions = collectActionsFromSteps(plan);
-        if (mode === 'work' && Array.isArray(allActions) && allActions.length > 0) {
+        // Separate read actions (non-destructive introspection)
+        const readActions = allActions.filter(a => a?.type === 'read');
+        const nonReadActions = allActions.filter(a => a?.type !== 'read');
+        if (readActions.length > 0) {
+          // Guard: limit number & path safety
+          const MAX_READ = 8;
+          const safeReads = readActions.slice(0, MAX_READ).filter(a => {
+            if (!a?.path || typeof a.path !== 'string') return false;
+            // Reuse prefixes from isSafeAction (light copy to avoid circular usage before definition)
+            const allowedPrefixes = ['/template.json', '/graph/', '/game/', '/components/', '/pages/', '/styles/', '/utils/', '/lib/', '/hooks/', '/services/', '/contexts/', '/context/', '/modules/'];
+            return allowedPrefixes.some(pref => a.path === pref || a.path.startsWith(pref));
+          });
+          const readReport = safeReads.map(r => {
+            const meta = files[r.path];
+            if (!meta) return { path: r.path, exists:false, content:'(파일 없음)' };
+            const raw = String(meta.content || '');
+            const truncated = raw.length > 120000; // 120KB cap for raw
+            return { path: r.path, exists:true, size: raw.length, truncated, body: mkBodyLocal(raw) };
+          });
+          // Append as assistant message (structured summary)
+          try {
+            append('assistant', '파일 읽기 결과:\n' + readReport.map(r => `- ${r.path} (${r.exists? r.size+' chars' : '없음'}${r.truncated? ', truncated':''})`).join('\n'));
+          } catch {}
+          // Provide bodies in a follow-up compact block (could be large; keep under limit by slicing)
+          readReport.forEach(r => {
+            try {
+              if (r.exists) {
+                append('assistant', `내용(${r.path}):\n${r.body}`);
+              }
+            } catch {}
+          });
+        }
+        if (mode === 'work' && Array.isArray(nonReadActions) && nonReadActions.length > 0) {
           if (autoApply) {
             // Trusted mode: apply within guardrails, else fall back to preview
-            const { applied:ap, safe } = applyActionsSafely(allActions);
+            const { applied:ap, safe } = applyActionsSafely(nonReadActions);
             if (safe) {
               append('assistant', `자동 적용 완료: ${ap}건`);
               // Auto-continue if requested and under iteration cap
@@ -571,7 +606,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
                 autoIterRef.current = 0;
               }
             } else {
-              const hold = { actions: allActions };
+              const hold = { actions: nonReadActions };
               const summary = summarizePlan(hold);
               const filePreviews = buildPlanFilePreviews(hold);
               setPendingPlan(hold);
@@ -581,7 +616,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
             }
           } else {
             // Hold changes for preview instead of immediate apply
-            const hold = { actions: allActions };
+            const hold = { actions: nonReadActions };
             const summary = summarizePlan(hold);
             const filePreviews = buildPlanFilePreviews(hold);
             setPendingPlan(hold);
@@ -766,7 +801,35 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
               </label>
               <label style={{ display:'grid', gap:4, fontSize:12, color:'#cbd5e1' }}>
                 반복 횟수(최대 10)
-                <input type="number" min={1} max={10} value={autoLimit} onChange={e=>setAutoLimit(Math.max(1, Math.min(10, parseInt(e.target.value||'1'))))} style={{ padding:'4px 6px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }} />
+                <input
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={autoLimit === 0 ? '' : String(autoLimit)}
+                  onChange={e=>{
+                    const raw = e.target.value;
+                    if (raw === '' || raw === '0') { setAutoLimit(0); return; }
+                    const v = parseInt(raw,10);
+                    if (!Number.isNaN(v)) setAutoLimit(v);
+                  }}
+                  onBlur={()=>{
+                    setAutoLimit(v => {
+                      if (!v || v < 1) return 1;
+                      if (v > 10) return 10;
+                      return v;
+                    });
+                  }}
+                  onKeyDown={(e)=>{
+                    if (e.key === 'Enter') {
+                      setAutoLimit(v => {
+                        if (!v || v < 1) return 1;
+                        if (v > 10) return 10;
+                        return v;
+                      });
+                      e.currentTarget.blur();
+                    }
+                  }}
+                  style={{ padding:'4px 6px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }} />
               </label>
               <div style={{ fontSize:11, color:'#94a3b8' }}>안전 제한 초과 시 자동 적용 대신 미리보기로 전환됩니다.</div>
             </div>
@@ -991,7 +1054,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
         <div style={{ position:'relative' }}>
           <button onClick={()=>setAttachPickerOpen(v=>!v)} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>파일 추가</button>
           {attachPickerOpen && (
-            <div style={{ position:'absolute', right:0, top:'100%', marginTop:6, zIndex:40, width:320, maxHeight:260, overflow:'auto', background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6 }}>
+            <div style={{ position:'absolute', right:0, bottom:'100%', marginBottom:6, zIndex:40, width:340, maxHeight:300, overflow:'auto', background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, boxShadow:'0 12px 32px rgba(0,0,0,0.6)' }}>
               {Object.keys(files).sort().map(p => (
                 <label key={p} style={{ display:'flex', alignItems:'center', gap:8, padding:'4px 6px', color:'#e2e8f0', fontSize:12 }}>
                   <input type="checkbox" checked={extraAttach.includes(p)} onChange={e=>{

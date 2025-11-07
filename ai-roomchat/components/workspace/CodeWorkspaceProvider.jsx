@@ -178,6 +178,8 @@ export function CodeWorkspaceProvider({ children }) {
   const [openPaths, setOpenPaths] = useState(["/template.json"]);
   const [entryPath, setEntryPath] = useState("/template.json");
   const [dirty, setDirty] = useState({}); // { [path]: true }
+  // Track last saved content signature to avoid marking unchanged files dirty just by opening
+  const [savedSig, setSavedSig] = useState({}); // { [path]: string(hash) }
 
   useEffect(() => {
     try {
@@ -204,7 +206,8 @@ export function CodeWorkspaceProvider({ children }) {
         setActivePath(parsed.activePath || "/template.json");
         setOpenPaths(parsed.openPaths || ["/template.json"]);
         setEntryPath(parsed.entryPath || "/template.json");
-        setDirty(parsed.dirty || {});
+  setDirty(parsed.dirty || {});
+  setSavedSig(parsed.savedSig || {});
       } else {
         setFiles(defaultFiles);
       }
@@ -217,7 +220,7 @@ export function CodeWorkspaceProvider({ children }) {
     try {
       localStorage.setItem(
         KEY,
-        JSON.stringify({ files, root, activePath, openPaths, entryPath, dirty })
+  JSON.stringify({ files, root, activePath, openPaths, entryPath, dirty, savedSig })
       );
     } catch {}
   }, [files, root, activePath, openPaths, entryPath, dirty]);
@@ -259,13 +262,36 @@ export function CodeWorkspaceProvider({ children }) {
       openPaths,
       entryPath,
       dirty,
-      isDirty: (path) => !!dirty[path],
-      saveFile: (path) => setDirty((m) => ({ ...m, [path]: false })),
-      saveAll: () => setDirty((m) => {
-        const next = { ...m };
-        Object.keys(next).forEach((k) => { next[k] = false; });
-        return next;
-      }),
+      isDirty: (path) => {
+        // If a file exists and we have a saved signature, compare; if identical, not dirty
+        const meta = files[path];
+        if (!meta) return false;
+        const cur = typeof meta.content === 'string' ? meta.content : '';
+        const sig = savedSig[path];
+        if (sig && sig === stableHash(cur)) return false;
+        return !!dirty[path];
+      },
+      saveFile: (path) => {
+        const meta = files[path];
+        const cur = typeof meta?.content === 'string' ? meta.content : '';
+        setSavedSig((m) => ({ ...m, [path]: stableHash(cur) }));
+        setDirty((m) => ({ ...m, [path]: false }));
+      },
+      saveAll: () => {
+        setSavedSig((m) => {
+          const next = { ...m };
+          Object.entries(files).forEach(([p, meta]) => {
+            const cur = typeof meta?.content === 'string' ? meta.content : '';
+            next[p] = stableHash(cur);
+          });
+          return next;
+        });
+        setDirty((m) => {
+          const next = { ...m };
+          Object.keys(next).forEach((k) => { next[k] = false; });
+          return next;
+        });
+      },
       setEntryPath,
       setRoot,
       isDir,
@@ -326,7 +352,15 @@ export function CodeWorkspaceProvider({ children }) {
             next[path] = entry;
           }
           // mark dirty on write
-          queueMicrotask(() => setDirty((d) => ({ ...d, [path]: true })));
+          queueMicrotask(() => {
+            // Mark dirty only if content differs from last saved signature
+            const metaNext = next[path];
+            const curContent = typeof metaNext?.content === 'string' ? metaNext.content : '';
+            const sig = savedSig[path];
+            if (!sig || sig !== stableHash(curContent)) {
+              setDirty((d) => ({ ...d, [path]: true }));
+            }
+          });
           return next;
         }),
       rename: (oldPath, newPath) => {
@@ -342,6 +376,10 @@ export function CodeWorkspaceProvider({ children }) {
           const { [oldPath]: _drop, ...rest } = d || {};
           return { ...rest, [newPath]: d?.[oldPath] || false };
         });
+        setSavedSig((s) => {
+          const { [oldPath]: sigOld, ...rest } = s || {};
+          return { ...rest, [newPath]: sigOld };
+        });
       },
       remove: (path) => {
         setFiles((m) => {
@@ -355,9 +393,21 @@ export function CodeWorkspaceProvider({ children }) {
           const { [path]: _drop, ...rest } = d || {};
           return rest;
         });
+        setSavedSig((s) => {
+          const { [path]: _drop, ...rest } = s || {};
+          return rest;
+        });
       },
     };
-  }, [files, root, activePath, openPaths, entryPath]);
+  }, [files, root, activePath, openPaths, entryPath, savedSig]);
+
+  // Simple stable hash (djb2) for content
+  function stableHash(str){
+    try {
+      let h = 5381; for (let i=0;i<str.length;i++){ h = ((h<<5)+h) + str.charCodeAt(i); }
+      return 'h'+(h>>>0).toString(16);
+    } catch { return 'h0'; }
+  }
 
   return (
     <WorkspaceCtx.Provider value={api}>{children}</WorkspaceCtx.Provider>
