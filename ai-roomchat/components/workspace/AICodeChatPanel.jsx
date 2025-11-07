@@ -264,6 +264,93 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
     });
   };
   const listFiles = () => Object.keys(files).sort().map(p => ({ path: p, size: (files[p]?.content||'').length, dir: !!files[p]?.dir }));
+  // Upload helpers
+  const fileToBase64 = (file) => new Promise((resolve, reject) => {
+    try {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    } catch (e) { reject(e); }
+  });
+  const arrayBufferToBase64 = (buf) => {
+    let binary = '';
+    const bytes = new Uint8Array(buf);
+    for (let i=0;i<bytes.byteLength;i++) binary += String.fromCharCode(bytes[i]);
+    return btoa(binary);
+  };
+  const readAsArrayBufferB64 = (file) => new Promise((resolve, reject) => {
+    try {
+      const reader = new FileReader();
+      reader.onload = () => resolve(arrayBufferToBase64(reader.result));
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
+    } catch (e) { reject(e); }
+  });
+  const processImageToWebp = async (file) => {
+    try {
+      const dataUrl = await fileToBase64(file);
+      const img = new Image(); img.src = dataUrl;
+      await new Promise((res) => { img.onload = () => res(); });
+      // downscale if huge
+      const maxSide = 1920;
+      let w = img.width, h = img.height;
+      const scale = Math.min(1, maxSide / Math.max(w, h));
+      w = Math.max(1, Math.floor(w * scale));
+      h = Math.max(1, Math.floor(h * scale));
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      const cx = c.getContext('2d');
+      cx.imageSmoothingEnabled = true; cx.imageSmoothingQuality = 'high';
+      cx.drawImage(img, 0, 0, w, h);
+      return c.toDataURL('image/webp', 0.85);
+    } catch { return null; }
+  };
+  const uploadFilesToVfs = async (fileList) => {
+    const arr = Array.from(fileList || []);
+    const createdPaths = [];
+    for (const f of arr) {
+      const name = (f.name||'file').replace(/[^a-zA-Z0-9_.-]+/g,'_');
+      const ts = Date.now();
+      const ext = (name.split('.').pop()||'').toLowerCase();
+      const isImage = f.type.startsWith('image/');
+      const isAudio = f.type.startsWith('audio/');
+      const isText = f.type.startsWith('text/') || ['js','jsx','ts','tsx','json','md','txt','css'].includes(ext);
+      let targetPath;
+      if (isImage || isAudio) targetPath = `/assets/uploads/${ts}-${name}`;
+      else if (isText) targetPath = `/utils/uploads/${ts}-${name}`;
+      else targetPath = `/assets/uploads/${ts}-${name}`; // default to assets to enable compression
+
+      // ensure unique
+      let finalPath = targetPath; let i=1;
+      while (files[finalPath]) { finalPath = targetPath.replace(/(\.[^.]+)$/i, `-${i}$1`); i++; }
+
+      try {
+        if (isImage) {
+          const webp = await processImageToWebp(f);
+          const content = webp || (await fileToBase64(f));
+          if (!files[finalPath]) createFile(finalPath, content); else writeFile(finalPath, content);
+        } else if (isAudio) {
+          const b64 = await readAsArrayBufferB64(f);
+          const content = `data:${f.type||'audio/*'};base64,${b64}`;
+          if (!files[finalPath]) createFile(finalPath, content); else writeFile(finalPath, content);
+        } else if (isText) {
+          const text = await f.text();
+          if (!files[finalPath]) createFile(finalPath, text); else writeFile(finalPath, text);
+        } else {
+          const b64 = await readAsArrayBufferB64(f);
+          const content = `data:application/octet-stream;base64,${b64}`;
+          if (!files[finalPath]) createFile(finalPath, content); else writeFile(finalPath, content);
+        }
+        createdPaths.push(finalPath);
+      } catch (e) {
+        append('error', `업로드 실패: ${name} — ${String(e?.message||e)}`);
+      }
+    }
+    if (createdPaths.length) {
+      setExtraAttach(prev => Array.from(new Set([...(prev||[]), ...createdPaths])));
+      append('assistant', `업로드 완료: ${createdPaths.length}개 파일을 추가했습니다.`);
+    }
+  };
   // Template helpers
   const TEMPLATE_PATH = '/template.json';
   const getTemplateText = () => {
@@ -1054,7 +1141,11 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
         <div style={{ position:'relative' }}>
           <button onClick={()=>setAttachPickerOpen(v=>!v)} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>파일 추가</button>
           {attachPickerOpen && (
-            <div style={{ position:'absolute', right:0, bottom:'100%', marginBottom:6, zIndex:40, width:340, maxHeight:300, overflow:'auto', background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, boxShadow:'0 12px 32px rgba(0,0,0,0.6)' }}>
+            <div style={{ position:'absolute', right:0, bottom:'100%', marginBottom:6, zIndex:40, width:360, maxHeight:360, overflow:'auto', background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:8, boxShadow:'0 12px 32px rgba(0,0,0,0.6)', display:'grid', gap:8 }}>
+              <div style={{ color:'#e2e8f0', fontWeight:700, fontSize:12 }}>파일 업로드</div>
+              <input type="file" multiple accept="image/*,audio/*,.js,.jsx,.ts,.tsx,.json,.md,.txt,.css" onChange={async (e)=>{ try { await uploadFilesToVfs(e.target.files); e.target.value=''; } catch {} }} style={{ padding:'6px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }} />
+              <div style={{ height:1, background:'rgba(148,163,184,0.2)' }} />
+              <div style={{ color:'#e2e8f0', fontWeight:700, fontSize:12 }}>워크스페이스 파일</div>
               {Object.keys(files).sort().map(p => (
                 <label key={p} style={{ display:'flex', alignItems:'center', gap:8, padding:'4px 6px', color:'#e2e8f0', fontSize:12 }}>
                   <input type="checkbox" checked={extraAttach.includes(p)} onChange={e=>{

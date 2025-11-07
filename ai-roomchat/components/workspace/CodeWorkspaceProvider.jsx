@@ -220,10 +220,30 @@ export function CodeWorkspaceProvider({ children }) {
     try {
       localStorage.setItem(
         KEY,
-  JSON.stringify({ files, root, activePath, openPaths, entryPath, dirty, savedSig })
+        JSON.stringify({ files, root, activePath, openPaths, entryPath, dirty, savedSig })
       );
     } catch {}
-  }, [files, root, activePath, openPaths, entryPath, dirty]);
+  }, [files, root, activePath, openPaths, entryPath, dirty, savedSig]);
+
+  // Reconcile dirty flags with saved signatures & initialize missing signatures
+  useEffect(() => {
+    try {
+      let sigChanged = false;
+      const nextSig = { ...(savedSig || {}) };
+      Object.entries(files || {}).forEach(([p, meta]) => {
+        const cur = typeof meta?.content === 'string' ? meta.content : '';
+        if (!nextSig[p]) { nextSig[p] = stableHash(cur); sigChanged = true; }
+      });
+      if (sigChanged) setSavedSig(nextSig);
+      let dirtyChanged = false;
+      const nextDirty = { ...(dirty || {}) };
+      Object.entries(files || {}).forEach(([p, meta]) => {
+        const cur = typeof meta?.content === 'string' ? meta.content : '';
+        if (nextDirty[p] && nextSig[p] && nextSig[p] === stableHash(cur)) { nextDirty[p] = false; dirtyChanged = true; }
+      });
+      if (dirtyChanged) setDirty(nextDirty);
+    } catch {}
+  }, [files]);
 
   const api = useMemo(() => {
     const exists = (path) => Boolean(files[path]);
