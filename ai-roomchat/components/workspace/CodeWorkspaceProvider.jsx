@@ -118,7 +118,9 @@ const defaultFiles = {
   "/game/pages/index.json": {
     content: JSON.stringify({
       main: { title: "Main", type: "ui", path: "/game/pages/ui/main.json" },
-      script: { title: "ScriptDemo", type: "script", path: "/game/pages/scripts/main.js" }
+      script: { title: "ScriptDemo", type: "script", path: "/game/pages/scripts/main.js" },
+      chatUi: { title: "Chat UI", type: "ui", path: "/game/pages/ui/chat.json" },
+      customHistory: { title: "History+", type: "script", path: "/game/pages/scripts/customHistory.js" }
     }, null, 2)+"\n",
     readonly: false,
   },
@@ -136,6 +138,20 @@ const defaultFiles = {
     }, null, 2)+"\n",
     readonly: false,
   },
+  "/game/pages/ui/chat.json": {
+    content: JSON.stringify({
+      type: "vstack",
+      gap: 8,
+      children: [
+        { type: "text", value: "💬 Custom Chat UI", fontSize: 16, bold: true },
+        { type: "card", children: [
+          { type: "text", value: "이 패널은 템플릿 오버라이드로 교체되었습니다.", color: "#cbd5e1" },
+          { type: "button", label: "Ping", event: "ping", payload: { msg: "hello" } }
+        ]}
+      ]
+    }, null, 2)+"\n",
+    readonly: false,
+  },
   "/game/pages/scripts/main.js": {
     content: [
       "export function render(ctx){",
@@ -147,6 +163,23 @@ const defaultFiles = {
       "  };",
       "  const handlers = {",
       "    showResources(){ console.log('resources', Object.keys(ctx.files||{})); }",
+      "  };",
+      "  return { schema, handlers };",
+      "}",
+    ].join('\n')+"\n",
+    readonly: false,
+  },
+  "/game/pages/scripts/customHistory.js": {
+    content: [
+      "export function render(ctx){",
+      "  const schema = {",
+      "    type: 'vstack', gap: 8, children: [",
+      "      { type:'text', value:'📜 History+', fontSize:16, bold:true },",
+      "      { type:'button', label:'리소스 보기', event:'showResources' }",
+      "    ]",
+      "  };",
+      "  const handlers = {",
+      "    showResources(){ console.log('files', Object.keys(ctx.files||{})); }",
       "  };",
       "  return { schema, handlers };",
       "}",
@@ -206,13 +239,34 @@ export function CodeWorkspaceProvider({ children }) {
         setActivePath(parsed.activePath || "/template.json");
         setOpenPaths(parsed.openPaths || ["/template.json"]);
         setEntryPath(parsed.entryPath || "/template.json");
-  setDirty(parsed.dirty || {});
-  setSavedSig(parsed.savedSig || {});
+        // sanitize dirty/savedSig immediately on load
+        const loadedDirty = parsed.dirty || {};
+        const loadedSig = parsed.savedSig || {};
+        const nextSig = {};
+        const nextDirty = {};
+        Object.entries(merged || {}).forEach(([p, meta]) => {
+          const sig = contentSignature(meta);
+          nextSig[p] = sig;
+          // If existing signature equals newly computed one, not dirty
+          if (loadedSig[p] && loadedSig[p] === sig) nextDirty[p] = false;
+          else nextDirty[p] = !!loadedDirty[p];
+        });
+        setDirty(nextDirty);
+        setSavedSig(nextSig);
       } else {
         setFiles(defaultFiles);
+        // initialize signatures for defaults
+        const sigs = {};
+        Object.entries(defaultFiles).forEach(([p, meta]) => { sigs[p] = contentSignature(meta); });
+        setSavedSig(sigs);
+        setDirty({});
       }
     } catch {
       setFiles(defaultFiles);
+      const sigs = {};
+      Object.entries(defaultFiles).forEach(([p, meta]) => { sigs[p] = contentSignature(meta); });
+      setSavedSig(sigs);
+      setDirty({});
     }
   }, []);
 
@@ -231,15 +285,15 @@ export function CodeWorkspaceProvider({ children }) {
       let sigChanged = false;
       const nextSig = { ...(savedSig || {}) };
       Object.entries(files || {}).forEach(([p, meta]) => {
-        const cur = typeof meta?.content === 'string' ? meta.content : '';
-        if (!nextSig[p]) { nextSig[p] = stableHash(cur); sigChanged = true; }
+        const sig = contentSignature(meta);
+        if (!nextSig[p]) { nextSig[p] = sig; sigChanged = true; }
       });
       if (sigChanged) setSavedSig(nextSig);
       let dirtyChanged = false;
       const nextDirty = { ...(dirty || {}) };
       Object.entries(files || {}).forEach(([p, meta]) => {
-        const cur = typeof meta?.content === 'string' ? meta.content : '';
-        if (nextDirty[p] && nextSig[p] && nextSig[p] === stableHash(cur)) { nextDirty[p] = false; dirtyChanged = true; }
+        const sig = contentSignature(meta);
+        if (nextDirty[p] && nextSig[p] && nextSig[p] === sig) { nextDirty[p] = false; dirtyChanged = true; }
       });
       if (dirtyChanged) setDirty(nextDirty);
     } catch {}
@@ -283,26 +337,24 @@ export function CodeWorkspaceProvider({ children }) {
       entryPath,
       dirty,
       isDirty: (path) => {
-        // If a file exists and we have a saved signature, compare; if identical, not dirty
         const meta = files[path];
         if (!meta) return false;
-        const cur = typeof meta.content === 'string' ? meta.content : '';
+        const curSig = contentSignature(meta);
         const sig = savedSig[path];
-        if (sig && sig === stableHash(cur)) return false;
+        if (sig && sig === curSig) return false;
         return !!dirty[path];
       },
       saveFile: (path) => {
         const meta = files[path];
-        const cur = typeof meta?.content === 'string' ? meta.content : '';
-        setSavedSig((m) => ({ ...m, [path]: stableHash(cur) }));
+        const sig = contentSignature(meta);
+        setSavedSig((m) => ({ ...m, [path]: sig }));
         setDirty((m) => ({ ...m, [path]: false }));
       },
       saveAll: () => {
         setSavedSig((m) => {
           const next = { ...m };
           Object.entries(files).forEach(([p, meta]) => {
-            const cur = typeof meta?.content === 'string' ? meta.content : '';
-            next[p] = stableHash(cur);
+            next[p] = contentSignature(meta);
           });
           return next;
         });
@@ -357,7 +409,13 @@ export function CodeWorkspaceProvider({ children }) {
                 return;
               }
               setFiles((mm) => ({ ...mm, [path]: after }));
-              setDirty((d) => ({ ...d, [path]: true }));
+              // Mark dirty only if signature changed vs last saved
+              const newSig = contentSignature(after);
+              setDirty((d) => {
+                const prevSig = savedSig[path];
+                if (prevSig && prevSig === newSig) return { ...d, [path]: false };
+                return { ...d, [path]: true };
+              });
             });
           } else {
             const newContent = String(content||'');
@@ -375,11 +433,9 @@ export function CodeWorkspaceProvider({ children }) {
           queueMicrotask(() => {
             // Mark dirty only if content differs from last saved signature
             const metaNext = next[path];
-            const curContent = typeof metaNext?.content === 'string' ? metaNext.content : '';
+            const curSig = contentSignature(metaNext);
             const sig = savedSig[path];
-            if (!sig || sig !== stableHash(curContent)) {
-              setDirty((d) => ({ ...d, [path]: true }));
-            }
+            if (!sig || sig !== curSig) setDirty((d) => ({ ...d, [path]: true }));
           });
           return next;
         }),
@@ -426,6 +482,26 @@ export function CodeWorkspaceProvider({ children }) {
     try {
       let h = 5381; for (let i=0;i<str.length;i++){ h = ((h<<5)+h) + str.charCodeAt(i); }
       return 'h'+(h>>>0).toString(16);
+    } catch { return 'h0'; }
+  }
+
+  // Unified content signature (supports compressed entries)
+  function contentSignature(meta){
+    try {
+      if (!meta) return 'h0';
+      if (meta.compressed && meta.data && typeof meta.rawLen === 'number') {
+        // combine lengths + first/last chars for stability without full decompression
+        const d = String(meta.data||'');
+        const sample = d.slice(0,16)+d.slice(-16);
+        return stableHash(sample + '|' + meta.rawLen + '|' + meta.compLen);
+      }
+      if (meta.meta && (meta.meta.algo || meta.meta.data)) {
+        const d = String(meta.meta.data||'');
+        const sample = d.slice(0,16)+d.slice(-16);
+        return stableHash(sample + '|' + meta.meta.algo + '|' + meta.meta.rawLen);
+      }
+      if (typeof meta.content === 'string') return stableHash(meta.content);
+      return 'h0';
     } catch { return 'h0'; }
   }
 

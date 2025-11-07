@@ -320,8 +320,8 @@ export default function GameRealtimeRuntime({ roomId = 'local-demo', currentUser
   return (
     <GameRuntimeProvider roomId={roomId} roles={roles}>
       <RuntimeLoader />
-      <div style={{ display:'grid', gridTemplateRows:'auto 1fr', height:'100%', gap:8 }}>
-        <CountdownNextBar currentUser={currentUser} />
+      <div style={{ display:'grid', gridTemplateRows:'auto 1fr auto', height:'100%', gap:8 }}>
+        <DynamicSlot slotId="topBar" files={files} resolveAsset={resolveAsset} defaultRender={() => <CountdownNextBar currentUser={currentUser} />} />
         <div style={{ display:'grid', gridTemplateColumns: cols, gap:8, minHeight:0 }}>
           <div style={{ display:'grid', gridTemplateRows: narrow ? 'auto auto' : '1fr 1fr', gap:8, minHeight:0 }}>
             <DynamicSlot slotId="mainTop" files={files} resolveAsset={resolveAsset} defaultRender={() => <MainGameUI currentUser={currentUser} resolveAsset={resolveAsset} />} />
@@ -345,6 +345,7 @@ export default function GameRealtimeRuntime({ roomId = 'local-demo', currentUser
             </div>
           </div>
         </div>
+        <DynamicSlot slotId="footer" files={files} resolveAsset={resolveAsset} defaultRender={() => null} />
       </div>
     </GameRuntimeProvider>
   );
