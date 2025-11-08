@@ -1,6 +1,0 @@
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-nocheck - we dynamically create the other index files, so these will throw errors if we don't ignore them
-
-import './unsafe-eval/init';
-
-export * from './unsafe-eval';

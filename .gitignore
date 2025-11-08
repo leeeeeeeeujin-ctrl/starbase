@@ -42,3 +42,7 @@ reports/
 tmp/
 assistant-sql/
 .tmp.driveupload/
+
+# Ignore large reference data checked into docs (keep locally, don't commit)
+ai-roomchat/docs/reference_data/
+ai-roomchat/docs/reference_data/**
