@@ -413,8 +413,17 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
 
   const [closeConfirm, setCloseConfirm] = useState(null); // { paths: [] }
 
+  class WorkspaceBoundary extends React.Component {
+    constructor(p){ super(p); this.state={ hasError:false }; }
+    static getDerivedStateFromError(){ return { hasError:true }; }
+    componentDidCatch(err){ try{ console.warn('[CodeEditorOverlayV2] workspace unavailable', err?.message||err); }catch{} }
+    render(){ return this.state.hasError ? (
+      <div style={{ padding:16, color:'#94a3b8' }}>작업공간 컨텍스트가 없어 코드를 표시할 수 없습니다.</div>
+    ) : this.props.children; }
+  }
+
   return (
-    <>
+    <WorkspaceBoundary>
       {templateBinding ? (
         <SyncTemplateToVfs text={templateBinding.text} setText={templateBinding.setText} />
       ) : null}
@@ -487,7 +496,7 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
       {showCodeChat && chatMinimized && (
         <button onClick={() => setChatMinimized(false)} title="AI 채팅 열기" style={{ position:'fixed', right:'calc(env(safe-area-inset-right) + 12px)', bottom:'calc(env(safe-area-inset-bottom) + 12px)', zIndex:1500, width:48, height:48, borderRadius:24, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', boxShadow:'0 10px 24px rgba(0,0,0,0.5)' }}>AI</button>
       )}
-    </>
+    </WorkspaceBoundary>
   );
 }
 

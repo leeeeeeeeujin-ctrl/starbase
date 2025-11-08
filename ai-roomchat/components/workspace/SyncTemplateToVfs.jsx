@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useWorkspace } from './CodeWorkspaceProvider.jsx';
 
-export default function SyncTemplateToVfs({ text, setText }){
-  // 양방향 동기화 에코 방지
+function InnerSync({ text, setText }){
   const { files, writeFile } = useWorkspace();
   const current = files['/template.json']?.content ?? '';
   const guard = useRef({ toVfs:false, toText:false });
@@ -13,7 +12,6 @@ export default function SyncTemplateToVfs({ text, setText }){
       if (typeof text === 'string' && text !== current && !guard.current.toText) {
         guard.current.toVfs = true;
         writeFile('/template.json', text);
-        // also derive graph
         try {
           const obj = JSON.parse(text || '{}');
           const nodes = Array.isArray(obj.nodes) ? obj.nodes : [];
@@ -27,8 +25,7 @@ export default function SyncTemplateToVfs({ text, setText }){
         setTimeout(()=>{ guard.current.toVfs = false; },0);
       }
     } catch {}
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [text]);
+  }, [text, current, writeFile]);
   useEffect(() => {
     try {
       if (typeof current === 'string' && typeof setText === 'function' && current !== text && !guard.current.toVfs) {
@@ -37,7 +34,21 @@ export default function SyncTemplateToVfs({ text, setText }){
         setTimeout(()=>{ guard.current.toText = false; },0);
       }
     } catch {}
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current]);
+  }, [current, text, setText]);
   return null;
+}
+
+class WorkspaceBoundary extends React.Component {
+  constructor(props){ super(props); this.state={ hasError:false }; }
+  static getDerivedStateFromError(){ return { hasError:true }; }
+  componentDidCatch(err){ try{ console.warn('[SyncTemplateToVfs] workspace unavailable', err?.message||err); }catch{} }
+  render(){ return this.state.hasError ? null : this.props.children; }
+}
+
+export default function SyncTemplateToVfs(props){
+  return (
+    <WorkspaceBoundary>
+      <InnerSync {...props} />
+    </WorkspaceBoundary>
+  );
 }

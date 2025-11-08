@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useWorkspace } from "./CodeWorkspaceProvider.jsx";
 import FileTree from "./FileTree.jsx";
 import EditorMonaco from "../EditorMonaco.jsx";
@@ -318,8 +318,15 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
       </div>
     );
   };
+  class WorkspaceBoundary extends React.Component {
+    constructor(p){ super(p); this.state={ hasError:false }; }
+    static getDerivedStateFromError(){ return { hasError:true }; }
+    componentDidCatch(err){ try{ console.warn('[WorkspaceOverlay] workspace unavailable', err?.message||err); }catch{} }
+    render(){ return this.state.hasError ? null : this.props.children; }
+  }
+
   return (
-    <>
+    <WorkspaceBoundary>
     {templateBinding ? (
       <SyncTemplateToVfs text={templateBinding.text} setText={templateBinding.setText} />
     ) : null}
@@ -389,7 +396,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
           </div>
         </div>
       )}
-    </>
+    </WorkspaceBoundary>
   );
 }
 

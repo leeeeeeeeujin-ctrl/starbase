@@ -1,13 +1,13 @@
 "use client";
 
-import { useMemo } from "react";
+import React, { useMemo } from "react";
 import { useWorkspace } from "./CodeWorkspaceProvider.jsx";
 
 function byPath(a, b) {
   return a.localeCompare(b);
 }
 
-export default function FileTree() {
+function InnerTree() {
   const { files, root, setRoot, normalizeDir, open, activePath } = useWorkspace();
   const { folders, fileEntries } = useMemo(() => {
     const folders = new Set();
@@ -25,7 +25,7 @@ export default function FileTree() {
       }
     }
     return { folders: Array.from(folders).sort(byPath), fileEntries: fileEntries.sort(byPath) };
-  }, [files, root]);
+  }, [files, root, normalizeDir]);
 
   const goUp = () => {
     const r = normalizeDir(root || '/');
@@ -89,5 +89,20 @@ export default function FileTree() {
         })}
       </ul>
     </div>
+  );
+}
+
+class WorkspaceBoundary extends React.Component {
+  constructor(props){ super(props); this.state={ hasError:false }; }
+  static getDerivedStateFromError(){ return { hasError:true }; }
+  componentDidCatch(err){ try{ console.warn('[FileTree] workspace unavailable', err?.message||err); }catch{} }
+  render(){ return this.state.hasError ? null : this.props.children; }
+}
+
+export default function FileTree(){
+  return (
+    <WorkspaceBoundary>
+      <InnerTree />
+    </WorkspaceBoundary>
   );
 }
