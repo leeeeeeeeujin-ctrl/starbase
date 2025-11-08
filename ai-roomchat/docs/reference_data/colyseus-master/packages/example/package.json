@@ -1,0 +1,21 @@
+{
+  "name": "@colyseus/example",
+  "private": true,
+  "type": "module",
+  "version": "0.16.0",
+  "author": "Endel Dreyer",
+  "license": "MIT",
+  "scripts": {
+    "example-h3": "tsx src/ServerH3.ts"
+  },
+  "dependencies": {
+    "@colyseus/core": "workspace:^"
+  },
+  "devDependencies": {
+    "@colyseus/uwebsockets-transport": "workspace:^",
+    "@colyseus/ws-transport": "workspace:^",
+    "@colyseus/h3-transport": "workspace:^",
+    "@colyseus/redis-driver": "workspace:^",
+    "@colyseus/redis-presence": "workspace:^"
+  }
+}

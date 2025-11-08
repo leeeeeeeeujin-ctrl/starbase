@@ -227,6 +227,9 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
   // Long-message readability helpers
   const [expandedMsgs, setExpandedMsgs] = useState(()=> new Set());
   const toggleExpand = (id) => setExpandedMsgs(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  // File read report expand/collapse state
+  const [expandedReadFiles, setExpandedReadFiles] = useState(()=> new Set());
+  const toggleReadFile = (path) => setExpandedReadFiles(prev => { const n = new Set(prev); if (n.has(path)) n.delete(path); else n.add(path); return n; });
   // Removed preview truncation: always show full content to avoid action JSON being cut.
   const previewText = (s) => s;
   // Chat background (character background) from template.json
@@ -426,6 +429,30 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
     } catch (e) {
       append('error', 'UI 적용 실패: ' + String(e?.message||e));
     }
+  };
+  // Heuristic PLAN JSON repair parser: extract between <<PLAN>> .. <<ENDPLAN>> and fix minor issues
+  const tryParseLoosePlan = (rawText) => {
+    try {
+      const s = String(rawText || '');
+      const hasMarkers = s.includes('<<PLAN>>') && s.includes('<<ENDPLAN>>');
+      let core = s;
+      if (hasMarkers) {
+        const i = s.indexOf('<<PLAN>>');
+        const j = s.indexOf('<<ENDPLAN>>', i + 8);
+        if (j > i) core = s.slice(i + '<<PLAN>>'.length, j);
+      }
+      let t = core.trim();
+      // Strip code fences if any
+      t = t.replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
+      // Remove stray backslashes at line ends
+      t = t.replace(/\\\s*\n/g, '\n');
+      // Remove trailing commas before object/array close
+      t = t.replace(/,\s*([}\]])/g, '$1');
+      // Normalize smart quotes
+      t = t.replace(/[“”]/g, '"').replace(/[‘’]/g, "'");
+      // Try parse
+      return JSON.parse(t);
+    } catch { return null; }
   };
   // Legacy fence stripper (kept for fallback when parsePlan fails to extract)
   const stripFences = (s) => String(s||'').replace(/^```(?:json)?/i,'').replace(/```$/i,'').trim();
@@ -665,7 +692,12 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
       const historyText = logs
         .filter(l => l.role === 'user' || l.role === 'assistant')
         .slice(-12)
-        .map(l => `${l.role.toUpperCase()}: ${l.msg}`)
+        .map(l => {
+          if (typeof l.msg === 'string') return `${l.role.toUpperCase()}: ${l.msg}`;
+          if (l?.msg?.type === 'fileReadReport') return `${l.role.toUpperCase()}: (파일 읽기 ${Array.isArray(l.msg.files)?l.msg.files.length:0}건)`;
+          if (l?.msg?.type === 'uiPreview') return `${l.role.toUpperCase()}: (UI 미리보기)`;
+          return `${l.role.toUpperCase()}: (객체)`;
+        })
         .join('\n');
       const mkBody = (txt) => (txt.length > MAX_INLINE ? (txt.slice(0, Math.floor(MAX_INLINE*0.6)) + '\n…\n/* …중략… */\n' + txt.slice(-Math.floor(MAX_INLINE*0.35))) : txt);
       const extra = extraAttach.slice(0,5).map(p => {
@@ -693,6 +725,10 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
       if (!parsed) {
         // Fallback: attempt raw direct parse
         try { plan = JSON.parse(primaryRaw); parsed = true; } catch {}
+        if (!parsed) {
+          const loose = tryParseLoosePlan(text || primaryRaw || '');
+          if (loose) { plan = loose; parsed = true; }
+        }
       }
       // Helper for inline body truncation (shared by read responses)
       const mkBodyLocal = (txt) => (txt.length > MAX_INLINE ? (txt.slice(0, Math.floor(MAX_INLINE*0.6)) + '\n…\n/* …중략… */\n' + txt.slice(-Math.floor(MAX_INLINE*0.35))) : txt);
@@ -716,29 +752,17 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
           const MAX_READ = 8;
           const safeReads = readActions.slice(0, MAX_READ).filter(a => {
             if (!a?.path || typeof a.path !== 'string') return false;
-            // Reuse prefixes from isSafeAction (light copy to avoid circular usage before definition)
             const allowedPrefixes = ['/template.json', '/graph/', '/game/', '/components/', '/pages/', '/styles/', '/utils/', '/lib/', '/hooks/', '/services/', '/contexts/', '/context/', '/modules/'];
             return allowedPrefixes.some(pref => a.path === pref || a.path.startsWith(pref));
           });
           const readReport = safeReads.map(r => {
             const meta = files[r.path];
-            if (!meta) return { path: r.path, exists:false, content:'(파일 없음)' };
+            if (!meta) return { path: r.path, exists:false, size:0, truncated:false, body:'(파일 없음)' };
             const raw = String(meta.content || '');
-            const truncated = raw.length > 120000; // 120KB cap for raw
+            const truncated = raw.length > 120000;
             return { path: r.path, exists:true, size: raw.length, truncated, body: mkBodyLocal(raw) };
           });
-          // Append as assistant message (structured summary)
-          try {
-            append('assistant', '파일 읽기 결과:\n' + readReport.map(r => `- ${r.path} (${r.exists? r.size+' chars' : '없음'}${r.truncated? ', truncated':''})`).join('\n'));
-          } catch {}
-          // Provide bodies in a follow-up compact block (could be large; keep under limit by slicing)
-          readReport.forEach(r => {
-            try {
-              if (r.exists) {
-                append('assistant', `내용(${r.path}):\n${r.body}`);
-              }
-            } catch {}
-          });
+          append('assistant', { type:'fileReadReport', files: readReport });
           // If trusted mode and AI asked to auto-continue, schedule next call using AI-chosen budget
           if (autoApply && plan.autoContinue) {
             const chosen = chooseAutoMax(plan);
@@ -817,13 +841,12 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
             const safeReads2 = readActions2.slice(0, MAX_READ).filter(a => a?.path && typeof a.path === 'string' && allowedPrefixes.some(pref => a.path === pref || a.path.startsWith(pref)));
             const readReport2 = safeReads2.map(r => {
               const meta = files[r.path];
-              if (!meta) return { path: r.path, exists:false, content:'(파일 없음)' };
+              if (!meta) return { path: r.path, exists:false, size:0, truncated:false, body:'(파일 없음)' };
               const raw2 = String(meta.content || '');
               const truncated2 = raw2.length > 120000;
               return { path: r.path, exists:true, size: raw2.length, truncated: truncated2, body: mkBodyLocal(raw2) };
             });
-            try { append('assistant', '파일 읽기 결과:\n' + readReport2.map(r => `- ${r.path} (${r.exists? r.size+' chars' : '없음'}${r.truncated? ', truncated':''})`).join('\n')); } catch {}
-            readReport2.forEach(r => { try { if (r.exists) append('assistant', `내용(${r.path}):\n${r.body}`); } catch {} });
+            append('assistant', { type:'fileReadReport', files: readReport2 });
           }
           if (mode2 === 'work' && Array.isArray(nonReadActions2) && nonReadActions2.length > 0) {
             if (autoApply) {
@@ -856,8 +879,15 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
             autoIterRef.current = 0; autoBudgetRef.current = 0; setAutoBudget(0);
           }
         } else {
-          const say = (primaryRaw && primaryRaw.length > 0) ? primaryRaw : (text || '(응답 없음)');
-          append('assistant', say);
+          const rawOut = (primaryRaw && primaryRaw.length > 0) ? primaryRaw : (text || '');
+          // If it looks like a PLAN block or contains action JSON, suppress raw dump and show concise notice
+          const looksLikePlan = /<<PLAN>>|\"actions\"\s*:|\"mode\"\s*:/i.test(rawOut || '');
+          if (looksLikePlan) {
+            append('assistant', '작업 계획을 받았지만 형식 오류로 처리하지 못했습니다. 다음 응답에서 올바른 JSON 형식(<<PLAN>>..<<ENDPLAN>>)으로 다시 보내주세요.');
+          } else {
+            const say = rawOut || '(응답 없음)';
+            append('assistant', say.length > 1200 ? (say.slice(0, 1100) + '\n… (생략)') : say);
+          }
           autoIterRef.current = 0; autoBudgetRef.current = 0; setAutoBudget(0);
         }
       }
@@ -1212,6 +1242,27 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
               </div>
             );
           }
+          if (l && typeof l.msg === 'object' && l.msg?.type === 'fileReadReport') {
+            const files = Array.isArray(l.msg.files) ? l.msg.files : [];
+            return (
+              <div key={i} style={{ marginTop: mt, color }}>
+                <div style={{ fontSize:12, fontWeight:700, marginBottom:6 }}>파일 읽기 결과 ({files.length}건)</div>
+                <div style={{ display:'grid', gap:6 }}>
+                  {files.map((f, idx) => (
+                    <div key={f.path+idx} style={{ border:'1px solid #334155', borderRadius:8, overflow:'hidden', background:'#0b1220' }}>
+                      <button onClick={()=>toggleReadFile(f.path)} style={{ width:'100%', textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center', padding:'6px 8px', background:'#0b1220', color:'#e2e8f0', border:'none', cursor:'pointer' }}>
+                        <span style={{ fontSize:12, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{f.path}</span>
+                        <span style={{ fontSize:11, color:'#94a3b8' }}>{f.exists? `${f.size} chars${f.truncated?', truncated':''}` : '없음'} {expandedReadFiles.has(f.path)?'▲':'▼'}</span>
+                      </button>
+                      {expandedReadFiles.has(f.path) && (
+                        <pre style={{ margin:0, padding:8, background:'#0c1322', color:'#e2e8f0', maxHeight:200, overflow:'auto' }}>{f.body}</pre>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          }
           const id = l?.t || i;
           const raw = String(l.msg);
           const shown = raw; // full content
@@ -1303,7 +1354,13 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
             </div>
           )}
         </div>
-        <input value={input} onChange={e=>setInput(e.target.value)} placeholder="명령을 입력하세요. 예: utils/date.js 생성하고 오늘 날짜 반환 함수 추가" style={{ flex:1, padding:'8px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }} />
+        <input
+          value={input}
+          onChange={e=>setInput(e.target.value)}
+          onKeyDown={(e)=>{ if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (!busy) send(); } }}
+          placeholder="명령을 입력하세요. 예: utils/date.js 생성하고 오늘 날짜 반환 함수 추가"
+          style={{ flex:1, padding:'8px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}
+        />
         <button onClick={send} disabled={busy} style={{ padding:'8px 12px', borderRadius:8, border:'1px solid #7c3aed', background:'#0b1220', color:'#c4b5fd' }}>{busy?'전송 중…':'전송'}</button>
       </div>
       {showImageUi && (
