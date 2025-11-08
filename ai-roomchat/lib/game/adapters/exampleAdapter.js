@@ -1,9 +1,7 @@
 // Example engine-agnostic adapter that renders to a canvas
 // Serves as a reference for user-authored game code loaded by the editor.
 
-import { createGameAdapter } from "./types";
-
-export default createGameAdapter(({ fps = 60 } = {}) => {
+export default function exampleAdapterFactory({ fps = 60 } = {}) {
   let containerEl;
   let canvas;
   let ctx;
@@ -107,5 +105,4 @@ export default createGameAdapter(({ fps = 60 } = {}) => {
       containerEl = null;
     },
   };
-});
-
+}
