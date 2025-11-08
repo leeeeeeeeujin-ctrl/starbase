@@ -280,6 +280,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
             )}
           </div>
           <div style={{ marginLeft:'auto', display:'flex', gap:8 }}>
+            <MenuButton onClick={onSaveServer} active={false} label={saving ? '저장중…' : '저장'} />
             <MenuButton onClick={() => setToolbarCollapsed(v=>!v)} active={toolbarCollapsed} label={toolbarCollapsed?'펼치기':'접기'} />
           </div>
         </div>

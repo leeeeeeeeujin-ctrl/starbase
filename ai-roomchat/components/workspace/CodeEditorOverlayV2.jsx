@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/router';
+import { saveSet } from '../../lib/workspace/saveSet.js';
 import { useWorkspace } from './CodeWorkspaceProvider.jsx';
 import FileTree from './FileTree.jsx';
 import EditorMonaco from '../EditorMonaco.jsx';
@@ -314,7 +316,16 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
   };
 
   const Toolbar = () => {
+    const router = useRouter();
+    const { id } = router.query || {};
     const { root, normalizeDir, open, createFile, createFolder, rename, remove, files, activePath, writeFile, entryPath, setEntryPath, openPaths, isDirty, saveAll } = useWorkspace();
+    const [saving, setSaving] = useState(false);
+    const onSaveServer = async () => {
+      if (!id || saving) return;
+      try { setSaving(true); await saveSet(String(id), files); alert('Saved'); }
+      catch(e){ alert('Save failed: ' + String(e?.message||e)); }
+      finally { setSaving(false); }
+    };
     const doNewFile = () => { setCreating('file'); setCreatePath(normalizeDir(root)+'untitled.js'); setFileMenuOpen(false); };
     const doNewFolder = () => { setCreating('folder'); setCreatePath(normalizeDir(root)+'folder/'); setFileMenuOpen(false); };
     const doRename = () => { const cur = activePath; if (!cur) return; const next = window.prompt('새 경로', cur); if (next && next!==cur) rename(cur, next); setFileMenuOpen(false); };
@@ -382,6 +393,7 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
             )}
           </div>
           <ToolbarButton onClick={() => setShowPlay(true)} active={showPlay} title="플레이">플레이</ToolbarButton>
+          <ToolbarButton onClick={onSaveServer} title="저장" disabled={!id || saving}>{saving?'저장중…':'저장'}</ToolbarButton>
           <ToolbarButton onClick={requestClose} title="닫기">닫기</ToolbarButton>
           <div style={{ marginLeft:'auto', display:'flex', gap:8 }}>
             <ToolbarButton onClick={() => setToolbarCollapsed(v=>!v)} active={toolbarCollapsed} title={toolbarCollapsed?'펼치기':'접기'}>{toolbarCollapsed?'펼치기':'접기'}</ToolbarButton>

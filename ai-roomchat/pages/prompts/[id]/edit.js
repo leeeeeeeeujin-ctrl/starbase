@@ -328,11 +328,27 @@ function PromptEditInner({ _etag, _setEtag, _setId }) {
         // After prompt saved, persist workspace files snapshot once (server-first)
         try {
           const list = Object.entries(files || {}).map(([path, meta]) => ({ path, content: String(meta?.content ?? ''), readonly: !!meta?.readonly, dir: !!meta?.dir }));
-          const put = await fetch(`/api/workspace/sets/${encodeURIComponent(id)}`, {
+          // attempt PUT first
+          let put = await fetch(`/api/workspace/sets/${encodeURIComponent(id)}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', ...(etagRef.current ? { 'If-Match': etagRef.current } : {}) },
             body: JSON.stringify({ files: list, meta: {} }),
           });
+          // If precondition required (no set yet) or not found, create then retry
+          if (put.status === 428 || put.status === 404) {
+            const gen = (p) => { try { return p + (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)); } catch { return p + Math.random().toString(36).slice(2); } };
+            const reqId = gen('req_');
+            await fetch('/api/workspace/sets', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'X-Request-Id': reqId },
+              body: JSON.stringify({ id }),
+            }).catch(()=>{});
+            put = await fetch(`/api/workspace/sets/${encodeURIComponent(id)}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json', ...(etagRef.current ? { 'If-Match': etagRef.current } : {}) },
+              body: JSON.stringify({ files: list, meta: {} }),
+            });
+          }
           const pj = await put.json().catch(()=>({}));
           if (put.status === 200 && pj?.etag) _setEtag && _setEtag(pj.etag);
         } catch {}
