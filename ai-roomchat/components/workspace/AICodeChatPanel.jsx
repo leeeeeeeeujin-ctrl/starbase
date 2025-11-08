@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { getCodeContext, buildSystemPromptFromContext } from '../../lib/workspace/ai/getCodeContext.js';
 import parsePlan from '../../utils/ai/parsePlan.js';
 import { useWorkspace } from './CodeWorkspaceProvider.jsx';
 import { applyMainUiPresetObject, getMainUiModules } from '../../utils/uiPresets';
@@ -68,6 +69,10 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
   const settingsRef = useRef(null);
   const actionsRef = useRef(null);
   const contextRef = useRef(null);
+  // cached system prompt derived from workspace code context
+  const systemRef = useRef(null);
+  // prevent multiple fetches within the same mount
+  const ctxFetchedRef = useRef(false);
   const menuBtn = { padding:'6px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#cbd5e1', textAlign:'left' };
   // Always prefer user keyring; server key is not provided. Persist as 'keyring' for consistency.
   const PREF_SOURCE_KEY = 'workspace:aiChat:preferSource';
@@ -141,6 +146,29 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
     }
   };
   useEffect(() => { if (settingsOpen) refreshApiKeyring(); }, [settingsOpen]);
+
+  // Fetch code context once on mount and build a system prompt to prepend to AI requests.
+  useEffect(() => {
+    if (typeof window === 'undefined') return; // SSR guard
+    try {
+      if (typeof process !== 'undefined' && process.env && process.env.NEXT_PUBLIC_AI_CODECHAT_CONTEXT === '0') return;
+    } catch {}
+    if (ctxFetchedRef.current) return;
+    ctxFetchedRef.current = true;
+    const ac = new AbortController();
+    (async () => {
+      try {
+        const ctx = await getCodeContext();
+        if (!ac.signal.aborted) {
+          try { systemRef.current = buildSystemPromptFromContext(ctx); } catch { systemRef.current = null; }
+        }
+      } catch (e) {
+        // graceful fallback: leave systemRef null
+        systemRef.current = null;
+      }
+    })();
+    return () => ac.abort();
+  }, []);
 
   const handleAddApiKey = async () => {
     const trimmed = (apiKeyInput||'').trim();
@@ -710,10 +738,11 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
   const prompt = `${sys}\n\n### CONTEXT\n${JSON.stringify(context)}\n${gameBlock}\n\n### ACTIVE_FILE\nPATH: ${activePath}\nCONTENT:\n${content || '(빈 파일)'}\n\n${extraAttach.length>0?`### ADDITIONAL_FILES\n${extra}`:''}${uiBlock}\n\n### HISTORY (최근)\n${historyText}\n\n### USER\n${input}`;
       append('user', input);
       setInput('');
+      const messagesPayload = systemRef.current ? [ { role: 'system', content: systemRef.current }, { role: 'user', content: prompt } ] : [ { role: 'user', content: prompt } ];
       const res = await fetch('/api/ai/gemini', {
         method: 'POST',
         headers: { 'content-type':'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ model: geminiModel || 'gemini-2.5-flash', contents: prompt, prefer: 'keyring' })
+        body: JSON.stringify({ model: geminiModel || 'gemini-2.5-flash', contents: prompt, messages: messagesPayload, prefer: 'keyring' })
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body?.error || `AI ${res.status}`);

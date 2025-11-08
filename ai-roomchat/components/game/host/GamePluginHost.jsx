@@ -12,6 +12,8 @@ import useGameInput from "../../../lib/game/input/useGameInput.js";
 export default function GamePluginHost({ adapterFactory, options, ctx, style, className }) {
   const containerRef = React.useRef(null);
   const adapterRef = React.useRef(null);
+  const [error, setError] = React.useState(null);
+  const [reloadKey, setReloadKey] = React.useState(0);
   useGameInput(adapterRef, containerRef);
 
   React.useEffect(() => {
@@ -19,11 +21,18 @@ export default function GamePluginHost({ adapterFactory, options, ctx, style, cl
     if (!container) return;
     const factory = typeof adapterFactory === "function" ? adapterFactory : exampleAdapterFactory;
     // Support factory that accepts options and returns the impl object
-    const adapter = factory(options);
+    let adapter;
+    try {
+      adapter = factory(options);
+      if (!adapter || typeof adapter.init !== 'function') throw new Error('Invalid GameAdapter');
+    } catch (e) {
+      setError(e);
+      return () => {};
+    }
     adapterRef.current = adapter;
-    try { adapter.init(container, ctx || {}); } catch {}
+    try { adapter.init(container, ctx || {}); } catch (e) { setError(e); }
     let started = false;
-    try { adapter.start(); started = true; } catch {}
+    try { adapter.start(); started = true; } catch (e) { setError(e); }
     const onResize = () => { try { adapter.resize?.(); } catch {} };
     window.addEventListener("resize", onResize);
     return () => {
@@ -33,7 +42,22 @@ export default function GamePluginHost({ adapterFactory, options, ctx, style, cl
       adapterRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [adapterFactory]);
+  }, [adapterFactory, reloadKey]);
 
-  return <div ref={containerRef} className={className} style={{ position: "relative", width: "100%", height: "100%", ...style }} />;
+  return (
+    <div ref={containerRef} className={className} style={{ position: "relative", width: "100%", height: "100%", ...style }}>
+      {error && (
+        <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,0.6)', color:'#fff', zIndex:30 }}>
+          <div style={{ maxWidth: 520, padding: 16 }}>
+            <div style={{ fontWeight: 700, marginBottom: 8 }}>Game Adapter Error</div>
+            <div style={{ whiteSpace:'pre-wrap', fontFamily:'monospace', fontSize:12, opacity:0.9 }}>{String(error)}</div>
+            <button style={{ marginTop:12, padding:'8px 12px', background:'#3a6df0', color:'#fff', border:'none' }} onClick={() => {
+              setError(null);
+              setReloadKey((k) => k + 1);
+            }}>다시 시도</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }

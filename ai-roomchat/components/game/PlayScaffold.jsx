@@ -44,7 +44,7 @@ function ScaffoldContent({ sessionId, gameId, user, network, slotConfig, flags }
   return (
     <div style={{ position:'relative', width:'100%', height:'100%' }}>
       {flags.canvas && (
-        <GameCanvasSlot slotConfig={slotConfig} sessionId={sessionId} gameId={gameId} character={character} network={network} />
+        <GameCanvasSlot slotConfig={slotConfig} sessionId={sessionId} gameId={gameId} character={character} network={network} useRuntimeLoader={flags.runtimeLoader} />
       )}
       {flags.chat && <InGameChatOverlay channel="ai" viewer={viewer} />}
       {flags.chat && <InGameChatOverlay channel="party" viewer={viewer} />}

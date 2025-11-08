@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { compressString, decompressToString } from "../../utils/compress.js";
+import { injectFilesWithFallback } from "../../lib/workspace/injectFilesFallback.js";
 
 const KEY = "workspace.vfs.v1";
 
@@ -474,8 +475,65 @@ export function CodeWorkspaceProvider({ children }) {
           return rest;
         });
       },
+      // Add multiple files with metadata (content, readonly, dir)
+      addFiles: async (fileList = []) => {
+        if (!Array.isArray(fileList) || fileList.length === 0) return;
+        setFiles((m) => {
+          const next = { ...m };
+          fileList.forEach((f) => {
+            if (!f || !f.path) return;
+            next[f.path] = { content: f.content || "", readonly: !!f.readonly, dir: !!f.dir };
+          });
+          return next;
+        });
+        setDirty((d) => {
+          const next = { ...(d || {}) };
+          fileList.forEach((f) => { if (f && f.path) next[f.path] = true; });
+          return next;
+        });
+      },
+      // Add a single file (path, content, opts: { readonly, dir })
+      addFile: async (path, content = "", opts = {}) => {
+        if (!path) return;
+        setFiles((m) => ({ ...m, [path]: { content: String(content || ""), readonly: !!opts.readonly, dir: !!opts.dir } }));
+        setDirty((d) => ({ ...(d || {}), [path]: true }));
+      },
+      // Backwards compatible alias for batch import
+      importFiles: async (fileList = []) => {
+        if (!Array.isArray(fileList) || fileList.length === 0) return;
+        setFiles((m) => {
+          const next = { ...m };
+          fileList.forEach((f) => {
+            if (!f || !f.path) return;
+            next[f.path] = { content: f.content || "", readonly: !!f.readonly, dir: !!f.dir };
+          });
+          return next;
+        });
+        setDirty((d) => {
+          const next = { ...(d || {}) };
+          fileList.forEach((f) => { if (f && f.path) next[f.path] = true; });
+          return next;
+        });
+      },
     };
   }, [files, root, activePath, openPaths, entryPath, savedSig]);
+
+  // Listen for external injection events and route them via the fallback injector.
+  useEffect(() => {
+    try {
+      const handler = async (e) => {
+        try {
+          const files = e?.detail || [];
+          if (!files || !files.length) return;
+          await injectFilesWithFallback(api, files);
+        } catch (err) {}
+      };
+      if (typeof window !== 'undefined' && window.addEventListener) {
+        window.addEventListener('workspace:add-files', handler);
+        return () => window.removeEventListener('workspace:add-files', handler);
+      }
+    } catch (e) {}
+  }, [api]);
 
   // Simple stable hash (djb2) for content
   function stableHash(str){

@@ -66,6 +66,7 @@ export default function FileTree() {
         {fileEntries.map((full) => {
           const active = full === activePath;
           const name = full.split('/').pop();
+          const readonly = files?.[full]?.readonly;
           return (
             <li key={full}>
               <button
@@ -81,7 +82,7 @@ export default function FileTree() {
                   cursor: "pointer",
                 }}
               >
-                📄 {name}
+                📄 {name} {readonly ? <span title="읽기 전용" style={{ marginLeft: 8 }}>🔒</span> : null}
               </button>
             </li>
           );

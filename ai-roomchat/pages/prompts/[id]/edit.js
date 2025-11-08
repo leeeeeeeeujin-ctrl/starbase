@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import PromptEditor from '../../../components/PromptEditor';
 import AICodeChatPanel from '../../../components/workspace/AICodeChatPanel.jsx';
 import { CodeWorkspaceProvider, useWorkspace } from '../../../components/workspace/CodeWorkspaceProvider.jsx';
+import { fetchStarterPack } from '../../../lib/workspace/fetchStarterPack.js';
 import Link from 'next/link';
 import { applyMainUiPresetObject, getMainUiModules } from '../../../utils/uiPresets';
 function ToolsDropdown({ onOpenUiSettings }) {
@@ -213,6 +214,7 @@ function PromptEditInner() {
   const [saving, setSaving] = useState(false);
   const [showAgent, setShowAgent] = useState(false);
   const [showUiSettings, setShowUiSettings] = useState(false);
+  const starterInjectedRef = useRef(false);
 
   useEffect(() => {
     if (!id) return;
@@ -242,6 +244,23 @@ function PromptEditInner() {
   useEffect(() => {
     setEditorBody(prompt.body || '');
   }, [prompt.body]);
+
+  // Fetch starter-pack once on mount and dispatch to workspace provider via event.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (starterInjectedRef.current) return;
+    starterInjectedRef.current = true;
+    (async () => {
+      try {
+        const files = await fetchStarterPack();
+        if (files && files.length) {
+          try { window.dispatchEvent(new CustomEvent('workspace:add-files', { detail: files })); } catch (e) { /* ignore */ }
+        }
+      } catch (err) {
+        // ignore fetch failures
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     if (!id) return;

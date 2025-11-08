@@ -7,6 +7,16 @@
 - `src/game/index.js` 어댑터 규약 준수: `init/start/stop/dispose`(+ `onInput/resize/update` 선택)
 - 레퍼런스 데이터는 `/api/reference/*`에서 가져오기
 
+자동 컨텍스트 주입(권장)
+```
+import { getCodeContext, buildSystemPromptFromContext } from '../../lib/workspace/ai/getCodeContext.js';
+
+// 패널 마운트 시 1회 컨텍스트 로드 → system 메시지로 주입
+const ctx = await getCodeContext();
+const system = buildSystemPromptFromContext(ctx);
+// 이후 AI 호출에 system을 prepend
+```
+
 유용한 요청 템플릿
 1) 2D 루프/입력 템플릿 추가
 ```

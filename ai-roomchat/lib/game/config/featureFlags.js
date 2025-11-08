@@ -7,6 +7,7 @@ export const DEFAULT_FLAGS = {
   ai: true,
   mobileControls: true,
   characterAutoload: true,
+  runtimeLoader: false,
 };
 
 function fromEnv() {
@@ -22,6 +23,7 @@ function fromEnv() {
     ai: v("NEXT_PUBLIC_GAME_AI", undefined),
     mobileControls: v("NEXT_PUBLIC_GAME_MOBILE", undefined),
     characterAutoload: v("NEXT_PUBLIC_GAME_CHAR_AUTOLOAD", undefined),
+    runtimeLoader: v("NEXT_PUBLIC_GAME_RUNTIME_LOADER", undefined),
   };
 }
 
@@ -60,4 +62,3 @@ export function useFeatureFlags() {
   }, []);
   return flags;
 }
-
