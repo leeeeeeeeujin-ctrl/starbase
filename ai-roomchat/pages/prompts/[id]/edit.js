@@ -13,7 +13,10 @@ function mapToVisibleRoot(files) {
       .replace(/^src\/game\//, 'Game/')
       .replace(/^src\/docs\//, 'Guides/')
       .replace(/^docs\//, 'Guides/');
-    return { ...f, path: p };
+    // Ensure workspace uses absolute, normalized paths (leading slash)
+    const abs = (p || '').startsWith('/') ? p : `/${p}`;
+    const norm = abs.replace(/^\/+/, '/');
+    return { ...f, path: norm };
   });
 }
 import Link from 'next/link';

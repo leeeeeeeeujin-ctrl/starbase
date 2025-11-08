@@ -222,11 +222,9 @@ export function CodeWorkspaceProvider({ children, storageNamespace }) {
 
   useEffect(() => {
     try {
-      // Prefer namespaced key; fallback to unscoped for backward compatibility
+      // Read strictly from the namespaced key when namespace is present.
+      // No fallback to global key to avoid cross-set bleed.
       let raw = localStorage.getItem(KEY);
-      if (!raw && ns) {
-        try { raw = localStorage.getItem(BASE_KEY); } catch {}
-      }
       if (raw) {
         const parsed = JSON.parse(raw);
         const base = parsed.files || {};
@@ -332,15 +330,20 @@ export function CodeWorkspaceProvider({ children, storageNamespace }) {
       const c = (typeof meta.content === 'string') ? meta.content.length : 0;
       return sum + c;
     }, 0);
+    const canon = (p) => {
+      const raw = String(p || '').trim();
+      return '/' + raw.replace(/^\/+/, '');
+    };
     const isDir = (path) => {
       if (!path) return false;
       if (path.endsWith('/')) return true;
-      const meta = files[path];
+      const meta = files[canon(path)];
       return meta && meta.dir === true;
     };
     const normalizeDir = (path) => {
       if (!path) return '/';
-      return path.endsWith('/') ? path : path + '/';
+      const c = canon(path);
+      return c.endsWith('/') ? c : c + '/';
     };
     const inferLang = (path) => {
       if (!path) return "plaintext";
@@ -397,19 +400,21 @@ export function CodeWorkspaceProvider({ children, storageNamespace }) {
           setRoot(normalizeDir(path));
           return;
         }
-        if (!exists(path)) return;
-        if (!openPaths.includes(path)) setOpenPaths((arr) => [...arr, path]);
-        setActivePath(path);
+        const c = canon(path);
+        if (!exists(c)) return;
+        if (!openPaths.includes(c)) setOpenPaths((arr) => [...arr, c]);
+        setActivePath(c);
       },
       close: (path) =>
         setOpenPaths((arr) => arr.filter((p) => p !== path)),
       createFile: (path, content = "") =>
-        { setFiles((m) => ({ ...m, [path]: { content, readonly: false } })); setDirty((d) => ({ ...d, [path]: true })); },
+        { const c=canon(path); setFiles((m) => ({ ...m, [c]: { content, readonly: false } })); setDirty((d) => ({ ...d, [c]: true })); },
       createFolder: (path) =>
         setFiles((m) => ({ ...m, [normalizeDir(path)]: { dir: true, readonly: true } })),
       writeFile: (path, content) =>
         setFiles((m) => {
-          const f = m[path] || { readonly: false };
+          const c = canon(path);
+          const f = m[c] || { readonly: false };
           if (f.readonly) return m;
           const next = { ...m };
           const curTotal = totalBytes();
@@ -419,7 +424,7 @@ export function CodeWorkspaceProvider({ children, storageNamespace }) {
             // compress assets; large text also compressed
             // note: async compress; here we store placeholder then finalize in microtask
             entry = { ...f, pending: true };
-            next[path] = entry;
+            next[c] = entry;
             queueMicrotask(async () => {
               const r = await compressString(String(content||''));
               const after = { ...entry, pending: false, compressed: true, algo: r.algo, data: r.data, rawLen: r.rawLen, compLen: r.compLen };
@@ -428,16 +433,16 @@ export function CodeWorkspaceProvider({ children, storageNamespace }) {
               if (curTotal + Math.max(0, delta) > MAX_VFS_BYTES) {
                 alert('최대 게임 파일 크기(15MB)를 초과하여 저장할 수 없습니다.');
                 // revert
-                setFiles((mm) => ({ ...mm, [path]: f }));
+                setFiles((mm) => ({ ...mm, [c]: f }));
                 return;
               }
-              setFiles((mm) => ({ ...mm, [path]: after }));
+              setFiles((mm) => ({ ...mm, [c]: after }));
               // Mark dirty only if signature changed vs last saved
               const newSig = contentSignature(after);
               setDirty((d) => {
-                const prevSig = savedSig[path];
+                const prevSig = savedSig[c];
                 if (prevSig && prevSig === newSig) return { ...d, [path]: false };
-                return { ...d, [path]: true };
+                return { ...d, [c]: true };
               });
             });
           } else {
@@ -450,50 +455,56 @@ export function CodeWorkspaceProvider({ children, storageNamespace }) {
               alert('최대 게임 파일 크기(15MB)를 초과하여 저장할 수 없습니다.');
               return m;
             }
-            next[path] = entry;
+            next[c] = entry;
           }
           // mark dirty on write
           queueMicrotask(() => {
             // Mark dirty only if content differs from last saved signature
-            const metaNext = next[path];
+            const metaNext = next[c];
             const curSig = contentSignature(metaNext);
-            const sig = savedSig[path];
-            if (!sig || sig !== curSig) setDirty((d) => ({ ...d, [path]: true }));
+            const sig = savedSig[c];
+            if (!sig || sig !== curSig) setDirty((d) => ({ ...d, [c]: true }));
           });
           return next;
         }),
       rename: (oldPath, newPath) => {
         setFiles((m) => {
-          if (!m[oldPath]) return m;
-          const { [oldPath]: old, ...rest } = m;
-          return { ...rest, [newPath]: old };
+          const o=canon(oldPath), n=canon(newPath);
+          if (!m[o]) return m;
+          const { [o]: old, ...rest } = m;
+          return { ...rest, [n]: old };
         });
-        setOpenPaths((arr) => arr.map((p) => (p === oldPath ? newPath : p)));
-        setActivePath((p) => (p === oldPath ? newPath : p));
-        setEntryPath((p) => (p === oldPath ? newPath : p));
+        setOpenPaths((arr) => arr.map((p) => (p === o ? n : p)));
+        setActivePath((p) => (p === o ? n : p));
+        setEntryPath((p) => (p === o ? n : p));
         setDirty((d) => {
-          const { [oldPath]: _drop, ...rest } = d || {};
-          return { ...rest, [newPath]: d?.[oldPath] || false };
+          const o=canon(oldPath), n=canon(newPath);
+          const { [o]: _drop, ...rest } = d || {};
+          return { ...rest, [n]: d?.[o] || false };
         });
         setSavedSig((s) => {
-          const { [oldPath]: sigOld, ...rest } = s || {};
-          return { ...rest, [newPath]: sigOld };
+          const o=canon(oldPath), n=canon(newPath);
+          const { [o]: sigOld, ...rest } = s || {};
+          return { ...rest, [n]: sigOld };
         });
       },
       remove: (path) => {
         setFiles((m) => {
-          const { [path]: _drop, ...rest } = m;
+          const c=canon(path);
+          const { [c]: _drop, ...rest } = m;
           return rest;
         });
-        setOpenPaths((arr) => arr.filter((p) => p !== path));
-        setActivePath((p) => (p === path ? "/template.json" : p));
-        setEntryPath((p) => (p === path ? "/template.json" : p));
+        setOpenPaths((arr) => arr.filter((p) => p !== canon(path)));
+        setActivePath((p) => (p === canon(path) ? "/template.json" : p));
+        setEntryPath((p) => (p === canon(path) ? "/template.json" : p));
         setDirty((d) => {
-          const { [path]: _drop, ...rest } = d || {};
+          const c=canon(path);
+          const { [c]: _drop, ...rest } = d || {};
           return rest;
         });
         setSavedSig((s) => {
-          const { [path]: _drop, ...rest } = s || {};
+          const c=canon(path);
+          const { [c]: _drop, ...rest } = s || {};
           return rest;
         });
       },
@@ -504,7 +515,8 @@ export function CodeWorkspaceProvider({ children, storageNamespace }) {
           const next = { ...m };
           fileList.forEach((f) => {
             if (!f || !f.path) return;
-            next[f.path] = { content: f.content || "", readonly: !!f.readonly, dir: !!f.dir };
+            const c=canon(f.path);
+            next[c] = { content: f.content || "", readonly: !!f.readonly, dir: !!f.dir };
           });
           return next;
         });
@@ -517,8 +529,9 @@ export function CodeWorkspaceProvider({ children, storageNamespace }) {
       // Add a single file (path, content, opts: { readonly, dir })
       addFile: async (path, content = "", opts = {}) => {
         if (!path) return;
-        setFiles((m) => ({ ...m, [path]: { content: String(content || ""), readonly: !!opts.readonly, dir: !!opts.dir } }));
-        setDirty((d) => ({ ...(d || {}), [path]: true }));
+        const c=canon(path);
+        setFiles((m) => ({ ...m, [c]: { content: String(content || ""), readonly: !!opts.readonly, dir: !!opts.dir } }));
+        setDirty((d) => ({ ...(d || {}), [c]: true }));
       },
       // Backwards compatible alias for batch import
       importFiles: async (fileList = []) => {
@@ -527,13 +540,14 @@ export function CodeWorkspaceProvider({ children, storageNamespace }) {
           const next = { ...m };
           fileList.forEach((f) => {
             if (!f || !f.path) return;
-            next[f.path] = { content: f.content || "", readonly: !!f.readonly, dir: !!f.dir };
+            const c=canon(f.path);
+            next[c] = { content: f.content || "", readonly: !!f.readonly, dir: !!f.dir };
           });
           return next;
         });
         setDirty((d) => {
           const next = { ...(d || {}) };
-          fileList.forEach((f) => { if (f && f.path) next[f.path] = true; });
+          fileList.forEach((f) => { if (f && f.path) next[canon(f.path)] = true; });
           return next;
         });
       },

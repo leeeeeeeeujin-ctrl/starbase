@@ -5,7 +5,12 @@
 export async function injectFilesWithFallback(workspace, files = []) {
   if (!workspace || !Array.isArray(files) || files.length === 0) return { injected: 0 };
   // Normalize file entries to { path, content, readonly?, dir? }
-  const normalized = files.map((f) => ({ path: f.path || f.name || f.filename || '', content: f.content || '', readonly: !!f.readonly, dir: !!f.dir }));
+  const normalized = files.map((f) => {
+    const raw = String(f?.path || f?.name || f?.filename || '').trim();
+    const noLead = raw.replace(/^\/+/, '');
+    const path = '/' + noLead;
+    return { path, content: f?.content || '', readonly: !!f?.readonly, dir: !!f?.dir };
+  });
 
   // 1) Prefer batch API if available
   if (typeof workspace.addFiles === 'function') {
