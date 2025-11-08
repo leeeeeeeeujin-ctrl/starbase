@@ -4,6 +4,17 @@
 export default function parsePlan(rawText) {
   const src = String(rawText || '').trim();
   if (!src) return { plan: null, parsed: false, rawJson: '' };
+  // 1) Prefer explicit markers if present
+  const marked = extractMarkedPlan(src);
+  if (marked) {
+    try {
+      const obj = JSON.parse(marked);
+      if (obj && typeof obj === 'object') {
+        return { plan: obj, parsed: true, rawJson: marked };
+      }
+    } catch {}
+  }
+
   const cleaned = stripLeadingCommentary(stripFences(src));
 
   // Try direct parse first
@@ -80,6 +91,25 @@ function extractBalanced(text, openChar, closeChar) {
             return cand;
           }
         }
+      }
+    }
+  }
+  return null;
+}
+
+function extractMarkedPlan(text) {
+  const candidates = [
+    { start: '<<PLAN>>', end: '<<ENDPLAN>>' },
+    { start: '===BEGIN:PLAN===', end: '===END:PLAN===' },
+    { start: '---PLAN-START---', end: '---PLAN-END---' },
+  ];
+  for (const { start, end } of candidates) {
+    const si = text.indexOf(start);
+    if (si !== -1) {
+      const ei = text.indexOf(end, si + start.length);
+      if (ei !== -1) {
+        const inner = text.slice(si + start.length, ei).trim();
+        if (inner) return inner;
       }
     }
   }

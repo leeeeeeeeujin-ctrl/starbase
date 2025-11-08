@@ -227,16 +227,8 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
   // Long-message readability helpers
   const [expandedMsgs, setExpandedMsgs] = useState(()=> new Set());
   const toggleExpand = (id) => setExpandedMsgs(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-  const previewText = (s) => {
-    try {
-      const maxChars = 480, maxLines = 12;
-      if (!s) return '';
-      if (s.length <= maxChars) return s;
-      const lines = s.split('\n');
-      if (lines.length <= maxLines) return s.length > maxChars ? (s.slice(0, maxChars) + '\n… (생략)') : s;
-      return lines.slice(0, maxLines).join('\n') + '\n… (생략)';
-    } catch { return s; }
-  };
+  // Removed preview truncation: always show full content to avoid action JSON being cut.
+  const previewText = (s) => s;
   // Chat background (character background) from template.json
   const chatBg = useMemo(() => {
     try {
@@ -1138,7 +1130,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
            style={{ flex:1, overflow:'auto', padding:'8px 10px', position:'relative',
                     color: chatTextColor,
                     background: chatBg.image ? `url(${chatBg.image}) center/cover no-repeat` : (chatBg.color || undefined) }}>
-        {(scrolledUp ? logs : logs.slice(-50)).map((l,i,arr)=> {
+  {logs.map((l,i,arr)=> {
           const prev = i>0 ? arr[i-1] : null;
           const roleChanged = prev && prev.role !== l.role;
           const mt = roleChanged ? 12 : 6;
@@ -1158,9 +1150,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
           }
           const id = l?.t || i;
           const raw = String(l.msg);
-          const long = raw.length > 480 || (raw.split('\n').length > 12);
-          const expanded = expandedMsgs.has(id);
-          const shown = (long && !expanded) ? previewText(raw) : raw;
+          const shown = raw; // full content
           // Minimal formatting: headers (#, ##) and bullets (-, *, •) for assistant readability
           const renderFormatted = (text) => {
             try {
@@ -1201,11 +1191,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
           return (
             <div key={i} style={{ fontSize:12, color, marginTop: mt, lineHeight: 1.5, textShadow: chatBg.image ? '0 1px 2px rgba(0,0,0,0.6)' : undefined }}>
               <div>{l.role}: {l.role==='assistant' ? renderFormatted(shown) : (<span style={{ whiteSpace:'pre-wrap' }}>{shown}</span>)}</div>
-              {long && (
-                <button onClick={()=>toggleExpand(id)} style={{ marginTop:4, padding:'2px 6px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8', fontSize:11 }}>
-                  {expanded ? '접기' : '더보기'}
-                </button>
-              )}
+              {/* Removed 더보기/접기 for clarity */}
             </div>
           );
         })}
