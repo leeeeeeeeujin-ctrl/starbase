@@ -18,6 +18,16 @@ function mapToVisibleRoot(files) {
 }
 import Link from 'next/link';
 import { applyMainUiPresetObject, getMainUiModules } from '../../../utils/uiPresets';
+
+// Ensure VFS scope is set before Provider mounts (parsed from URL)
+if (typeof window !== 'undefined') {
+  try {
+    const m = window.location.pathname.match(/\/prompts\/([^/]+)\/edit/);
+    const initialScope = m && m[1];
+    window.__VFS_SCOPED_PATCH__ = window.__VFS_SCOPED_PATCH__ || {};
+    window.__VFS_SCOPED_PATCH__.scope = initialScope || null;
+  } catch {}
+}
 function ToolsDropdown({ onOpenUiSettings }) {
   return (
     <select
@@ -224,6 +234,7 @@ function PromptEditInner() {
   const [aiResult, setAiResult] = useState(null);
   const [editorBody, setEditorBody] = useState(prompt.body || '');
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const [showAgent, setShowAgent] = useState(false);
   const [showUiSettings, setShowUiSettings] = useState(false);
   // starter injection is now scoped per set via localStorage guard; ref no longer needed
@@ -297,6 +308,7 @@ function PromptEditInner() {
   }, [id]);
 
   async function handleSave(body) {
+    if (savingRef.current) return; // guard against double-create
     const payload = {
       id: prompt.id === 'new' ? undefined : prompt.id,
       name: prompt.name || '',
@@ -304,6 +316,7 @@ function PromptEditInner() {
     };
     try {
       setSaving(true);
+      savingRef.current = true;
       if (!prompt.id || prompt.id === 'new') {
         const res = await fetch('/api/prompts', {
           method: 'POST',
@@ -330,6 +343,7 @@ function PromptEditInner() {
       alert('Save failed: ' + String(err));
     } finally {
       setSaving(false);
+      savingRef.current = false;
     }
   }
 
@@ -420,8 +434,11 @@ function PromptEditInner() {
 
 export default function PromptEditPage(){
   // Provide VFS to enable ToolsDropdown to read/write /template.json
+  // Key provider by set id to force clean remount per set (prevents cross-set bleed)
+  const router = useRouter();
+  const { id } = router.query || {};
   return (
-    <CodeWorkspaceProvider>
+    <CodeWorkspaceProvider key={id || 'default'}>
       <PromptEditInner />
     </CodeWorkspaceProvider>
   );
