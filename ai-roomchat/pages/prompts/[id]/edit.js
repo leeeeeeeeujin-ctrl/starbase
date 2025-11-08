@@ -318,10 +318,17 @@ function PromptEditInner() {
       setSaving(true);
       savingRef.current = true;
       if (!prompt.id || prompt.id === 'new') {
+        // Create path: generate stable id and idempotency key to avoid duplicates
+        const gen = (p) => {
+          try { return p + (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)); }
+          catch { return p + Math.random().toString(36).slice(2); }
+        };
+        const reqId = gen('req_');
+        const newId = gen('pr_');
         const res = await fetch('/api/prompts', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
+          headers: { 'Content-Type': 'application/json', 'X-Request-Id': reqId },
+          body: JSON.stringify({ ...payload, id: newId }),
         });
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || 'create failed');
