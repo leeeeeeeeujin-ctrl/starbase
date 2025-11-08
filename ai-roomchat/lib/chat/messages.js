@@ -24,6 +24,8 @@ export async function fetchRecentMessages({
   matchInstanceId = null,
   chatRoomId = null,
   scope = null,
+  targetOwnerId = null,
+  targetHeroId = null,
 } = {}) {
   const cappedLimit = Math.max(1, Math.min(limit, 500));
   const { data, error } = await supabase.rpc('fetch_rank_chat_threads', {
@@ -50,8 +52,25 @@ export async function fetchRecentMessages({
 
   const messages = Array.isArray(data.messages) ? data.messages : [];
 
+  // If user is viewing a DM (whisper), optionally filter to only messages addressed to/from that target
+  let filtered = messages;
+  if ((scope && scope.toLowerCase() === 'whisper') && (targetOwnerId || targetHeroId)) {
+    const toComparable = v => (v ? String(v).trim().toLowerCase() : null);
+    const targetOwner = toComparable(targetOwnerId);
+    const targetHero = toComparable(targetHeroId);
+    filtered = messages.filter(m => {
+      const owner = toComparable(m.owner_id || m.user_id);
+      const hero = toComparable(m.hero_id);
+      const tOwner = toComparable(m.target_owner_id);
+      const tHero = toComparable(m.target_hero_id);
+      const isToTarget = (tOwner && targetOwner && tOwner === targetOwner) || (tHero && targetHero && tHero === targetHero);
+      const isFromTarget = (owner && targetOwner && owner === targetOwner) || (hero && targetHero && hero === targetHero);
+      return isToTarget || isFromTarget;
+    });
+  }
+
   return {
-    messages,
+    messages: filtered,
     viewerRole: data.viewerRole || null,
     sessionId: data.sessionId || sessionId || null,
     matchInstanceId: data.matchInstanceId || matchInstanceId || null,
@@ -139,8 +158,19 @@ function messageMatchesContext(record, context) {
     return false;
   }
 
-  const { scope, sessionId, matchInstanceId, gameId, roomId, chatRoomId, heroId, ownerId, userId } =
-    context;
+  const {
+    scope,
+    sessionId,
+    matchInstanceId,
+    gameId,
+    roomId,
+    chatRoomId,
+    heroId,
+    ownerId,
+    userId,
+    targetOwnerId,
+    targetHeroId,
+  } = context;
 
   const recordScope = toComparable(record.scope);
   const recordSession = toComparable(record.session_id);
@@ -153,6 +183,8 @@ function messageMatchesContext(record, context) {
   const recordOwner = toComparable(record.owner_id);
   const recordTargetOwner = toComparable(record.target_owner_id);
   const recordUser = toComparable(record.user_id);
+  const viewerTargetOwner = toComparable(targetOwnerId);
+  const viewerTargetHero = toComparable(targetHeroId);
   const viewerScope = toComparable(scope);
   const viewerSession = toComparable(sessionId);
   const viewerMatch = toComparable(matchInstanceId);
@@ -200,7 +232,14 @@ function messageMatchesContext(record, context) {
     heroAllowed &&
     ownerAllowed &&
     userAllowed &&
-    visibilityAllowsViewer
+    visibilityAllowsViewer &&
+    // If viewing a DM thread, ensure message is to/from that target
+    (!(toComparable(scope) === 'whisper' && (viewerTargetOwner || viewerTargetHero)) ||
+      (
+        // from target to me or to target from me
+        (viewerTargetOwner && (recordOwner === viewerTargetOwner || recordTargetOwner === viewerTargetOwner)) ||
+        (viewerTargetHero && (recordHero === viewerTargetHero || recordTargetHero === viewerTargetHero))
+      ))
   );
 }
 
@@ -215,6 +254,8 @@ export function subscribeToMessages({
   heroId = null,
   ownerId = null,
   userId = null,
+  targetOwnerId = null,
+  targetHeroId = null,
   channelName = null,
 } = {}) {
   const handler = typeof onInsert === 'function' ? onInsert : () => {};
@@ -229,6 +270,8 @@ export function subscribeToMessages({
     heroId,
     ownerId,
     userId,
+    targetOwnerId,
+    targetHeroId,
   };
 
   const topic = channelName

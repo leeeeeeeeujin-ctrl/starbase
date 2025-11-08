@@ -2,13 +2,14 @@
 
 import { GameRuntimeProvider, useGameRuntime } from "./GameRuntimeProvider.jsx";
 import MainGameUI from "./MainGameUI.jsx";
+import DynamicSlot from "./slots/DynamicSlot.jsx";
 import GameChatPanel from "./GameChatPanel.jsx";
 import CountdownNextBar from "./CountdownNextBar.jsx";
 import HistoryPanel from "./HistoryPanel.jsx";
 import Dummy2D from "./engines/Dummy2D.jsx";
 import Dummy3D from "./engines/Dummy3D.jsx";
 import UISchemaRenderer from "./ui/UISchemaRenderer.jsx";
-import { prefetchResources } from "../../utils/resourceCache.js";
+import { prefetchResources, cleanupGameResources } from "../../utils/resourceCache.js";
 import { decompressToString } from "../../utils/compress.js";
 
 function useResponsiveCols() {
@@ -26,8 +27,9 @@ import * as React from 'react';
 import { useWorkspace } from "../workspace/CodeWorkspaceProvider.jsx";
 
 function RuntimeLoader() {
-  const { files } = useWorkspace();
+  const { files, createFile, writeFile, remove, isDirty } = useWorkspace();
   const assetUrlCacheRef = React.useRef({});
+  const injectedRef = React.useRef({ roomId: null, paths: new Set(), originals: new Map() });
   // Build cache of blob URLs for compressed assets (async)
   React.useEffect(() => {
     let alive = true;
@@ -89,13 +91,121 @@ function RuntimeLoader() {
     })();
     return () => { aborted = true; };
   }, [rt?.roomId]);
+
+  // Fetch and overlay remote game documents (graph/config/hooks/pages) into workspace on join
+  React.useEffect(() => {
+    let aborted = false;
+    const prev = injectedRef.current;
+    // If room changed, restore previous overlays first
+    if (prev.roomId && prev.paths.size) {
+      try {
+        for (const p of prev.paths) {
+          const orig = prev.originals.get(p);
+          if (orig && typeof orig.content === 'string') {
+            writeFile(p, orig.content);
+          } else {
+            // remove injected file if it didn't exist before
+            remove(p);
+          }
+        }
+      } catch {}
+      injectedRef.current = { roomId: null, paths: new Set(), originals: new Map() };
+    }
+    (async () => {
+      const roomId = rt?.roomId;
+      if (!roomId) return;
+      try {
+        // Try primary endpoint
+        let docs = null;
+        try {
+          const r1 = await fetch(`/api/games/${encodeURIComponent(roomId)}/docs`);
+          if (r1.ok) docs = await r1.json();
+        } catch {}
+        // Fallback endpoint
+        if (!docs) {
+          try {
+            const r2 = await fetch(`/api/games/${encodeURIComponent(roomId)}/bundle.json`);
+            if (r2.ok) docs = await r2.json();
+          } catch {}
+        }
+        if (aborted || !docs) return;
+        // Expected shapes:
+        // - { files: [{ path, content }...] }
+        // - { files: { [path]: content } }
+        const list = Array.isArray(docs?.files)
+          ? docs.files
+          : (docs?.files && typeof docs.files === 'object'
+              ? Object.entries(docs.files).map(([path, content]) => ({ path, content }))
+              : []);
+        if (!list.length) return;
+        const toOverlay = ['/template.json', '/graph/prompt-graph.json', '/game/runtime.config.json', '/game/hooks/automation.js'];
+        // Also include any pages/* files found in list
+        const pageEntries = list.filter((f) => String(f?.path || '').startsWith('/game/pages/'));
+        const targets = new Set([...toOverlay, ...pageEntries.map((e)=>e.path)]);
+        const originals = new Map();
+        for (const p of targets) {
+          const meta = files[p];
+          if (meta) originals.set(p, { content: typeof meta.content === 'string' ? meta.content : '' });
+        }
+        for (const { path, content } of list) {
+          if (!targets.has(path)) continue;
+          const exists = !!files[path];
+          try {
+            if (!exists) createFile(path, String(content ?? ''));
+            else writeFile(path, String(content ?? ''));
+            injectedRef.current.paths.add(path);
+          } catch {}
+        }
+        injectedRef.current.roomId = roomId;
+        injectedRef.current.originals = originals;
+      } catch {}
+    })();
+    return () => { aborted = true; };
+  }, [rt?.roomId]);
+
+  // Cleanup resources on leave/unmount
+  React.useEffect(() => {
+    const roomId = rt?.roomId;
+    return () => {
+      try { if (roomId) cleanupGameResources(roomId); } catch {}
+      // restore overlays on unmount
+      const prev = injectedRef.current;
+      if (prev.paths.size) {
+        try {
+          for (const p of prev.paths) {
+            const orig = prev.originals.get(p);
+            if (orig && typeof orig.content === 'string') writeFile(p, orig.content);
+            else remove(p);
+          }
+        } catch {}
+        injectedRef.current = { roomId: null, paths: new Set(), originals: new Map() };
+      }
+    };
+  }, [rt?.roomId]);
   React.useEffect(() => {
     try {
-      const graph = JSON.parse(files['/graph/prompt-graph.json']?.content || '{"nodes":[],"edges":[]}');
+      // Derive graph dynamically from template when template is dirty or graph missing.
+      let graphObj = null;
+      const graphFileContent = files['/graph/prompt-graph.json']?.content;
+      const templateContent = files['/template.json']?.content;
+      let templateObj = {};
+      try { templateObj = JSON.parse(templateContent || '{}'); } catch { templateObj = {}; }
+      const canDerive = Array.isArray(templateObj.nodes) && Array.isArray(templateObj.edges);
+      const shouldDerive = canDerive && (!graphFileContent || isDirty('/template.json'));
+      if (shouldDerive) {
+        try {
+          graphObj = {
+            nodes: templateObj.nodes.map(n => ({ id: n.id, type: n.type || 'prompt', label: n.data?.name || n.label || '' })),
+            edges: templateObj.edges.map(e => ({ id: e.id, source: e.source, target: e.target, label: e.label || '' })),
+          };
+        } catch { graphObj = null; }
+      }
+      if (!graphObj) {
+        try { graphObj = JSON.parse(graphFileContent || '{"nodes":[],"edges":[]}'); } catch { graphObj = { nodes: [], edges: [] }; }
+      }
       const config = JSON.parse(files['/game/runtime.config.json']?.content || '{"durations":[30,60,90,120,180]}');
       const src = String(files['/game/hooks/automation.js']?.content || '');
       const compiled = transpileHooks(src);
-      // wrap transformPrompt to resolve include markers using current files
       const resolveIncludes = (text) => {
         try {
           return String(text||'').replace(/\{\{\s*(file|code)\s*:\s*([^}]+)\s*\}\}/g, (_, kind, spec) => {
@@ -119,9 +229,9 @@ function RuntimeLoader() {
           } catch { return ctx?.node?.label || ''; }
         };
       }
-      rt.setRuntime({ graph, hooks, config, files });
+      rt.setRuntime({ graph: graphObj, hooks, config, files });
     } catch {}
-  }, [files['/graph/prompt-graph.json']?.content, files['/game/runtime.config.json']?.content, files['/game/hooks/automation.js']?.content]);
+  }, [files['/graph/prompt-graph.json']?.content, files['/game/runtime.config.json']?.content, files['/game/hooks/automation.js']?.content, files['/template.json']?.content]);
   return null;
 }
 
@@ -227,15 +337,15 @@ export default function GameRealtimeRuntime({ roomId = 'local-demo', currentUser
   return (
     <GameRuntimeProvider roomId={roomId} roles={roles}>
       <RuntimeLoader />
-      <div style={{ display:'grid', gridTemplateRows:'auto 1fr', height:'100%', gap:8 }}>
-        <CountdownNextBar currentUser={currentUser} />
+      <div style={{ display:'grid', gridTemplateRows:'auto 1fr auto', height:'100%', gap:8 }}>
+        <DynamicSlot slotId="topBar" files={files} resolveAsset={resolveAsset} defaultRender={() => <CountdownNextBar currentUser={currentUser} />} />
         <div style={{ display:'grid', gridTemplateColumns: cols, gap:8, minHeight:0 }}>
           <div style={{ display:'grid', gridTemplateRows: narrow ? 'auto auto' : '1fr 1fr', gap:8, minHeight:0 }}>
-            <MainGameUI currentUser={currentUser} />
-            <HistoryPanel currentUser={currentUser} />
+            <DynamicSlot slotId="mainTop" files={files} resolveAsset={resolveAsset} defaultRender={() => <MainGameUI currentUser={currentUser} resolveAsset={resolveAsset} />} />
+            <DynamicSlot slotId="history" files={files} resolveAsset={resolveAsset} defaultRender={() => <HistoryPanel currentUser={currentUser} />} />
           </div>
           <div style={{ display:'grid', gridTemplateRows: narrow ? 'auto auto' : '1fr 1fr', gap:8, minHeight:0 }}>
-            <GameChatPanel currentUser={currentUser} />
+            <DynamicSlot slotId="chat" files={files} resolveAsset={resolveAsset} defaultRender={() => <GameChatPanel currentUser={currentUser} />} />
             <div style={{ display:'grid', gridTemplateRows:'auto 1fr', gap:8, minHeight:0, border:'1px solid #25314a', borderRadius:12, overflow:'hidden' }}>
               <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 10px', background:'rgba(2,6,23,0.6)', color:'#e2e8f0' }}>
                 <strong style={{ fontSize:13 }}>Pages</strong>
@@ -252,6 +362,7 @@ export default function GameRealtimeRuntime({ roomId = 'local-demo', currentUser
             </div>
           </div>
         </div>
+        <DynamicSlot slotId="footer" files={files} resolveAsset={resolveAsset} defaultRender={() => null} />
       </div>
     </GameRuntimeProvider>
   );

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { compressImage } from '@/lib/client/media/compress';
 
 const MAX_BACKGROUND_SIZE = 8 * 1024 * 1024;
 
@@ -37,7 +38,7 @@ export function useHeroBackgroundManager({ setEdit }) {
   );
 
   const handleBackgroundUpload = useCallback(
-    file => {
+    async file => {
       setBackgroundError('');
       if (!file) {
         setBackgroundBlob(null);
@@ -49,17 +50,23 @@ export function useHeroBackgroundManager({ setEdit }) {
         setBackgroundError('이미지 파일만 업로드할 수 있습니다.');
         return;
       }
-      if (file.size > MAX_BACKGROUND_SIZE) {
-        setBackgroundError('이미지 크기는 8MB를 넘을 수 없습니다.');
-        return;
+      try {
+        // Always try to pre-compress to our standard budget; if original is too large,
+        // compression may bring it under the limit.
+        const compressed = await compressImage(file);
+        if (compressed.size > MAX_BACKGROUND_SIZE) {
+          setBackgroundError('압축 후에도 이미지가 너무 큽니다. 8MB 이하로 줄여주세요.');
+          return;
+        }
+        resetBackgroundPreview();
+        const objectUrl = URL.createObjectURL(compressed);
+        localPreviewUrlRef.current = objectUrl;
+        setBackgroundBlob(compressed);
+        setBackgroundPreview(objectUrl);
+        setEdit(prev => ({ ...prev, background_url: '' }));
+      } catch (e) {
+        setBackgroundError(e?.message || '이미지를 처리할 수 없습니다.');
       }
-      resetBackgroundPreview();
-      const blobFile = file.slice(0, file.size, file.type);
-      const objectUrl = URL.createObjectURL(blobFile);
-      localPreviewUrlRef.current = objectUrl;
-      setBackgroundBlob(blobFile);
-      setBackgroundPreview(objectUrl);
-      setEdit(prev => ({ ...prev, background_url: '' }));
     },
     [resetBackgroundPreview, setEdit]
   );

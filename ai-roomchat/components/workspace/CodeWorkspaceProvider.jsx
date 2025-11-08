@@ -118,7 +118,9 @@ const defaultFiles = {
   "/game/pages/index.json": {
     content: JSON.stringify({
       main: { title: "Main", type: "ui", path: "/game/pages/ui/main.json" },
-      script: { title: "ScriptDemo", type: "script", path: "/game/pages/scripts/main.js" }
+      script: { title: "ScriptDemo", type: "script", path: "/game/pages/scripts/main.js" },
+      chatUi: { title: "Chat UI", type: "ui", path: "/game/pages/ui/chat.json" },
+      customHistory: { title: "History+", type: "script", path: "/game/pages/scripts/customHistory.js" }
     }, null, 2)+"\n",
     readonly: false,
   },
@@ -131,6 +133,20 @@ const defaultFiles = {
         { type: "card", children: [
           { type: "text", value: "이 영역은 UI JSON 스키마로 작성됩니다.", color: "#cbd5e1" },
           { type: "button", label: "이벤트 전송", event: "ping", payload: { msg: "hello" } }
+        ]}
+      ]
+    }, null, 2)+"\n",
+    readonly: false,
+  },
+  "/game/pages/ui/chat.json": {
+    content: JSON.stringify({
+      type: "vstack",
+      gap: 8,
+      children: [
+        { type: "text", value: "💬 Custom Chat UI", fontSize: 16, bold: true },
+        { type: "card", children: [
+          { type: "text", value: "이 패널은 템플릿 오버라이드로 교체되었습니다.", color: "#cbd5e1" },
+          { type: "button", label: "Ping", event: "ping", payload: { msg: "hello" } }
         ]}
       ]
     }, null, 2)+"\n",
@@ -153,6 +169,37 @@ const defaultFiles = {
     ].join('\n')+"\n",
     readonly: false,
   },
+  "/game/pages/scripts/customHistory.js": {
+    content: [
+      "export function render(ctx){",
+      "  const schema = {",
+      "    type: 'vstack', gap: 8, children: [",
+      "      { type:'text', value:'📜 History+', fontSize:16, bold:true },",
+      "      { type:'button', label:'리소스 보기', event:'showResources' }",
+      "    ]",
+      "  };",
+      "  const handlers = {",
+      "    showResources(){ console.log('files', Object.keys(ctx.files||{})); }",
+      "  };",
+      "  return { schema, handlers };",
+      "}",
+    ].join('\n')+"\n",
+    readonly: false,
+  },
+  "/characters/sample.json": {
+    content: JSON.stringify({
+      id: "char_sample",
+      name: "샘플 캐릭터",
+      description: "비실시간 조우용 샘플 캐릭터",
+      image_url: "",
+      background_url: "",
+      ability1: "민첩",
+      ability2: "지능",
+      ability3: "체력",
+      ability4: "행운"
+    }, null, 2)+"\n",
+    readonly: false,
+  },
 };
 
 const WorkspaceCtx = createContext(null);
@@ -163,6 +210,9 @@ export function CodeWorkspaceProvider({ children }) {
   const [activePath, setActivePath] = useState("/template.json");
   const [openPaths, setOpenPaths] = useState(["/template.json"]);
   const [entryPath, setEntryPath] = useState("/template.json");
+  const [dirty, setDirty] = useState({}); // { [path]: true }
+  // Track last saved content signature to avoid marking unchanged files dirty just by opening
+  const [savedSig, setSavedSig] = useState({}); // { [path]: string(hash) }
 
   useEffect(() => {
     try {
@@ -189,11 +239,34 @@ export function CodeWorkspaceProvider({ children }) {
         setActivePath(parsed.activePath || "/template.json");
         setOpenPaths(parsed.openPaths || ["/template.json"]);
         setEntryPath(parsed.entryPath || "/template.json");
+        // sanitize dirty/savedSig immediately on load
+        const loadedDirty = parsed.dirty || {};
+        const loadedSig = parsed.savedSig || {};
+        const nextSig = {};
+        const nextDirty = {};
+        Object.entries(merged || {}).forEach(([p, meta]) => {
+          const sig = contentSignature(meta);
+          nextSig[p] = sig;
+          // If existing signature equals newly computed one, not dirty
+          if (loadedSig[p] && loadedSig[p] === sig) nextDirty[p] = false;
+          else nextDirty[p] = !!loadedDirty[p];
+        });
+        setDirty(nextDirty);
+        setSavedSig(nextSig);
       } else {
         setFiles(defaultFiles);
+        // initialize signatures for defaults
+        const sigs = {};
+        Object.entries(defaultFiles).forEach(([p, meta]) => { sigs[p] = contentSignature(meta); });
+        setSavedSig(sigs);
+        setDirty({});
       }
     } catch {
       setFiles(defaultFiles);
+      const sigs = {};
+      Object.entries(defaultFiles).forEach(([p, meta]) => { sigs[p] = contentSignature(meta); });
+      setSavedSig(sigs);
+      setDirty({});
     }
   }, []);
 
@@ -201,10 +274,30 @@ export function CodeWorkspaceProvider({ children }) {
     try {
       localStorage.setItem(
         KEY,
-        JSON.stringify({ files, root, activePath, openPaths, entryPath })
+        JSON.stringify({ files, root, activePath, openPaths, entryPath, dirty, savedSig })
       );
     } catch {}
-  }, [files, root, activePath, openPaths, entryPath]);
+  }, [files, root, activePath, openPaths, entryPath, dirty, savedSig]);
+
+  // Reconcile dirty flags with saved signatures & initialize missing signatures
+  useEffect(() => {
+    try {
+      let sigChanged = false;
+      const nextSig = { ...(savedSig || {}) };
+      Object.entries(files || {}).forEach(([p, meta]) => {
+        const sig = contentSignature(meta);
+        if (!nextSig[p]) { nextSig[p] = sig; sigChanged = true; }
+      });
+      if (sigChanged) setSavedSig(nextSig);
+      let dirtyChanged = false;
+      const nextDirty = { ...(dirty || {}) };
+      Object.entries(files || {}).forEach(([p, meta]) => {
+        const sig = contentSignature(meta);
+        if (nextDirty[p] && nextSig[p] && nextSig[p] === sig) { nextDirty[p] = false; dirtyChanged = true; }
+      });
+      if (dirtyChanged) setDirty(nextDirty);
+    } catch {}
+  }, [files]);
 
   const api = useMemo(() => {
     const exists = (path) => Boolean(files[path]);
@@ -242,6 +335,35 @@ export function CodeWorkspaceProvider({ children }) {
       activePath,
       openPaths,
       entryPath,
+      dirty,
+      isDirty: (path) => {
+        const meta = files[path];
+        if (!meta) return false;
+        const curSig = contentSignature(meta);
+        const sig = savedSig[path];
+        if (sig && sig === curSig) return false;
+        return !!dirty[path];
+      },
+      saveFile: (path) => {
+        const meta = files[path];
+        const sig = contentSignature(meta);
+        setSavedSig((m) => ({ ...m, [path]: sig }));
+        setDirty((m) => ({ ...m, [path]: false }));
+      },
+      saveAll: () => {
+        setSavedSig((m) => {
+          const next = { ...m };
+          Object.entries(files).forEach(([p, meta]) => {
+            next[p] = contentSignature(meta);
+          });
+          return next;
+        });
+        setDirty((m) => {
+          const next = { ...m };
+          Object.keys(next).forEach((k) => { next[k] = false; });
+          return next;
+        });
+      },
       setEntryPath,
       setRoot,
       isDir,
@@ -259,7 +381,7 @@ export function CodeWorkspaceProvider({ children }) {
       close: (path) =>
         setOpenPaths((arr) => arr.filter((p) => p !== path)),
       createFile: (path, content = "") =>
-        setFiles((m) => ({ ...m, [path]: { content, readonly: false } })),
+        { setFiles((m) => ({ ...m, [path]: { content, readonly: false } })); setDirty((d) => ({ ...d, [path]: true })); },
       createFolder: (path) =>
         setFiles((m) => ({ ...m, [normalizeDir(path)]: { dir: true, readonly: true } })),
       writeFile: (path, content) =>
@@ -287,9 +409,19 @@ export function CodeWorkspaceProvider({ children }) {
                 return;
               }
               setFiles((mm) => ({ ...mm, [path]: after }));
+              // Mark dirty only if signature changed vs last saved
+              const newSig = contentSignature(after);
+              setDirty((d) => {
+                const prevSig = savedSig[path];
+                if (prevSig && prevSig === newSig) return { ...d, [path]: false };
+                return { ...d, [path]: true };
+              });
             });
           } else {
-            entry = { ...f, content: String(content||''), compressed: false, data: undefined };
+            const newContent = String(content||'');
+            // If content didn't actually change, no-op and don't mark dirty
+            if (typeof f.content === 'string' && f.content === newContent) return m;
+            entry = { ...f, content: newContent, compressed: false, data: undefined };
             const delta = entry.content.length - ((typeof f.content === 'string') ? f.content.length : 0);
             if (curTotal + Math.max(0, delta) > MAX_VFS_BYTES) {
               alert('최대 게임 파일 크기(15MB)를 초과하여 저장할 수 없습니다.');
@@ -297,6 +429,14 @@ export function CodeWorkspaceProvider({ children }) {
             }
             next[path] = entry;
           }
+          // mark dirty on write
+          queueMicrotask(() => {
+            // Mark dirty only if content differs from last saved signature
+            const metaNext = next[path];
+            const curSig = contentSignature(metaNext);
+            const sig = savedSig[path];
+            if (!sig || sig !== curSig) setDirty((d) => ({ ...d, [path]: true }));
+          });
           return next;
         }),
       rename: (oldPath, newPath) => {
@@ -308,6 +448,14 @@ export function CodeWorkspaceProvider({ children }) {
         setOpenPaths((arr) => arr.map((p) => (p === oldPath ? newPath : p)));
         setActivePath((p) => (p === oldPath ? newPath : p));
         setEntryPath((p) => (p === oldPath ? newPath : p));
+        setDirty((d) => {
+          const { [oldPath]: _drop, ...rest } = d || {};
+          return { ...rest, [newPath]: d?.[oldPath] || false };
+        });
+        setSavedSig((s) => {
+          const { [oldPath]: sigOld, ...rest } = s || {};
+          return { ...rest, [newPath]: sigOld };
+        });
       },
       remove: (path) => {
         setFiles((m) => {
@@ -317,9 +465,45 @@ export function CodeWorkspaceProvider({ children }) {
         setOpenPaths((arr) => arr.filter((p) => p !== path));
         setActivePath((p) => (p === path ? "/template.json" : p));
         setEntryPath((p) => (p === path ? "/template.json" : p));
+        setDirty((d) => {
+          const { [path]: _drop, ...rest } = d || {};
+          return rest;
+        });
+        setSavedSig((s) => {
+          const { [path]: _drop, ...rest } = s || {};
+          return rest;
+        });
       },
     };
-  }, [files, root, activePath, openPaths, entryPath]);
+  }, [files, root, activePath, openPaths, entryPath, savedSig]);
+
+  // Simple stable hash (djb2) for content
+  function stableHash(str){
+    try {
+      let h = 5381; for (let i=0;i<str.length;i++){ h = ((h<<5)+h) + str.charCodeAt(i); }
+      return 'h'+(h>>>0).toString(16);
+    } catch { return 'h0'; }
+  }
+
+  // Unified content signature (supports compressed entries)
+  function contentSignature(meta){
+    try {
+      if (!meta) return 'h0';
+      if (meta.compressed && meta.data && typeof meta.rawLen === 'number') {
+        // combine lengths + first/last chars for stability without full decompression
+        const d = String(meta.data||'');
+        const sample = d.slice(0,16)+d.slice(-16);
+        return stableHash(sample + '|' + meta.rawLen + '|' + meta.compLen);
+      }
+      if (meta.meta && (meta.meta.algo || meta.meta.data)) {
+        const d = String(meta.meta.data||'');
+        const sample = d.slice(0,16)+d.slice(-16);
+        return stableHash(sample + '|' + meta.meta.algo + '|' + meta.meta.rawLen);
+      }
+      if (typeof meta.content === 'string') return stableHash(meta.content);
+      return 'h0';
+    } catch { return 'h0'; }
+  }
 
   return (
     <WorkspaceCtx.Provider value={api}>{children}</WorkspaceCtx.Provider>

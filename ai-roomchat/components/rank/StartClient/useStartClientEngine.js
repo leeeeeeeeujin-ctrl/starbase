@@ -57,8 +57,10 @@ import { createAsyncSessionManager } from './services/asyncSessionManager';
 import { mergeTimelineEvents, normalizeTimelineStatus } from '@/lib/rank/timelineEvents';
 import { buildDropInExtensionTimelineEvent } from '@/lib/rank/dropInTimeline';
 import { prepareHistoryPayload } from '@/lib/rank/chatHistory';
+import { presummarizeHistory } from '@/lib/client/offload/presummarize';
 import { buildHistorySeedEntries } from '@/lib/rank/historySeeds';
 import { runClientAction } from '@/lib/rank/clientActions';
+import { runMatchWithFallback } from '@/lib/client/offload/ruleSim';
 import { fetchCached } from '@/lib/client/cache/fetchCached';
 import { useHistoryBuffer } from './hooks/useHistoryBuffer';
 import { useStartSessionLifecycle } from './hooks/useStartSessionLifecycle';
@@ -3391,7 +3393,18 @@ export function useStartClientEngine(gameId, options = {}) {
         });
 
         const promptText = compiled.text;
-        const historyPayload = prepareHistoryPayload(aiMemory, { limit: 32 });
+        // Pre-summarization to reduce token usage: build compact summary and trim history
+        const historyPayloadRaw = prepareHistoryPayload(aiMemory, { limit: 28 });
+        const { summaryText: historySummary } = presummarizeHistory(historyPayloadRaw, {
+          maxChars: 600,
+          maxItems: 20,
+        });
+        const historyPayload = historySummary
+          ? [
+              { role: 'system', content: `[CONTEXT SUMMARY]\n${historySummary}` },
+              ...historyPayloadRaw.slice(-18),
+            ]
+          : historyPayloadRaw;
         if (compiled.pickedSlot != null) {
           visitedSlotIds.current.add(String(compiled.pickedSlot));
         }
@@ -3402,6 +3415,8 @@ export function useStartClientEngine(gameId, options = {}) {
         let loggedByServer = false;
         let loggedTurnNumber = null;
         let serverSummary = null;
+        let simulatedLocally = false;
+        let localSimResult = null;
 
         let effectiveSystemPrompt = systemPrompt;
         let effectivePrompt = promptText;
@@ -3410,6 +3425,46 @@ export function useStartClientEngine(gameId, options = {}) {
           const persona = buildUserActionPersona(actorContext);
           effectiveSystemPrompt = [systemPrompt, persona.system].filter(Boolean).join('\n\n');
           effectivePrompt = persona.prompt ? `${persona.prompt}\n\n${promptText}` : promptText;
+        }
+
+        // Attempt local rule simulation offload before hitting AI if:
+        //  - no manual/override response
+        //  - current slot is an AI slot (not user_action)
+        //  - we have participants and an active session
+        //  - heuristic: node or its data does NOT explicitly disable local sim via data.disableLocalSim
+        if (!responseText && !isUserAction && participantsRef.current.length && sessionInfo?.id) {
+          try {
+            const disableLocalSim = node?.data?.disableLocalSim || node?.disableLocalSim;
+            if (!disableLocalSim) {
+              // Build a lightweight state snapshot for local simulation.
+              // Map participants to units with pseudo attack/defense derived from available stats or fallbacks.
+              const rawUnits = participantsRef.current.map((p, idx) => {
+                // Simple team assignment: first half A, second half B.
+                const team = idx < Math.ceil(participantsRef.current.length / 2) ? 'A' : 'B';
+                const hero = p.hero || {};
+                const attack = Number(hero.attack || hero.atk || hero.power || 5) || 5;
+                const defense = Number(hero.defense || hero.def || hero.guard || 5) || 5;
+                return { team, attack, defense };
+              });
+              const simState = { sessionId: sessionInfo.id, units: rawUnits };
+              const sim = await runMatchWithFallback(simState);
+              if (sim && sim.simulated) {
+                simulatedLocally = true;
+                localSimResult = sim;
+                // Craft a deterministic response text embedding simulation result so outcome parser can still operate.
+                responseText = [
+                  `로컬 규칙 시뮬레이션 결과`,
+                  `A팀 점수: ${sim.scoreA} / B팀 점수: ${sim.scoreB}`,
+                  `승자: ${sim.winner}`,
+                  '',
+                  'END', // maintain an END marker for existing outcome variable parsing.
+                ].join('\n');
+              }
+            }
+          } catch (e) {
+            // Non-fatal; fall through to normal AI path.
+            console.warn('[StartClient] local rule sim offload 실패:', e?.message || e);
+          }
         }
 
         if (!responseText) {
@@ -3449,7 +3504,15 @@ export function useStartClientEngine(gameId, options = {}) {
             throw new Error('세션 토큰을 확인할 수 없습니다.');
           }
 
-          const res = await fetch('/api/rank/run-turn', {
+          // If we already simulated locally, decide if we want to skip server AI call entirely.
+          // Sampling strategy: 20% of local sims still call server for verification/audit.
+          const needServerVerification = simulatedLocally && Math.random() < 0.2;
+
+          let res = null;
+          if (simulatedLocally && !needServerVerification) {
+            // Skip server call; mark as logged false (we'll log manually below).
+          } else {
+            res = await fetch('/api/rank/run-turn', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -3468,17 +3531,22 @@ export function useStartClientEngine(gameId, options = {}) {
               response_role: historyRole,
               response_public: true,
               history: historyPayload,
+              local_sim: simulatedLocally ? localSimResult || null : undefined,
+              local_sim_verify: needServerVerification || undefined,
             }),
-          });
-
-          let payload = {};
-          try {
-            payload = await res.json();
-          } catch (error) {
-            payload = {};
+            });
           }
 
-          if (!res.ok) {
+          let payload = {};
+          if (res) {
+            try {
+              payload = await res.json();
+            } catch (error) {
+              payload = {};
+            }
+          }
+
+          if (res && !res.ok) {
             const error = new Error(payload?.error || payload?.detail || 'AI 호출에 실패했습니다.');
             if (payload?.error) {
               error.code = payload.error;
@@ -3489,19 +3557,22 @@ export function useStartClientEngine(gameId, options = {}) {
             throw error;
           }
 
-          if (payload?.error) {
+          if (res && payload?.error) {
             const error = new Error(payload.error);
             error.code = payload.error;
             throw error;
           }
 
-          responseText =
-            (typeof payload?.text === 'string' && payload.text.trim()) ||
-            payload?.choices?.[0]?.message?.content ||
-            payload?.content ||
-            '';
+          if (!simulatedLocally || needServerVerification) {
+            responseText =
+              (typeof payload?.text === 'string' && payload.text.trim()) ||
+              payload?.choices?.[0]?.message?.content ||
+              payload?.content ||
+              responseText ||
+              '';
+          }
 
-          if (payload?.logged) {
+          if (res && payload?.logged) {
             loggedByServer = true;
             const numericTurn = Number(payload?.turn_number);
             if (Number.isFinite(numericTurn)) {
@@ -3601,6 +3672,7 @@ export function useStartClientEngine(gameId, options = {}) {
               slotIndex,
               nodeId: node?.id ?? null,
               source: 'fallback-log',
+              localSim: simulatedLocally ? localSimResult || null : undefined,
             },
           };
 
@@ -3627,6 +3699,7 @@ export function useStartClientEngine(gameId, options = {}) {
                 extra: {
                   slotIndex,
                   nodeId: node?.id ?? null,
+                  localSim: simulatedLocally ? localSimResult || null : undefined,
                 },
               },
             ],

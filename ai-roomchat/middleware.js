@@ -44,6 +44,41 @@ export async function middleware(request) {
   try {
     const { pathname } = request.nextUrl;
 
+    // Optional download gate: if ENABLE_DOWNLOAD_GATE=1 and user not marked native/continued web
+    // Redirect any non-API, non-asset route to /download to encourage native install.
+    // Bypass rules:
+    //  - /download itself
+    //  - /api/* (functional calls)
+    //  - Static/next assets already excluded by matcher
+    //  - Cookie sb_native=1 (set when user chooses to continue in web)
+    //  - Query param ?nogate=1 (one-shot debug, sets cookie)
+    try {
+      const enableGate = process.env.ENABLE_DOWNLOAD_GATE === '1';
+      if (enableGate) {
+        const isApi = pathname.startsWith('/api/');
+        const isDownload = pathname === '/download';
+        const cookie = request.headers.get('cookie') || '';
+        const hasBypassCookie = /\bsb_native=1\b/.test(cookie);
+        const url = request.nextUrl.clone();
+        const hasNoGateParam = url.searchParams.get('nogate') === '1';
+        if (hasNoGateParam && !hasBypassCookie) {
+          // Set bypass cookie via redirect back (drop nogate param)
+          url.searchParams.delete('nogate');
+          const res = NextResponse.redirect(url);
+            res.headers.append('Set-Cookie', 'sb_native=1; Path=/; Max-Age=31536000; SameSite=Lax');
+            return res;
+        }
+        if (!isApi && !isDownload && !hasBypassCookie) {
+          const redirectUrl = request.nextUrl.clone();
+          redirectUrl.pathname = '/download';
+          redirectUrl.searchParams.set('from', pathname);
+          return NextResponse.redirect(redirectUrl);
+        }
+      }
+    } catch (gateErr) {
+      try { console.warn('[middleware gate] suppressed error', gateErr && gateErr.message); } catch(_) {}
+    }
+
     // Temporary diagnostics: log a precomputed list of suspicious files that
     // reference Node-only APIs (this JSON is generated at repo-level and
     // bundled into the middleware so Edge logs will contain it). Safe: no

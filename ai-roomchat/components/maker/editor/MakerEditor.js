@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useStudioTemplate } from '../../../contexts/StudioStore';
+import useIsMobile from '../../../utils/useIsMobile';
 
 import { useMakerEditor } from '../../../hooks/maker/useMakerEditor';
 import { exportSet, importSet } from './importExport';
@@ -12,13 +13,17 @@ import AddPromptFab from './AddPromptFab';
 import VariableDrawer from './VariableDrawer';
 import AdvancedToolsPanel from './AdvancedToolsPanel';
 // Removed legacy editors; using StudioJsonEditor for unified JSON
-import WorkspaceOverlay from '../../workspace/WorkspaceOverlay.jsx';
+import CodeEditorOverlayV2 from '../../workspace/CodeEditorOverlayV2.jsx';
 import GameSimulator from './GameSimulator';
 import dynamic from 'next/dynamic';
 import AutoUpdateListener from '../../infra/AutoUpdateListener.jsx';
 const ImageToUIGenerator = dynamic(() => import('../ui/ImageToUIGenerator'), { ssr: false });
+const MainGameMobileUI = dynamic(() => import('../../game/MainGameMobileUI.jsx'), { ssr: false });
+import { applyMainUiPresetObject, getMainUiModules } from '../../../utils/uiPresets';
+import { promptSetsRepository } from '../../../lib/maker/promptSets';
 
 export default function MakerEditor() {
+  const isMobile = useIsMobile(820);
   const snapBtn = {
     padding: '6px 10px',
     borderRadius: 8,
@@ -54,6 +59,7 @@ export default function MakerEditor() {
       });
     } catch {}
   }, []);
+
 
   const {
     nodes,
@@ -114,26 +120,7 @@ export default function MakerEditor() {
     }
   }, [templateText, setNodes, setEdges]);
 
-  // Overlay용 테스트 데이터 구성기 (에디터 노드 → 시뮬레이터 슬롯)
-  const overlayGameData = useMemo(() => {
-    try {
-      return {
-        meta: { version: 2, createdAt: new Date().toISOString() },
-        set: { name: setInfo?.name || '시뮬레이션' },
-        slots: nodes.map((node, index) => ({
-          slot_no: parseInt(node.id) || index,
-          slot_type: node.type || 'ai',
-          template: node.data?.label || '',
-          is_start: node.data?.isStart || index === 0,
-          var_rules_global: node.data?.var_rules_global || {},
-          var_rules_local: node.data?.var_rules_local || {},
-        })),
-        bridges: edges.map(e => ({ id: e.id, source: e.source, target: e.target, label: e.label || '' })),
-      };
-    } catch {
-      return null;
-    }
-  }, [nodes, edges, setInfo?.name]);
+  // (removed) overlayGameData: handled inside V2 overlay when needed
 
   // Initial hydrate when opening existing template
   useEffect(() => {
@@ -274,6 +261,23 @@ export default function MakerEditor() {
   const [showTemplateLibrary, setShowTemplateLibrary] = useState(false);
   const [showImageToUI, setShowImageToUI] = useState(false);
   const [showResourceEditor, setShowResourceEditor] = useState(false);
+  const [showUiSettings, setShowUiSettings] = useState(false);
+  const [showPlayOverlay, setShowPlayOverlay] = useState(false);
+  // Lock background scroll when code editor overlay is open
+  useEffect(() => {
+    try {
+      const b = document?.body; if (!b) return;
+      if (showMultiLanguageEditor) {
+        const prev = b.style.overflow;
+        b.dataset.prevOverflow = prev;
+        b.style.overflow = 'hidden';
+      } else {
+        if (b.dataset.prevOverflow !== undefined) b.style.overflow = b.dataset.prevOverflow;
+        else b.style.overflow = '';
+        delete b.dataset.prevOverflow;
+      }
+    } catch {}
+  }, [showMultiLanguageEditor]);
   useEffect(() => {
     // Lock header as collapsed; never expand
     if (!headerCollapsed) setHeaderCollapsed(true);
@@ -409,6 +413,15 @@ export default function MakerEditor() {
   const openCodeEditor = useCallback(() => {
     setCodeEditorOpen(true);
   }, []);
+
+  // 메인 게임 UI 기본 프리셋 주입
+  const insertMainUiPreset = useCallback(() => {
+    try {
+      const obj = (() => { try { return JSON.parse(templateText || '{}'); } catch { return {}; } })();
+      const next = applyMainUiPresetObject(obj);
+      setTemplateText && setTemplateText(JSON.stringify(next, null, 2));
+    } catch {}
+  }, [templateText, setTemplateText]);
 
   // 🎮 게임 시뮬레이션 상태 (declared earlier; duplicate removed)
 
@@ -617,7 +630,7 @@ export default function MakerEditor() {
 
   return (
     <div
-      style={{ height: '100vh', background: '#f1f5f9', display: 'flex', flexDirection: 'column' }}
+      style={{ height: '100svh', background: '#f1f5f9', display: 'flex', flexDirection: 'column', width: '100vw', overflow: 'hidden' }}
     >
       <AutoUpdateListener intervalMs={60000} auto={false} />
       <div
@@ -625,10 +638,10 @@ export default function MakerEditor() {
           flex: '1 1 auto',
           display: 'flex',
           flexDirection: 'column',
-          maxWidth: 900,
+          maxWidth: isMobile ? '100%' : 900,
           width: '100%',
-          margin: '0 auto',
-          padding: '12px 16px 110px',
+          margin: isMobile ? 0 : '0 auto',
+          padding: isMobile ? '10px 12px calc(env(safe-area-inset-bottom) + 80px)' : '12px 16px 110px',
           boxSizing: 'border-box',
           gap: 10,
         }}
@@ -649,7 +662,8 @@ export default function MakerEditor() {
         onOpenVariables={() => setVariableDrawerOpen(true)}
         onOpenCode={() => { try { if (typeof window !== 'undefined') window.__INLINE_CODE_IN_PANEL__ = true; } catch {}; setShowMultiLanguageEditor(true); }}
         onOpenTemplate={() => setShowTemplateLibrary(true)}
-        onOpenImageUI={() => setShowImageToUI(true)}
+        onOpenUiSettings={() => setShowUiSettings(true)}
+        
         onOpenResource={() => setShowResourceEditor(true)}
           onCreateWithAI={handleCreateWithAI}
           onOpenCodeEditor={openCodeEditor}
@@ -743,7 +757,7 @@ export default function MakerEditor() {
         style={{
           position: 'fixed',
           left: 16,
-          bottom: 28,
+          bottom: 'calc(env(safe-area-inset-bottom) + 28px)',
           padding: '10px 18px',
           borderRadius: 999,
           background: inspectorOpen ? '#1d4ed8' : '#111827',
@@ -764,7 +778,7 @@ export default function MakerEditor() {
           style={{
             position: 'fixed',
             right: 16,
-            bottom: 110,
+            bottom: 'calc(env(safe-area-inset-bottom) + 110px)',
             width: 'min(420px, calc(100vw - 32px))',
             maxHeight: 'min(70vh, 600px)',
             zIndex: 90,
@@ -857,7 +871,7 @@ export default function MakerEditor() {
       )}
 
       {/* Floating prompt add button (bottom-left) */}
-      <AddPromptFab onAdd={(t,templ) => addPromptNode(t, templ)} />
+  <AddPromptFab onAdd={(t,templ) => addPromptNode(t, templ)} />
 
       {/* Fullscreen overlay Code Editor (covers all overlays) */}
       {showMultiLanguageEditor && (
@@ -865,21 +879,31 @@ export default function MakerEditor() {
           role="dialog"
           aria-modal="true"
           onClick={() => setShowMultiLanguageEditor(false)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1000, display: 'flex', alignItems: 'stretch', justifyContent: 'stretch', padding: 0 }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.65)', zIndex: 1600, display: 'flex', alignItems: 'stretch', justifyContent: 'stretch', padding: 0 }}
         >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{ width: '100%', height: '100%', background: '#0b1220', borderRadius: 0, overflow: 'hidden', borderTop: '1px solid rgba(148,163,184,0.35)', position: 'relative', display: 'flex', flexDirection: 'column' }}
-          >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', background: 'rgba(2,6,23,0.6)', color: '#e2e8f0' }}>
-              <strong style={{ fontSize: 13 }}>코드 에디터</strong>
-              <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-                <button onClick={() => setShowMultiLanguageEditor(false)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid rgba(148,163,184,0.35)', background: 'rgba(239, 68, 68, 0.9)', color: '#fff', fontWeight: 700, fontSize: 12 }}>닫기</button>
-              </div>
-            </div>
-            <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-              <WorkspaceOverlay gameData={overlayGameData} templateBinding={{ text: templateText, setText: setTemplateText }} />
-            </div>
+      {/* 메인게임 UI 플레이 오버레이 */}
+      {showPlayOverlay && (
+        <div style={{ position: 'fixed', inset: 0, background: '#0b1220', zIndex: 1700 }}>
+          <div style={{ position: 'absolute', top: 'calc(env(safe-area-inset-top) + 10px)', right: 'calc(env(safe-area-inset-right) + 10px)', zIndex: 1200, display: 'flex', gap: 8 }}>
+            <button onClick={() => setShowPlayOverlay(false)} style={{ padding: '8px 12px', borderRadius: 10, border: '1px solid rgba(148,163,184,.35)', background: 'rgba(239, 68, 68, 0.95)', color: '#fff', fontWeight: 700 }}>닫기</button>
+          </div>
+          <div style={{ position: 'absolute', left:0, top:0, right:0, bottom:0, paddingTop:'env(safe-area-inset-top)', paddingBottom:'env(safe-area-inset-bottom)', paddingLeft:'env(safe-area-inset-left)', paddingRight:'env(safe-area-inset-right)' }}>
+            {(() => {
+              try {
+                const obj = JSON.parse(templateText || '{}');
+                return <MainGameMobileUI template={obj} />;
+              } catch {
+                return <MainGameMobileUI template={{}} />;
+              }
+            })()}
+          </div>
+        </div>
+      )}
+          <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', inset: 0 }}>
+            <CodeEditorOverlayV2
+              templateBinding={{ text: templateText, setText: setTemplateText }}
+              onRequestClose={() => setShowMultiLanguageEditor(false)}
+            />
           </div>
         </div>
       )}
@@ -908,7 +932,7 @@ export default function MakerEditor() {
           style={{
             position: 'fixed',
             left: '50%',
-            bottom: 24,
+            bottom: 'calc(env(safe-area-inset-bottom) + 24px)',
             transform: 'translateX(-50%)',
             background: '#0f172a',
             color: '#f8fafc',
@@ -1107,6 +1131,9 @@ export default function MakerEditor() {
           </div>
         </div>
       )}
+      {showUiSettings && (
+        <UiSettingsPanelMaker onClose={() => setShowUiSettings(false)} templateText={templateText} setTemplateText={setTemplateText} />
+      )}
       {showResourceEditor && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 260 }} onClick={() => setShowResourceEditor(false)}>
           <div style={{ position: 'absolute', inset: '8% 10% auto 10%', background: '#0b1220', border: '1px solid rgba(148,163,184,.35)', borderRadius: 12, overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
@@ -1114,6 +1141,74 @@ export default function MakerEditor() {
           </div>
         </div>
       )}
+      
+    </div>
+  );
+}
+
+function UiSettingsPanelMaker({ onClose, templateText, setTemplateText }) {
+  const [aiImageAssist, setAiImageAssist] = useState(false);
+  const justOpenedRef = useRef(true);
+  useEffect(() => {
+    const t = setTimeout(() => { justOpenedRef.current = false; }, 80);
+    return () => clearTimeout(t);
+  }, []);
+  const getTpl = () => { try { return JSON.parse(templateText || '{}'); } catch { return {}; } };
+  const saveTpl = (obj) => { try { setTemplateText && setTemplateText(JSON.stringify(obj, null, 2)); } catch {} };
+  useEffect(() => {
+    try {
+      const obj = getTpl();
+      const flag = !!(obj?.ai?.imageToUi?.enabled);
+      setAiImageAssist(flag);
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [templateText]);
+  const onApplyPreset = () => {
+    try {
+      const next = applyMainUiPresetObject(getTpl());
+      saveTpl(next);
+      alert('메인 UI 프리셋을 적용했습니다.');
+    } catch (e) { alert('적용 실패: ' + String(e?.message||e)); }
+  };
+  const onToggleAiAssist = (checked) => {
+    try {
+      setAiImageAssist(!!checked);
+      const obj = getTpl();
+      const base = { ...obj, ai: { ...(obj.ai||{}), imageToUi: { ...(obj.ai?.imageToUi||{}), enabled: !!checked } } };
+      const ensured = Array.isArray(base?.ui?.main?.modules) && base.ui.main.modules.length > 0
+        ? base
+        : { ...base, ui: { ...(base.ui||{}), main: { ...(base.ui?.main||{}), modules: getMainUiModules() } } };
+      saveTpl(ensured);
+    } catch {}
+  };
+  return (
+    <div style={{ position:'fixed', inset:0, zIndex:1600, background:'rgba(2,6,23,0.65)' }}>
+      <div onClick={() => { if (justOpenedRef.current) return; onClose(); }} style={{ position:'absolute', inset:0 }} />
+      <div role="dialog" aria-modal="true" onClick={(e)=>e.stopPropagation()} style={{ position:'absolute', left:'env(safe-area-inset-left)', right:'env(safe-area-inset-right)', bottom:'env(safe-area-inset-bottom)', top:'min(8%, 64px)', margin:'auto', maxWidth:600, background:'#0b1220', border:'1px solid rgba(148,163,184,0.35)', borderRadius:12, boxShadow:'0 24px 64px rgba(0,0,0,0.6)', display:'grid', gridTemplateRows:'auto 1fr auto' }}>
+        <div style={{ padding:'10px 12px', borderBottom:'1px solid #25314a', color:'#e2e8f0', fontWeight:700 }}>UI 설정</div>
+        <div style={{ padding:12, display:'grid', gap:12, overflow:'auto' }}>
+          <div style={{ display:'grid', gap:8 }}>
+            <div style={{ fontSize:13, color:'#cbd5e1' }}>빠른 작업</div>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+              <button onClick={onApplyPreset} style={{ padding:'8px 12px', borderRadius:10, border:'1px solid #2563eb', background:'#1d4ed8', color:'#fff', fontWeight:600 }}>메인 프리셋 적용</button>
+            </div>
+          </div>
+          <div style={{ height:1, background:'rgba(148,163,184,0.2)' }} />
+          <div style={{ display:'grid', gap:8 }}>
+            <div style={{ fontSize:13, color:'#cbd5e1' }}>AI 이미지 기반 UI 만들기</div>
+            <label style={{ display:'flex', alignItems:'center', gap:8, fontSize:12, color:'#e2e8f0' }}>
+              <input type="checkbox" checked={aiImageAssist} onChange={e=>onToggleAiAssist(e.target.checked)} />
+              AI 코드 채팅에서 첨부한 이미지를 참고해 UI를 구성하도록 허용
+            </label>
+            <div style={{ fontSize:11, color:'#94a3b8' }}>
+              이미지를 URL로 직접 입력할 필요가 없습니다. 코드 에디터의 AI 채팅 패널에서 이미지를 첨부하세요.
+            </div>
+          </div>
+        </div>
+        <div style={{ padding:12, borderTop:'1px solid #25314a', display:'flex', justifyContent:'flex-end' }}>
+          <button onClick={onClose} style={{ padding:'8px 12px', borderRadius:10, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8' }}>닫기</button>
+        </div>
+      </div>
     </div>
   );
 }

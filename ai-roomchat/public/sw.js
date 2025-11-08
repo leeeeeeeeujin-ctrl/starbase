@@ -4,16 +4,14 @@
  */
 
 // public/sw.js
-const CACHE_NAME = 'starbase-ai-game-v1.0.0';
-const OFFLINE_CACHE = 'starbase-offline-v1';
+const CACHE_NAME = 'starbase-ai-game-v1.0.2';
 
 // 캐시할 리소스들
 const STATIC_RESOURCES = [
   '/',
   '/offline',
   '/manifest.json',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
+  '/icon.png',
   // CSS/JS 파일들은 빌드 시 자동 추가
 ];
 
@@ -144,8 +142,9 @@ self.addEventListener('install', event => {
 
   event.waitUntil(
     (async () => {
-      const cache = await caches.open(CACHE_NAME);
-      await cache.addAll(STATIC_RESOURCES);
+  const cache = await caches.open(CACHE_NAME);
+  // 사전 캐시: 정적 리소스와 오프라인 페이지
+  await cache.addAll(STATIC_RESOURCES);
       console.log('[SW] 정적 리소스 캐시 완료');
 
       // 오프라인 DB 초기화
@@ -167,7 +166,7 @@ self.addEventListener('activate', event => {
       const cacheNames = await caches.keys();
       await Promise.all(
         cacheNames
-          .filter(name => name !== CACHE_NAME && name !== OFFLINE_CACHE)
+          .filter(name => name !== CACHE_NAME)
           .map(name => caches.delete(name))
       );
 
@@ -206,28 +205,17 @@ self.addEventListener('fetch', event => {
 // 게임 API 오프라인 처리
 async function handleGameAPI(request) {
   const url = new URL(request.url);
-  const isOnline = navigator.onLine;
-
   try {
-    if (isOnline) {
-      // 온라인: 실제 API 호출
-      const response = await fetch(request);
-
-      // 성공 시 오프라인 DB에 결과 저장
-      if (response.ok) {
-        const clonedResponse = response.clone();
-        const data = await clonedResponse.json();
-
-        if (url.pathname.includes('/sessions/')) {
-          await offlineDB.saveGameSession(data);
-        }
+    // 온라인 우선 시도: 실패 시 오프라인 핸들러로 폴백
+    const response = await fetch(request);
+    if (response.ok) {
+      const clonedResponse = response.clone();
+      const data = await clonedResponse.json();
+      if (url.pathname.includes('/sessions/')) {
+        await offlineDB.saveGameSession(data);
       }
-
-      return response;
-    } else {
-      // 오프라인: 로컬 DB에서 처리
-      return await handleOfflineGameAPI(request, url);
     }
+    return response;
   } catch (error) {
     console.log('[SW] API 오류, 오프라인 모드로 전환:', error);
     return await handleOfflineGameAPI(request, url);
@@ -356,6 +344,14 @@ async function handleAIAPI(request) {
 
 // 정적 리소스 캐시-퍼스트 전략
 async function handleStaticRequest(request) {
+  // Avoid caching range requests; Cache API doesn't support 206 (Partial Content)
+  try {
+    const range = request.headers && request.headers.get && request.headers.get('Range');
+    if (range) {
+      // Pass-through without touching cache
+      return fetch(request);
+    }
+  } catch {}
   const cache = await caches.open(CACHE_NAME);
   const cachedResponse = await cache.match(request);
 
@@ -366,23 +362,21 @@ async function handleStaticRequest(request) {
   try {
     const response = await fetch(request);
 
-    // 성공한 응답은 캐시에 저장
-    if (response.ok) {
-      cache.put(request, response.clone());
+    // Guard against partial/opaque responses
+    const status = response ? response.status : 0;
+    const isPartial = status === 206 || (response && response.headers && response.headers.get('content-range'));
+    const isOpaque = response && response.type === 'opaque';
+    if (response && status === 200 && !isPartial && !isOpaque) {
+      try { await cache.put(request, response.clone()); } catch (e) { /* cache put might fail silently */ }
     }
-
     return response;
   } catch (error) {
     // 오프라인 시 오프라인 페이지 반환
     const url = new URL(request.url);
 
     if (OFFLINE_PAGES.includes(url.pathname)) {
-      const offlineCache = await caches.open(OFFLINE_CACHE);
-      const offlinePage = await offlineCache.match('/offline');
-
-      if (offlinePage) {
-        return offlinePage;
-      }
+      const offlinePage = await cache.match('/offline');
+      if (offlinePage) return offlinePage;
     }
 
     // 기본 오프라인 응답
@@ -438,14 +432,28 @@ async function syncGameData() {
 
 // 헬퍼 함수들
 async function generateCacheKey(request) {
-  const body = request.method === 'POST' ? await request.clone().text() : '';
+  let body = '';
+  if (request.method === 'POST') {
+    try {
+      // If body already consumed, skip cloning; use empty string as part of key.
+      if (!request.bodyUsed) {
+        body = await request.clone().text();
+      }
+    } catch (e) {
+      body = ''; // fallback
+    }
+  }
   const keyString = request.url + request.method + body;
-
-  const msgBuffer = new TextEncoder().encode(keyString);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  try {
+    const msgBuffer = new TextEncoder().encode(keyString);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch {
+    // Fallback: simple string hash
+    let h = 0; for (let i=0;i<keyString.length;i++){ h = ((h<<5)-h) + keyString.charCodeAt(i); h|=0; }
+    return 'F'+(h>>>0).toString(16);
+  }
 }
 
 async function cacheAIResponse(key, data) {

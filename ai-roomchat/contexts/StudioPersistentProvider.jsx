@@ -10,6 +10,14 @@ function Bootstraper({ children }){
   useEffect(() => {
     if (initialized.current) return; initialized.current = true;
     try {
+      // URL query can override initial mode (e.g., /studio?mode=ui)
+      try {
+        const u = new URL(window.location.href);
+        const qm = (u.searchParams.get('mode') || '').toLowerCase();
+        if (qm === 'code' || qm === 'nodes' || qm === 'ui') {
+          setMode(qm);
+        }
+      } catch {}
       const t = localStorage.getItem(KEY_TEXT); if (t) setTemplateText(t);
       const m = localStorage.getItem(KEY_MODE); if (m) setMode(m);
     } catch {}

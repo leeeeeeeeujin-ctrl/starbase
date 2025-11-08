@@ -8,9 +8,13 @@ const ActiveMatchOverlay = dynamic(() => import('@/components/rank/ActiveMatchOv
 const GlobalChatLauncher = dynamic(() => import('@/components/social/GlobalChatLauncher'), { ssr: false });
 const DebugOverlay = dynamic(() => import('@/components/DebugOverlay'), { ssr: false });
 const ClientErrorReporter = dynamic(() => import('@/components/ClientErrorReporter'), { ssr: false });
+const QuotaExceededNotice = dynamic(() => import('@/components/common/QuotaExceededNotice'), { ssr: false });
+const UpgradeBanner = dynamic(() => import('@/components/upgrade/UpgradeBanner'), { ssr: false });
+const InstallGate = dynamic(() => import('@/components/pwa/InstallGate'), { ssr: false });
 
 import '../styles/globals.css';
 import { GameIntegrationProvider } from '@/components/GameIntegrationContext';
+import { ClientCapabilitiesProvider } from '@/context/ClientCapabilitiesContext';
 
 function OverlayAwareShell({ children }) {
   const router = useRouter();
@@ -57,6 +61,7 @@ export default function App({ Component, pageProps }) {
 
   return (
     <GameIntegrationProvider>
+      <ClientCapabilitiesProvider>
       <Head>
         <link rel="manifest" href="/manifest.json" />
         <link rel="icon" href="/icon.png" />
@@ -68,8 +73,15 @@ export default function App({ Component, pageProps }) {
       <OverlayAwareShell>
         <ClientErrorReporter />
         <DebugOverlay />
+        {/* Global quota notice for all upload surfaces (chat, studio, etc.) */}
+        <QuotaExceededNotice />
+        {/* Native upgrade prompt banner (conditional) */}
+        <UpgradeBanner />
+  {/* PWA install enforcement (restricted routes redirect) */}
+  <InstallGate />
         <Component {...pageProps} />
       </OverlayAwareShell>
+      </ClientCapabilitiesProvider>
     </GameIntegrationProvider>
   );
 }

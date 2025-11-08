@@ -1,4 +1,5 @@
 import { enforceBeforeClassA, incClassA } from '../../../lib/server/quota.js';
+import { parseAndValidateAssetKey, validateBudget } from '../../../lib/server/assets/validation.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -6,6 +7,9 @@ export default async function handler(req, res) {
   if (!key || !contentType) return res.status(400).json({ error: 'key and contentType required' });
   if (typeof size !== 'number' || size <= 0) return res.status(400).json({ error: 'size required' });
   try {
+    // Validate key structure and basic budgets early
+    parseAndValidateAssetKey(key);
+    try { validateBudget({ mime: contentType, size }); } catch (e) { return res.status(e.statusCode||413).json({ error: e.message }); }
     await enforceBeforeClassA({ size });
     const { url, headers } = await getSignedPutUrl({ key, contentType, sha256, contentEncoding });
     await incClassA(1);

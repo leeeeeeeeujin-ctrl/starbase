@@ -8,6 +8,8 @@ body {
   font-family: 'Noto Sans KR', sans-serif;
   background-color: #040507;
   color: #ffffff;
+  /* Prevent horizontal scrollbars when using full-bleed sections (100vw with negative margins) */
+  overflow-x: hidden;
 }
 a {
   color: #2563eb;

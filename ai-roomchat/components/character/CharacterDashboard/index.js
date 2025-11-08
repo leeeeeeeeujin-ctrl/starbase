@@ -10,6 +10,7 @@ import EditHeroModal from './sections/EditHeroModal';
 import { CharacterDashboardProvider, useCharacterDashboardContext } from './context';
 import AIBattleGameController from '../arena/AIBattleGameController';
 import UnifiedGameSystem from '../game/UnifiedGameSystem';
+import QuotaExceededNotice from '@/components/common/QuotaExceededNotice';
 
 const NAV_ITEMS = [
   { id: 'game', label: '게임 찾기' },
@@ -450,6 +451,7 @@ export default function CharacterDashboard({
         </button>
       ) : null}
       <EditHeroModal open={editOpen} onClose={() => setEditOpen(false)} />
+      <QuotaExceededNotice />
 
       {/* 통합 게임 시스템 */}
       {unifiedGameOpen && (

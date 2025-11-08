@@ -22,7 +22,7 @@ export default async function handler(req, res) {
     if (!key) return res.status(400).json({ error: 'key or url required' });
 
     // Minimal safety: restrict to known prefixes we control
-    const allowedPrefixes = ['games/', 'chat/'];
+  const allowedPrefixes = ['games/', 'chat/', 'studio/'];
     if (!allowedPrefixes.some(prefix => key.startsWith(prefix))) {
       return res.status(400).json({ error: 'unsupported key prefix' });
     }

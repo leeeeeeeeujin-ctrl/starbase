@@ -1,10 +1,17 @@
-import { reconcileStorageOnCommit, incClassA } from '../../../lib/server/quota.js';
+import { reconcileStorageOnCommit, incClassA, enforceBeforeClassA } from '../../../lib/server/quota.js';
+import { parseAndValidateAssetKey, validateBudget, isImage } from '../../../lib/server/assets/validation.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   const { key, hash, size, mime, gameId, visibility = 'public' } = req.body || {};
   if (!key || !hash) return res.status(400).json({ error: 'key and hash required' });
   try {
+    // Validate key structure and budgets. Enforce that images are in webp format via key extension.
+    const { gameId: keyGameId, setId } = parseAndValidateAssetKey(key);
+    try { validateBudget({ mime, size }); } catch (e) { return res.status(e.statusCode||413).json({ error: e.message }); }
+    if (isImage(mime) && !/\.webp$/i.test(key)) {
+      return res.status(415).json({ error: 'images must be uploaded as .webp (server-enforced)' });
+    }
     // Optional: persist into Supabase table 'assets'
     try {
       const { createClient } = await import('@supabase/supabase-js');
@@ -14,8 +21,15 @@ export default async function handler(req, res) {
       const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
       if (supabaseUrl && supabaseKey) {
         const supabase = createClient(supabaseUrl, supabaseKey, token ? { global: { headers: { Authorization: `Bearer ${token}` } } } : {});
+        // If this content hash is new (no existing row), enforce storage cap with the declared size
+        try {
+          const { data: existing } = await supabase.from('assets').select('hash').eq('hash', hash).maybeSingle();
+          if (!existing) {
+            await enforceBeforeClassA({ size: Number(size) || 0 });
+          }
+        } catch {}
         // upsert by hash
-        await supabase.from('assets').upsert({ hash, key, size: size||null, mime: mime||null, game_id: gameId||null, visibility, ref_count: 1 }, { onConflict: 'hash' });
+        await supabase.from('assets').upsert({ hash, key, size: size||null, mime: mime||null, game_id: (gameId||keyGameId)||null, visibility, ref_count: 1 }, { onConflict: 'hash' });
       }
     } catch {}
     // Update storage counters if this is a new hash; count class A for bookkeeping

@@ -13,12 +13,16 @@ const AIPanel = dynamic(() => import('./AIPanel'), { ssr: false });
 const RunnerPanel = dynamic(() => import('./RunnerPanel'), { ssr: false });
 const ImageUiPanel = dynamic(() => import('./ImageUiPanel'), { ssr: false });
 const BlockCodingPanel = dynamic(() => import('./BlockCodingPanel'), { ssr: false });
+const ResourceUploadPanel = dynamic(() => import('./ResourceUploadPanel'), { ssr: false });
+const ResourceManagerPanel = dynamic(() => import('./ResourceManagerPanel'), { ssr: false });
 
 export default function UnifiedWorkbench() {
   const { templateText, setTemplateText, mode, setMode } = useStudioTemplate();
   const fileInputRef = useRef(null);
   const [showImageUi, setShowImageUi] = useState(false);
   const [showBlocks, setShowBlocks] = useState(false);
+  const [showResourceUpload, setShowResourceUpload] = useState(false);
+  const [showResourceManager, setShowResourceManager] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
 
   const info = useMemo(() => {
@@ -94,6 +98,8 @@ export default function UnifiedWorkbench() {
               <div style={{ position: 'absolute', right: 0, top: '110%', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8, padding: 6, display: 'grid', gap: 6, minWidth: 200, zIndex: 20 }}>
                 <button onClick={() => setShowImageUi(true)} style={{ textAlign: 'left', padding: 6 }}>이미지로 UI 생성</button>
                 <button onClick={() => setShowBlocks(true)} style={{ textAlign: 'left', padding: 6 }}>블록코딩</button>
+                <button onClick={() => setShowResourceUpload(true)} style={{ textAlign: 'left', padding: 6 }}>Upload Resources</button>
+                <button onClick={() => setShowResourceManager(true)} style={{ textAlign: 'left', padding: 6 }}>Manage Resources</button>
                 <button onClick={() => fileInputRef.current?.click()} style={{ textAlign: 'left', padding: 6 }}>Import JSON</button>
                 <button onClick={() => {
                   const blob = new Blob([templateText || '{}'], { type: 'application/json' });
@@ -144,6 +150,8 @@ export default function UnifiedWorkbench() {
       <AIPanel />
       {showImageUi && <ImageUiPanel onClose={() => setShowImageUi(false)} />}
       {showBlocks && <BlockCodingPanel onClose={() => setShowBlocks(false)} />}
+      {showResourceUpload && <ResourceUploadPanel onClose={() => setShowResourceUpload(false)} />}
+  {showResourceManager && <ResourceManagerPanel onClose={() => setShowResourceManager(false)} />}
     </div>
   );
 }

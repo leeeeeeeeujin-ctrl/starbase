@@ -8,7 +8,7 @@ const Ctx = createContext(null);
 
 function makeId(pfx="evt") { return `${pfx}_${Math.random().toString(36).slice(2,9)}`; }
 
-export function GameRuntimeProvider({ roomId = "local-room", roles = { players: [], observers: [] }, children, defaultDurations = [30, 60, 90, 120, 180] }) {
+export function GameRuntimeProvider({ roomId = "local-room", roles = { players: [], observers: [] }, children, defaultDurations = [30, 60, 90, 120, 180], enableRealtime = true, enableBroadcast = true }) {
   const [connected, setConnected] = useState(false);
   const chanRef = useRef(null);
   const bcRef = useRef(null);
@@ -115,7 +115,7 @@ export function GameRuntimeProvider({ roomId = "local-room", roles = { players: 
   useEffect(() => {
     let sub; let bc;
     try {
-      if (supabase?.channel) {
+      if (enableRealtime && supabase?.channel) {
         sub = supabase.channel(`game:${room}`).on('broadcast', { event: 'evt' }, ({ payload }) => {
           if (payload?.room !== room) return;
           apply(payload);
@@ -123,13 +123,13 @@ export function GameRuntimeProvider({ roomId = "local-room", roles = { players: 
         chanRef.current = sub;
       }
     } catch {}
-    try { bc = new BroadcastChannel(`game:${room}`); bc.onmessage = (ev) => { const p = ev.data; if (p?.room === room) apply(p); }; bcRef.current = bc; } catch {}
+    try { if (enableBroadcast) { bc = new BroadcastChannel(`game:${room}`); bc.onmessage = (ev) => { const p = ev.data; if (p?.room === room) apply(p); }; bcRef.current = bc; } } catch {}
     return () => {
       try { if (sub) supabase.removeChannel(sub); } catch {}
       try { bc?.close(); } catch {}
       chanRef.current = null; bcRef.current = null;
     };
-  }, [room, apply]);
+  }, [room, apply, enableRealtime, enableBroadcast]);
 
   // timer tick
   useEffect(() => {

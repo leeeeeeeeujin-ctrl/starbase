@@ -4,9 +4,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { CodeWorkspaceProvider, useWorkspace } from "./CodeWorkspaceProvider.jsx";
 import FileTree from "./FileTree.jsx";
 import EditorMonaco from "../EditorMonaco.jsx";
-import GameSimulator from "../maker/editor/GameSimulator";
 import { supabase } from "../../lib/supabase";
-import GameRealtimeRuntime from "../game/GameRealtimeRuntime.jsx";
+import dynamic from 'next/dynamic';
+const MainGameMobileUI = dynamic(() => import('../game/MainGameMobileUI.jsx'), { ssr: false });
+import SyncTemplateToVfs from './SyncTemplateToVfs.jsx';
+import AICodeChatPanel from './AICodeChatPanel.jsx';
 
   function EditorPane() {
   const { files, activePath, writeFile, inferLang } = useWorkspace();
@@ -30,10 +32,8 @@ import GameRealtimeRuntime from "../game/GameRealtimeRuntime.jsx";
   }
 
 export default function WorkspaceOverlay({ gameData, templateBinding }) {
-  // 오른쪽 영역에서 코드/테스트 동시 표시 + 리사이저
-  const [showTest, setShowTest] = useState(false);
-  const [splitPct, setSplitPct] = useState(60); // 에디터:테스트 비율
-  const [dragging, setDragging] = useState(false);
+  // 코드 에디터 전면 플레이 오버레이
+  const [showPlay, setShowPlay] = useState(false);
   const [showTree, setShowTree] = useState(true);
   const [showCodeChat, setShowCodeChat] = useState(false);
   const [chatSize, setChatSize] = useState(() => {
@@ -64,8 +64,10 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
   const [toolbarCollapsed, setToolbarCollapsed] = useState(true);
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [aiMenuOpen, setAiMenuOpen] = useState(false);
+  const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
   const fileMenuRef = useRef(null);
   const aiMenuRef = useRef(null);
+  const toolsMenuRef = useRef(null);
   const treeRef = useRef(null);
   const [creating, setCreating] = useState(null); // null | 'file' | 'folder'
   const [createPath, setCreatePath] = useState('');
@@ -84,11 +86,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
   };
   const [overlayTree, setOverlayTree] = useState(computeOverlayTree());
   const PREF_SNAP = 'maker:ui:snap';
-  const PREF_SPLIT = 'workspace:split:pct';
-  // 안정적 레이아웃: 상단/하단 패널 높이를 측정해 에디터를 절대 배치
-  const toolbarRef = useRef(null);
-  const bottomRef = useRef(null);
-  const [toolbarH, setToolbarH] = useState(0);
+  // 안정적 레이아웃: 자연 플렉스 레이아웃으로 상단/본문 배치
   const [bottomH, setBottomH] = useState(0);
   // keep tree width responsive on resize
   useEffect(() => {
@@ -109,7 +107,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
     try {
       if (typeof window !== 'undefined') {
         const saved = localStorage.getItem(PREF_SNAP);
-        if (saved === 'mobile') { setShowTree(false); setToolbarCollapsed(true); setShowTest(false); }
+        if (saved === 'mobile') { setShowTree(false); setToolbarCollapsed(true); }
         else if (saved === 'desktop') { setShowTree(true); setToolbarCollapsed(false); }
         else {
           const w = window.innerWidth || 1200;
@@ -118,26 +116,9 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
       }
     } catch {}
   }, []);
-  // split 비율 복원
-  useEffect(() => {
-    try {
-      const s = localStorage.getItem(PREF_SPLIT);
-      const pct = parseInt(s || '60', 10);
-      if (!Number.isNaN(pct)) setSplitPct(Math.min(80, Math.max(20, pct)));
-    } catch {}
-  }, []);
-  useEffect(() => {
-    try {
-      const h = toolbarRef.current ? toolbarRef.current.getBoundingClientRect().height : 0;
-      setToolbarH(Math.round(h));
-    } catch {}
-  }, [toolbarCollapsed, fileMenuOpen, aiMenuOpen, creating, showTree]);
+  // 툴바 높이 측정 없이 자연 레이아웃 사용
   // Chat panel is now floating overlay; editor area bottom inset remains 0
   useEffect(() => { setBottomH(0); }, [showCodeChat]);
-  // split 비율 저장
-  useEffect(() => {
-    try { localStorage.setItem(PREF_SPLIT, String(splitPct)); } catch {}
-  }, [splitPct]);
 
   // 클릭 바깥 감지로 드롭다운 자동 닫기
   useEffect(() => {
@@ -149,8 +130,10 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
         const fm = fileMenuRef.current;
         const am = aiMenuRef.current;
         const tr = treeRef.current;
+        const tm = toolsMenuRef.current;
         if (fileMenuOpen && fm && !fm.contains(e.target)) setFileMenuOpen(false);
         if (aiMenuOpen && am && !am.contains(e.target)) setAiMenuOpen(false);
+        if (toolsMenuOpen && tm && !tm.contains(e.target)) setToolsMenuOpen(false);
         // 파일트리가 열려있을 때, 파일트리 영역 밖을 터치하면 닫기
         if (showTree && tr && !tr.contains(e.target)) setShowTree(false);
       } catch {}
@@ -159,6 +142,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
       if (e.key === 'Escape') {
         if (fileMenuOpen) setFileMenuOpen(false);
         if (aiMenuOpen) setAiMenuOpen(false);
+        if (toolsMenuOpen) setToolsMenuOpen(false);
         if (showTree) setShowTree(false);
       }
     };
@@ -185,6 +169,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
     if (toolbarCollapsed) {
       setFileMenuOpen(false);
       setAiMenuOpen(false);
+      setToolsMenuOpen(false);
     }
   }, [toolbarCollapsed]);
   // lock visual height to avoid mobile browser chrome jumps
@@ -199,27 +184,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
       return () => window.removeEventListener('resize', setVh);
     } catch {}
   }, []);
-  useEffect(() => {
-    if (!dragging) return;
-    const onMove = (e) => {
-      const x = e.clientX ?? (e.touches ? e.touches[0]?.clientX : 0);
-      const vw = typeof window !== 'undefined' ? window.innerWidth : 1000;
-      const left = (!overlayTree && showTree) ? treeWidth : 0;
-      const pct = Math.min(80, Math.max(20, Math.round(((x - left) / (vw - left)) * 100)));
-      setSplitPct(pct);
-    };
-    const onUp = () => setDragging(false);
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-    window.addEventListener('touchmove', onMove);
-    window.addEventListener('touchend', onUp);
-    return () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-      window.removeEventListener('touchmove', onMove);
-      window.removeEventListener('touchend', onUp);
-    };
-  }, [dragging]);
+  // no split dragging in overlay mode
   const Toolbar = () => {
     const { root, normalizeDir, open, createFile, createFolder, rename, remove, files, activePath, writeFile, openPaths, close, entryPath, setEntryPath } = useWorkspace();
     const doNewFile = () => { setCreating('file'); setCreatePath(normalizeDir(root)+'untitled.js'); setFileMenuOpen(false); };
@@ -273,7 +238,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
     );
 
     return (
-      <div ref={toolbarRef} style={{ display: 'grid', gridTemplateRows: toolbarCollapsed ? 'auto' : 'auto auto auto', gap: 6, padding: '8px', borderBottom: '1px solid #25314a', background: 'rgba(2,6,23,0.5)' }}>
+      <div style={{ display: 'grid', gridTemplateRows: toolbarCollapsed ? 'auto' : 'auto auto auto', gap: 6, padding: '8px', borderBottom: '1px solid #25314a', background: 'rgba(2,6,23,0.5)' }}>
         {/* 1열: 햄버거 / 파일 메뉴 / AI 코딩 / 테스트 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button onClick={() => { setFileMenuOpen(false); setAiMenuOpen(false); setShowTree(v=>!v); }} title="파일트리" style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: showTree ? '#172033' : '#0b1220', color: '#e2e8f0' }}>☰</button>
@@ -298,15 +263,23 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
               </div>
             )}
           </div>
-          <MenuButton onClick={() => setShowTest(v=>!v)} active={showTest} label="테스트" />
-          <div style={{ marginLeft:'auto', display:'flex', gap:8 }}>
-            {showTest && (
-              <>
-                <MenuButton onClick={() => setSplitPct(50)} active={false} label="50/50" />
-                <MenuButton onClick={() => setSplitPct(70)} active={false} label="70/30" />
-                <MenuButton onClick={() => setSplitPct(30)} active={false} label="30/70" />
-              </>
+          <MenuButton onClick={() => setShowPlay(true)} active={showPlay} label="플레이" />
+          <div ref={toolsMenuRef} style={{ position:'relative' }}>
+            <MenuButton onClick={() => setToolsMenuOpen(v=>{ const next=!v; if (next) { setFileMenuOpen(false); setAiMenuOpen(false); setShowTree(false); } return next; })} active={toolsMenuOpen} label="도구" />
+            {toolsMenuOpen && (
+              <div style={{ position:'absolute', zIndex: 20, background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, display:'grid', gap:6, minWidth:200 }}>
+                <button onClick={() => { try { window.location.href = '/prompts'; } catch {} finally { setToolsMenuOpen(false); } }} data-test-id="open-prompt-editor" style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>프롬프트 에디터</button>
+                <button onClick={() => { try { open('/graph/prompt-graph.json'); } catch {} finally { setToolsMenuOpen(false); } }} data-test-id="open-prompt-graph" style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>프롬프트 그래프 열기</button>
+                <button onClick={() => { try { open('/game/runtime.config.json'); } catch {} finally { setToolsMenuOpen(false); } }} data-test-id="open-runtime-config" style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>런타임 설정 열기</button>
+                <button onClick={() => { try { window.location.href = '/studio?mode=ui'; } catch {} finally { setToolsMenuOpen(false); } }} data-test-id="open-ui-editor" style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>UI 편집기</button>
+                <div style={{ height:1, background:'rgba(148,163,184,0.2)', margin:'4px 2px' }} />
+                <button onClick={() => { try { setShowCodeChat(true); } finally { setToolsMenuOpen(false); } }} data-test-id="open-ai-agent" style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #2563eb', background:'#0b1220', color:'#93c5fd', whiteSpace:'nowrap' }}>AI 에이전트</button>
+                <button onClick={() => { try { window.location.href = '/game/dev-local'; } catch {} finally { setToolsMenuOpen(false); } }} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>메인게임 (dev-local)</button>
+                <button onClick={() => { try { window.location.href = '/game/dev-graph'; } catch {} finally { setToolsMenuOpen(false); } }} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>메인게임 (dev-graph)</button>
+              </div>
             )}
+          </div>
+          <div style={{ marginLeft:'auto', display:'flex', gap:8 }}>
             <MenuButton onClick={() => setToolbarCollapsed(v=>!v)} active={toolbarCollapsed} label={toolbarCollapsed?'펼치기':'접기'} />
           </div>
         </div>
@@ -365,60 +338,49 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
             <FileTree />
           </div>
         )}
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', paddingTop:'env(safe-area-inset-top)', paddingBottom:'env(safe-area-inset-bottom)', paddingLeft:'env(safe-area-inset-left)', paddingRight:'env(safe-area-inset-right)' }}>
           <Toolbar />
-          {/* 중앙 영역: 절대 배치로 상단/하단 고정 높이를 제외한 영역 전체를 에디터/테스트가 차지 */}
-          <div style={{ position:'relative', flex: 1, minHeight: 0 }}>
-            <div style={{ position:'absolute', inset: `${toolbarH}px 0 ${bottomH}px 0`, display:'flex', minHeight:0 }}>
-              <div style={{ width: showTest ? `${splitPct}%` : '100%', minWidth: 0 }}>
-                <EditorPane />
-              </div>
-              {showTest && (
-                <>
-                  <div
-                    onMouseDown={() => setDragging(true)}
-                    onTouchStart={() => setDragging(true)}
-                    onDoubleClick={() => setSplitPct(50)}
-                    title="더블클릭: 50/50"
-                    style={{ width: 6, cursor: 'col-resize', background: 'rgba(148,163,184,0.3)' }}
-                  />
-                  <div style={{ flex: 1, minWidth: 0, background: '#0a0f1a' }}>
-                    {/* Realtime runtime preview (prototype). Replace or toggle with GameSimulator as needed. */}
-                    {true ? (
-                      <div style={{ height:'100%', padding:8 }}>
-                        <div style={{ height:'100%' }}>
-                          <GameRealtimeRuntime roomId={'editor-preview'} roles={{ players:['local','ai1','ai2'], observers:[] }} currentUser={{ id:'local', role:'players' }} />
-                        </div>
-                      </div>
-                    ) : (
-                      <GameSimulator visible={true} gameData={gameData} />
-                    )}
-                  </div>
-                </>
-              )}
+          {/* 중앙 영역: 툴바 아래 컨텐츠가 1fr로 동작, 에디터는 100% 채움 */}
+          <div style={{ position:'relative', flex: 1, minHeight: 0, overflow:'hidden' }}>
+            <div style={{ position:'absolute', inset: 0 }}>
+              <EditorPane />
             </div>
+            {/* overlayTree 모드의 파일트리를 컨텐츠 영역 위에 오버레이 */}
+            {overlayTree && showTree && (
+              <div
+                ref={treeRef}
+                style={{
+                  position:'absolute', left:0, top:0, bottom:0,
+                  width: treeWidth, background:'#0b1220', borderRight:'1px solid #25314a',
+                  boxShadow:'8px 0 24px -12px rgba(0,0,0,0.4)',
+                  transition:'opacity 200ms ease',
+                  zIndex: 300,
+                }}
+              >
+                <FileTree />
+              </div>
+            )}
+            {overlayTree && showTree && (
+              <div onClick={()=>setShowTree(false)} style={{ position:'absolute', inset:0, background:'rgba(2,6,23,0.4)', backdropFilter:'blur(2px)', zIndex: 250 }} />
+            )}
           </div>
           {/* Floating chat overlay (independent of editor layout) */}
-          <div ref={bottomRef} />
+          <div />
         </div>
-        {overlayTree && showTree && (
-          <div
-            ref={treeRef}
-            style={{
-              position:'absolute', left:0, top: toolbarH, bottom:0,
-              width: treeWidth, background:'#0b1220', borderRight:'1px solid #25314a',
-              boxShadow:'8px 0 24px -12px rgba(0,0,0,0.4)',
-              transition:'opacity 200ms ease',
-              zIndex: 300,
-            }}
-          >
-            <FileTree />
-          </div>
-        )}
-        {overlayTree && showTree && (
-          <div onClick={()=>setShowTree(false)} style={{ position:'absolute', inset:0, background:'rgba(2,6,23,0.4)', backdropFilter:'blur(2px)', zIndex: 250 }} />
-        )}
       </div>
+      {/* Fullscreen Play Overlay */}
+      {showPlay && (
+        <div style={{ position:'fixed', inset:0, zIndex: 1600, background:'rgba(2,6,23,0.94)' }}>
+          <div style={{ position:'absolute', left:0, top:0, right:0, bottom:0, paddingTop:'env(safe-area-inset-top)', paddingBottom:'env(safe-area-inset-bottom)', paddingLeft:'env(safe-area-inset-left)', paddingRight:'env(safe-area-inset-right)' }}>
+            <button onClick={() => setShowPlay(false)} title="닫기" style={{ position:'absolute', top:'calc(env(safe-area-inset-top) + 10px)', right:'calc(env(safe-area-inset-right) + 10px)', zIndex: 10, padding:'8px 10px', borderRadius:10, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', boxShadow:'0 8px 24px rgba(0,0,0,0.5)' }}>닫기</button>
+            <div style={{ height:'calc(var(--vh, 1vh) * 100)', display:'flex', alignItems:'stretch', justifyContent:'center' }}>
+              <div style={{ flex:1, minWidth:0 }}>
+                <PlayOverlayContent templateBinding={templateBinding} />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {showCodeChat && (
         <div style={{ position:'fixed', right:16, bottom:16, zIndex: 1200, width: chatSize.w, height: chatSize.h, background:'transparent' }}>
           <div style={{ position:'absolute', inset:0 }}>
@@ -431,233 +393,21 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
   );
 }
 
-function SyncTemplateToVfs({ text, setText }){
-  // 양방향 동기화 에코 방지
-  const { files, writeFile } = useWorkspace();
-  const current = files['/template.json']?.content ?? '';
-  const guard = useRef({ toVfs:false, toText:false });
-  useEffect(() => {
-    try {
-      if (typeof text === 'string' && text !== current && !guard.current.toText) {
-        guard.current.toVfs = true;
-        writeFile('/template.json', text);
-        // also derive graph
-        try {
-          const obj = JSON.parse(text || '{}');
-          const nodes = Array.isArray(obj.nodes) ? obj.nodes : [];
-          const edges = Array.isArray(obj.edges) ? obj.edges : [];
-          const g = {
-            nodes: nodes.map(n => ({ id: n.id, type: n.type || 'prompt', label: n.data?.name || n.label || '' })),
-            edges: edges.map(e => ({ id: e.id, source: e.source, target: e.target, label: e.label || '' })),
-          };
-          writeFile('/graph/prompt-graph.json', JSON.stringify(g, null, 2)+'\n');
-        } catch {}
-        setTimeout(()=>{ guard.current.toVfs = false; },0);
-      }
-    } catch {}
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [text]);
-  useEffect(() => {
-    try {
-      if (typeof current === 'string' && typeof setText === 'function' && current !== text && !guard.current.toVfs) {
-        guard.current.toText = true;
-        setText(current);
-        setTimeout(()=>{ guard.current.toText = false; },0);
-      }
-    } catch {}
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current]);
-  return null;
+function PlayOverlayContent({ templateBinding }){
+  const { files } = useWorkspace();
+  try {
+    const tplText = (typeof templateBinding?.text === 'string' && templateBinding.text.length > 0)
+      ? templateBinding.text
+      : (files?.['/template.json']?.content || '{}');
+    const tpl = JSON.parse(tplText || '{}');
+    return (
+      <div style={{ height:'100%', width:'100%' }}>
+        <MainGameMobileUI template={tpl} />
+      </div>
+    );
+  } catch (e) {
+    return <div style={{ padding:16, color:'#94a3b8' }}>템플릿을 불러올 수 없습니다.</div>;
+  }
 }
 
-function AICodeChatPanel({ onClose }){
-  const { files, activePath, createFile, writeFile, remove, rename } = useWorkspace();
-  const [input, setInput] = useState('');
-  const [busy, setBusy] = useState(false);
-  const logRef = useRef(null);
-  // removed checkboxes; always attach selection or current file
-  const [attachPickerOpen, setAttachPickerOpen] = useState(false);
-  const [extraAttach, setExtraAttach] = useState([]); // array of file paths
-  const MAX_INLINE = 4000; // prompt에 포함하는 최대 코드 길이 (문자)
-  const SESS_KEY = 'workspace:aiChat:sessions.v1';
-  const newSession = () => ({ id: `s_${Date.now()}`, title: '새 대화', createdAt: Date.now(), logs: [] });
-  const [sessions, setSessions] = useState([]);
-  const [currentId, setCurrentId] = useState(null);
-  const [historyOpen, setHistoryOpen] = useState(false);
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(SESS_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed.sessions) && parsed.sessions.length > 0) {
-          setSessions(parsed.sessions);
-          setCurrentId(parsed.currentId || parsed.sessions[0].id);
-          return;
-        }
-      }
-    } catch {}
-    const s = newSession();
-    setSessions([s]);
-    setCurrentId(s.id);
-  }, []);
-  useEffect(() => {
-    try { localStorage.setItem(SESS_KEY, JSON.stringify({ sessions, currentId })); } catch {}
-  }, [sessions, currentId]);
-  const current = useMemo(() => sessions.find(s => s.id === currentId) || newSession(), [sessions, currentId]);
-  const logs = current.logs || [];
-  useEffect(() => { try { const el = logRef?.current; if (el) el.scrollTop = el.scrollHeight; } catch {} }, [logs]);
-  const append = (role, msg) => {
-    setSessions(prev => prev.map(s => s.id === currentId ? { ...s, title: s.title === '새 대화' && role==='user' ? (msg.slice(0,24) || '대화') : s.title, logs: [...(s.logs||[]), { t: Date.now(), role, msg }] } : s));
-  };
-  const startNewChat = () => {
-    const s = newSession();
-    setSessions(prev => [s, ...prev]);
-    setCurrentId(s.id);
-    setHistoryOpen(false);
-  };
-  const listFiles = () => Object.keys(files).sort().map(p => ({ path: p, size: (files[p]?.content||'').length, dir: !!files[p]?.dir }));
-  const stripFences = (s) => String(s||'').replace(/^```(?:json)?/i,'').replace(/```$/i,'').trim();
-  const applyActions = (plan) => {
-    const actions = Array.isArray(plan?.actions) ? plan.actions : [];
-    let count = 0;
-    actions.forEach(a => {
-      try {
-        if ((a.type === 'write' || a.type === 'create') && typeof a.path === 'string') {
-          if (a.type === 'create') createFile(a.path, a.content || ''); else writeFile(a.path, a.content || '');
-          count++;
-        } else if (a.type === 'delete' && typeof a.path === 'string') {
-          remove(a.path); count++;
-        } else if (a.type === 'rename' && typeof a.from === 'string' && typeof a.to === 'string') {
-          rename(a.from, a.to); count++;
-        }
-      } catch {}
-    });
-    return count;
-  };
-  const send = async () => {
-    if (!input.trim()) return;
-    setBusy(true);
-    try {
-      const { data } = await supabase.auth.getSession();
-      const token = data?.session?.access_token || null;
-      if (!token) throw new Error('로그인이 필요합니다.');
-      const sys = [
-        '당신은 파일 시스템 편집 에이전트입니다.',
-        '파일 목록과 일부 내용이 제공됩니다.',
-        '반드시 JSON으로만 응답하세요(코드펜스/마크다운 금지).',
-        '스키마: { "message?": string, "actions?": [ {"type":"create|write|delete|rename", "path":"/path", "content?":"string", "from?":"/old", "to?":"/new"} ] }',
-        'message에는 자연어 설명/논의를 담고, 편집이 필요하면 actions를 채워주세요.'
-      ].join('\n');
-      const fileMeta = files[activePath];
-      const contentRaw = typeof fileMeta?.content === 'string' ? fileMeta.content : '';
-      // 선택 영역 우선
-      let selectionText = '';
-      try { selectionText = (typeof window !== 'undefined' && window.__VFS_ACTIVE_SELECTION__?.path === activePath) ? (window.__VFS_ACTIVE_SELECTION__?.text || '') : ''; } catch {}
-      const content = (selectionText && selectionText.length>0)
-        ? selectionText
-        : (contentRaw.length > MAX_INLINE
-            ? (contentRaw.slice(0, Math.floor(MAX_INLINE*0.6)) + '\n…\n/* …중략… */\n' + contentRaw.slice(-Math.floor(MAX_INLINE*0.35)))
-            : contentRaw);
-      const context = {
-        activePath,
-        files: listFiles().slice(0, 200),
-        activeFile: {
-          path: activePath,
-          size: (fileMeta?.content || '').length,
-          attached: true,
-          truncated: contentRaw.length > MAX_INLINE,
-          },
-        note: '큰 파일은 내용이 잘려서 제공될 수 있음. 필요한 경로만 수정 계획에 포함.'
-      };
-      const historyText = logs
-        .filter(l => l.role === 'user' || l.role === 'assistant')
-        .slice(-12)
-        .map(l => `${l.role.toUpperCase()}: ${l.msg}`)
-        .join('\n');
-      // 추가 첨부 파일 본문 구성 (최대 5개)
-      const mkBody = (txt) => (txt.length > MAX_INLINE ? (txt.slice(0, Math.floor(MAX_INLINE*0.6)) + '\n…\n/* …중략… */\n' + txt.slice(-Math.floor(MAX_INLINE*0.35))) : txt);
-      const extra = extraAttach.slice(0,5).map(p => {
-        const meta = files[p];
-        const c = typeof meta?.content === 'string' ? mkBody(meta.content) : '';
-        return `- ${p}\n${c}`;
-      }).join('\n\n');
-      const prompt = `${sys}\n\n### CONTEXT\n${JSON.stringify(context)}\n\n### ACTIVE_FILE\nPATH: ${activePath}\nCONTENT:\n${content || '(빈 파일)'}\n\n${extraAttach.length>0?`### ADDITIONAL_FILES\n${extra}`:''}\n\n### HISTORY (최근)\n${historyText}\n\n### USER\n${input}`;
-      append('user', input);
-      setInput('');
-      const res = await fetch('/api/ai/gemini', {
-        method: 'POST',
-        headers: { 'content-type':'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ model: 'gemini-2.5-flash', contents: prompt, prefer: 'keyring' })
-      });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body?.error || `AI ${res.status}`);
-      const text = body?.result?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      const raw = stripFences(text);
-      let plan = null; let applied = 0; let parsed = false;
-      try { plan = JSON.parse(raw); parsed = true; } catch {}
-      if (parsed && plan) {
-        if (typeof plan.message === 'string' && plan.message.trim().length > 0) {
-          append('assistant', plan.message.trim());
-        }
-        if (Array.isArray(plan.actions) && plan.actions.length > 0) {
-          applied = applyActions(plan);
-          append('assistant', `수정 ${applied}건 적용 완료.`);
-        }
-        if ((!plan.message || plan.message.trim().length === 0) && (!plan.actions || plan.actions.length === 0)) {
-          append('assistant', '(변경 없음)');
-        }
-      } else {
-        const say = (raw && raw.length > 0) ? raw : (text || '(응답 없음)');
-        append('assistant', say);
-      }
-    } catch (e) {
-      append('error', e?.message || String(e));
-    } finally { setBusy(false); }
-  };
-  return (
-    <div style={{ height:'100%', border:'1px solid #25314a', background:'#0c1322', borderRadius:12, overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 18px 42px -20px rgba(0,0,0,0.5)' }}>
-      <div style={{ padding:'8px 10px', color:'#e2e8f0', fontWeight:600, display:'flex', alignItems:'center', justifyContent:'space-between', background:'rgba(2,6,23,0.6)', position:'relative' }}>
-        <span>AI 코드 채팅</span>
-        <div style={{ display:'flex', gap:6 }}>
-          <button onClick={() => setHistoryOpen(v=>!v)} title="대화 기록" style={{ padding:'4px 8px', borderRadius:8, border:'1px solid #334155', background: historyOpen ? '#172033' : '#0b1220', color:'#94a3b8' }}>기록</button>
-          <button onClick={startNewChat} title="새 대화" style={{ padding:'4px 8px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8' }}>새 대화</button>
-          <button onClick={onClose} title="닫기" style={{ padding:'4px 8px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8' }}>닫기</button>
-        </div>
-        {historyOpen && (
-          <div style={{ position:'absolute', right:8, top:'100%', marginTop:6, zIndex:30, width:280, maxHeight:260, overflow:'auto', background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6 }}>
-            {sessions.map(s => (
-              <button key={s.id} onClick={() => { setCurrentId(s.id); setHistoryOpen(false); }} style={{ width:'100%', textAlign:'left', padding:'6px 8px', borderRadius:6, border:'1px solid #334155', background: s.id===currentId?'#172033':'#0b1220', color:'#e2e8f0', marginBottom:6 }}>
-                <div style={{ fontSize:12, fontWeight:700 }}>{s.title || '대화'}</div>
-                <div style={{ fontSize:11, color:'#94a3b8' }}>{new Date(s.createdAt).toLocaleString()}</div>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-      <div ref={logRef} onScroll={(e)=>{ try { const el=e.currentTarget; const nearBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 20; setScrolledUp(!nearBottom); } catch {} }} style={{ flex:1, overflow:'auto', padding:'8px 10px' }}>
-        {(scrolledUp ? logs : logs.slice(-50)).map((l,i)=> (
-          <div key={i} style={{ fontSize:12, color: l.role==='error'?'#fecaca': (l.role==='user'?'#e2e8f0':'#a7f3d0') }}>{l.role}: {l.msg}</div>
-        ))}
-      </div>
-      <div style={{ display:'flex', gap:6, padding:10, borderTop:'1px solid #25314a', background:'#0c1322', alignItems:'center' }}>
-        <div style={{ position:'relative' }}>
-          <button onClick={()=>setAttachPickerOpen(v=>!v)} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>파일 추가</button>
-          {attachPickerOpen && (
-            <div style={{ position:'absolute', right:0, top:'100%', marginTop:6, zIndex:40, width:320, maxHeight:260, overflow:'auto', background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6 }}>
-              {Object.keys(files).sort().map(p => (
-                <label key={p} style={{ display:'flex', alignItems:'center', gap:8, padding:'4px 6px', color:'#e2e8f0', fontSize:12 }}>
-                  <input type="checkbox" checked={extraAttach.includes(p)} onChange={e=>{
-                    setExtraAttach(prev => e.target.checked ? (prev.includes(p)?prev:[...prev,p]) : prev.filter(x=>x!==p));
-                  }} />
-                  <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{p}</span>
-                </label>
-              ))}
-            </div>
-          )}
-        </div>
-        <input value={input} onChange={e=>setInput(e.target.value)} placeholder="명령을 입력하세요. 예: utils/date.js 생성하고 오늘 날짜 반환 함수 추가" style={{ flex:1, padding:'8px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }} />
-        <button onClick={send} disabled={busy} style={{ padding:'8px 12px', borderRadius:8, border:'1px solid #7c3aed', background:'#0b1220', color:'#c4b5fd' }}>{busy?'전송 중…':'전송'}</button>
-      </div>
-    </div>
-  );
-}
+// AICodeChatPanel moved to components/workspace/AICodeChatPanel.jsx
