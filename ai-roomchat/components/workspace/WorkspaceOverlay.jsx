@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CodeWorkspaceProvider, useWorkspace } from "./CodeWorkspaceProvider.jsx";
+import { useWorkspace } from "./CodeWorkspaceProvider.jsx";
 import FileTree from "./FileTree.jsx";
 import EditorMonaco from "../EditorMonaco.jsx";
 import { supabase } from "../../lib/supabase";
@@ -319,10 +319,9 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
     );
   };
   return (
-    <CodeWorkspaceProvider>
-      {templateBinding ? (
-        <SyncTemplateToVfs text={templateBinding.text} setText={templateBinding.setText} />
-      ) : null}
+    {templateBinding ? (
+      <SyncTemplateToVfs text={templateBinding.text} setText={templateBinding.setText} />
+    ) : null}
       <div style={{ position:'relative', display: "flex", height: "calc(var(--vh, 1vh) * 100)", background: "#0b1220" }}>
         {!overlayTree && (
           <div
@@ -389,7 +388,6 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
           </div>
         </div>
       )}
-    </CodeWorkspaceProvider>
   );
 }
 
