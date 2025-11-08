@@ -15,6 +15,9 @@ export default async function handler(req, res) {
     }
     if (method === 'PUT') {
       const ifMatch = String(req.headers['if-match'] || '').trim();
+      if (!ifMatch) {
+        return res.status(428).json({ error: 'precondition-required' });
+      }
       const body = req.body || {};
       const files = Array.isArray(body.files) ? body.files : [];
       const meta = body.meta && typeof body.meta === 'object' ? body.meta : {};

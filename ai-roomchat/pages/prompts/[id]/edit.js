@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from 'react';
 import PromptEditor from '../../../components/PromptEditor';
 import AICodeChatPanel from '../../../components/workspace/AICodeChatPanel.jsx';
 import { CodeWorkspaceProvider, useWorkspace } from '../../../components/workspace/CodeWorkspaceProvider.jsx';
-import { loadSnapshot } from '../../../lib/workspace/scopeStorage.js';
 
 function mapToVisibleRoot(files) {
   return (files || []).map((f) => {
@@ -270,29 +269,10 @@ function PromptEditInner({ _etag, _setEtag, _setId }) {
     setEditorBody(prompt.body || '');
   }, [prompt.body]);
 
-  // Server-first: autosave workspace files to server
+  // Remove autosave; saving will occur in handleSave (prompt editor save action)
   const { files } = useWorkspace();
   const etagRef = useRef(_etag || null);
   useEffect(() => { etagRef.current = _etag || null; }, [_etag]);
-  useEffect(() => {
-    if (!id) return;
-    const t = setTimeout(async () => {
-      try {
-        const list = Object.entries(files || {}).map(([path, meta]) => ({ path, content: String(meta?.content ?? ''), readonly: !!meta?.readonly, dir: !!meta?.dir }));
-        try { console.log('[WorkspaceSave] PUT set=%s files=%d etag=%s', id, list.length, etagRef.current||'-'); } catch {}
-        const res = await fetch(`/api/workspace/sets/${encodeURIComponent(id)}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', ...(etagRef.current ? { 'If-Match': etagRef.current } : {}) },
-          body: JSON.stringify({ files: list, meta: {} }),
-        });
-        const json = await res.json().catch(() => ({}));
-        if (res.status === 200 && json?.etag) _setEtag && _setEtag(json.etag);
-        if (res.status === 412) { console.warn('[WorkspaceSave] ETag mismatch; server=%s', json?.current); }
-        // On mismatch, we could refetch and reconcile; for now, best-effort last-write-wins if no If-Match
-      } catch {}
-    }, 800);
-    return () => clearTimeout(t);
-  }, [id, files]);
 
   useEffect(() => {
     if (!id) return;
@@ -345,6 +325,17 @@ function PromptEditInner({ _etag, _setEtag, _setId }) {
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || 'update failed');
         setPrompt(p => ({ ...p, body: json.body || body, name: json.name || p.name }));
+        // After prompt saved, persist workspace files snapshot once (server-first)
+        try {
+          const list = Object.entries(files || {}).map(([path, meta]) => ({ path, content: String(meta?.content ?? ''), readonly: !!meta?.readonly, dir: !!meta?.dir }));
+          const put = await fetch(`/api/workspace/sets/${encodeURIComponent(id)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', ...(etagRef.current ? { 'If-Match': etagRef.current } : {}) },
+            body: JSON.stringify({ files: list, meta: {} }),
+          });
+          const pj = await put.json().catch(()=>({}));
+          if (put.status === 200 && pj?.etag) _setEtag && _setEtag(pj.etag);
+        } catch {}
         alert('Saved');
       }
     } catch (err) {
@@ -477,11 +468,6 @@ export default function PromptEditPage(){
             return;
           }
         }
-      } catch {}
-      // Fallback: use any snapshot (local cache) if server fails
-      try {
-        const snap = loadSnapshot(id);
-        if (alive && Array.isArray(snap)) setInitFiles(snap);
       } catch {}
     })();
     return () => { alive = false; };

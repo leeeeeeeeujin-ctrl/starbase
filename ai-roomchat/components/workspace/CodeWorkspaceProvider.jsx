@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { compressString, decompressToString } from "../../utils/compress.js";
 import { injectFilesWithFallback } from "../../lib/workspace/injectFilesFallback.js";
-import { saveSnapshot } from "../../lib/workspace/scopeStorage.js";
+// snapshot/local cache disabled in server-first mode
 
 const BASE_KEY = "workspace.vfs.v1";
 
@@ -240,76 +240,50 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
 
   useEffect(() => {
     try {
-      // Server-first: if initialFiles provided, use them and skip localStorage read
-      if (Array.isArray(initialFiles) && initialFiles.length) {
-        if (isDev) try { console.log('[Workspace] hydrate from initialFiles ns=%s count=%d', ns||'-', initialFiles.length); } catch {}
-        const map = {};
-        initialFiles.forEach((f) => { if (f && f.path) map[f.path] = { content: String(f.content||''), readonly: !!f.readonly, dir: !!f.dir }; });
-        const merged = { ...defaultFiles, ...map };
-        // if graph missing but template exists, derive minimal graph stub
-        try {
-          if (!merged['/graph/prompt-graph.json'] && typeof merged['/template.json']?.content === 'string') {
-            const obj = JSON.parse(merged['/template.json'].content || '{}');
-            const nodes = Array.isArray(obj.nodes) ? obj.nodes : [];
-            const edges = Array.isArray(obj.edges) ? obj.edges : [];
-            merged['/graph/prompt-graph.json'] = { content: JSON.stringify({
-              nodes: nodes.map(n => ({ id: n.id, type: n.type || 'prompt', label: n.data?.name || n.label || '' })),
-              edges: edges.map(e => ({ id: e.id, source: e.source, target: e.target, label: e.label || '' })),
-            }, null, 2)+'\n', readonly: false };
-          }
-        } catch {}
-        setFiles(merged);
-        setRoot("/");
-        setActivePath("/template.json");
-        setOpenPaths(["/template.json"]);
-        const nextSig = {};
-        Object.entries(merged || {}).forEach(([p, meta]) => { nextSig[p] = contentSignature(meta); });
-        setDirty({});
-        setSavedSig(nextSig);
-        return;
-      }
-  // Local fallback when no initialFiles supplied
-  if (isDev) try { console.log('[Workspace] hydrate from localStorage ns=%s key=%s', ns||'-', KEY); } catch {}
-      let raw = localStorage.getItem(KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        const base = parsed.files || {};
-        const merged = { ...defaultFiles, ...base };
-        try {
-          if (!merged['/graph/prompt-graph.json'] && typeof merged['/template.json']?.content === 'string') {
-            const obj = JSON.parse(merged['/template.json'].content || '{}');
-            const nodes = Array.isArray(obj.nodes) ? obj.nodes : [];
-            const edges = Array.isArray(obj.edges) ? obj.edges : [];
-            merged['/graph/prompt-graph.json'] = { content: JSON.stringify({
-              nodes: nodes.map(n => ({ id: n.id, type: n.type || 'prompt', label: n.data?.name || n.label || '' })),
-              edges: edges.map(e => ({ id: e.id, source: e.source, target: e.target, label: e.label || '' })),
-            }, null, 2)+'\n', readonly: false };
-          }
-        } catch {}
-        setFiles(merged);
-        setRoot(parsed.root || "/");
-        setActivePath(parsed.activePath || "/template.json");
-        setOpenPaths(parsed.openPaths || ["/template.json"]);
-        setEntryPath(parsed.entryPath || "/template.json");
-        const loadedDirty = parsed.dirty || {};
-        const loadedSig = parsed.savedSig || {};
-        const nextSig = {};
-        const nextDirty = {};
-        Object.entries(merged || {}).forEach(([p, meta]) => {
-          const sig = contentSignature(meta);
-          nextSig[p] = sig;
-          if (loadedSig[p] && loadedSig[p] === sig) nextDirty[p] = false;
-          else nextDirty[p] = !!loadedDirty[p];
-        });
-        setDirty(nextDirty);
-        setSavedSig(nextSig);
-      } else {
+      // Strict server-first: require initialFiles for hydrate; no localStorage fallback
+      if (Array.isArray(initialFiles)) {
+        if (initialFiles.length) {
+          if (isDev) try { console.log('[Workspace] hydrate from initialFiles ns=%s count=%d', ns||'-', initialFiles.length); } catch {}
+          const map = {};
+          initialFiles.forEach((f) => { if (f && f.path) map[f.path] = { content: String(f.content||''), readonly: !!f.readonly, dir: !!f.dir }; });
+          const merged = { ...defaultFiles, ...map };
+          try {
+            if (!merged['/graph/prompt-graph.json'] && typeof merged['/template.json']?.content === 'string') {
+              const obj = JSON.parse(merged['/template.json'].content || '{}');
+              const nodes = Array.isArray(obj.nodes) ? obj.nodes : [];
+              const edges = Array.isArray(obj.edges) ? obj.edges : [];
+              merged['/graph/prompt-graph.json'] = { content: JSON.stringify({
+                nodes: nodes.map(n => ({ id: n.id, type: n.type || 'prompt', label: n.data?.name || n.label || '' })),
+                edges: edges.map(e => ({ id: e.id, source: e.source, target: e.target, label: e.label || '' })),
+              }, null, 2)+'\n', readonly: false };
+            }
+          } catch {}
+          setFiles(merged);
+          setRoot("/");
+          setActivePath("/template.json");
+          setOpenPaths(["/template.json"]);
+          const nextSig = {};
+          Object.entries(merged || {}).forEach(([p, meta]) => { nextSig[p] = contentSignature(meta); });
+          setDirty({});
+          setSavedSig(nextSig);
+          return;
+        }
+        // empty initialFiles → defaults only
         setFiles(defaultFiles);
         const sigs = {};
         Object.entries(defaultFiles).forEach(([p, meta]) => { sigs[p] = contentSignature(meta); });
         setSavedSig(sigs);
         setDirty({});
+        return;
       }
+      if (isDev) {
+        throw new Error('[Workspace] initialFiles is required in dev (server-first).');
+      }
+      setFiles(defaultFiles);
+      const sigs = {};
+      Object.entries(defaultFiles).forEach(([p, meta]) => { sigs[p] = contentSignature(meta); });
+      setSavedSig(sigs);
+      setDirty({});
     } catch {
       setFiles(defaultFiles);
       const sigs = {};
@@ -317,29 +291,12 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
       setSavedSig(sigs);
       setDirty({});
     }
-  }, [KEY, initialFiles]);
+  }, [initialFiles]);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        KEY,
-        JSON.stringify({ files, root, activePath, openPaths, entryPath, dirty, savedSig })
-      );
-    } catch {}
-  }, [KEY, files, root, activePath, openPaths, entryPath, dirty, savedSig]);
+  // Removed localStorage autosave: saving is owned by parent flows (prompt editor saves)
 
   // Persist a plain-files snapshot per set for external loaders (Starter Pack / reload)
-  useEffect(() => {
-    try {
-      const list = Object.entries(files || {}).map(([path, meta]) => ({
-        path,
-        content: typeof meta?.content === 'string' ? meta.content : '',
-        readonly: !!meta?.readonly,
-        dir: !!meta?.dir,
-      }));
-      saveSnapshot(ns, list);
-    } catch {}
-  }, [ns, files]);
+  // Removed snapshot persistence to local cache.
 
   // Reconcile dirty flags with saved signatures & initialize missing signatures
   useEffect(() => {
