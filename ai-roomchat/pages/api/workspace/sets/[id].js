@@ -1,5 +1,5 @@
-import { getSet, saveSet } from '../../../../../lib/workspace/setStore';
-import { buildStarterPack } from '../../../../../lib/workspace/getStarterPackFiles';
+import { getSet, saveSet } from '@/lib/workspace/setStore';
+import { buildStarterPack } from '@/lib/workspace/getStarterPackFiles';
 import path from 'path';
 
 export default async function handler(req, res) {
@@ -37,4 +37,3 @@ export default async function handler(req, res) {
 }
 
 export const config = { runtime: 'nodejs' };
-
