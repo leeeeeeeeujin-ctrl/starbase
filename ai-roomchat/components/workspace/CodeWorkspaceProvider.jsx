@@ -212,16 +212,12 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
   const nsKey = (k) => (ns ? `${k}@${ns}` : k);
   const KEY = nsKey(BASE_KEY);
   const isDev = process.env.NODE_ENV !== 'production';
-  // In development, require an explicit storageNamespace prop to avoid accidental cross-set bleed.
+  // Require an explicit storageNamespace prop to avoid accidental cross-set bleed.
   useEffect(() => {
     try {
       if (typeof window === 'undefined') return;
-      if (isDev && !storageNamespace) {
-        // Fail fast in dev to make the missing-namespace explicit during development.
-        throw new Error('[Workspace] Missing storageNamespace prop (development). Provide storageNamespace to avoid cross-set state bleed.');
-      }
-      if (!isDev && !ns) {
-        try { console.warn('[Workspace] Missing storageNamespace; state may bleed across sets.'); } catch {}
+      if (!storageNamespace) {
+        throw new Error('[Workspace] Missing storageNamespace prop. Provide storageNamespace to avoid cross-set state bleed.');
       }
     } catch (err) {
       // Throw in dev to make the problem obvious.
@@ -276,14 +272,8 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
         setDirty({});
         return;
       }
-      if (isDev) {
-        throw new Error('[Workspace] initialFiles is required in dev (server-first).');
-      }
-      setFiles(defaultFiles);
-      const sigs = {};
-      Object.entries(defaultFiles).forEach(([p, meta]) => { sigs[p] = contentSignature(meta); });
-      setSavedSig(sigs);
-      setDirty({});
+      // initialFiles missing → configuration error in all environments
+      throw new Error('[Workspace] initialFiles is required (server-first).');
     } catch {
       setFiles(defaultFiles);
       const sigs = {};

@@ -81,16 +81,7 @@ export default function PlayByIdPage(){
           setInitFiles(Array.isArray(json.files) ? json.files : []);
           return;
         }
-        if (r.status === 404) {
-          const gen = (p) => { try { return p + (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)); } catch { return p + Math.random().toString(36).slice(2); } };
-          const reqId = gen('req_');
-          r = await fetch('/api/workspace/sets', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Request-Id': reqId }, body: JSON.stringify({ id }) });
-          if (r.ok) {
-            const json = await r.json();
-            setInitFiles(Array.isArray(json.files) ? json.files : []);
-            return;
-          }
-        }
+        if (r.status === 404) { setInitFiles([]); return; }
       } catch {}
     })();
     return () => { alive = false; };

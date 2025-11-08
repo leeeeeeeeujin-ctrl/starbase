@@ -3,6 +3,9 @@ import {
   listPrompts as listPromptsInMemory,
   getPrompt as getPromptInMemory,
 } from '../../../lib/promptStore';
+import { getSet as getWorkspaceSet, saveSet as saveWorkspaceSet } from '@/lib/workspace/setStore';
+import { buildStarterPack } from '@/lib/workspace/getStarterPackFiles';
+import path from 'path';
 import { supabase as supabaseAdmin } from '../../../lib/supabaseAdmin';
 
 // Simple in-memory idempotency cache for create requests
@@ -56,6 +59,15 @@ export default async function handler(req, res) {
               .eq('id', data.id)
               .single();
             if (!selErr && existing) {
+              // Ensure corresponding workspace set exists (best-effort)
+              try {
+                const setCur = getWorkspaceSet(existing.id);
+                if (!setCur) {
+                  const base = path.join(process.cwd(), 'ai-roomchat');
+                  const files = buildStarterPack(base);
+                  saveWorkspaceSet(existing.id, files, { starterApplied: true });
+                }
+              } catch {}
               if (requestId) IDEMPOTENCY_CACHE.set(requestId, existing);
               return res.status(201).json(existing);
             }
@@ -67,6 +79,15 @@ export default async function handler(req, res) {
           .select()
           .single();
         if (error) throw error;
+        // Create matching workspace set (best-effort, id = prompt id)
+        try {
+          const setCur = getWorkspaceSet(inserted.id);
+          if (!setCur) {
+            const base = path.join(process.cwd(), 'ai-roomchat');
+            const files = buildStarterPack(base);
+            saveWorkspaceSet(inserted.id, files, { starterApplied: true });
+          }
+        } catch {}
         if (requestId) IDEMPOTENCY_CACHE.set(requestId, inserted);
         return res.status(201).json(inserted);
       }
@@ -78,11 +99,29 @@ export default async function handler(req, res) {
     if (data.id) {
       const existing = getPromptInMemory(data.id);
       if (existing) {
+        // Ensure matching workspace set exists
+        try {
+          const setCur = getWorkspaceSet(existing.id);
+          if (!setCur) {
+            const base = path.join(process.cwd(), 'ai-roomchat');
+            const files = buildStarterPack(base);
+            saveWorkspaceSet(existing.id, files, { starterApplied: true });
+          }
+        } catch {}
         if (requestId) IDEMPOTENCY_CACHE.set(requestId, existing);
         return res.status(201).json(existing);
       }
     }
     const rec = savePromptInMemory(data);
+    // Create matching workspace set (best-effort)
+    try {
+      const setCur = getWorkspaceSet(rec.id);
+      if (!setCur) {
+        const base = path.join(process.cwd(), 'ai-roomchat');
+        const files = buildStarterPack(base);
+        saveWorkspaceSet(rec.id, files, { starterApplied: true });
+      }
+    } catch {}
     if (requestId) IDEMPOTENCY_CACHE.set(requestId, rec);
     return res.status(201).json(rec);
   }
