@@ -573,3 +573,36 @@ export function useWorkspace() {
   if (!ctx) throw new Error("useWorkspace must be used within CodeWorkspaceProvider");
   return ctx;
 }
+// Scoped autosave support: redirect VFS localStorage keys to per-set keys
+import { vfsKey } from "../../lib/workspace/scopeStorage.js";
+
+if (typeof window !== 'undefined') {
+  (function setupScopedVfs() {
+    if (window.__VFS_SCOPED_PATCH__) return;
+    window.__VFS_SCOPED_PATCH__ = { scope: null };
+    const origSet = localStorage.setItem.bind(localStorage);
+    const origGet = localStorage.getItem.bind(localStorage);
+    const origRem = localStorage.removeItem.bind(localStorage);
+    function mapKey(key) {
+      if (key === 'workspace.vfs.v1') {
+        const s = window.__VFS_SCOPED_PATCH__.scope;
+        return vfsKey(s);
+      }
+      return key;
+    }
+    localStorage.setItem = (key, val) => origSet(mapKey(key), val);
+    localStorage.getItem = (key) => {
+      if (key === 'workspace.vfs.v1') {
+        const sKey = vfsKey(window.__VFS_SCOPED_PATCH__.scope);
+        const v = origGet(sKey);
+        return v != null ? v : origGet(key);
+      }
+      return origGet(key);
+    };
+    localStorage.removeItem = (key) => origRem(mapKey(key));
+    window.addEventListener('workspace:set-scope', (e) => {
+      const setId = e?.detail?.setId || null;
+      window.__VFS_SCOPED_PATCH__.scope = setId;
+    });
+  })();
+}

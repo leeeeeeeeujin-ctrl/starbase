@@ -411,3 +411,35 @@ export default function PromptEditPage(){
 export async function getServerSideProps() {
   return { props: {} };
 }
+// Set-scoped workspace loader: inject snapshot or starter-pack per set
+import { fetchStarterPack } from '../../../lib/workspace/fetchStarterPack.js';
+import { loadSnapshot, markInjected, wasInjected } from '../../../lib/workspace/scopeStorage.js';
+
+function mapToVisibleRoot(files) {
+  return (files || []).map((f) => {
+    const p = (f.path || '').replace(/^src\/game\/samples\//, 'Samples/').replace(/^src\/game\//, 'Game/').replace(/^src\/docs\//, 'Guides/').replace(/^docs\//, 'Guides/');
+    return { ...f, path: p };
+  });
+}
+
+// Non-invasive set-scoped loader (no export override)
+if (typeof window !== 'undefined') {
+  // Try to parse setId from URL /prompts/{id}/edit
+  const m = window.location.pathname.match(/\/prompts\/([^/]+)\/edit/);
+  const setId = m && m[1];
+  if (setId) {
+    window.dispatchEvent(new CustomEvent('workspace:set-scope', { detail: { setId } }));
+    const snap = loadSnapshot(setId);
+    if (Array.isArray(snap) && snap.length) {
+      window.dispatchEvent(new CustomEvent('workspace:add-files', { detail: mapToVisibleRoot(snap) }));
+    } else if (!wasInjected(setId)) {
+      (async () => {
+        try {
+          const pack = await fetchStarterPack();
+          window.dispatchEvent(new CustomEvent('workspace:add-files', { detail: mapToVisibleRoot(pack) }));
+          markInjected(setId);
+        } catch {}
+      })();
+    }
+  }
+}
