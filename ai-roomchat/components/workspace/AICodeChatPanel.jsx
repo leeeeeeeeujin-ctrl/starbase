@@ -38,6 +38,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
   const [autoLimit, setAutoLimit] = useState(2);
   const autoIterRef = useRef(0);
   const autoBudgetRef = useRef(0); // remaining self-calls allowed by AI (trusted mode)
+  const [autoBudget, setAutoBudget] = useState(0);
   const chooseAutoMax = (plan) => {
     try {
       const cands = [
@@ -747,10 +748,10 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
           // If trusted mode and AI asked to auto-continue, schedule next call using AI-chosen budget
           if (autoApply && plan.autoContinue) {
             const chosen = chooseAutoMax(plan);
-            if (chosen != null && autoBudgetRef.current <= 0) autoBudgetRef.current = chosen;
-            if (autoBudgetRef.current <= 0) autoBudgetRef.current = 2; // default when unspecified
+            if (chosen != null && autoBudgetRef.current <= 0) { autoBudgetRef.current = chosen; setAutoBudget(autoBudgetRef.current); }
+            if (autoBudgetRef.current <= 0) { autoBudgetRef.current = 2; setAutoBudget(autoBudgetRef.current); } // default when unspecified
             if (autoBudgetRef.current > 0) {
-              autoBudgetRef.current -= 1;
+              autoBudgetRef.current -= 1; setAutoBudget(autoBudgetRef.current);
               const follow = typeof plan.followup === 'string' && plan.followup.trim().length>0 ? plan.followup.trim() : input;
               setTimeout(()=>{ try { setInput(follow); send(); } catch {} }, 0);
             }
@@ -765,17 +766,17 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
               // Auto-continue if requested and within AI-chosen budget
               if (plan.autoContinue) {
                 const chosen = chooseAutoMax(plan);
-                if (chosen != null && autoBudgetRef.current <= 0) autoBudgetRef.current = chosen;
-                if (autoBudgetRef.current <= 0) autoBudgetRef.current = 2; // default when unspecified
+                if (chosen != null && autoBudgetRef.current <= 0) { autoBudgetRef.current = chosen; setAutoBudget(autoBudgetRef.current); }
+                if (autoBudgetRef.current <= 0) { autoBudgetRef.current = 2; setAutoBudget(autoBudgetRef.current); } // default when unspecified
                 if (autoBudgetRef.current > 0) {
-                  autoBudgetRef.current -= 1;
+                  autoBudgetRef.current -= 1; setAutoBudget(autoBudgetRef.current);
                   const follow = typeof plan.followup === 'string' && plan.followup.trim().length>0 ? plan.followup.trim() : input;
                   setTimeout(()=>{ try { setInput(follow); send(); } catch {} }, 0);
                 } else {
-                  autoIterRef.current = 0;
+                  autoIterRef.current = 0; setAutoBudget(0);
                 }
               } else {
-                autoIterRef.current = 0; autoBudgetRef.current = 0;
+                autoIterRef.current = 0; autoBudgetRef.current = 0; setAutoBudget(0);
               }
             } else {
               const hold = { actions: nonReadActions };
@@ -784,7 +785,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
               setPendingPlan(hold);
               setPendingPlanMeta({ summary, filePreviews });
               append('assistant', `안전 제한으로 인해 자동 적용 대신 미리보기를 표시합니다. 변경 제안 ${summary.count}건.`);
-              autoIterRef.current = 0; autoBudgetRef.current = 0;
+              autoIterRef.current = 0; autoBudgetRef.current = 0; setAutoBudget(0);
             }
           } else {
             // Hold changes for preview instead of immediate apply
@@ -797,12 +798,12 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
           }
         } else if (!plan.message || plan.message.trim().length === 0) {
           append('assistant', '(변경 없음)');
-          autoIterRef.current = 0; autoBudgetRef.current = 0;
+          autoIterRef.current = 0; autoBudgetRef.current = 0; setAutoBudget(0);
         }
       } else {
         const say = (primaryRaw && primaryRaw.length > 0) ? primaryRaw : (text || '(응답 없음)');
         append('assistant', say);
-        autoIterRef.current = 0; autoBudgetRef.current = 0;
+        autoIterRef.current = 0; autoBudgetRef.current = 0; setAutoBudget(0);
       }
     } catch (e) {
       append('error', e?.message || String(e));
@@ -910,7 +911,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
   return (
   <div ref={rootRef} style={{ height:'100%', border:'1px solid #334155', background:'#0b1220', borderRadius:12, overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 24px 64px rgba(0,0,0,0.6)' }}>
       <div onMouseDown={onDragHandleDown} onTouchStart={onDragHandleDown} onDoubleClick={onToggleFullscreen} onTouchEnd={onHeaderTouchEnd} style={{ padding:'8px 10px', color:'#e2e8f0', fontWeight:600, display:'flex', alignItems:'center', justifyContent:'space-between', background:'linear-gradient(180deg, rgba(2,6,23,0.8) 0%, rgba(2,6,23,0.6) 100%)', position:'relative', cursor:'move' }}>
-        <span>AI 코드 채팅{autoApply ? ' · 자동 진행' : ''}</span>
+        <span>AI 코드 채팅{autoApply ? (autoBudget>0 ? ` · 자동 ${autoBudget}` : ' · 자동 진행') : ''}</span>
         <div style={{ display:'flex', gap:6, alignItems:'center' }}>
           <button onClick={()=>setHistoryOpen(v=>!v)} title="대화 기록" style={{ padding:'3px 8px', borderRadius:6, border:'1px solid #334155', background: historyOpen ? '#172033' : '#0b1220', color:'#94a3b8', fontSize:12 }}>기록</button>
           <button onClick={startNewChat} title="새 대화" style={{ padding:'3px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8', fontSize:12 }}>새 대화</button>
