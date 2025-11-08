@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { CodeWorkspaceProvider, useWorkspace } from './CodeWorkspaceProvider.jsx';
 import FileTree from './FileTree.jsx';
 import EditorMonaco from '../EditorMonaco.jsx';
@@ -8,7 +8,54 @@ import dynamic from 'next/dynamic';
 import SyncTemplateToVfs from './SyncTemplateToVfs.jsx';
 import AICodeChatPanel from './AICodeChatPanel.jsx';
 
-const MainGameMobileUI = dynamic(() => import('../game/MainGameMobileUI.jsx'), { ssr: false });
+const MainGameMobileUI = dynamic(() => import('../game/MainGameMobileUI.jsx'), {
+  ssr: false,
+  // Loading fallback to avoid blank screen during chunk fetch
+  loading: () => (
+    <div style={{ display:'grid', placeItems:'center', height:'100%', color:'#94a3b8' }}>
+      <div>플레이 화면 로딩 중…</div>
+    </div>
+  ),
+});
+
+class ErrorBoundary extends React.Component {
+  constructor(props){
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error){
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, info){
+    try { console.error('Play overlay error:', error, info); } catch {}
+  }
+  render(){
+    if (this.state.hasError) {
+      const e = this.state.error;
+      return (
+        <div style={{ height:'100%', display:'grid', placeItems:'center', padding:16 }}>
+          <div style={{ maxWidth: 560, background:'#0b1220', border:'1px solid #334155', borderRadius:12, padding:16 }}>
+            <div style={{ color:'#e2e8f0', fontWeight:700, marginBottom:8 }}>플레이 로드에 실패했어요</div>
+            <div style={{ color:'#cbd5e1', fontSize:13, lineHeight:1.5 }}>
+              리소스 청크를 불러오지 못했습니다. 개발 서버 재시작 또는 강력 새로고침(Ctrl+F5)을 시도해 주세요.
+              {String(e?.message||'').includes('Loading chunk') || String(e||'').includes('ChunkLoadError') ? (
+                <div style={{ marginTop:6, color:'#93c5fd' }}>오래된 번들을 참조 중일 수 있습니다. 서비스워커를 해제하면 해결될 수 있어요.</div>
+              ) : null}
+            </div>
+            <div style={{ marginTop:12, display:'flex', gap:8, flexWrap:'wrap' }}>
+              <button onClick={() => { try { location.reload(); } catch {} }} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>강력 새로고침</button>
+              <button onClick={() => { try { navigator.serviceWorker?.getRegistrations?.().then(rs => rs.forEach(r => r.unregister())); setTimeout(()=>location.reload(), 300); } catch {} }} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0' }}>서비스워커 해제</button>
+              {this.props.onRetry ? (
+                <button onClick={this.props.onRetry} style={{ padding:'6px 10px', borderRadius:8, border:'1px solid #2563eb', background:'#1d4ed8', color:'#fff' }}>다시 시도</button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function PlayOverlayContent({ templateBinding }) {
   const { files } = useWorkspace();
@@ -19,7 +66,9 @@ function PlayOverlayContent({ templateBinding }) {
     const tpl = JSON.parse(tplText || '{}');
     return (
       <div style={{ height:'100%', width:'100%' }}>
-        <MainGameMobileUI template={tpl} />
+        <ErrorBoundary onRetry={() => { try { window.dispatchEvent(new Event('play:retry')); } catch {} }}>
+          <MainGameMobileUI template={tpl} />
+        </ErrorBoundary>
       </div>
     );
   } catch (e) {
