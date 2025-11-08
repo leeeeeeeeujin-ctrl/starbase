@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import parsePlan from '../../utils/ai/parsePlan.js';
 import { useWorkspace } from './CodeWorkspaceProvider.jsx';
 import { applyMainUiPresetObject, getMainUiModules } from '../../utils/uiPresets';
 import { supabase } from '../../lib/supabase';
@@ -36,6 +37,23 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
   const [autoApply, setAutoApply] = useState(false);
   const [autoLimit, setAutoLimit] = useState(2);
   const autoIterRef = useRef(0);
+  const autoBudgetRef = useRef(0); // remaining self-calls allowed by AI (trusted mode)
+  const chooseAutoMax = (plan) => {
+    try {
+      const cands = [
+        plan?.autoMax,
+        plan?.autoLimit,
+        plan?.maxAuto,
+        plan?.maxSelfCalls,
+        plan?.autoCalls,
+      ].map(v => parseInt(v, 10)).filter(v => !Number.isNaN(v));
+      let n = cands.length ? cands[0] : null;
+      if (n == null) return null;
+      // Clamp to safe bounds 1..10
+      if (n < 1) n = 1; if (n > 10) n = 10;
+      return n;
+    } catch { return null; }
+  };
   useEffect(()=>{
     try {
       const a = localStorage.getItem(AUTO_LS_KEY); if (a !== null) setAutoApply(a === '1');
@@ -238,7 +256,16 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
     } catch { return '#e2e8f0'; }
   };
   const chatTextColor = useMemo(()=> pickTextColor(chatBg.color), [chatBg.color]);
-  useEffect(() => { try { const el = logRef?.current; if (el) el.scrollTop = el.scrollHeight; } catch {} }, [logs]);
+  // Auto-scroll only when user is near bottom (prevents jump while reviewing older logs)
+  const atBottomRef = useRef(true);
+  useEffect(() => {
+    try {
+      const el = logRef?.current; if (!el) return;
+      if (atBottomRef.current) {
+        el.scrollTop = el.scrollHeight;
+      }
+    } catch {}
+  }, [logs]);
   const append = (role, msg) => {
     setSessions(prev => prev.map(s => s.id === currentId ? { ...s, title: s.title === '새 대화' && role==='user' ? (msg.slice(0,24) || '대화') : s.title, logs: [...(s.logs||[]), { t: Date.now(), role, msg }] } : s));
   };
@@ -407,6 +434,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
       append('error', 'UI 적용 실패: ' + String(e?.message||e));
     }
   };
+  // Legacy fence stripper (kept for fallback when parsePlan fails to extract)
   const stripFences = (s) => String(s||'').replace(/^```(?:json)?/i,'').replace(/```$/i,'').trim();
   const applyActions = (plan) => {
     const actions = Array.isArray(plan?.actions) ? plan.actions : [];
@@ -511,12 +539,14 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
         '  "actions?": [ {"type":"create|write|delete|rename|read", "path":"/path", "content?":"string", "from?":"/old", "to?":"/new"} ],',
         '  "steps?": [ { "mode": "chat|work", "message?": string, "actions?": [ ...same as above ] } ],',
         '  "autoContinue?": boolean,',
+        '  "autoMax?": number  // 신뢰 모드에서 스스로 이어갈 최대 호출 횟수(1..10). 제공하지 않으면 기본 2회.',
         '  "followup?": string',
         '}',
         '- chat 모드: 정보가 부족하거나 우선 질의가 필요하면 questions 배열로 물어보고, actions는 비웁니다.',
         '- read 액션: 최대 8개 파일까지 요청 가능. 너무 크거나(>120KB) 바이너리 추정 파일은 잘립니다. read 이후 후속 편집이 확정되면 work 모드로 actions(create/write 등)을 제안하세요.',
         '- work 모드: 편집이 확정되면 actions를 채우고 message는 간결 요약만 포함하세요. 수다/해설을 actions 안에 넣지 마세요.',
-        '- 여러 작업을 이어서 수행해야 한다면 steps 배열로 묶어서 한 번에 제시하세요. 꼭 필요한 경우에만 질문을 하되, 가능하면 스스로 다음 작업을 이어가세요.',
+  '- 여러 작업을 이어서 수행해야 한다면 steps 배열로 묶어서 한 번에 제시하세요. 꼭 필요한 경우에만 질문을 하되, 가능하면 스스로 다음 작업을 이어가세요.',
+  '- 신뢰 모드에서 후속 호출이 필요하다면 autoContinue=true 와 autoMax(1..10)를 함께 제시하세요. 미제공 시 기본 2회가 사용됩니다.',
         '',
         'RESPONSE STYLE (message 전용):',
         '- 한국어로 짧고 읽기 쉽게 답하세요.',
@@ -661,9 +691,14 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
       const body = await res.json();
       if (!res.ok) throw new Error(body?.error || `AI ${res.status}`);
       const text = body?.result?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      const raw = stripFences(text);
-      let plan = null; let applied = 0; let parsed = false;
-      try { plan = JSON.parse(raw); parsed = true; } catch {}
+      const primaryRaw = stripFences(text);
+      // Robust extraction: attempts to pull first valid JSON object/array from mixed output
+      const { plan: planExtracted, parsed: parsedOk, rawJson } = parsePlan(primaryRaw);
+      let plan = planExtracted; let applied = 0; let parsed = parsedOk;
+      if (!parsed) {
+        // Fallback: attempt raw direct parse
+        try { plan = JSON.parse(primaryRaw); parsed = true; } catch {}
+      }
       // Helper for inline body truncation (shared by read responses)
       const mkBodyLocal = (txt) => (txt.length > MAX_INLINE ? (txt.slice(0, Math.floor(MAX_INLINE*0.6)) + '\n…\n/* …중략… */\n' + txt.slice(-Math.floor(MAX_INLINE*0.35))) : txt);
       if (parsed && plan) {
@@ -709,6 +744,17 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
               }
             } catch {}
           });
+          // If trusted mode and AI asked to auto-continue, schedule next call using AI-chosen budget
+          if (autoApply && plan.autoContinue) {
+            const chosen = chooseAutoMax(plan);
+            if (chosen != null && autoBudgetRef.current <= 0) autoBudgetRef.current = chosen;
+            if (autoBudgetRef.current <= 0) autoBudgetRef.current = 2; // default when unspecified
+            if (autoBudgetRef.current > 0) {
+              autoBudgetRef.current -= 1;
+              const follow = typeof plan.followup === 'string' && plan.followup.trim().length>0 ? plan.followup.trim() : input;
+              setTimeout(()=>{ try { setInput(follow); send(); } catch {} }, 0);
+            }
+          }
         }
         if (mode === 'work' && Array.isArray(nonReadActions) && nonReadActions.length > 0) {
           if (autoApply) {
@@ -716,13 +762,20 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
             const { applied:ap, safe } = applyActionsSafely(nonReadActions);
             if (safe) {
               append('assistant', `자동 적용 완료: ${ap}건`);
-              // Auto-continue if requested and under iteration cap
-              if (plan.autoContinue && (autoIterRef.current < Math.max(1, autoLimit))) {
-                autoIterRef.current++;
-                const follow = typeof plan.followup === 'string' && plan.followup.trim().length>0 ? plan.followup.trim() : input;
-                setTimeout(()=>{ try { setInput(follow); send(); } catch {} }, 0);
+              // Auto-continue if requested and within AI-chosen budget
+              if (plan.autoContinue) {
+                const chosen = chooseAutoMax(plan);
+                if (chosen != null && autoBudgetRef.current <= 0) autoBudgetRef.current = chosen;
+                if (autoBudgetRef.current <= 0) autoBudgetRef.current = 2; // default when unspecified
+                if (autoBudgetRef.current > 0) {
+                  autoBudgetRef.current -= 1;
+                  const follow = typeof plan.followup === 'string' && plan.followup.trim().length>0 ? plan.followup.trim() : input;
+                  setTimeout(()=>{ try { setInput(follow); send(); } catch {} }, 0);
+                } else {
+                  autoIterRef.current = 0;
+                }
               } else {
-                autoIterRef.current = 0;
+                autoIterRef.current = 0; autoBudgetRef.current = 0;
               }
             } else {
               const hold = { actions: nonReadActions };
@@ -731,7 +784,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
               setPendingPlan(hold);
               setPendingPlanMeta({ summary, filePreviews });
               append('assistant', `안전 제한으로 인해 자동 적용 대신 미리보기를 표시합니다. 변경 제안 ${summary.count}건.`);
-              autoIterRef.current = 0;
+              autoIterRef.current = 0; autoBudgetRef.current = 0;
             }
           } else {
             // Hold changes for preview instead of immediate apply
@@ -744,10 +797,12 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
           }
         } else if (!plan.message || plan.message.trim().length === 0) {
           append('assistant', '(변경 없음)');
+          autoIterRef.current = 0; autoBudgetRef.current = 0;
         }
       } else {
-        const say = (raw && raw.length > 0) ? raw : (text || '(응답 없음)');
+        const say = (primaryRaw && primaryRaw.length > 0) ? primaryRaw : (text || '(응답 없음)');
         append('assistant', say);
+        autoIterRef.current = 0; autoBudgetRef.current = 0;
       }
     } catch (e) {
       append('error', e?.message || String(e));
@@ -1078,7 +1133,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
           </div>
         </div>
       )}
-      <div ref={logRef} onScroll={(e)=>{ try { const el=e.currentTarget; const nearBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 20; setScrolledUp(!nearBottom); } catch {} }}
+  <div ref={logRef} onScroll={(e)=>{ try { const el=e.currentTarget; const nearBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 32; atBottomRef.current = nearBottom; setScrolledUp(!nearBottom); } catch {} }}
            style={{ flex:1, overflow:'auto', padding:'8px 10px', position:'relative',
                     color: chatTextColor,
                     background: chatBg.image ? `url(${chatBg.image}) center/cover no-repeat` : (chatBg.color || undefined) }}>
