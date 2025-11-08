@@ -412,7 +412,7 @@ function PromptEditInner() {
       <PromptEditor initialBody={prompt.body} onChange={b => setEditorBody(b)} />
 
       <div style={{ marginTop: 12 }}>
-        <button onClick={() => handleSave(editorBody)} disabled={saving}>
+        <button type="button" onClick={() => handleSave(editorBody)} disabled={saving}>
           {saving ? 'Saving…' : 'Save'}
         </button>
         <span style={{ marginLeft: 12 }}>{prompt.version ? `Version: ${prompt.version}` : ''}</span>

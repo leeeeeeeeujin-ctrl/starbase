@@ -585,23 +585,23 @@ if (typeof window !== 'undefined') {
     const origSet = localStorage.setItem.bind(localStorage);
     const origGet = localStorage.getItem.bind(localStorage);
     const origRem = localStorage.removeItem.bind(localStorage);
-    function mapKey(key) {
-      if (key === 'workspace.vfs.v1') {
-        const s = window.__VFS_SCOPED_PATCH__.scope;
-        return vfsKey(s);
-      }
+    function withScope(key) {
+      const scope = window.__VFS_SCOPED_PATCH__.scope;
+      if (!scope) return key;
+      // Generic rule: namespace any workspace-related keys
+      if (key.startsWith('workspace.')) return `${key}@${scope}`;
+      if (key.includes('workspace') || key.includes('vfs')) return `${key}@${scope}`;
       return key;
     }
-    localStorage.setItem = (key, val) => origSet(mapKey(key), val);
+    localStorage.setItem = (key, val) => origSet(withScope(key), val);
     localStorage.getItem = (key) => {
-      if (key === 'workspace.vfs.v1') {
-        const sKey = vfsKey(window.__VFS_SCOPED_PATCH__.scope);
-        const v = origGet(sKey);
-        return v != null ? v : origGet(key);
-      }
+      const scopedKey = withScope(key);
+      const v = origGet(scopedKey);
+      if (v != null) return v;
+      // Backward-compat: try unscoped key if scoped is empty
       return origGet(key);
     };
-    localStorage.removeItem = (key) => origRem(mapKey(key));
+    localStorage.removeItem = (key) => origRem(withScope(key));
     window.addEventListener('workspace:set-scope', (e) => {
       const setId = e?.detail?.setId || null;
       window.__VFS_SCOPED_PATCH__.scope = setId;
