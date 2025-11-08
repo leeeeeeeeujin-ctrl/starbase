@@ -207,10 +207,28 @@ const defaultFiles = {
 const WorkspaceCtx = createContext(null);
 
 export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles }) {
-  // Per-instance storage namespace (set id); fallback to global hint if present
-  const ns = (typeof window !== 'undefined' ? (storageNamespace || (window.__VFS_SCOPED_PATCH__ && window.__VFS_SCOPED_PATCH__.scope)) : null) || null;
+  // Per-instance storage namespace (set id); use explicit storageNamespace or server-provided patch scope.
+  let ns = (typeof window !== 'undefined' ? (storageNamespace || (window.__VFS_SCOPED_PATCH__ && window.__VFS_SCOPED_PATCH__.scope)) : null) || null;
   const nsKey = (k) => (ns ? `${k}@${ns}` : k);
   const KEY = nsKey(BASE_KEY);
+  const isDev = process.env.NODE_ENV !== 'production';
+  // In development, require an explicit storageNamespace prop to avoid accidental cross-set bleed.
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return;
+      if (isDev && !storageNamespace) {
+        // Fail fast in dev to make the missing-namespace explicit during development.
+        throw new Error('[Workspace] Missing storageNamespace prop (development). Provide storageNamespace to avoid cross-set state bleed.');
+      }
+      if (!isDev && !ns) {
+        try { console.warn('[Workspace] Missing storageNamespace; state may bleed across sets.'); } catch {}
+      }
+    } catch (err) {
+      // Throw in dev to make the problem obvious.
+      throw err;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [files, setFiles] = useState({});
   const [root, setRoot] = useState("/");
   const [activePath, setActivePath] = useState("/template.json");
@@ -224,6 +242,7 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
     try {
       // Server-first: if initialFiles provided, use them and skip localStorage read
       if (Array.isArray(initialFiles) && initialFiles.length) {
+        if (isDev) try { console.log('[Workspace] hydrate from initialFiles ns=%s count=%d', ns||'-', initialFiles.length); } catch {}
         const map = {};
         initialFiles.forEach((f) => { if (f && f.path) map[f.path] = { content: String(f.content||''), readonly: !!f.readonly, dir: !!f.dir }; });
         const merged = { ...defaultFiles, ...map };
@@ -249,7 +268,8 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
         setSavedSig(nextSig);
         return;
       }
-      // Local fallback when no initialFiles supplied
+  // Local fallback when no initialFiles supplied
+  if (isDev) try { console.log('[Workspace] hydrate from localStorage ns=%s key=%s', ns||'-', KEY); } catch {}
       let raw = localStorage.getItem(KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
@@ -575,22 +595,7 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
     };
   }, [files, root, activePath, openPaths, entryPath, savedSig]);
 
-  // Listen for external injection events and route them via the fallback injector.
-  useEffect(() => {
-    try {
-      const handler = async (e) => {
-        try {
-          const files = e?.detail || [];
-          if (!files || !files.length) return;
-          await injectFilesWithFallback(api, files);
-        } catch (err) {}
-      };
-      if (typeof window !== 'undefined' && window.addEventListener) {
-        window.addEventListener('workspace:add-files', handler);
-        return () => window.removeEventListener('workspace:add-files', handler);
-      }
-    } catch (e) {}
-  }, [api]);
+  // NOTE: removed external "workspace:add-files" event listener to avoid hidden injection flows.
 
   // Simple stable hash (djb2) for content
   function stableHash(str){
@@ -620,8 +625,26 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
     } catch { return 'h0'; }
   }
 
+  // Expose a debug inspector on window when debug mode enabled so E2E tests can drive the workspace.
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_WORKSPACE_DEBUG === '1') {
+        try { window.__WORKSPACE_INSPECTOR__ = { ns, api }; } catch {}
+      }
+    } catch {}
+  }, [ns, api]);
+
   return (
-    <WorkspaceCtx.Provider value={api}>{children}</WorkspaceCtx.Provider>
+    <WorkspaceCtx.Provider value={api}>
+      {children}
+      {typeof window !== 'undefined' && process.env.NEXT_PUBLIC_WORKSPACE_DEBUG === '1' ? (
+        // Lazy load badge to avoid adding runtime deps into non-debug flows
+        (() => {
+          const Badge = require('./WorkspaceDebugBadge.jsx').default;
+          return <Badge />;
+        })()
+      ) : null}
+    </WorkspaceCtx.Provider>
   );
 }
 

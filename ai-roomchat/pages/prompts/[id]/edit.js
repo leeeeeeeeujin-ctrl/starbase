@@ -279,6 +279,7 @@ function PromptEditInner({ _etag, _setEtag, _setId }) {
     const t = setTimeout(async () => {
       try {
         const list = Object.entries(files || {}).map(([path, meta]) => ({ path, content: String(meta?.content ?? ''), readonly: !!meta?.readonly, dir: !!meta?.dir }));
+        try { console.log('[WorkspaceSave] PUT set=%s files=%d etag=%s', id, list.length, etagRef.current||'-'); } catch {}
         const res = await fetch(`/api/workspace/sets/${encodeURIComponent(id)}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', ...(etagRef.current ? { 'If-Match': etagRef.current } : {}) },
@@ -286,6 +287,7 @@ function PromptEditInner({ _etag, _setEtag, _setId }) {
         });
         const json = await res.json().catch(() => ({}));
         if (res.status === 200 && json?.etag) _setEtag && _setEtag(json.etag);
+        if (res.status === 412) { console.warn('[WorkspaceSave] ETag mismatch; server=%s', json?.current); }
         // On mismatch, we could refetch and reconcile; for now, best-effort last-write-wins if no If-Match
       } catch {}
     }, 800);
@@ -445,19 +447,35 @@ export default function PromptEditPage(){
   const { id } = router.query || {};
   const [initFiles, setInitFiles] = useState(null);
   const [etag, setEtag] = useState(null);
-  // Load server-first workspace set
+  // Load server-first workspace set (explicit create if missing)
   useEffect(() => {
     let alive = true;
     if (!id || typeof id !== 'string') return;
     (async () => {
       try {
-        const r = await fetch(`/api/workspace/sets/${encodeURIComponent(id)}`);
+        let r = await fetch(`/api/workspace/sets/${encodeURIComponent(id)}`);
         if (!alive) return;
         if (r.ok) {
           const json = await r.json();
           setInitFiles(Array.isArray(json.files) ? json.files : []);
           setEtag(json.etag || null);
           return;
+        }
+        if (r.status === 404) {
+          // Create set explicitly (idempotent)
+          const gen = (p) => { try { return p + (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)); } catch { return p + Math.random().toString(36).slice(2); } };
+          const reqId = gen('req_');
+          r = await fetch('/api/workspace/sets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Request-Id': reqId },
+            body: JSON.stringify({ id }),
+          });
+          if (r.ok) {
+            const json = await r.json();
+            setInitFiles(Array.isArray(json.files) ? json.files : []);
+            setEtag(json.etag || null);
+            return;
+          }
         }
       } catch {}
       // Fallback: use any snapshot (local cache) if server fails

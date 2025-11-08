@@ -8,13 +8,9 @@ export default async function handler(req, res) {
   const method = req.method;
   try {
     if (method === 'GET') {
-      let cur = getSet(id);
-      // Auto-create on first GET with starter pack
-      if (!cur) {
-        const base = path.join(process.cwd(), 'ai-roomchat');
-        const files = buildStarterPack(base);
-        cur = saveSet(id, files, { starterApplied: true });
-      }
+      const cur = getSet(id);
+      if (process.env.NODE_ENV !== 'production') try { console.log('[sets.get] id=%s found=%s', id, !!cur); } catch {}
+      if (!cur) return res.status(404).json({ error: 'not-found' });
       return res.status(200).json(cur);
     }
     if (method === 'PUT') {
@@ -23,13 +19,16 @@ export default async function handler(req, res) {
       const files = Array.isArray(body.files) ? body.files : [];
       const meta = body.meta && typeof body.meta === 'object' ? body.meta : {};
       const cur = getSet(id);
+      if (process.env.NODE_ENV !== 'production') try { console.log('[sets.put] id=%s ifMatch=%s current=%s', id, ifMatch||'-', cur?.etag||'-'); } catch {}
       if (cur && ifMatch && cur.etag && cur.etag !== ifMatch) {
         return res.status(412).json({ error: 'etag-mismatch', current: cur.etag });
       }
       const saved = saveSet(id, files, meta);
+      if (process.env.NODE_ENV !== 'production') try { console.log('[sets.put] saved id=%s files=%d etag=%s', id, Array.isArray(files)?files.length:0, saved.etag); } catch {}
       return res.status(200).json({ etag: saved.etag });
     }
   } catch (e) {
+    if (process.env.NODE_ENV !== 'production') try { console.warn('[sets.api] error %s', e?.message||e); } catch {}
     return res.status(500).json({ error: 'sets-failed' });
   }
   res.setHeader('Allow', 'GET,PUT');
