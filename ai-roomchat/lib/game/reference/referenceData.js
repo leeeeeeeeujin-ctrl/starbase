@@ -1,4 +1,4 @@
-import { loadJSON } from "../assets/AssetLoader.js";
+import { loadJSON, loadImage, loadAudio, loadText } from "../assets/AssetLoader.js";
 
 const BASE = (typeof process !== "undefined" && process.env && process.env.NEXT_PUBLIC_REFERENCE_BASE) || "/api/reference/";
 
@@ -25,4 +25,32 @@ export async function loadReferenceJSON(nameOrPath) {
   const url = urlForReference(nameOrPath);
   if (!url) throw new Error("Invalid reference key");
   return loadJSON(url);
+}
+
+export async function loadReferenceImage(nameOrPath) {
+  const url = urlForReference(nameOrPath);
+  if (!url) throw new Error("Invalid reference key");
+  return loadImage(url);
+}
+
+export async function loadReferenceAudio(nameOrPath) {
+  const url = urlForReference(nameOrPath);
+  if (!url) throw new Error("Invalid reference key");
+  return loadAudio(url);
+}
+
+export async function loadReferenceText(nameOrPath) {
+  const url = urlForReference(nameOrPath);
+  if (!url) throw new Error("Invalid reference key");
+  return loadText(url);
+}
+
+// List directory contents under reference_data via the API directory JSON response.
+export async function listReferenceDir(dir = "") {
+  const rel = String(dir || "").replace(/^\/+|\/+$/g, "");
+  const url = BASE.replace(/\/$/, "/") + rel;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to list ${rel || '/'}: ${res.status}`);
+  const json = await res.json();
+  return json.items || [];
 }
