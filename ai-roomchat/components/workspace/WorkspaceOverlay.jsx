@@ -319,6 +319,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
     );
   };
   return (
+    <>
     {templateBinding ? (
       <SyncTemplateToVfs text={templateBinding.text} setText={templateBinding.setText} />
     ) : null}
@@ -388,6 +389,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
           </div>
         </div>
       )}
+    </>
   );
 }
 

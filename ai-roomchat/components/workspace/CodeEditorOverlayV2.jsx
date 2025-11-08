@@ -414,6 +414,7 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
   const [closeConfirm, setCloseConfirm] = useState(null); // { paths: [] }
 
   return (
+    <>
       {templateBinding ? (
         <SyncTemplateToVfs text={templateBinding.text} setText={templateBinding.setText} />
       ) : null}
@@ -486,6 +487,7 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
       {showCodeChat && chatMinimized && (
         <button onClick={() => setChatMinimized(false)} title="AI 채팅 열기" style={{ position:'fixed', right:'calc(env(safe-area-inset-right) + 12px)', bottom:'calc(env(safe-area-inset-bottom) + 12px)', zIndex:1500, width:48, height:48, borderRadius:24, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', boxShadow:'0 10px 24px rgba(0,0,0,0.5)' }}>AI</button>
       )}
+    </>
   );
 }
 
