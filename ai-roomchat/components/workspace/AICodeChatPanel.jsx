@@ -525,6 +525,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
         '당신은 파일 시스템 편집 + 읽기 에이전트입니다.',
         '파일 목록과 일부 내용이 제공되며, 필요하면 read 액션을 통해 추가 파일 내용을 요청할 수 있습니다.',
         '반드시 JSON으로만 응답하세요(코드펜스/마크다운 금지).',
+        '중요: 작업 JSON은 반드시 <<PLAN>>와 <<ENDPLAN>> 사이에만 위치해야 합니다. 그 외 설명/요약/질문 텍스트는 PLAN 바깥에 둡니다.',
         '스키마 v3: {',
         '  "mode": "chat" | "work",',
         '  "message?": string,',
@@ -540,6 +541,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
         '- work 모드: 편집이 확정되면 actions를 채우고 message는 간결 요약만 포함하세요. 수다/해설을 actions 안에 넣지 마세요.',
   '- 여러 작업을 이어서 수행해야 한다면 steps 배열로 묶어서 한 번에 제시하세요. 꼭 필요한 경우에만 질문을 하되, 가능하면 스스로 다음 작업을 이어가세요.',
   '- 신뢰 모드에서 후속 호출이 필요하다면 autoContinue=true 와 autoMax(1..10)를 함께 제시하세요. 미제공 시 기본 2회가 사용됩니다.',
+  '- 항상 <<PLAN>>\n{ ... JSON ... }\n<<ENDPLAN>> 구간으로 작업 JSON을 감싸세요. 그렇지 않으면 작업이 무시되거나 메시지로 표시될 수 있습니다.',
         '',
         'RESPONSE STYLE (message 전용):',
         '- 한국어로 짧고 읽기 쉽게 답하세요.',
@@ -793,9 +795,71 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
           autoIterRef.current = 0; autoBudgetRef.current = 0; setAutoBudget(0);
         }
       } else {
-        const say = (primaryRaw && primaryRaw.length > 0) ? primaryRaw : (text || '(응답 없음)');
-        append('assistant', say);
-        autoIterRef.current = 0; autoBudgetRef.current = 0; setAutoBudget(0);
+        // Mid-path auto correction: try parsing on original text (without stripping)
+        const rescue = parsePlan(text || primaryRaw || '');
+        if (rescue?.parsed && rescue.plan) {
+          // Re-enter the plan handling path by setting local variables and jumping into same logic.
+          const rescuedPlan = rescue.plan;
+          // Show questions if any
+          if (Array.isArray(rescuedPlan.questions) && rescuedPlan.questions.length > 0) {
+            append('assistant', `질문:\n- ${rescuedPlan.questions.map(q=>String(q)).join('\n- ')}`);
+          }
+          const mode2 = (rescuedPlan.mode === 'work' || rescuedPlan.mode === 'chat') ? rescuedPlan.mode : (Array.isArray(rescuedPlan.actions) && rescuedPlan.actions.length>0 ? 'work' : 'chat');
+          if (typeof rescuedPlan.message === 'string' && rescuedPlan.message.trim().length > 0) {
+            append('assistant', rescuedPlan.message.trim());
+          }
+          const allActions2 = collectActionsFromSteps(rescuedPlan);
+          const readActions2 = allActions2.filter(a => a?.type === 'read');
+          const nonReadActions2 = allActions2.filter(a => a?.type !== 'read');
+          if (readActions2.length > 0) {
+            const MAX_READ = 8;
+            const allowedPrefixes = ['/template.json', '/graph/', '/game/', '/components/', '/pages/', '/styles/', '/utils/', '/lib/', '/hooks/', '/services/', '/contexts/', '/context/', '/modules/'];
+            const safeReads2 = readActions2.slice(0, MAX_READ).filter(a => a?.path && typeof a.path === 'string' && allowedPrefixes.some(pref => a.path === pref || a.path.startsWith(pref)));
+            const readReport2 = safeReads2.map(r => {
+              const meta = files[r.path];
+              if (!meta) return { path: r.path, exists:false, content:'(파일 없음)' };
+              const raw2 = String(meta.content || '');
+              const truncated2 = raw2.length > 120000;
+              return { path: r.path, exists:true, size: raw2.length, truncated: truncated2, body: mkBodyLocal(raw2) };
+            });
+            try { append('assistant', '파일 읽기 결과:\n' + readReport2.map(r => `- ${r.path} (${r.exists? r.size+' chars' : '없음'}${r.truncated? ', truncated':''})`).join('\n')); } catch {}
+            readReport2.forEach(r => { try { if (r.exists) append('assistant', `내용(${r.path}):\n${r.body}`); } catch {} });
+          }
+          if (mode2 === 'work' && Array.isArray(nonReadActions2) && nonReadActions2.length > 0) {
+            if (autoApply) {
+              const { applied:ap2, safe:safe2 } = applyActionsSafely(nonReadActions2);
+              if (safe2) {
+                append('assistant', `자동 적용 완료: ${ap2}건`);
+                if (rescuedPlan.autoContinue) {
+                  const chosen2 = chooseAutoMax(rescuedPlan);
+                  if (chosen2 != null && autoBudgetRef.current <= 0) { autoBudgetRef.current = chosen2; setAutoBudget(autoBudgetRef.current); }
+                  if (autoBudgetRef.current <= 0) { autoBudgetRef.current = 2; setAutoBudget(autoBudgetRef.current); }
+                  if (autoBudgetRef.current > 0) { autoBudgetRef.current -= 1; setAutoBudget(autoBudgetRef.current); const follow2 = typeof rescuedPlan.followup === 'string' && rescuedPlan.followup.trim().length>0 ? rescuedPlan.followup.trim() : input; setTimeout(()=>{ try { setInput(follow2); send(); } catch {} }, 0); } else { autoIterRef.current = 0; setAutoBudget(0); }
+                } else { autoIterRef.current = 0; autoBudgetRef.current = 0; setAutoBudget(0); }
+              } else {
+                const hold2 = { actions: nonReadActions2 };
+                const summary2 = summarizePlan(hold2);
+                const filePreviews2 = buildPlanFilePreviews(hold2);
+                setPendingPlan(hold2); setPendingPlanMeta({ summary: summary2, filePreviews: filePreviews2 });
+                append('assistant', `안전 제한으로 인해 자동 적용 대신 미리보기를 표시합니다. 변경 제안 ${summary2.count}건.`);
+                autoIterRef.current = 0; autoBudgetRef.current = 0; setAutoBudget(0);
+              }
+            } else {
+              const hold2 = { actions: nonReadActions2 };
+              const summary2 = summarizePlan(hold2);
+              const filePreviews2 = buildPlanFilePreviews(hold2);
+              setPendingPlan(hold2); setPendingPlanMeta({ summary: summary2, filePreviews: filePreviews2 });
+              append('assistant', `변경 제안 ${summary2.count}건이 도착했습니다. 아래 카드에서 적용하거나 추가 지시를 선택하세요.`);
+            }
+          } else if (!rescuedPlan.message || rescuedPlan.message.trim().length === 0) {
+            append('assistant', '(변경 없음)');
+            autoIterRef.current = 0; autoBudgetRef.current = 0; setAutoBudget(0);
+          }
+        } else {
+          const say = (primaryRaw && primaryRaw.length > 0) ? primaryRaw : (text || '(응답 없음)');
+          append('assistant', say);
+          autoIterRef.current = 0; autoBudgetRef.current = 0; setAutoBudget(0);
+        }
       }
     } catch (e) {
       append('error', e?.message || String(e));
