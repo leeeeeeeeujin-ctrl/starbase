@@ -228,7 +228,7 @@ function UiSettingsPanel({ onClose }) {
   );
 }
 
-function PromptEditInner({ _etag, _setEtag, _setId }) {
+function PromptEditInner({ etag, setEtag, frameId }) {
   const router = useRouter();
   const { id } = router.query;
   const [prompt, setPrompt] = useState({ id: id || 'new', name: '', body: '' });
@@ -271,8 +271,8 @@ function PromptEditInner({ _etag, _setEtag, _setId }) {
 
   // Remove autosave; saving will occur in handleSave (prompt editor save action)
   const { files } = useWorkspace();
-  const etagRef = useRef(_etag || null);
-  useEffect(() => { etagRef.current = _etag || null; }, [_etag]);
+  const etagRef = useRef(etag || null);
+  useEffect(() => { etagRef.current = etag || null; }, [etag]);
 
   useEffect(() => {
     if (!id) return;
@@ -350,7 +350,7 @@ function PromptEditInner({ _etag, _setEtag, _setId }) {
             });
           }
           const pj = await put.json().catch(()=>({}));
-          if (put.status === 200 && pj?.etag) _setEtag && _setEtag(pj.etag);
+          if (put.status === 200 && pj?.etag) setEtag && setEtag(pj.etag);
         } catch {}
         alert('Saved');
       }
@@ -448,42 +448,15 @@ function PromptEditInner({ _etag, _setEtag, _setId }) {
 }
 
 export default function PromptEditPage(){
-  // Provide VFS to enable ToolsDropdown to read/write /template.json
-  // Key provider by set id to force clean remount per set (prevents cross-set bleed)
   const router = useRouter();
   const { id } = router.query || {};
-  const [initFiles, setInitFiles] = useState(null);
-  const [etag, setEtag] = useState(null);
-  // Load server-first workspace set (explicit create if missing)
-  useEffect(() => {
-    let alive = true;
-    if (!id || typeof id !== 'string') return;
-    (async () => {
-      try {
-        let r = await fetch(`/api/workspace/sets/${encodeURIComponent(id)}`);
-        if (!alive) return;
-        if (r.ok) {
-          const json = await r.json();
-          setInitFiles(Array.isArray(json.files) ? json.files : []);
-          setEtag(json.etag || null);
-          return;
-        }
-        if (r.status === 404) {
-          // No auto-create here; mount with defaults
-          setInitFiles([]);
-          setEtag(null);
-          return;
-        }
-      } catch {}
-    })();
-    return () => { alive = false; };
-  }, [id]);
   if (!id || typeof id !== 'string') return <div style={{ padding: 20 }}>세트 ID 확인 중…</div>;
-  if (!initFiles) return <div style={{ padding: 20 }}>작업공간 불러오는 중…</div>;
   return (
-    <CodeWorkspaceProvider key={id} storageNamespace={id} initialFiles={initFiles}>
-      <PromptEditInner _etag={etag} _setEtag={setEtag} _setId={id} />
-    </CodeWorkspaceProvider>
+    <WorkspaceFrame id={id}>
+      {({ etag, setEtag, id: frameId }) => (
+        <PromptEditInner etag={etag} setEtag={setEtag} frameId={frameId} />
+      )}
+    </WorkspaceFrame>
   );
 }
 

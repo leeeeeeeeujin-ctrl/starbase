@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import PlayScaffold from "../../../components/game/PlayScaffold.jsx";
-import { CodeWorkspaceProvider } from '@/components/workspace/CodeWorkspaceProvider.jsx';
+import WorkspaceFrame from '@/components/workspace/WorkspaceFrame.jsx';
 
 export default function PlayAIPage() {
   const router = useRouter();
@@ -44,10 +44,10 @@ export default function PlayAIPage() {
   if (!initFiles) return <div style={{ padding: 20 }}>작업공간 불러오는 중…</div>;
 
   return (
-    <CodeWorkspaceProvider key={id || 'default'} storageNamespace={id} initialFiles={initFiles || []}>
+    <WorkspaceFrame id={id}>
       <div style={{ position:'fixed', inset:0 }}>
         <PlayScaffold sessionId={sessionId} gameId={gameId} user={user} character={character} network={network} slotConfig={slotConfig} />
       </div>
-    </CodeWorkspaceProvider>
+    </WorkspaceFrame>
   );
 }

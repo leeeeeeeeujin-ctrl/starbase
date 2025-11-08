@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/router';
 import { GameRuntimeProvider, useGameRuntime } from '@/components/game/GameRuntimeProvider.jsx';
-import { CodeWorkspaceProvider } from '@/components/workspace/CodeWorkspaceProvider.jsx';
+import WorkspaceFrame from '@/components/workspace/WorkspaceFrame.jsx';
 
 const MainGameMobileUI = dynamic(() => import('@/components/game/MainGameMobileUI.jsx'), { ssr: false });
 
@@ -94,10 +94,10 @@ export default function PlayByIdPage(){
   }
 
   return (
-    <CodeWorkspaceProvider key={id || 'default'} storageNamespace={id} initialFiles={initFiles || []}>
+    <WorkspaceFrame id={id}>
       <GameRuntimeProvider>
         <Runner tpl={tpl} />
       </GameRuntimeProvider>
-    </CodeWorkspaceProvider>
+    </WorkspaceFrame>
   );
 }
