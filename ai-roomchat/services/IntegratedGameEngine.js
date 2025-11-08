@@ -5,7 +5,7 @@
 
 'use client';
 
-import SecureAIService from './SecureAIService';
+import secureAIService, { SecureAIService } from './SecureAIService';
 import OfflineGameEngine from './OfflineGameEngine';
 import GameAnalyticsService from './GameAnalyticsService';
 import EnhancedGameDatabaseService from './EnhancedGameDatabaseService';
@@ -58,10 +58,18 @@ class IntegratedGameEngine {
     try {
       // 보안 AI 서비스
       if (this.config.enableSecureAI) {
-        this.services.ai = new SecureAIService({
-          timeout: this.config.aiRequestTimeout,
-          maxRetries: this.config.maxRetries,
-        });
+        try {
+          // Prefer existing singleton instance to avoid constructor issues after bundling
+          this.services.ai = secureAIService || new SecureAIService({
+            timeout: this.config.aiRequestTimeout,
+            maxRetries: this.config.maxRetries,
+          });
+        } catch {
+          this.services.ai = new SecureAIService({
+            timeout: this.config.aiRequestTimeout,
+            maxRetries: this.config.maxRetries,
+          });
+        }
         this.log('🔒 보안 AI 서비스 초기화됨');
       }
 

@@ -1,0 +1,1 @@
+workspace: derive prompt-graph from template; seed VFS guide/hooks/config; runtime preview in test pane  

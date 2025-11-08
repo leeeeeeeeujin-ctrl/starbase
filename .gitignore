@@ -10,6 +10,21 @@ archived/
 # Ignore runtime and log directories created by local runs
 ai-roomchat/logs/
 
+# Ignore migration diagnostic artifacts and local backups
+ai-roomchat/*.json
+!ai-roomchat/.eslintrc.json
+!ai-roomchat/tsconfig.checkjs.json
+ai-roomchat/*_raw.txt
+ai-roomchat/list*.txt
+ai-roomchat/*.gz
+ai-roomchat/*.sha256
+ai-roomchat/downloaded-backup.*
+ai-roomchat/migration-backup-*.sql
+ai-roomchat/upload_response_body.txt
+
+# ignore local data backups created by dev tools
+ai-roomchat/data/*.json
+
 # Sensitive keys and SPPP files (do NOT commit)
 ci_deploy_key
 ci_deploy_key.pub
@@ -26,3 +41,4 @@ artifacts/
 reports/
 tmp/
 assistant-sql/
+.tmp.driveupload/

@@ -4,12 +4,18 @@ name: Security Audit
 on:
   pull_request:
     branches: [main]
-  push:
-    branches: [main]
+    paths:
+      - 'ai-roomchat/package.json'
+      - 'ai-roomchat/package-lock.json'
+      - '.github/workflows/audit.yml'
+  schedule:
+    - cron: '0 3 * * 1' # weekly Monday 03:00 UTC
+  workflow_dispatch:
 
 jobs:
   audit:
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4

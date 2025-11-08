@@ -1,7 +1,10 @@
 'use client';
 
 import SidePanel from '../SidePanel';
+import EditorMonaco from '../../EditorMonaco.jsx';
+import { useStudioTemplate } from '../../../contexts/StudioStore';
 
+// Keep lightweight and avoid window globals in render path
 export default function MakerEditorPanel({
   tabs,
   activeTab,
@@ -16,8 +19,21 @@ export default function MakerEditorPanel({
   setNodes,
   setEdges,
   onRequestAdvancedTools = () => {},
+  onAddPrompt,
 }) {
   const nodeData = selectedNode?.data || null;
+  // Optional: unify edits with Studio template JSON if provider exists
+  let studio = null;
+  try {
+    studio = useStudioTemplate();
+  } catch {}
+
+  // Fallback to global actions if prop not provided
+  const addPrompt = typeof onAddPrompt === 'function'
+    ? onAddPrompt
+    : (typeof window !== 'undefined' && window.__makerActions && typeof window.__makerActions.addPromptNode === 'function'
+        ? window.__makerActions.addPromptNode
+        : null);
 
   return (
     <section
@@ -31,6 +47,34 @@ export default function MakerEditorPanel({
         width: '100%',
       }}
     >
+      {/* 코드 패널은 상위 MakerEditor에서 렌더되며, 여기서는 프롬프트·노드 UI만 관리 */}
+      {/* 프롬프트 생성 툴바 (패널 열기 버튼 위) */}
+      {addPrompt && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button
+            type="button"
+            onClick={() => addPrompt('ai', '')}
+            style={{ padding: '6px 10px', borderRadius: 10, border: '1px solid #c7d2fe', background: '#eef2ff', color: '#3730a3', fontWeight: 700, fontSize: 12 }}
+          >
+            + AI 프롬프트
+          </button>
+          <button
+            type="button"
+            onClick={() => addPrompt('user_action', '')}
+            style={{ padding: '6px 10px', borderRadius: 10, border: '1px solid #bae6fd', background: '#e0f2fe', color: '#075985', fontWeight: 700, fontSize: 12 }}
+          >
+            + 유저 프롬프트
+          </button>
+          <button
+            type="button"
+            onClick={() => addPrompt('system', '')}
+            style={{ padding: '6px 10px', borderRadius: 10, border: '1px solid #fecaca', background: '#fee2e2', color: '#991b1b', fontWeight: 700, fontSize: 12 }}
+          >
+            + 시스템
+          </button>
+        </div>
+      )}
+
       <div
         style={{
           display: 'flex',
@@ -180,21 +224,33 @@ export default function MakerEditorPanel({
                   <label style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
                     프롬프트 내용
                   </label>
-                  <textarea
-                    rows={7}
-                    value={nodeData.template || ''}
-                    onChange={event => nodeData.onChange?.({ template: event.target.value })}
-                    style={{
-                      width: '100%',
-                      borderRadius: 12,
-                      border: '1px solid #e2e8f0',
-                      padding: '10px 12px',
-                      fontSize: 13,
-                      lineHeight: 1.5,
-                      resize: 'vertical',
-                    }}
-                    placeholder="프롬프트 텍스트를 입력하세요"
-                  />
+                  <div style={{ height: 220, border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
+                    <EditorMonaco
+                      value={nodeData.template || ''}
+                      onChange={val => {
+                        // local graph update
+                        nodeData.onChange?.({ template: val });
+                        // studio JSON update
+                        if (studio && typeof studio.setTemplateText === 'function') {
+                          try {
+                            const obj = JSON.parse(studio.templateText || '{}');
+                            if (Array.isArray(obj.nodes)) {
+                              const idx = obj.nodes.findIndex(n => n?.id === selectedNodeId);
+                              if (idx >= 0) {
+                                const n = obj.nodes[idx] || {};
+                                const data = { ...(n.data || {}), template: val };
+                                obj.nodes[idx] = { ...n, data };
+                                studio.setTemplateText(JSON.stringify(obj, null, 2));
+                              }
+                            }
+                          } catch {}
+                        }
+                      }}
+                      language="markdown"
+                      theme="vs-light"
+                      height="100%"
+                    />
+                  </div>
                 </div>
               </div>
             )}

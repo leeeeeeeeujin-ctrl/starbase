@@ -48,12 +48,36 @@ jobs:
           echo "Project: $PROJECT_REF"
           export SUPABASE_ACCESS_TOKEN="$SUPABASE_SERVICE_ROLE_KEY"
           SQL_FILE="${{ github.event.inputs.sql_file }}"
+          # If the supplied path doesn't exist, try to discover the file in the repo
           if [ ! -f "$SQL_FILE" ]; then
-            echo "SQL file not found at $SQL_FILE" >&2
+            echo "SQL file not found at $SQL_FILE; searching repository for 002_add_devices_and_prompt_runs.sql"
+            FOUND=$(git ls-files | grep '002_add_devices_and_prompt_runs.sql' | head -n1 || true)
+            if [ -n "$FOUND" ] && [ -f "$FOUND" ]; then
+              echo "Found candidate: $FOUND"
+              SQL_FILE="$FOUND"
+            else
+              # Try a couple of likely alternate locations
+              CANDIDATES=( "starbase/ai-roomchat/sql/002_add_devices_and_prompt_runs.sql" "ai-roomchat/ai-roomchat/sql/002_add_devices_and_prompt_runs.sql" "docs/sql/ai-roomchat/sql/002_add_devices_and_prompt_runs.sql" )
+              for C in "${CANDIDATES[@]}"; do
+                if [ -f "$C" ]; then
+                  echo "Found candidate: $C"
+                  SQL_FILE="$C"
+                  break
+                fi
+              done
+            fi
+          fi
+          if [ ! -f "$SQL_FILE" ]; then
+            echo "SQL file still not found; aborting. Checked: $SQL_FILE" >&2
+            echo "Run 'git ls-files | grep 002_add_devices_and_prompt_runs.sql' to inspect available files" >&2
             exit 1
           fi
           echo "Running: $SQL_FILE"
-          cat "$SQL_FILE" | supabase db query --project-ref "$PROJECT_REF" --service-role-key "$SUPABASE_SERVICE_ROLE_KEY" --yes
+          # Use the service role token via SUPABASE_ACCESS_TOKEN and SUPABASE_PROJECT_URL
+          # The CLI will use these environment variables to target the correct project (control-plane).
+          # Use only the access token and project URL in the environment; the CLI will
+          # pick up the target project from SUPABASE_PROJECT_URL when possible.
+          SUPABASE_ACCESS_TOKEN="$SUPABASE_SERVICE_ROLE_KEY" SUPABASE_PROJECT_URL="$SUPABASE_PROJECT_URL" bash -c "cat '$SQL_FILE' | supabase db query --yes"
           RC=$?
           if [ $RC -ne 0 ]; then
             echo "supabase db query failed with code $RC" >&2

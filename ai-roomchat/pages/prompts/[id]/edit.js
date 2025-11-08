@@ -44,7 +44,7 @@ export default function PromptEditPage() {
     if (!id) return;
     try {
       const key = `ai-assist-result:${id}`;
-      const raw = localStorage.getItem(key);
+      const raw = typeof window !== 'undefined' ? window.localStorage.getItem(key) : null;
       if (raw) {
         const parsed = JSON.parse(raw);
         setAiResult(parsed);
@@ -101,7 +101,9 @@ export default function PromptEditPage() {
     const newBody = (prompt.body || '') + '\n\n' + aiResult.text;
     setPrompt(p => ({ ...p, body: newBody }));
     try {
-      localStorage.removeItem(`ai-assist-result:${id}`);
+        if (typeof window !== 'undefined') {
+          window.localStorage.removeItem(`ai-assist-result:${id}`);
+        }
       setAiResult(null);
     } catch (err) {}
   }
@@ -158,4 +160,9 @@ export default function PromptEditPage() {
       </div>
     </div>
   );
+}
+
+// Avoid static generation to prevent build-time execution pitfalls; render per-request.
+export async function getServerSideProps() {
+  return { props: {} };
 }

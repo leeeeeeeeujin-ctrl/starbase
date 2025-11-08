@@ -49,4 +49,9 @@ node scripts/mobile-runner.js
 
 2. Use `PromptEditor` in the app to point to `http://<device-ip>:3001` and the secret.
 
+
 If you want, I can help prepare a small packaging script (upload + checksum generation) and a UI flow for in-app installer that downloads artifacts from a chosen URL and performs verification.
+
+
+---
+참고: 모바일/로컬 러너를 통한 실행 시 안전 실행 및 격리 정책(컨테이너/WasM/서버 대체 등)에 대한 권장사항은 `ai-roomchat/docs/SANDBOX_ARCHITECTURE.md` 를 참고하세요. 모바일에서는 iOS 제약이 크므로 서버/edge 기반 실행 혹은 Wasm 기반 검증을 우선 권장합니다.

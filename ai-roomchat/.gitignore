@@ -7,3 +7,16 @@ reports/
 .vercel
 .env*.local
 local_credentials.json
+ # Diagnostic backups and temporary artifacts created by local migration runs / diag scripts
+ migration-backup-*.sql.gz
+ migration-backup-*.sql.gz.sha256
+ downloaded-backup.gz
+ *.sha256
+ *.gz
+ node_*.json
+ node_*_raw.txt
+ upload_response_body.txt
+ bucket_list*.json
+ list*.json
+
+.vercel

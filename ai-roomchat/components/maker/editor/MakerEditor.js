@@ -1,22 +1,59 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useStudioTemplate } from '../../../contexts/StudioStore';
 
 import { useMakerEditor } from '../../../hooks/maker/useMakerEditor';
 import { exportSet, importSet } from './importExport';
 import MakerEditorCanvas from './MakerEditorCanvas';
-import MakerEditorHeader from './MakerEditorHeader';
+import MinimalMakerHeader from './MinimalMakerHeader';
 import MakerEditorPanel from './MakerEditorPanel';
+import AddPromptFab from './AddPromptFab';
 import VariableDrawer from './VariableDrawer';
 import AdvancedToolsPanel from './AdvancedToolsPanel';
-import CodeEditor from './CodeEditor';
-import MultiLanguageCodeEditor from './MultiLanguageCodeEditor';
+// Removed legacy editors; using StudioJsonEditor for unified JSON
+import WorkspaceOverlay from '../../workspace/WorkspaceOverlay.jsx';
 import GameSimulator from './GameSimulator';
+import dynamic from 'next/dynamic';
+import AutoUpdateListener from '../../infra/AutoUpdateListener.jsx';
+const ImageToUIGenerator = dynamic(() => import('../ui/ImageToUIGenerator'), { ssr: false });
 
 export default function MakerEditor() {
+  const snapBtn = {
+    padding: '6px 10px',
+    borderRadius: 8,
+    border: '1px solid #475569',
+    background: '#0f172a',
+    color: '#e2e8f0',
+    fontSize: 12,
+  };
   const { status, graph, selection, variables, persistence, history, version } = useMakerEditor();
+  // Unified studio workspace (single-file source of truth)
+  let templateText = '';
+  let setTemplateText = () => {};
+  try {
+    const ctx = useStudioTemplate();
+    templateText = ctx.templateText;
+    setTemplateText = ctx.setTemplateText;
+  } catch {
+    // not inside StudioProvider; operate without cross-sync
+  }
 
   const { isReady, loading, setInfo } = status;
+
+  useEffect(() => {
+    // Hide the header toggle button ("펼치기") and any stray duplicate AI openers in header
+    try {
+      const hideTexts = ['펼치기', '게임 제작 도구 펼치기'];
+      const btns = typeof document !== 'undefined' ? document.querySelectorAll('button') : [];
+      btns.forEach(btn => {
+        const txt = (btn.textContent || '').trim();
+        if (hideTexts.some(t => txt.includes(t))) {
+          btn.style.display = 'none';
+        }
+      });
+    } catch {}
+  }, []);
 
   const {
     nodes,
@@ -29,6 +66,152 @@ export default function MakerEditor() {
     setNodes,
     setEdges,
   } = graph;
+
+  // Bridge with StudioStore: keep Maker graph <-> templateText in sync
+  const syncingRef = useRef(false);
+  const hydratedRef = useRef(false);
+  const [splitPct, setSplitPct] = useState(50);
+  const [isDraggingSplit, setIsDraggingSplit] = useState(false);
+  const PREF_SPLIT = 'maker:ui:splitPct';
+  const PREF_VIS = 'maker:ui:panels';
+  // panels visibility states must be declared before effects that use them
+  const [showMultiLanguageEditor, setShowMultiLanguageEditor] = useState(false);
+  const [gameSimulatorOpen, setGameSimulatorOpen] = useState(false);
+
+  const toTemplateObject = useCallback(() => {
+    const tpl = (() => { try { return JSON.parse(templateText || '{}'); } catch { return {}; } })();
+    const next = {
+      ...tpl,
+      nodes: (nodes || []).map(n => ({
+        id: n.id,
+        type: n.type || 'prompt',
+        position: n.position || { x: 0, y: 0 },
+        label: n.data?.name || n.data?.title || '',
+        data: n.data || {},
+      })),
+      edges: (edges || []).map(e => ({ id: e.id, source: e.source, target: e.target, label: e.label || '' })),
+    };
+    return next;
+  }, [templateText, nodes, edges]);
+
+  const hydrateFromTemplate = useCallback(() => {
+    let obj; try { obj = JSON.parse(templateText || '{}'); } catch { obj = {}; }
+    const tn = Array.isArray(obj.nodes) ? obj.nodes : [];
+    const te = Array.isArray(obj.edges) ? obj.edges : [];
+    if (tn.length === 0 && te.length === 0) return;
+    syncingRef.current = true;
+    try {
+      setNodes(tn.map(n => ({
+        id: n.id || `n_${Math.random().toString(36).slice(2,8)}`,
+        type: n.type || 'prompt',
+        position: n.position || { x: 0, y: 0 },
+        data: n.data || { template: '', slot_type: 'ai' },
+      })));
+      setEdges(te.map(e => ({ id: e.id || `e_${Math.random().toString(36).slice(2,8)}`, source: e.source, target: e.target, label: e.label || '' })));
+      hydratedRef.current = true;
+    } finally {
+      syncingRef.current = false;
+    }
+  }, [templateText, setNodes, setEdges]);
+
+  // Overlay용 테스트 데이터 구성기 (에디터 노드 → 시뮬레이터 슬롯)
+  const overlayGameData = useMemo(() => {
+    try {
+      return {
+        meta: { version: 2, createdAt: new Date().toISOString() },
+        set: { name: setInfo?.name || '시뮬레이션' },
+        slots: nodes.map((node, index) => ({
+          slot_no: parseInt(node.id) || index,
+          slot_type: node.type || 'ai',
+          template: node.data?.label || '',
+          is_start: node.data?.isStart || index === 0,
+          var_rules_global: node.data?.var_rules_global || {},
+          var_rules_local: node.data?.var_rules_local || {},
+        })),
+        bridges: edges.map(e => ({ id: e.id, source: e.source, target: e.target, label: e.label || '' })),
+      };
+    } catch {
+      return null;
+    }
+  }, [nodes, edges, setInfo?.name]);
+
+  // Initial hydrate when opening existing template
+  useEffect(() => {
+    if (!hydratedRef.current && typeof setNodes === 'function' && typeof setEdges === 'function') {
+      hydrateFromTemplate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [templateText]);
+
+  // Restore UI prefs (split and panel visibility)
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return;
+      const s = parseInt(localStorage.getItem(PREF_SPLIT) || '50', 10);
+      if (!Number.isNaN(s) && s >= 20 && s <= 80) setSplitPct(s);
+      const visRaw = localStorage.getItem(PREF_VIS);
+      if (visRaw) {
+        const vis = JSON.parse(visRaw);
+        if (typeof vis?.code === 'boolean' && vis.code) {
+          setShowMultiLanguageEditor(true);
+        }
+        if (typeof vis?.test === 'boolean') setGameSimulatorOpen(!!vis.test);
+      }
+    } catch {}
+  }, []);
+
+  // Close code overlay on Escape
+  useEffect(() => {
+    if (!showMultiLanguageEditor) return;
+    const onKey = (e) => { if (e.key === 'Escape') setShowMultiLanguageEditor(false); };
+    try { window.addEventListener('keydown', onKey); } catch {}
+    return () => { try { window.removeEventListener('keydown', onKey); } catch {} };
+  }, [showMultiLanguageEditor]);
+
+  useEffect(() => {
+    if (!isDraggingSplit) return;
+    const onMove = e => {
+      const x = e.clientX ?? (e.touches ? e.touches[0].clientX : 0);
+      const vw = typeof window !== 'undefined' ? window.innerWidth : 1000;
+      const pct = Math.min(80, Math.max(20, Math.round((x / vw) * 100)));
+      setSplitPct(pct);
+    };
+    const onUp = () => setIsDraggingSplit(false);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    window.addEventListener('touchmove', onMove);
+    window.addEventListener('touchend', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('touchmove', onMove);
+      window.removeEventListener('touchend', onUp);
+    };
+  }, [isDraggingSplit]);
+
+  // Persist UI prefs
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return;
+      localStorage.setItem(PREF_SPLIT, String(splitPct));
+      localStorage.setItem(
+        PREF_VIS,
+        JSON.stringify({ code: !!showMultiLanguageEditor, test: !!gameSimulatorOpen })
+      );
+    } catch {}
+  }, [splitPct, showMultiLanguageEditor, gameSimulatorOpen]);
+
+  // Debounced sync to templateText on graph changes
+  useEffect(() => {
+    if (syncingRef.current) return;
+    const t = setTimeout(() => {
+      try {
+        const obj = toTemplateObject();
+        setTemplateText && setTemplateText(JSON.stringify(obj, null, 2));
+      } catch {}
+    }, 200);
+    return () => clearTimeout(t);
+  }, [nodes, edges, toTemplateObject, setTemplateText]);
 
   const {
     selectedNode,
@@ -70,8 +253,36 @@ export default function MakerEditor() {
   } = history;
 
   const { alert: versionAlert, clearAlert: clearVersionAlert } = version;
+  // Expose minimal actions for panel-level toolbar without prop plumbing
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        window.__makerActions = {
+          addPromptNode,
+          saveAll,
+        };
+      }
+    } catch {}
+    return () => {
+      try {
+        if (typeof window !== 'undefined' && window.__makerActions) delete window.__makerActions;
+      } catch {}
+    };
+  }, [addPromptNode, saveAll]);
   const [variableDrawerOpen, setVariableDrawerOpen] = useState(false);
-  const [headerCollapsed, setHeaderCollapsed] = useState(false);
+  const [headerCollapsed, setHeaderCollapsed] = useState(true);
+  const [showTemplateLibrary, setShowTemplateLibrary] = useState(false);
+  const [showImageToUI, setShowImageToUI] = useState(false);
+  const [showResourceEditor, setShowResourceEditor] = useState(false);
+  useEffect(() => {
+    // Lock header as collapsed; never expand
+    if (!headerCollapsed) setHeaderCollapsed(true);
+  }, [headerCollapsed]);
+  // Explicitly disable any chat overlays in this editor
+  useEffect(() => {
+    try { if (typeof window !== 'undefined') window.__DISABLE_CHAT_OVERLAY__ = true; } catch {}
+    return () => { try { if (typeof window !== 'undefined') delete window.__DISABLE_CHAT_OVERLAY__; } catch {} };
+  }, []);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [advancedToolsOpen, setAdvancedToolsOpen] = useState(false);
   const [receiptVisible, setReceiptVisible] = useState(null);
@@ -82,10 +293,17 @@ export default function MakerEditor() {
   // ⚡ JavaScript 코드 에디터
   const [codeEditorOpen, setCodeEditorOpen] = useState(false);
   const [showCodeEditor, setShowCodeEditor] = useState(false);
-  const [showMultiLanguageEditor, setShowMultiLanguageEditor] = useState(false);
   const [gameCode, setGameCode] = useState('');
-  const [showGameSimulator, setShowGameSimulator] = useState(false);
+  // deprecated: replaced by gameSimulatorOpen
   const [simulationResults, setSimulationResults] = useState(null);
+
+  // ESC로 코드 오버레이 닫기 (fullscreen overlay)
+  useEffect(() => {
+    if (!showMultiLanguageEditor) return;
+    const onKey = (e) => { if (e.key === 'Escape') setShowMultiLanguageEditor(false); };
+    try { document.addEventListener('keydown', onKey); } catch {}
+    return () => { try { document.removeEventListener('keydown', onKey); } catch {} };
+  }, [showMultiLanguageEditor]);
 
   const handleCreateWithAI = useCallback(async () => {
     const userPrompt = prompt(
@@ -192,8 +410,7 @@ export default function MakerEditor() {
     setCodeEditorOpen(true);
   }, []);
 
-  // 🎮 게임 시뮬레이션 상태
-  const [gameSimulatorOpen, setGameSimulatorOpen] = useState(false);
+  // 🎮 게임 시뮬레이션 상태 (declared earlier; duplicate removed)
 
   // 게임 시뮬레이션 시작
   const startGameSimulation = useCallback(() => {
@@ -402,6 +619,7 @@ export default function MakerEditor() {
     <div
       style={{ height: '100vh', background: '#f1f5f9', display: 'flex', flexDirection: 'column' }}
     >
+      <AutoUpdateListener intervalMs={60000} auto={false} />
       <div
         style={{
           flex: '1 1 auto',
@@ -415,7 +633,7 @@ export default function MakerEditor() {
           gap: 10,
         }}
       >
-        <MakerEditorHeader
+      <MinimalMakerHeader
           setName={setInfo?.name}
           busy={busy}
           onBack={goToSetList}
@@ -428,7 +646,11 @@ export default function MakerEditor() {
           onGoLobby={goToLobby}
           collapsed={headerCollapsed}
           onToggleCollapse={() => setHeaderCollapsed(prev => !prev)}
-          onOpenVariables={() => setVariableDrawerOpen(true)}
+        onOpenVariables={() => setVariableDrawerOpen(true)}
+        onOpenCode={() => { try { if (typeof window !== 'undefined') window.__INLINE_CODE_IN_PANEL__ = true; } catch {}; setShowMultiLanguageEditor(true); }}
+        onOpenTemplate={() => setShowTemplateLibrary(true)}
+        onOpenImageUI={() => setShowImageToUI(true)}
+        onOpenResource={() => setShowResourceEditor(true)}
           onCreateWithAI={handleCreateWithAI}
           onOpenCodeEditor={openCodeEditor}
           onOpenMultiLanguageEditor={() => setShowMultiLanguageEditor(true)}
@@ -634,27 +856,35 @@ export default function MakerEditor() {
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={() => setVariableDrawerOpen(true)}
-        style={{
-          position: 'fixed',
-          right: 16,
-          bottom: 28,
-          width: 56,
-          height: 56,
-          borderRadius: '50%',
-          background: '#2563eb',
-          color: '#fff',
-          fontWeight: 700,
-          border: 'none',
-          boxShadow: '0 18px 45px -20px rgba(37, 99, 235, 0.65)',
-          zIndex: 55,
-        }}
-        aria-label="변수 설정 열기"
-      >
-        변수
-      </button>
+      {/* Floating prompt add button (bottom-left) */}
+      <AddPromptFab onAdd={(t,templ) => addPromptNode(t, templ)} />
+
+      {/* Fullscreen overlay Code Editor (covers all overlays) */}
+      {showMultiLanguageEditor && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setShowMultiLanguageEditor(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1000, display: 'flex', alignItems: 'stretch', justifyContent: 'stretch', padding: 0 }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ width: '100%', height: '100%', background: '#0b1220', borderRadius: 0, overflow: 'hidden', borderTop: '1px solid rgba(148,163,184,0.35)', position: 'relative', display: 'flex', flexDirection: 'column' }}
+          >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', background: 'rgba(2,6,23,0.6)', color: '#e2e8f0' }}>
+              <strong style={{ fontSize: 13 }}>코드 에디터</strong>
+              <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                <button onClick={() => setShowMultiLanguageEditor(false)} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid rgba(148,163,184,0.35)', background: 'rgba(239, 68, 68, 0.9)', color: '#fff', fontWeight: 700, fontSize: 12 }}>닫기</button>
+              </div>
+            </div>
+            <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+              <WorkspaceOverlay gameData={overlayGameData} templateBinding={{ text: templateText, setText: setTemplateText }} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 하단 우측 변수 오버레이 버튼은 중복이므로 제거 (패널/헤더에서 접근) */}
       <VariableDrawer
         open={variableDrawerOpen}
         onClose={() => setVariableDrawerOpen(false)}
@@ -746,28 +976,91 @@ export default function MakerEditor() {
         </div>
       )}
 
-      <CodeEditor
-        visible={codeEditorOpen}
-        onCodeRun={handleCodeRun}
-        initialCode={gameCode}
-        gameContext={{
-          nodes: nodes,
-          edges: edges,
-          selectedNode: selectedNode,
-        }}
-      />
-
-      {/* 🚀 다중 언어 개발 환경 */}
-      <MultiLanguageCodeEditor
-        visible={showMultiLanguageEditor}
-        initialCode={''}
-        gameContext={{
-          nodes: nodes,
-          edges: edges,
-          gameInfo: setInfo,
-        }}
-        onCodeRun={handleMultiLanguageCodeExecution}
-      />
+      {/* 🚀 (disabled) 과거 인라인 코드 에디터 섹션 - 오버레이로 대체됨 */}
+      {false && showMultiLanguageEditor && (
+        <section
+          style={{
+            marginTop: 8,
+            border: '1px solid #e5e7eb',
+            borderRadius: 12,
+            overflow: 'hidden',
+            background: '#0b1220',
+            minHeight: 400,
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', background: 'rgba(2,6,23,0.6)', color: '#e2e8f0' }}>
+            <strong style={{ fontSize: 13 }}>코드 에디터</strong>
+            <button
+              onClick={() => setShowMultiLanguageEditor(false)}
+              style={{
+                padding: '6px 10px',
+                borderRadius: 8,
+                border: '1px solid rgba(148,163,184,0.35)',
+                background: 'rgba(239, 68, 68, 0.9)',
+                color: '#fff',
+                fontWeight: 700,
+                fontSize: 12,
+              }}
+            >닫기</button>
+          </div>
+          <div style={{ height: 520, display: 'flex', position: 'relative' }}>
+            <div style={{ width: gameSimulatorOpen ? `${splitPct}%` : '100%', minWidth: 0 }}>
+              <StudioJsonEditor value={templateText} onChange={setTemplateText} />
+              <div style={{ display: 'flex', gap: 6, padding: '6px 10px', background: 'rgba(2,6,23,0.5)', alignItems: 'center' }}>
+                <button onClick={() => setSplitPct(50)} style={snapBtn}>50/50</button>
+                <button onClick={() => setSplitPct(70)} style={snapBtn}>70/30</button>
+                <button onClick={() => setSplitPct(30)} style={snapBtn}>30/70</button>
+                <span style={{ marginLeft: 8, fontSize: 12, color: '#cbd5e1' }}>비율</span>
+                <input
+                  type="number"
+                  min={20}
+                  max={80}
+                  value={splitPct}
+                  onChange={e => {
+                    const v = parseInt(e.target.value || '50', 10);
+                    if (!Number.isNaN(v)) setSplitPct(Math.min(80, Math.max(20, v)));
+                  }}
+                  onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                  style={{ width: 64, padding: '4px 6px', borderRadius: 6, border: '1px solid #475569', background: '#0f172a', color: '#e2e8f0', fontSize: 12 }}
+                />
+                <span style={{ fontSize: 12, color: '#94a3b8' }}>% / 나머지</span>
+                <button onClick={handleCreateWithAI} style={{ ...snapBtn, marginLeft: 'auto' }}>AI</button>
+              </div>
+            </div>
+            {gameSimulatorOpen && (
+              <>
+                <div
+                  onMouseDown={() => setIsDraggingSplit(true)}
+                  onTouchStart={() => setIsDraggingSplit(true)}
+                  onDoubleClick={() => setSplitPct(50)}
+                  style={{ width: 6, cursor: 'col-resize', background: 'rgba(148,163,184,0.45)' }}
+                  title="더블클릭: 50/50"
+                />
+                <div style={{ flex: 1, minWidth: 0, background: '#0a0f1a' }}>
+                  <GameSimulator
+                    visible={true}
+                    gameData={{
+                      meta: { version: 2, createdAt: new Date().toISOString() },
+                      set: { name: setInfo?.name || '시뮬레이션' },
+                      slots: nodes.map((node, index) => ({
+                        slot_no: parseInt(node.id) || index,
+                        slot_type: node.type || 'ai',
+                        template: node.data?.label || '',
+                        is_start: node.data?.isStart || index === 0,
+                        canvas_x: node.position?.x || 0,
+                        canvas_y: node.position?.y || 0,
+                      })),
+                      bridges: edges.map(edge => ({ from_slot_id: edge.source, to_slot_id: edge.target })),
+                    }}
+                    onClose={() => setGameSimulatorOpen(false)}
+                    onSimulationResult={handleSimulationResult}
+                  />
+                </div>
+              </>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* 🎮 게임 시뮬레이터 */}
       <GameSimulator
@@ -797,29 +1090,29 @@ export default function MakerEditor() {
         onSimulationResult={handleSimulationResult}
       />
 
-      {/* 코드 에디터 닫기 버튼 */}
-      {codeEditorOpen && (
-        <button
-          onClick={() => setCodeEditorOpen(false)}
-          style={{
-            position: 'fixed',
-            top: 16,
-            right: 16,
-            width: 40,
-            height: 40,
-            borderRadius: '50%',
-            border: 'none',
-            background: '#ef4444',
-            color: '#fff',
-            fontSize: 18,
-            fontWeight: 600,
-            cursor: 'pointer',
-            zIndex: 250,
-            boxShadow: '0 4px 12px rgba(239, 68, 68, 0.4)',
-          }}
-        >
-          ×
-        </button>
+      
+
+      {/* Tools modals (compact) */}
+      {showTemplateLibrary && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 260 }} onClick={() => setShowTemplateLibrary(false)}>
+          <div style={{ position: 'absolute', inset: '5% 8% auto 8%', background: '#0b1220', border: '1px solid rgba(148,163,184,.35)', borderRadius: 12, overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+            <GameTemplateLibrary onSelectTemplate={(tpl) => { try { setTemplateText(JSON.stringify(tpl, null, 2)); } catch {}; setShowTemplateLibrary(false); }} onClose={() => setShowTemplateLibrary(false)} />
+          </div>
+        </div>
+      )}
+      {showImageToUI && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 260 }} onClick={() => setShowImageToUI(false)}>
+          <div style={{ position: 'absolute', inset: '8% 10% auto 10%', background: '#0b1220', border: '1px solid rgba(148,163,184,.35)', borderRadius: 12, overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+            <ImageToUIGenerator onClose={() => setShowImageToUI(false)} onGenerateUI={() => setShowImageToUI(false)} />
+          </div>
+        </div>
+      )}
+      {showResourceEditor && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 260 }} onClick={() => setShowResourceEditor(false)}>
+          <div style={{ position: 'absolute', inset: '8% 10% auto 10%', background: '#0b1220', border: '1px solid rgba(148,163,184,.35)', borderRadius: 12, overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+            <GameResourceEditor onClose={() => setShowResourceEditor(false)} gameData={{}} onGameUpdate={() => {}} />
+          </div>
+        </div>
       )}
     </div>
   );

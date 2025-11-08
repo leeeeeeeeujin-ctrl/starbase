@@ -3,9 +3,15 @@ name: Lint and Type Check
 
 on:
   pull_request:
+    paths:
+      - 'ai-roomchat/**'
+      - '.github/workflows/lint-and-typecheck.yml'
   push:
     branches:
       - main
+    paths:
+      - 'ai-roomchat/**'
+      - '.github/workflows/lint-and-typecheck.yml'
   workflow_dispatch:
 
 jobs:
@@ -51,7 +57,7 @@ jobs:
       - name: Run TypeScript Type Check
         run: |
           if [ -f node_modules/.bin/tsc ]; then
-            npx tsc --noEmit || true
+            npm run typecheck || true
           else
             echo "TypeScript not installed. Skipping type check."
           fi

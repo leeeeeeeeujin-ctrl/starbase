@@ -5,6 +5,13 @@ import {
 import { renderTemplate } from '../../../../lib/promptRenderer';
 import { callProvider as mockCallProvider } from '../../../../lib/providers/mockProvider';
 import { supabase as supabaseAdmin } from '../../../../lib/supabaseAdmin';
+// security helpers
+let hmac;
+try {
+  hmac = require('../../../../lib/security/hmac');
+} catch (e) {
+  hmac = null;
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -47,6 +54,18 @@ export default async function handler(req, res) {
     !!clientProviderResponse &&
     (provider === 'client' || provider === 'gemini-client' || req.body.source === 'client');
 
+  // Signature header support (HMAC-SHA256)
+  const signatureHeader = req.headers['x-signature'] || req.headers['x-run-signature'];
+  const requireSignature = (process.env.REQUIRE_RUN_SIGNATURE || '').toLowerCase() === 'true';
+  const capabilityHeader = req.headers['x-capability'] || req.headers['x-capability-token'];
+  const requireCapability = (process.env.REQUIRE_CAPABILITY || '').toLowerCase() === 'true';
+  let tokenVerifier = null;
+  try {
+    tokenVerifier = require('../../../../lib/security/token');
+  } catch (e) {
+    tokenVerifier = null;
+  }
+
   // select provider implementation
   let selectedCallProvider = mockCallProvider;
   if (provider === 'gemini') {
@@ -66,6 +85,37 @@ export default async function handler(req, res) {
   // If the caller provided a client-side provider response, verify it instead of calling the server provider.
   if (isClientRun) {
     try {
+      // if capability is required, verify token
+      if (requireCapability) {
+        if (!tokenVerifier) throw new Error('token_helper_missing');
+        const secret = process.env.RUN_CAPABILITY_SECRET || process.env.RUN_SIGNING_SECRET || '';
+        if (!capabilityHeader) throw new Error('capability_required');
+        const payload = tokenVerifier.verifyToken(String(capabilityHeader), secret);
+        if (!payload) throw new Error('capability_invalid');
+      }
+      // Accept device tokens as an alternative capability if provided
+      const deviceHeader = req.headers['x-device-token'] || req.headers['x-device'];
+      if (deviceHeader) {
+        try {
+          const dvSecret = process.env.RUN_DEVICE_SECRET || process.env.RUN_CAPABILITY_SECRET || process.env.RUN_SIGNING_SECRET || '';
+          if (!tokenVerifier) throw new Error('token_helper_missing');
+          const dvPayload = tokenVerifier.verifyToken(String(deviceHeader), dvSecret);
+          if (!dvPayload) throw new Error('device_token_invalid');
+          // treat as authorized - attach to req for auditing
+          req._device = dvPayload;
+        } catch (e) {
+          // if capability is required and device token invalid, fail
+          if (requireCapability) throw e;
+        }
+      }
+      // if signature is required, verify it before accepting client run
+      if (requireSignature) {
+        if (!hmac) throw new Error('HMAC helper not available');
+        const secret = process.env.RUN_SIGNING_SECRET || '';
+        if (!signatureHeader) throw new Error('signature_required');
+        const ok = hmac.verifySignature(req.body, String(signatureHeader), secret);
+        if (!ok) throw new Error('signature_invalid');
+      }
       // dynamic require verifier
       const {
         verifyProviderResponse,
@@ -81,14 +131,18 @@ export default async function handler(req, res) {
       // persist run
       try {
         if (supabaseAdmin && supabaseAdmin.from) {
-          const toInsert = {
-            prompt_id: id,
-            prompt_version: p.version || null,
-            input: input,
-            rendered_prompt: rendered,
-            provider: provider,
-            provider_response: storedProviderResponse,
-            status,
+      const toInsert = {
+        prompt_id: id,
+        prompt_version: p.version || null,
+        input: input,
+        rendered_prompt: rendered,
+        provider: provider,
+        provider_response: storedProviderResponse,
+        status,
+        // attach device info when available for auditing
+        device_token: req.headers['x-device-token'] || req.headers['x-device'] || null,
+        device_id: req._device ? req._device.deviceId || null : null,
+        device_display_name: req._device ? req._device.displayName || null : null,
           };
           const { data: runRow, error } = await supabaseAdmin
             .from('prompt_runs')
@@ -115,6 +169,9 @@ export default async function handler(req, res) {
         provider: provider,
         provider_response: storedProviderResponse,
         status,
+        device_token: req.headers['x-device-token'] || req.headers['x-device'] || null,
+        device_id: req._device ? req._device.deviceId || null : null,
+        device_display_name: req._device ? req._device.displayName || null : null,
       });
       return res.status(200).json({
         runId: run.id,
@@ -141,6 +198,9 @@ export default async function handler(req, res) {
           provider: provider,
           provider_response: providerResponse,
           status: 'ok',
+          device_token: req.headers['x-device-token'] || req.headers['x-device'] || null,
+          device_id: req._device ? req._device.deviceId || null : null,
+          device_display_name: req._device ? req._device.displayName || null : null,
         };
         const { data: runRow, error } = await supabaseAdmin
           .from('prompt_runs')
@@ -162,6 +222,9 @@ export default async function handler(req, res) {
       provider: provider,
       provider_response: providerResponse,
       status: 'ok',
+      device_token: req.headers['x-device-token'] || req.headers['x-device'] || null,
+      device_id: req._device ? req._device.deviceId || null : null,
+      device_display_name: req._device ? req._device.displayName || null : null,
     });
     return res.status(200).json({ runId: run.id, providerResponse });
   } catch (err) {
@@ -175,6 +238,9 @@ export default async function handler(req, res) {
           provider: provider,
           provider_response: { error: String(err) },
           status: 'error',
+          device_token: req.headers['x-device-token'] || req.headers['x-device'] || null,
+          device_id: req._device ? req._device.deviceId || null : null,
+          device_display_name: req._device ? req._device.displayName || null : null,
         };
         const { data: runRow } = await supabaseAdmin
           .from('prompt_runs')
@@ -195,6 +261,9 @@ export default async function handler(req, res) {
       provider: provider,
       provider_response: { error: String(err) },
       status: 'error',
+      device_token: req.headers['x-device-token'] || req.headers['x-device'] || null,
+      device_id: req._device ? req._device.deviceId || null : null,
+      device_display_name: req._device ? req._device.displayName || null : null,
     });
     return res.status(500).json({ error: String(err), runId: run.id });
   }

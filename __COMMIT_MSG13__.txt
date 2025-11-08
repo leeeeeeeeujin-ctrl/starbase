@@ -1,0 +1,1 @@
+game: Pages (ui/script) + schema renderer; defaults + includes; build OK  

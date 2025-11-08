@@ -1,0 +1,15 @@
+{
+  "extends": ["next/core-web-vitals"],
+  "overrides": [
+    {
+      "files": ["**/*.json"],
+      "plugins": ["jsonc"],
+      "parser": "jsonc-eslint-parser",
+      "rules": {
+        "jsonc/valid-json-number": "error",
+        "jsonc/no-dupe-keys": "error"
+      }
+    }
+  ]
+}
+

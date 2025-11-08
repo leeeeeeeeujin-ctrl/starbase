@@ -26,7 +26,7 @@ export default function MakerEditorCanvas({
     <div
       style={{
         flex: '1 1 auto',
-        minHeight: 420,
+        minHeight: 520,
         background: '#0b1120',
         borderRadius: 18,
         boxShadow: '0 20px 45px -36px rgba(15, 23, 42, 0.6)',
@@ -62,7 +62,7 @@ export default function MakerEditorCanvas({
         <MiniMap
           pannable
           zoomable
-          style={{ background: '#0f172a' }}
+          style={{ background: '#0f172a', width: 120, height: 84, right: 8, bottom: 8 }}
           maskColor="rgba(15,23,42,0.85)"
         />
         <Controls style={{ background: 'rgba(15,23,42,0.75)', borderRadius: 12 }} />

@@ -238,6 +238,7 @@ class GameResourceManager {
     this.resources.characters.set(characterId, character);
     this.notifyChange('character', characterId, character);
     this.updateAIContext();
+    this.saveGameResources();
 
     return character;
   }
@@ -275,6 +276,7 @@ class GameResourceManager {
     this.resources.skills.set(skillId, skill);
     this.notifyChange('skill', skillId, skill);
     this.updateAIContext();
+    this.saveGameResources();
 
     return skill;
   }
@@ -311,6 +313,7 @@ class GameResourceManager {
     this.resources.items.set(itemId, item);
     this.notifyChange('item', itemId, item);
     this.updateAIContext();
+    this.saveGameResources();
 
     return item;
   }
@@ -333,6 +336,8 @@ class GameResourceManager {
 
     this.resources.music.set(musicId, music);
     this.notifyChange('music', musicId, music);
+    this.updateAIContext();
+    this.saveGameResources();
 
     return music;
   }
@@ -353,6 +358,8 @@ class GameResourceManager {
 
     this.resources.backgrounds.set(backgroundId, background);
     this.notifyChange('background', backgroundId, background);
+    this.updateAIContext();
+    this.saveGameResources();
 
     return background;
   }
@@ -369,6 +376,7 @@ class GameResourceManager {
 
     this.notifyChange('customData', key, value);
     this.updateAIContext();
+    this.saveGameResources();
   }
 
   /**

@@ -57,6 +57,7 @@ import { createAsyncSessionManager } from './services/asyncSessionManager';
 import { mergeTimelineEvents, normalizeTimelineStatus } from '@/lib/rank/timelineEvents';
 import { buildDropInExtensionTimelineEvent } from '@/lib/rank/dropInTimeline';
 import { prepareHistoryPayload } from '@/lib/rank/chatHistory';
+import { fetchCached } from '@/lib/client/cache/fetchCached';
 import { buildHistorySeedEntries } from '@/lib/rank/historySeeds';
 import { useHistoryBuffer } from './hooks/useHistoryBuffer';
 import { useStartSessionLifecycle } from './hooks/useStartSessionLifecycle';
@@ -1998,6 +1999,8 @@ export function useStartClientEngine(gameId, options = {}) {
         names,
         fallbackContext
       );
+
+      // Update immediately with network URLs
       setActiveHeroAssets({
         backgrounds,
         bgmUrl,
@@ -2005,6 +2008,31 @@ export function useStartClientEngine(gameId, options = {}) {
         audioProfile,
       });
       setActiveActorNames(actorNames);
+
+      // Then kick off background caching and swap in blob URLs when ready (logic-layer only)
+      (async () => {
+        try {
+          const bgObjs = await Promise.all(
+            (backgrounds || []).map(async (u) => {
+              const { objectUrl } = await fetchCached(u, { typeHint: 'image/*' });
+              return objectUrl || u;
+            })
+          );
+          let audioUrl = bgmUrl;
+          if (bgmUrl) {
+            const { objectUrl } = await fetchCached(bgmUrl, { typeHint: 'audio/mpeg' });
+            if (objectUrl) audioUrl = objectUrl;
+          }
+          setActiveHeroAssets(prev => ({
+            ...prev,
+            backgrounds: bgObjs,
+            bgmUrl: audioUrl,
+            audioProfile: prev?.audioProfile ? { ...prev.audioProfile, bgmUrl: audioUrl } : prev?.audioProfile,
+          }));
+        } catch (e) {
+          // non-fatal; fall back to original URLs
+        }
+      })();
     },
     [resolveHeroAssets]
   );

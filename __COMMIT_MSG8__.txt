@@ -1,0 +1,1 @@
+workspace: AI chat selection + extra files attach; EditorMonaco selection export  

@@ -1,0 +1,41 @@
+name: Dispatch Node Migrations (Docker)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-and-run:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      # Prefer MIGRATE_DATABASE_URL but fall back to other envs in the container
+      MIGRATE_DATABASE_URL: ${{ secrets.MIGRATE_DATABASE_URL }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate DB secret present
+        run: |
+          if [ -z "${{ secrets.MIGRATE_DATABASE_URL }}" ] && [ -z "${{ secrets.DATABASE_URL }}" ] && [ -z "${{ secrets.SUPABASE_DB_URL }}" ]; then
+            echo "No database connection secret found (MIGRATE_DATABASE_URL / DATABASE_URL / SUPABASE_DB_URL).";
+            exit 1;
+          fi
+
+      - name: Build migration-runner image
+        run: |
+          docker build -t migration-runner:latest -f ai-roomchat/ci/migration-runner/Dockerfile .
+
+      - name: Run migration-runner container
+        env:
+          MIGRATE_DATABASE_URL: ${{ secrets.MIGRATE_DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          docker run --rm \
+            -e MIGRATE_DATABASE_URL="${MIGRATE_DATABASE_URL}" \
+            -e DATABASE_URL="${DATABASE_URL}" \
+            -e SUPABASE_DB_URL="${SUPABASE_DB_URL}" \
+            migration-runner:latest
