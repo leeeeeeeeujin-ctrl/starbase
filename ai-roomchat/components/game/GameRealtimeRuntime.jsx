@@ -27,7 +27,7 @@ import * as React from 'react';
 import { useWorkspace } from "../workspace/CodeWorkspaceProvider.jsx";
 
 function RuntimeLoader() {
-  const { files, createFile, writeFile, remove } = useWorkspace();
+  const { files, createFile, writeFile, remove, isDirty } = useWorkspace();
   const assetUrlCacheRef = React.useRef({});
   const injectedRef = React.useRef({ roomId: null, paths: new Set(), originals: new Map() });
   // Build cache of blob URLs for compressed assets (async)
@@ -184,11 +184,28 @@ function RuntimeLoader() {
   }, [rt?.roomId]);
   React.useEffect(() => {
     try {
-      const graph = JSON.parse(files['/graph/prompt-graph.json']?.content || '{"nodes":[],"edges":[]}');
+      // Derive graph dynamically from template when template is dirty or graph missing.
+      let graphObj = null;
+      const graphFileContent = files['/graph/prompt-graph.json']?.content;
+      const templateContent = files['/template.json']?.content;
+      let templateObj = {};
+      try { templateObj = JSON.parse(templateContent || '{}'); } catch { templateObj = {}; }
+      const canDerive = Array.isArray(templateObj.nodes) && Array.isArray(templateObj.edges);
+      const shouldDerive = canDerive && (!graphFileContent || isDirty('/template.json'));
+      if (shouldDerive) {
+        try {
+          graphObj = {
+            nodes: templateObj.nodes.map(n => ({ id: n.id, type: n.type || 'prompt', label: n.data?.name || n.label || '' })),
+            edges: templateObj.edges.map(e => ({ id: e.id, source: e.source, target: e.target, label: e.label || '' })),
+          };
+        } catch { graphObj = null; }
+      }
+      if (!graphObj) {
+        try { graphObj = JSON.parse(graphFileContent || '{"nodes":[],"edges":[]}'); } catch { graphObj = { nodes: [], edges: [] }; }
+      }
       const config = JSON.parse(files['/game/runtime.config.json']?.content || '{"durations":[30,60,90,120,180]}');
       const src = String(files['/game/hooks/automation.js']?.content || '');
       const compiled = transpileHooks(src);
-      // wrap transformPrompt to resolve include markers using current files
       const resolveIncludes = (text) => {
         try {
           return String(text||'').replace(/\{\{\s*(file|code)\s*:\s*([^}]+)\s*\}\}/g, (_, kind, spec) => {
@@ -212,9 +229,9 @@ function RuntimeLoader() {
           } catch { return ctx?.node?.label || ''; }
         };
       }
-      rt.setRuntime({ graph, hooks, config, files });
+      rt.setRuntime({ graph: graphObj, hooks, config, files });
     } catch {}
-  }, [files['/graph/prompt-graph.json']?.content, files['/game/runtime.config.json']?.content, files['/game/hooks/automation.js']?.content]);
+  }, [files['/graph/prompt-graph.json']?.content, files['/game/runtime.config.json']?.content, files['/game/hooks/automation.js']?.content, files['/template.json']?.content]);
   return null;
 }
 
