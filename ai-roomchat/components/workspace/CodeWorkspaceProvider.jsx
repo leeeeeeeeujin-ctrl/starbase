@@ -574,6 +574,8 @@ export function useWorkspace() {
   return ctx;
 }
 // Scoped autosave support: redirect VFS localStorage keys to per-set keys
+// Bootstrap scope early so initial load uses the right key
+import "../../lib/workspace/scopeBootstrap.js";
 import { vfsKey } from "../../lib/workspace/scopeStorage.js";
 
 if (typeof window !== 'undefined') {
