@@ -22,25 +22,27 @@ export default async function handler(req, res) {
     const docs = path.join(base, 'docs');
 
     const files = [];
+    const mapPath = (file, prefix) => file ? { ...file, path: `${prefix.replace(/\/$/, '')}/${file.path}` } : null;
     // User-editable game starter
-    files.push(addFile(srcGame, 'index.js', false));
-    files.push(addFile(srcGame, path.join('assets', 'manifest.sample.json'), false));
-    files.push(addFile(srcGame, path.join('network', 'socketioAdapter.sample.js'), false));
-    files.push(addFile(srcGame, path.join('scenes', 'textScene.sample.json'), false));
-    files.push(addFile(srcGame, path.join('prompts', 'defaults.md'), false));
-    files.push(addFile(srcGame, 'README.md', true));
+    // Game (editable by default; README is readonly)
+    files.push(mapPath(addFile(srcGame, 'index.js', false), 'Game'));
+    files.push(mapPath(addFile(srcGame, path.join('assets', 'manifest.sample.json'), false), 'Game'));
+    files.push(mapPath(addFile(srcGame, path.join('network', 'socketioAdapter.sample.js'), false), 'Game'));
+    files.push(mapPath(addFile(srcGame, path.join('scenes', 'textScene.sample.json'), false), 'Game'));
+    files.push(mapPath(addFile(srcGame, path.join('prompts', 'defaults.md'), false), 'Game'));
+    files.push(mapPath(addFile(srcGame, 'README.md', true), 'Game'));
 
     // Samples (editable)
-    files.push(addFile(srcGame, path.join('samples', '2d.platformer.js'), false));
-    files.push(addFile(srcGame, path.join('samples', '3d.basic.js'), false));
-    files.push(addFile(srcGame, path.join('samples', 'network.sync.js'), false));
-    files.push(addFile(srcGame, path.join('samples', 'chat.ai-orchestration.js'), false));
-    files.push(addFile(srcGame, path.join('samples', 'text.ai-judge.js'), false));
+    files.push(mapPath(addFile(srcGame, path.join('samples', '2d.platformer.js'), false), 'Samples'));
+    files.push(mapPath(addFile(srcGame, path.join('samples', '3d.basic.js'), false), 'Samples'));
+    files.push(mapPath(addFile(srcGame, path.join('samples', 'network.sync.js'), false), 'Samples'));
+    files.push(mapPath(addFile(srcGame, path.join('samples', 'chat.ai-orchestration.js'), false), 'Samples'));
+    files.push(mapPath(addFile(srcGame, path.join('samples', 'text.ai-judge.js'), false), 'Samples'));
 
     // Editor-facing guides (read-only)
-    files.push(addFile(srcDocs, 'README.md', true));
-    files.push(addFile(srcDocs, 'AI_CODE_CHAT.md', true));
-    files.push(addFile(srcDocs, 'REFERENCE_KEYS.md', true));
+    files.push(mapPath(addFile(srcDocs, 'README.md', true), 'Guides'));
+    files.push(mapPath(addFile(srcDocs, 'AI_CODE_CHAT.md', true), 'Guides'));
+    files.push(mapPath(addFile(srcDocs, 'REFERENCE_KEYS.md', true), 'Guides'));
 
     // Core guides from docs (read-only)
     const coreDocs = [
@@ -59,7 +61,7 @@ export default async function handler(req, res) {
     ];
     for (const rel of coreDocs) {
       const f = addFile(docs, rel, true);
-      if (f) files.push({ ...f, path: `Guides/${rel}` });
+      if (f) files.push(mapPath(f, 'Guides'));
     }
 
     const out = files.filter(Boolean);
