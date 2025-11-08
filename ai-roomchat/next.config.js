@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Disable Strict Mode to avoid double-invocation of effects/handlers in dev
+  reactStrictMode: false,
   eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: true },
   productionBrowserSourceMaps: true,

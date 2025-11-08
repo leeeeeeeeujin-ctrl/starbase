@@ -9,6 +9,23 @@ import { supabase } from '../../lib/supabase';
 import { useStartApiKeyManager } from '../rank/StartClient/hooks/useStartApiKeyManager';
 
 export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFullscreen, onMinimize, enableFullscreenButton, enableMinimizeButton }){
+  // Global singleton guard to prevent multiple panels at once per window
+  const [blocked, setBlocked] = useState(false);
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        if (window.__AI_CODE_CHAT_MOUNTED__) {
+          setBlocked(true);
+          // If another instance is already mounted, immediately request close on this one
+          try { if (typeof onClose === 'function') onClose(); } catch {}
+          return;
+        }
+        window.__AI_CODE_CHAT_MOUNTED__ = true;
+        return () => { try { delete window.__AI_CODE_CHAT_MOUNTED__; } catch {} };
+      }
+    } catch {}
+  }, []);
+  if (blocked) return null;
   const { files, activePath, createFile, writeFile, remove, rename } = useWorkspace();
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
