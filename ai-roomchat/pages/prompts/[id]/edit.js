@@ -438,7 +438,7 @@ export default function PromptEditPage(){
   const router = useRouter();
   const { id } = router.query || {};
   return (
-    <CodeWorkspaceProvider key={id || 'default'}>
+    <CodeWorkspaceProvider key={id || 'default'} storageNamespace={id}>
       <PromptEditInner />
     </CodeWorkspaceProvider>
   );

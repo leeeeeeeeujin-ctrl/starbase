@@ -3,8 +3,9 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { compressString, decompressToString } from "../../utils/compress.js";
 import { injectFilesWithFallback } from "../../lib/workspace/injectFilesFallback.js";
+import { saveSnapshot } from "../../lib/workspace/scopeStorage.js";
 
-const KEY = "workspace.vfs.v1";
+const BASE_KEY = "workspace.vfs.v1";
 
 const defaultFiles = {
   "/README.md": {
@@ -205,7 +206,11 @@ const defaultFiles = {
 
 const WorkspaceCtx = createContext(null);
 
-export function CodeWorkspaceProvider({ children }) {
+export function CodeWorkspaceProvider({ children, storageNamespace }) {
+  // Per-instance storage namespace (set id); fallback to global hint if present
+  const ns = (typeof window !== 'undefined' ? (storageNamespace || (window.__VFS_SCOPED_PATCH__ && window.__VFS_SCOPED_PATCH__.scope)) : null) || null;
+  const nsKey = (k) => (ns ? `${k}@${ns}` : k);
+  const KEY = nsKey(BASE_KEY);
   const [files, setFiles] = useState({});
   const [root, setRoot] = useState("/");
   const [activePath, setActivePath] = useState("/template.json");
@@ -217,7 +222,11 @@ export function CodeWorkspaceProvider({ children }) {
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(KEY);
+      // Prefer namespaced key; fallback to unscoped for backward compatibility
+      let raw = localStorage.getItem(KEY);
+      if (!raw && ns) {
+        try { raw = localStorage.getItem(BASE_KEY); } catch {}
+      }
       if (raw) {
         const parsed = JSON.parse(raw);
         const base = parsed.files || {};
@@ -278,7 +287,20 @@ export function CodeWorkspaceProvider({ children }) {
         JSON.stringify({ files, root, activePath, openPaths, entryPath, dirty, savedSig })
       );
     } catch {}
-  }, [files, root, activePath, openPaths, entryPath, dirty, savedSig]);
+  }, [KEY, files, root, activePath, openPaths, entryPath, dirty, savedSig]);
+
+  // Persist a plain-files snapshot per set for external loaders (Starter Pack / reload)
+  useEffect(() => {
+    try {
+      const list = Object.entries(files || {}).map(([path, meta]) => ({
+        path,
+        content: typeof meta?.content === 'string' ? meta.content : '',
+        readonly: !!meta?.readonly,
+        dir: !!meta?.dir,
+      }));
+      saveSnapshot(ns, list);
+    } catch {}
+  }, [ns, files]);
 
   // Reconcile dirty flags with saved signatures & initialize missing signatures
   useEffect(() => {
@@ -572,39 +594,4 @@ export function useWorkspace() {
   const ctx = useContext(WorkspaceCtx);
   if (!ctx) throw new Error("useWorkspace must be used within CodeWorkspaceProvider");
   return ctx;
-}
-// Scoped autosave support: redirect VFS localStorage keys to per-set keys
-// Bootstrap scope early so initial load uses the right key
-import "../../lib/workspace/scopeBootstrap.js";
-import { vfsKey } from "../../lib/workspace/scopeStorage.js";
-
-if (typeof window !== 'undefined') {
-  (function setupScopedVfs() {
-    if (window.__VFS_SCOPED_PATCH__) return;
-    window.__VFS_SCOPED_PATCH__ = { scope: null };
-    const origSet = localStorage.setItem.bind(localStorage);
-    const origGet = localStorage.getItem.bind(localStorage);
-    const origRem = localStorage.removeItem.bind(localStorage);
-    function withScope(key) {
-      const scope = window.__VFS_SCOPED_PATCH__.scope;
-      if (!scope) return key;
-      // Generic rule: namespace any workspace-related keys
-      if (key.startsWith('workspace.')) return `${key}@${scope}`;
-      if (key.includes('workspace') || key.includes('vfs')) return `${key}@${scope}`;
-      return key;
-    }
-    localStorage.setItem = (key, val) => origSet(withScope(key), val);
-    localStorage.getItem = (key) => {
-      const scopedKey = withScope(key);
-      const v = origGet(scopedKey);
-      if (v != null) return v;
-      // Backward-compat: try unscoped key if scoped is empty
-      return origGet(key);
-    };
-    localStorage.removeItem = (key) => origRem(withScope(key));
-    window.addEventListener('workspace:set-scope', (e) => {
-      const setId = e?.detail?.setId || null;
-      window.__VFS_SCOPED_PATCH__.scope = setId;
-    });
-  })();
 }
