@@ -3,8 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import PromptEditor from '../../../components/PromptEditor';
 import AICodeChatPanel from '../../../components/workspace/AICodeChatPanel.jsx';
 import { CodeWorkspaceProvider, useWorkspace } from '../../../components/workspace/CodeWorkspaceProvider.jsx';
-import { fetchStarterPack } from '../../../lib/workspace/fetchStarterPack.js';
-import { loadSnapshot, markInjected, wasInjected } from '../../../lib/workspace/scopeStorage.js';
+import { loadSnapshot } from '../../../lib/workspace/scopeStorage.js';
 
 function mapToVisibleRoot(files) {
   return (files || []).map((f) => {
@@ -230,7 +229,7 @@ function UiSettingsPanel({ onClose }) {
   );
 }
 
-function PromptEditInner() {
+function PromptEditInner({ _etag, _setEtag, _setId }) {
   const router = useRouter();
   const { id } = router.query;
   const [prompt, setPrompt] = useState({ id: id || 'new', name: '', body: '' });
@@ -271,30 +270,27 @@ function PromptEditInner() {
     setEditorBody(prompt.body || '');
   }, [prompt.body]);
 
-  // Set-scoped: notify provider, load snapshot or inject starter-pack once per set
+  // Server-first: autosave workspace files to server
+  const { files } = useWorkspace();
+  const etagRef = useRef(_etag || null);
+  useEffect(() => { etagRef.current = _etag || null; }, [_etag]);
   useEffect(() => {
-    if (typeof window === 'undefined') return;
     if (!id) return;
-    try {
-      window.dispatchEvent(new CustomEvent('workspace:set-scope', { detail: { setId: id } }));
-      const snap = loadSnapshot(id);
-      if (Array.isArray(snap) && snap.length) {
-        window.dispatchEvent(new CustomEvent('workspace:add-files', { detail: mapToVisibleRoot(snap) }));
-        return;
-      }
-      if (!wasInjected(id)) {
-        (async () => {
-          try {
-            const files = await fetchStarterPack();
-            if (files && files.length) {
-              window.dispatchEvent(new CustomEvent('workspace:add-files', { detail: mapToVisibleRoot(files) }));
-              markInjected(id);
-            }
-          } catch {}
-        })();
-      }
-    } catch {}
-  }, [id]);
+    const t = setTimeout(async () => {
+      try {
+        const list = Object.entries(files || {}).map(([path, meta]) => ({ path, content: String(meta?.content ?? ''), readonly: !!meta?.readonly, dir: !!meta?.dir }));
+        const res = await fetch(`/api/workspace/sets/${encodeURIComponent(id)}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', ...(etagRef.current ? { 'If-Match': etagRef.current } : {}) },
+          body: JSON.stringify({ files: list, meta: {} }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (res.status === 200 && json?.etag) _setEtag && _setEtag(json.etag);
+        // On mismatch, we could refetch and reconcile; for now, best-effort last-write-wins if no If-Match
+      } catch {}
+    }, 800);
+    return () => clearTimeout(t);
+  }, [id, files]);
 
   useEffect(() => {
     if (!id) return;
@@ -447,9 +443,36 @@ export default function PromptEditPage(){
   // Key provider by set id to force clean remount per set (prevents cross-set bleed)
   const router = useRouter();
   const { id } = router.query || {};
+  const [initFiles, setInitFiles] = useState(null);
+  const [etag, setEtag] = useState(null);
+  // Load server-first workspace set
+  useEffect(() => {
+    let alive = true;
+    if (!id || typeof id !== 'string') return;
+    (async () => {
+      try {
+        const r = await fetch(`/api/workspace/sets/${encodeURIComponent(id)}`);
+        if (!alive) return;
+        if (r.ok) {
+          const json = await r.json();
+          setInitFiles(Array.isArray(json.files) ? json.files : []);
+          setEtag(json.etag || null);
+          return;
+        }
+      } catch {}
+      // Fallback: use any snapshot (local cache) if server fails
+      try {
+        const snap = loadSnapshot(id);
+        if (alive && Array.isArray(snap)) setInitFiles(snap);
+      } catch {}
+    })();
+    return () => { alive = false; };
+  }, [id]);
+  if (!id || typeof id !== 'string') return <div style={{ padding: 20 }}>세트 ID 확인 중…</div>;
+  if (!initFiles) return <div style={{ padding: 20 }}>작업공간 불러오는 중…</div>;
   return (
-    <CodeWorkspaceProvider key={id || 'default'} storageNamespace={id}>
-      <PromptEditInner />
+    <CodeWorkspaceProvider key={id} storageNamespace={id} initialFiles={initFiles}>
+      <PromptEditInner _etag={etag} _setEtag={setEtag} _setId={id} />
     </CodeWorkspaceProvider>
   );
 }

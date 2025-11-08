@@ -5,7 +5,6 @@ import dynamic from 'next/dynamic';
 import { useRouter } from 'next/router';
 import { GameRuntimeProvider, useGameRuntime } from '@/components/game/GameRuntimeProvider.jsx';
 import { CodeWorkspaceProvider } from '@/components/workspace/CodeWorkspaceProvider.jsx';
-import { loadSnapshot } from '@/lib/workspace/scopeStorage.js';
 
 const MainGameMobileUI = dynamic(() => import('@/components/game/MainGameMobileUI.jsx'), { ssr: false });
 
@@ -41,7 +40,7 @@ export default function PlayByIdPage(){
   const { id } = router.query || {};
   const [tpl, setTpl] = useState(null);
   const [error, setError] = useState('');
-  const injectedRef = useRef(false);
+  const [initFiles, setInitFiles] = useState(null);
 
   useEffect(() => {
     let alive = true;
@@ -69,34 +68,22 @@ export default function PlayByIdPage(){
     })();
     return () => { alive = false; };
   }, [id]);
-
-  // Inject VFS snapshot (if any) for this set into the workspace so in-game UI can read files
+  // Load server-first workspace set files for this set id
   useEffect(() => {
+    let alive = true;
     if (!id) return;
-    try {
-      const snap = loadSnapshot(id);
-      if (Array.isArray(snap) && snap.length) {
-        window.dispatchEvent(new CustomEvent('workspace:add-files', { detail: snap }));
-        injectedRef.current = true;
-      }
-    } catch {}
-  }, [id]);
-
-  // If no snapshot was injected yet, inject any template-provided resources (best-effort)
-  useEffect(() => {
-    if (!id) return;
-    if (!tpl || injectedRef.current) return;
-    try {
-      const files = tpl?.resources?.files;
-      if (Array.isArray(files) && files.length) {
-        const normalized = files.map((f) => ({ path: f.path || f.name || '', content: f.content || '', readonly: !!f.readonly, dir: !!f.dir }));
-        if (normalized.some(f => f.path)) {
-          window.dispatchEvent(new CustomEvent('workspace:add-files', { detail: normalized }));
-          injectedRef.current = true;
+    (async () => {
+      try {
+        const r = await fetch(`/api/workspace/sets/${encodeURIComponent(id)}`);
+        if (!alive) return;
+        if (r.ok) {
+          const json = await r.json();
+          setInitFiles(Array.isArray(json.files) ? json.files : []);
         }
-      }
-    } catch {}
-  }, [id, tpl]);
+      } catch {}
+    })();
+    return () => { alive = false; };
+  }, [id]);
 
   if (!id) return <div style={{ padding: 20 }}>게임 ID 확인 중…</div>;
   if (!tpl) return <div style={{ padding: 20 }}>불러오는 중…</div>;
@@ -105,7 +92,7 @@ export default function PlayByIdPage(){
   }
 
   return (
-    <CodeWorkspaceProvider key={id || 'default'} storageNamespace={id}>
+    <CodeWorkspaceProvider key={id || 'default'} storageNamespace={id} initialFiles={initFiles || []}>
       <GameRuntimeProvider>
         <Runner tpl={tpl} />
       </GameRuntimeProvider>

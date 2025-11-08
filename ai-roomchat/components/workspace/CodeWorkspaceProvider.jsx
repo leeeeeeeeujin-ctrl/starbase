@@ -206,7 +206,7 @@ const defaultFiles = {
 
 const WorkspaceCtx = createContext(null);
 
-export function CodeWorkspaceProvider({ children, storageNamespace }) {
+export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles }) {
   // Per-instance storage namespace (set id); fallback to global hint if present
   const ns = (typeof window !== 'undefined' ? (storageNamespace || (window.__VFS_SCOPED_PATCH__ && window.__VFS_SCOPED_PATCH__.scope)) : null) || null;
   const nsKey = (k) => (ns ? `${k}@${ns}` : k);
@@ -222,15 +222,39 @@ export function CodeWorkspaceProvider({ children, storageNamespace }) {
 
   useEffect(() => {
     try {
-      // Read strictly from the namespaced key when namespace is present.
-      // No fallback to global key to avoid cross-set bleed.
+      // Server-first: if initialFiles provided, use them and skip localStorage read
+      if (Array.isArray(initialFiles) && initialFiles.length) {
+        const map = {};
+        initialFiles.forEach((f) => { if (f && f.path) map[f.path] = { content: String(f.content||''), readonly: !!f.readonly, dir: !!f.dir }; });
+        const merged = { ...defaultFiles, ...map };
+        // if graph missing but template exists, derive minimal graph stub
+        try {
+          if (!merged['/graph/prompt-graph.json'] && typeof merged['/template.json']?.content === 'string') {
+            const obj = JSON.parse(merged['/template.json'].content || '{}');
+            const nodes = Array.isArray(obj.nodes) ? obj.nodes : [];
+            const edges = Array.isArray(obj.edges) ? obj.edges : [];
+            merged['/graph/prompt-graph.json'] = { content: JSON.stringify({
+              nodes: nodes.map(n => ({ id: n.id, type: n.type || 'prompt', label: n.data?.name || n.label || '' })),
+              edges: edges.map(e => ({ id: e.id, source: e.source, target: e.target, label: e.label || '' })),
+            }, null, 2)+'\n', readonly: false };
+          }
+        } catch {}
+        setFiles(merged);
+        setRoot("/");
+        setActivePath("/template.json");
+        setOpenPaths(["/template.json"]);
+        const nextSig = {};
+        Object.entries(merged || {}).forEach(([p, meta]) => { nextSig[p] = contentSignature(meta); });
+        setDirty({});
+        setSavedSig(nextSig);
+        return;
+      }
+      // Local fallback when no initialFiles supplied
       let raw = localStorage.getItem(KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
         const base = parsed.files || {};
-        // merge in any new default files that are missing
         const merged = { ...defaultFiles, ...base };
-        // if graph missing but template exists, derive minimal graph stub
         try {
           if (!merged['/graph/prompt-graph.json'] && typeof merged['/template.json']?.content === 'string') {
             const obj = JSON.parse(merged['/template.json'].content || '{}');
@@ -247,7 +271,6 @@ export function CodeWorkspaceProvider({ children, storageNamespace }) {
         setActivePath(parsed.activePath || "/template.json");
         setOpenPaths(parsed.openPaths || ["/template.json"]);
         setEntryPath(parsed.entryPath || "/template.json");
-        // sanitize dirty/savedSig immediately on load
         const loadedDirty = parsed.dirty || {};
         const loadedSig = parsed.savedSig || {};
         const nextSig = {};
@@ -255,7 +278,6 @@ export function CodeWorkspaceProvider({ children, storageNamespace }) {
         Object.entries(merged || {}).forEach(([p, meta]) => {
           const sig = contentSignature(meta);
           nextSig[p] = sig;
-          // If existing signature equals newly computed one, not dirty
           if (loadedSig[p] && loadedSig[p] === sig) nextDirty[p] = false;
           else nextDirty[p] = !!loadedDirty[p];
         });
@@ -263,7 +285,6 @@ export function CodeWorkspaceProvider({ children, storageNamespace }) {
         setSavedSig(nextSig);
       } else {
         setFiles(defaultFiles);
-        // initialize signatures for defaults
         const sigs = {};
         Object.entries(defaultFiles).forEach(([p, meta]) => { sigs[p] = contentSignature(meta); });
         setSavedSig(sigs);
@@ -276,7 +297,7 @@ export function CodeWorkspaceProvider({ children, storageNamespace }) {
       setSavedSig(sigs);
       setDirty({});
     }
-  }, []);
+  }, [KEY, initialFiles]);
 
   useEffect(() => {
     try {
