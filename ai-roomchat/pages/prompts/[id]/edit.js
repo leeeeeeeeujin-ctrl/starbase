@@ -4,6 +4,18 @@ import PromptEditor from '../../../components/PromptEditor';
 import AICodeChatPanel from '../../../components/workspace/AICodeChatPanel.jsx';
 import { CodeWorkspaceProvider, useWorkspace } from '../../../components/workspace/CodeWorkspaceProvider.jsx';
 import { fetchStarterPack } from '../../../lib/workspace/fetchStarterPack.js';
+import { loadSnapshot, markInjected, wasInjected } from '../../../lib/workspace/scopeStorage.js';
+
+function mapToVisibleRoot(files) {
+  return (files || []).map((f) => {
+    const p = (f.path || '')
+      .replace(/^src\/game\/samples\//, 'Samples/')
+      .replace(/^src\/game\//, 'Game/')
+      .replace(/^src\/docs\//, 'Guides/')
+      .replace(/^docs\//, 'Guides/');
+    return { ...f, path: p };
+  });
+}
 import Link from 'next/link';
 import { applyMainUiPresetObject, getMainUiModules } from '../../../utils/uiPresets';
 function ToolsDropdown({ onOpenUiSettings }) {
@@ -214,7 +226,7 @@ function PromptEditInner() {
   const [saving, setSaving] = useState(false);
   const [showAgent, setShowAgent] = useState(false);
   const [showUiSettings, setShowUiSettings] = useState(false);
-  const starterInjectedRef = useRef(false);
+  // starter injection is now scoped per set via localStorage guard; ref no longer needed
 
   useEffect(() => {
     if (!id) return;
@@ -245,22 +257,30 @@ function PromptEditInner() {
     setEditorBody(prompt.body || '');
   }, [prompt.body]);
 
-  // Fetch starter-pack once on mount and dispatch to workspace provider via event.
+  // Set-scoped: notify provider, load snapshot or inject starter-pack once per set
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (starterInjectedRef.current) return;
-    starterInjectedRef.current = true;
-    (async () => {
-      try {
-        const files = await fetchStarterPack();
-        if (files && files.length) {
-          try { window.dispatchEvent(new CustomEvent('workspace:add-files', { detail: files })); } catch (e) { /* ignore */ }
-        }
-      } catch (err) {
-        // ignore fetch failures
+    if (!id) return;
+    try {
+      window.dispatchEvent(new CustomEvent('workspace:set-scope', { detail: { setId: id } }));
+      const snap = loadSnapshot(id);
+      if (Array.isArray(snap) && snap.length) {
+        window.dispatchEvent(new CustomEvent('workspace:add-files', { detail: mapToVisibleRoot(snap) }));
+        return;
       }
-    })();
-  }, []);
+      if (!wasInjected(id)) {
+        (async () => {
+          try {
+            const files = await fetchStarterPack();
+            if (files && files.length) {
+              window.dispatchEvent(new CustomEvent('workspace:add-files', { detail: mapToVisibleRoot(files) }));
+              markInjected(id);
+            }
+          } catch {}
+        })();
+      }
+    } catch {}
+  }, [id]);
 
   useEffect(() => {
     if (!id) return;
@@ -407,39 +427,6 @@ export default function PromptEditPage(){
   );
 }
 
-// Avoid static generation to prevent build-time execution pitfalls; render per-request.
 export async function getServerSideProps() {
   return { props: {} };
-}
-// Set-scoped workspace loader: inject snapshot or starter-pack per set
-import { fetchStarterPack } from '../../../lib/workspace/fetchStarterPack.js';
-import { loadSnapshot, markInjected, wasInjected } from '../../../lib/workspace/scopeStorage.js';
-
-function mapToVisibleRoot(files) {
-  return (files || []).map((f) => {
-    const p = (f.path || '').replace(/^src\/game\/samples\//, 'Samples/').replace(/^src\/game\//, 'Game/').replace(/^src\/docs\//, 'Guides/').replace(/^docs\//, 'Guides/');
-    return { ...f, path: p };
-  });
-}
-
-// Non-invasive set-scoped loader (no export override)
-if (typeof window !== 'undefined') {
-  // Try to parse setId from URL /prompts/{id}/edit
-  const m = window.location.pathname.match(/\/prompts\/([^/]+)\/edit/);
-  const setId = m && m[1];
-  if (setId) {
-    window.dispatchEvent(new CustomEvent('workspace:set-scope', { detail: { setId } }));
-    const snap = loadSnapshot(setId);
-    if (Array.isArray(snap) && snap.length) {
-      window.dispatchEvent(new CustomEvent('workspace:add-files', { detail: mapToVisibleRoot(snap) }));
-    } else if (!wasInjected(setId)) {
-      (async () => {
-        try {
-          const pack = await fetchStarterPack();
-          window.dispatchEvent(new CustomEvent('workspace:add-files', { detail: mapToVisibleRoot(pack) }));
-          markInjected(setId);
-        } catch {}
-      })();
-    }
-  }
 }
