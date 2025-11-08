@@ -2,28 +2,48 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import useIsMobile from '@/utils/useIsMobile';
+import { useWorkspace } from '../workspace/CodeWorkspaceProvider.jsx';
+import DynamicSlot from './slots/DynamicSlot.jsx';
+
+// Shared style tokens
+const btn = { padding:'6px 10px', border:'1px solid #334155', background:'#1e293b', color:'#e2e8f0', borderRadius:8 };
+const btnGhost = { padding:'6px 10px', border:'1px solid rgba(148,163,184,0.35)', background:'transparent', color:'#e2e8f0', borderRadius:8 };
+const btnPrimary = { padding:'8px 14px', border:'1px solid #2563eb', background:'#1d4ed8', color:'#fff', borderRadius:10, fontWeight:700 };
+const input = { flex:1, minWidth:0, padding:'8px 10px', background:'#0f172a', color:'#e2e8f0', border:'1px solid #334155', borderRadius:8, outline:'none' };
+const ctl = { padding:'4px 8px', border:'1px solid #334155', background:'#0f172a', color:'#cbd5e1', borderRadius:6 };
 
 export default function MainGameMobileUI({ template, user = null, onNext = () => {}, runtimeFeed = null, runtimeSecondsLeft = null, onForceNext = null, onPlayerChat = null }) {
-  const isMobile = useIsMobile(820);
+  const isMobile = useIsMobile(820); // currently unused but reserved for responsive adjustments
   const [layout, setLayout] = useState(() => loadLayout());
   const [edit, setEdit] = useState(false);
   const [gameChat, setGameChat] = useState(() => [{ role: 'system', text: '게임이 시작되었습니다.' }]);
   const [chat, setChat] = useState([]);
   const [chatText, setChatText] = useState('');
+  const { files } = useWorkspace();
   const uiConfig = useMemo(() => readUiConfig(template), [template]);
   const nextPolicy = uiConfig?.nextBar?.policy || { timeoutSec: null, roleThreshold: null };
   const [secondsLeft, setSecondsLeft] = useState(() => (typeof nextPolicy.timeoutSec === 'number' ? nextPolicy.timeoutSec : null));
-  // character view mode for tap-cycle
   const [charViewIdx, setCharViewIdx] = useState(0);
 
   const character = useMemo(() => pickCharacter(template), [template]);
   const imageUrl = character?.image || pickFirstImage(template);
-
   const userLabel = useMemo(() => user?.name || user?.id || 'User #1234', [user]);
 
+  // Persist manual layout edits
+  useEffect(() => { saveLayout(layout); }, [layout]);
+
+  // Template-driven layout override (only when not manually editing)
   useEffect(() => {
-    saveLayout(layout);
-  }, [layout]);
+    try {
+      if (edit) return; // respect manual edit mode
+      const tplLayout = template?.ui?.play?.layout?.order;
+      if (Array.isArray(tplLayout) && tplLayout.every(x => typeof x === 'string')) {
+        const allowed = ['header','gameChat','nextBar','playerChat','character','widgets'];
+        const filtered = tplLayout.filter(id => allowed.includes(id));
+        if (filtered.length) setLayout(cur => ({ ...cur, order: filtered }));
+      }
+    } catch {}
+  }, [template, edit]);
 
   const sendChat = useCallback(() => {
     const t = (chatText || '').trim(); if (!t) return;
@@ -42,67 +62,41 @@ export default function MainGameMobileUI({ template, user = null, onNext = () =>
       setGameChat(prev => [...prev, { role: 'system', text: '다음 단계로 진행합니다.' }]);
     }
     try { onNext?.(); } catch {}
-    // reset next timer if configured (only for local timer mode)
     if (onForceNext == null && typeof nextPolicy.timeoutSec === 'number') setSecondsLeft(nextPolicy.timeoutSec);
   }, [onNext, onForceNext, nextPolicy?.timeoutSec]);
 
-  // NextBar timeout countdown
+  // Local countdown timer (skipped if external runtime controls)
   useEffect(() => {
     if (!(typeof nextPolicy.timeoutSec === 'number') || nextPolicy.timeoutSec <= 0) return;
-    if (onForceNext != null) return; // external runtime controls timer
+    if (onForceNext != null) return;
     if (!(typeof secondsLeft === 'number')) return;
     if (secondsLeft <= 0) { triggerNext(); return; }
     const t = setTimeout(() => setSecondsLeft(s => (typeof s === 'number' ? s - 1 : s)), 1000);
     return () => clearTimeout(t);
   }, [secondsLeft, nextPolicy?.timeoutSec, triggerNext, onForceNext]);
 
-  // Simple reorder helpers for layout editing
   const move = useCallback((id, dir) => {
     const order = [...layout.order];
-    const idx = order.indexOf(id);
-    if (idx < 0) return;
+    const idx = order.indexOf(id); if (idx < 0) return;
     const j = dir === 'up' ? Math.max(0, idx - 1) : Math.min(order.length - 1, idx + 1);
     if (j === idx) return;
-    const tmp = order[idx]; order[idx] = order[j]; order[j] = tmp;
+    [order[idx], order[j]] = [order[j], order[idx]];
     setLayout({ ...layout, order });
   }, [layout]);
 
   const modules = useMemo(() => {
-    // Determine optional play widgets (hidden by default unless explicitly enabled in template)
     const widgetFlags = readWidgetFlags(template);
     const playWidgets = buildDefaultWidgets(template, widgetFlags);
     const defs = {
-      header: (
-        <Header key="header" userLabel={userLabel} edit={edit} setEdit={setEdit} />
-      ),
-      gameChat: (
-        <GameChat key="gameChat" items={Array.isArray(runtimeFeed) ? runtimeFeed.map(m => ({ role: (m.roleScope==='system'?'system':'ai'), text: m.text })) : gameChat} />
-      ),
-      nextBar: (
-        <NextBar key="nextBar" onNext={triggerNext} secondsLeft={(onForceNext != null && typeof runtimeSecondsLeft === 'number') ? runtimeSecondsLeft : secondsLeft} />
-      ),
-      playerChat: (
-        <PlayerChat key="playerChat" items={chat} text={chatText} setText={setChatText} onSend={sendChat} />
-      ),
-      // Only include the widgets module if there are enabled widgets to show
-      ...(playWidgets.length > 0 ? { widgets: (
-        <WidgetRow key="widgets" widgets={playWidgets} />
-      ) } : {}),
-      character: (
-        <CharacterCard
-          key="character"
-          name={character?.name||'캐릭터'}
-          image={imageUrl}
-          desc={character?.desc||'설명'}
-          stats={character?.stats||[10,10,10,10]}
-          cycle={uiConfig?.character?.behavior?.tapCycle || ['desc','abilities','score','image']}
-          viewIdx={charViewIdx}
-          setViewIdx={setCharViewIdx}
-        />
-      ),
+      header: <DynamicSlot key="header" slotId="play.header" files={files} resolveAsset={(x)=>x} defaultRender={() => <Header userLabel={userLabel} edit={edit} setEdit={setEdit} />} />,
+      gameChat: <DynamicSlot key="gameChat" slotId="play.gameChat" files={files} resolveAsset={(x)=>x} defaultRender={() => <GameChat items={Array.isArray(runtimeFeed) ? runtimeFeed.map(m => ({ role: (m.roleScope==='system'?'system':'ai'), text: m.text })) : gameChat} />} />,
+      nextBar: <DynamicSlot key="nextBar" slotId="play.nextBar" files={files} resolveAsset={(x)=>x} defaultRender={() => <NextBar onNext={triggerNext} secondsLeft={(onForceNext != null && typeof runtimeSecondsLeft === 'number') ? runtimeSecondsLeft : secondsLeft} />} />,
+      playerChat: <DynamicSlot key="playerChat" slotId="play.playerChat" files={files} resolveAsset={(x)=>x} defaultRender={() => <PlayerChat items={chat} text={chatText} setText={setChatText} onSend={sendChat} />} />,
+      ...(playWidgets.length > 0 ? { widgets: <DynamicSlot key="widgets" slotId="play.widgets" files={files} resolveAsset={(x)=>x} defaultRender={() => <WidgetRow widgets={playWidgets} />} /> } : {}),
+      character: <DynamicSlot key="character" slotId="play.character" files={files} resolveAsset={(x)=>x} defaultRender={() => <CharacterCard name={character?.name||'캐릭터'} image={imageUrl} desc={character?.desc||'설명'} stats={character?.stats||[10,10,10,10]} cycle={uiConfig?.character?.behavior?.tapCycle || ['desc','abilities','score','image']} viewIdx={charViewIdx} setViewIdx={setCharViewIdx} />} />,
     };
     return layout.order.map(id => defs[id]).filter(Boolean);
-  }, [layout.order, userLabel, edit, gameChat, runtimeFeed, triggerNext, chat, chatText, template, character, imageUrl, sendChat, onForceNext, runtimeSecondsLeft, uiConfig, charViewIdx]);
+  }, [layout.order, userLabel, edit, gameChat, runtimeFeed, triggerNext, chat, chatText, template, character, imageUrl, sendChat, onForceNext, runtimeSecondsLeft, uiConfig, charViewIdx, files, secondsLeft]);
 
   return (
     <div style={{ position:'fixed', inset:0, background:'#0b1220', color:'#e2e8f0', display:'flex', flexDirection:'column' }}>
@@ -291,19 +285,13 @@ function readWidgetFlags(template){
 }
 
 function loadLayout(){
-  try{
+  try {
     const raw = localStorage.getItem('mainGame:layout');
     if (raw) return JSON.parse(raw);
-  }catch{}
-  // Default order excludes optional 'widgets' section; it will be added only when explicitly enabled
-  return { order: ['header','gameChat','nextBar','playerChat','character'] };
+  } catch {}
+  return { order: ['header','gameChat','nextBar','playerChat','character'] }; // default layout
 }
 function saveLayout(layout){
-  try{ localStorage.setItem('mainGame:layout', JSON.stringify(layout)); }catch{}
+  try { localStorage.setItem('mainGame:layout', JSON.stringify(layout)); } catch {}
 }
-
-const btn = { padding:'6px 10px', border:'1px solid #334155', background:'#1e293b', color:'#e2e8f0', borderRadius:8 };
-const btnGhost = { padding:'6px 10px', border:'1px solid rgba(148,163,184,0.35)', background:'transparent', color:'#e2e8f0', borderRadius:8 };
-const btnPrimary = { padding:'8px 14px', border:'1px solid #2563eb', background:'#1d4ed8', color:'#fff', borderRadius:10, fontWeight:700 };
-const input = { flex:1, minWidth:0, padding:'8px 10px', background:'#0f172a', color:'#e2e8f0', border:'1px solid #334155', borderRadius:8, outline:'none' };
-const ctl = { padding:'4px 8px', border:'1px solid #334155', background:'#0f172a', color:'#cbd5e1', borderRadius:6 };
+// (Removed duplicate component implementation added by patch error.)
