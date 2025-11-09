@@ -136,7 +136,6 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
         }
       } catch {}
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiKeyInput, geminiModelOptions]);
   const refreshApiKeyring = async () => {
     setApiKeysLoading(true);
@@ -1040,9 +1039,23 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
 
   // (removed) URL 기반 이미지 추가는 지원하지 않습니다. AI 첨부 기반으로만 동작합니다.
 
+  // Guarded drag starter: only start dragging when not interacting with buttons/inputs inside the header
+  const tryStartDrag = (e) => {
+    try {
+      // If user touched/clicked an interactive element, do not start drag
+      if (!e || !e.target) return;
+      const tgt = e.target;
+      if (tgt.closest && tgt.closest('button,input,textarea,select,a,svg')) return;
+      // prevent default scrolling on touch when starting drag
+      try { if (typeof e.preventDefault === 'function') e.preventDefault(); } catch {}
+      try { if (typeof e.stopPropagation === 'function') e.stopPropagation(); } catch {}
+      if (typeof onDragHandleDown === 'function') onDragHandleDown(e);
+    } catch {};
+  };
+
   return (
   <div ref={rootRef} style={{ height:'100%', border:'1px solid #334155', background:'#0b1220', borderRadius:12, overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 24px 64px rgba(0,0,0,0.6)' }}>
-      <div onMouseDown={onDragHandleDown} onTouchStart={onDragHandleDown} onDoubleClick={onToggleFullscreen} onTouchEnd={onHeaderTouchEnd} style={{ padding:'8px 10px', color:'#e2e8f0', fontWeight:600, display:'flex', alignItems:'center', justifyContent:'space-between', background:'linear-gradient(180deg, rgba(2,6,23,0.8) 0%, rgba(2,6,23,0.6) 100%)', position:'relative', cursor:'move' }}>
+      <div onMouseDown={tryStartDrag} onTouchStart={tryStartDrag} onDoubleClick={onToggleFullscreen} onTouchEnd={onHeaderTouchEnd} style={{ padding:'8px 10px', color:'#e2e8f0', fontWeight:600, display:'flex', alignItems:'center', justifyContent:'space-between', background:'linear-gradient(180deg, rgba(2,6,23,0.8) 0%, rgba(2,6,23,0.6) 100%)', position:'relative', cursor:'move' }}>
         <span>AI 코드 채팅{autoApply ? (autoBudget>0 ? ` · 자동 ${autoBudget}` : ' · 자동 진행') : ''}</span>
         <div style={{ display:'flex', gap:6, alignItems:'center' }}>
           <button onClick={()=>setHistoryOpen(v=>!v)} title="대화 기록" style={{ padding:'3px 8px', borderRadius:6, border:'1px solid #334155', background: historyOpen ? '#172033' : '#0b1220', color:'#94a3b8', fontSize:12 }}>기록</button>
