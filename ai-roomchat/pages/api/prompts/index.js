@@ -67,10 +67,6 @@ export default async function handler(req, res) {
     // 1) Strong idempotency by name: if a prompt with the same name exists, return it
     const byName = Array.from(PROMPTS.values()).find(p => p.name === name);
     if (byName) {
-      // Ensure set exists for that id
-      if (!SETS.has(byName.id)) {
-        SETS.set(byName.id, { etag: `"${Date.now()}"`, files: {} });
-      }
       const out = { ok: true, id: byName.id, name: byName.name, existed: true };
       if (rid) SEEN.add(rid);
       try { RECENT_REQ.set(`${(req.headers['referer']||'')}:${JSON.stringify(req.body||{})}`, { at: Date.now(), result: out }); } catch {}
@@ -82,10 +78,7 @@ export default async function handler(req, res) {
       const createdAt = new Date().toISOString();
       PROMPTS.set(id, { id, name, createdAt });
     }
-    if (!SETS.has(id)) {
-      SETS.set(id, { etag: `"${Date.now()}"`, files: {} });
-    }
-
+  // do not implicitly create a workspace set here; create-on-save is preferred
   const out = { ok: true, id, name };
   if (rid) SEEN.add(rid);
   try { RECENT_REQ.set(`${(req.headers['referer']||'')}:${JSON.stringify(req.body||{})}`, { at: Date.now(), result: out }); } catch {}
