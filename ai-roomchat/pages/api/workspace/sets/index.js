@@ -1,65 +1,42 @@
-import { getSet, saveSet, getIdempotent, ensureIdempotent } from '@/lib/workspace/setStore';
-import { buildStarterPack } from '@/lib/workspace/getStarterPackFiles';
-import { supabase as supabaseAdmin } from '@/lib/supabaseAdmin';
-import path from 'path';
+export const config = { runtime: 'nodejs' };
+
+const g = globalThis;
+const STORE = (g.__SET_STORE__ ||= new Map()); // id -> { etag, files }
+const SEEN = (g.__SET_SEEN__ ||= new Set()); // request-id dedupe
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
-    return res.status(405).end('Method Not Allowed');
+    return res.status(405).end();
   }
-  try {
-    const reqId = req.headers['x-request-id'] || req.headers['x-idempotency-key'] || '';
-    if (process.env.NODE_ENV !== 'production') try { console.log('[sets.create] reqId=%s', reqId||'-'); } catch {}
-    const cached = getIdempotent(reqId);
-    if (cached) return res.status(201).json(cached);
 
-    const body = req.body || {};
-    const id = String(body.id || '').trim() || (Math.random().toString(36).slice(2, 10));
-    const exists = getSet(id);
-    if (process.env.NODE_ENV !== 'production') try { console.log('[sets.create] incoming id=%s exists=%s', id, !!exists); } catch {}
-    if (exists) {
-      ensureIdempotent(reqId, exists);
-      return res.status(201).json(exists);
-    }
-
-    // Build starter pack once on create if files not provided
-    let files = Array.isArray(body.files) ? body.files : null;
-    if (!files || files.length === 0) {
-      const base = path.join(process.cwd(), 'ai-roomchat');
-      files = buildStarterPack(base);
-    }
-    const meta = body.meta && typeof body.meta === 'object' ? body.meta : {};
-    // If Supabase persistence enabled, store in DB
-    if (process.env.USE_SUPABASE_SETS === '1' && supabaseAdmin && supabaseAdmin.from) {
-      try {
-        // idempotent: return existing if present
-        const sel = await supabaseAdmin.from('workspace_sets').select('*').eq('id', id).single();
-        if (!sel.error && sel.data) {
-          ensureIdempotent(reqId, sel.data);
-          return res.status(201).json(sel.data);
-        }
-      } catch {}
-      const etag = new Date().toISOString();
-      const ins = await supabaseAdmin
-        .from('workspace_sets')
-        .insert([{ id, files, etag, updated_at: new Date().toISOString(), meta }])
-        .select()
-        .single();
-      if (!ins.error && ins.data) {
-        ensureIdempotent(reqId, ins.data);
-        return res.status(201).json(ins.data);
-      }
-    }
-
-    const record = saveSet(id, files, { ...meta, starterApplied: true });
-    if (process.env.NODE_ENV !== 'production') try { console.log('[sets.create] created id=%s files=%d', record.id, Array.isArray(files)?files.length:0); } catch {}
-    ensureIdempotent(reqId, record);
-    return res.status(201).json(record);
-  } catch (e) {
-    if (process.env.NODE_ENV !== 'production') try { console.warn('[sets.create] error %s', e?.message||e); } catch {}
-    return res.status(500).json({ error: 'sets-create-failed' });
+  if (process.env.NODE_ENV !== 'production') {
+    try {
+      const bodyLog = typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {});
+      console.log('[api/sets] POST', {
+        referer: req.headers['referer'] || null,
+        ua: req.headers['user-agent'] || null,
+        body: bodyLog,
+        rid: req.headers['x-request-id'] || null,
+      });
+    } catch {}
   }
+
+  const rid = req.headers['x-request-id'];
+  if (rid && SEEN.has(rid)) {
+    return res.status(200).json({ ok: true });
+  }
+
+  const body = typeof req.body === 'string' ? safeJson(req.body) : (req.body || {});
+  const { id } = body;
+  if (!id) return res.status(400).json({ error: 'missing id' });
+
+  if (!STORE.has(id)) {
+    STORE.set(id, { etag: `"${Date.now()}"`, files: {} });
+  }
+  if (rid) SEEN.add(rid);
+  return res.status(200).json({ ok: true });
 }
 
-export const config = { runtime: 'nodejs' };
+function safeJson(s) { try { return JSON.parse(s); } catch { return {}; } }
+

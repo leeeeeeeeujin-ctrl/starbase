@@ -21,6 +21,18 @@ export default async function handler(req, res) {
 
   if (method === 'POST') {
     const rid = req.headers['x-request-id'];
+    if (process.env.NODE_ENV !== 'production') {
+      try {
+        const bodyLog = typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {});
+        // Lightweight request trace for debugging duplicate creations
+        console.log('[api/prompts] POST', {
+          rid,
+          referer: req.headers['referer'] || null,
+          ua: req.headers['user-agent'] || null,
+          body: bodyLog,
+        });
+      } catch {}
+    }
     if (rid && SEEN.has(rid)) {
       // Idempotent acknowledgement
       return res.status(200).json({ ok: true });
