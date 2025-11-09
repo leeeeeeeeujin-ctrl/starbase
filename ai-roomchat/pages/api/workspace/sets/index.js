@@ -1,4 +1,5 @@
 export const config = { runtime: 'nodejs' };
+import { pushCreationLog } from '../../../../lib/server/creationLog.js';
 
 const g = globalThis;
 const STORE = (g.__SET_STORE__ ||= new Map()); // id -> { etag, files }
@@ -10,17 +11,10 @@ export default async function handler(req, res) {
     return res.status(405).end();
   }
 
-  if (process.env.NODE_ENV !== 'production') {
-    try {
-      const bodyLog = typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {});
-      console.log('[api/sets] POST', {
-        referer: req.headers['referer'] || null,
-        ua: req.headers['user-agent'] || null,
-        body: bodyLog,
-        rid: req.headers['x-request-id'] || null,
-      });
-    } catch {}
-  }
+  try {
+    const bodyLog = typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {});
+    pushCreationLog({ kind: 'set', location: null, detail: { url: '/api/workspace/sets', payload: bodyLog, headers: { rid: req.headers['x-request-id'] || null } }, referer: req.headers['referer'] || null, ua: req.headers['user-agent'] || null });
+  } catch {}
 
   const rid = req.headers['x-request-id'];
   if (rid && SEEN.has(rid)) {
