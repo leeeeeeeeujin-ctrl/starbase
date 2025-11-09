@@ -8,7 +8,7 @@ export { createSupabaseAuthConfig } from './supabaseAuthConfig';
 
 // Read envs (may be undefined in some environments like edge bundlers)
 const url = sanitizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL);
-const key = process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_SERVICE_ROLE_KEY; // ⚠️ server-only
+const key = process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_SERVICE_ROLE_KEY; // server-only
 
 // Avoid throwing at module evaluation time so this module can be imported
 // safely in environments where SUPABASE env vars are not provided (for

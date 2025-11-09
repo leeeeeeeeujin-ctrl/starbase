@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "rootDir": "..",
+
+    "module": "commonjs",
+    "target": "es2015",
+
+    "moduleResolution": "node",
+    "lib": ["ES2022"],
+    "declarationDir": "../build",
+    "declaration": true,
+    "forceConsistentCasingInFileNames": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "experimentalDecorators": true,
+    "noImplicitAny": false,
+    "inlineSources": true,
+    "sourceMap": true,
+    "useDefineForClassFields": false,
+
+    "skipLibCheck": true,
+  }
+}
