@@ -601,3 +601,6 @@ export function useWorkspace() {
 	return ctx;
 }
 
+// Provide a default export for compatibility with importing code that expects a default
+export default CodeWorkspaceProvider;
+
