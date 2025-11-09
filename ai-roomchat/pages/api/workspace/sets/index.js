@@ -1,5 +1,6 @@
 export const config = { runtime: 'nodejs' };
 import { pushCreationLog } from '../../../../lib/server/creationLog.js';
+import { getWorkspaceSetStore } from '../../../../lib/workspace/store/index.js';
 
 const g = globalThis;
 const STORE = (g.__SET_STORE__ ||= new Map()); // id -> { etag, files }
@@ -43,9 +44,10 @@ export default async function handler(req, res) {
   const { id } = body;
   if (!id) return res.status(400).json({ error: 'missing id' });
 
-  if (!STORE.has(id)) {
-    STORE.set(id, { etag: `"${Date.now()}"`, files: {} });
-  }
+  try {
+    const store = getWorkspaceSetStore();
+    await store.create(id);
+  } catch {}
   if (rid) SEEN.add(rid);
   try {
     const key = dedupKey(req, body);

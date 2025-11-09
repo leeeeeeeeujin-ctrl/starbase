@@ -1,41 +1,37 @@
-import { getSet, saveSet } from '@/lib/workspace/setStore';
-import { buildStarterPack } from '@/lib/workspace/getStarterPackFiles';
-import path from 'path';
+export const config = { runtime: 'nodejs' };
+import { getWorkspaceSetStore } from '../../../../lib/workspace/store/index.js';
+
+function setEtag(res, etag) { if (etag) res.setHeader('ETag', etag); }
 
 export default async function handler(req, res) {
-  const { id } = req.query || {};
-  if (!id) return res.status(400).json({ error: 'missing-id' });
-  const method = req.method;
-  try {
-    if (method === 'GET') {
-      const cur = getSet(id);
-      if (process.env.NODE_ENV !== 'production') try { console.log('[sets.get] id=%s found=%s', id, !!cur); } catch {}
-      if (!cur) return res.status(404).json({ error: 'not-found' });
-      return res.status(200).json(cur);
+  const { id } = req.query;
+  const store = getWorkspaceSetStore();
+  if (req.method === 'GET') {
+    try {
+      const got = await store.get(id);
+      if (!got) return res.status(404).end();
+      setEtag(res, got.etag || null);
+      return res.status(200).json(got.files || {});
+    } catch (e) {
+      return res.status(500).json({ error: 'get_failed' });
     }
-    if (method === 'PUT') {
-      const ifMatch = String(req.headers['if-match'] || '').trim();
-      if (!ifMatch) {
-        return res.status(428).json({ error: 'precondition-required' });
-      }
-      const body = req.body || {};
-      const files = Array.isArray(body.files) ? body.files : [];
-      const meta = body.meta && typeof body.meta === 'object' ? body.meta : {};
-      const cur = getSet(id);
-      if (process.env.NODE_ENV !== 'production') try { console.log('[sets.put] id=%s ifMatch=%s current=%s', id, ifMatch||'-', cur?.etag||'-'); } catch {}
-      if (cur && ifMatch && cur.etag && cur.etag !== ifMatch) {
-        return res.status(412).json({ error: 'etag-mismatch', current: cur.etag });
-      }
-      const saved = saveSet(id, files, meta);
-      if (process.env.NODE_ENV !== 'production') try { console.log('[sets.put] saved id=%s files=%d etag=%s', id, Array.isArray(files)?files.length:0, saved.etag); } catch {}
-      return res.status(200).json({ etag: saved.etag });
-    }
-  } catch (e) {
-    if (process.env.NODE_ENV !== 'production') try { console.warn('[sets.api] error %s', e?.message||e); } catch {}
-    return res.status(500).json({ error: 'sets-failed' });
   }
-  res.setHeader('Allow', 'GET,PUT');
-  return res.status(405).end('Method Not Allowed');
+  if (req.method === 'PUT') {
+    try {
+      const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
+      const ifMatch = req.headers['if-match'];
+      const put = await store.put(id, body, ifMatch);
+      if (put && put.code === 428) return res.status(428).json({ error: 'missing set' });
+      if (put && put.code === 412) return res.status(412).json({ error: 'etag mismatch' });
+      if (put && put.code === 501) return res.status(501).json({ error: 'not_implemented' });
+      if (!put || !put.etag) return res.status(500).json({ error: 'put_failed' });
+      setEtag(res, put.etag);
+      return res.status(200).json({ ok: true });
+    } catch (e) {
+      return res.status(500).json({ error: 'put_failed' });
+    }
+  }
+  res.setHeader('Allow', 'GET, PUT');
+  return res.status(405).end();
 }
 
-export const config = { runtime: 'nodejs' };
