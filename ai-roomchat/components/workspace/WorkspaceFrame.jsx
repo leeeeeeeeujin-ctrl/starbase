@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { CodeWorkspaceProvider } from '../workspace/CodeWorkspaceProvider.jsx';
+import dynamic from 'next/dynamic';
 
 // WorkspaceFrame: 서버-우선으로 세트 파일을 불러와 CodeWorkspaceProvider를 일관되게 마운트합니다.
 // - id: 프롬프트/세트 id (storageNamespace와 키에 사용)
@@ -19,12 +20,39 @@ export default function WorkspaceFrame({ id, children }) {
           // API returns a record { id, files: [], meta, etag }
           const json = await r.json();
           const files = Array.isArray(json?.files) ? json.files : [];
-          setInitFiles(files);
+          // If empty, hydrate with starter pack so the workspace is immediately useful
+          if (!files.length) {
+            try {
+              const sp = await fetch('/api/workspace/starter-pack');
+              if (sp.ok) {
+                const sj = await sp.json();
+                const sfiles = Array.isArray(sj?.files) ? sj.files : [];
+                if (sfiles.length) {
+                  setInitFiles(sfiles);
+                } else {
+                  setInitFiles(files);
+                }
+              } else {
+                setInitFiles(files);
+              }
+            } catch { setInitFiles(files); }
+          } else {
+            setInitFiles(files);
+          }
           // Prefer ETag header, fallback to record.etag if present
           setEtag(r.headers.get('ETag') || json?.etag || null);
         } else if (r.status === 404) {
           // 첫 저장 전이면 404가 정상. 빈 VFS로 시작.
-          setInitFiles([]);
+          try {
+            const sp = await fetch('/api/workspace/starter-pack');
+            if (sp.ok) {
+              const sj = await sp.json();
+              const sfiles = Array.isArray(sj?.files) ? sj.files : [];
+              setInitFiles(sfiles);
+            } else {
+              setInitFiles([]);
+            }
+          } catch { setInitFiles([]); }
           setEtag(null);
         } else {
           console.warn('[WorkspaceFrame] GET failed', r.status);
@@ -50,8 +78,14 @@ export default function WorkspaceFrame({ id, children }) {
       initialFiles={initFiles}
       initialEtag={etag}
     >
+      {/* Optional sync bootstrap when experiment flag is enabled */}
+      {process.env.NEXT_PUBLIC_SYNC_EXPERIMENT === '1' ? (
+        (() => {
+          const SyncMount = dynamic(() => import('./WorkspaceSyncMount.jsx'), { ssr: false });
+          return <SyncMount id={id} />;
+        })()
+      ) : null}
       {children}
     </CodeWorkspaceProvider>
   );
 }
-

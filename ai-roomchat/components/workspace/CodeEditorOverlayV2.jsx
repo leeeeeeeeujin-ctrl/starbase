@@ -61,15 +61,70 @@ class ErrorBoundary extends React.Component {
 
 function PlayOverlayContent({ templateBinding }) {
   const { files } = useWorkspace();
+  const [runnerInfo, setRunnerInfo] = React.useState(null);
+  const [runnerErr, setRunnerErr] = React.useState(null);
   try {
     const tplText = (typeof templateBinding?.text === 'string' && templateBinding.text.length > 0)
       ? templateBinding.text
       : (files?.['/template.json']?.content || '{}');
     const tpl = JSON.parse(tplText || '{}');
+    const cfgText = files?.['/game/runtime.config.json']?.content || '{}';
+    let cfg = {};
+    try { cfg = JSON.parse(cfgText || '{}'); } catch {}
+    const engine = String(cfg?.engine || 'builtin').toLowerCase();
+    const mode = String(cfg?.mode || (cfg?.durations ? 'turn' : 'realtime')).toLowerCase();
+
+    // Best-effort invoke Runtime/runner.js when engine === builtin
+    React.useEffect(() => {
+      let cancelled = false;
+      (async () => {
+        try {
+          const runnerPath = '/Runtime/runner.js';
+          const src = files?.[runnerPath]?.content;
+          if (!src) return; // no runner present
+          if (engine !== 'builtin') return; // only call runner for builtin engine to avoid adapter import errors
+          const blob = new Blob([src], { type: 'text/javascript' });
+          const url = URL.createObjectURL(blob);
+          try {
+            const mod = await import(/* webpackIgnore: true */ url);
+            if (cancelled) return;
+            if (mod && typeof mod.run === 'function') {
+              const flatFiles = Object.fromEntries(Object.entries(files||{}).map(([p, m]) => [p, { content: m?.content || '' }]));
+              const res = await mod.run(tpl, flatFiles, cfg);
+              if (!cancelled) setRunnerInfo(res || { ok: true });
+            }
+          } finally {
+            try { URL.revokeObjectURL(url); } catch {}
+          }
+        } catch (e) {
+          if (!cancelled) setRunnerErr(String(e?.message||e));
+        }
+      })();
+      return () => { cancelled = true; };
+    }, [engine, JSON.stringify(files), tplText, cfgText]);
+
+    const banner = (
+      <div style={{ position:'absolute', left:12, top:12, zIndex:10, padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background:'rgba(2,6,23,0.75)', color:'#cbd5e1', fontSize:12 }}>
+        <span style={{ color:'#93c5fd' }}>Engine:</span> {engine} <span style={{ margin:'0 6px', opacity:0.5 }}>|</span>
+        <span style={{ color:'#93c5fd' }}>Mode:</span> {mode}
+        {engine !== 'builtin' ? (
+          <span style={{ marginLeft:8, color:'#fbbf24' }} title="Adapter stub">
+            adapter stub — falling back to builtin UI
+          </span>
+        ) : null}
+        {runnerInfo ? (
+          <span style={{ marginLeft:8, color:'#86efac' }} title="Runner result">runner ok</span>
+        ) : null}
+        {runnerErr ? (
+          <span style={{ marginLeft:8, color:'#fca5a5' }} title="Runner error">runner error</span>
+        ) : null}
+      </div>
+    );
     return (
-      <div style={{ height:'100%', width:'100%' }}>
+      <div style={{ position:'relative', height:'100%', width:'100%' }}>
+        {banner}
         <ErrorBoundary onRetry={() => { try { window.dispatchEvent(new Event('play:retry')); } catch {} }}>
-          <MainGameMobileUI template={tpl} />
+          <MainGameMobileUI template={tpl} runtimeConfig={cfg} />
         </ErrorBoundary>
       </div>
     );

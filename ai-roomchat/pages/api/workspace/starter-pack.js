@@ -64,6 +64,58 @@ export default async function handler(req, res) {
       if (f) files.push(mapPath(f, 'Guides'));
     }
 
+    // Synthetic runtime foundation files (not from disk): provide execution stubs and guides
+    const runtimeGuide = {
+      path: 'Runtime/HOW_TO_BUILD.md',
+      content: [
+        '# Runtime & Execution Guide',
+        '',
+        '- This workspace is ready for prompt-graph + code runtime.',
+        '- Edit `/template.json`, `/graph/prompt-graph.json`, and `/game/hooks/automation.js`.',
+        '- The Play overlay loads your template and renders MainGame UI.',
+        '',
+        'Extending to more genres:',
+        '- Add adapters under `Runtime/adapters/*.js` and export a `run(ctx)` entry.',
+        '- Configure `/game/runtime.config.json` with `engine: phaser|three|custom`.',
+        '- Keep heavy assets in R2/S3 and reference by URL.',
+        '',
+        'Saving:',
+        '- The Save action persists both prompt-graph (DB) and code VFS (workspace set).',
+        '',
+      ].join('\n') + '\n',
+      readonly: true,
+    };
+    const runtimeRunner = {
+      path: 'Runtime/runner.js',
+      content: [
+        '// Runtime runner stub: you can import adapters here and delegate to them.',
+        'export async function run(template, files, config = {}) {',
+        '  // Decide adapter by config.engine; fallback to built-in MainGame UI.',
+        "  const engine = (config.engine || 'builtin').toLowerCase();",
+        '  if (engine === "custom-phaser") {',
+        '    const mod = await import("./adapters/phaser.js").catch(()=>null);',
+        '    if (mod?.run) return mod.run({ template, files, config });',
+        '  }',
+        '  // builtin fallback: return minimal render context',
+        '  return { ok: true, engine: "builtin", message: "Using built-in MainGame UI" };',
+        '}
+      '].join('\n') + '\n',
+      readonly: false,
+    };
+    const runtimeAdapterPhaser = {
+      path: 'Runtime/adapters/phaser.js',
+      content: [
+        '// Example Phaser adapter stub (client-side only).',
+        'export async function run(ctx){',
+        '  // ctx: { template, files, config }',
+        '  // Here you would boot Phaser and map template nodes to scenes.',
+        '  return { ok:true, engine:"phaser", message:"Phaser adapter stub" };',
+        '}
+      '].join('\n') + '\n',
+      readonly: false,
+    };
+    files.push(runtimeGuide, runtimeRunner, runtimeAdapterPhaser);
+
     const out = files.filter(Boolean);
     res.status(200).json({ files: out, count: out.length });
   } catch (e) {

@@ -1,6 +1,7 @@
 export const config = { runtime: 'nodejs' };
 
 import { getSet, saveSet as upsertSet } from '@/lib/workspace/setStore';
+import { dbCreateIfMissing } from '@/lib/workspace/dbWorkspaceSets';
 const SEEN = (globalThis.__SET_REQ_SEEN__ ||= new Set()); // request-id dedupe (idempotency)
 
 export default async function handler(req, res) {
@@ -30,14 +31,14 @@ export default async function handler(req, res) {
   const { id } = body;
   if (!id) return res.status(400).json({ error: 'missing id' });
 
-  // Create an empty set if missing (server-side persistent in-memory for this instance)
-  let cur = getSet(id);
+  // Prefer DB-backed create-or-get
+  let cur = await dbCreateIfMissing(id);
   if (!cur) {
-    cur = upsertSet(id, [], {});
+    // Fallback: in-memory
+    cur = getSet(id) || upsertSet(id, [], {});
   }
   if (rid) SEEN.add(rid);
-  // Return the current etag so clients can proceed with If-Match on PUT
-  try { res.setHeader('ETag', cur?.etag || ''); } catch {}
+  try { if (cur?.etag) res.setHeader('ETag', cur.etag); } catch {}
   return res.status(200).json({ ok: true, etag: cur?.etag || null });
 }
 
