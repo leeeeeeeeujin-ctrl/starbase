@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import CodeWorkspaceProvider from '../workspace/CodeWorkspaceProvider.jsx';
+import { CodeWorkspaceProvider } from '../workspace/CodeWorkspaceProvider.jsx';
 
 // WorkspaceFrame: 서버-우선으로 세트 파일을 불러와 CodeWorkspaceProvider를 일관되게 마운트합니다.
 // - id: 프롬프트/세트 id (storageNamespace와 키에 사용)
@@ -16,21 +16,24 @@ export default function WorkspaceFrame({ id, children }) {
         const r = await fetch(`/api/workspace/sets/${id}`);
         if (ignore) return;
         if (r.status === 200) {
-          const files = await r.json();
-          setInitFiles(files || {});
-          setEtag(r.headers.get('ETag') || null);
+          // API returns a record { id, files: [], meta, etag }
+          const json = await r.json();
+          const files = Array.isArray(json?.files) ? json.files : [];
+          setInitFiles(files);
+          // Prefer ETag header, fallback to record.etag if present
+          setEtag(r.headers.get('ETag') || json?.etag || null);
         } else if (r.status === 404) {
           // 첫 저장 전이면 404가 정상. 빈 VFS로 시작.
-          setInitFiles({});
+          setInitFiles([]);
           setEtag(null);
         } else {
           console.warn('[WorkspaceFrame] GET failed', r.status);
-          setInitFiles({});
+          setInitFiles([]);
           setEtag(null);
         }
       } catch (err) {
         console.warn('[WorkspaceFrame] GET error', err);
-        setInitFiles({});
+        setInitFiles([]);
         setEtag(null);
       }
     })();
