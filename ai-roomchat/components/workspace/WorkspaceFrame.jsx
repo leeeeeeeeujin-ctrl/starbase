@@ -20,8 +20,8 @@ export default function WorkspaceFrame({ id, children }) {
           // API returns a record { id, files: [], meta, etag }
           const json = await r.json();
           const files = Array.isArray(json?.files) ? json.files : [];
-          // If empty, hydrate with starter pack so the workspace is immediately useful
-          if (!files.length) {
+          // If empty, optionally hydrate with starter pack (behind flag)
+          if (!files.length && process.env.NEXT_PUBLIC_WORKSPACE_AUTOINIT === '1') {
             try {
               const sp = await fetch('/api/workspace/starter-pack');
               if (sp.ok) {
@@ -42,17 +42,21 @@ export default function WorkspaceFrame({ id, children }) {
           // Prefer ETag header, fallback to record.etag if present
           setEtag(r.headers.get('ETag') || json?.etag || null);
         } else if (r.status === 404) {
-          // 첫 저장 전이면 404가 정상. 빈 VFS로 시작.
-          try {
-            const sp = await fetch('/api/workspace/starter-pack');
-            if (sp.ok) {
-              const sj = await sp.json();
-              const sfiles = Array.isArray(sj?.files) ? sj.files : [];
-              setInitFiles(sfiles);
-            } else {
-              setInitFiles([]);
-            }
-          } catch { setInitFiles([]); }
+          // 첫 저장 전이면 404가 정상. 빈 VFS로 시작. (옵션: 자동 초기화)
+          if (process.env.NEXT_PUBLIC_WORKSPACE_AUTOINIT === '1') {
+            try {
+              const sp = await fetch('/api/workspace/starter-pack');
+              if (sp.ok) {
+                const sj = await sp.json();
+                const sfiles = Array.isArray(sj?.files) ? sj.files : [];
+                setInitFiles(sfiles);
+              } else {
+                setInitFiles([]);
+              }
+            } catch { setInitFiles([]); }
+          } else {
+            setInitFiles([]);
+          }
           setEtag(null);
         } else {
           console.warn('[WorkspaceFrame] GET failed', r.status);

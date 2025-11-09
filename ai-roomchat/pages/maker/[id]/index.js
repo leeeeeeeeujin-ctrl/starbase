@@ -12,7 +12,11 @@ export default function MakerEditorPage() {
   const { id } = router.query || {};
   const q = router?.query || {};
   const hasModeParam = typeof q.unified !== 'undefined' || typeof q.studio !== 'undefined';
-  const useUnified = hasModeParam ? (q.unified === '1' || q.studio === '1') : true; // default to unified workbench
+  const defaultUnified = (
+    process.env.NEXT_PUBLIC_WORKBENCH_DEFAULT === 'studio' ||
+    process.env.NEXT_PUBLIC_WORKBENCH_UNIFIED === '1'
+  );
+  const useUnified = hasModeParam ? (q.unified === '1' || q.studio === '1') : defaultUnified; // default follows env, otherwise original Maker-only
   const [initFiles, setInitFiles] = useState(null);
 
   useEffect(() => {

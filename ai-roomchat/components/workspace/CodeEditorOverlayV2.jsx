@@ -74,11 +74,12 @@ function PlayOverlayContent({ templateBinding }) {
     const engine = String(cfg?.engine || 'builtin').toLowerCase();
     const mode = String(cfg?.mode || (cfg?.durations ? 'turn' : 'realtime')).toLowerCase();
 
-    // Best-effort invoke Runtime/runner.js when engine === builtin
+    // Best-effort invoke Runtime/runner.js when engine === builtin (behind flag)
     React.useEffect(() => {
       let cancelled = false;
       (async () => {
         try {
+          if (process.env.NEXT_PUBLIC_RUNTIME_RUNNER !== '1') return;
           const runnerPath = '/Runtime/runner.js';
           const src = files?.[runnerPath]?.content;
           if (!src) return; // no runner present
@@ -103,7 +104,8 @@ function PlayOverlayContent({ templateBinding }) {
       return () => { cancelled = true; };
     }, [engine, JSON.stringify(files), tplText, cfgText]);
 
-    const banner = (
+    const showBanner = process.env.NEXT_PUBLIC_PLAY_BANNER === '1';
+    const banner = showBanner ? (
       <div style={{ position:'absolute', left:12, top:12, zIndex:10, padding:'6px 10px', borderRadius:8, border:'1px solid #334155', background:'rgba(2,6,23,0.75)', color:'#cbd5e1', fontSize:12 }}>
         <span style={{ color:'#93c5fd' }}>Engine:</span> {engine} <span style={{ margin:'0 6px', opacity:0.5 }}>|</span>
         <span style={{ color:'#93c5fd' }}>Mode:</span> {mode}
@@ -119,7 +121,7 @@ function PlayOverlayContent({ templateBinding }) {
           <span style={{ marginLeft:8, color:'#fca5a5' }} title="Runner error">runner error</span>
         ) : null}
       </div>
-    );
+    ) : null;
     return (
       <div style={{ position:'relative', height:'100%', width:'100%' }}>
         {banner}
