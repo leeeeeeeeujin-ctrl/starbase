@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { CodeWorkspaceProvider } from '../workspace/CodeWorkspaceProvider.jsx';
+import CodeWorkspaceProvider from '../workspace/CodeWorkspaceProvider.jsx';
 
 // WorkspaceFrame: 서버-우선으로 세트 파일을 불러와 CodeWorkspaceProvider를 일관되게 마운트합니다.
 // - id: 프롬프트/세트 id (storageNamespace와 키에 사용)
@@ -51,4 +51,3 @@ export default function WorkspaceFrame({ id, children }) {
     </CodeWorkspaceProvider>
   );
 }
-
