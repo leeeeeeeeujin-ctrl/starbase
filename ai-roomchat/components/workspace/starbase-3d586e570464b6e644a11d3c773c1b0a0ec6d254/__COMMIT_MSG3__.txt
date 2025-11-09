@@ -1,0 +1,1 @@
+workspace: responsive tree width; AI chat floating panel; narrative+actions schema; layout fixes  

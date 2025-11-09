@@ -1,0 +1,2 @@
+"use strict";(self.webpackChunk_N_E=self.webpackChunk_N_E||[]).push([[3699],{3699:function(e,t,n){n.r(t),n.d(t,{showQuotaExceeded:function(){return c},subscribeQuotaExceeded:function(){return d}});let u="app:quotaExceeded";function c(){try{window.dispatchEvent(new CustomEvent(u,{detail:{}}))}catch(e){}}function d(e){let t=t=>{try{e((null==t?void 0:t.detail)||{})}catch(e){}};return window.addEventListener(u,t),()=>window.removeEventListener(u,t)}}}]);
+//# sourceMappingURL=3699.beff33c19da7283f.js.map

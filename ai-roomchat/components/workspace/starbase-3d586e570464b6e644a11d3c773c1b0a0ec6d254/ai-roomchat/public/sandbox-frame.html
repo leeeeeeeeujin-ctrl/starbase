@@ -1,0 +1,63 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; connect-src 'none'; img-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'self'" />
+    <title>Sandbox Frame</title>
+  </head>
+  <body>
+    <script>
+      (function(){
+        // Deterministic PRNG seeded by string
+        function makeRng(seedStr){
+          let seed = 0;
+          for (let i = 0; i < seedStr.length; i++) seed = (seed * 31 + seedStr.charCodeAt(i)) >>> 0;
+          function rand(){
+            seed = (seed * 1664525 + 1013904223) >>> 0;
+            return (seed & 0xffff) / 0xffff;
+          }
+          return rand;
+        }
+
+        function runRuleSim(payload){
+          const state = payload && payload.state || {};
+          const units = Array.isArray(state.units) ? state.units : [];
+          const seedStr = String(state.sessionId || 'seed');
+          const rand = makeRng(seedStr);
+          let scoreA = 0, scoreB = 0;
+          for (const u of units){
+            const atk = Number(u && u.attack) || 0;
+            const def = Number(u && u.defense) || 0;
+            const power = (atk + def) * (1 + rand() * 0.05);
+            if ((u && u.team) === 'A') scoreA += power; else scoreB += power;
+          }
+          const winner = scoreA === scoreB ? 'draw' : (scoreA > scoreB ? 'A' : 'B');
+          return { simulated: true, winner, scoreA: Math.round(scoreA), scoreB: Math.round(scoreB) };
+        }
+
+        function handleMessage(event){
+          // Accept only messages from parent
+          if (event.source !== parent) return;
+          const data = event.data || {};
+          const id = data.id;
+          if (!id) return;
+          try {
+            let result;
+            if (data.cmd === 'ruleSim.run') {
+              result = runRuleSim(data.payload || {});
+              parent.postMessage({ id, ok: true, result }, '*');
+            } else {
+              parent.postMessage({ id, ok: false, error: 'unknown_cmd' }, '*');
+            }
+          } catch (e) {
+            parent.postMessage({ id, ok: false, error: String(e && e.message || e) }, '*');
+          }
+        }
+
+        addEventListener('message', handleMessage, false);
+        // Signal ready (optional)
+        if (parent && parent.postMessage) parent.postMessage({ type: 'sandbox_ready' }, '*');
+      })();
+    </script>
+  </body>
+</html>

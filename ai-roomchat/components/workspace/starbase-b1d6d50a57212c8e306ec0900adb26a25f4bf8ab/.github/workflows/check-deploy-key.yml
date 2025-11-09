@@ -1,0 +1,22 @@
+name: Check DEPLOY_KEY availability (safe)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check-deploy-key:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify DEPLOY_KEY presence and print safe fingerprint
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+        run: |
+          set -e
+          if [ -z "$DEPLOY_KEY" ]; then
+            echo "DEPLOY_KEY is not set"
+            exit 1
+          fi
+
+          # Print length (bytes) and SHA256 fingerprint only — do NOT print the secret itself.
+          printf '%s' "$DEPLOY_KEY" | wc -c | awk '{print "length:" $1}'
+          printf '%s' "$DEPLOY_KEY" | sha256sum | awk '{print "sha256:" $1}'

@@ -1,0 +1,42 @@
+name: Check schema_migrations
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check-schema-migrations:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      MIGRATE_DATABASE_URL: ${{ secrets.MIGRATE_DATABASE_URL }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate DB secret present
+        run: |
+          if [ -z "${{ secrets.MIGRATE_DATABASE_URL }}" ] && [ -z "${{ secrets.DATABASE_URL }}" ] && [ -z "${{ secrets.SUPABASE_DB_URL }}" ]; then
+            echo "No database connection secret found (MIGRATE_DATABASE_URL / DATABASE_URL / SUPABASE_DB_URL).";
+            exit 1;
+          fi
+
+      - name: Build migration-check image
+        run: |
+          docker build -t migration-runner-check -f ai-roomchat/ci/migration-runner/Dockerfile .
+
+      - name: Run schema_migrations check (no-entrypoint)
+        env:
+          MIGRATE_DATABASE_URL: ${{ secrets.MIGRATE_DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          docker run --rm \
+            -e MIGRATE_DATABASE_URL="${MIGRATE_DATABASE_URL}" \
+            -e DATABASE_URL="${DATABASE_URL}" \
+            -e SUPABASE_DB_URL="${SUPABASE_DB_URL}" \
+            --entrypoint node \
+            migration-runner-check \
+            -e "const {Client}=require('pg');(async()=>{const conn=process.env.MIGRATE_DATABASE_URL||process.env.DATABASE_URL||process.env.SUPABASE_DB_URL;if(!conn){console.error('No DB connection string');process.exit(1);}const c=new Client({connectionString:conn,ssl:{rejectUnauthorized:false}});await c.connect();const r=await c.query('SELECT filename, checksum, applied_at FROM public.schema_migrations ORDER BY applied_at DESC LIMIT 100');console.log(JSON.stringify(r.rows,null,2));await c.end();process.exit(0)})().catch(e=>{console.error(e);process.exit(2)})"

@@ -1,0 +1,26 @@
+{
+  "start": "intro",
+  "nodes": {
+    "intro": {
+      "text": "{{character.name}}가 어두운 방에 들어왔다.",
+      "choices": [
+        { "label": "앞으로 간다", "to": "room" },
+        { "label": "뒤로 물러선다", "to": "exit" }
+      ]
+    },
+    "room": {
+      "text": "방 한가운데에서 소리가 난다.",
+      "choices": [
+        { "label": "불을 켠다", "to": "lit", "effects": [{ "set": ["hasLight", true] }] }
+      ]
+    },
+    "lit": {
+      "text": "불빛 아래 열쇠를 발견했다.",
+      "choices": []
+    },
+    "exit": {
+      "text": "밖으로 나왔다.",
+      "choices": []
+    }
+  }
+}

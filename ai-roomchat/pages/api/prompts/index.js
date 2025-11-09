@@ -1,6 +1,7 @@
 export const config = { runtime: 'nodejs' };
 import { pushCreationLog } from '../../../lib/server/creationLog.js';
 import { getWorkspaceSetStore } from '../../../lib/workspace/store/index.js';
+import { getSupabaseAdmin } from '../../../lib/server/supabaseAdmin.js';
 
 const g = globalThis;
 const PROMPTS = (g.__PROMPTS_STORE__ ||= new Map()); // id -> { id, name, createdAt }
@@ -53,6 +54,12 @@ export default async function handler(req, res) {
     if (!id) id = makeId();
     if (!name) name = id;
 
+    // Canonicalize id against Supabase (meta) if available
+    try {
+      const canon = await findCanonicalId(id || name);
+      if (canon) id = canon;
+    } catch {}
+
     // 1) Idempotency by name
     const byName = Array.from(PROMPTS.values()).find(p => p.name === name);
     if (byName) {
@@ -88,13 +95,35 @@ function safeJson(s) { try { return JSON.parse(s); } catch { return {}; } }
 async function persistSupabase(row) {
   try {
     if (process.env.USE_SUPABASE_SETS === '1') {
-      const { getSupabaseAdmin } = require('../../../lib/server/supabaseAdmin.js');
       const sb = getSupabaseAdmin();
       if (!sb) return;
-      const { error } = await sb.from('prompt_sets').upsert(row, { onConflict: 'id' });
+      const payload = { id: row.id, name: row.name, blob_key: `sets/${row.id}.json`, blob_etag: row.blob_etag || null };
+      const { error } = await sb.from('prompt_sets').upsert(payload, { onConflict: 'id' });
       if (error) console.warn('[api/prompts] supabase upsert error', error);
     }
   } catch (e) {
     console.warn('[api/prompts] supabase upsert exception', e);
+  }
+}
+
+async function findCanonicalId(nameOrId) {
+  try {
+    if (process.env.USE_SUPABASE_SETS !== '1') return null;
+    const sb = getSupabaseAdmin();
+    if (!sb) return null;
+    const key = String(nameOrId);
+    const blobKey = `sets/${key}.json`;
+    // Try id match
+    let { data, error } = await sb.from('prompt_sets').select('id').eq('id', key).limit(1).maybeSingle();
+    if (data && data.id) return data.id;
+    // Try name match
+    ({ data, error } = await sb.from('prompt_sets').select('id').eq('name', key).limit(1).maybeSingle());
+    if (data && data.id) return data.id;
+    // Try blob_key match
+    ({ data, error } = await sb.from('prompt_sets').select('id').eq('blob_key', blobKey).limit(1).maybeSingle());
+    if (data && data.id) return data.id;
+    return null;
+  } catch (e) {
+    return null;
   }
 }

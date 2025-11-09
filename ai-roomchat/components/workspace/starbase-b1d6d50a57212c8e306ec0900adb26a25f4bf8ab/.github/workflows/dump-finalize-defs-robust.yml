@@ -1,0 +1,113 @@
+name: Dump finalize function definitions (robust)
+
+on:
+  workflow_dispatch:
+    inputs:
+      sql_file:
+        description: 'Path to SQL file in the repository (relative)'
+        required: true
+        default: 'ai-roomchat/docs/sql/query-finalize-functions.sql'
+
+jobs:
+  dump-defs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Supabase CLI (official binary)
+        run: |
+          set -e
+          echo "Downloading supabase CLI binary..."
+          curl -L -o /tmp/supabase.tar.gz https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.tar.gz
+          tar -xzf /tmp/supabase.tar.gz -C /tmp
+          sudo mv /tmp/supabase /usr/local/bin/supabase || true
+          sudo chmod +x /usr/local/bin/supabase || true
+
+      - name: Dump SQL output and upload
+        env:
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_PROJECT_URL: ${{ secrets.SUPABASE_PROJECT_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ] || [ -z "$SUPABASE_PROJECT_URL" ]; then
+            echo "Missing SUPABASE_SERVICE_ROLE_KEY or SUPABASE_PROJECT_URL secret" >&2
+            exit 1
+          fi
+
+          PROJECT_REF=$(echo "$SUPABASE_PROJECT_URL" | sed -E 's#https?://([^.]*)\..*#\1#')
+          export SUPABASE_ACCESS_TOKEN="$SUPABASE_SERVICE_ROLE_KEY"
+
+          SQL_FILE="${{ github.event.inputs.sql_file }}"
+          if [ -z "$SQL_FILE" ]; then
+            echo "ERROR: sql_file input is empty" >&2
+            exit 1
+          fi
+
+          CANDIDATE="$SQL_FILE"
+          if [ ! -f "$CANDIDATE" ]; then
+            BASENAME=$(basename "$SQL_FILE")
+            FOUND=$(git ls-files | grep -F "${BASENAME}" | head -n1 || true)
+            if [ -n "$FOUND" ]; then
+              CANDIDATE="$FOUND"
+            elif [ -f "ai-roomchat/$SQL_FILE" ]; then
+              CANDIDATE="ai-roomchat/$SQL_FILE"
+            elif [ -f "docs/sql/$SQL_FILE" ]; then
+              CANDIDATE="docs/sql/$SQL_FILE"
+            fi
+          fi
+
+          if [ ! -f "$CANDIDATE" ]; then
+            echo "ERROR: SQL file not found at '$SQL_FILE' or common locations" >&2
+            ls -la || true
+            exit 1
+          fi
+
+          echo "Running SQL file: $CANDIDATE"
+
+          # Output file
+          OUT=/tmp/finalize-defs.txt
+          echo "--- begin SQL output (stdout/stderr) ---" > "$OUT"
+
+          set +e
+          echo "Attempt 1: supabase db query --project-ref <ref> --service-role-key <key> (with flags)" >> "$OUT"
+          /bin/bash -lc "cat $CANDIDATE | supabase db query --project-ref \"$PROJECT_REF\" --service-role-key \"$SUPABASE_SERVICE_ROLE_KEY\" --yes" >> "$OUT" 2>&1
+          RC=$?
+          if [ $RC -eq 0 ]; then
+            echo "Attempt 1 succeeded" >> "$OUT"
+          else
+            echo "Attempt 1 failed (rc=$RC)" >> "$OUT"
+            echo "Attempt 2: supabase db query (stdin, no flags)" >> "$OUT"
+            /bin/bash -lc "cat $CANDIDATE | supabase db query --yes" >> "$OUT" 2>&1
+            RC=$?
+            if [ $RC -eq 0 ]; then
+              echo "Attempt 2 succeeded" >> "$OUT"
+            else
+              echo "Attempt 2 failed (rc=$RC)" >> "$OUT"
+              echo "Attempt 3: supabase db query --yes (file redirection)" >> "$OUT"
+              /bin/bash -lc "supabase db query --yes < $CANDIDATE" >> "$OUT" 2>&1
+              RC=$?
+              if [ $RC -eq 0 ]; then
+                echo "Attempt 3 succeeded" >> "$OUT"
+              else
+                echo "All attempts failed (rc=$RC). Collecting diagnostics." >> "$OUT"
+                echo "--- supabase --version ---" >> "$OUT"
+                supabase --version >> "$OUT" 2>&1 || true
+                echo "--- supabase db --help ---" >> "$OUT"
+                supabase db --help >> "$OUT" 2>&1 || true
+              fi
+            fi
+          fi
+
+          echo "--- end SQL output ---" >> "$OUT"
+
+          # Upload artifact
+          mkdir -p artifacts
+          cp "$OUT" artifacts/finalize-defs.txt || true
+          tar -czf /tmp/finalize-defs.tar.gz -C artifacts . || true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: finalize-defs
+          path: /tmp/finalize-defs.txt

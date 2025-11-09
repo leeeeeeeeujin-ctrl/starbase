@@ -1,0 +1,1 @@
+const fs=require('fs');const s=fs.readFileSync('ai-roomchat/components/maker/editor/MakerEditor.js','utf8');console.log('has showMultiLanguageEditor',/showMultiLanguageEditor/.test(s));console.log('has gameSimulatorOpen',/gameSimulatorOpen/.test(s));  

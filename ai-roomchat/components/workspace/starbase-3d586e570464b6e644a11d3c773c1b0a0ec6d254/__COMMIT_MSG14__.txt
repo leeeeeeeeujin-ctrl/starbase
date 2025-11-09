@@ -1,0 +1,1 @@
+workspace: editor fill-width, resizable AI chat, log cap 50, remove attach toggles  

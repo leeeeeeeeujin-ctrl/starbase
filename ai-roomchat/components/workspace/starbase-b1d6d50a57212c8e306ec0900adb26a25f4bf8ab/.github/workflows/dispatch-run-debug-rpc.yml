@@ -1,0 +1,49 @@
+name: Dispatch - Run debug finalize RPC
+
+on:
+  workflow_dispatch:
+
+jobs:
+  run-debug-rpc:
+    name: Run debug finalize RPC (uses repo secrets)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies (ai-roomchat)
+        working-directory: ai-roomchat
+        run: |
+          npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Ensure small runtime deps
+        working-directory: ai-roomchat
+        run: |
+          # dotenv may not be a dependency in CI; install it no-save to satisfy scripts that require it
+          npm install dotenv --no-save || true
+
+      - name: Run debug RPC script
+        working-directory: ai-roomchat
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_PROJECT_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -euo pipefail
+          echo "Starting debug RPC runner..."
+          # ensure tiny runtime deps that scripts sometimes require (do not modify package.json)
+          npm install dotenv --no-save || true
+          node scripts/run-rpc-create-session-debug.js > /tmp/debug-rpc-output.txt 2>&1 || true
+          echo "--- STDOUT/STDERR from debug RPC runner ---"
+          sed -n '1,200p' /tmp/debug-rpc-output.txt || true
+          echo "Exit code captured. Uploading artifact..."
+
+      - name: Upload debug RPC log
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-rpc-output
+          path: /tmp/debug-rpc-output.txt

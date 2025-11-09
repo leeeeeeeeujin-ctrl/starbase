@@ -1,0 +1,17 @@
+[
+  {
+    "description": "코드 분석 및 버그 찾기",
+    "files": ["lib/rank/matching.js"],
+    "instruction": "이 매칭 알고리즘을 분석하고 잠재적인 버그, race condition, edge case를 찾아줘. 특히 큐 관리와 동시성 이슈에 집중해서."
+  },
+  {
+    "description": "성능 최적화 제안",
+    "files": ["lib/rank/matching.js"],
+    "instruction": "이 코드의 성능 병목을 분석하고 구체적인 최적화 방안을 제시해줘. Big-O 복잡도 분석과 함께 개선 코드 예시도 포함해."
+  },
+  {
+    "description": "단위 테스트 작성",
+    "files": ["lib/rank/matching.js"],
+    "instruction": "이 파일에 대한 포괄적인 Jest 단위 테스트를 작성해줘. 정상 케이스, edge case, 에러 처리를 모두 포함하고 실행 가능한 완전한 코드로 작성해."
+  }
+]
