@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import WorkspaceFrame from '../../../components/workspace/WorkspaceFrame.jsx';
 import { useWorkspace } from '../../../components/workspace/CodeWorkspaceProvider.jsx';
-import saveSet from '../../../lib/workspace/saveSet.js';
+import { saveSet } from '../../../lib/workspace/saveSet.js';
 
 export function SimpleEditor({ id }) {
   const { api, files, activePath } = useWorkspace();
@@ -14,8 +14,9 @@ export function SimpleEditor({ id }) {
   const onSave = async () => {
     try {
       setStatus('saving...');
-      const exported = api.exportFiles();
-      const newEtag = await saveSet(id, exported, etagRef);
+      // Save current workspace files; saveSet accepts a files map or list
+      const newEtag = await saveSet(id, files, etagRef.current || undefined);
+      etagRef.current = newEtag || etagRef.current;
       setStatus(newEtag ? 'saved' : 'saved');
       setTimeout(() => setStatus(''), 1000);
     } catch (err) {
@@ -50,7 +51,7 @@ export function SimpleEditor({ id }) {
         </div>
         <div style={{ flex:1, position:'relative' }}>
           <textarea
-            value={files[activePath] ?? ''}
+            value={(files[activePath]?.content ?? '')}
             onChange={(e) => api.writeFile(activePath || '/untitled.txt', e.target.value)}
             style={{ width:'100%', height:'100%', border:'none', outline:'none', fontFamily:'monospace', fontSize:14, background:'#0b1220', color:'#e2e8f0', padding:12 }}
           />
