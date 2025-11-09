@@ -93,6 +93,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "eslint-config-next": "^14.2.33",
     "@capacitor/cli": "^6.2.0",
     "@capacitor/android": "^6.2.0",
     "@capacitor/ios": "^6.2.0",
