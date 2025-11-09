@@ -5,6 +5,10 @@ const g = globalThis;
 const PROMPTS = (g.__PROMPTS_STORE__ ||= new Map()); // id -> { id, name, createdAt }
 const SEEN = (g.__PROMPTS_SEEN__ ||= new Set()); // X-Request-Id dedupe
 
+// Short-term recent request cache to handle cases where callers don't set stable ids
+// Keyed by X-Request-Id (preferred) or by a lightweight signature of referer+body
+const RECENT_REQ = (g.__PROMPTS_RECENT_REQ__ ||= new Map()); // key -> { at, result }
+
 // Reuse workspace set store if present to ensure parity
 const SETS = (g.__SET_STORE__ ||= new Map()); // id -> { etag, files }
 
@@ -33,9 +37,25 @@ export default async function handler(req, res) {
         });
       } catch {}
     }
+    // Fast-path idempotency by X-Request-Id
     if (rid && SEEN.has(rid)) {
-      // Idempotent acknowledgement
       return res.status(200).json({ ok: true });
+    }
+
+    // If client didn't set a stable X-Request-Id, try dedupe by a short-term
+    // signature (referer + name/body). This helps when clients generate distinct
+    // random ids per attempt or Strict Mode double-invoke.
+    try {
+      const sigBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {});
+      const sig = `${(req.headers['referer']||'')}:${sigBody}`;
+      const recent = RECENT_REQ.get(sig);
+      if (recent && (Date.now() - recent.at) < 3000) {
+        // Return cached result to avoid duplicate creation
+        if (rid) SEEN.add(rid);
+        return res.status(200).json(recent.result || { ok: true });
+      }
+    } catch (e) {
+      // ignore signature errors
     }
 
     const body = typeof req.body === 'string' ? safeJson(req.body) : (req.body || {});
@@ -51,8 +71,10 @@ export default async function handler(req, res) {
       if (!SETS.has(byName.id)) {
         SETS.set(byName.id, { etag: `"${Date.now()}"`, files: {} });
       }
+      const out = { ok: true, id: byName.id, name: byName.name, existed: true };
       if (rid) SEEN.add(rid);
-      return res.status(200).json({ ok: true, id: byName.id, name: byName.name, existed: true });
+      try { RECENT_REQ.set(`${(req.headers['referer']||'')}:${JSON.stringify(req.body||{})}`, { at: Date.now(), result: out }); } catch {}
+      return res.status(200).json(out);
     }
 
     // 2) De-dupe by id
@@ -64,8 +86,10 @@ export default async function handler(req, res) {
       SETS.set(id, { etag: `"${Date.now()}"`, files: {} });
     }
 
-    if (rid) SEEN.add(rid);
-    return res.status(200).json({ ok: true, id, name });
+  const out = { ok: true, id, name };
+  if (rid) SEEN.add(rid);
+  try { RECENT_REQ.set(`${(req.headers['referer']||'')}:${JSON.stringify(req.body||{})}`, { at: Date.now(), result: out }); } catch {}
+  return res.status(200).json(out);
   }
 
   res.setHeader('Allow', 'GET, POST');
