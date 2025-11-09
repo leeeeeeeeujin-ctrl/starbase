@@ -12,7 +12,7 @@ const btnPrimary = { padding:'8px 14px', border:'1px solid #2563eb', background:
 const input = { flex:1, minWidth:0, padding:'8px 10px', background:'#0f172a', color:'#e2e8f0', border:'1px solid #334155', borderRadius:8, outline:'none' };
 const ctl = { padding:'4px 8px', border:'1px solid #334155', background:'#0f172a', color:'#cbd5e1', borderRadius:6 };
 
-export default function MainGameMobileUI({ template, user = null, onNext = () => {}, runtimeFeed = null, runtimeSecondsLeft = null, onForceNext = null, onPlayerChat = null }) {
+export default function MainGameMobileUI({ template, user = null, onNext = () => {}, runtimeFeed = null, runtimeSecondsLeft = null, onForceNext = null, onPlayerChat = null, runtimeBus = null }) {
   const isMobile = useIsMobile(820); // currently unused but reserved for responsive adjustments
   const [layout, setLayout] = useState(() => loadLayout());
   const [edit, setEdit] = useState(false);
@@ -31,6 +31,17 @@ export default function MainGameMobileUI({ template, user = null, onNext = () =>
 
   // Persist manual layout edits
   useEffect(() => { saveLayout(layout); }, [layout]);
+  // Optional runtime bus listeners (no-op when not provided)
+  useEffect(() => {
+    if (!runtimeBus || typeof runtimeBus.on !== 'function') return;
+    const offLayout = runtimeBus.on('ui:setLayout', (order) => {
+      try { if (Array.isArray(order)) setLayout(cur => ({ ...cur, order })); } catch {}
+    });
+    const offSystem = runtimeBus.on('system:message', (msg) => {
+      try { if (msg != null) setGameChat(prev => [...prev, { role: 'system', text: String(msg) }]); } catch {}
+    });
+    return () => { try { offLayout?.(); offSystem?.(); } catch {} };
+  }, [runtimeBus]);
 
   // Template-driven layout override (only when not manually editing)
   useEffect(() => {
@@ -52,8 +63,9 @@ export default function MainGameMobileUI({ template, user = null, onNext = () =>
     } else {
       setChat(prev => [...prev, { role: 'me', text: t, at: Date.now() }]);
     }
+    try { runtimeBus?.emit?.('player:chat', { text: t }); } catch {}
     setChatText('');
-  }, [chatText, onPlayerChat]);
+  }, [chatText, onPlayerChat, runtimeBus]);
 
   const triggerNext = useCallback(() => {
     if (typeof onForceNext === 'function') {
@@ -61,9 +73,10 @@ export default function MainGameMobileUI({ template, user = null, onNext = () =>
     } else {
       setGameChat(prev => [...prev, { role: 'system', text: '다음 단계로 진행합니다.' }]);
     }
+    try { runtimeBus?.emit?.('turn:next'); } catch {}
     try { onNext?.(); } catch {}
     if (onForceNext == null && typeof nextPolicy.timeoutSec === 'number') setSecondsLeft(nextPolicy.timeoutSec);
-  }, [onNext, onForceNext, nextPolicy?.timeoutSec]);
+  }, [onNext, onForceNext, nextPolicy?.timeoutSec, runtimeBus]);
 
   // Local countdown timer (skipped if external runtime controls)
   useEffect(() => {

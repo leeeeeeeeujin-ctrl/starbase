@@ -61,8 +61,17 @@ class ErrorBoundary extends React.Component {
 
 function PlayOverlayContent({ templateBinding }) {
   const { files } = useWorkspace();
+  const router = useRouter();
   const [runnerInfo, setRunnerInfo] = React.useState(null);
   const [runnerErr, setRunnerErr] = React.useState(null);
+  const bus = React.useMemo(() => {
+    const listeners = new Map();
+    return {
+      on(event, fn){ const arr=listeners.get(event)||[]; listeners.set(event, [...arr, fn]); return () => this.off(event, fn); },
+      off(event, fn){ const arr=listeners.get(event)||[]; listeners.set(event, arr.filter(f=>f!==fn)); },
+      emit(event, payload){ const arr=listeners.get(event)||[]; arr.forEach(fn=>{ try{ fn(payload);}catch(e){ console.warn('bus handler error', e);} }); },
+    };
+  }, []);
   try {
     const tplText = (typeof templateBinding?.text === 'string' && templateBinding.text.length > 0)
       ? templateBinding.text
@@ -81,7 +90,15 @@ function PlayOverlayContent({ templateBinding }) {
         try {
           if (process.env.NEXT_PUBLIC_RUNTIME_RUNNER !== '1') return;
           const runnerPath = '/Runtime/runner.js';
-          const src = files?.[runnerPath]?.content;
+          let src = files?.[runnerPath]?.content;
+          // Fallback: search a reference pack runner if user has not created one
+          if (!src) {
+            try {
+              const keys = Object.keys(files || {});
+              const refKey = keys.find(k => /\/Reference\/.+\/Runtime\/runner\.js$/.test(k));
+              if (refKey) src = files[refKey]?.content;
+            } catch {}
+          }
           if (!src) return; // no runner present
           if (engine !== 'builtin') return; // only call runner for builtin engine to avoid adapter import errors
           const blob = new Blob([src], { type: 'text/javascript' });
@@ -91,7 +108,7 @@ function PlayOverlayContent({ templateBinding }) {
             if (cancelled) return;
             if (mod && typeof mod.run === 'function') {
               const flatFiles = Object.fromEntries(Object.entries(files||{}).map(([p, m]) => [p, { content: m?.content || '' }]));
-              const res = await mod.run(tpl, flatFiles, cfg);
+              const res = await mod.run(tpl, flatFiles, { ...cfg, bus, setId: String(router?.query?.id || '') });
               if (!cancelled) setRunnerInfo(res || { ok: true });
             }
           } finally {
@@ -102,7 +119,7 @@ function PlayOverlayContent({ templateBinding }) {
         }
       })();
       return () => { cancelled = true; };
-    }, [engine, JSON.stringify(files), tplText, cfgText]);
+    }, [engine, JSON.stringify(files), tplText, cfgText, bus]);
 
     const showBanner = process.env.NEXT_PUBLIC_PLAY_BANNER === '1';
     const banner = showBanner ? (
@@ -126,7 +143,7 @@ function PlayOverlayContent({ templateBinding }) {
       <div style={{ position:'relative', height:'100%', width:'100%' }}>
         {banner}
         <ErrorBoundary onRetry={() => { try { window.dispatchEvent(new Event('play:retry')); } catch {} }}>
-          <MainGameMobileUI template={tpl} runtimeConfig={cfg} />
+          <MainGameMobileUI template={tpl} runtimeConfig={cfg} runtimeBus={bus} />
         </ErrorBoundary>
       </div>
     );

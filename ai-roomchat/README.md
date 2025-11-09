@@ -64,3 +64,9 @@ npm run dev
 Generated: 2025-09-19T17:54:31.829473
 
 <!-- -->
+
+## Workspace/Runtime 확장 문서
+
+기존 편집기 UX를 유지한 채 로직을 확장하는 원칙, 코드 에디터 파일트리 기본 구성, 런타임/러너 확장 지점, 환경 토글은 아래 문서를 참고하세요.
+
+- docs/WORKSPACE_AND_RUNTIME_EXTENSIONS.md

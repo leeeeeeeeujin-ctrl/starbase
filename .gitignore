@@ -1,4 +1,4 @@
-﻿# Ignore archived snapshot directories (local archives, large files, etc.)
+# Ignore archived snapshot directories (local archives, large files, etc.)
 archived/
 
 # Ignore local environment files which may contain secrets
@@ -48,4 +48,4 @@ ai-roomchat/docs/reference_data/
 ai-roomchat/docs/reference_data/**
 
 # Ignore the large local reference_data folder (kept locally, not committed)
-reference_data/
+# reference_data/  # unignored per user request (2025-11-10)
