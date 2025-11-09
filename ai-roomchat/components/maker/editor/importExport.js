@@ -4,6 +4,9 @@ import { supabase } from '../../../lib/supabase';
 import { withTableQuery } from '../../../lib/supabaseTables';
 import { sanitizeVariableRules } from '../../../lib/variableRules';
 
+// Simple guard to avoid duplicate import triggers (e.g. double file events/clicks)
+let importInFlight = false;
+
 export async function exportSet() {
   const match = (typeof window !== 'undefined' ? window.location.pathname : '').match(
     /\/maker\/([^/]+)/
@@ -44,7 +47,22 @@ export async function importSet(event) {
   const file = event.target.files?.[0];
   if (!file) return;
 
+  // Prevent duplicate concurrent imports
+  if (importInFlight) {
+    console.warn('importSet: import already in-flight, ignoring duplicate trigger');
+    // reset input to allow retry by user
+    try {
+      event.target.value = '';
+    } catch (e) {}
+    return;
+  }
+
   try {
+    importInFlight = true;
+    // disable input to avoid additional change events while processing
+    try {
+      event.target.disabled = true;
+    } catch (e) {}
     const text = await file.text();
     const payload = JSON.parse(text);
 
@@ -171,7 +189,12 @@ export async function importSet(event) {
     console.error(err);
     alert(err instanceof Error ? err.message : 'JSON을 불러오지 못했습니다.');
   } finally {
-    event.target.value = '';
+    // re-enable input and clear value
+    try {
+      event.target.disabled = false;
+      event.target.value = '';
+    } catch (e) {}
+    importInFlight = false;
   }
 }
 
