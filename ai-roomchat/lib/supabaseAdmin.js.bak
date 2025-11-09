@@ -62,3 +62,67 @@ export { supabaseAdmin as supabase };
 
 // Also provide a default export for convenience.
 export default supabaseAdmin;
+import { createClient } from '@supabase/supabase-js';
+
+import { sanitizeSupabaseUrl } from './supabaseEnv';
+import { createSupabaseAuthConfig } from './supabaseAuthConfig';
+
+// Re-export helper for callers that need auth-config construction
+export { createSupabaseAuthConfig } from './supabaseAuthConfig';
+
+// Read envs (may be undefined in some environments like edge bundlers)
+const url = sanitizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL);
+const key = process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_SERVICE_ROLE_KEY; // server-only
+
+// Create a real Supabase client if envs are present, otherwise export a
+// proxy that throws a helpful error when used. This avoids throwing at
+// module-evaluation time and allows importing this module safely in tests
+// or client bundles that don't provide server envs.
+let supabaseAdmin;
+if (url && key) {
+  const serviceAuthConfig = createSupabaseAuthConfig(url, {
+    apikey: key,
+    authorization: `Bearer ${key}`,
+  });
+
+  supabaseAdmin = createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: {
+      headers: { ...serviceAuthConfig.headers },
+      fetch: serviceAuthConfig.fetch,
+    },
+  });
+} else {
+  const missingErr = new Error(
+    'Missing SUPABASE envs - set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE'
+  );
+
+  const thrower = () => {
+    throw missingErr;
+  };
+
+  // Proxy any access/use to surface the missing-env error at call time.
+  supabaseAdmin = new Proxy(
+    // target
+    {},
+    // handler
+    {
+      get() {
+        thrower();
+      },
+      apply() {
+        thrower();
+      },
+      construct() {
+        thrower();
+      },
+    }
+  );
+}
+
+// Named exports kept for backwards compatibility with older imports.
+export { supabaseAdmin };
+export { supabaseAdmin as supabase };
+
+// Also provide a default export for convenience.
+export default supabaseAdmin;
