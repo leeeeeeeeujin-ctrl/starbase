@@ -1,6 +1,10 @@
 // Simple in-memory store for workspace sets. Non-persistent; suitable for dev.
-const sets = new Map();
-const reqCache = new Map(); // idempotency: requestId -> set
+// Use a global shared Map so other server modules (API routes) that also
+// reference `globalThis.__SET_STORE__` see the same data. This avoids having
+// duplicate maps across modules during dev hot-reloads or differing bundles.
+const g = globalThis;
+const sets = (g.__SET_STORE__ ||= new Map());
+const reqCache = (g.__SET_REQ_CACHE__ ||= new Map()); // idempotency: requestId -> set
 
 function nowTag() {
   try { return new Date().toISOString(); } catch { return String(Date.now()); }
