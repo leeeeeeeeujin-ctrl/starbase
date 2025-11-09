@@ -15,6 +15,7 @@ const InstallGate = dynamic(() => import('@/components/pwa/InstallGate'), { ssr:
 import '../styles/globals.css';
 import { GameIntegrationProvider } from '@/components/GameIntegrationContext';
 import { ClientCapabilitiesProvider } from '@/context/ClientCapabilitiesContext';
+import OverlayHost from '@/components/workspace/OverlayHost.jsx';
 
 function OverlayAwareShell({ children }) {
   const router = useRouter();
@@ -79,6 +80,8 @@ export default function App({ Component, pageProps }) {
         <UpgradeBanner />
   {/* PWA install enforcement (restricted routes redirect) */}
   <InstallGate />
+        {/* Single global overlay host for AI/code overlays */}
+        <OverlayHost />
         <Component {...pageProps} />
       </OverlayAwareShell>
       </ClientCapabilitiesProvider>

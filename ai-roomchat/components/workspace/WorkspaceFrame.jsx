@@ -1,43 +1,53 @@
-"use client";
+import React, { useEffect, useState } from 'react';
+import CodeWorkspaceProvider from '../workspace/CodeWorkspaceProvider.jsx';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/router';
-import { CodeWorkspaceProvider } from './CodeWorkspaceProvider.jsx';
-
-export default function WorkspaceFrame({ id: propId, children, fallback = null }) {
-  const router = useRouter();
-  const routeId = router?.query?.id;
-  const id = String(propId || routeId || '');
+// WorkspaceFrame: 서버-우선으로 세트 파일을 불러와 CodeWorkspaceProvider를 일관되게 마운트합니다.
+// - id: 프롬프트/세트 id (storageNamespace와 키에 사용)
+// - children: Provider 하위에서만 동작해야 하는 편집/플레이 UI
+export default function WorkspaceFrame({ id, children }) {
   const [initFiles, setInitFiles] = useState(null);
   const [etag, setEtag] = useState(null);
 
   useEffect(() => {
-    let alive = true;
     if (!id) return;
+    let ignore = false;
     (async () => {
       try {
-        let r = await fetch(`/api/workspace/sets/${encodeURIComponent(id)}`);
-        if (!alive) return;
-        if (r.ok) {
-          const j = await r.json();
-          setInitFiles(Array.isArray(j.files) ? j.files : []);
-          setEtag(j.etag || null);
-          return;
+        const r = await fetch(`/api/workspace/sets/${id}`);
+        if (ignore) return;
+        if (r.status === 200) {
+          const files = await r.json();
+          setInitFiles(files || {});
+          setEtag(r.headers.get('ETag') || null);
+        } else if (r.status === 404) {
+          // 첫 저장 전이면 404가 정상. 빈 VFS로 시작.
+          setInitFiles({});
+          setEtag(null);
+        } else {
+          console.warn('[WorkspaceFrame] GET failed', r.status);
+          setInitFiles({});
+          setEtag(null);
         }
-        if (r.status === 404) { setInitFiles([]); setEtag(null); return; }
-      } catch {
-        setInitFiles([]); setEtag(null);
+      } catch (err) {
+        console.warn('[WorkspaceFrame] GET error', err);
+        setInitFiles({});
+        setEtag(null);
       }
     })();
-    return () => { alive = false; };
+    return () => { ignore = true; };
   }, [id]);
 
-  if (!id) return fallback || <div style={{ padding: 20 }}>세트 ID 확인 중…</div>;
-  if (!initFiles) return fallback || <div style={{ padding: 20 }}>작업공간 불러오는 중…</div>;
+  if (!id) return null;
+  if (initFiles == null) return null; // 간단한 로딩 상태
 
   return (
-    <CodeWorkspaceProvider key={id} storageNamespace={id} initialFiles={initFiles}>
-      {typeof children === 'function' ? children({ etag, setEtag, id }) : children}
+    <CodeWorkspaceProvider
+      key={id}
+      storageNamespace={id}
+      initialFiles={initFiles}
+      initialEtag={etag}
+    >
+      {children}
     </CodeWorkspaceProvider>
   );
 }

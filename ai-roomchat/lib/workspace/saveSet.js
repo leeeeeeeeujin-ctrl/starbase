@@ -41,14 +41,24 @@ export async function saveSet(id, filesMap = {}, etag) {
     }
   }
 
-  // PUT with If-Match
-  const headers = { 'Content-Type': 'application/json' };
-  if (currentEtag) headers['If-Match'] = currentEtag;
-  const pr = await fetch(`/api/workspace/sets/${encodeURIComponent(id)}`, {
-    method: 'PUT',
-    headers,
-    body: JSON.stringify({ files: list, meta: {} })
-  });
+  // Helper for PUT with If-Match
+  const putWith = async (matchEtag) => {
+    const headers = { 'Content-Type': 'application/json' };
+    if (matchEtag) headers['If-Match'] = matchEtag;
+    return fetch(`/api/workspace/sets/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ files: list, meta: {} })
+    });
+  };
+
+  // First attempt
+  let pr = await putWith(currentEtag);
+  // If version conflict, fetch latest etag and retry once
+  if (pr.status === 412) {
+    currentEtag = await getEtag();
+    pr = await putWith(currentEtag);
+  }
   const pj = await pr.json().catch(()=>({}));
   if (!pr.ok) {
     const err = new Error(pj?.error || `saveSet failed (${pr.status})`);
@@ -57,4 +67,3 @@ export async function saveSet(id, filesMap = {}, etag) {
   }
   return pj?.etag || null;
 }
-

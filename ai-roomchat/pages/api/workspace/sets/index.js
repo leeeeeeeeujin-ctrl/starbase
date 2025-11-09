@@ -1,5 +1,6 @@
 import { getSet, saveSet, getIdempotent, ensureIdempotent } from '@/lib/workspace/setStore';
 import { buildStarterPack } from '@/lib/workspace/getStarterPackFiles';
+import { supabase as supabaseAdmin } from '@/lib/supabaseAdmin';
 import path from 'path';
 
 export default async function handler(req, res) {
@@ -29,6 +30,28 @@ export default async function handler(req, res) {
       files = buildStarterPack(base);
     }
     const meta = body.meta && typeof body.meta === 'object' ? body.meta : {};
+    // If Supabase persistence enabled, store in DB
+    if (process.env.USE_SUPABASE_SETS === '1' && supabaseAdmin && supabaseAdmin.from) {
+      try {
+        // idempotent: return existing if present
+        const sel = await supabaseAdmin.from('workspace_sets').select('*').eq('id', id).single();
+        if (!sel.error && sel.data) {
+          ensureIdempotent(reqId, sel.data);
+          return res.status(201).json(sel.data);
+        }
+      } catch {}
+      const etag = new Date().toISOString();
+      const ins = await supabaseAdmin
+        .from('workspace_sets')
+        .insert([{ id, files, etag, updated_at: new Date().toISOString(), meta }])
+        .select()
+        .single();
+      if (!ins.error && ins.data) {
+        ensureIdempotent(reqId, ins.data);
+        return res.status(201).json(ins.data);
+      }
+    }
+
     const record = saveSet(id, files, { ...meta, starterApplied: true });
     if (process.env.NODE_ENV !== 'production') try { console.log('[sets.create] created id=%s files=%d', record.id, Array.isArray(files)?files.length:0); } catch {}
     ensureIdempotent(reqId, record);

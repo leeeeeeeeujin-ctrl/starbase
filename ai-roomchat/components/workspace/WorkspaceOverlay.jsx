@@ -259,7 +259,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
             <MenuButton onClick={() => setAiMenuOpen(v=>{ const next=!v; if (next) { setFileMenuOpen(false); setShowTree(false); } return next; })} active={aiMenuOpen} label="AI 코딩" />
             {aiMenuOpen && (
               <div style={{ position:'absolute', zIndex: 20, background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, display:'grid', gap:6, minWidth:180 }}>
-                <button onClick={() => { setShowCodeChat(v=>!v); setAiMenuOpen(false); }} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>{showCodeChat?'AI 코드채팅 끄기':'AI 코드채팅 켜기'}</button>
+                <button onClick={() => { try { window.dispatchEvent(new CustomEvent('overlay:open', { detail: { type: 'ai' } })); } catch {}; setAiMenuOpen(false); }} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>AI 코드채팅 열기</button>
               </div>
             )}
           </div>
@@ -389,14 +389,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
           </div>
         </div>
       )}
-      {showCodeChat && (
-        <div style={{ position:'fixed', right:16, bottom:16, zIndex: 1200, width: chatSize.w, height: chatSize.h, background:'transparent' }}>
-          <div style={{ position:'absolute', inset:0 }}>
-            <AICodeChatPanel onClose={() => setShowCodeChat(false)} />
-            <div onMouseDown={()=>setResizing(true)} onTouchStart={()=>setResizing(true)} title="드래그로 크기 조절" style={{ position:'absolute', left:8, bottom:8, width:16, height:16, border:'1px solid #334155', background:'#0b1220', borderRadius:4, cursor:'nwse-resize', opacity:0.9 }} />
-          </div>
-        </div>
-      )}
+      {/* AI 코드채팅은 OverlayHost가 단일 인스턴스로 관리 */}
     </WorkspaceBoundary>
   );
 }

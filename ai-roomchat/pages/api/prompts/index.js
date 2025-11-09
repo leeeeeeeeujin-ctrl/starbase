@@ -1,131 +1,63 @@
-import {
-  savePrompt as savePromptInMemory,
-  listPrompts as listPromptsInMemory,
-  getPrompt as getPromptInMemory,
-} from '../../../lib/promptStore';
-import { getSet as getWorkspaceSet, saveSet as saveWorkspaceSet } from '@/lib/workspace/setStore';
-import { buildStarterPack } from '@/lib/workspace/getStarterPackFiles';
-import path from 'path';
-import { supabase as supabaseAdmin } from '../../../lib/supabaseAdmin';
+export const config = { runtime: 'nodejs' };
 
-// Simple in-memory idempotency cache for create requests
-// Maps X-Request-Id -> created record
-const IDEMPOTENCY_CACHE = new Map();
+// In-memory prompt store (dev/preview). Replace with DB later.
+const g = globalThis;
+const PROMPTS = (g.__PROMPTS_STORE__ ||= new Map()); // id -> { id, name, createdAt }
+const SEEN = (g.__PROMPTS_SEEN__ ||= new Set()); // X-Request-Id dedupe
+
+// Reuse workspace set store if present to ensure parity
+const SETS = (g.__SET_STORE__ ||= new Map()); // id -> { etag, files }
+
+function makeId() {
+  try { return crypto.randomUUID(); } catch (_) { return String(Date.now()) + Math.random().toString(16).slice(1); }
+}
 
 export default async function handler(req, res) {
-  if (req.method === 'GET') {
-    // Try Supabase first
-    try {
-      if (supabaseAdmin && supabaseAdmin.from) {
-        const { data, error } = await supabaseAdmin.from('prompts').select('*');
-        if (error) throw error;
-        return res.status(200).json(data || []);
-      }
-    } catch (err) {
-      // fall through to in-memory
-      console.warn('Supabase list prompts failed, falling back to memory store', err.message);
-    }
-
-    const items = listPromptsInMemory();
-    return res.status(200).json(items);
+  const method = req.method || 'GET';
+  if (method === 'GET') {
+    const items = Array.from(PROMPTS.values());
+    return res.status(200).json({ items });
   }
 
-  if (req.method === 'POST') {
-    // Idempotency key support to prevent double creation on duplicate requests
-    const requestId = String(req.headers['x-request-id'] || req.headers['x-idempotency-key'] || '').trim();
-    if (requestId && IDEMPOTENCY_CACHE.has(requestId)) {
-      return res.status(201).json(IDEMPOTENCY_CACHE.get(requestId));
+  if (method === 'POST') {
+    const rid = req.headers['x-request-id'];
+    if (rid && SEEN.has(rid)) {
+      // Idempotent acknowledgement
+      return res.status(200).json({ ok: true });
     }
 
-    const body = req.body || {};
-    const data = {
-      id: body.id,
-      name: body.name,
-      body: body.body,
-      format: body.format || 'template',
-      metadata: body.metadata || {},
-      created_by: req.headers['x-user'] || 'local',
-    };
+    const body = typeof req.body === 'string' ? safeJson(req.body) : (req.body || {});
+    let { id, name } = body;
+    if (!id && !name) return res.status(400).json({ error: 'missing id or name' });
+    if (!id) id = makeId();
+    if (!name) name = id;
 
-    // Try to save to Supabase (server-side) if available
-    try {
-      if (supabaseAdmin && supabaseAdmin.from) {
-        // If client provided an id, prefer returning existing to be idempotent
-        if (data.id) {
-          try {
-            const { data: existing, error: selErr } = await supabaseAdmin
-              .from('prompts')
-              .select('*')
-              .eq('id', data.id)
-              .single();
-            if (!selErr && existing) {
-              // Ensure corresponding workspace set exists (best-effort)
-              try {
-                const setCur = getWorkspaceSet(existing.id);
-                if (!setCur) {
-                  const base = path.join(process.cwd(), 'ai-roomchat');
-                  const files = buildStarterPack(base);
-                  saveWorkspaceSet(existing.id, files, { starterApplied: true });
-                }
-              } catch {}
-              if (requestId) IDEMPOTENCY_CACHE.set(requestId, existing);
-              return res.status(201).json(existing);
-            }
-          } catch {}
-        }
-        const { data: inserted, error } = await supabaseAdmin
-          .from('prompts')
-          .insert([data])
-          .select()
-          .single();
-        if (error) throw error;
-        // Create matching workspace set (best-effort, id = prompt id)
-        try {
-          const setCur = getWorkspaceSet(inserted.id);
-          if (!setCur) {
-            const base = path.join(process.cwd(), 'ai-roomchat');
-            const files = buildStarterPack(base);
-            saveWorkspaceSet(inserted.id, files, { starterApplied: true });
-          }
-        } catch {}
-        if (requestId) IDEMPOTENCY_CACHE.set(requestId, inserted);
-        return res.status(201).json(inserted);
+    // 1) Strong idempotency by name: if a prompt with the same name exists, return it
+    const byName = Array.from(PROMPTS.values()).find(p => p.name === name);
+    if (byName) {
+      // Ensure set exists for that id
+      if (!SETS.has(byName.id)) {
+        SETS.set(byName.id, { etag: `"${Date.now()}"`, files: {} });
       }
-    } catch (err) {
-      console.warn('Supabase save prompt failed, falling back to memory store', err.message);
+      if (rid) SEEN.add(rid);
+      return res.status(200).json({ ok: true, id: byName.id, name: byName.name, existed: true });
     }
 
-    // In-memory store path with idempotency
-    if (data.id) {
-      const existing = getPromptInMemory(data.id);
-      if (existing) {
-        // Ensure matching workspace set exists
-        try {
-          const setCur = getWorkspaceSet(existing.id);
-          if (!setCur) {
-            const base = path.join(process.cwd(), 'ai-roomchat');
-            const files = buildStarterPack(base);
-            saveWorkspaceSet(existing.id, files, { starterApplied: true });
-          }
-        } catch {}
-        if (requestId) IDEMPOTENCY_CACHE.set(requestId, existing);
-        return res.status(201).json(existing);
-      }
+    // 2) De-dupe by id
+    if (!PROMPTS.has(id)) {
+      const createdAt = new Date().toISOString();
+      PROMPTS.set(id, { id, name, createdAt });
     }
-    const rec = savePromptInMemory(data);
-    // Create matching workspace set (best-effort)
-    try {
-      const setCur = getWorkspaceSet(rec.id);
-      if (!setCur) {
-        const base = path.join(process.cwd(), 'ai-roomchat');
-        const files = buildStarterPack(base);
-        saveWorkspaceSet(rec.id, files, { starterApplied: true });
-      }
-    } catch {}
-    if (requestId) IDEMPOTENCY_CACHE.set(requestId, rec);
-    return res.status(201).json(rec);
+    if (!SETS.has(id)) {
+      SETS.set(id, { etag: `"${Date.now()}"`, files: {} });
+    }
+
+    if (rid) SEEN.add(rid);
+    return res.status(200).json({ ok: true, id, name });
   }
 
-  res.setHeader('Allow', 'GET,POST');
-  res.status(405).end('Method Not Allowed');
+  res.setHeader('Allow', 'GET, POST');
+  return res.status(405).end();
 }
+
+function safeJson(s) { try { return JSON.parse(s); } catch { return {}; } }
