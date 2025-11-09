@@ -1,0 +1,68 @@
+﻿---
+name: Security Audit
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ai-roomchat/package.json'
+      - 'ai-roomchat/package-lock.json'
+      - '.github/workflows/audit.yml'
+  schedule:
+    - cron: '0 3 * * 1' # weekly Monday 03:00 UTC
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: |
+          cd ai-roomchat
+          npm ci
+
+      - name: Run npm audit
+        run: |
+          cd ai-roomchat
+          npm audit --json > audit.json || true
+
+      - name: Upload audit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-report
+          path: ai-roomchat/audit.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Summarize audit and comment PR
+        if: github.event_name == 'pull_request'
+        run: |
+          set -e
+          FILE=ai-roomchat/audit.json
+          if [ -f "$FILE" ]; then
+            CRITICAL=$(jq '.metadata.vulnerabilities.critical' $FILE)
+            HIGH=$(jq '.metadata.vulnerabilities.high' $FILE)
+            TOTAL=$(jq '.metadata.vulnerabilities.total' $FILE)
+            SUMMARY="**Security audit** ran for this PR. Vulnerabilities ??critical: $CRITICAL, high: $HIGH, total: $TOTAL."
+          else
+            SUMMARY="**Security audit** ran for this PR. Audit file not found."
+          fi
+          echo "$SUMMARY" > audit-summary.txt
+      - name: Comment PR with audit summary
+        if: github.event_name == 'pull_request'
+        uses: peter-evans/create-or-update-comment@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            $(cat audit-summary.txt)
+

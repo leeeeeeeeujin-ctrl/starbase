@@ -1,0 +1,43 @@
+﻿---
+name: Matchmaking Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ai-roomchat/**'
+      - '.github/workflows/match-tests.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ai-roomchat/**'
+      - '.github/workflows/match-tests.yml'
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai-roomchat
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: ai-roomchat/package.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Unit tests
+        run: npm test -- --ci --reporters=default
+
+      - name: Fuzzer (CI)
+        if: github.event_name != 'pull_request'
+        run: node scripts/check-fuzzer-ci.js 300
+

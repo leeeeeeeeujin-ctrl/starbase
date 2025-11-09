@@ -1,0 +1,4 @@
+[
+  { "type": "set", "name": "x", "value": 42 },
+  { "type": "print", "text": "hello blockly" }
+]

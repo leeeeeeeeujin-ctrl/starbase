@@ -1,0 +1,42 @@
+name: Proxy E2E
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'ai-roomchat/proxy/**'
+      - 'ai-roomchat/tests/proxy/**'
+      - '.github/workflows/proxy-e2e.yml'
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - name: Install
+        run: npm ci
+        working-directory: ai-roomchat
+      - name: Wait for Redis
+        run: |
+          sudo apt-get update && sudo apt-get install -y redis-tools >/dev/null
+          for i in {1..15}; do
+            if redis-cli -h 127.0.0.1 ping | grep -q PONG; then
+              echo "redis ready"; break
+            fi
+            echo "waiting for redis... ($i)"; sleep 1
+          done
+      - name: Run proxy E2E (PoC, with Redis)
+        env:
+          REDIS_URL: redis://127.0.0.1:6379
+        run: node tests/proxy/run_e2e_proxy.js
+        working-directory: ai-roomchat

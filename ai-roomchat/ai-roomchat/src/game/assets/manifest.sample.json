@@ -1,0 +1,13 @@
+{
+  "images": {
+    "sprites": "sprites/spritesheet.png"
+  },
+  "audio": {
+    "theme": "audio/theme.ogg"
+  },
+  "json": {
+    "tilemap": "tilemaps/level1.json",
+    "characters": "characters/min.json",
+    "textScene": "text/scene.sample.json"
+  }
+}

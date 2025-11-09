@@ -1,0 +1,51 @@
+name: CI Device Provision
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  provision-device:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Provision device (example)
+        env:
+          CI_REGISTRATION_TOKEN: ${{ secrets.CI_REGISTRATION_TOKEN }}
+          APP_URL: ${{ secrets.APP_URL }}
+        run: |
+          if [ -z "$CI_REGISTRATION_TOKEN" ] || [ -z "$APP_URL" ]; then
+            echo "Set CI_REGISTRATION_TOKEN and APP_URL in repository secrets." && exit 1
+          fi
+          echo "Calling registration endpoint..."
+          resp=$(curl -s -X POST "$APP_URL/api/devices/register" \
+            -H "Content-Type: application/json" \
+            -H "x-ci-registration-token: $CI_REGISTRATION_TOKEN" \
+            -d '{"displayName":"ci-provisioned-device"}')
+          echo "Response: $resp"
+          # Example: optionally parse token and print or store
+          echo "$resp" | jq .
+name: CI Device Provision
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  provision-device:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Provision device (example)
+        env:
+          CI_REGISTRATION_TOKEN: ${{ secrets.CI_REGISTRATION_TOKEN }}
+          APP_URL: ${{ secrets.APP_URL }}
+        run: |
+          if [ -z "$CI_REGISTRATION_TOKEN" ] || [ -z "$APP_URL" ]; then
+            echo "Missing secrets: CI_REGISTRATION_TOKEN and APP_URL are required" && exit 1
+          fi
+          echo "Calling registration endpoint..."
+          curl -s -X POST "$APP_URL/api/devices/register" \
+            -H "Content-Type: application/json" \
+            -H "x-ci-registration-token: $CI_REGISTRATION_TOKEN" \
+            -d '{"displayName":"ci-provisioned"}' -o provision.json
+          echo "Response:" && cat provision.json
+          # You may parse the token and store it as a repo secret via API, or save to a secure store.
+          TOKEN=$(jq -r '.token' provision.json)
+          echo "Provisioned token: $TOKEN"
