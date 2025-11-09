@@ -46,3 +46,6 @@ assistant-sql/
 # Ignore large reference data checked into docs (keep locally, don't commit)
 ai-roomchat/docs/reference_data/
 ai-roomchat/docs/reference_data/**
+
+# Ignore the large local reference_data folder (kept locally, not committed)
+reference_data/

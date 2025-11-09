@@ -1,8 +1,0 @@
-config
-docs
-examples
-src
-test
-.DS_Store
-.nyc_output
-.github
