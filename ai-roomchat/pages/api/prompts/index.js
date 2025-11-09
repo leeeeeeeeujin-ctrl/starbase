@@ -5,6 +5,15 @@ const g = globalThis;
 const PROMPTS = (g.__PROMPTS_STORE__ ||= new Map()); // id -> { id, name, createdAt }
 const SEEN = (g.__PROMPTS_SEEN__ ||= new Set()); // X-Request-Id dedupe
 const SETS = (g.__SET_STORE__ ||= new Map()); // id -> { etag, files }
+const WINDOW_MS = Number(process.env.CREATE_DEDUP_WINDOW_MS || 3000);
+const LAST = (g.__CREATE_DEDUP_PROMPTS__ ||= new Map()); // key -> { at, response }
+
+function dedupKey(req, body) {
+  const ip = req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || (req.socket && req.socket.remoteAddress) || 'unknown';
+  const b = body || {};
+  const ident = b.id || b.name || 'anon';
+  return `${ip}|${ident}`;
+}
 
 function makeId() {
   try { return crypto.randomUUID(); } catch (_) { return String(Date.now()) + Math.random().toString(16).slice(1); }
@@ -29,6 +38,15 @@ export default async function handler(req, res) {
     }
 
     const body = typeof req.body === 'string' ? safeJson(req.body) : (req.body || {});
+    // Time-window dedupe (3s default): if same client+id/name re-hits, return prior response
+    try {
+      const key = dedupKey(req, body);
+      const now = Date.now();
+      const prev = LAST.get(key);
+      if (prev && now - prev.at < WINDOW_MS) {
+        return res.status(200).json(prev.response || { ok: true, existed: true, id: body.id || body.name, name: body.name || body.id });
+      }
+    } catch {}
     let { id, name } = body;
     if (!id && !name) return res.status(400).json({ error: 'missing id or name' });
     if (!id) id = makeId();
@@ -52,7 +70,12 @@ export default async function handler(req, res) {
 
     await persistSupabase({ id, name });
     if (rid) SEEN.add(rid);
-    return res.status(200).json({ ok: true, id, name });
+    const payload = { ok: true, id, name };
+    try {
+      const key = dedupKey(req, { id, name });
+      LAST.set(key, { at: Date.now(), response: payload });
+    } catch {}
+    return res.status(200).json(payload);
   }
 
   res.setHeader('Allow', 'GET, POST');

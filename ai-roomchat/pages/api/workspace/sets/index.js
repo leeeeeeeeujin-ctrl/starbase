@@ -4,6 +4,15 @@ import { pushCreationLog } from '../../../../lib/server/creationLog.js';
 const g = globalThis;
 const STORE = (g.__SET_STORE__ ||= new Map()); // id -> { etag, files }
 const SEEN = (g.__SET_SEEN__ ||= new Set()); // request-id dedupe
+const WINDOW_MS = Number(process.env.CREATE_DEDUP_WINDOW_MS || 3000);
+const LAST = (g.__CREATE_DEDUP_SETS__ ||= new Map()); // key -> { at, ok }
+
+function dedupKey(req, body) {
+  const ip = req.headers['x-forwarded-for'] || req.headers['x-real-ip'] || (req.socket && req.socket.remoteAddress) || 'unknown';
+  const b = body || {};
+  const ident = b.id || 'anon';
+  return `${ip}|${ident}`;
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -22,6 +31,15 @@ export default async function handler(req, res) {
   }
 
   const body = typeof req.body === 'string' ? safeJson(req.body) : (req.body || {});
+  // Time-window dedupe (3s default)
+  try {
+    const key = dedupKey(req, body);
+    const now = Date.now();
+    const prev = LAST.get(key);
+    if (prev && now - prev.at < WINDOW_MS) {
+      return res.status(200).json({ ok: true });
+    }
+  } catch {}
   const { id } = body;
   if (!id) return res.status(400).json({ error: 'missing id' });
 
@@ -29,8 +47,11 @@ export default async function handler(req, res) {
     STORE.set(id, { etag: `"${Date.now()}"`, files: {} });
   }
   if (rid) SEEN.add(rid);
+  try {
+    const key = dedupKey(req, body);
+    LAST.set(key, { at: Date.now(), ok: true });
+  } catch {}
   return res.status(200).json({ ok: true });
 }
 
 function safeJson(s) { try { return JSON.parse(s); } catch { return {}; } }
-
