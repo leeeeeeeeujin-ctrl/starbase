@@ -118,7 +118,7 @@
     "babel-plugin-transform-define": "^2.1.4",
     "babel-plugin-transform-imports": "^2.0.0",
     "babel-plugin-transform-remove-console": "^6.9.4",
-    "eslint": "^9.38.0",
+    "eslint": "^8.57.0",
     "eslint-plugin-import": "^2.27.5",
     "eslint-plugin-jsonc": "^2.15.0",
     "eslint-plugin-react": "^7.37.5",

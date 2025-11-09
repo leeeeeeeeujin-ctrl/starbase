@@ -5,6 +5,8 @@ import { useStudioTemplate } from '../../../contexts/StudioStore';
 import useIsMobile from '../../../utils/useIsMobile';
 
 import { useMakerEditor } from '../../../hooks/maker/useMakerEditor';
+import { useWorkspace } from '../../workspace/CodeWorkspaceProvider.jsx';
+import { saveSet } from '../../../lib/workspace/saveSet.js';
 import { exportSet, importSet } from './importExport';
 import MakerEditorCanvas from './MakerEditorCanvas';
 import MinimalMakerHeader from './MinimalMakerHeader';
@@ -229,6 +231,17 @@ export default function MakerEditor() {
   } = variables;
 
   const { busy, saveAll, deletePrompt, addPromptNode, goToSetList, goToLobby } = persistence;
+  // Unify saves: after Maker DB save, also persist workspace VFS files for this set
+  const { files: wsFiles, saveAll: markWorkspaceSaved } = useWorkspace();
+  const unifiedSaveAll = useCallback(async () => {
+    try {
+      await saveAll();
+      try { await saveSet(String(status?.setInfo?.id || status?.router?.query?.id || ''), wsFiles); } catch (e) { try { console.warn('[MakerEditor] workspace save failed', e); } catch {} }
+      try { markWorkspaceSaved(); } catch {}
+    } catch (e) {
+      throw e;
+    }
+  }, [saveAll, wsFiles, markWorkspaceSaved, status?.setInfo, status?.router]);
 
   const {
     entries: saveHistory,
@@ -246,7 +259,8 @@ export default function MakerEditor() {
       if (typeof window !== 'undefined') {
         window.__makerActions = {
           addPromptNode,
-          saveAll,
+          saveAll: unifiedSaveAll,
+          unifiedSaveAll,
         };
       }
     } catch {}
@@ -255,7 +269,7 @@ export default function MakerEditor() {
         if (typeof window !== 'undefined' && window.__makerActions) delete window.__makerActions;
       } catch {}
     };
-  }, [addPromptNode, saveAll]);
+  }, [addPromptNode, unifiedSaveAll]);
   const [variableDrawerOpen, setVariableDrawerOpen] = useState(false);
   const [headerCollapsed, setHeaderCollapsed] = useState(true);
   const [showTemplateLibrary, setShowTemplateLibrary] = useState(false);
@@ -495,7 +509,7 @@ export default function MakerEditor() {
       { label: '+AI', onClick: () => addPromptNode('ai') },
       { label: '+유저', onClick: () => addPromptNode('user_action') },
       { label: '+시스템', onClick: () => addPromptNode('system') },
-      { label: busy ? '저장 중…' : '저장', onClick: saveAll, disabled: busy },
+      { label: busy ? '저장 중…' : '저장', onClick: unifiedSaveAll, disabled: busy },
     ],
     [addPromptNode, busy, saveAll]
   );
@@ -548,7 +562,7 @@ export default function MakerEditor() {
     } catch (error) {
       console.error(error);
     }
-  }, [busy, saveAll]);
+  }, [busy, unifiedSaveAll]);
 
   const handleDismissVersionAlert = useCallback(() => {
     clearVersionAlert();

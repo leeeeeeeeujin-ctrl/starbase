@@ -1,8 +1,7 @@
 export const config = { runtime: 'nodejs' };
 
-const g = globalThis;
-const STORE = (g.__SET_STORE__ ||= new Map()); // id -> { etag, files }
-const SEEN = (g.__SET_SEEN__ ||= new Set()); // request-id dedupe
+import { getSet, saveSet as upsertSet } from '@/lib/workspace/setStore';
+const SEEN = (globalThis.__SET_REQ_SEEN__ ||= new Set()); // request-id dedupe (idempotency)
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -31,12 +30,15 @@ export default async function handler(req, res) {
   const { id } = body;
   if (!id) return res.status(400).json({ error: 'missing id' });
 
-  if (!STORE.has(id)) {
-    STORE.set(id, { etag: `"${Date.now()}"`, files: {} });
+  // Create an empty set if missing (server-side persistent in-memory for this instance)
+  let cur = getSet(id);
+  if (!cur) {
+    cur = upsertSet(id, [], {});
   }
   if (rid) SEEN.add(rid);
-  return res.status(200).json({ ok: true });
+  // Return the current etag so clients can proceed with If-Match on PUT
+  try { res.setHeader('ETag', cur?.etag || ''); } catch {}
+  return res.status(200).json({ ok: true, etag: cur?.etag || null });
 }
 
 function safeJson(s) { try { return JSON.parse(s); } catch { return {}; } }
-

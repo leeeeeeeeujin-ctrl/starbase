@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
-import { saveSet } from '../../lib/workspace/saveSet.js';
+import { unifiedSave } from '../../lib/workspace/unifiedSave.js';
 import { useWorkspace } from './CodeWorkspaceProvider.jsx';
 import FileTree from './FileTree.jsx';
 import EditorMonaco from '../EditorMonaco.jsx';
@@ -322,7 +322,7 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
     const [saving, setSaving] = useState(false);
     const onSaveServer = async () => {
       if (!id || saving) return;
-      try { setSaving(true); await saveSet(String(id), files); alert('Saved'); }
+      try { setSaving(true); await unifiedSave(String(id), files); alert('Saved'); }
       catch(e){ alert('Save failed: ' + String(e?.message||e)); }
       finally { setSaving(false); }
     };
@@ -548,9 +548,18 @@ function ConfirmCloseOne({ path, onSave, onDiscard, onCancel }){
 
 function ConfirmCloseMany({ paths, onAfterSaveAll, onDiscard, onCancel }){
   // Access workspace context at component top-level (valid hook usage)
-  const { saveAll } = useWorkspace();
-  const handleSaveAll = () => {
-    try { saveAll(); } catch (e) { console.error('saveAll failed', e); }
+  const { saveAll, files } = useWorkspace();
+  const router = useRouter();
+  const { id } = router.query || {};
+  const handleSaveAll = async () => {
+    try {
+      // Persist both Maker (if present) and workspace files
+      if (id) await unifiedSave(String(id), files);
+      // Mark workspace clean locally
+      try { saveAll(); } catch {}
+    } catch (e) {
+      console.error('unified saveAll failed', e);
+    }
     onAfterSaveAll && onAfterSaveAll();
   };
   return (

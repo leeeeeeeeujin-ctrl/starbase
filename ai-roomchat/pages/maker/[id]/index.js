@@ -10,7 +10,9 @@ import { CodeWorkspaceProvider } from '../../../components/workspace/CodeWorkspa
 export default function MakerEditorPage() {
   const router = useRouter();
   const { id } = router.query || {};
-  const useUnified = router?.query?.unified === '1' || router?.query?.studio === '1';
+  const q = router?.query || {};
+  const hasModeParam = typeof q.unified !== 'undefined' || typeof q.studio !== 'undefined';
+  const useUnified = hasModeParam ? (q.unified === '1' || q.studio === '1') : true; // default to unified workbench
   const [initFiles, setInitFiles] = useState(null);
 
   useEffect(() => {

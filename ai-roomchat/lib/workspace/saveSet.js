@@ -54,8 +54,8 @@ export async function saveSet(id, filesMap = {}, etag) {
 
   // First attempt
   let pr = await putWith(currentEtag);
-  // If version conflict, fetch latest etag and retry once
-  if (pr.status === 412) {
+  // If precondition/etag issues, fetch latest etag and retry once
+  if (pr.status === 412 || pr.status === 428) {
     currentEtag = await getEtag();
     pr = await putWith(currentEtag);
   }
