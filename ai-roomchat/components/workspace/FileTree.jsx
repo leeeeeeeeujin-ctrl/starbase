@@ -1,108 +1,80 @@
+
 "use client";
 
-import React, { useMemo } from "react";
+import React from "react";
 import { useWorkspace } from "./CodeWorkspaceProvider.jsx";
 
-function byPath(a, b) {
-  return a.localeCompare(b);
+function joinPath(parent, name) {
+	if (!parent) return `/${name}`;
+	const p = parent.endsWith('/') ? parent.slice(0, -1) : parent;
+	return `${p}/${name}`;
 }
 
-function InnerTree() {
-  const { files, root, setRoot, normalizeDir, open, activePath } = useWorkspace();
-  const { folders, fileEntries } = useMemo(() => {
-    const folders = new Set();
-    const fileEntries = [];
-    const rootPrefix = normalizeDir(root || '/');
-    for (const full of Object.keys(files)) {
-      if (!full.startsWith(rootPrefix)) continue;
-      const rel = full.slice(rootPrefix.length);
-      if (rel.length === 0) continue;
-      if (rel.includes('/')) {
-        const top = rel.split('/')[0];
-        if (top) folders.add(top);
-      } else {
-        fileEntries.push(full);
-      }
-    }
-    return { folders: Array.from(folders).sort(byPath), fileEntries: fileEntries.sort(byPath) };
-  }, [files, root, normalizeDir]);
-
-  const goUp = () => {
-    const r = normalizeDir(root || '/');
-    if (r === '/') return;
-    const parent = r.replace(/[^/]+\/$/, '');
-    setRoot(parent || '/');
-  };
-
-  return (
-    <div style={{ width: '100%', borderRight: "1px solid #25314a", background: "#0b1220" }}>
-      <div style={{ padding: 8, color: "#e2e8f0", fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span>파일</span>
-        <button onClick={goUp} title="상위 폴더" style={{ fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid #475569', background: '#0f172a', color: '#e2e8f0' }}>⬆</button>
-      </div>
-      <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-        {folders.map((name) => {
-          const full = normalizeDir((normalizeDir(root || '/')) + name);
-          return (
-            <li key={full}>
-              <button
-                onClick={() => setRoot(full)}
-                style={{
-                  width: "100%",
-                  textAlign: "left",
-                  padding: "6px 10px",
-                  background: "transparent",
-                  color: "#93c5fd",
-                  border: "none",
-                  borderBottom: "1px solid rgba(148,163,184,0.12)",
-                  cursor: "pointer",
-                }}
-              >
-                📁 {name}
-              </button>
-            </li>
-          );
-        })}
-        {fileEntries.map((full) => {
-          const active = full === activePath;
-          const name = full.split('/').pop();
-          const readonly = files?.[full]?.readonly;
-          return (
-            <li key={full}>
-              <button
-                onClick={() => open(full)}
-                style={{
-                  width: "100%",
-                  textAlign: "left",
-                  padding: "6px 10px",
-                  background: active ? "#172033" : "transparent",
-                  color: "#e2e8f0",
-                  border: "none",
-                  borderBottom: "1px solid rgba(148,163,184,0.12)",
-                  cursor: "pointer",
-                }}
-              >
-                📄 {name} {readonly ? <span title="읽기 전용" style={{ marginLeft: 8 }}>🔒</span> : null}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
+function FileNode({ path, name, meta, onOpen, onToggle, isOpen }) {
+	const isDir = meta && meta.dir;
+	return (
+		<div style={{ paddingLeft: 8, display: 'flex', alignItems: 'center' }}>
+			{isDir ? (
+				<button onClick={() => onToggle(path)} aria-label={isOpen ? 'close' : 'open'}>
+					{isOpen ? '▾' : '▸'}
+				</button>
+			) : (
+				<span style={{ width: 16 }} />
+			)}
+			<div style={{ marginLeft: 6, cursor: isDir ? 'pointer' : 'default' }} onDoubleClick={() => !isDir && onOpen(path)}>
+				{name}
+			</div>
+		</div>
+	);
 }
 
-class WorkspaceBoundary extends React.Component {
-  constructor(props){ super(props); this.state={ hasError:false }; }
-  static getDerivedStateFromError(){ return { hasError:true }; }
-  componentDidCatch(err){ try{ console.warn('[FileTree] workspace unavailable', err?.message||err); }catch{} }
-  render(){ return this.state.hasError ? null : this.props.children; }
+export default function FileTree({ root = '/', onSelect }) {
+	const ws = useWorkspace();
+	const { files, openPaths, open, close, open: openFile } = ws;
+
+	// build a hierarchical tree from files map
+	const tree = React.useMemo(() => {
+		const nodes = {};
+		Object.keys(files || {}).forEach((p) => {
+			const parts = p.split('/').filter(Boolean);
+			let cur = nodes;
+			for (let i = 0; i < parts.length; i++) {
+				const part = parts[i];
+				if (!cur[part]) cur[part] = { __meta: null, __children: {} };
+				if (i === parts.length - 1) {
+					cur[part].__meta = files[p];
+				}
+				cur = cur[part].__children;
+			}
+		});
+		return nodes;
+	}, [files]);
+
+	function renderTree(nodes, parentPath = '') {
+		return Object.keys(nodes).sort().map((key) => {
+			const node = nodes[key];
+			const nodePath = joinPath(parentPath, key);
+			const isOpen = openPaths.includes(nodePath) || node.__meta?.dir;
+			return (
+				<div key={nodePath}>
+					<FileNode
+						path={nodePath}
+						name={key}
+						meta={node.__meta || { dir: true }}
+						onOpen={(p) => { openFile(p); if (onSelect) onSelect(p); }}
+						onToggle={(p) => { if (openPaths.includes(p)) close(p); else open(p); }}
+						isOpen={isOpen}
+					/>
+					{isOpen ? <div style={{ marginLeft: 12 }}>{renderTree(node.__children, nodePath)}</div> : null}
+				</div>
+			);
+		});
+	}
+
+	return <div role="tree">{renderTree(tree, root)}</div>;
 }
 
-export default function FileTree(){
-  return (
-    <WorkspaceBoundary>
-      <InnerTree />
-    </WorkspaceBoundary>
-  );
+export function FileTreeSmall(props) {
+	return <FileTree {...props} />;
 }
+
