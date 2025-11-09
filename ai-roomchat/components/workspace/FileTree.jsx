@@ -1,80 +1,74 @@
-
 "use client";
 
-import React from "react";
-import { useWorkspace } from "./CodeWorkspaceProvider.jsx";
+import React, { useMemo } from "react";
 
-function joinPath(parent, name) {
-	if (!parent) return `/${name}`;
-	const p = parent.endsWith('/') ? parent.slice(0, -1) : parent;
-	return `${p}/${name}`;
+function buildTree(files) {
+  const root = { name: '/', path: '/', children: [], dir: true };
+  Object.keys(files || {}).forEach((p) => {
+    const clean = String(p || '').replace(/^\/+/, '');
+    const parts = clean === '' ? [] : clean.split('/');
+    let node = root;
+    parts.forEach((part, idx) => {
+      const path = '/' + parts.slice(0, idx + 1).join('/');
+      let child = node.children.find((c) => c.path === path);
+      if (!child) {
+        child = { name: part, path, children: [], dir: /\/$/.test(path) };
+        node.children.push(child);
+      }
+      node = child;
+    });
+  });
+  // sort children
+  function sortNode(n) {
+    if (!n.children) return;
+    n.children.sort((a, b) => {
+      const ad = a.children && a.children.length ? 0 : 1;
+      const bd = b.children && b.children.length ? 0 : 1;
+      if (ad !== bd) return ad - bd;
+      return a.name.localeCompare(b.name);
+    });
+    n.children.forEach(sortNode);
+  }
+  sortNode(root);
+  return root.children;
 }
 
-function FileNode({ path, name, meta, onOpen, onToggle, isOpen }) {
-	const isDir = meta && meta.dir;
-	return (
-		<div style={{ paddingLeft: 8, display: 'flex', alignItems: 'center' }}>
-			{isDir ? (
-				<button onClick={() => onToggle(path)} aria-label={isOpen ? 'close' : 'open'}>
-					{isOpen ? '▾' : '▸'}
-				</button>
-			) : (
-				<span style={{ width: 16 }} />
-			)}
-			<div style={{ marginLeft: 6, cursor: isDir ? 'pointer' : 'default' }} onDoubleClick={() => !isDir && onOpen(path)}>
-				{name}
-			</div>
-		</div>
-	);
+function NodeRow({ node, depth = 0, selected, onOpen }) {
+  const pad = { paddingLeft: 8 + depth * 12 };
+  return (
+    <li key={node.path} style={{ listStyle: 'none' }}>
+      <div style={{ display: 'flex', alignItems: 'center' }}>
+        <div style={pad}>
+          <button onClick={() => onOpen(node.path)} style={{ all: 'unset', cursor: 'pointer' }}>
+            {node.name}
+          </button>
+        </div>
+      </div>
+      {node.children && node.children.length ? (
+        <ul style={{ margin: 0, padding: 0 }}>
+          {node.children.map((c) => (
+            <NodeRow key={c.path} node={c} depth={depth + 1} selected={selected} onOpen={onOpen} />
+          ))}
+        </ul>
+      ) : null}
+    </li>
+  );
 }
 
-export default function FileTree({ root = '/', onSelect }) {
-	const ws = useWorkspace();
-	const { files, openPaths, open, close, open: openFile } = ws;
-
-	// build a hierarchical tree from files map
-	const tree = React.useMemo(() => {
-		const nodes = {};
-		Object.keys(files || {}).forEach((p) => {
-			const parts = p.split('/').filter(Boolean);
-			let cur = nodes;
-			for (let i = 0; i < parts.length; i++) {
-				const part = parts[i];
-				if (!cur[part]) cur[part] = { __meta: null, __children: {} };
-				if (i === parts.length - 1) {
-					cur[part].__meta = files[p];
-				}
-				cur = cur[part].__children;
-			}
-		});
-		return nodes;
-	}, [files]);
-
-	function renderTree(nodes, parentPath = '') {
-		return Object.keys(nodes).sort().map((key) => {
-			const node = nodes[key];
-			const nodePath = joinPath(parentPath, key);
-			const isOpen = openPaths.includes(nodePath) || node.__meta?.dir;
-			return (
-				<div key={nodePath}>
-					<FileNode
-						path={nodePath}
-						name={key}
-						meta={node.__meta || { dir: true }}
-						onOpen={(p) => { openFile(p); if (onSelect) onSelect(p); }}
-						onToggle={(p) => { if (openPaths.includes(p)) close(p); else open(p); }}
-						isOpen={isOpen}
-					/>
-					{isOpen ? <div style={{ marginLeft: 12 }}>{renderTree(node.__children, nodePath)}</div> : null}
-				</div>
-			);
-		});
-	}
-
-	return <div role="tree">{renderTree(tree, root)}</div>;
+export default function FileTree({ files = {}, root = "/", selected = null, onOpen = () => {} }) {
+  const tree = useMemo(() => buildTree(files), [files]);
+  return (
+    <div>
+      <ul style={{ margin: 0, paddingLeft: 0 }}>
+        {tree.map((n) => (
+          <NodeRow key={n.path} node={n} depth={0} selected={selected} onOpen={onOpen} />
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 export function FileTreeSmall(props) {
-	return <FileTree {...props} />;
+  return <FileTree {...props} />;
 }
 

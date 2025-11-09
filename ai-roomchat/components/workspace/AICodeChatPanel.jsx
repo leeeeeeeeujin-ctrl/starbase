@@ -34,62 +34,154 @@ export default function AICodeChatPanel({ initialThread = null }) {
 			const body = { input: text, context: { files: Object.keys(ws.files || {}) } };
 			const res = await apiFetch('/api/ai/gemini', { method: 'POST', body: JSON.stringify(body) });
 			const data = await res.json();
-			const msgs = data.messages || [];
-			setMessages((m) => [...m, ...msgs]);
-			// parse actions if present
-			const parsed = data.actions || [];
-			setActions(parsed);
-		} catch (err) {
-			console.error(err);
-		} finally {
-			setLoading(false);
-		}
-	};
+			"use client";
 
-	const applyAction = async (action) => {
-		// action types: create/write/delete/rename
-		try {
-			if (action.type === 'create' || action.type === 'write') {
-				await ws.writeFile(action.path, action.content || '');
-				ws.saveFile(action.path);
-			} else if (action.type === 'delete') {
-				ws.remove(action.path);
-			} else if (action.type === 'rename') {
-				ws.rename(action.path, action.newPath);
-			}
-		} catch (err) {
-			console.error('applyAction', err);
-		}
-	};
+			import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+			import { useSession } from "../../lib/auth/useSession.js";
+			import { useWorkspace } from "./CodeWorkspaceProvider.jsx";
+			import { installPromptCreationGuard } from "../../lib/prompts/installPromptCreationGuard.js";
 
-	return (
-		<div style={{ padding: 12 }}>
-			<div style={{ marginBottom: 8 }}>
-				<strong>AI Code Chat</strong>
-			</div>
-			<div style={{ marginBottom: 8 }}>
-				<div style={{ maxHeight: 240, overflow: 'auto', border: '1px solid #eee', padding: 8 }}>
-					{messages.map((m, i) => (
-						<div key={i} style={{ marginBottom: 8 }}>
-							<div style={{ fontSize: 12, color: '#666' }}>{m.role}</div>
-							<div style={{ whiteSpace: 'pre-wrap' }}>{m.content}</div>
-						</div>
-					))}
-				</div>
-			</div>
-			<div style={{ display: 'flex', gap: 8 }}>
-				<input value={input} onChange={(e) => setInput(e.target.value)} style={{ flex: 1 }} />
-				<button onClick={() => { sendMessage(input); setInput(''); }} disabled={loading}>Send</button>
-			</div>
-			<div style={{ marginTop: 12 }}>
-				<strong>Suggested Actions</strong>
-				<ActionList actions={actions} onApply={applyAction} />
-			</div>
-		</div>
-	);
-}
+			export default function AICodeChatPanel({ setId, template }) {
+				const session = useSession();
+				const ws = useWorkspace();
+				const [messages, setMessages] = useState([]);
+				const [isRunning, setIsRunning] = useState(false);
+				const [apiKey, setApiKey] = useState(null);
+				const runningRef = useRef(false);
 
-export function AICodeChatPanelMini(props) {
-	return <AICodeChatPanel {...props} />;
-}
+				useEffect(() => {
+					try { installPromptCreationGuard(); } catch {}
+				}, []);
+
+				const systemPrompt = useMemo(() => {
+					return [
+						{ role: 'system', content: 'You are an AI coding assistant for an in-browser workspace.' },
+						{ role: 'system', content: 'When asked to edit files, respond with JSON: { actions: [{ type: "write", path, content }] }' }
+					];
+				}, []);
+
+				const sendPlan = useCallback(async (plan) => {
+					// plan: { message?, actions? }
+					try {
+						const res = await fetch('/api/prompts', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ setId, plan }) });
+						if (!res.ok) throw new Error('failed');
+						const j = await res.json();
+						return j;
+					} catch (err) { console.warn(err); return null; }
+				}, [setId]);
+
+				const handleThink = useCallback(async (promptText) => {
+					if (!promptText) return;
+					setIsRunning(true); runningRef.current = true;
+					setMessages((m) => [...m, { role: 'user', content: promptText }]);
+					try {
+						const body = { messages: [...systemPrompt, { role: 'user', content: promptText }], maxTokens: 1024 };
+						const res = await fetch('/api/ai/complete', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+						const j = await res.json();
+						const text = j?.choices?.[0]?.message?.content || j?.output || '';
+						setMessages((m) => [...m, { role: 'assistant', content: text }]);
+						// parse JSON plan
+						try {
+							const plan = JSON.parse(text);
+							if (plan?.actions && Array.isArray(plan.actions)) {
+								// apply actions safely
+								for (const a of plan.actions) {
+									if (a.type === 'write' && a.path) {
+										ws.writeFile(a.path, a.content || '');
+									}
+									if (a.type === 'create' && a.path) {
+										ws.createFile(a.path, a.content || '');
+									}
+									if (a.type === 'delete' && a.path) {
+										ws.remove(a.path);
+									}
+								}
+								// send plan to server to persist
+								"use client";
+
+								import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+								import { useSession } from "../../lib/auth/useSession.js";
+								import { useWorkspace } from "./CodeWorkspaceProvider.jsx";
+								import { installPromptCreationGuard } from "../../lib/prompts/installPromptCreationGuard.js";
+
+								export default function AICodeChatPanel({ setId, template }) {
+									const session = useSession();
+									const ws = useWorkspace();
+									const [messages, setMessages] = useState([]);
+									const [isRunning, setIsRunning] = useState(false);
+									const [apiKey, setApiKey] = useState(null);
+									const runningRef = useRef(false);
+
+									useEffect(() => {
+										try { installPromptCreationGuard(); } catch {}
+									}, []);
+
+									const systemPrompt = useMemo(() => {
+										return [
+											{ role: 'system', content: 'You are an AI coding assistant for an in-browser workspace.' },
+											{ role: 'system', content: 'When asked to edit files, respond with JSON: { actions: [{ type: "write", path, content }] }' }
+										];
+									}, []);
+
+									const sendPlan = useCallback(async (plan) => {
+										// plan: { message?, actions? }
+										try {
+											const res = await fetch('/api/prompts', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ setId, plan }) });
+											if (!res.ok) throw new Error('failed');
+											const j = await res.json();
+											return j;
+										} catch (err) { console.warn(err); return null; }
+									}, [setId]);
+
+									const handleThink = useCallback(async (promptText) => {
+										if (!promptText) return;
+										setIsRunning(true); runningRef.current = true;
+										setMessages((m) => [...m, { role: 'user', content: promptText }]);
+										try {
+											const body = { messages: [...systemPrompt, { role: 'user', content: promptText }], maxTokens: 1024 };
+											const res = await fetch('/api/ai/complete', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+											const j = await res.json();
+											const text = j?.choices?.[0]?.message?.content || j?.output || '';
+											setMessages((m) => [...m, { role: 'assistant', content: text }]);
+											// parse JSON plan
+											try {
+												const plan = JSON.parse(text);
+												if (plan?.actions && Array.isArray(plan.actions)) {
+													// apply actions safely
+													for (const a of plan.actions) {
+														if (a.type === 'write' && a.path) {
+															ws.writeFile(a.path, a.content || '');
+														}
+														if (a.type === 'create' && a.path) {
+															ws.createFile(a.path, a.content || '');
+														}
+														if (a.type === 'delete' && a.path) {
+															ws.remove(a.path);
+														}
+													}
+													// send plan to server to persist
+													await sendPlan(plan);
+												}
+											} catch (err) { console.warn('plan parse failed', err); }
+										} catch (err) { console.warn(err); }
+										setIsRunning(false); runningRef.current = false;
+									}, [systemPrompt, sendPlan, ws]);
+
+									return (
+										<div style={{ padding: 8 }}>
+											<div style={{ display: 'flex', gap: 8 }}>
+												<input placeholder="Ask AI to edit files or explain" style={{ flex: 1 }} id="ai_prompt_input" />
+												<button onClick={async () => { const v = document.getElementById('ai_prompt_input').value; await handleThink(v); }}>Run</button>
+											</div>
+											<div style={{ marginTop: 8 }}>
+												{messages.map((m, i) => (
+													<div key={i} style={{ padding: 6, border: '1px solid #eee', marginBottom: 6 }}>
+														<strong>{m.role}</strong>
+														<pre style={{ whiteSpace: 'pre-wrap' }}>{m.content}</pre>
+													</div>
+												))}
+											</div>
+										</div>
+									);
+								}
 

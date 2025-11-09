@@ -575,8 +575,7 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
 	// Expose a debug inspector on window when debug mode enabled so E2E tests can drive the workspace.
 	useEffect(() => {
 		try {
-			// Expose inspector in explicit debug mode or during development to aid E2E tests
-			if (typeof window !== 'undefined' && (process.env.NEXT_PUBLIC_WORKSPACE_DEBUG === '1' || process.env.NODE_ENV !== 'production')) {
+			if (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_WORKSPACE_DEBUG === '1') {
 				try { window.__WORKSPACE_INSPECTOR__ = { ns, api }; } catch {}
 			}
 		} catch {}
@@ -585,7 +584,7 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
 	return (
 		<WorkspaceCtx.Provider value={api}>
 			{children}
-			{typeof window !== 'undefined' && (process.env.NEXT_PUBLIC_WORKSPACE_DEBUG === '1' || process.env.NODE_ENV !== 'production') ? (
+			{typeof window !== 'undefined' && process.env.NEXT_PUBLIC_WORKSPACE_DEBUG === '1' ? (
 				// Lazy load badge to avoid adding runtime deps into non-debug flows
 				(() => {
 					const Badge = require('./WorkspaceDebugBadge.jsx').default;
