@@ -1,0 +1,11 @@
+{
+	"type": "module",
+	"ava": {
+		"extensions": [
+			"js",
+			"js",
+			"jsx",
+			"jsx"
+		]
+	}
+}

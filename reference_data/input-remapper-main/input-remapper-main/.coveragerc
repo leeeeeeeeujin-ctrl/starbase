@@ -1,0 +1,17 @@
+[run]
+branch = True
+source = ./inputremapper
+concurrency = multiprocessing
+debug = multiproc
+omit =
+    # not used currently due to problems
+    ./inputremapper/ipc/socket.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+
+    # Don't complain about abstract methods, they aren't run:
+    @(abc\.)?abstractmethod
+    # Don't cover Protocol classes
+    class .*\(.*Protocol.*\):

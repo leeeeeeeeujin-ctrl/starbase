@@ -1,0 +1,10 @@
+{
+    "files": ["src/index.js"],
+    "compilerOptions": {
+        "allowJs": true,
+        "declaration": true,
+        "emitDeclarationOnly": true,
+        "outDir": "build/playcanvas/src",
+        "typeRoots": [ "./node_modules/@types" ]
+    }
+}

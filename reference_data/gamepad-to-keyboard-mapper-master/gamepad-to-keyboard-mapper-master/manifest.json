@@ -1,0 +1,39 @@
+{
+    "name": "Gamepad to Keyboard Mapper",
+    "version": "1.0.1",
+    "manifest_version": 3,
+    "description": "Map gamepad buttons and axes to keyboard keys",
+    "homepage_url": "https://game103.net",
+    "action": {
+        "default_title": "Gamepad to Keyboard Mapper",
+        "default_popup": "popup.html"
+    },
+    "host_permissions": [
+        "*://*/*"
+    ],
+    "permissions": [
+        "storage",
+        "debugger"
+    ],
+    "content_scripts": [
+        {
+            "matches": [
+                "*://*/*"
+            ],
+            "js": ["content.js"],
+            "run_at": "document_end",
+            "all_frames": true
+        }
+    ],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "content_security_policy": {
+        "extension_pages": "script-src 'self'; object-src 'self'"
+    },
+    "icons": {
+        "16": "icon16.png",
+        "48": "icon32.png",
+        "138": "icon128.png"
+    }
+}

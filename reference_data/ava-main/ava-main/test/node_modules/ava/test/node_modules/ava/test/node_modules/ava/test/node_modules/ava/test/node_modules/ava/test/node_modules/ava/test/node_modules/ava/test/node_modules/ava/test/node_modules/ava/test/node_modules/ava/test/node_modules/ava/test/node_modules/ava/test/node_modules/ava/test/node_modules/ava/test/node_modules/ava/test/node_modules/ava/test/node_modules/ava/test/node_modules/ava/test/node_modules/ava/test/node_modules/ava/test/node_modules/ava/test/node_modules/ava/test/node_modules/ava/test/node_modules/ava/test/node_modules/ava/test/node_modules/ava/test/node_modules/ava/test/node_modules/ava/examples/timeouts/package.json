@@ -1,0 +1,11 @@
+{
+	"name": "ava-timeouts",
+	"description": "Example for test timeouts",
+	"type": "module",
+	"scripts": {
+		"test": "ava test.js --timeout=2s --verbose"
+	},
+	"devDependencies": {
+		"ava": "^6"
+	}
+}

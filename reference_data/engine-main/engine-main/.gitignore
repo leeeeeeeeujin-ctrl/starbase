@@ -1,0 +1,16 @@
+*.DS_Store
+.idea/
+.vscode/
+build
+tree*.*.html
+coverage
+docs
+examples/dist
+examples/node_modules
+node_modules
+npm-debug.log
+types
+stats.html
+.npmrc
+examples/.npmrc
+.prettierrc

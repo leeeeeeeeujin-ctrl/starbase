@@ -1,0 +1,11 @@
+{
+	"name": "ava-macros",
+	"description": "Example for reusing test logic through macros",
+	"type": "module",
+	"scripts": {
+		"test": "ava test.js"
+	},
+	"devDependencies": {
+		"ava": "^6"
+	}
+}

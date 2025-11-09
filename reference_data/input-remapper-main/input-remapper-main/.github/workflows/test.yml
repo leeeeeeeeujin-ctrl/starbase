@@ -1,0 +1,37 @@
+name: Test
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    strategy:
+      matrix:
+        python-version: ["3.8", "3.14"] # min and max supported versions?
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+        # broken "Error: Cache folder path is retrieved for pip but doesn't exist on disk: /home/runner/.cache/pip"
+        # cache: 'pip'
+        # cache-dependency-path: setup.py
+    - name: Install dependencies
+      run: |
+        # Install deps as root since we will run tests as root
+        sudo scripts/ci-install-deps.sh
+        sudo pip install .
+    - name: Run tests
+      run: |
+        # FIXME: Had some permissions issues, currently worked around by running tests as root
+        mkdir test_tmp
+        export TMPDIR="$(realpath test_tmp)"
+
+        export DATA_DIR="/home/runner/work/input-remapper/input-remapper/data/"
+        # try this if input-remappers data cannot be found, and set DATA_DIR to a matching directory
+        # find / -type f -name "input-remapper.glade"
+
+        sudo -E python -m unittest discover tests/unit

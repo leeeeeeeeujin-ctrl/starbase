@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "commonjs",
+    "lib": ["dom", "esnext"],
+    "strict": true,
+    "skipLibCheck": false,
+    "esModuleInterop": true,
+    "noEmit": true
+  }
+}

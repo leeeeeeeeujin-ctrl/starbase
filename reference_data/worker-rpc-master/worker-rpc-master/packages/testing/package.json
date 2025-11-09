@@ -1,0 +1,21 @@
+{
+  "name": "@zlepper/testing",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "@types/chai": "^4.3.6",
+    "@types/mocha": "^10.0.1",
+    "@types/node": "^20.6.0",
+    "typescript": "^5.1.5"
+  },
+  "type": "module",
+  "main": "esm/index.js",
+  "types": "esm/index.d.ts",
+  "dependencies": {
+    "chai": "^4.3.8",
+    "mocha": "^10.2.0"
+  }
+}

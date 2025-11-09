@@ -1,0 +1,8 @@
+{
+	"type": "module",
+	"ava": {
+		"environmentVariables": {
+			"SOME_INVALID_ENVIRONMENT_VARIABLE": {}
+		}
+	}
+}

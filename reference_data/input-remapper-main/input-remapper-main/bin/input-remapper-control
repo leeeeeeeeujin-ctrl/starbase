@@ -1,0 +1,49 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# input-remapper - GUI for device specific keyboard mappings
+# Copyright (C) 2025 sezanzeb <b8x45ygc9@mozmail.com>
+#
+# This file is part of input-remapper.
+#
+# input-remapper is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# input-remapper is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with input-remapper.  If not, see <https://www.gnu.org/licenses/>.
+
+"""Control the dbus service from the command line."""
+
+import os
+import sys
+
+
+def fix_import_path():
+    # Installations via `sudo python3 setup.py install` install into /usr/local/lib
+    # instead of /usr/local. sys.path is missing /usr/local/lib when udev is running
+    # its rules.
+    try:
+        import inputremapper
+    except ModuleNotFoundError:
+        python_folder = f"python{sys.version_info.major}.{sys.version_info.minor}"
+        usr_local_lib = f"/usr/local/lib/{python_folder}/dist-packages"
+        if not os.path.exists(usr_local_lib):
+            return
+
+        print(f'Appending "{usr_local_lib}" to sys.path')
+        sys.path.append(usr_local_lib)
+
+
+fix_import_path()
+
+
+from inputremapper.bin.input_remapper_control import InputRemapperControlBin
+
+if __name__ == "__main__":
+    InputRemapperControlBin.main(InputRemapperControlBin.parse_args())

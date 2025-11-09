@@ -1,0 +1,19 @@
+{
+  "name": "@interactjs/utils",
+  "version": "1.10.27",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/taye/interact.js.git",
+    "directory": "packages/@interactjs/utils"
+  },
+  "peerDependencies": {
+    "@interactjs/feedback": "1.10.27",
+    "@interactjs/symbol-tree": "1.10.27"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "sideEffects": false,
+  "license": "MIT"
+}

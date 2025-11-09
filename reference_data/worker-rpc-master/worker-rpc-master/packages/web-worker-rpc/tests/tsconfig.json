@@ -1,0 +1,9 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": ["cypress"],
+    "outDir": "./build",
+    "lib": ["ESNext", "DOM"]
+  },
+  "files": ["test-worker.ts", "tests.spec.ts"]
+}

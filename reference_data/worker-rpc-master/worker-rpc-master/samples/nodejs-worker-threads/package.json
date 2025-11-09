@@ -1,0 +1,17 @@
+{
+  "name": "@zlepper/sample-nodejs-worker-threads",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "start": "yarn node build/main.js",
+    "full-run": "yarn run build && yarn node build/main.js"
+  },
+  "dependencies": {
+    "@zlepper/rpc": "workspace:*",
+    "@zlepper/worker-threads-rpc": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.1.5"
+  },
+  "type": "module"
+}

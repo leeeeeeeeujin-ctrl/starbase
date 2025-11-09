@@ -1,0 +1,23 @@
+dist/
+module/
+cjs/
+esm/
+node_modules/
+.idea/
+coverage/
+*.js
+!.pnp.js
+*.js.map
+*.d.ts
+*.tgz
+
+# Yarn stuff
+.yarn/*
+!.yarn/cache
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+
+!babel.config.js

@@ -1,0 +1,13 @@
+{
+	"name": "ava-endpoint-testing",
+	"description": "Example for endpoint testing",
+	"type": "module",
+	"scripts": {
+		"test": "ava test.js"
+	},
+	"devDependencies": {
+		"ava": "^6",
+		"ky": "^1.4.0",
+		"async-listen": "^3.0.1"
+	}
+}

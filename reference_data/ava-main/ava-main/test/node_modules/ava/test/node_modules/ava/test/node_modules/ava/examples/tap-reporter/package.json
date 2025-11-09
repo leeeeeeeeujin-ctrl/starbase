@@ -1,0 +1,12 @@
+{
+	"name": "ava-tap-reporter",
+	"description": "Example for a custom TAP reporter",
+	"type": "module",
+	"scripts": {
+		"test": "ava test.js --tap | tap-nyan"
+	},
+	"devDependencies": {
+		"ava": "^6",
+		"tap-nyan": "^1.1.0"
+	}
+}

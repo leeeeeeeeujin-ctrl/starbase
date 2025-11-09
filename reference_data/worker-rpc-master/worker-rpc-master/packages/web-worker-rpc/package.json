@@ -1,0 +1,34 @@
+{
+  "name": "@zlepper/web-worker-rpc",
+  "version": "0.0.10",
+  "description": "",
+  "scripts": {
+    "test": "yarn run build-tests && yarn run test-chrome && yarn run test-firefox",
+    "test-chrome": "cypress run --browser chrome",
+    "test-firefox": "cypress run --browser firefox",
+    "open-cypress": "cypress open",
+    "build": "tsc -p .",
+    "build-tests": "webpack -c tests/webpack.config.cjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "peerDependencies": {
+    "@zlepper/rpc": "^0.0.10"
+  },
+  "devDependencies": {
+    "@zlepper/testing": "workspace:*",
+    "cypress": "^13.1.0",
+    "ts-loader": "^9.4.4",
+    "typescript": "^5.1.5",
+    "webpack": "^5.88.2",
+    "webpack-cli": "^5.1.4"
+  },
+  "type": "module",
+  "main": "esm/index.js",
+  "types": "esm/index.d.ts",
+  "files": [
+    "package.json",
+    "esm/**/*.*"
+  ]
+}

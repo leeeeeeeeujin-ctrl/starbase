@@ -1,0 +1,27 @@
+name: Lint
+
+on: [push, pull_request]
+
+jobs:
+  black:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
+    strategy:
+      matrix:
+        python-version: ["3.11"]
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+        cache-dependency-path: setup.py
+    - name: Install dependencies
+      run: |
+        scripts/ci-install-deps.sh
+        pip install black
+    - name: Analysing the code with black --check --diff
+      run: |
+        black --version
+        black --check --diff ./inputremapper ./tests

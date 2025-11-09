@@ -1,0 +1,14 @@
+{
+		"name": "kibo-keyboard",
+		"version": "0.1.0",
+		"author": "Wouter Hisschemöller <email@hisschemoller.com>",
+		"description": "Kibo keyboard.",
+		"private": true,
+		"dependencies": {
+				"planck-js": "^0.3.19",
+				"three": "^0.118.3"
+		},
+		"devDependencies": {
+				"express": "^4.11.1"
+		}
+}

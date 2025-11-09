@@ -1,0 +1,8 @@
+/.tap
+/coverage
+/media/**/node_modules/
+/node_modules/
+/test-tap/**/node_modules/
+/test/**/fixtures/**/node_modules/*/
+/examples/**/node_modules/
+/examples/**/package-lock.json

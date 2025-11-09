@@ -1,0 +1,11 @@
+{
+	"name": "ava-matching-titles",
+	"description": "Example for running tests with matching titles",
+	"type": "module",
+	"scripts": {
+		"test": "ava test.js --match='*oo*'"
+	},
+	"devDependencies": {
+		"ava": "^6"
+	}
+}

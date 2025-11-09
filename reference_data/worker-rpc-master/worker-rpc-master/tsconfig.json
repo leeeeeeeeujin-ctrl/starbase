@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "module": "ESNext",
+    "target": "ESNext",
+    "sourceMap": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitAny": true,
+    "forceConsistentCasingInFileNames": true,
+    "moduleResolution": "Node",
+    "declaration": true,
+    "lib": ["ESNext"],
+    "types": [],
+    "stripInternal": true
+  },
+  "exclude": [
+    "node_modules",
+    "**/*.spec.ts",
+    "**/*.d.ts"
+  ]
+}
