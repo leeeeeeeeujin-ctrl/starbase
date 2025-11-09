@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import PromptEditor from '../../../components/PromptEditor';
 import AICodeChatPanel from '../../../components/workspace/AICodeChatPanel.jsx';
 import { CodeWorkspaceProvider, useWorkspace } from '../../../components/workspace/CodeWorkspaceProvider.jsx';
+import WorkspaceFrame from '../../../components/workspace/WorkspaceFrame.jsx';
 import createPrompt from '../../../lib/prompts/createPrompt.js';
 
 function mapToVisibleRoot(files) {
