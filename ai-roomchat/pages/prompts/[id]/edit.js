@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import PromptEditor from '../../../components/PromptEditor';
 import AICodeChatPanel from '../../../components/workspace/AICodeChatPanel.jsx';
 import { CodeWorkspaceProvider, useWorkspace } from '../../../components/workspace/CodeWorkspaceProvider.jsx';
+import createPrompt from '../../../lib/prompts/createPrompt.js';
 
 function mapToVisibleRoot(files) {
   return (files || []).map((f) => {
@@ -299,22 +300,21 @@ function PromptEditInner({ etag, setEtag, frameId }) {
       setSaving(true);
       savingRef.current = true;
       if (!prompt.id || prompt.id === 'new') {
-        // Create path: generate stable id and idempotency key to avoid duplicates
-        const gen = (p) => {
-          try { return p + (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)); }
-          catch { return p + Math.random().toString(36).slice(2); }
-        };
-        const reqId = gen('req_');
-        const newId = gen('pr_');
-        const res = await fetch('/api/prompts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Request-Id': reqId },
-          body: JSON.stringify({ ...payload, id: newId }),
-        });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json.error || 'create failed');
-        // navigate to the newly created prompt edit page
-        router.replace(`/prompts/${encodeURIComponent(json.id)}/edit`);
+        // Use centralized createPrompt helper which coalesces inflight and recent
+        // requests to avoid duplicate prompt creation (client-side guard).
+        try {
+          const gen = (p) => {
+            try { return p + (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)); }
+            catch { return p + Math.random().toString(36).slice(2); }
+          };
+          const newId = gen('pr_');
+          const createRes = await createPrompt({ ...payload, id: newId });
+          const created = createRes && createRes.id ? createRes : (createRes || {});
+          // navigate to the newly created prompt edit page
+          router.replace(`/prompts/${encodeURIComponent(created.id || newId)}/edit`);
+        } catch (e) {
+          throw e;
+        }
         return;
       } else {
         const res = await fetch(`/api/prompts/${encodeURIComponent(prompt.id)}`, {
