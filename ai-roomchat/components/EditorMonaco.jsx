@@ -18,6 +18,8 @@ export default function EditorMonaco({ value, onChange, language = 'json', theme
   const applyingRef = useRef(false); // prevent feedback loop when applying external value
   const composingRef = useRef(false); // avoid breaking IME composition
   const changeTimerRef = useRef(null); // debounce onChange to reduce churn
+  const typingRef = useRef(false); // true while user is actively typing
+  const typingTimerRef = useRef(null);
 
   useEffect(() => {
     let disposed = false;
@@ -43,6 +45,13 @@ export default function EditorMonaco({ value, onChange, language = 'json', theme
       editorRef.current = editor;
       try { editor.onDidCompositionStart?.(() => { composingRef.current = true; }); } catch {}
       try { editor.onDidCompositionEnd?.(() => { composingRef.current = false; }); } catch {}
+      try {
+        editor.onKeyDown?.(() => {
+          typingRef.current = true;
+          if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+          typingTimerRef.current = setTimeout(() => { typingRef.current = false; }, 200);
+        });
+      } catch {}
       editor.onDidChangeModelContent(() => {
         if (applyingRef.current) return;
         if (composingRef.current) return;
@@ -84,8 +93,8 @@ export default function EditorMonaco({ value, onChange, language = 'json', theme
       try {
         const editor = editorRef.current;
         const model = editor.getModel();
-        // Don't patch while user is actively typing to avoid IME disruption
-        try { if (editor.hasTextFocus && editor.hasTextFocus()) return; } catch {}
+        // Don't patch while user is actively typing or composing to avoid disruption
+        if (typingRef.current || composingRef.current) return;
         const next = typeof value === 'string' ? value : '';
         const cur = model ? model.getValue() : '';
         if (model && next !== cur) {
