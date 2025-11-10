@@ -56,6 +56,7 @@ export default function useGeminiModelCatalog({ apiKey, mode }) {
   const lastSignatureRef = useRef('');
   const [reloadToken, setReloadToken] = useState(0);
   const lastReloadTokenRef = useRef(0);
+  const failureCooldownRef = useRef({ signature: '', until: 0 });
 
   useEffect(() => {
     setOptions(getFallbackGeminiModels(normalizedMode));
@@ -67,6 +68,7 @@ export default function useGeminiModelCatalog({ apiKey, mode }) {
   const reload = useCallback(() => {
     setReloadToken(token => token + 1);
     lastSignatureRef.current = '';
+    failureCooldownRef.current = { signature: '', until: 0 };
   }, []);
 
   useEffect(() => {
@@ -80,6 +82,17 @@ export default function useGeminiModelCatalog({ apiKey, mode }) {
     }
 
     if (signature === lastSignatureRef.current && reloadToken === lastReloadTokenRef.current) {
+      return;
+    }
+
+    const now = Date.now();
+    const failureWindow = failureCooldownRef.current;
+    if (
+      signature &&
+      signature === failureWindow.signature &&
+      reloadToken === lastReloadTokenRef.current &&
+      failureWindow.until > now
+    ) {
       return;
     }
 
@@ -123,7 +136,9 @@ export default function useGeminiModelCatalog({ apiKey, mode }) {
               : typeof payload?.error === 'string'
                 ? payload.error
                 : '모델 목록을 불러오지 못했습니다.';
-          throw new Error(message);
+          const err = new Error(message);
+          err.status = response.status;
+          throw err;
         }
 
         const mapped = mapResponseModels(payload?.models || []);
@@ -132,6 +147,7 @@ export default function useGeminiModelCatalog({ apiKey, mode }) {
           setError(mapped.length ? '' : '사용 가능한 모델 목록이 비어 있어 기본값을 사용합니다.');
           lastSignatureRef.current = signature;
           lastReloadTokenRef.current = reloadToken;
+          failureCooldownRef.current = { signature: '', until: 0 };
         }
       } catch (error) {
         if (controller.signal.aborted || cancelled) {
@@ -142,9 +158,13 @@ export default function useGeminiModelCatalog({ apiKey, mode }) {
         const friendlyMessage =
           error?.message === 'missing_user_api_key'
             ? 'API 키를 입력하면 최신 Gemini 모델을 불러옵니다.'
-            : error?.message || '모델 목록을 불러오지 못했습니다.';
+            : error?.status === 429
+              ? '요청 한도를 초과했습니다. 잠시 후 다시 시도해 주세요.'
+              : error?.message || '모델 목록을 불러오지 못했습니다.';
         setError(friendlyMessage);
-        lastSignatureRef.current = '';
+        const cooldownMs = error?.status === 429 ? 15000 : 4000;
+        failureCooldownRef.current = { signature, until: Date.now() + cooldownMs };
+        lastSignatureRef.current = signature;
         lastReloadTokenRef.current = reloadToken;
       } finally {
         if (!cancelled) {

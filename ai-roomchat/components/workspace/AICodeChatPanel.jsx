@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { getCodeContext, buildSystemPromptFromContext } from '../../lib/workspace/ai/getCodeContext.js';
 import parsePlan from '../../utils/ai/parsePlan.js';
 import { useWorkspace } from './CodeWorkspaceProvider.jsx';
+import { supabase } from '../../lib/supabase';
 
 import { useStartApiKeyManager } from '../rank/StartClient/hooks/useStartApiKeyManager';
 

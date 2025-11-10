@@ -41,3 +41,43 @@ export const supabase = createClient(url, anon, {
     };
   })(),
 });
+
+const originalGetSession = supabase.auth.getSession.bind(supabase.auth);
+let cachedSession = null;
+let sessionExpiresAt = 0;
+let inflightSessionPromise = null;
+
+async function getSessionWithCache() {
+  const now = Date.now();
+  if (cachedSession && now < sessionExpiresAt) {
+    return cachedSession;
+  }
+  if (inflightSessionPromise) {
+    return inflightSessionPromise;
+  }
+  inflightSessionPromise = originalGetSession()
+    .then(result => {
+      cachedSession = result;
+      sessionExpiresAt = Date.now() + 3000;
+      inflightSessionPromise = null;
+      return result;
+    })
+    .catch(error => {
+      inflightSessionPromise = null;
+      cachedSession = null;
+      sessionExpiresAt = 0;
+      throw error;
+    });
+  return inflightSessionPromise;
+}
+
+supabase.auth.getSession = getSessionWithCache;
+
+try {
+  supabase.auth.onAuthStateChange?.((_event, session) => {
+    cachedSession = { data: { session }, error: null };
+    sessionExpiresAt = Date.now() + 3000;
+  });
+} catch {
+  // ignore failures wiring the listener
+}

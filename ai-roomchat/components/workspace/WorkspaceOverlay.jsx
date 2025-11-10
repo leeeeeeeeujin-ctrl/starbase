@@ -61,19 +61,61 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
     try { localStorage.setItem('workspace:chat:size', JSON.stringify(chatSize)); } catch {}
   }, [chatSize]);
   const [resizing, setResizing] = useState(false);
+  const dragStateRef = useRef({ lastX: 0, lastY: 0, active: false });
   useEffect(() => {
-    if (!resizing) return;
-    const onMove = (e) => {
-      const dx = -(e.movementX || 0);
-      const dy = -(e.movementY || 0);
-      setChatSize(s => ({ w: Math.min(Math.max(320, s.w - dx), 900), h: Math.min(Math.max(240, s.h - dy), 900) }));
+    if (!resizing) return undefined;
+    dragStateRef.current.active = false;
+
+    const applyDelta = (dx = 0, dy = 0) => {
+      if (!dx && !dy) return;
+      setChatSize(s => ({
+        w: Math.min(Math.max(320, s.w + dx), 900),
+        h: Math.min(Math.max(240, s.h + dy), 900),
+      }));
     };
-    const onUp = () => setResizing(false);
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-    window.addEventListener('touchmove', onMove);
-    window.addEventListener('touchend', onUp);
-    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); window.removeEventListener('touchmove', onMove); window.removeEventListener('touchend', onUp); };
+
+    const onMouseMove = (event) => {
+      if (typeof event.preventDefault === 'function') event.preventDefault();
+      applyDelta(event.movementX || 0, event.movementY || 0);
+    };
+
+    const onTouchMove = (event) => {
+      if (!event.touches?.length) return;
+      const touch = event.touches[0];
+      const state = dragStateRef.current;
+      if (!state.active) {
+        state.lastX = touch.clientX;
+        state.lastY = touch.clientY;
+        state.active = true;
+        return;
+      }
+      const dx = touch.clientX - state.lastX;
+      const dy = touch.clientY - state.lastY;
+      state.lastX = touch.clientX;
+      state.lastY = touch.clientY;
+      if (typeof event.preventDefault === 'function') event.preventDefault();
+      applyDelta(dx, dy);
+    };
+
+    const stopResize = () => {
+      dragStateRef.current.active = false;
+      setResizing(false);
+    };
+
+    const touchMoveOptions = { passive: false };
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', stopResize);
+    window.addEventListener('touchmove', onTouchMove, touchMoveOptions);
+    window.addEventListener('touchend', stopResize);
+    window.addEventListener('touchcancel', stopResize);
+
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', stopResize);
+      window.removeEventListener('touchmove', onTouchMove, touchMoveOptions);
+      window.removeEventListener('touchend', stopResize);
+      window.removeEventListener('touchcancel', stopResize);
+    };
   }, [resizing]);
   const [toolbarCollapsed, setToolbarCollapsed] = useState(true);
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
