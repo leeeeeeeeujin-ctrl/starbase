@@ -18,13 +18,16 @@ const isTestEnv = String(process.env.NODE_ENV || '').toLowerCase() === 'test';
 const url = rawUrl || (isCiBuild || isTestEnv ? 'http://localhost/dummy-supabase' : rawUrl);
 const anon = rawAnon || (isCiBuild || isTestEnv ? 'anon-placeholder' : rawAnon);
 
-if (!url || !anon) {
-  throw new Error(
-    'Missing Supabase env. Check NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY'
-  );
+// Graceful fallback: export a no-op client when env is missing to avoid runtime crashes in optional features.
+function createNoop(){
+  const noop = async () => ({ data: null, error: null });
+  return {
+    auth: { getSession: async () => ({ data: { session: null }, error: null }) },
+    from: () => ({ select: noop, insert: noop, update: noop, delete: noop, maybeSingle: noop, single: noop }),
+  };
 }
 
-export const supabase = createClient(url, anon, {
+export const supabase = (url && anon) ? createClient(url, anon, {
   auth: {
     flowType: 'pkce',
     persistSession: true,
@@ -40,4 +43,4 @@ export const supabase = createClient(url, anon, {
       fetch: authConfig.fetch,
     };
   })(),
-});
+}) : createNoop();

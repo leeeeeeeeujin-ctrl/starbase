@@ -141,14 +141,14 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
   const refreshApiKeyring = async () => {
     setApiKeysLoading(true);
     setApiKeyError(null);
-    try {
-      const { data } = await supabase.auth.getSession();
-      const token = data?.session?.access_token || null;
-      const res = await fetch('/api/rank/user-api-keyring', {
-        method: 'GET',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        credentials: 'include',
-      });
+      try {
+        let token = null;
+        try { if (supabase && supabase.auth && typeof supabase.auth.getSession === 'function') { const r = await supabase.auth.getSession(); token = r?.data?.session?.access_token || null; } } catch {}
+        const res = await fetch('/api/rank/user-api-keyring', {
+          method: 'GET',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          credentials: 'include',
+        });
       if (!res.ok) {
         const payload = await res.json().catch(()=>({}));
         throw new Error(payload?.detail || payload?.error || 'API 키 목록을 불러올 수 없습니다.');
@@ -191,8 +191,8 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
     const trimmed = (apiKeyInput||'').trim();
     if (!trimmed) { setApiKeyError('API 키를 입력해 주세요.'); return; }
     try {
-      const { data } = await supabase.auth.getSession();
-      const token = data?.session?.access_token || null;
+      let token = null;
+      try { if (supabase && supabase.auth && typeof supabase.auth.getSession === 'function') { const r = await supabase.auth.getSession(); token = r?.data?.session?.access_token || null; } } catch {}
       const res = await fetch('/api/rank/user-api-keyring', {
         method:'POST', headers:{ 'Content-Type':'application/json', ...(token?{Authorization:`Bearer ${token}`}:{}) }, credentials:'include', body: JSON.stringify({ apiKey: trimmed, activate: true })
       });

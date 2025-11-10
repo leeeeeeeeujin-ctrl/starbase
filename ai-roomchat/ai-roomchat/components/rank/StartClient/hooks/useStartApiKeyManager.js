@@ -217,7 +217,8 @@ export function useStartApiKeyManager({
 
     async function loadStoredKey() {
       try {
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        let sessionData = null; let sessionError = null;
+        try { if (supabase && supabase.auth && typeof supabase.auth.getSession === 'function') { const r = await supabase.auth.getSession(); sessionData = r?.data || null; sessionError = r?.error || null; } } catch (e) { sessionError = e; }
         if (sessionError) {
           throw sessionError;
         }
@@ -317,7 +318,8 @@ export function useStartApiKeyManager({
       }
 
       try {
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        let sessionData = null; let sessionError = null;
+        try { if (supabase && supabase.auth && typeof supabase.auth.getSession === 'function') { const r = await supabase.auth.getSession(); sessionData = r?.data || null; sessionError = r?.error || null; } } catch (e) { sessionError = e; }
         if (sessionError) {
           throw sessionError;
         }

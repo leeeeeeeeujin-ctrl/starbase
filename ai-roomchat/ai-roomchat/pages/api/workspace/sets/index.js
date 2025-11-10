@@ -1,42 +1,21 @@
-export const config = { runtime: 'nodejs' };
+import { getIdempotent, ensureIdempotent, upsertSet } from '@/lib/workspace/setStore';
 
-const g = globalThis;
-const STORE = (g.__SET_STORE__ ||= new Map()); // id -> { etag, files }
-const SEEN = (g.__SET_SEEN__ ||= new Set()); // request-id dedupe
-
-export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    res.setHeader('Allow', 'POST');
-    return res.status(405).end();
+export default async function handler(req, res){
+  if (req.method !== 'POST') { res.setHeader('Allow','POST'); return res.status(405).end('Method Not Allowed'); }
+  try {
+    const reqId = String(req.headers['x-request-id'] || '').trim();
+    const hit = getIdempotent(reqId);
+    if (hit) return res.status(200).json({ etag: hit.etag, id: hit.id });
+    const { id, files = [], meta = {} } = req.body || {};
+    if (!id) return res.status(400).json({ error: 'missing-id' });
+    const saved = upsertSet(String(id), Array.isArray(files)? files : [], (meta && typeof meta==='object')? meta : {});
+    ensureIdempotent(reqId, saved);
+    return res.status(200).json({ etag: saved.etag, id: saved.id });
+  } catch (e) {
+    try { console.warn('[sets.create] error', e?.message||e); } catch {}
+    return res.status(500).json({ error: 'sets-create-failed' });
   }
-
-  if (process.env.NODE_ENV !== 'production') {
-    try {
-      const bodyLog = typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {});
-      console.log('[api/sets] POST', {
-        referer: req.headers['referer'] || null,
-        ua: req.headers['user-agent'] || null,
-        body: bodyLog,
-        rid: req.headers['x-request-id'] || null,
-      });
-    } catch {}
-  }
-
-  const rid = req.headers['x-request-id'];
-  if (rid && SEEN.has(rid)) {
-    return res.status(200).json({ ok: true });
-  }
-
-  const body = typeof req.body === 'string' ? safeJson(req.body) : (req.body || {});
-  const { id } = body;
-  if (!id) return res.status(400).json({ error: 'missing id' });
-
-  if (!STORE.has(id)) {
-    STORE.set(id, { etag: `"${Date.now()}"`, files: {} });
-  }
-  if (rid) SEEN.add(rid);
-  return res.status(200).json({ ok: true });
 }
 
-function safeJson(s) { try { return JSON.parse(s); } catch { return {}; } }
+export const config = { runtime: 'nodejs' };
 
