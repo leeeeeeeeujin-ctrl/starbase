@@ -5,24 +5,54 @@ import dynamic from 'next/dynamic';
 import { useRouter } from 'next/router';
 import { GameRuntimeProvider, useGameRuntime } from '@/components/game/GameRuntimeProvider.jsx';
 import WorkspaceFrame from '@/components/workspace/WorkspaceFrame.jsx';
+import { useWorkspace } from '@/components/workspace/CodeWorkspaceProvider.jsx';
+import { loadHooksFromSource } from '@/lib/runtime/safeEvalHookModule.js';
 
 const MainGameMobileUI = dynamic(() => import('@/components/game/MainGameMobileUI.jsx'), { ssr: false });
 
 function Runner({ tpl }){
   const api = useGameRuntime();
+  const { files } = useWorkspace();
   // derive graph from template.nodes/edges if present
   const graph = useMemo(() => {
+    // Prefer workspace graph
+    try {
+      const node = files?.['/graph/prompt-graph.json'];
+      if (node && typeof node.content === 'string' && node.content.trim()) {
+        const obj = JSON.parse(node.content);
+        const nodes = Array.isArray(obj?.nodes) ? obj.nodes : [];
+        const edges = Array.isArray(obj?.edges) ? obj.edges : [];
+        return { nodes, edges };
+      }
+    } catch {}
+    // Fallback to template
     try {
       const nodes = Array.isArray(tpl?.nodes) ? tpl.nodes.map(n => ({ id: n.id, type: n.type || 'system', label: n.label || n.text || '' })) : [];
       const edges = Array.isArray(tpl?.edges) ? tpl.edges.map(e => ({ id: e.id || `${e.source}-${e.target}`, source: e.source, target: e.target, label: e.label || '' })) : [];
       return { nodes, edges };
     } catch { return { nodes: [], edges: [] }; }
-  }, [tpl]);
+  }, [tpl, files]);
 
   useEffect(() => {
     if (!tpl) return;
-    api.setRuntime({ graph, hooks: {}, config: tpl?.runtime?.config || {}, files: {} });
-  }, [tpl, graph, api]);
+    // hooks from workspace
+    let hooks = {};
+    try {
+      const hnode = files?.['/game/hooks/automation.js'];
+      const src = typeof hnode?.content === 'string' ? hnode.content : '';
+      if (src.trim()) {
+        hooks = loadHooksFromSource(src);
+      }
+    } catch {}
+    // runtime config
+    let config = tpl?.runtime?.config || {};
+    try {
+      const cnode = files?.['/game/runtime.config.json'];
+      const raw = typeof cnode?.content === 'string' ? cnode.content : '';
+      if (raw.trim()) config = JSON.parse(raw);
+    } catch {}
+    api.setRuntime({ graph, hooks, config, files: files || {} });
+  }, [tpl, graph, files, api]);
 
   return (
     <MainGameMobileUI

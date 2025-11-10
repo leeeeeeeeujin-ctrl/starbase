@@ -4,8 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { getCodeContext, buildSystemPromptFromContext } from '../../lib/workspace/ai/getCodeContext.js';
 import parsePlan from '../../utils/ai/parsePlan.js';
 import { useWorkspace } from './CodeWorkspaceProvider.jsx';
-import { applyMainUiPresetObject, getMainUiModules } from '../../utils/uiPresets';
-import { supabase } from '../../lib/supabase';
+
 import { useStartApiKeyManager } from '../rank/StartClient/hooks/useStartApiKeyManager';
 
 export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFullscreen, onMinimize, enableFullscreenButton, enableMinimizeButton }){
