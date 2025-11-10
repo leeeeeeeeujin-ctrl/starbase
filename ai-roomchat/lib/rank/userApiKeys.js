@@ -1,100 +1,71 @@
-import { supabaseAdmin } from '@/lib/supabaseAdmin';
+// Minimal, server-side only helper to fetch and decrypt a user's AI API key
+// from Supabase rank_user_api_keyring using the user's access token.
+// Avoids using supabase-js in serverless/edge/worker contexts.
 
-import { decryptText, encryptText } from './encryption';
-import { normalizeGeminiMode, normalizeGeminiModelId } from './geminiConfig';
+const crypto = require('crypto');
 
-const TABLE = 'rank_user_api_keys';
-
-function buildSample(apiKey) {
-  if (!apiKey) return '';
-  const trimmed = apiKey.trim();
-  if (trimmed.length <= 8) return trimmed;
-  return `${trimmed.slice(0, 4)}…${trimmed.slice(-4)}`;
+function b64ToBuf(b64) {
+  return Buffer.from(b64, 'base64');
 }
 
-export async function upsertUserApiKey({ userId, apiKey, apiVersion, geminiMode, geminiModel }) {
-  const trimmed = typeof apiKey === 'string' ? apiKey.trim() : '';
-  if (!trimmed) {
-    throw new Error('apiKey is required');
-  }
-  if (!userId) {
-    throw new Error('userId is required');
-  }
-
-  const normalizedMode = geminiMode ? normalizeGeminiMode(geminiMode) : null;
-  const normalizedModel = geminiModel ? normalizeGeminiModelId(geminiModel) : null;
-
-  const encrypted = encryptText(trimmed);
-  const payload = {
-    user_id: userId,
-    key_ciphertext: encrypted.ciphertext,
-    key_iv: encrypted.iv,
-    key_tag: encrypted.tag,
-    key_version: encrypted.version,
-    api_version: apiVersion || null,
-    gemini_mode: normalizedMode,
-    gemini_model: normalizedModel,
-    key_sample: buildSample(trimmed),
-    updated_at: new Date().toISOString(),
-  };
-
-  const { data, error } = await supabaseAdmin
-    .from(TABLE)
-    .upsert(payload, { onConflict: 'user_id' })
-    .select('user_id, api_version, gemini_mode, gemini_model, key_sample, updated_at')
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
+function deriveAesKey(secret) {
+  // Deterministic 32-byte key by SHA-256 of secret string
+  return crypto.createHash('sha256').update(String(secret || '')).digest();
 }
 
-export async function fetchUserApiKey(userId) {
-  if (!userId) {
-    throw new Error('userId is required');
+async function decryptParts({ ciphertextB64, ivB64, tagB64 }, secret) {
+  const key = deriveAesKey(secret);
+  const iv = b64ToBuf(ivB64);
+  const tag = b64ToBuf(tagB64);
+  const ciphertext = b64ToBuf(ciphertextB64);
+
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+  decipher.setAuthTag(tag);
+  const dec1 = decipher.update(ciphertext);
+  const dec2 = decipher.final();
+  const out = Buffer.concat([dec1, dec2]).toString('utf8');
+  return out;
+}
+
+async function fetchLatestGeminiKey({ supabaseUrl, anonKey, accessToken }) {
+  if (!supabaseUrl) throw new Error('Missing SUPABASE_URL');
+  if (!anonKey) throw new Error('Missing SUPABASE_ANON_KEY');
+  if (!accessToken) throw new Error('Missing user access token');
+
+  const url = new URL('/rest/v1/rank_user_api_keyring', supabaseUrl);
+  url.searchParams.set('select', '*');
+  url.searchParams.set('provider', 'eq.gemini');
+  url.searchParams.set('order', 'updated_at.desc');
+  url.searchParams.set('limit', '1');
+
+  const res = await fetch(url.toString(), {
+    headers: {
+      apikey: anonKey,
+      Authorization: `Bearer ${accessToken}`,
+      Accept: 'application/json',
+    },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`keyring fetch failed: ${res.status} ${text}`);
   }
-
-  const { data, error } = await supabaseAdmin
-    .from(TABLE)
-    .select('key_ciphertext, key_iv, key_tag, key_version, api_version, gemini_mode, gemini_model')
-    .eq('user_id', userId)
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-
-  if (!data) {
+  const rows = await res.json();
+  if (!Array.isArray(rows) || rows.length === 0) {
     return null;
   }
-
-  const apiKey = decryptText({
-    ciphertext: data.key_ciphertext,
-    iv: data.key_iv,
-    tag: data.key_tag,
-    version: data.key_version,
-  });
-
+  const row = rows[0] || {};
   return {
-    apiKey,
-    apiVersion: data.api_version || null,
-    geminiMode: data.gemini_mode || null,
-    geminiModel: data.gemini_model || null,
+    model: row.gemini_model || row.model_label || 'gemini-2.5-flash',
+    apiVersion: row.api_version || null,
+    geminiMode: row.gemini_mode || 'v1beta',
+    ciphertextB64: row.key_ciphertext,
+    ivB64: row.key_iv,
+    tagB64: row.key_tag,
   };
 }
 
-export async function deleteUserApiKey({ userId }) {
-  if (!userId) {
-    throw new Error('userId is required');
-  }
+module.exports = {
+  decryptParts,
+  fetchLatestGeminiKey,
+};
 
-  const { error } = await supabaseAdmin.from(TABLE).delete().eq('user_id', userId);
-
-  if (error) {
-    throw error;
-  }
-
-  return true;
-}
