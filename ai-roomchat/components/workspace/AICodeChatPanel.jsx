@@ -7,6 +7,7 @@ import { useWorkspace } from './CodeWorkspaceProvider.jsx';
 import { useStartApiKeyManager } from '../rank/StartClient/hooks/useStartApiKeyManager';
 import { usePersistentState } from './hooks/usePersistentState';
 import { useSupabaseSessionToken } from './hooks/useSupabaseSessionToken';
+import { useAiChatSessions } from './hooks/useAiChatSessions';
 
 export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFullscreen, onMinimize, enableFullscreenButton, enableMinimizeButton }){
   // Global singleton guard to prevent multiple panels at once per window
@@ -243,44 +244,20 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
     } catch (e) { setApiKeyError(e?.message || 'API 키를 삭제할 수 없습니다.'); }
   };
   const MAX_INLINE = 4000; // prompt에 포함하는 최대 코드 길이 (문자)
-  const SESS_KEY = 'workspace:aiChat:sessions.v1';
-  const newSession = () => ({ id: `s_${Date.now()}`, title: '새 대화', createdAt: Date.now(), logs: [] });
-  const [sessions, setSessions] = useState([]);
-  const [currentId, setCurrentId] = useState(null);
+  const {
+    sessions,
+    currentId,
+    currentSession,
+    logs,
+    setCurrentId,
+    append,
+    appendPreview,
+    startNewChat,
+    deleteSession,
+  } = useAiChatSessions();
   const [historyOpen, setHistoryOpen] = useState(false);
   const [scrolledUp, setScrolledUp] = useState(false);
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(SESS_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed.sessions) && parsed.sessions.length > 0) {
-          // 초기 로딩 시, 내용이 전혀 없는 세션은 제외
-          const cleaned = parsed.sessions.filter(s => Array.isArray(s.logs) && s.logs.length > 0);
-          if (cleaned.length > 0) {
-            setSessions(cleaned);
-            setCurrentId(parsed.currentId && cleaned.find(x=>x.id===parsed.currentId)?.id || cleaned[0].id);
-          } else {
-            // 모두 비어있다면 새 세션만 생성
-            const s = newSession(); setSessions([s]); setCurrentId(s.id);
-          }
-          return;
-        }
-      }
-    } catch {}
-    const s = newSession();
-    setSessions([s]);
-    setCurrentId(s.id);
-  }, []);
-  useEffect(() => {
-    try {
-      // 저장 시에도, 현재 세션을 제외하고 비어있는 세션은 저장하지 않음
-      const toSave = (sessions||[]).filter(s => (Array.isArray(s.logs) && s.logs.length > 0) || s.id === currentId);
-      localStorage.setItem(SESS_KEY, JSON.stringify({ sessions: toSave, currentId }));
-    } catch {}
-  }, [sessions, currentId]);
-  const current = useMemo(() => sessions.find(s => s.id === currentId) || newSession(), [sessions, currentId]);
-  const logs = current.logs || [];
+  const current = currentSession;
   // Long-message readability helpers
   const [expandedMsgs, setExpandedMsgs] = useState(()=> new Set());
   const toggleExpand = (id) => setExpandedMsgs(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
@@ -319,35 +296,6 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
       }
     } catch {}
   }, [logs]);
-  const append = (role, msg) => {
-    setSessions(prev => prev.map(s => s.id === currentId ? { ...s, title: s.title === '새 대화' && role==='user' ? (msg.slice(0,24) || '대화') : s.title, logs: [...(s.logs||[]), { t: Date.now(), role, msg }] } : s));
-  };
-  const appendPreview = (preview) => {
-    // preview: { id, comment, thumbDataUrl }
-    setSessions(prev => prev.map(s => s.id === currentId ? {
-      ...s,
-      logs: [...(s.logs||[]), { t: Date.now(), role: 'user', msg: { type:'uiPreview', ...preview } }]
-    } : s));
-  };
-  const startNewChat = () => {
-    const s = newSession();
-    // 새로 만들 때, 내용이 전혀 없는 기존 세션은 정리
-    setSessions(prev => [s, ...prev.filter(p => Array.isArray(p.logs) && p.logs.length > 0)]);
-    setCurrentId(s.id);
-    setHistoryOpen(false);
-  };
-  const deleteSession = (id) => {
-    setSessions(prev => {
-      const next = prev.filter(s => s.id !== id);
-      // 현재 세션을 지웠다면 대체 세션 선택
-      if (id === currentId) {
-        const fallback = next.find(s => Array.isArray(s.logs) && s.logs.length > 0) || newSession();
-        if (!next.find(s => s.id === fallback.id)) next.unshift(fallback);
-        setCurrentId(fallback.id);
-      }
-      return next;
-    });
-  };
   const listFiles = () => Object.keys(files).sort().map(p => ({ path: p, size: (files[p]?.content||'').length, dir: !!files[p]?.dir }));
   // Upload helpers
   const fileToBase64 = (file) => new Promise((resolve, reject) => {
@@ -1071,7 +1019,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
         <span>AI 코드 채팅{autoApply ? (autoBudget>0 ? ` · 자동 ${autoBudget}` : ' · 자동 진행') : ''}</span>
         <div style={{ display:'flex', gap:6, alignItems:'center' }}>
           <button onClick={()=>setHistoryOpen(v=>!v)} title="대화 기록" style={{ padding:'3px 8px', borderRadius:6, border:'1px solid #334155', background: historyOpen ? '#172033' : '#0b1220', color:'#94a3b8', fontSize:12 }}>기록</button>
-          <button onClick={startNewChat} title="새 대화" style={{ padding:'3px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8', fontSize:12 }}>새 대화</button>
+          <button onClick={() => { startNewChat(); setHistoryOpen(false); }} title="새 대화" style={{ padding:'3px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8', fontSize:12 }}>새 대화</button>
           <button onClick={()=>setContextOpen(v=>!v)} title="컨텍스트" style={{ padding:'3px 8px', borderRadius:6, border:'1px solid #334155', background: contextOpen ? '#172033' : '#0b1220', color:'#94a3b8', fontSize:12 }}>정보</button>
           {enableFullscreenButton && <button onClick={handleToggleFullscreen} title={isFullscreenUi?"창으로":"전체화면으로"} style={{ padding:'3px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#94a3b8', fontSize:12 }}>{isFullscreenUi ? '−' : '+'}</button>}
           <button onClick={()=>setActionsOpen(v=>!v)} title="옵션" style={{ padding:'4px 8px', borderRadius:8, border:'1px solid #334155', background: actionsOpen ? '#172033' : '#0b1220', color:'#94a3b8' }}>⋮</button>
