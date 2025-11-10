@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, useRef } from "react";
 import { compressString, decompressToString } from "../../utils/compress.js";
 import { injectFilesWithFallback } from "../../lib/workspace/injectFilesFallback.js";
 // snapshot/local cache disabled in server-first mode
@@ -401,7 +401,9 @@ const defaultFiles = {
 
 const WorkspaceCtx = createContext(null);
 
-export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles }) {
+import { saveSet } from "../../lib/workspace/saveSet.js";
+
+export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles, initialEtag = null }) {
   // Per-instance storage namespace (set id); use explicit storageNamespace or server-provided patch scope.
   let ns = (typeof window !== 'undefined' ? (storageNamespace || (window.__VFS_SCOPED_PATCH__ && window.__VFS_SCOPED_PATCH__.scope)) : null) || null;
   const nsKey = (k) => (ns ? `${k}@${ns}` : k);
@@ -503,6 +505,7 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
     } catch {}
   }, [files]);
 
+  const serverEtagRef = useRef(initialEtag || null);
   const api = useMemo(() => {
     const exists = (path) => Boolean(files[path]);
     const MAX_VFS_BYTES = 15 * 1024 * 1024; // 15MB soft limit
@@ -559,6 +562,20 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
         setSavedSig((m) => ({ ...m, [path]: sig }));
         setDirty((m) => ({ ...m, [path]: false }));
       },
+      // Save a single file locally then push full set to server
+      saveFileAndPush: async (setId, path) => {
+        try {
+          const meta = files[path];
+          const sig = contentSignature(meta);
+          setSavedSig((m) => ({ ...m, [path]: sig }));
+          setDirty((m) => ({ ...m, [path]: false }));
+          const id = String(setId || storageNamespace || "").trim();
+          if (!id) return { ok: false, error: 'missing_set_id' };
+          const et = await saveSet(id, files, serverEtagRef.current);
+          if (et) serverEtagRef.current = et;
+          return { ok: true };
+        } catch (e) { return { ok: false, error: e?.message || 'save_failed' }; }
+      },
       saveAll: () => {
         setSavedSig((m) => {
           const next = { ...m };
@@ -572,6 +589,21 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
           Object.keys(next).forEach((k) => { next[k] = false; });
           return next;
         });
+      },
+      // Save all locally then push full set to server
+      saveAllAndPush: async (setId) => {
+        try {
+          // local save-all
+          const nextSigs = {};
+          Object.entries(files).forEach(([p, meta]) => { nextSigs[p] = contentSignature(meta); });
+          setSavedSig((m) => ({ ...m, ...nextSigs }));
+          setDirty({});
+          const id = String(setId || storageNamespace || "").trim();
+          if (!id) return { ok: false, error: 'missing_set_id' };
+          const et = await saveSet(id, files, serverEtagRef.current);
+          if (et) serverEtagRef.current = et;
+          return { ok: true };
+        } catch (e) { return { ok: false, error: e?.message || 'save_failed' }; }
       },
       setEntryPath,
       setRoot,
@@ -588,8 +620,27 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
         if (!openPaths.includes(c)) setOpenPaths((arr) => [...arr, c]);
         setActivePath(c);
       },
-      close: (path) =>
-        setOpenPaths((arr) => arr.filter((p) => p !== path)),
+      close: (path) => {
+        const c = canon(path);
+        const isDirty = !!dirty[c];
+        if (isDirty) {
+          try {
+            const yn = window.confirm('변경사항을 저장하고 닫을까요? (취소하면 닫지 않습니다)');
+            if (yn) {
+              // best-effort save + push
+              const id = storageNamespace || '';
+              const meta = files[c];
+              const sig = contentSignature(meta);
+              setSavedSig((m) => ({ ...m, [c]: sig }));
+              setDirty((m) => ({ ...m, [c]: false }));
+              if (id) saveSet(id, files, serverEtagRef.current).then((et) => { if (et) serverEtagRef.current = et; }).catch(()=>{});
+            } else {
+              // user chose not to save; proceed closing but keep unsaved changes in memory
+            }
+          } catch {}
+        }
+        setOpenPaths((arr) => arr.filter((p) => p !== c));
+      },
       createFile: (path, content = "") =>
         { const c=canon(path); setFiles((m) => ({ ...m, [c]: { content, readonly: false } })); setDirty((d) => ({ ...d, [c]: true })); },
       createFolder: (path) =>
@@ -775,6 +826,23 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
       }
     } catch {}
   }, [ns, api]);
+
+  // Warn on navigating away with dirty changes
+  useEffect(() => {
+    const beforeUnload = (e) => {
+      try {
+        const anyDirty = Object.values(dirty || {}).some(Boolean);
+        if (anyDirty) {
+          e.preventDefault();
+          e.returnValue = '';
+          return '';
+        }
+      } catch {}
+      return undefined;
+    };
+    if (typeof window !== 'undefined') window.addEventListener('beforeunload', beforeUnload);
+    return () => { try { if (typeof window !== 'undefined') window.removeEventListener('beforeunload', beforeUnload); } catch {} };
+  }, [dirty]);
 
   return (
     <WorkspaceCtx.Provider value={api}>
