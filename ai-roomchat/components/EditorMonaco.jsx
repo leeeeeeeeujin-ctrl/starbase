@@ -20,6 +20,7 @@ export default function EditorMonaco({ value, onChange, language = 'json', theme
   const changeTimerRef = useRef(null); // debounce onChange to reduce churn
   const typingRef = useRef(false); // true while user is actively typing
   const typingTimerRef = useRef(null);
+  const lastUserEditAtRef = useRef(0);
 
   useEffect(() => {
     let disposed = false;
@@ -57,6 +58,7 @@ export default function EditorMonaco({ value, onChange, language = 'json', theme
         if (composingRef.current) return;
         if (changeTimerRef.current) clearTimeout(changeTimerRef.current);
         const v = editor.getValue();
+        lastUserEditAtRef.current = Date.now();
         changeTimerRef.current = setTimeout(() => {
           if (typeof onChange === 'function') onChange(v);
         }, 120);
@@ -97,6 +99,8 @@ export default function EditorMonaco({ value, onChange, language = 'json', theme
         if (typingRef.current || composingRef.current) return;
         const next = typeof value === 'string' ? value : '';
         const cur = model ? model.getValue() : '';
+        // If user just typed within the last 250ms, skip applying external value to avoid focus/IME disruption
+        if (Date.now() - lastUserEditAtRef.current < 250) return;
         if (model && next !== cur) {
           applyingRef.current = true;
           const prevSel = editor.getSelection();
