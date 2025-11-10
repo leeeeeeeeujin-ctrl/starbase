@@ -29,3 +29,9 @@ ai-roomchat/.next/
 ai-roomchat/.next/cache/
 .next/
 .next/cache/
+
+# Exclude dev-only API routes and pages from deployment (diagnostic/dev tools not needed in prod)
+ai-roomchat/pages/api/dev/
+ai-roomchat/pages/api/dev/**
+ai-roomchat/pages/dev/
+ai-roomchat/pages/dev/**
