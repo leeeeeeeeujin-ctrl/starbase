@@ -206,6 +206,18 @@ export default async function handler(req, res) {
     '- Timing: lib/runtime/adapters/timingTurns.js',
     '- Snapshot: lib/runtime/adapters/storageSnapshot.js',
   ].join('\n') + '\n', readonly: true });
+  files.push({ path: '/docs/networking/SocketIO.md', content: [
+    '# Networking — Socket.IO',
+    '',
+    '- 구성: /game/adapters.config.json 에 { "networking": { "id": "socketio", "url": "https://..." } }',
+    '- 코드: lib/runtime/adapters/netSocketIO.js',
+  ].join('\n') + '\n', readonly: true });
+  files.push({ path: '/docs/sync/Yjs.md', content: [
+    '# Sync — Yjs',
+    '',
+    '- 구성: /game/adapters.config.json 에 { "sync": { "id": "yjs" } }',
+    '- 코드: lib/runtime/adapters/syncYjs.js',
+  ].join('\n') + '\n', readonly: true });
   files.push({ path: '/docs/runtime/UISchema.md', content: [
     '# UI Schema',
     '',

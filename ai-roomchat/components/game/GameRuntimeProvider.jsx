@@ -305,8 +305,13 @@ function step(reason){
         let prompt = String(node.label || '');
     try {
       if (hookWorkerRef.current) {
-        const out = await hookWorkerRef.current.call('transformPrompt', { node, reason, files: filesRef.current, config: configRef.current });
-        prompt = (out && typeof out === 'object' && typeof out.prompt === 'string') ? out.prompt : String(out ?? prompt);
+        hookWorkerRef.current.call('transformPrompt', { node, reason, files: filesRef.current, config: configRef.current }).then((out)=>{
+          try {
+            const nextPrompt = (out && typeof out === 'object' && typeof out.prompt === 'string') ? out.prompt : String(out ?? prompt);
+            // emit updated prompt asynchronously if needed
+            try { sendAI(nextPrompt, 'system'); } catch {}
+          } catch {}
+        }).catch(()=>{});
       } else if (typeof hooks.transformPrompt === 'function') {
         prompt = hooks.transformPrompt({ node, reason, files: filesRef.current, config: configRef.current });
       }
@@ -347,8 +352,12 @@ function step(reason){
       let nextId = null;
     try {
       if (hookWorkerRef.current) {
-        const out = await hookWorkerRef.current.call('selectNext', { node: getNode(currentId), files: filesRef.current, config: configRef.current }, neigh);
-        nextId = (typeof out === 'string') ? out : (out && out.next) || null;
+        hookWorkerRef.current.call('selectNext', { node: getNode(currentId), files: filesRef.current, config: configRef.current }, neigh).then((out)=>{
+          try {
+            const id = (typeof out === 'string') ? out : (out && out.next) || null;
+            if (id) setCurrentNodeId(id);
+          } catch {}
+        }).catch(()=>{});
       } else if (typeof hooks.selectNext === 'function') {
         nextId = hooks.selectNext({ node: getNode(currentId), files: filesRef.current, config: configRef.current }, neigh);
       }
