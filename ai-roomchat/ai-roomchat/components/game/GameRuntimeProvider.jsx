@@ -321,12 +321,17 @@ function step(reason){
           let answer = '';
           try {
             const model = (configRef.current?.ai?.model) || 'gemini-2.5-flash';
-            const body = { model, prefer: 'server', contents: [{ parts: [{ text: String(prompt||'') }] }] };
-            let resp = await fetch('/api/ai/gemini', { method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify(body) });
+            const baseBody = { contents: [{ parts: [{ text: String(prompt||'') }] }] };
+            // try to attach supabase access token if available (for keyring auth)
+            let token = null;
+            try { if (window && window.supabase) { /* noop */ } } catch {}
+            try { if (supabase && supabase.auth && typeof supabase.auth.getSession === 'function') { const r = await supabase.auth.getSession(); token = r?.data?.session?.access_token || null; } } catch {}
+            const authHeader = token ? { Authorization: `Bearer ${token}` } : {};
+            // prefer server first if allowed, else keyring
+            let resp = await fetch('/api/ai/gemini', { method:'POST', headers:{ 'content-type':'application/json', ...authHeader }, body: JSON.stringify({ model, prefer: 'server', body: baseBody }) });
             if (!resp.ok) {
               // try keyring if server key not allowed
-              const body2 = { ...body, prefer: 'keyring' };
-              resp = await fetch('/api/ai/gemini', { method:'POST', headers:{ 'content-type':'application/json' }, body: JSON.stringify(body2) });
+              resp = await fetch('/api/ai/gemini', { method:'POST', headers:{ 'content-type':'application/json', ...authHeader }, body: JSON.stringify({ model, prefer: 'keyring', body: baseBody }) });
             }
             const j = await resp.json();
             const pick = (o) => {
