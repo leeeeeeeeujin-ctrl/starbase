@@ -200,7 +200,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
   }, []);
   // no split dragging in overlay mode
   const Toolbar = () => {
-    const { root, normalizeDir, open, createFile, createFolder, rename, remove, files, activePath, writeFile, openPaths, close, entryPath, setEntryPath } = useWorkspace();
+    const { root, normalizeDir, open, createFile, createFolder, rename, remove, files, activePath, writeFile, openPaths, close, entryPath, setEntryPath, saveAllAndPush, storageNamespace } = useWorkspace();
     const doNewFile = () => { setCreating('file'); setCreatePath(normalizeDir(root)+'untitled.js'); setFileMenuOpen(false); };
     const doNewFolder = () => { setCreating('folder'); setCreatePath(normalizeDir(root)+'folder/'); setFileMenuOpen(false); };
     const doRename = () => { const cur = activePath; if (!cur) return; const next = window.prompt('새 경로', cur); if (next && next!==cur) rename(cur, next); setFileMenuOpen(false); };
@@ -250,6 +250,18 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
     const MenuButton = ({ onClick, active, label }) => (
       <button onClick={onClick} title={label} style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: active ? '#172033' : '#0b1220', color: '#e2e8f0', whiteSpace: 'nowrap' }}>{label}</button>
     );
+    const doSaveAll = async () => {
+      try {
+        const id = storageNamespace || '';
+        if (!id) return;
+        await saveAllAndPush(id);
+        try { window.dispatchEvent(new CustomEvent('toast:show', { detail: { text: '모두 저장 완료', type: 'success' } })); } catch {}
+      } catch (e) {
+        console.warn('[Workspace] 모두 저장 실패', e);
+        try { window.dispatchEvent(new CustomEvent('toast:show', { detail: { text: '모두 저장 실패', type: 'error' } })); } catch {}
+      }
+      setFileMenuOpen(false);
+    };
 
     return (
       <div style={{ display: 'grid', gridTemplateRows: toolbarCollapsed ? 'auto' : 'auto auto auto', gap: 6, padding: '8px', borderBottom: '1px solid #25314a', background: 'rgba(2,6,23,0.5)' }}>
@@ -265,6 +277,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
                 <button onClick={doRename} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>이름 변경</button>
                 <button onClick={doDelete} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #7f1d1d', background:'#0b1220', color:'#fecaca', whiteSpace:'nowrap' }}>삭제</button>
                 <div style={{ height:1, background:'rgba(148,163,184,0.2)', margin:'4px 2px' }} />
+                <button onClick={doSaveAll} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #10b981', background:'#064e3b', color:'#d1fae5', whiteSpace:'nowrap' }}>모두 저장</button>
                 <button onClick={doLoadSample} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #2563eb', background:'#0b1220', color:'#93c5fd', whiteSpace:'nowrap' }}>샘플 그래프 불러오기</button>
               </div>
             )}

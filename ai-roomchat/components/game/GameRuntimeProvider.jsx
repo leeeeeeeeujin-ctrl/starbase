@@ -304,9 +304,27 @@ function step(reason){
     let currentId = ctx.getCurrentId();
     if (!currentId) return;
     let guard = 0;
+    // onTurnStart (non-blocking)
+    try {
+      const hooks = hooksRef.current || {};
+      if (hookWorkerRef.current) {
+        hookWorkerRef.current.call('onTurnStart', { node: getNode(currentId), files: filesRef.current, config: configRef.current }).catch(()=>{});
+      } else if (typeof hooks.onTurnStart === 'function') {
+        try { hooks.onTurnStart({ node: getNode(currentId), files: filesRef.current, config: configRef.current }); } catch {}
+      }
+    } catch {}
     while (guard++ < 5) {
       const node = getNode(currentId);
       if (!node) break;
+      // onEnterNode (non-blocking)
+      try {
+        const hooks = hooksRef.current || {};
+        if (hookWorkerRef.current) {
+          hookWorkerRef.current.call('onEnterNode', { node, files: filesRef.current, config: configRef.current }).catch(()=>{});
+        } else if (typeof hooks.onEnterNode === 'function') {
+          try { hooks.onEnterNode({ node, files: filesRef.current, config: configRef.current }); } catch {}
+        }
+      } catch {}
       if (node.type === 'user_action') { ctx.setWaiting(true); break; }
       if (node.type === 'system') {
         publish('ai:message', { id: `sys_${Date.now()}`, roleScope: 'system', text: node.label || '', ts: Date.now() });
@@ -375,6 +393,14 @@ function step(reason){
     } catch {}
       if (!nextId) nextId = neigh?.[0]?.id || null;
       if (!nextId) break;
+      // onLeaveNode before moving (non-blocking)
+      try {
+        if (hookWorkerRef.current) {
+          hookWorkerRef.current.call('onLeaveNode', { node: getNode(currentId), files: filesRef.current, config: configRef.current }).catch(()=>{});
+        } else if (typeof hooks.onLeaveNode === 'function') {
+          try { hooks.onLeaveNode({ node: getNode(currentId), files: filesRef.current, config: configRef.current }); } catch {}
+        }
+      } catch {}
       setCurrentNodeId(nextId);
       currentId = nextId;
     }

@@ -93,6 +93,10 @@ export default function WorkspaceFrame({ id, children }) {
         const CapsMount = dynamic(() => import('./CapabilitiesMount.jsx'), { ssr: false });
         return <CapsMount />;
       })()}
+      {(() => {
+        const Toast = dynamic(() => import('../common/ToastMount.jsx'), { ssr: false });
+        return <Toast />;
+      })()}
       {children}
     </CodeWorkspaceProvider>
   );

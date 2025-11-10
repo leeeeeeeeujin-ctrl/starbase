@@ -46,6 +46,9 @@ function hookWorkerThread(){
       transformPrompt: (typeof out.transformPrompt === 'function') ? out.transformPrompt : null,
       onUserAction: (typeof out.onUserAction === 'function') ? out.onUserAction : null,
       selectNext: (typeof out.selectNext === 'function') ? out.selectNext : null,
+      onTurnStart: (typeof out.onTurnStart === 'function') ? out.onTurnStart : null,
+      onEnterNode: (typeof out.onEnterNode === 'function') ? out.onEnterNode : null,
+      onLeaveNode: (typeof out.onLeaveNode === 'function') ? out.onLeaveNode : null,
     };
   }
   self.onmessage = async (e) => {
@@ -63,4 +66,3 @@ function hookWorkerThread(){
     } catch (err) { self.postMessage({ id, ok:false, error: String(err?.message||err) }); }
   };
 }
-

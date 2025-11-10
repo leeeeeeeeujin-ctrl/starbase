@@ -16,6 +16,8 @@ export function loadHooksFromSource(source) {
     onUserAction: pickFn(out, 'onUserAction'),
     transformPrompt: pickFn(out, 'transformPrompt'),
     selectNext: pickFn(out, 'selectNext'),
+    onEnterNode: pickFn(out, 'onEnterNode'),
+    onLeaveNode: pickFn(out, 'onLeaveNode'),
   };
 }
 
@@ -37,4 +39,3 @@ function pickFn(obj, key) {
   const v = obj && obj[key];
   return typeof v === 'function' ? v : null;
 }
-
