@@ -5,6 +5,7 @@ import { supabase } from "../../lib/supabase";
 import { prefetchResources, getResourceUrl, cleanupGameResources } from "../../utils/resourceCache.js";
 import { createHookWorker } from "../../lib/runtime/hookWorker.js";
 import { loadHooksFromSource } from "../../lib/runtime/safeEvalHookModule.js";
+import { initAdapters } from "../../lib/runtime/adapterManager.js";
 
 const Ctx = createContext(null);
 
@@ -39,6 +40,7 @@ export function GameRuntimeProvider({ roomId = "local-room", roles = { players: 
   const waitingRef = useRef(false);
   const indexById = useRef(new Map());
   const edgesBySource = useRef(new Map());
+  const adaptersRef = useRef(null);
 
   const reindex = useCallback(() => {
     const map = new Map();
@@ -64,6 +66,7 @@ export function GameRuntimeProvider({ roomId = "local-room", roles = { players: 
     const evt = { type, payload, room, id: makeId("e"), ts: Date.now() };
     try { if (chanRef.current) chanRef.current.send({ type: "broadcast", event: "evt", payload: evt }); } catch {}
     try { if (bcRef.current) bcRef.current.postMessage(evt); } catch {}
+    try { adaptersRef.current?.net?.emit('evt', evt); } catch {}
     // also loopback apply
     apply(evt);
   }, [room]);
@@ -139,6 +142,7 @@ export function GameRuntimeProvider({ roomId = "local-room", roles = { players: 
       try { if (sub) supabase.removeChannel(sub); } catch {}
       try { bc?.close(); } catch {}
       chanRef.current = null; bcRef.current = null;
+      try { adaptersRef.current?.dispose?.(); } catch {}
     };
   }, [room, apply, enableRealtime, enableBroadcast]);
 
@@ -205,6 +209,13 @@ export function GameRuntimeProvider({ roomId = "local-room", roles = { players: 
       waitingRef.current = false;
       // if entry exists and is not user_action, step immediately
       if (entry) setTimeout(() => { try { step('init'); } catch {} }, 0);
+      // (re)initialize adapters based on /game/adapters.config.json
+      try {
+        const raw = filesRef.current['/game/adapters.config.json']?.content || '';
+        const cfg = raw ? JSON.parse(raw) : {};
+        const prev = adaptersRef.current; adaptersRef.current = null; try { prev?.dispose?.(); } catch {}
+        initAdapters(cfg, (evt) => { try { apply(evt); } catch {} }).then((ad) => { adaptersRef.current = ad; }).catch(()=>{});
+      } catch {}
     },
     // Resource cache API
     prefetchResources: ({ gameId, baseUrl, manifest, onProgress }) => prefetchResources({ gameId, baseUrl, manifest, onProgress }),

@@ -15,6 +15,8 @@ export default function EditorMonaco({ value, onChange, language = 'json', theme
   const editorRef = useRef(null);
   const [fallback, setFallback] = useState(false);
   const applyTimer = useRef(null);
+  const applyingRef = useRef(false); // prevent feedback loop when applying external value
+  const composingRef = useRef(false); // avoid breaking IME composition
 
   useEffect(() => {
     let disposed = false;
@@ -38,7 +40,11 @@ export default function EditorMonaco({ value, onChange, language = 'json', theme
         wordWrap: 'on',
       });
       editorRef.current = editor;
+      try { editor.onDidCompositionStart?.(() => { composingRef.current = true; }); } catch {}
+      try { editor.onDidCompositionEnd?.(() => { composingRef.current = false; }); } catch {}
       editor.onDidChangeModelContent(() => {
+        if (applyingRef.current) return;
+        if (composingRef.current) return;
         if (typeof onChange === 'function') onChange(editor.getValue());
       });
       // expose current selection for AI chat (optional)
@@ -76,6 +82,7 @@ export default function EditorMonaco({ value, onChange, language = 'json', theme
         const next = typeof value === 'string' ? value : '';
         const cur = model ? model.getValue() : '';
         if (model && next !== cur) {
+          applyingRef.current = true;
           const prevSel = editor.getSelection();
           // 최소 차이 패치: 공통 접두/접미를 제외한 중앙만 치환
           let start = 0;
@@ -92,6 +99,8 @@ export default function EditorMonaco({ value, onChange, language = 'json', theme
           if (prevSel) {
             try { editor.setSelection(prevSel); } catch {}
           }
+          // allow content change listeners to run, then release flag
+          setTimeout(() => { applyingRef.current = false; }, 0);
         }
       } catch {}
     }, 150);
