@@ -17,6 +17,7 @@ export default function EditorMonaco({ value, onChange, language = 'json', theme
   const applyTimer = useRef(null);
   const applyingRef = useRef(false); // prevent feedback loop when applying external value
   const composingRef = useRef(false); // avoid breaking IME composition
+  const changeTimerRef = useRef(null); // debounce onChange to reduce churn
 
   useEffect(() => {
     let disposed = false;
@@ -45,7 +46,11 @@ export default function EditorMonaco({ value, onChange, language = 'json', theme
       editor.onDidChangeModelContent(() => {
         if (applyingRef.current) return;
         if (composingRef.current) return;
-        if (typeof onChange === 'function') onChange(editor.getValue());
+        if (changeTimerRef.current) clearTimeout(changeTimerRef.current);
+        const v = editor.getValue();
+        changeTimerRef.current = setTimeout(() => {
+          if (typeof onChange === 'function') onChange(v);
+        }, 120);
       });
       // expose current selection for AI chat (optional)
       try {
@@ -79,6 +84,8 @@ export default function EditorMonaco({ value, onChange, language = 'json', theme
       try {
         const editor = editorRef.current;
         const model = editor.getModel();
+        // Don't patch while user is actively typing to avoid IME disruption
+        try { if (editor.hasTextFocus && editor.hasTextFocus()) return; } catch {}
         const next = typeof value === 'string' ? value : '';
         const cur = model ? model.getValue() : '';
         if (model && next !== cur) {
