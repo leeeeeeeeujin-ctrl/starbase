@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { isDebugEditor, dbg } from '@/lib/debug/debugFlag';
 import { useRouter } from 'next/router';
 import { saveSet } from '../../lib/workspace/saveSet.js';
 import { useWorkspace } from './CodeWorkspaceProvider.jsx';
@@ -83,12 +84,13 @@ function EditorPane() {
   const file = files[activePath];
   const lang = useMemo(() => inferLang(activePath), [activePath, inferLang]);
   if (!file) return <div style={{ padding: 16, color: '#e2e8f0' }}>파일을 선택하세요.</div>;
+  const onChangeMemo = React.useCallback((val) => { if (!file.readonly) writeFile(activePath, val); }, [file?.readonly, activePath, writeFile]);
   return (
     <div style={{ position: 'relative', height: '100%', width: '100%' }}>
       <div style={{ position: 'absolute', inset: 0 }}>
         <EditorMonaco
           value={file.content}
-          onChange={(val) => !file.readonly && writeFile(activePath, val)}
+          onChange={onChangeMemo}
           language={lang}
           theme="vs-dark"
           height="100%"
@@ -162,54 +164,52 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
   const [overlayTree, setOverlayTree] = useState(computeOverlayTree());
 
   useEffect(() => {
+    const rafRef = { id: null };
     const onResize = () => {
-      setTreeWidth(computeTreeWidth());
-      setOverlayTree(computeOverlayTree());
-      // update --vh to avoid chrome jumps
-      try {
-        const vh = window.innerHeight * 0.01;
-        document.documentElement.style.setProperty('--vh', `${vh}px`);
-      } catch {}
-
-      // initialize chat position near bottom-right if not dragged yet
-      try {
-        setChatPos(pos => {
-          if (pos && pos.__init) return pos; // already initialized
-          // try restore from localStorage first
-          try {
-            const raw = localStorage.getItem(LS_CHAT_POS);
-            if (raw) {
-              const p = JSON.parse(raw);
-              return { ...(p||{}), __init: true };
-            }
-          } catch {}
-          const w = window.innerWidth || 1200;
-          const h = window.innerHeight || 800;
-          return { x: Math.max(8, w - (chatSize.w||420) - 16), y: Math.max(8, h - (chatSize.h||360) - 16), __init: true };
-        });
-        // also try restore size once
-        setChatSize(sz => {
-          try {
-            if (sz && sz.__init) return sz;
-            const raw = localStorage.getItem(LS_CHAT_SIZE);
-            if (raw) {
-              const s = JSON.parse(raw);
-              return { ...(s||{}), __init: true };
-            }
-          } catch {}
-          return { ...sz, __init: true };
-        });
-        // restore file tree visibility
+      if (rafRef.id) return;
+      rafRef.id = requestAnimationFrame(() => {
+        rafRef.id = null;
+        const tw = computeTreeWidth();
+        const ot = computeOverlayTree();
+        const twChanged = (prev) => (prev !== tw ? tw : prev);
+        const otChanged = (prev) => (prev !== ot ? ot : prev);
+        if (isDebugEditor()) dbg('[Overlay] resize', { tw, ot });
+        setTreeWidth(twChanged);
+        setOverlayTree(otChanged);
+        // update --vh to avoid chrome jumps
         try {
-          const sv = localStorage.getItem(LS_SHOW_TREE);
-          if (sv === '0') setShowTree(false);
-          else if (sv === '1') setShowTree(true);
+          const vh = window.innerHeight * 0.01;
+          document.documentElement.style.setProperty('--vh', `${vh}px`);
         } catch {}
-      } catch {}
+        // initialize chat position/size only once
+        try {
+          setChatPos((pos) => {
+            if (pos && pos.__init) return pos;
+            try {
+              const raw = localStorage.getItem(LS_CHAT_POS);
+              if (raw) { const p = JSON.parse(raw); return { ...(p||{}), __init: true }; }
+            } catch {}
+            const w = window.innerWidth || 1200; const h = window.innerHeight || 800;
+            return { x: Math.max(8, w - (chatSize.w||420) - 16), y: Math.max(8, h - (chatSize.h||360) - 16), __init: true };
+          });
+          setChatSize((sz) => {
+            try {
+              if (sz && sz.__init) return sz;
+              const raw = localStorage.getItem(LS_CHAT_SIZE);
+              if (raw) { const s = JSON.parse(raw); return { ...(s||{}), __init: true }; }
+            } catch {}
+            return { ...sz, __init: true };
+          });
+          try {
+            const sv = localStorage.getItem(LS_SHOW_TREE);
+            if (sv === '0') setShowTree(false); else if (sv === '1') setShowTree(true);
+          } catch {}
+        } catch {}
+      });
     };
     onResize();
     window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
+    return () => { window.removeEventListener('resize', onResize); if (rafRef.id) cancelAnimationFrame(rafRef.id); };
   }, []);
 
   useEffect(() => {
@@ -347,6 +347,7 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
       if (!id || saving) return;
       try {
         setSaving(true);
+        if (isDebugEditor()) dbg('[Overlay] save:server:start', { id, fileCount: Object.keys(files||{}).length });
         await saveSet(String(id), files);
         try { window.dispatchEvent(new CustomEvent('toast:show', { detail: { text: '서버에 저장 완료', type: 'success' } })); } catch {}
       } catch(e) {

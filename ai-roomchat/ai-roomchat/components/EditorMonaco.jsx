@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, memo } from 'react';
+import { isDebugEditor, dbg } from '@/lib/debug/debugFlag';
 import loader from '@monaco-editor/loader';
 
 // Configure Monaco via CDN AMD loader to avoid bundling CSS from node_modules
@@ -10,11 +11,12 @@ if (typeof window !== 'undefined' && loader && typeof loader.config === 'functio
   } catch {}
 }
 
-export default function EditorMonaco({ value, onChange, language = 'json', theme = 'vs-dark', height = '100%', width = '100%', currentPath = null }) {
+function EditorMonacoInner({ value, onChange, language = 'json', theme = 'vs-dark', height = '100%', width = '100%', currentPath = null }) {
   const ref = useRef(null);
   const editorRef = useRef(null);
   const [fallback, setFallback] = useState(false);
   const applyTimer = useRef(null);
+  const changeCounterRef = useRef(0);
 
   useEffect(() => {
     let disposed = false;
@@ -40,6 +42,12 @@ export default function EditorMonaco({ value, onChange, language = 'json', theme
       editorRef.current = editor;
       editor.onDidChangeModelContent(() => {
         if (typeof onChange === 'function') onChange(editor.getValue());
+        try {
+          if (isDebugEditor()) {
+            changeCounterRef.current++;
+            if (changeCounterRef.current % 10 === 1) dbg('[Monaco] onDidChangeModelContent', { count: changeCounterRef.current, path: currentPath });
+          }
+        } catch {}
       });
       // expose current selection for AI chat (optional)
       try {
@@ -58,6 +66,7 @@ export default function EditorMonaco({ value, onChange, language = 'json', theme
         });
       } catch {}
     };
+    if (isDebugEditor()) dbg('[Monaco] init', { path: currentPath, lang: language });
     init();
     return () => {
       disposed = true;
@@ -76,6 +85,7 @@ export default function EditorMonaco({ value, onChange, language = 'json', theme
         const next = typeof value === 'string' ? value : '';
         const cur = model ? model.getValue() : '';
         if (model && next !== cur) {
+          if (isDebugEditor()) dbg('[Monaco] external patch', { fromLen: cur.length, toLen: next.length, path: currentPath });
           const prevSel = editor.getSelection();
           // 최소 차이 패치: 공통 접두/접미를 제외한 중앙만 치환
           let start = 0;
@@ -109,3 +119,17 @@ export default function EditorMonaco({ value, onChange, language = 'json', theme
   }
   return <div ref={ref} style={{ height, width }} />;
 }
+
+function propsEqual(a, b){
+  return (
+    a.value === b.value &&
+    a.language === b.language &&
+    a.theme === b.theme &&
+    a.height === b.height &&
+    a.width === b.width &&
+    a.currentPath === b.currentPath &&
+    a.onChange === b.onChange
+  );
+}
+
+export default memo(EditorMonacoInner, propsEqual);

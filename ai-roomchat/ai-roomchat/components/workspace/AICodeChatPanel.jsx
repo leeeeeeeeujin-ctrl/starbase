@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { isDebugEditor, dbg } from '@/lib/debug/debugFlag';
 import { getCodeContext, buildSystemPromptFromContext } from '../../lib/workspace/ai/getCodeContext.js';
 import parsePlan from '../../utils/ai/parsePlan.js';
 import { useWorkspace } from './CodeWorkspaceProvider.jsx';
@@ -25,6 +26,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
       }
     } catch {}
   }, []);
+  if (isDebugEditor()) { try { console.count('[AIChat] render'); dbg('[AIChat] state', { pos }); } catch {} }
   if (blocked) return null;
   const { files, activePath, createFile, writeFile, remove, rename } = useWorkspace();
   const getLocalAiKey = () => {
@@ -89,6 +91,15 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
   const settingsRef = useRef(null);
   const actionsRef = useRef(null);
   const contextRef = useRef(null);
+  const lastFsToggleRef = useRef(0);
+  const handleToggleFullscreen = () => {
+    try {
+      const now = Date.now();
+      if (now - (lastFsToggleRef.current || 0) < 220) return; // debounce 220ms
+      lastFsToggleRef.current = now;
+      if (typeof onToggleFullscreen === 'function') onToggleFullscreen();
+    } catch {}
+  };
   // Drag/position (throttled with rAF to avoid layout thrash/flash)
   const [pos, setPos] = useState({ x: 24, y: 24 });
   const draggingRef = useRef(false);
@@ -1089,7 +1100,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
 
   return (
   <div ref={rootRef} style={{ position:'fixed', top:0, left:0, transform:`translate3d(${pos.x}px, ${pos.y}px, 0)`, willChange:'transform', backfaceVisibility:'hidden', height:'100%', border:'1px solid #334155', background:'#0b1220', borderRadius:12, overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 24px 64px rgba(0,0,0,0.6)', zIndex: 50 }}>
-      <div onPointerDown={onDragHandleDown} onDoubleClick={onToggleFullscreen} style={{ padding:'8px 10px', color:'#e2e8f0', fontWeight:600, display:'flex', alignItems:'center', justifyContent:'space-between', background:'linear-gradient(180deg, rgba(2,6,23,0.8) 0%, rgba(2,6,23,0.6) 100%)', position:'relative', cursor:'move', touchAction:'none' }}>
+      <div onPointerDown={onDragHandleDown} onDoubleClick={handleToggleFullscreen} style={{ padding:'8px 10px', color:'#e2e8f0', fontWeight:600, display:'flex', alignItems:'center', justifyContent:'space-between', background:'linear-gradient(180deg, rgba(2,6,23,0.8) 0%, rgba(2,6,23,0.6) 100%)', position:'relative', cursor:'move', touchAction:'none' }}>
         <span>AI 코드 채팅{autoApply ? (autoBudget>0 ? ` · 자동 ${autoBudget}` : ' · 자동 진행') : ''}</span>
         <div style={{ display:'flex', gap:6, alignItems:'center' }}>
           <button onClick={()=>setHistoryOpen(v=>!v)} title="대화 기록" style={{ padding:'3px 8px', borderRadius:6, border:'1px solid #334155', background: historyOpen ? '#172033' : '#0b1220', color:'#94a3b8', fontSize:12 }}>기록</button>
