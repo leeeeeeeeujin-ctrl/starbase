@@ -11,24 +11,38 @@ import SyncTemplateToVfs from './SyncTemplateToVfs.jsx';
 import AICodeChatPanel from './AICodeChatPanel.jsx';
 
   function EditorPane() {
-  const { files, activePath, writeFile, inferLang } = useWorkspace();
-  const file = files[activePath];
-  const lang = useMemo(() => inferLang(activePath), [activePath, inferLang]);
-  if (!file) return <div style={{ padding: 16, color: "#e2e8f0" }}>파일을 선택하세요.</div>;
-  return (
-    <div style={{ position:'relative', height:'100%', width:'100%' }}>
-      <div style={{ position:'absolute', inset:0 }}>
-        <EditorMonaco
-          value={file.content}
-          onChange={(val) => !file.readonly && writeFile(activePath, val)}
-          language={lang}
-          theme="vs-dark"
-          height="100%"
-          currentPath={activePath}
-        />
+    const { files, activePath, inferLang, saveFileAndPush, saveFile, storageNamespace, writeFile } = useWorkspace();
+    const file = files[activePath];
+    const lang = useMemo(() => inferLang(activePath), [activePath, inferLang]);
+    const [buf, setBuf] = useState(() => (file?.content ?? ''));
+    // When switching files, load content into buffer
+    useEffect(() => { setBuf(file?.content ?? ''); }, [activePath]);
+    if (!file) return <div style={{ padding: 16, color: "#e2e8f0" }}>파일을 선택하세요.</div>;
+    const doSave = async () => {
+      try {
+        if (file.readonly) return;
+        // Commit buffer to VFS then push to server
+        writeFile(activePath, buf);
+        saveFile(activePath);
+        const id = storageNamespace || '';
+        if (id) await saveFileAndPush(id, activePath);
+      } catch {}
+    };
+    return (
+      <div style={{ position:'relative', height:'100%', width:'100%' }}>
+        <div style={{ position:'absolute', inset:0 }}>
+          <EditorMonaco
+            value={buf}
+            onChange={(val) => setBuf(val)}
+            onSave={doSave}
+            language={lang}
+            theme="vs-dark"
+            height="100%"
+            currentPath={activePath}
+          />
+        </div>
       </div>
-    </div>
-  );
+    );
   }
 
 export default function WorkspaceOverlay({ gameData, templateBinding }) {

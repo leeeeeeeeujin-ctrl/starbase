@@ -542,6 +542,7 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
       return "plaintext";
     };
     return {
+      storageNamespace: ns,
       files,
       root,
       activePath,

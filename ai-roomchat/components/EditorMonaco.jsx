@@ -10,7 +10,7 @@ if (typeof window !== 'undefined' && loader && typeof loader.config === 'functio
   } catch {}
 }
 
-export default function EditorMonaco({ value, onChange, language = 'json', theme = 'vs-dark', height = '100%', width = '100%', currentPath = null }) {
+export default function EditorMonaco({ value, onChange, onSave, language = 'json', theme = 'vs-dark', height = '100%', width = '100%', currentPath = null }) {
   const ref = useRef(null);
   const editorRef = useRef(null);
   const [fallback, setFallback] = useState(false);
@@ -44,6 +44,15 @@ export default function EditorMonaco({ value, onChange, language = 'json', theme
         wordWrap: 'on',
       });
       editorRef.current = editor;
+      // Register Ctrl/Cmd+S
+      try {
+        const KeyMod = monacoInstance?.KeyMod; const KeyCode = monacoInstance?.KeyCode;
+        if (KeyMod && KeyCode) {
+          editor.addCommand(KeyMod.CtrlCmd | KeyCode.KeyS, () => {
+            try { if (typeof onSave === 'function') onSave(); } catch {}
+          });
+        }
+      } catch {}
       try { editor.onDidCompositionStart?.(() => { composingRef.current = true; }); } catch {}
       try { editor.onDidCompositionEnd?.(() => { composingRef.current = false; }); } catch {}
       try {
