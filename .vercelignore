@@ -1,0 +1,25 @@
+# Exclude large local artifacts from Vercel uploads to keep serverless functions small.
+# Prevent huge reference_data, repo mirrors, and local zip artifacts from being included
+# in the deployment package. Adjust patterns below as needed.
+
+# Project-local reference data used for development only
+reference_data/
+ai-roomchat/reference_data/
+
+# Local repo mirror / large git object caches
+repo-mirror.git/
+
+# Packaged archives and large binary artifacts
+**/*.zip
+**/*.tar
+**/*.tgz
+**/*.tar.gz
+**/*.7z
+
+# Large exported packages created in this repo
+ai-roomchat/ai-roomchat/starbase-*.zip
+ai-roomchat/starbase-*.zip
+
+# Optional: exclude any other large local directories you don't want uploaded
+# /.cache/
+# .venv/
