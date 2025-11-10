@@ -1,7 +1,7 @@
 // GET /api/workspace/sets/:id -> fetch workspace set
 // PUT /api/workspace/sets/:id -> update files with ETag conflict handling (If-Match header)
 
-import { getSet, upsertSet } from '../../../../../lib/workspaceSetsStore';
+import { getSet, upsertSet } from '../../../../lib/workspaceSetsStore';
 
 export default async function handler(req, res) {
   const { id } = req.query;
