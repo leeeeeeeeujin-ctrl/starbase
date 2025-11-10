@@ -153,16 +153,28 @@ function PlayOverlayContent({ templateBinding }) {
 }
 
 function EditorPane() {
-  const { files, activePath, writeFile, inferLang } = useWorkspace();
+  const { files, activePath, inferLang, writeFile, saveFile, saveFileAndPush, storageNamespace } = useWorkspace();
   const file = files[activePath];
   const lang = useMemo(() => inferLang(activePath), [activePath, inferLang]);
+  const [buf, setBuf] = useState(() => (file?.content ?? ''));
+  useEffect(() => { setBuf(file?.content ?? ''); }, [activePath]);
   if (!file) return <div style={{ padding: 16, color: '#e2e8f0' }}>파일을 선택하세요.</div>;
+  const doSave = async () => {
+    try {
+      if (file.readonly) return;
+      writeFile(activePath, buf);
+      saveFile(activePath);
+      const id = storageNamespace || '';
+      if (id) await saveFileAndPush(id, activePath);
+    } catch {}
+  };
   return (
     <div style={{ position: 'relative', height: '100%', width: '100%' }}>
       <div style={{ position: 'absolute', inset: 0 }}>
         <EditorMonaco
-          value={file.content}
-          onChange={(val) => !file.readonly && writeFile(activePath, val)}
+          value={buf}
+          onChange={(val) => setBuf(val)}
+          onSave={doSave}
           language={lang}
           theme="vs-dark"
           height="100%"

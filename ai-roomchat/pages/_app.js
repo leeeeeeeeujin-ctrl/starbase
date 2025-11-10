@@ -7,6 +7,15 @@ export default function App({ Component, pageProps }) {
     installPromptCreationGuard({ windowMs: 3000 });
   }, []);
 
-  return <Component {...pageProps} />;
+  return (
+    <>
+      <style jsx global>{`
+        html, body, #__next { height: 100%; background: #0b1220; }
+        body { margin: 0; overflow: hidden; }
+        *:focus { outline: none; }
+        *:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+      `}</style>
+      <Component {...pageProps} />
+    </>
+  );
 }
-
