@@ -948,3 +948,8 @@ export function useWorkspace() {
   if (!ctx) throw new Error("useWorkspace must be used within CodeWorkspaceProvider");
   return ctx;
 }
+    "/secrets/": { dir: true, readonly: true },
+    "/secrets/ai.json": {
+      content: JSON.stringify({ provider: "gemini", apiKey: "" }, null, 2)+"\n",
+      readonly: false,
+    },

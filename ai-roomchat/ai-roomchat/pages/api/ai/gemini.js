@@ -64,7 +64,13 @@ export default async function handler(req, res) {
   const user = await resolveUserFromRequest(req);
   let apiKeyToUse = null;
 
-  if (prefer === 'keyring') {
+  // 1) allow direct client-provided key (device-first, no Supabase dependency)
+  const headerKey = (req.headers['x-ai-api-key'] || req.headers['x-api-key'] || '').toString().trim();
+  const bodyKey = (typeof payload.apiKey === 'string') ? payload.apiKey.trim() : '';
+  if (headerKey || bodyKey) {
+    apiKeyToUse = headerKey || bodyKey;
+  } else if (prefer === 'keyring') {
+    // 2) Supabase keyring (requires bearer token -> user)
     if (!user) return res.status(401).json({ error: 'unauthorized' });
     try {
       const active = await fetchUserApiKey(user.id);
@@ -95,4 +101,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'internal_error' });
   }
 }
-

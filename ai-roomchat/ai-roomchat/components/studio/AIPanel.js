@@ -117,13 +117,21 @@ export default function AIPanel(){
       ].join('');
 
       // unified: call /api/ai/gemini using user keyring by default
-      let token = null;
-      try { if (supabase && supabase.auth && typeof supabase.auth.getSession === 'function') { const r = await supabase.auth.getSession(); token = r?.data?.session?.access_token || null; } } catch {}
-      if (!token) throw new Error('로그인이 필요합니다.');
+      // 우선 로컬 /secrets/ai.json에서 키를 찾고, 없으면 로그인 토큰 사용
+      let token = null; let apiKeyHeader = null;
+      try {
+        // try read via global workspace provider if available
+        const raw = (typeof window!=='undefined' && window.__VFS_FILES__ && window.__VFS_FILES__['/secrets/ai.json'] && window.__VFS_FILES__['/secrets/ai.json'].content) || null;
+        if (raw) { const obj = JSON.parse(raw||'{}'); if (obj && typeof obj.apiKey==='string' && obj.apiKey.trim()) apiKeyHeader = obj.apiKey.trim(); }
+      } catch {}
+      if (!apiKeyHeader) {
+        try { if (supabase && supabase.auth && typeof supabase.auth.getSession === 'function') { const r = await supabase.auth.getSession(); token = r?.data?.session?.access_token || null; } } catch {}
+        if (!token) throw new Error('로컬 키(/secrets/ai.json) 또는 로그인이 필요합니다.');
+      }
       const res = await fetch('/api/ai/gemini', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ model: geminiModel, contents: prompt, prefer: geminiPrefer }),
+        headers: { 'content-type': 'application/json', ...(apiKeyHeader? { 'x-ai-api-key': apiKeyHeader } : (token? { Authorization:`Bearer ${token}` } : {})) },
+        body: JSON.stringify({ model: geminiModel, contents: prompt, prefer: apiKeyHeader ? 'keyring' : geminiPrefer }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || `gemini ${res.status}`);

@@ -27,6 +27,9 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
   }, []);
   if (blocked) return null;
   const { files, activePath, createFile, writeFile, remove, rename } = useWorkspace();
+  const getLocalAiKey = () => {
+    try { const raw = files?.['/secrets/ai.json']?.content; if (!raw) return null; const obj = JSON.parse(raw||'{}'); const key = (obj && typeof obj.apiKey==='string' && obj.apiKey.trim()) ? obj.apiKey.trim() : null; return key; } catch { return null; }
+  };
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const logRef = useRef(null);
@@ -191,6 +194,8 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
     const trimmed = (apiKeyInput||'').trim();
     if (!trimmed) { setApiKeyError('API 키를 입력해 주세요.'); return; }
     try {
+      // 우선 로컬 /secrets/ai.json에 저장해 즉시 사용 가능하게 함
+      try { writeFile('/secrets/ai.json', JSON.stringify({ provider: 'gemini', apiKey: trimmed }, null, 2)+'\n'); } catch {}
       let token = null;
       try { if (supabase && supabase.auth && typeof supabase.auth.getSession === 'function') { const r = await supabase.auth.getSession(); token = r?.data?.session?.access_token || null; } } catch {}
       const res = await fetch('/api/rank/user-api-keyring', {

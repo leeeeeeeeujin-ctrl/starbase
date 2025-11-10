@@ -326,12 +326,15 @@ function step(reason){
             let token = null;
             try { if (window && window.supabase) { /* noop */ } } catch {}
             try { if (supabase && supabase.auth && typeof supabase.auth.getSession === 'function') { const r = await supabase.auth.getSession(); token = r?.data?.session?.access_token || null; } } catch {}
-            const authHeader = token ? { Authorization: `Bearer ${token}` } : {};
+            // also allow client-provided key from workspace secrets
+            let clientKey = null;
+            try { const raw = ctx.filesRef?.current?.['/secrets/ai.json']?.content; if (raw) { const o = JSON.parse(raw||'{}'); if (o && typeof o.apiKey==='string' && o.apiKey.trim()) clientKey = o.apiKey.trim(); } } catch {}
+            const authHeader = token ? { Authorization: `Bearer ${token}` } : (clientKey ? { 'x-ai-api-key': clientKey } : {});
             // prefer server first if allowed, else keyring
             let resp = await fetch('/api/ai/gemini', { method:'POST', headers:{ 'content-type':'application/json', ...authHeader }, body: JSON.stringify({ model, prefer: 'server', body: baseBody }) });
             if (!resp.ok) {
               // try keyring if server key not allowed
-              resp = await fetch('/api/ai/gemini', { method:'POST', headers:{ 'content-type':'application/json', ...authHeader }, body: JSON.stringify({ model, prefer: 'keyring', body: baseBody }) });
+              resp = await fetch('/api/ai/gemini', { method:'POST', headers:{ 'content-type':'application/json', ...authHeader }, body: JSON.stringify({ model, prefer: clientKey ? 'keyring' : 'keyring', body: baseBody }) });
             }
             const j = await resp.json();
             const pick = (o) => {
