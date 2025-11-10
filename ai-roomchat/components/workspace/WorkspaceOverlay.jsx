@@ -9,6 +9,7 @@ import dynamic from 'next/dynamic';
 const MainGameMobileUI = dynamic(() => import('../game/MainGameMobileUI.jsx'), { ssr: false });
 import SyncTemplateToVfs from './SyncTemplateToVfs.jsx';
 import AICodeChatPanel from './AICodeChatPanel.jsx';
+import { usePersistentState } from './hooks/usePersistentState';
 
   function EditorPane() {
     const { files, activePath, inferLang, saveFileAndPush, saveFile, storageNamespace, writeFile } = useWorkspace();
@@ -50,16 +51,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
   const [showPlay, setShowPlay] = useState(false);
   const [showTree, setShowTree] = useState(true);
   const [showCodeChat, setShowCodeChat] = useState(false);
-  const [chatSize, setChatSize] = useState(() => {
-    try {
-      const raw = localStorage.getItem('workspace:chat:size');
-      if (raw) return JSON.parse(raw);
-    } catch {}
-    return { w: 420, h: 360 };
-  });
-  useEffect(() => {
-    try { localStorage.setItem('workspace:chat:size', JSON.stringify(chatSize)); } catch {}
-  }, [chatSize]);
+  const [chatSize, setChatSize] = usePersistentState('workspace:chat:size', () => ({ w: 420, h: 360 }));
   const [resizing, setResizing] = useState(false);
   const dragStateRef = useRef({ lastX: 0, lastY: 0, active: false });
   useEffect(() => {

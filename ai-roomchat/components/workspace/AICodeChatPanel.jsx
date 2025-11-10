@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getCodeContext, buildSystemPromptFromContext } from '../../lib/workspace/ai/getCodeContext.js';
 import parsePlan from '../../utils/ai/parsePlan.js';
 import { useWorkspace } from './CodeWorkspaceProvider.jsx';
-import { supabase } from '../../lib/supabase';
-
 import { useStartApiKeyManager } from '../rank/StartClient/hooks/useStartApiKeyManager';
+import { usePersistentState } from './hooks/usePersistentState';
+import { useSupabaseSessionToken } from './hooks/useSupabaseSessionToken';
 
 export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFullscreen, onMinimize, enableFullscreenButton, enableMinimizeButton }){
   // Global singleton guard to prevent multiple panels at once per window
@@ -52,8 +52,18 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
   // Auto apply/continue (trusted mode)
   const AUTO_LS_KEY = 'workspace:aiChat:autoApply.v1';
   const AUTO_LIMIT_KEY = 'workspace:aiChat:autoLimit.v1';
-  const [autoApply, setAutoApply] = useState(false);
-  const [autoLimit, setAutoLimit] = useState(2);
+  const [autoApply, setAutoApply] = usePersistentState(AUTO_LS_KEY, false, {
+    serializer: (value) => (value ? '1' : '0'),
+    deserializer: (value) => value === '1',
+  });
+  const [autoLimit, setAutoLimit] = usePersistentState(AUTO_LIMIT_KEY, 2, {
+    serializer: (value) => String(value),
+    deserializer: (value) => {
+      const parsed = parseInt(value, 10);
+      if (Number.isNaN(parsed)) return 2;
+      return Math.min(Math.max(parsed, 1), 10);
+    },
+  });
   const autoIterRef = useRef(0);
   const autoBudgetRef = useRef(0); // remaining self-calls allowed by AI (trusted mode)
   const [autoBudget, setAutoBudget] = useState(0);
@@ -73,14 +83,6 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
       return n;
     } catch { return null; }
   };
-  useEffect(()=>{
-    try {
-      const a = localStorage.getItem(AUTO_LS_KEY); if (a !== null) setAutoApply(a === '1');
-      const l = parseInt(localStorage.getItem(AUTO_LIMIT_KEY)||''); if (!Number.isNaN(l) && l>=1 && l<=10) setAutoLimit(l);
-    } catch {}
-  },[]);
-  useEffect(()=>{ try { localStorage.setItem(AUTO_LS_KEY, autoApply ? '1' : '0'); } catch {} }, [autoApply]);
-  useEffect(()=>{ try { localStorage.setItem(AUTO_LIMIT_KEY, String(autoLimit)); } catch {} }, [autoLimit]);
   const rootRef = useRef(null);
   const historyRef = useRef(null);
   const settingsRef = useRef(null);
@@ -93,8 +95,23 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
   const menuBtn = { padding:'6px 8px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#cbd5e1', textAlign:'left' };
   // Always prefer user keyring; server key is not provided. Persist as 'keyring' for consistency.
   const PREF_SOURCE_KEY = 'workspace:aiChat:preferSource';
-  const [preferSource] = useState('keyring');
-  useEffect(() => { try { localStorage.setItem(PREF_SOURCE_KEY, 'keyring'); } catch {} }, []);
+  const [persistedPreferSource, setPersistedPreferSource] = usePersistentState(PREF_SOURCE_KEY, 'keyring', {
+    serializer: (value) => value || 'keyring',
+    deserializer: (value) => value || 'keyring',
+  });
+  useEffect(() => { setPersistedPreferSource('keyring'); }, [setPersistedPreferSource]);
+  const preferSource = persistedPreferSource || 'keyring';
+
+  const { token: sessionToken, refresh: refreshSessionToken } = useSupabaseSessionToken();
+  const getSessionToken = useCallback(async (options = {}) => {
+    const { optional = false } = options;
+    if (sessionToken) return sessionToken;
+    const refreshed = await refreshSessionToken();
+    if (!optional && !refreshed) {
+      throw new Error('로그인이 필요합니다.');
+    }
+    return refreshed;
+  }, [sessionToken, refreshSessionToken]);
 
   // API Key manager
   const {
@@ -141,8 +158,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
     setApiKeysLoading(true);
     setApiKeyError(null);
     try {
-      const { data } = await supabase.auth.getSession();
-      const token = data?.session?.access_token || null;
+      const token = await getSessionToken({ optional: true });
       const res = await fetch('/api/rank/user-api-keyring', {
         method: 'GET',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -190,8 +206,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
     const trimmed = (apiKeyInput||'').trim();
     if (!trimmed) { setApiKeyError('API 키를 입력해 주세요.'); return; }
     try {
-      const { data } = await supabase.auth.getSession();
-      const token = data?.session?.access_token || null;
+      const token = await getSessionToken();
       const res = await fetch('/api/rank/user-api-keyring', {
         method:'POST', headers:{ 'Content-Type':'application/json', ...(token?{Authorization:`Bearer ${token}`}:{}) }, credentials:'include', body: JSON.stringify({ apiKey: trimmed, activate: true })
       });
@@ -206,8 +221,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
   const handleToggleApiKey = async (entry, action) => {
     if (!entry?.id) return;
     try {
-      const { data } = await supabase.auth.getSession();
-      const token = data?.session?.access_token || null;
+      const token = await getSessionToken();
       const res = await fetch('/api/rank/user-api-keyring', {
         method:'PATCH', headers:{ 'Content-Type':'application/json', ...(token?{Authorization:`Bearer ${token}`}:{}) }, credentials:'include', body: JSON.stringify({ id: entry.id, action: action==='deactivate'?'deactivate':'activate' })
       });
@@ -219,8 +233,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
   const handleDeleteApiKey = async (entryId) => {
     if (!entryId) return;
     try {
-      const { data } = await supabase.auth.getSession();
-      const token = data?.session?.access_token || null;
+      const token = await getSessionToken();
       const res = await fetch('/api/rank/user-api-keyring', {
         method:'DELETE', headers:{ 'Content-Type':'application/json', ...(token?{Authorization:`Bearer ${token}`}:{}) }, credentials:'include', body: JSON.stringify({ id: entryId })
       });
@@ -588,8 +601,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
     if (!input.trim()) return;
     setBusy(true);
     try {
-      const { data } = await supabase.auth.getSession();
-      const token = data?.session?.access_token || null;
+      const token = await getSessionToken();
       if (!token) throw new Error('로그인이 필요합니다.');
       // System contract: strict schema, separation of chat vs work, and project-specific guidance
       const sys = [
