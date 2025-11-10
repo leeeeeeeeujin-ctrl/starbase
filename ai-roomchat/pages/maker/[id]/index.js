@@ -5,7 +5,7 @@ import MakerEditor from '../../../components/maker/editor/MakerEditor';
 import UnifiedWorkbench from '../../../components/studio/UnifiedWorkbench.jsx';
 import StudioPersistentProvider from '../../../contexts/StudioPersistentProvider.jsx';
 import { useEffect, useState } from 'react';
-import { CodeWorkspaceProvider } from '../../../components/workspace/CodeWorkspaceProvider.jsx';
+import WorkspaceFrame from '../../../components/workspace/WorkspaceFrame.jsx';
 
 export default function MakerEditorPage() {
   const router = useRouter();
@@ -18,35 +18,17 @@ export default function MakerEditorPage() {
   );
   const useUnified = hasModeParam ? (q.unified === '1' || q.studio === '1') : defaultUnified; // default follows env, otherwise original Maker-only
   const [initFiles, setInitFiles] = useState(null);
-
-  useEffect(() => {
-    let alive = true;
-    if (!id || typeof id !== 'string') return;
-    (async () => {
-      try {
-        let r = await fetch(`/api/workspace/sets/${encodeURIComponent(id)}`);
-        if (!alive) return;
-        if (r.ok) {
-          const json = await r.json();
-          setInitFiles(Array.isArray(json.files) ? json.files : []);
-          return;
-        }
-        if (r.status === 404) { setInitFiles([]); return; }
-      } catch {
-        setInitFiles([]);
-      }
-    })();
-    return () => { alive = false; };
-  }, [id]);
+  // Retain legacy loading UI states for minimal change; actual loading moved to WorkspaceFrame
+  useEffect(() => { setInitFiles([]); }, [id]);
 
   if (!id || typeof id !== 'string') return <div style={{ padding:20 }}>세트 ID 확인 중…</div>;
   if (!initFiles) return <div style={{ padding:20 }}>작업공간 불러오는 중…</div>;
 
   return (
     <StudioPersistentProvider>
-      <CodeWorkspaceProvider key={id} storageNamespace={id} initialFiles={initFiles}>
+      <WorkspaceFrame id={id}>
         {useUnified ? <UnifiedWorkbench /> : <MakerEditor />}
-      </CodeWorkspaceProvider>
+      </WorkspaceFrame>
     </StudioPersistentProvider>
   );
 }

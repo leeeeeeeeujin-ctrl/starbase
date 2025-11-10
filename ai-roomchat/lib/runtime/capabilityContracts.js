@@ -15,6 +15,24 @@ export const CapabilityContracts = [
     ],
   },
   {
+    id: 'matchmaking.openmatch',
+    label: 'Matchmaking (OpenMatch)',
+    purpose: 'Define match specs and flow, integrate with external matcher.',
+    files: [],
+    hooks: ['onUserAction'],
+    adapters: ['net.matchmaking'],
+    references: [ { title: 'Open Match', href: '/api/refroot/open-match2-main/README.md' } ],
+  },
+  {
+    id: 'templating.liquid',
+    label: 'Liquid Templating',
+    purpose: 'Preprocess prompts/labels using Liquid templates within hooks.',
+    files: [],
+    hooks: ['transformPrompt'],
+    adapters: [],
+    references: [ { title: 'liquid', href: '/api/refroot/liquid-main/README.md' } ],
+  },
+  {
     id: 'core.hooks',
     label: 'Hook Runtime',
     purpose: 'Inject logic via exported functions from /game/hooks/automation.js.',
@@ -166,4 +184,3 @@ export const CapabilityContracts = [
     references: [],
   },
 ];
-

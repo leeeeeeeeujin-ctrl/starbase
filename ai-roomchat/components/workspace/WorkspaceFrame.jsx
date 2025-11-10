@@ -89,6 +89,10 @@ export default function WorkspaceFrame({ id, children }) {
           return <SyncMount id={id} />;
         })()
       ) : null}
+      {(() => {
+        const CapsMount = dynamic(() => import('./CapabilitiesMount.jsx'), { ssr: false });
+        return <CapsMount />;
+      })()}
       {children}
     </CodeWorkspaceProvider>
   );
