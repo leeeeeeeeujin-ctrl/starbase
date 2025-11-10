@@ -61,28 +61,59 @@ export default async function handler(req, res) {
   };
 
   // Resolve user and user key (if any)
+  const bearer = (req.headers.authorization || '').startsWith('Bearer ')
+    ? (req.headers.authorization || '').slice(7)
+    : null;
   const user = await resolveUserFromRequest(req);
   let apiKeyToUse = null;
+
+  // 0) allow server-managed key reference (no user keyring, no client key leak)
+  const keyRefHeader = (req.headers['x-ai-key-ref'] || '').toString().trim();
+  const keyRefBody = (typeof payload.keyRef === 'string') ? payload.keyRef.trim() : '';
+  const keyRef = keyRefHeader || keyRefBody || '';
+
+  function resolveKeyRef(ref) {
+    if (!ref) return null;
+    try {
+      // 1) JSON map in env: AI_GEMINI_KEYREFS='{"default":"key...","team":"key..."}'
+      const mapRaw = process.env.AI_GEMINI_KEYREFS;
+      if (mapRaw) {
+        try { const obj = JSON.parse(mapRaw); if (obj && typeof obj === 'object' && typeof obj[ref] === 'string') return obj[ref]; } catch {}
+      }
+      // 2) Individual env var: AI_GEMINI_KEYREF_<UPPER>
+      const envName = `AI_GEMINI_KEYREF_${ref.toUpperCase().replace(/[^A-Z0-9_]/g,'_')}`;
+      const v = process.env[envName];
+      if (typeof v === 'string' && v.trim()) return v.trim();
+    } catch {}
+    return null;
+  }
+
+  if (prefer === 'keyref' || keyRef) {
+    const k = resolveKeyRef(keyRef || 'default');
+    if (!k) return res.status(404).json({ error: 'keyref_not_found', detail: keyRef || 'default' });
+    apiKeyToUse = k;
+  }
 
   // 1) allow direct client-provided key (device-first, no Supabase dependency)
   const headerKey = (req.headers['x-ai-api-key'] || req.headers['x-api-key'] || '').toString().trim();
   const bodyKey = (typeof payload.apiKey === 'string') ? payload.apiKey.trim() : '';
-  if (headerKey || bodyKey) {
+  if (!apiKeyToUse && (headerKey || bodyKey)) {
     apiKeyToUse = headerKey || bodyKey;
-  } else if (prefer === 'keyring') {
+  } else if (!apiKeyToUse && prefer === 'keyring') {
     // 2) Supabase keyring (requires bearer token -> user)
     if (!user) return res.status(401).json({ error: 'unauthorized' });
     try {
-      const active = await fetchUserApiKey(user.id);
+      const active = await fetchUserApiKey(user.id, { bearer });
       apiKeyToUse = active?.apiKey || null;
       if (!apiKeyToUse) return res.status(400).json({ error: 'missing_user_api_key' });
     } catch (e) {
       return res.status(500).json({ error: 'failed_to_load_user_api_key' });
     }
-  } else if (prefer === 'server') {
+  } else if (!apiKeyToUse && prefer === 'server') {
     if (!ALLOW_SERVER_KEY || !SERVER_API_KEY) return res.status(503).json({ error: 'server_key_unavailable' });
     apiKeyToUse = SERVER_API_KEY;
   } else {
+    // No key resolved yet and unknown prefer
     return res.status(400).json({ error: 'invalid_prefer' });
   }
 

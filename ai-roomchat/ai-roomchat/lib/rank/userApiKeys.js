@@ -1,100 +1,69 @@
-import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { sanitizeSupabaseUrl } from '@/lib/supabaseEnv';
 
-import { decryptText, encryptText } from './encryption';
-import { normalizeGeminiMode, normalizeGeminiModelId } from './geminiConfig';
+const SUPA_URL = sanitizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL);
+const SUPA_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const SECRET = process.env.RANK_API_KEY_SECRET || '';
 
-const TABLE = 'rank_user_api_keys';
-
-function buildSample(apiKey) {
-  if (!apiKey) return '';
-  const trimmed = apiKey.trim();
-  if (trimmed.length <= 8) return trimmed;
-  return `${trimmed.slice(0, 4)}…${trimmed.slice(-4)}`;
+function getKey() {
+  const raw = Buffer.from(String(SECRET || ''), 'utf8');
+  const out = Buffer.alloc(32);
+  for (let i = 0; i < out.length; i++) out[i] = raw[i % raw.length] ^ ((i * 73) & 0xff);
+  return out;
 }
 
-export async function upsertUserApiKey({ userId, apiKey, apiVersion, geminiMode, geminiModel }) {
-  const trimmed = typeof apiKey === 'string' ? apiKey.trim() : '';
-  if (!trimmed) {
-    throw new Error('apiKey is required');
-  }
-  if (!userId) {
-    throw new Error('userId is required');
-  }
-
-  const normalizedMode = geminiMode ? normalizeGeminiMode(geminiMode) : null;
-  const normalizedModel = geminiModel ? normalizeGeminiModelId(geminiModel) : null;
-
-  const encrypted = encryptText(trimmed);
-  const payload = {
-    user_id: userId,
-    key_ciphertext: encrypted.ciphertext,
-    key_iv: encrypted.iv,
-    key_tag: encrypted.tag,
-    key_version: encrypted.version,
-    api_version: apiVersion || null,
-    gemini_mode: normalizedMode,
-    gemini_model: normalizedModel,
-    key_sample: buildSample(trimmed),
-    updated_at: new Date().toISOString(),
-  };
-
-  const { data, error } = await supabaseAdmin
-    .from(TABLE)
-    .upsert(payload, { onConflict: 'user_id' })
-    .select('user_id, api_version, gemini_mode, gemini_model, key_sample, updated_at')
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
-}
-
-export async function fetchUserApiKey(userId) {
-  if (!userId) {
-    throw new Error('userId is required');
-  }
-
-  const { data, error } = await supabaseAdmin
-    .from(TABLE)
-    .select('key_ciphertext, key_iv, key_tag, key_version, api_version, gemini_mode, gemini_model')
-    .eq('user_id', userId)
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-
-  if (!data) {
+async function decryptParts({ ciphertextB64, ivB64, tagB64 }) {
+  try {
+    const iv = Buffer.from(String(ivB64 || ''), 'base64');
+    const ct = Buffer.from(String(ciphertextB64 || ''), 'base64');
+    const tag = Buffer.from(String(tagB64 || ''), 'base64');
+    if (iv.length !== 12 || tag.length !== 16 || ct.length <= 0) return null;
+    const key = await crypto.subtle.importKey('raw', getKey(), { name: 'AES-GCM' }, false, ['decrypt']);
+    const buf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv, tagLength: 128 }, key, Buffer.concat([ct, tag]));
+    return Buffer.from(buf).toString('utf8');
+  } catch {
     return null;
   }
+}
 
-  const apiKey = decryptText({
-    ciphertext: data.key_ciphertext,
-    iv: data.key_iv,
-    tag: data.key_tag,
-    version: data.key_version,
+export async function fetchUserApiKey(userId, { bearer } = {}) {
+  if (!SUPA_URL || !SUPA_ANON) throw new Error('supabase_not_configured');
+  if (!bearer) throw new Error('missing_bearer');
+  const headers = {
+    apikey: SUPA_ANON,
+    Authorization: `Bearer ${bearer}`,
+    'Content-Type': 'application/json',
+  };
+  // Select most recently updated row if active column is absent
+  const url = `${SUPA_URL}/rest/v1/rank_user_api_keyring?user_id=eq.${encodeURIComponent(
+    userId
+  )}&select=key_ciphertext,key_iv,key_tag,provider,model_label,api_version,gemini_mode,gemini_model,updated_at&order=updated_at.desc&limit=1`;
+  const resp = await fetch(url, { headers });
+  if (!resp.ok) {
+    const t = await resp.text();
+    throw new Error(`keyring_query_failed ${resp.status} ${t}`);
+  }
+  const arr = await resp.json();
+  const row = Array.isArray(arr) ? arr[0] : null;
+  if (!row) return null;
+  const plain = await decryptParts({
+    ciphertextB64: row.key_ciphertext,
+    ivB64: row.key_iv,
+    tagB64: row.key_tag,
   });
-
+  if (!plain) return null;
   return {
-    apiKey,
-    apiVersion: data.api_version || null,
-    geminiMode: data.gemini_mode || null,
-    geminiModel: data.gemini_model || null,
+    apiKey: plain.trim(),
+    provider: row.provider || 'gemini',
+    geminiMode: row.gemini_mode || null,
+    geminiModel: row.gemini_model || null,
+    apiVersion: row.api_version || null,
+    modelLabel: row.model_label || null,
   };
 }
 
-export async function deleteUserApiKey({ userId }) {
-  if (!userId) {
-    throw new Error('userId is required');
-  }
-
-  const { error } = await supabaseAdmin.from(TABLE).delete().eq('user_id', userId);
-
-  if (error) {
-    throw error;
-  }
-
+export async function upsertUserApiKey() {
+  throw new Error('not_implemented');
+}
+export async function deleteUserApiKey() {
   return true;
 }
