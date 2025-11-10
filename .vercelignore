@@ -23,3 +23,9 @@ ai-roomchat/starbase-*.zip
 # Optional: exclude any other large local directories you don't want uploaded
 # /.cache/
 # .venv/
+
+# Exclude Next.js build cache and output directories to avoid packaging large cache from restored build cache
+ai-roomchat/.next/
+ai-roomchat/.next/cache/
+.next/
+.next/cache/
