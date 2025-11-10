@@ -3,6 +3,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { prefetchResources, getResourceUrl, cleanupGameResources } from "../../utils/resourceCache.js";
+import { loadVariablesFromFiles, saveVariablesToFiles, mergeVariables } from "../../lib/runtime/variables.js";
+import { createPhysics2D } from "../../lib/runtime/adapters/physics2d.js";
+import { createTilemap } from "../../lib/runtime/adapters/tilemap.js";
+import { createPathfinding } from "../../lib/runtime/adapters/pathfinding.js";
+import { createInputActions } from "../../lib/runtime/adapters/inputActions.js";
+import { createRendererCanvas2D } from "../../lib/runtime/adapters/rendererCanvas2D.js";
+import { loadAdapter } from "../../lib/runtime/adapterManager.js";
 
 const Ctx = createContext(null);
 
@@ -32,8 +39,11 @@ export function GameRuntimeProvider({ roomId = "local-room", roles = { players: 
   const hooksRef = useRef({});
   const configRef = useRef({});
   const filesRef = useRef({});
+  const variablesRef = useRef({});
+  const adaptersRef = useRef({});
   const [currentNodeId, setCurrentNodeId] = useState(null);
   const waitingRef = useRef(false);
+  const turnStartPendingRef = useRef(false);
   const indexById = useRef(new Map());
   const edgesBySource = useRef(new Map());
 
@@ -90,6 +100,7 @@ export function GameRuntimeProvider({ roomId = "local-room", roles = { players: 
       case 'control:startTimer': {
         const until = Date.now() + (Math.max(1, evt.payload.seconds) * 1000);
         setDeadline(until); setNextTriggered(false); setVotes({});
+        try { turnStartPendingRef.current = true; } catch {}
         return;
       }
       case 'control:voteNext': {
@@ -105,6 +116,7 @@ export function GameRuntimeProvider({ roomId = "local-room", roles = { players: 
       case 'control:forceNext':
         setNextTriggered(true);
         setDeadline(Date.now());
+        try { turnStartPendingRef.current = true; } catch {}
         // attempt a step on force
         try { step('force'); } catch {}
         return;
@@ -155,6 +167,7 @@ export function GameRuntimeProvider({ roomId = "local-room", roles = { players: 
     if (okPerRole.every(Boolean) && !nextTriggered) {
       setNextTriggered(true);
       setDeadline(Date.now());
+      try { turnStartPendingRef.current = true; } catch {}
     }
   }, [votes, roles, nextTriggered]);
 
@@ -187,11 +200,26 @@ export function GameRuntimeProvider({ roomId = "local-room", roles = { players: 
       graphRef.current = graph || { nodes: [], edges: [] };
       hooksRef.current = hooks || {};
       configRef.current = config || {};
+      // stop previous input listener if reconfiguring
+      try { adaptersRef.current?.input?.stop?.(); } catch {}
       filesRef.current = files || {};
+      variablesRef.current = loadVariablesFromFiles(filesRef.current);
+      // (Re)initialize adapters
+      try {
+        const physics = createPhysics2D();
+        const tilemap = createTilemap();
+        const pathfinding = createPathfinding();
+        const input = createInputActions(); input.loadConfigFromFiles(filesRef.current); input.start();
+        const renderer2d = createRendererCanvas2D();
+        // Glue: map grid -> physics/pathfinding
+        try { const grid = JSON.parse(String(filesRef.current['/game/maps/grid.sample.json']?.content||'null')||'null')?.tiles || null; if (grid) { physics.setCollisionGrid(grid); pathfinding.setGrid(grid); } } catch {}
+        adaptersRef.current = { physics, tilemap, pathfinding, input, renderer2d };
+      } catch { adaptersRef.current = {}; }
       reindex();
       const entry = config?.entryNode || graphRef.current.nodes?.[0]?.id || null;
       setCurrentNodeId(entry);
       waitingRef.current = false;
+      try { turnStartPendingRef.current = true; } catch {}
       // if entry exists and is not user_action, step immediately
       if (entry) setTimeout(() => { try { step('init'); } catch {} }, 0);
     },
@@ -209,6 +237,28 @@ export function GameRuntimeProvider({ roomId = "local-room", roles = { players: 
         getCurrentId: () => currentNodeId,
         setCurrentId: (id) => setCurrentNodeId(id),
         setWaiting: (b) => { waitingRef.current = !!b; },
+        turnStartPendingRef,
+        variablesRef,
+        adaptersRef,
+        updateVariables: (patchOrFn) => {
+          try {
+            const prev = variablesRef.current || {};
+            const next = (typeof patchOrFn === 'function') ? (patchOrFn(prev) || prev) : mergeVariables(prev, patchOrFn || {});
+            variablesRef.current = next;
+            saveVariablesToFiles(filesRef.current, next);
+          } catch {}
+        },
+        loadAdapter: async (name, options) => {
+          try {
+            const inst = await loadAdapter(name, options);
+            if (!inst) throw new Error('adapter not available');
+            adaptersRef.current = { ...(adaptersRef.current||{}), [name]: inst };
+            return inst;
+          } catch (e) {
+            console.warn('[adapter] load failed', name, e?.message||e);
+            return null;
+          }
+        },
         getNode, neighborsOf,
         filesRef,
         sendAI: (payload, fullPrompt, fullResponse) => api.sendAI(payload, fullPrompt, fullResponse),
@@ -217,6 +267,13 @@ export function GameRuntimeProvider({ roomId = "local-room", roles = { players: 
     } catch {}
     return () => { try { delete window.__GAME_RUNTIME_CTX__; } catch {} };
   }, [currentNodeId, getNode, neighborsOf, publish, api]);
+
+  // cleanup adapters on unmount
+  useEffect(() => {
+    return () => {
+      try { adaptersRef.current?.input?.stop?.(); } catch {}
+    };
+  }, []);
 
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>;
 }
@@ -232,7 +289,16 @@ function step(reason){
   try {
     const ctx = window.__GAME_RUNTIME_CTX__;
     if (!ctx) return;
-    const { graphRef, hooksRef, configRef, indexById, edgesBySource, getNode, neighborsOf, setCurrentNodeId, sendAI, publish } = ctx;
+    const { graphRef, hooksRef, configRef, indexById, edgesBySource, getNode, neighborsOf, setCurrentNodeId, sendAI, publish, turnStartPendingRef } = ctx;
+    try {
+      const hooks = hooksRef.current || {};
+      if (reason === 'init' || (turnStartPendingRef && turnStartPendingRef.current)) {
+        if (typeof hooks.onTurnStart === 'function') {
+          try { hooks.onTurnStart({ node: getNode(ctx.getCurrentId?.()), files: ctx.filesRef?.current, config: configRef.current, variables: ctx.variablesRef?.current, updateVariables: ctx.updateVariables }); } catch {}
+        }
+        if (turnStartPendingRef) turnStartPendingRef.current = false;
+      }
+    } catch {}
     let currentId = ctx.getCurrentId();
     if (!currentId) return;
     let guard = 0;
@@ -246,7 +312,7 @@ function step(reason){
         // ai node
         const hooks = hooksRef.current || {};
         let prompt = String(node.label || '');
-        try { if (typeof hooks.transformPrompt === 'function') { prompt = hooks.transformPrompt({ node, reason }); } } catch {}
+        try { if (typeof hooks.transformPrompt === 'function') { prompt = hooks.transformPrompt({ node, reason, variables: ctx.variablesRef?.current, files: ctx.filesRef?.current, config: configRef.current, updateVariables: ctx.updateVariables }); } } catch {}
         const thinkId = `ai_${Date.now()}`;
         // 1) show placeholder immediately
         sendAI({ id: thinkId, roleScope: 'players', text: `(thinking)`, ts: Date.now() }, prompt, null);
@@ -281,7 +347,7 @@ function step(reason){
       const neigh = neighborsOf(currentId) || [];
       const hooks = hooksRef.current || {};
       let nextId = null;
-      try { if (typeof hooks.selectNext === 'function') nextId = hooks.selectNext({ node: getNode(currentId) }, neigh); } catch {}
+      try { if (typeof hooks.selectNext === 'function') nextId = hooks.selectNext({ node: getNode(currentId), variables: ctx.variablesRef?.current, files: ctx.filesRef?.current, config: configRef.current, updateVariables: ctx.updateVariables }, neigh); } catch {}
       if (!nextId) nextId = neigh?.[0]?.id || null;
       if (!nextId) break;
       setCurrentNodeId(nextId);

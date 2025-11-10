@@ -7,7 +7,18 @@ import { injectFilesWithFallback } from "../../lib/workspace/injectFilesFallback
 
 const BASE_KEY = "workspace.vfs.v1";
 
-const defaultFiles = {
+  const defaultFiles = {
+    "/assets/": { dir: true, readonly: true },
+    "/game/": { dir: true, readonly: true },
+    "/game/state/": { dir: true, readonly: true },
+    "/game/input/": { dir: true, readonly: true },
+    "/game/maps/": { dir: true, readonly: true },
+    "/game/pages/": { dir: true, readonly: true },
+    "/game/pages/ui/": { dir: true, readonly: true },
+    "/game/pages/scripts/": { dir: true, readonly: true },
+    "/game/hooks/": { dir: true, readonly: true },
+    "/docs/": { dir: true, readonly: true },
+    "/docs/contracts/": { dir: true, readonly: true },
   "/README.md": {
     content:
       "# 작업공간 가이드\n\n- 좌측 파일트리에서 파일을 선택해 수정하세요.\n- 이 작업공간은 브라우저 LocalStorage에 저장됩니다.\n- 템플릿(JSON)과 동기화하기 전, 초기에 가상 파일로만 동작합니다.\n\n## 제공 변수(읽기 전용)\n- /context/player.json — 매칭된 플레이어 정보(샘플)\n- /context/owner.json — 오너/방장 정보(샘플)\n",
@@ -40,7 +51,7 @@ const defaultFiles = {
   },
   "/template.json": { content: "{}\n", readonly: false },
   "/graph/prompt-graph.json": { content: "{\n  \"nodes\": [],\n  \"edges\": []\n}\n", readonly: false },
-  "/game/runtime.config.json": {
+    "/game/runtime.config.json": {
     content: JSON.stringify({
       version: 1,
       roles: ["players", "observers"],
@@ -50,8 +61,50 @@ const defaultFiles = {
       ai: { model: "gemini-2.5-flash" }
     }, null, 2)+"\n",
     readonly: false,
-  },
-  "/game/hooks/automation.js": {
+    },
+    "/game/state/variables.json": {
+      content: JSON.stringify({
+        player: { hp: 100, mp: 30 },
+        flags: { tutorialDone: false },
+        env: { difficulty: "normal" }
+      }, null, 2)+"\n",
+      readonly: false,
+    },
+    "/game/input/actions.json": {
+      content: JSON.stringify({
+        version: 1,
+        actions: {
+          jump: { keys: ["Space"], gamepad: [0] },
+          attack: { keys: ["KeyJ"], gamepad: [1] },
+          dash: { keys: ["ShiftLeft"], gamepad: [2] }
+        },
+        axes: {
+          moveX: { keysNegative: ["ArrowLeft", "KeyA"], keysPositive: ["ArrowRight", "KeyD"], gamepadAxis: 0, deadzone: 0.2 },
+          moveY: { keysNegative: ["ArrowUp", "KeyW"], keysPositive: ["ArrowDown", "KeyS"], gamepadAxis: 1, deadzone: 0.2 }
+        }
+      }, null, 2)+"\n",
+      readonly: false,
+    },
+    "/game/maps/grid.sample.json": {
+      content: JSON.stringify({
+        type: "grid",
+        width: 10,
+        height: 8,
+        tiles: [
+          // 0=walkable, 1=blocked (rows)
+          [0,0,0,0,0,0,0,0,0,0],
+          [0,1,1,0,0,0,1,1,1,0],
+          [0,0,0,0,1,0,0,0,1,0],
+          [0,0,1,0,0,0,0,0,0,0],
+          [0,0,0,0,0,1,0,0,0,0],
+          [0,0,0,1,0,0,0,1,0,0],
+          [0,0,0,0,0,0,0,0,0,0],
+          [0,0,0,0,0,0,0,0,0,0]
+        ]
+      }, null, 2)+"\n",
+      readonly: false,
+    },
+    "/game/hooks/automation.js": {
     content:
       [
         "// User automation hooks for the prompt-graph runtime.",
@@ -77,7 +130,150 @@ const defaultFiles = {
         "",
       ].join("\n")+"\n",
     readonly: false,
-  },
+    },
+    "/docs/USAGE.md": {
+      content: [
+        "# 작업공간 개요",
+        "- 좌측 파일트리에서 /game, /graph, /docs 등을 확인할 수 있습니다.",
+        "- /assets 폴더에 이미지/오디오 등 정적 자산을 둘 수 있습니다.",
+        "- /game/state/variables.json 은 게임 변수의 스냅샷입니다(훅에서 updateVariables).",
+        "- /docs/contracts 아래에 사용 가능한 계약(기능)과 예제를 정리합니다.",
+      ].join("\n")+"\n",
+      readonly: true,
+    },
+    "/docs/contracts/README.md": {
+      content: [
+        "# 계약(캡어빌리티) 가이드",
+        "- hooks: onTurnStart, onUserAction, transformPrompt, selectNext",
+        "- adapters: 렌더러, 입력, 네트워킹, 동기화 등을 동적으로 선택",
+        "- UI Schema: /game/pages/** 를 통해 간단한 UI를 구성",
+        "\n## 훅 컨텍스트",
+        "- ctx.variables, ctx.updateVariables(patchOrFn)",
+        "- ctx.files, ctx.config, ctx.node",
+      ].join("\n")+"\n",
+      readonly: true,
+    },
+    "/docs/contracts/runtime.md": {
+      content: [
+        "# 런타임 계약",
+        "- onTurnStart(ctx): 턴 시작 시 1회 호출",
+        "- onUserAction(ctx, input): 사용자 입력으로 다음 노드 결정/변수 갱신",
+        "- transformPrompt(ctx): 프롬프트 문자열 또는 { prompt, ui } 반환",
+        "- selectNext(ctx, neighbors): 다음 노드 id 선택",
+      ].join("\n")+"\n",
+      readonly: true,
+    },
+    "/docs/contracts/ui.md": {
+      content: [
+        "# UI 스키마",
+        "- 지원 타입: vstack, hstack, text, button, image, spacer, card, number, table",
+        "- number: { type:'number', label?, value, step?, min?, max?, event? }",
+        "- table: { type:'table', columns:[{key,label}], data:[{...}], event? }",
+      ].join("\n")+"\n",
+      readonly: true,
+    },
+    "/docs/contracts/capabilities.md": {
+      content: [
+        "# 캡어빌리티(기능) 목록",
+        "장르를 명시하지 않고 조합 가능한 기능 단위로 제공합니다.",
+        "\n- 렌더러(Rendering): Canvas2D 기본, 선택적으로 Pixi/Three",
+        "- 입력(Input): 액션/축 바인딩, 키/패드/터치",
+        "- 물리/충돌(Physics): AABB 충돌, 타일 충돌",
+        "- 타일맵(Tilemap): Tiled JSON/그리드 로드",
+        "- 경로탐색(Pathfinding): 그리드 기반 findPath",
+        "- 네트워크(Network): socket.io/colyseus 룸",
+        "- 동기화(Sync): Yjs 문서 공유",
+        "- 상태/스냅샷(State): variables.json & 이벤트 리플레이",
+        "- UI 스키마(UI): vstack/hstack/…/number/table",
+      ].join("\n")+"\n",
+      readonly: true,
+    },
+    "/docs/contracts/input.md": {
+      content: [
+        "# 입력 계약",
+        "- /game/input/actions.json 형식으로 액션/축을 정의합니다.",
+        "- 예) { actions:{ jump:{keys:[\"Space\"], gamepad:[0]} }, axes:{ moveX:{keysNegative:[\"ArrowLeft\"], keysPositive:[\"ArrowRight\"], gamepadAxis:0, deadzone:0.2} } }",
+        "- 런타임에서 onAction(name, handler), onAxis(name, handler) 사용(키/패드 지원)",
+        "- touch는 후속 확장으로 제스처→액션 바인딩 예정",
+      ].join('\n')+"\n",
+      readonly: true,
+    },
+    "/docs/contracts/physics.md": {
+      content: [
+        "# 물리/충돌 계약",
+        "- addCollider(entityId, { x,y,w,h })",
+        "- removeCollider(entityId)",
+        "- queryOverlap({ x,y,w,h }) → [entityId…]",
+        "- 타일 충돌: setCollisionGrid(grid) (0=통과, 1=충돌)",
+        "- slideBoxOnGrid(box, dx, dy): 그리드(1유닛=1타일) 기준 간단 슬라이딩",
+        "- setCellSize(px): broad-phase 버킷 크기(px) 조절",
+      ].join('\n')+"\n",
+      readonly: true,
+    },
+    "/docs/contracts/tilemap.md": {
+      content: [
+        "# 타일맵 계약",
+        "- loadTilemap(json) → 내부 레이어 등록",
+        "- getGrid(): 그리드형 또는 Tiled JSON의 충돌 레이어를 0/1로 반환",
+        "- Tiled: 레이어 properties에 { name:'collision', value:true }인 타일 레이어를 자동 탐색",
+        "- findLayerByProp(name,value), getLayer(name), getTileAt(layer|grid,x,y)",
+        "- extractObjectColliders(): collision=true인 objectgroup(사각형)에서 AABB 목록 산출",
+        "- 샘플: /game/maps/grid.sample.json",
+      ].join('\n')+"\n",
+      readonly: true,
+    },
+    "/docs/contracts/pathfinding.md": {
+      content: [
+        "# 경로탐색 계약",
+        "- setGrid(grid) // 0=통과,1=차단",
+        "- findPath({ sx,sy, tx,ty }) → [{x,y}…]",
+        "- 고급: ctx.loadAdapter('pathfinding:easystar', { costMode:true, blockValue:255, baseCost:1 })",
+        "- 타일맵에서 getCostGrid() 이용 시: setGrid(costGrid) + setOptions({ costMode:true })",
+        "- 옵션: 대각선 허용, 가중치",
+      ].join('\n')+"\n",
+      readonly: true,
+    },
+    "/docs/contracts/rendering.md": {
+      content: [
+        "# 렌더링 계약",
+        "- 기본 Canvas2D 어댑터(renderer2d): attach(canvas), addRect, setText, addImage, addSpriteFrame, addSpriteAnim, play/pause, update, remove, clear, clearCache, unload, destroy",
+        "- 고급: Pixi/Three는 동적 import로 선택",
+        "- PIXI 예시: const pixi = await ctx.loadAdapter('renderer:pixi'); pixi.attach(canvas); pixi.addSprite({ texture:'/assets/player.png', x:100, y:100 });",
+        "\n## UI 스키마에서 캔버스 노드",
+        "- { type:'canvas', id:'gameCanvas', width, height, eventMount:'canvasReady' }",
+        "- 마운트 시 onEvent('canvasReady', { id, canvas }) 호출",
+        "\n## 스크립트 예시(canvasDemo.js)",
+        "- handlers.canvasReady(payload){ const r = ctx.adaptersRef?.current?.renderer2d; r.attach(payload.canvas); r.addRect(...); r.addImage({ src:'/assets/hero.png', x:10, y:10 }); }",
+      ].join('\n')+"\n",
+      readonly: true,
+    },
+    "/docs/contracts/networking.md": {
+      content: [
+        "# 네트워크 계약",
+        "- connect(roomId), publish(event,payload), on(event,cb)",
+        "- socket.io: ctx.loadAdapter('net:socketio', { url, room }) 로드 후 사용",
+        "- 자동 재연결/버퍼링: 연결 중단 시 publish는 큐에 저장되며 재연결 후 전송",
+        "- ex) const net = await ctx.loadAdapter('net:socketio', { url:'/socket', room:'r1' }); net.on('evt', cb); net.publish('evt', data);",
+      ].join('\n')+"\n",
+      readonly: true,
+    },
+    "/docs/contracts/sync.md": {
+      content: [
+        "# 동기화 계약",
+        "- joinDoc(docId), getSharedState(), applyPatch(p)",
+        "- Yjs 기반 CRDT 문서 공유 (동적 import)",
+      ].join('\n')+"\n",
+      readonly: true,
+    },
+    "/docs/contracts/state.md": {
+      content: [
+        "# 상태/스냅샷",
+        "- variables.json: 훅 컨텍스트의 게임 상태 스냅샷",
+        "- updateVariables로 갱신되며 파일에도 반영",
+        "- 이벤트 로그 export/import로 리플레이 가능",
+      ].join('\n')+"\n",
+      readonly: true,
+    },
   "/docs/AI_GUIDE.md": {
     content:
       [
@@ -122,6 +318,11 @@ const defaultFiles = {
       main: { title: "Main", type: "ui", path: "/game/pages/ui/main.json" },
       script: { title: "ScriptDemo", type: "script", path: "/game/pages/scripts/main.js" },
       chatUi: { title: "Chat UI", type: "ui", path: "/game/pages/ui/chat.json" },
+      canvasDemo: { title: "Canvas2D Demo", type: "script", path: "/game/pages/scripts/canvasDemo.js" },
+      pathDemo: { title: "Pathfinding Demo", type: "script", path: "/game/pages/scripts/pathDemo.js" },
+      physicsDemo: { title: "Physics Demo", type: "script", path: "/game/pages/scripts/physicsDemo.js" },
+      netDemo: { title: "Net Demo", type: "script", path: "/game/pages/scripts/netDemo.js" },
+      httpNet: { title: "HTTP Net Demo", type: "script", path: "/game/pages/scripts/httpNetDemo.js" },
       customHistory: { title: "History+", type: "script", path: "/game/pages/scripts/customHistory.js" }
     }, null, 2)+"\n",
     readonly: false,
@@ -187,7 +388,30 @@ const defaultFiles = {
       "}",
     ].join('\n')+"\n",
     readonly: false,
-  },
+    },
+    "/game/pages/scripts/canvasDemo.js": {
+      content: [
+        "export function render(ctx){",
+        "  const schema = {",
+        "    type:'vstack', gap:8, children:[",
+        "      { type:'text', value:'🖼 Canvas2D Demo', fontSize:16, bold:true },",
+        "      { type:'canvas', id:'gameCanvas', width:320, height:200, eventMount:'canvasReady' },",
+        "      { type:'button', label:'사각형 추가', event:'addRect' }",
+        "    ]",
+        "  };",
+        "  const handlers = {",
+        "    canvasReady({ canvas }){",
+        "      const r = ctx.adaptersRef?.current?.renderer2d; if (!r) return; r.attach(canvas);",
+        "      r.addRect({ id:'box', x:20, y:20, w:40, h:30, color:'#38bdf8' });",
+        "      r.setText({ id:'label', x:10, y:18, text:'Hello', color:'#e2e8f0' });",
+        "    },",
+        "    addRect(){ const r = ctx.adaptersRef?.current?.renderer2d; if (!r) return; const id='r_'+Math.random().toString(36).slice(2); r.addRect({ id, x: 10+Math.random()*260, y: 10+Math.random()*160, w: 20+Math.random()*40, h: 10+Math.random()*30, color:'#fbbf24' }); }",
+        "  };",
+        "  return { schema, handlers };",
+        "}",
+      ].join('\n')+"\n",
+      readonly: false,
+    },
   "/characters/sample.json": {
     content: JSON.stringify({
       id: "char_sample",
@@ -200,6 +424,130 @@ const defaultFiles = {
       ability3: "체력",
       ability4: "행운"
     }, null, 2)+"\n",
+    readonly: false,
+  },
+  "/game/pages/scripts/pathDemo.js": {
+    content: [
+      "export function render(ctx){",
+      "  let grid = null; let pf = null; let r2d = null;",
+      "  function readGrid(){",
+      "    try { const raw = ctx.files?.['/game/maps/grid.sample.json']?.content; if (raw) { const obj = JSON.parse(raw||'{}'); grid = Array.isArray(obj.tiles)? obj.tiles : null; } } catch {}",
+      "  }",
+      "  function ensurePf(){",
+      "    if (pf && grid) return Promise.resolve(pf);",
+      "    readGrid();",
+      "    const base = ctx.adaptersRef?.current?.pathfinding; if (base) { try { base.setGrid(grid); pf = base; return Promise.resolve(pf); } catch {} }",
+      "    return (ctx.loadAdapter ? ctx.loadAdapter('pathfinding:easystar') : Promise.resolve(null)).then(inst => { if (inst && grid) inst.setGrid(grid); pf = inst; return pf; });",
+      "  }",
+      "  function drawGrid(){",
+      "    if (!r2d || !grid) return; r2d.clear();",
+      "    const h = grid.length, w = grid[0]?.length || 0;",
+      "    const cw = Math.floor(300/Math.max(1,w)); const ch = Math.floor(180/Math.max(1,h));",
+      "    for (let y=0;y<h;y++){ for (let x=0;x<w;x++){ const b = grid[y][x]===1; r2d.addRect({ id:'c_'+x+'_'+y, x:x*cw, y:y*ch, w:cw-1, h:ch-1, color: b?'#1f2937':'#0ea5e9' }); } }",
+      "    r2d.setText({ id:'lbl', x:6, y:14, text:'Click 찾아보기: 좌상(0,0) → 우하(w-1,h-1)', color:'#e2e8f0' });",
+      "  }",
+      "  const schema = {",
+      "    type:'vstack', gap:8, children:[",
+      "      { type:'text', value:'🧭 Pathfinding Demo', fontSize:16, bold:true },",
+      "      { type:'hstack', gap:8, children:[",
+      "        { type:'number', id:'sx', label:'sx', value:0, min:0, event:'set' },",
+      "        { type:'number', id:'sy', label:'sy', value:0, min:0, event:'set' },",
+      "        { type:'number', id:'tx', label:'tx', value:9, min:0, event:'set' },",
+      "        { type:'number', id:'ty', label:'ty', value:7, min:0, event:'set' },",
+      "        { type:'button', label:'경로 찾기', event:'find' }",
+      "      ]},",
+      "      { type:'canvas', id:'gridCanvas', width:300, height:180, eventMount:'canvasReady' }",
+      "    ]",
+      "  };",
+      "  const vals = { sx:0, sy:0, tx:9, ty:7 };",
+      "  const handlers = {",
+      "    canvasReady({ canvas }){ r2d = ctx.adaptersRef?.current?.renderer2d; if (!r2d) return; r2d.attach(canvas); readGrid(); drawGrid(); },",
+      "    set({ id, value }){ vals[id] = value|0; },",
+      "    async find(){",
+      "      const inst = await ensurePf(); if (!inst || !grid) return; const path = await inst.findPath({ sx:vals.sx, sy:vals.sy, tx:vals.tx, ty:vals.ty });",
+      "      if (!r2d) return; drawGrid();",
+      "      const cw = Math.floor(300/Math.max(1,grid[0]?.length||0)); const ch = Math.floor(180/Math.max(1,grid.length||0));",
+      "      path.forEach((p,i)=>{ r2d.addRect({ id:'p_'+i, x:p.x*cw+2, y:p.y*ch+2, w:Math.max(2,cw-4), h:Math.max(2,ch-4), color:'#fbbf24' }); });",
+      "    }",
+      "  };",
+      "  return { schema, handlers };",
+      "}",
+    ].join('\n')+"\n",
+    readonly: false,
+  },
+  "/game/pages/scripts/physicsDemo.js": {
+    content: [
+      "export function render(ctx){",
+      "  let r2d = null; let phys = null; let grid = null;",
+      "  function readGrid(){ try { const raw = ctx.files?.['/game/maps/grid.sample.json']?.content; if (raw) { const obj = JSON.parse(raw||'{}'); grid = Array.isArray(obj.tiles)? obj.tiles : null; } } catch {} }",
+      "  function ensure(){ if (!phys) phys = ctx.adaptersRef?.current?.physics; if (phys && grid) phys.setCollisionGrid(grid); }",
+      "  const box = { x:1, y:1, w:0.9, h:0.9 };",
+      "  const schema = { type:'vstack', gap:8, children:[",
+      "    { type:'text', value:'🧱 Physics Demo (grid slide)', fontSize:16, bold:true },",
+      "    { type:'canvas', id:'pCanvas', width:300, height:180, eventMount:'canvasReady' },",
+      "  ]};",
+      "  function draw(){ if (!r2d || !grid) return; r2d.clear(); const h=grid.length, w=grid[0]?.length||0; const cw=Math.floor(300/Math.max(1,w)); const ch=Math.floor(180/Math.max(1,h));",
+      "    for (let y=0;y<h;y++){ for (let x=0;x<w;x++){ const b=grid[y][x]===1; r2d.addRect({ id:'g_'+x+'_'+y, x:x*cw, y:y*ch, w:cw-1, h:ch-1, color:b?'#1f2937':'#0ea5e9' }); } }",
+      "    r2d.addRect({ id:'player', x:box.x*cw, y:box.y*ch, w:Math.max(2,box.w*cw), h:Math.max(2,box.h*ch), color:'#22c55e' });",
+      "  }",
+      "  let offAxisX = null, offAxisY = null; const speed=0.05;",
+      "  const handlers = {",
+      "    canvasReady({ canvas }){ r2d = ctx.adaptersRef?.current?.renderer2d; if (!r2d) return; r2d.attach(canvas); readGrid(); ensure(); draw();",
+      "      const input = ctx.adaptersRef?.current?.input; if (input){",
+      "        offAxisX = input.onAxis('moveX', (v)=>{ const nx = (phys?.slideBoxOnGrid ? phys.slideBoxOnGrid(box, v*speed, 0) : { ...box, x: box.x + v*speed }); Object.assign(box, nx); draw(); });",
+      "        offAxisY = input.onAxis('moveY', (v)=>{ const ny = (phys?.slideBoxOnGrid ? phys.slideBoxOnGrid(box, 0, v*speed) : { ...box, y: box.y + v*speed }); Object.assign(box, ny); draw(); });",
+      "      }",
+      "    },",
+      "  };",
+      "  return { schema, handlers };",
+      "}",
+    ].join('\n')+"\n",
+    readonly: false,
+  },
+  "/game/pages/scripts/netDemo.js": {
+    content: [
+      "export function render(ctx){",
+      "  let net = null; const logs=[]; function log(s){ logs.push(s); if (logs.length>6) logs.shift(); }",
+      "  const schema = { type:'vstack', gap:8, children:[",
+      "    { type:'text', value:'🔌 Socket.IO Demo', fontSize:16, bold:true },",
+      "    { type:'hstack', gap:8, children:[",
+      "      { type:'button', label:'Connect', event:'connect' },",
+      "      { type:'button', label:'Send evt', event:'send' }",
+      "    ]},",
+      "    { type:'text', id:'logs', value:'', fontSize:13 }",
+      "  ]};",
+      "  const handlers = {",
+      "    async connect(){ if (!ctx.loadAdapter) return; net = await ctx.loadAdapter('net:socketio', { url: (typeof location!=='undefined'? location.origin: ''), room: 'demo' }); if (!net) return; log('connected?'); net.on('connect', ()=>log('connected')); net.on('evt', (p)=>log('evt:'+JSON.stringify(p))); },",
+      "    send(){ if (!net) return; net.publish('evt', { t: Date.now(), text:'hello' }); },",
+      "  };",
+      "  return { schema, handlers };",
+      "}",
+    ].join('\n')+"\n",
+    readonly: false,
+  },
+  "/game/pages/scripts/httpNetDemo.js": {
+    content: [
+      "export function render(ctx){",
+      "  let rid = null; let lastSeq = -1; let timer = null; const logs=[]; function log(s){ logs.push(s); if (logs.length>6) logs.shift(); }",
+      "  const schema = { type:'vstack', gap:8, children:[",
+      "    { type:'text', value:'🌐 HTTP Rooms Demo', fontSize:16, bold:true },",
+      "    { type:'hstack', gap:8, children:[",
+      "      { type:'button', label:'Create', event:'create' },",
+      "      { type:'button', label:'Join', event:'join' },",
+      "      { type:'button', label:'Send move', event:'send' }",
+      "    ]},",
+      "    { type:'text', id:'logs', value:'', fontSize:13 }",
+      "  ]};",
+      "  async function api(p, init){ const r = await fetch(p, { method: init?.method||'GET', headers: { 'content-type':'application/json' }, body: init?.body? JSON.stringify(init.body): undefined }); const j = await r.json(); return j; }",
+      "  async function poll(){ if (!rid) return; try { const snap = await api(`/api/rooms/${'${'}rid}`); if (snap.seq !== lastSeq){ lastSeq = snap.seq; log('seq '+lastSeq); } } catch {} }",
+      "  const handlers = {",
+      "    async create(){ const j = await api('/api/rooms', { method:'POST', body: { id: 'demo' } }); rid = j.id; log('room '+rid); if (timer) clearInterval(timer); timer=setInterval(poll, 1000); },",
+      "    async join(){ if (!rid) rid = 'demo'; const j = await api(`/api/rooms/${'${'}rid}/join`, { method:'POST', body: { user: { id:'me' } } }); log('join '+j.userId); if (timer) clearInterval(timer); timer=setInterval(poll, 1000); },",
+      "    async send(){ if (!rid) return; await api(`/api/rooms/${'${'}rid}/event`, { method:'POST', body: { type:'move', payload:{ id:'obj', dx:1, dy:0 } } }); },",
+      "  };",
+      "  return { schema, handlers };",
+      "}",
+    ].join('\n')+"\n",
     readonly: false,
   },
 };

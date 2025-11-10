@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import WorkspaceFrame from '../../../components/workspace/WorkspaceFrame.jsx';
 import { useWorkspace } from '../../../components/workspace/CodeWorkspaceProvider.jsx';
-import saveSet from '../../../lib/workspace/saveSet.js';
+import { saveSet } from '../../../lib/workspace/saveSet.js';
 
 export function SimpleEditor({ id }) {
   const { api, files, activePath } = useWorkspace();

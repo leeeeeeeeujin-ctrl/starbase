@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import CodeWorkspaceProvider from '../workspace/CodeWorkspaceProvider.jsx';
+import dynamic from 'next/dynamic';
+import { CodeWorkspaceProvider } from '../workspace/CodeWorkspaceProvider.jsx';
 
 // WorkspaceFrame: 서버-우선으로 세트 파일을 불러와 CodeWorkspaceProvider를 일관되게 마운트합니다.
 // - id: 프롬프트/세트 id (storageNamespace와 키에 사용)
@@ -41,14 +42,17 @@ export default function WorkspaceFrame({ id, children }) {
   if (initFiles == null) return null; // 간단한 로딩 상태
 
   return (
-    <CodeWorkspaceProvider
-      key={id}
-      storageNamespace={id}
-      initialFiles={initFiles}
-      initialEtag={etag}
-    >
-      {children}
-    </CodeWorkspaceProvider>
+    <>
+      {/* Global toast mount (client-only) */}
+      {(() => { try { const Toast = dynamic(() => import('../common/ToastMount.jsx'), { ssr: false }); return <Toast />; } catch { return null; } })()}
+      <CodeWorkspaceProvider
+        key={id}
+        storageNamespace={id}
+        initialFiles={initFiles}
+        initialEtag={etag}
+      >
+        {children}
+      </CodeWorkspaceProvider>
+    </>
   );
 }
-

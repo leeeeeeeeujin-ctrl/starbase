@@ -121,6 +121,29 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
   const resizeLastRef = useRef(null);
   const [playKey, setPlayKey] = useState(0);
 
+  // Ctrl/Cmd+S → save current file (local) and toast
+  const ws = useWorkspace();
+  useEffect(() => {
+    const onKey = (e) => {
+      try {
+        const k = (e.key || '').toLowerCase();
+        if ((e.ctrlKey || e.metaKey) && k === 's') {
+          e.preventDefault();
+          const p = ws?.activePath;
+          if (p) {
+            try { ws.saveFile(p); } catch {}
+            try {
+              const ev = new CustomEvent('toast:show', { detail: { text: `${p} 저장됨`, type: 'success' } });
+              window.dispatchEvent(ev);
+            } catch {}
+          }
+        }
+      } catch {}
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [ws]);
+
   const LS_CHAT_POS = 'workspace:aiChat:pos';
   const LS_CHAT_SIZE = 'workspace:aiChat:size';
   const LS_SHOW_TREE = 'workspace:showTree';
@@ -322,9 +345,13 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
     const [saving, setSaving] = useState(false);
     const onSaveServer = async () => {
       if (!id || saving) return;
-      try { setSaving(true); await saveSet(String(id), files); alert('Saved'); }
-      catch(e){ alert('Save failed: ' + String(e?.message||e)); }
-      finally { setSaving(false); }
+      try {
+        setSaving(true);
+        await saveSet(String(id), files);
+        try { window.dispatchEvent(new CustomEvent('toast:show', { detail: { text: '서버에 저장 완료', type: 'success' } })); } catch {}
+      } catch(e) {
+        try { window.dispatchEvent(new CustomEvent('toast:show', { detail: { text: `서버 저장 실패: ${String(e?.message||e)}`, type: 'error' } })); } catch {}
+      } finally { setSaving(false); }
     };
     const doNewFile = () => { setCreating('file'); setCreatePath(normalizeDir(root)+'untitled.js'); setFileMenuOpen(false); };
     const doNewFolder = () => { setCreating('folder'); setCreatePath(normalizeDir(root)+'folder/'); setFileMenuOpen(false); };

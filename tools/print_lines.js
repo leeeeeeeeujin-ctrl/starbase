@@ -1,9 +1,18 @@
+// Usage: node tools/print_lines.js <path> <from> <to>
 const fs = require('fs');
 const path = process.argv[2];
-const start = parseInt(process.argv[3] || '1', 10);
-const end = parseInt(process.argv[4] || '1000000', 10);
-const s = fs.readFileSync(path, 'utf8');
-const a = s.split(/\r?\n/);
-for (let i = Math.max(1, start); i <= Math.min(a.length, end); i++) {
-  console.log(String(i).padStart(4, '0') + ': ' + a[i-1]);
+const from = parseInt(process.argv[3] || '1', 10);
+const to = parseInt(process.argv[4] || '2147483647', 10);
+if (!path) {
+  console.error('Usage: node tools/print_lines.js <path> <from> <to>');
+  process.exit(1);
 }
+const data = fs.readFileSync(path, 'utf8').split(/\r?\n/);
+const start = Math.max(1, from);
+const end = Math.min(to, data.length);
+for (let i = start; i <= end; i++) {
+  const ln = String(i).padStart(5, ' ');
+  console.log(ln + ': ' + data[i-1]);
+}
+console.error(`\n[lines ${start}..${end} of ${data.length}]`);
+
