@@ -36,16 +36,29 @@ export default function DynamicSlot({ slotId, files, resolveAsset, defaultRender
 
   React.useEffect(() => {
     try {
-      if (!def) { setSchema(null); handlersRef.current = {}; return; }
-      const { schema: sc, handlers } = loadDefOutput(def, files);
-      setSchema(sc || null);
-      handlersRef.current = handlers || {};
+      if (def) {
+        const { schema: sc, handlers } = loadDefOutput(def, files);
+        setSchema(sc || null);
+        handlersRef.current = handlers || {};
+        return;
+      }
+      // Fallback: use /game/pages if present for widgets slot
+      if (slotId === 'play.widgets') {
+        const idx = safeParse(files?.['/game/pages/index.json']?.content || '{}');
+        const mainPath = idx?.main?.path || '/game/pages/ui/main.json';
+        const sc = safeParse(files?.[mainPath]?.content || '{}');
+        setSchema(sc || null);
+        handlersRef.current = {};
+        return;
+      }
+      setSchema(null); handlersRef.current = {};
     } catch { setSchema(null); handlersRef.current = {}; }
   }, [JSON.stringify(def), files]);
 
   const onEvent = React.useCallback((name, payload) => {
     try { const fn = handlersRef.current?.[name]; if (typeof fn==='function') fn(payload); } catch {}
-  }, []);
+    try { window.dispatchEvent(new CustomEvent('runtime:userAction', { detail: { slotId, name, payload } })); } catch {}
+  }, [slotId]);
 
   if (schema) {
     return <UISchemaRenderer schema={schema} onEvent={onEvent} resolveAsset={resolveAsset} />;

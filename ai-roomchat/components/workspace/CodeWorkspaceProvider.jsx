@@ -117,6 +117,201 @@ const defaultFiles = {
       ].join("\n")+"\n",
     readonly: false,
   },
+  "/docs/README.md": {
+    content: [
+      "# Workspace Guides",
+      "",
+      "이 폴더는 제작자가 바로 참고할 수 있는 가이드 묶음입니다.",
+      "- capabilities/ — 기능 단위 계약(파일/훅/어댑터) 요약",
+      "- runtime/ — 런타임 훅/흐름/설정 가이드",
+      "",
+      "API",
+      "- 기능 계약 목록: GET /api/runtime/capability-contracts",
+      "- 루트 레퍼런스 탐색: GET /api/refroot/...",
+    ].join("\n")+"\n",
+    readonly: true,
+  },
+  "/docs/capabilities/OVERVIEW.md": {
+    content: [
+      "# Capability Contracts Overview",
+      "",
+      "장르가 아닌 기능 단위로 엔진을 조립합니다. 각 항목은 필요한 파일/훅/어댑터를 정의합니다.",
+      "- core.graph — /graph/prompt-graph.json",
+      "- core.hooks — /game/hooks/automation.js (transformPrompt, onUserAction, selectNext)",
+      "- core.runtimeConfig — /game/runtime.config.json",
+      "- ui.text — 텍스트 UI(훅 반환 문자열 렌더)",
+      "- ui.canvas2d — 캔버스 렌더러(어댑터)",
+      "- input.keyboard — 키 입력을 액션으로 매핑",
+      "- grid.tilemap, ai.pathfinding, physics.basic, network.socketio, crdt.yjs, worker.offthread 등",
+      "",
+      "참고: /api/runtime/capability-contracts, /api/refroot/...",
+    ].join("\n")+"\n",
+    readonly: true,
+  },
+  "/docs/runtime/HooksQuickstart.md": {
+    content: [
+      "# Hooks Quickstart",
+      "",
+      "파일: /game/hooks/automation.js",
+      "",
+      "export function transformPrompt(ctx) {",
+      "  const label = String(ctx?.node?.label || '');",
+      "  return label; // 또는 { prompt, ui }",
+      "}",
+      "",
+      "export function onUserAction(ctx, input) {",
+      "  // 입력을 보고 다음 노드 id 또는 { next } 반환",
+      "}",
+      "",
+      "export function selectNext(ctx, neighbors) {",
+      "  return neighbors?.[0]?.id ?? null;",
+      "}",
+    ].join("\n")+"\n",
+    readonly: true,
+  },
+  "/docs/capabilities/core.graph.md": {
+    content: [
+      "# core.graph",
+      "필수 파일: /graph/prompt-graph.json",
+      "노드/엣지 예시:",
+      "{",
+      "  \"nodes\": [ { \"id\": \"start\", \"type\": \"ai\", \"label\": \"Intro\" } ],",
+      "  \"edges\": [ { \"source\": \"start\", \"target\": \"end\", \"label\": \"next\" } ]",
+      "}",
+    ].join("\n")+"\n",
+    readonly: true,
+  },
+  "/docs/capabilities/core.hooks.md": {
+    content: [
+      "# core.hooks",
+      "필수 파일: /game/hooks/automation.js",
+      "함수: transformPrompt, onUserAction, selectNext",
+      "실행은 샌드박스/타임아웃 가드 하에 이루어집니다.",
+    ].join("\n")+"\n",
+    readonly: true,
+  },
+  "/docs/capabilities/core.runtimeConfig.md": {
+    content: [
+      "# core.runtimeConfig",
+      "파일: /game/runtime.config.json",
+      "예시:",
+      "{",
+      "  \"version\": 1, \"entryNode\": \"start\", \"roles\": [\"players\"], \"durations\": [30,60,90]",
+      "}",
+    ].join("\n")+"\n",
+    readonly: true,
+  },
+  "/docs/capabilities/ui.text.md": {
+    content: [
+      "# ui.text",
+      "transformPrompt가 문자열을 반환하면 텍스트 UI로 렌더됩니다.",
+      "선택지는 노드/엣지 라벨 또는 onUserAction 처리로 표현합니다.",
+    ].join("\n")+"\n",
+    readonly: true,
+  },
+  "/docs/capabilities/ui.canvas2d.md": {
+    content: [
+      "# ui.canvas2d",
+      "렌더러 어댑터: lib/runtime/adapters/rendererCanvas2D.js 의 attachCanvas2D",
+      "hooks 예시: transformPrompt가 { prompt, ui } 형태로 상태를 반환하고, 렌더러가 상태를 그립니다.",
+    ].join("\n")+"\n",
+    readonly: true,
+  },
+  "/docs/capabilities/input.keyboard.md": {
+    content: [
+      "# input.keyboard",
+      "어댑터: lib/runtime/adapters/inputKeyboard.js 의 attachKeyboard",
+      "키 → 액션 매핑으로 onUserAction에 전달합니다.",
+    ].join("\n")+"\n",
+    readonly: true,
+  },
+  "/docs/capabilities/input.gamepad.md": {
+    content: [
+      "# input.gamepad",
+      "어댑터: lib/runtime/adapters/inputGamepad.js 의 attachGamepad",
+      "스틱/버튼을 액션(move_*, confirm)으로 매핑하여 onUserAction으로 전달합니다.",
+    ].join("\n")+"\n",
+    readonly: true,
+  },
+  "/docs/capabilities/ui.webgl3d.md": {
+    content: [
+      "# ui.webgl3d",
+      "렌더러 어댑터: lib/runtime/adapters/rendererWebGL.js 의 attachWebGL",
+      "주의: three 의존성은 프로젝트에서 제공되어야 합니다.",
+    ].join("\n")+"\n",
+    readonly: true,
+  },
+  "/docs/capabilities/network.socketio.md": {
+    content: [
+      "# network.socketio",
+      "어댑터: lib/runtime/adapters/netSocketIO.js 의 connectSocketIO",
+      "주의: socket.io-client 의존성 필요.",
+    ].join("\n")+"\n",
+    readonly: true,
+  },
+  "/docs/capabilities/network.colyseus.md": {
+    content: [
+      "# network.colyseus",
+      "어댑터: lib/runtime/adapters/netColyseus.js 의 connectColyseus",
+      "주의: colyseus.js 의존성 필요.",
+    ].join("\n")+"\n",
+    readonly: true,
+  },
+  "/docs/capabilities/crdt.yjs.md": {
+    content: [
+      "# crdt.yjs",
+      "어댑터: lib/runtime/adapters/syncYjs.js",
+      "주의: yjs 의존성 필요.",
+    ].join("\n")+"\n",
+    readonly: true,
+  },
+  "/docs/capabilities/grid.tilemap.md": {
+    content: [
+      "# grid.tilemap",
+      "격자/타일맵 이동/검증 등을 훅(onUserAction/selectNext)에서 처리합니다.",
+      "경로탐색과 함께 사용 권장.",
+    ].join("\n")+"\n",
+    readonly: true,
+  },
+  "/docs/capabilities/ai.pathfinding.md": {
+    content: [
+      "# ai.pathfinding",
+      "어댑터: lib/runtime/adapters/pathfindingEasystar.js 의 createPathfinder",
+      "주의: easystarjs 의존성 필요.",
+    ].join("\n")+"\n",
+    readonly: true,
+  },
+  "/docs/capabilities/physics.basic.md": {
+    content: [
+      "# physics.basic",
+      "렌더러와 통합된 충돌/중력 처리(Phaser 등)가 필요합니다.",
+    ].join("\n")+"\n",
+    readonly: true,
+  },
+  "/docs/capabilities/worker.offthread.md": {
+    content: [
+      "# worker.offthread",
+      "어댑터: lib/runtime/adapters/workerRpc.js 의 createWorkerRpc",
+      "워커에서 메서드 호출을 메시지 기반으로 수행합니다.",
+    ].join("\n")+"\n",
+    readonly: true,
+  },
+  "/docs/capabilities/timing.turns.md": {
+    content: [
+      "# timing.turns",
+      "어댑터: lib/runtime/adapters/timingTurns.js 의 createTurnTimer",
+      "턴 타이머/자동 전이를 관리합니다.",
+    ].join("\n")+"\n",
+    readonly: true,
+  },
+  "/docs/capabilities/storage.snapshot.md": {
+    content: [
+      "# storage.snapshot",
+      "어댑터: lib/runtime/adapters/storageSnapshot.js 의 createSnapshotStore",
+      "세트별 변수/히스토리 스냅샷 저장/복구.",
+    ].join("\n")+"\n",
+    readonly: true,
+  },
   "/game/pages/index.json": {
     content: JSON.stringify({
       main: { title: "Main", type: "ui", path: "/game/pages/ui/main.json" },

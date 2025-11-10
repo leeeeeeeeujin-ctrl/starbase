@@ -43,7 +43,15 @@ function getSet(id) {
 
 function upsertSet(id, files, ifMatch) {
   const existing = getSet(id);
-  if (!existing) return null;
+  if (!existing) {
+    // Create new set if none exists; ignore If-Match for initial create
+    const serialized = serialize(files);
+    const etag = hash(serialized);
+    const now = new Date().toISOString();
+    const record = { id, files: normalizeFiles(files), etag, createdAt: now, updatedAt: now };
+    getStore().set(id, record);
+    return record;
+  }
   if (ifMatch && existing.etag && existing.etag !== ifMatch) {
     const err = new Error('ETag mismatch');
     err.code = 'ETAG_MISMATCH';
@@ -62,4 +70,3 @@ module.exports = {
   getSet,
   upsertSet,
 };
-

@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useWorkspace } from "../workspace/CodeWorkspaceProvider.jsx";
 import { loadHooksFromSource, callHookWithTimeout } from "../../lib/runtime/safeEvalHookModule.js";
+import { createHookWorker } from "../../lib/runtime/hookWorker.js";
 
 function parseJsonSafe(text, fallback) {
   try { return JSON.parse(String(text || '')); } catch { return fallback; }
@@ -60,13 +61,17 @@ export default function GameRuntimePanel() {
   }, [graph]);
 
   // Load hooks module from VFS
+  const [worker, setWorker] = useState(null);
   const hooks = useMemo(() => {
     const src = getFileContent(files, '/game/hooks/automation.js', '');
     if (!src) { setHookInfo({ loaded:false, errors:['/game/hooks/automation.js 없음'] }); return null; }
     try {
-      const mod = loadHooksFromSource(src);
-      setHookInfo({ loaded:true, errors:[] });
-      return mod;
+      // prefer worker
+      const w = createHookWorker({ timeoutMs: 800 });
+      w.load(src).then(()=> setHookInfo({ loaded:true, errors:[] })).catch((e)=> setHookInfo({ loaded:false, errors:[String(e?.message||e)] }));
+      setWorker(w);
+      // also return sync fallback
+      return loadHooksFromSource(src);
     } catch (e) {
       setHookInfo({ loaded:false, errors:[String(e?.message||e)] });
       return null;
@@ -113,6 +118,15 @@ export default function GameRuntimePanel() {
     (async () => {
       try {
         if (!node) { setPromptPreview(''); return; }
+        if (worker) {
+          try {
+            const res = await worker.call('transformPrompt', hookCtx);
+            if (cancelled) return;
+            if (res && typeof res === 'object' && typeof res.prompt === 'string') setPromptPreview(res.prompt);
+            else setPromptPreview(String(res ?? (node?.label || '')));
+            return;
+          } catch {}
+        }
         if (!hooks?.transformPrompt) { setPromptPreview(node?.label || ''); return; }
         const res = await callHookWithTimeout(() => hooks.transformPrompt(hookCtx), 500);
         if (cancelled) return;
@@ -129,10 +143,16 @@ export default function GameRuntimePanel() {
   }, [node, hooks, hookCtx]);
 
   const onUserAct = async () => {
-    if (!hooks?.onUserAction || !node) return;
+    if (!node) return;
     setBusy(true);
     try {
-      const out = await callHookWithTimeout(() => hooks.onUserAction(hookCtx, userInput), 800);
+      let out = null;
+      if (worker) {
+        try { out = await worker.call('onUserAction', hookCtx, userInput); } catch {}
+      }
+      if (out == null && hooks?.onUserAction) {
+        out = await callHookWithTimeout(() => hooks.onUserAction(hookCtx, userInput), 800);
+      }
       if (typeof out === 'string') {
         step(out);
       } else if (out && typeof out === 'object' && out.next) {
@@ -145,11 +165,17 @@ export default function GameRuntimePanel() {
   };
 
   const autoSelectNext = async () => {
-    if (!hooks?.selectNext || !node) return;
+    if (!node) return;
     setBusy(true);
     try {
       const neighbors = nextEdges.map(e => ({ id: e.target, label: graph.nodesById.get(e.target)?.label, type: graph.nodesById.get(e.target)?.type }));
-      const out = await callHookWithTimeout(() => hooks.selectNext(hookCtx, neighbors), 500);
+      let out = null;
+      if (worker) {
+        try { out = await worker.call('selectNext', hookCtx, neighbors); } catch {}
+      }
+      if (out == null && hooks?.selectNext) {
+        out = await callHookWithTimeout(() => hooks.selectNext(hookCtx, neighbors), 500);
+      }
       if (out) step(out);
     } catch (e) {
       console.warn('[Runtime] selectNext error', e);

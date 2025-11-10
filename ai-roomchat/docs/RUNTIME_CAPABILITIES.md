@@ -36,7 +36,7 @@ API
 가이드라인
 
 1) 최소 구성: `core.graph` + `core.hooks` + `core.runtimeConfig`
-2) 훅 작성은 순수 함수로, 외부 네트워크 의존 제거(샌드박스/타임아웃 적용)
+2) 훅 작성은 순수 함수로, 외부 네트워크 의존 제거(웹 워커 샌드박스/타임아웃 적용)
 3) 렌더러/입력/네트워킹/CRDT 등은 어댑터 계약으로 연결(추가 문서 예정)
 
 예시 훅 스켈레톤
@@ -61,4 +61,3 @@ export function selectNext(ctx, neighbors) {
 참고 링크
 
 - 각 계약 항목의 `references` 필드를 확인하세요. 예: PixiJS/Phaser/Three.js/Socket.IO/Yjs 등.
-

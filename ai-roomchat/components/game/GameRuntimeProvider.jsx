@@ -3,6 +3,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { prefetchResources, getResourceUrl, cleanupGameResources } from "../../utils/resourceCache.js";
+import { createHookWorker } from "../../lib/runtime/hookWorker.js";
+import { loadHooksFromSource } from "../../lib/runtime/safeEvalHookModule.js";
 
 const Ctx = createContext(null);
 
@@ -30,6 +32,7 @@ export function GameRuntimeProvider({ roomId = "local-room", roles = { players: 
   // runtime graph/hooks
   const graphRef = useRef({ nodes: [], edges: [] });
   const hooksRef = useRef({});
+  const hookWorkerRef = useRef(null);
   const configRef = useRef({});
   const filesRef = useRef({});
   const [currentNodeId, setCurrentNodeId] = useState(null);
@@ -79,7 +82,15 @@ export function GameRuntimeProvider({ roomId = "local-room", roles = { players: 
             if (ctx) {
               const hooks = hooksRef.current || {};
               let nextId = null;
-              try { if (typeof hooks.onUserAction === 'function') nextId = hooks.onUserAction({ node: ctx.getCurrentNode?.() }, evt.payload?.text || ''); } catch {}
+              try {
+                if (hookWorkerRef.current) {
+                  hookWorkerRef.current.call('onUserAction', { node: ctx.getCurrentNode?.() }, evt.payload?.text || '')
+                    .then((out) => { try { const id = typeof out === 'string' ? out : (out && out.next); if (id) ctx.setCurrentId(id); } catch {} })
+                    .catch(()=>{});
+                } else if (typeof hooks.onUserAction === 'function') {
+                  nextId = hooks.onUserAction({ node: ctx.getCurrentNode?.() }, evt.payload?.text || '');
+                }
+              } catch {}
               if (nextId) ctx.setCurrentId(nextId);
               ctx.setWaiting(false);
               setTimeout(() => { try { step('user_action'); } catch {} }, 0);
@@ -218,6 +229,52 @@ export function GameRuntimeProvider({ roomId = "local-room", roles = { players: 
     return () => { try { delete window.__GAME_RUNTIME_CTX__; } catch {} };
   }, [currentNodeId, getNode, neighborsOf, publish, api]);
 
+  // Ensure worker is loaded from workspace hooks source when available
+  useEffect(() => {
+    try {
+      const src = filesRef.current?.['/game/hooks/automation.js']?.content;
+      if (src && typeof src === 'string') {
+        const existing = hookWorkerRef.current;
+        if (!existing) {
+          try {
+            const w = createHookWorker({ timeoutMs: 800 });
+            w.load(src).catch(()=>{});
+            hookWorkerRef.current = w;
+          } catch {}
+        }
+      }
+    } catch {}
+  }, [currentNodeId]);
+
+  // Map UI schema events to user action without adding UI controls
+  useEffect(() => {
+    const handler = (e) => {
+      try {
+        const detail = e?.detail || {};
+        const input = detail?.payload?.text ?? detail?.payload ?? detail?.name ?? '';
+        const node = getNode(currentNodeId);
+        if (!node) return;
+        if (hookWorkerRef.current) {
+          hookWorkerRef.current.call('onUserAction', { node, files: filesRef.current, config: configRef.current }, input).then((out) => {
+            const id = typeof out === 'string' ? out : (out && out.next);
+            if (id) setCurrentNodeId(id);
+            setTimeout(() => { try { step('user_event'); } catch {} }, 0);
+          }).catch(()=>{});
+          return;
+        }
+        const hooks = hooksRef.current || {};
+        if (typeof hooks.onUserAction === 'function') {
+          const out = hooks.onUserAction({ node, files: filesRef.current, config: configRef.current }, input);
+          const id = typeof out === 'string' ? out : (out && out.next);
+          if (id) setCurrentNodeId(id);
+          setTimeout(() => { try { step('user_event'); } catch {} }, 0);
+        }
+      } catch {}
+    };
+    window.addEventListener('runtime:userAction', handler);
+    return () => window.removeEventListener('runtime:userAction', handler);
+  }, [currentNodeId, getNode]);
+
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>;
 }
 
@@ -246,7 +303,14 @@ function step(reason){
         // ai node
         const hooks = hooksRef.current || {};
         let prompt = String(node.label || '');
-        try { if (typeof hooks.transformPrompt === 'function') { prompt = hooks.transformPrompt({ node, reason }); } } catch {}
+    try {
+      if (hookWorkerRef.current) {
+        const out = await hookWorkerRef.current.call('transformPrompt', { node, reason, files: filesRef.current, config: configRef.current });
+        prompt = (out && typeof out === 'object' && typeof out.prompt === 'string') ? out.prompt : String(out ?? prompt);
+      } else if (typeof hooks.transformPrompt === 'function') {
+        prompt = hooks.transformPrompt({ node, reason, files: filesRef.current, config: configRef.current });
+      }
+    } catch {}
         const thinkId = `ai_${Date.now()}`;
         // 1) show placeholder immediately
         sendAI({ id: thinkId, roleScope: 'players', text: `(thinking)`, ts: Date.now() }, prompt, null);
@@ -281,7 +345,14 @@ function step(reason){
       const neigh = neighborsOf(currentId) || [];
       const hooks = hooksRef.current || {};
       let nextId = null;
-      try { if (typeof hooks.selectNext === 'function') nextId = hooks.selectNext({ node: getNode(currentId) }, neigh); } catch {}
+    try {
+      if (hookWorkerRef.current) {
+        const out = await hookWorkerRef.current.call('selectNext', { node: getNode(currentId), files: filesRef.current, config: configRef.current }, neigh);
+        nextId = (typeof out === 'string') ? out : (out && out.next) || null;
+      } else if (typeof hooks.selectNext === 'function') {
+        nextId = hooks.selectNext({ node: getNode(currentId), files: filesRef.current, config: configRef.current }, neigh);
+      }
+    } catch {}
       if (!nextId) nextId = neigh?.[0]?.id || null;
       if (!nextId) break;
       setCurrentNodeId(nextId);
