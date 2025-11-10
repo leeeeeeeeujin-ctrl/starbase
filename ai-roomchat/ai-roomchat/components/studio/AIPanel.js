@@ -117,8 +117,8 @@ export default function AIPanel(){
       ].join('');
 
       // unified: call /api/ai/gemini using user keyring by default
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData?.session?.access_token || null;
+      let token = null;
+      try { if (supabase && supabase.auth && typeof supabase.auth.getSession === 'function') { const r = await supabase.auth.getSession(); token = r?.data?.session?.access_token || null; } } catch {}
       if (!token) throw new Error('로그인이 필요합니다.');
       const res = await fetch('/api/ai/gemini', {
         method: 'POST',
