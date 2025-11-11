@@ -18,6 +18,19 @@ import {
 } from '@/lib/rank/rankAuthStorage';
 import { persistRankKeyringSnapshot, readRankKeyringSnapshot } from '@/lib/rank/keyringStorage';
 import { normalizeRealtimeMode, REALTIME_MODES } from '@/lib/rank/realtimeModes';
+import {
+  activateRankApiKey,
+  deactivateRankApiKey,
+  deleteRankApiKeyEntry,
+  fetchRankUserKeyring,
+  formatKeyProviderLabel,
+  KEY_PROVIDER_LABELS,
+  KEYRING_LIMIT_FALLBACK,
+  mergeKeyringEntries,
+  normalizeKeyringEntry,
+  registerRankApiKey,
+  sanitizeKeyringStorageEntry,
+} from '@/lib/rank/keyringClient';
 
 const MATCH_READY_CLIENT_LOADING = {
   padding: '40px 20px',
@@ -31,12 +44,6 @@ const MatchReadyClient = dynamic(() => import('@/components/rank/MatchReadyClien
   loading: () => <div style={MATCH_READY_CLIENT_LOADING}>메인 게임 클라이언트를 불러오는 중…</div>,
 });
 
-const KEY_PROVIDER_LABELS = {
-  openai: 'OpenAI',
-  gemini: 'Google Gemini',
-  unknown: '기타 모델',
-};
-
 const TIME_LIMIT_OPTIONS = [30, 45, 60, 80, 120];
 const QUEUE_ID = 'rank-default';
 const MATCH_READY_DURATION_MS = 15_000;
@@ -44,7 +51,6 @@ const MATCH_READY_MESSAGE_SWAP_MS = 5_000;
 const PENALTY_DURATION_MS = 30_000;
 const PENALTY_STORAGE_KEY = 'rank-match:penalty-until';
 const GAME_SELECTION_STORAGE_KEY = 'rank-match:selected-game';
-const KEYRING_LIMIT_FALLBACK = 5;
 
 const styles = {
   page: {
@@ -371,115 +377,6 @@ const styles = {
     cursor: 'pointer',
   }),
 };
-
-function normalizeUserHeaderValue(value) {
-  if (value === undefined || value === null) return '';
-  const trimmed = typeof value === 'string' ? value.trim() : String(value).trim();
-  return trimmed;
-}
-
-async function requestUserApiKeyring(method, payload, context = {}) {
-  const options = { method, headers: {}, credentials: 'include' };
-  if (method !== 'GET') {
-    options.headers['Content-Type'] = 'application/json';
-    options.body = JSON.stringify(payload ?? {});
-  }
-
-  const snapshot = readRankAuthSnapshot();
-  const headerUserId = normalizeUserHeaderValue(context?.userId || snapshot?.userId);
-  const headerAccessToken = normalizeUserHeaderValue(context?.accessToken || snapshot?.accessToken);
-
-  if (headerAccessToken) {
-    options.headers.Authorization = `Bearer ${headerAccessToken}`;
-  }
-  if (headerUserId) {
-    options.headers['x-rank-user-id'] = headerUserId;
-    options.headers['x-user-id'] = headerUserId;
-  }
-
-  const response = await fetch('/api/rank/user-api-keyring', options);
-  let data = null;
-  try {
-    data = await response.json();
-  } catch (error) {
-    if (!response.ok) {
-      throw new Error('user-api-keyring 응답을 해석하지 못했습니다.');
-    }
-  }
-
-  if (!response.ok) {
-    const message = data?.detail || data?.error || 'API 키 작업이 실패했습니다.';
-    const err = new Error(message);
-    err.payload = data;
-    throw err;
-  }
-
-  return data || {};
-}
-
-function toTimestamp(value) {
-  if (!value) return 0;
-  const parsed = Date.parse(value);
-  if (Number.isFinite(parsed)) return parsed;
-  return 0;
-}
-
-function normalizeKeyringEntry(row) {
-  if (!row) return null;
-  return {
-    id: row.id || '',
-    provider: row.provider || 'unknown',
-    modelLabel: row.modelLabel || row.model_label || null,
-    apiVersion: row.apiVersion || row.api_version || null,
-    geminiMode: row.geminiMode || row.gemini_mode || null,
-    geminiModel: row.geminiModel || row.gemini_model || null,
-    keySample: row.keySample || row.key_sample || '',
-    createdAt: row.createdAt || row.created_at || null,
-    updatedAt: row.updatedAt || row.updated_at || null,
-    isActive: row.isActive === true || row.is_active === true,
-  };
-}
-
-function mergeKeyringEntries(existing = [], entry, activated) {
-  if (!entry) return existing.slice();
-  const base = existing.filter(item => item?.id && item.id !== entry.id);
-  const sanitized = activated ? { ...entry, isActive: true } : { ...entry };
-  const next = activated ? base.map(item => ({ ...item, isActive: false })) : base;
-  next.push(sanitized);
-  next.sort(
-    (a, b) => toTimestamp(b.updatedAt || b.createdAt) - toTimestamp(a.updatedAt || a.createdAt)
-  );
-  return next;
-}
-
-function sanitizeKeyringStorageEntry(entry) {
-  if (!entry) {
-    return {
-      id: '',
-      isActive: false,
-      provider: 'unknown',
-      modelLabel: null,
-      apiVersion: null,
-      geminiMode: null,
-      geminiModel: null,
-      keySample: '',
-      createdAt: null,
-      updatedAt: null,
-    };
-  }
-  return {
-    id: entry.id || '',
-    isActive: !!entry.isActive,
-    provider: entry.provider || 'unknown',
-    modelLabel: entry.modelLabel || null,
-    apiVersion: entry.apiVersion || null,
-    geminiMode: entry.geminiMode || null,
-    geminiModel: entry.geminiModel || null,
-    keySample: entry.keySample || '',
-    createdAt: entry.createdAt || null,
-    updatedAt: entry.updatedAt || null,
-  };
-}
 
 function isObject(value) {
   return value !== null && typeof value === 'object';
@@ -877,12 +774,6 @@ function persistPenaltyUntil(timestamp) {
   }
 }
 
-function formatProviderLabel(provider) {
-  if (!provider) return KEY_PROVIDER_LABELS.unknown;
-  const key = String(provider).toLowerCase();
-  return KEY_PROVIDER_LABELS[key] || KEY_PROVIDER_LABELS.unknown;
-}
-
 function formatGameMeta(game) {
   const realtime = normalizeRealtimeMode(game?.realtimeMode);
   const realtimeLabel = realtime === REALTIME_MODES.OFF ? '턴 기반' : '실시간';
@@ -1115,14 +1006,12 @@ export default function MatchPage() {
     const userId = snapshot?.userId || viewerUserId || null;
     const loadKeyring = async () => {
       try {
-        const payload = await requestUserApiKeyring('GET', null, {
+        const payload = await fetchRankUserKeyring({
           userId,
           accessToken: snapshot?.accessToken,
         });
         if (cancelled || !mountedRef.current) return;
-        const entries = Array.isArray(payload?.entries)
-          ? payload.entries.map(normalizeKeyringEntry).filter(Boolean)
-          : [];
+        const entries = payload.entries || [];
         setKeyringEntries(entries);
         setKeyringLimit(
           Number.isFinite(payload?.limit) ? Number(payload.limit) : KEYRING_LIMIT_FALLBACK
@@ -1494,11 +1383,10 @@ export default function MatchPage() {
             setKeyringError(null);
             try {
               const snapshot = readRankAuthSnapshot();
-              const payload = await requestUserApiKeyring(
-                'POST',
-                { apiKey: newApiKey.trim() },
-                { userId: viewerUserId, accessToken: snapshot?.accessToken }
-              );
+              const payload = await registerRankApiKey({
+                apiKey: newApiKey.trim(),
+                context: { userId: viewerUserId, accessToken: snapshot?.accessToken },
+              });
               const entry = normalizeKeyringEntry(payload?.entry);
               const entries = mergeKeyringEntries(
                 keyringEntries,
@@ -1539,7 +1427,7 @@ export default function MatchPage() {
           <div key={entry.id || entry.keySample} style={styles.keyringRow(entry.isActive)}>
             <div>
               <div style={{ fontWeight: 700, marginBottom: 4 }}>
-                {formatProviderLabel(entry.provider)}
+                {formatKeyProviderLabel(entry.provider)}
               </div>
               <div style={{ color: '#94a3b8', fontSize: 12 }}>{entry.keySample || '샘플 없음'}</div>
             </div>
@@ -1553,18 +1441,20 @@ export default function MatchPage() {
                   setKeyringError(null);
                   try {
                     const snapshot = readRankAuthSnapshot();
-                    const payload = await requestUserApiKeyring(
-                      entry.isActive ? 'PATCH' : 'PUT',
-                      entry.isActive
-                        ? { id: entry.id, isActive: false }
-                        : { id: entry.id, isActive: true },
-                      { userId: viewerUserId, accessToken: snapshot?.accessToken }
-                    );
+                    const payload = entry.isActive
+                      ? await deactivateRankApiKey({
+                          entryId: entry.id,
+                          context: { userId: viewerUserId, accessToken: snapshot?.accessToken },
+                        })
+                      : await activateRankApiKey({
+                          entryId: entry.id,
+                          context: { userId: viewerUserId, accessToken: snapshot?.accessToken },
+                        });
                     const normalized = normalizeKeyringEntry(payload?.entry);
                     const entries = mergeKeyringEntries(
                       keyringEntries,
                       normalized,
-                      payload?.activated !== false
+                      !!normalized?.isActive
                     );
                     setKeyringEntries(entries);
                     persistRankKeyringSnapshot({
@@ -1590,14 +1480,10 @@ export default function MatchPage() {
                   setKeyringError(null);
                   try {
                     const snapshot = readRankAuthSnapshot();
-                    await requestUserApiKeyring(
-                      'DELETE',
-                      { id: entry.id },
-                      {
-                        userId: viewerUserId,
-                        accessToken: snapshot?.accessToken,
-                      }
-                    );
+                    await deleteRankApiKeyEntry({
+                      entryId: entry.id,
+                      context: { userId: viewerUserId, accessToken: snapshot?.accessToken },
+                    });
                     const entries = keyringEntries.filter(item => item.id !== entry.id);
                     setKeyringEntries(entries);
                     persistRankKeyringSnapshot({
