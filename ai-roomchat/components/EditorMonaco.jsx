@@ -1,14 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from 'react';
-import loader from '@monaco-editor/loader';
-
-// Configure Monaco via CDN AMD loader to avoid bundling CSS from node_modules
-if (typeof window !== 'undefined' && loader && typeof loader.config === 'function') {
-  try {
-    loader.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
-  } catch {}
-}
+import { initMonaco } from '@/lib/monaco/loaderClient';
 
 export default function EditorMonaco({ value, onChange, onSave, language = 'json', theme = 'vs-dark', height = '100%', width = '100%', currentPath = null }) {
   const ref = useRef(null);
@@ -27,9 +20,8 @@ export default function EditorMonaco({ value, onChange, onSave, language = 'json
     let monacoInstance;
     const init = async () => {
       try {
-        const monaco = await loader.init();
+        const monaco = await initMonaco();
         monacoInstance = monaco;
-        if (!monaco || !monaco.editor) throw new Error('Monaco not available');
       } catch (e) {
         setFallback(true);
         return;
