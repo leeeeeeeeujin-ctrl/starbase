@@ -15,12 +15,22 @@ export async function exportSet() {
   }
 
   const [setRow, slots, bridges] = await Promise.all([
-    withTableQuery(supabase, 'prompt_sets', from => from.select('*').eq('id', setId).single()),
+    withTableQuery(supabase, 'prompt_sets', from => from.select('*').eq('id', setId).maybeSingle()),
     withTableQuery(supabase, 'prompt_slots', from =>
       from.select('*').eq('set_id', setId).order('slot_no')
     ),
     withTableQuery(supabase, 'prompt_bridges', from => from.select('*').eq('from_set', setId)),
   ]);
+
+  if (setRow.error) {
+    console.error(setRow.error);
+    alert(setRow.error.message || '세트를 불러오지 못했습니다.');
+    return;
+  }
+  if (!setRow.data) {
+    alert('해당 세트를 찾지 못했습니다.');
+    return;
+  }
 
   const payload = {
     set: setRow.data,
