@@ -4,7 +4,7 @@ import { useRouter } from 'next/router';
 import MakerEditor from '../../../components/maker/editor/MakerEditor';
 import UnifiedWorkbench from '../../../components/studio/UnifiedWorkbench.jsx';
 import StudioPersistentProvider from '../../../contexts/StudioPersistentProvider.jsx';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import WorkspaceFrame from '../../../components/workspace/WorkspaceFrame.jsx';
 import LoginDebugOverlay from '../../../components/common/LoginDebugOverlay.jsx';
 
@@ -18,19 +18,28 @@ export default function MakerEditorPage() {
     process.env.NEXT_PUBLIC_WORKBENCH_UNIFIED === '1'
   );
   const useUnified = hasModeParam ? (q.unified === '1' || q.studio === '1') : defaultUnified; // default follows env, otherwise original Maker-only
-  const [initFiles, setInitFiles] = useState(null);
-  // Retain legacy loading UI states for minimal change; actual loading moved to WorkspaceFrame
-  useEffect(() => { setInitFiles([]); }, [id]);
+  const [workspaceReady, setWorkspaceReady] = useState(false);
 
-  if (!id || typeof id !== 'string') return <div style={{ padding:20 }}>세트 ID 확인 중…</div>;
-  if (!initFiles) return <div style={{ padding:20 }}>작업공간 불러오는 중…</div>;
+  const handleWorkspaceReady = useCallback(() => {
+    setWorkspaceReady(true);
+  }, []);
+
+  useEffect(() => {
+    setWorkspaceReady(false);
+  }, [id]);
+
+  if (!id || typeof id !== 'string') return <div style={{ padding: 20 }}>Checking workspace id...</div>;
+
+  const renderWorkbench = workspaceReady
+    ? (useUnified ? <UnifiedWorkbench /> : <MakerEditor />)
+    : <div style={{ padding: 24 }}>Preparing workspace...</div>;
 
   return (
     <StudioPersistentProvider>
-      <WorkspaceFrame id={id}>
-        {useUnified ? <UnifiedWorkbench /> : <MakerEditor />}
+      <WorkspaceFrame id={id} onReady={handleWorkspaceReady}>
+        {renderWorkbench}
       </WorkspaceFrame>
-      <LoginDebugOverlay scope={`maker:${id}`} />
+      {workspaceReady && <LoginDebugOverlay scope={`maker:${id}`} />}
     </StudioPersistentProvider>
   );
 }

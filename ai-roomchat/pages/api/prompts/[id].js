@@ -15,9 +15,9 @@ export default async function handler(req, res) {
           .select('*')
           .eq('id', id)
           .limit(1)
-          .single();
+          .maybeSingle();
         if (error) throw error;
-        return res.status(200).json(data || null);
+        if (data) return res.status(200).json(data);
       }
     } catch (err) {
       console.warn('Supabase get prompt failed, falling back to memory store', err.message);
@@ -37,8 +37,12 @@ export default async function handler(req, res) {
           .from('prompts')
           .upsert(data)
           .select()
-          .single();
+          .maybeSingle();
         if (error) throw error;
+        if (!updated) {
+          // Supabase may return no row when returning=representation is disabled.
+          return res.status(200).json(data);
+        }
         return res.status(200).json(updated);
       }
     } catch (err) {

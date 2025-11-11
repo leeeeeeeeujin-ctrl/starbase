@@ -28,9 +28,9 @@ export default async function handler(req, res) {
         .select('*')
         .eq('id', id)
         .limit(1)
-        .single();
+        .maybeSingle();
       if (error) throw error;
-      p = data;
+      if (data) p = data;
     }
   } catch (err) {
     console.warn('Supabase get prompt failed, falling back to memory store', err.message);
@@ -148,8 +148,9 @@ export default async function handler(req, res) {
             .from('prompt_runs')
             .insert([toInsert])
             .select()
-            .single();
+            .maybeSingle();
           if (error) throw error;
+          if (!runRow) throw new Error('prompt_run_insert_missing');
           return res.status(200).json({
             runId: runRow.id,
             providerResponse: storedProviderResponse,
@@ -206,8 +207,9 @@ export default async function handler(req, res) {
           .from('prompt_runs')
           .insert([toInsert])
           .select()
-          .single();
+          .maybeSingle();
         if (error) throw error;
+        if (!runRow) throw new Error('prompt_run_insert_missing');
         return res.status(200).json({ runId: runRow.id, providerResponse });
       }
     } catch (err) {
@@ -242,11 +244,15 @@ export default async function handler(req, res) {
           device_id: req._device ? req._device.deviceId || null : null,
           device_display_name: req._device ? req._device.displayName || null : null,
         };
-        const { data: runRow } = await supabaseAdmin
+        const { data: runRow, error: insertError } = await supabaseAdmin
           .from('prompt_runs')
           .insert([toInsert])
           .select()
-          .single();
+          .maybeSingle();
+        if (insertError) {
+          console.warn('Supabase save error run failed', insertError.message);
+          return res.status(500).json({ error: String(err), runId: null });
+        }
         return res.status(500).json({ error: String(err), runId: runRow && runRow.id });
       }
     } catch (err2) {
