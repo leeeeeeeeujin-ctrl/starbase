@@ -211,6 +211,8 @@ function saveTemplate({ id, name, code, meta }) {
   const now = Date.now();
   const tid = id || crypto.randomUUID();
   const rec = { id: tid, name: name || `template-${tid.slice(0,6)}`, code: code || '', meta: meta || {}, createdAt: (meta && meta.createdAt) || now, updatedAt: now };
+  // Persist top-level owner for compatibility with new owner model
+  try { rec.owner = (meta && meta.owner) || null; } catch (e) { rec.owner = null; }
   fs.writeFileSync(path.join(TEMPLATES_DIR, `${tid}.json`), JSON.stringify(rec, null, 2), 'utf8');
   return rec;
 }
@@ -360,8 +362,11 @@ app.get('/editor/templates', (req, res) => {
     if (!tok) return res.status(401).json({ error: 'invalid token' });
 
     const list = listTemplates();
-    // filter by owner meta if present
-    const filtered = list.filter(t => !t.meta || !t.meta.owner || t.meta.owner === tok.clientId);
+    // filter by top-level owner if present, otherwise fall back to meta.owner for compatibility
+    const filtered = list.filter(t => {
+      const owner = t.owner ?? (t.meta && t.meta.owner);
+      return !owner || owner === tok.clientId;
+    });
     res.json({ ok: true, templates: filtered });
   } catch (e) {
     res.status(500).json({ error: 'failed' });
@@ -426,13 +431,15 @@ app.put('/editor/templates/:id', (req, res) => {
     // ownership check
     const p = path.join(TEMPLATES_DIR, `${id}.json`);
     if (!fs.existsSync(p)) return res.status(404).json({ error: 'not_found' });
-    const raw = fs.readFileSync(p, 'utf8');
-    const parsed = JSON.parse(raw);
-    if (parsed && parsed.meta && parsed.meta.owner && parsed.meta.owner !== tok.clientId) return res.status(403).json({ error: 'forbidden' });
+  const raw = fs.readFileSync(p, 'utf8');
+  const parsed = JSON.parse(raw);
+  // prefer top-level owner, fall back to meta.owner for legacy records
+  const recordOwner = parsed && (parsed.owner ?? (parsed.meta && parsed.meta.owner));
+  if (recordOwner && recordOwner !== tok.clientId) return res.status(403).json({ error: 'forbidden' });
 
-    const finalMeta = Object.assign({}, parsed.meta || {}, meta || {}, { owner: tok.clientId });
-    const rec = saveTemplate({ id, name, code, meta: finalMeta });
-    res.json({ ok: true, template: rec });
+  const finalMeta = Object.assign({}, parsed.meta || {}, meta || {}, { owner: tok.clientId });
+  const rec = saveTemplate({ id, name, code, meta: finalMeta });
+  res.json({ ok: true, template: rec });
   } catch (e) {
     res.status(500).json({ error: 'failed' });
   }
