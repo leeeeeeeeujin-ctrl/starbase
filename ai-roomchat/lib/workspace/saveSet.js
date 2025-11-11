@@ -1,3 +1,5 @@
+import { applySupabaseAccessToken, requireSupabaseAccessToken } from '../api/authHeaders';
+
 export async function saveSet(id, filesMap = {}, etag) {
   if (!id) throw new Error('saveSet: missing id');
   const toList = (m) => Object.entries(m || {}).map(([path, meta]) => ({
@@ -9,9 +11,14 @@ export async function saveSet(id, filesMap = {}, etag) {
   const list = Array.isArray(filesMap) ? filesMap : toList(filesMap);
 
   // Helper: GET current to fetch etag
+  const sessionToken = await requireSupabaseAccessToken();
+  const withAuthHeaders = (headers = {}) => applySupabaseAccessToken(headers, sessionToken);
+
   async function getEtag() {
     try {
-      const r = await fetch(`/api/workspace/sets/${encodeURIComponent(id)}`);
+      const r = await fetch(`/api/workspace/sets/${encodeURIComponent(id)}`, {
+        headers: withAuthHeaders(),
+      });
       if (r.ok) { const j = await r.json(); return j?.etag || null; }
       if (r.status === 404) return null;
     } catch {}
@@ -27,7 +34,7 @@ export async function saveSet(id, filesMap = {}, etag) {
       const reqId = gen('req_');
       const cr = await fetch('/api/workspace/sets', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Request-Id': reqId },
+        headers: withAuthHeaders({ 'Content-Type': 'application/json', 'X-Request-Id': reqId }),
         body: JSON.stringify({ id })
       });
       if (cr.ok) {
@@ -43,8 +50,10 @@ export async function saveSet(id, filesMap = {}, etag) {
 
   // Helper for PUT with If-Match
   const putWith = async (matchEtag) => {
-    const headers = { 'Content-Type': 'application/json' };
-    if (matchEtag) headers['If-Match'] = matchEtag;
+    const headers = withAuthHeaders({
+      'Content-Type': 'application/json',
+      ...(matchEtag ? { 'If-Match': matchEtag } : {}),
+    });
     return fetch(`/api/workspace/sets/${encodeURIComponent(id)}`, {
       method: 'PUT',
       headers,

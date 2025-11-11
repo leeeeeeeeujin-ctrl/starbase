@@ -5,11 +5,14 @@ import {
   getMonacoLoaderError,
   useMonacoLoaderStatus,
 } from './hooks/useMonacoLoaderStatus';
+import { useSupabaseSessionToken } from './hooks/useSupabaseSessionToken';
+import { applySupabaseAccessToken } from '../../lib/api/authHeaders';
 
 // WorkspaceFrame: fetch workspace set data server-first, then mount CodeWorkspaceProvider consistently.
 export default function WorkspaceFrame({ id, children, onReady = () => {} }) {
   const monacoStatus = useMonacoLoaderStatus();
   const monacoError = getMonacoLoaderError();
+  const { token: sessionToken, loading: sessionLoading } = useSupabaseSessionToken();
   const [initFiles, setInitFiles] = useState(null);
   const [etag, setEtag] = useState(null);
   const [loadState, setLoadState] = useState({ status: 'idle', message: null });
@@ -42,20 +45,29 @@ export default function WorkspaceFrame({ id, children, onReady = () => {} }) {
 
   useEffect(() => {
     if (!id) return;
+    if (sessionLoading) return;
     let ignore = false;
     setLoadState({ status: 'loading', message: null });
     setInitFiles(null);
     setEtag(null);
+    if (!sessionToken) {
+      setLoadState({
+        status: 'error',
+        message: '로그인 후 워크스페이스를 사용할 수 있습니다.',
+      });
+      return;
+    }
     (async () => {
       try {
-        const r = await fetch(`/api/workspace/sets/${id}`);
+        const headers = applySupabaseAccessToken({}, sessionToken);
+        const r = await fetch(`/api/workspace/sets/${id}`, { headers });
         if (ignore) return;
         if (r.status === 200) {
           const json = await r.json();
           let files = Array.isArray(json?.files) ? json.files : [];
           if (!files.length && process.env.NEXT_PUBLIC_WORKSPACE_AUTOINIT === '1') {
-            try {
-              const sp = await fetch('/api/workspace/starter-pack');
+             try {
+               const sp = await fetch('/api/workspace/starter-pack');
               if (sp.ok) {
                 const sj = await sp.json();
                 const sfiles = Array.isArray(sj?.files) ? sj.files : [];
@@ -105,7 +117,7 @@ export default function WorkspaceFrame({ id, children, onReady = () => {} }) {
     return () => {
       ignore = true;
     };
-  }, [id, reloadKey]);
+  }, [id, reloadKey, sessionToken, sessionLoading]);
 
   if (!id) return null;
 

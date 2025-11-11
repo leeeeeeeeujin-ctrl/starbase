@@ -4,6 +4,7 @@ import PromptEditor from '../../../components/PromptEditor';
 import AICodeChatPanel from '../../../components/workspace/AICodeChatPanel.jsx';
 import { CodeWorkspaceProvider, useWorkspace } from '../../../components/workspace/CodeWorkspaceProvider.jsx';
 import createPrompt from '../../../lib/prompts/createPrompt.js';
+import { applySupabaseAccessToken, requireSupabaseAccessToken } from '../../../lib/api/authHeaders';
 
 function mapToVisibleRoot(files) {
   return (files || []).map((f) => {
@@ -299,6 +300,8 @@ function PromptEditInner({ etag, setEtag, frameId }) {
     try {
       setSaving(true);
       savingRef.current = true;
+      const sessionToken = await requireSupabaseAccessToken();
+      const authHeaders = (headers = {}) => applySupabaseAccessToken(headers, sessionToken);
       if (!prompt.id || prompt.id === 'new') {
         // Use centralized createPrompt helper which coalesces inflight and recent
         // requests to avoid duplicate prompt creation (client-side guard).
@@ -319,7 +322,7 @@ function PromptEditInner({ etag, setEtag, frameId }) {
       } else {
         const res = await fetch(`/api/prompts/${encodeURIComponent(prompt.id)}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify(payload),
         });
         const json = await res.json();
@@ -331,7 +334,7 @@ function PromptEditInner({ etag, setEtag, frameId }) {
           // attempt PUT first
           let put = await fetch(`/api/workspace/sets/${encodeURIComponent(id)}`, {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json', ...(etagRef.current ? { 'If-Match': etagRef.current } : {}) },
+            headers: authHeaders({ 'Content-Type': 'application/json', ...(etagRef.current ? { 'If-Match': etagRef.current } : {}) }),
             body: JSON.stringify({ files: list, meta: {} }),
           });
           // If precondition required (no set yet) or not found, create then retry
@@ -340,12 +343,12 @@ function PromptEditInner({ etag, setEtag, frameId }) {
             const reqId = gen('req_');
             await fetch('/api/workspace/sets', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'X-Request-Id': reqId },
+              headers: authHeaders({ 'Content-Type': 'application/json', 'X-Request-Id': reqId }),
               body: JSON.stringify({ id }),
             }).catch(()=>{});
             put = await fetch(`/api/workspace/sets/${encodeURIComponent(id)}`, {
               method: 'PUT',
-              headers: { 'Content-Type': 'application/json', ...(etagRef.current ? { 'If-Match': etagRef.current } : {}) },
+              headers: authHeaders({ 'Content-Type': 'application/json', ...(etagRef.current ? { 'If-Match': etagRef.current } : {}) }),
               body: JSON.stringify({ files: list, meta: {} }),
             });
           }

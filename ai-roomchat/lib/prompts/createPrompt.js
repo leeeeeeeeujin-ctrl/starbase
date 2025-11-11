@@ -1,3 +1,5 @@
+import { applySupabaseAccessToken, requireSupabaseAccessToken } from '../api/authHeaders';
+
 const g = (typeof window !== 'undefined' ? window : globalThis);
 const INFLIGHT = (g.__CREATE_PROMPT_INFLIGHT__ ||= new Map()); // key -> Promise
 const RECENT = (g.__CREATE_PROMPT_RECENT__ ||= new Map()); // key -> { at, result }
@@ -19,14 +21,15 @@ export default async function createPrompt(payload) {
     return INFLIGHT.get(key);
   }
 
-  const headers = { 'Content-Type': 'application/json' };
   const reqId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(1);
   const p = (payload && typeof payload === 'object') ? payload : {};
 
   const promise = (async () => {
+    const sessionToken = await requireSupabaseAccessToken();
+    const headers = applySupabaseAccessToken({ 'Content-Type': 'application/json', 'X-Request-Id': reqId }, sessionToken);
     const r = await fetch('/api/prompts', {
       method: 'POST',
-      headers: { ...headers, 'X-Request-Id': reqId },
+      headers,
       body: JSON.stringify(p),
     });
     if (!r.ok) throw new Error(`createPrompt failed ${r.status}`);
