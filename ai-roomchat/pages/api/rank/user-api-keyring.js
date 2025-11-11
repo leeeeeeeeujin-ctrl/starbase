@@ -9,11 +9,11 @@ import {
   fetchUserApiKeyring,
   fetchUserApiKeyringEntry,
   insertUserApiKeyringEntry,
-} from '@/lib/rank/userApiKeyring';
-import { detectGeminiPreset } from '@/lib/rank/geminiModelsService';
-import { detectOpenAIPreset } from '@/lib/rank/openaiDetection';
-import { deleteUserApiKey, fetchUserApiKey, upsertUserApiKey } from '@/lib/rank/userApiKeys';
-import { sanitizeSupabaseUrl } from '@/lib/supabaseEnv';
+} from '../../../lib/rank/userApiKeyring';
+import { detectGeminiPreset } from '../../../lib/rank/geminiModelsService';
+import { detectOpenAIPreset } from '../../../lib/rank/openaiDetection';
+import { deleteUserApiKey, fetchUserApiKey, upsertUserApiKey } from '../../../lib/rank/userApiKeys';
+import { sanitizeSupabaseUrl } from '../../../lib/supabaseEnv';
 
 const url = sanitizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL);
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
