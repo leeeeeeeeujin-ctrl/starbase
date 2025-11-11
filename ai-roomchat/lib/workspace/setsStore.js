@@ -58,6 +58,7 @@ function cloneRecord(record) {
     ...record,
     files: record.files.map((f) => ({ ...f })),
     meta: { ...(record.meta || {}) },
+    owner: record.owner || null,
   };
 }
 
@@ -68,7 +69,7 @@ function nextEtag(version = 1) {
   return `W/"${version}-${rand}"`;
 }
 
-function buildRecord(prev, id, files, meta) {
+function buildRecord(prev, id, files, meta, owner) {
   const createdAt = prev?.createdAt || nowIso();
   const updatedAt = nowIso();
   const version = (prev?.version || 0) + 1;
@@ -76,6 +77,7 @@ function buildRecord(prev, id, files, meta) {
     id,
     files,
     meta,
+    owner: owner ?? prev?.owner ?? (meta?.owner ?? null),
     createdAt,
     updatedAt,
     version,
@@ -92,7 +94,8 @@ function create(id, payload = {}) {
   const key = normalizeId(id);
   const files = normalizeFiles(payload.files);
   const meta = normalizeMeta(payload.meta);
-  const record = buildRecord(null, key, files, meta);
+  const owner = payload.owner ?? meta.owner ?? null;
+  const record = buildRecord(null, key, files, meta, owner);
   sets.set(key, record);
   return cloneRecord(record);
 }
@@ -111,19 +114,36 @@ function upsert(id, payload = {}, options = {}) {
   const prev = sets.get(key) || null;
   const ifMatch = options.ifMatch;
 
-  if (ifMatch && (!prev || (prev.etag && prev.etag !== ifMatch))) {
-    const err = new Error('etag mismatch');
-    err.code = 'ETAG_MISMATCH';
-    err.status = 412;
-    err.currentEtag = prev?.etag || null;
-    throw err;
+  if (ifMatch) {
+    // If-Match: * should succeed only when resource exists.
+    if (ifMatch === '*') {
+      if (!prev) {
+        const err = new Error('etag mismatch');
+        err.code = 'ETAG_MISMATCH';
+        err.status = 412;
+        err.currentEtag = null;
+        throw err;
+      }
+    } else {
+      if (!prev || prev.etag !== ifMatch) {
+        const err = new Error('etag mismatch');
+        err.code = 'ETAG_MISMATCH';
+        err.status = 412;
+        err.currentEtag = prev?.etag || null;
+        throw err;
+      }
+    }
   }
 
+  // For merge (PATCH) combine files; for non-merge (PUT) replace with the
+  // provided files. If payload.files is undefined, treat as empty array for
+  // PUT to implement "replace" semantics.
   const files = options.merge
     ? mergeFiles(prev?.files || [], payload.files)
-    : normalizeFiles(payload.files ?? prev?.files ?? []);
+    : normalizeFiles(payload.files);
   const meta = { ...(prev?.meta || {}), ...normalizeMeta(payload.meta) };
-  const record = buildRecord(prev, key, files, meta);
+  const owner = payload.owner ?? meta.owner ?? prev?.owner ?? null;
+  const record = buildRecord(prev, key, files, meta, owner);
   sets.set(key, record);
   return cloneRecord(record);
 }
