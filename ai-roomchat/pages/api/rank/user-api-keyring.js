@@ -607,8 +607,8 @@ async function handleDelete(req, res, user) {
 }
 
 export default async function handler(req, res) {
-  if (!['GET', 'POST', 'PATCH', 'DELETE'].includes(req.method)) {
-    res.setHeader('Allow', ['GET', 'POST', 'PATCH', 'DELETE']);
+  if (!['GET', 'POST', 'PATCH', 'PUT', 'DELETE'].includes(req.method)) {
+    res.setHeader('Allow', ['GET', 'POST', 'PATCH', 'PUT', 'DELETE']);
     return res.status(405).json({ error: 'method_not_allowed' });
   }
 
@@ -625,7 +625,7 @@ export default async function handler(req, res) {
     return handleCreate(req, res, user);
   }
 
-  if (req.method === 'PATCH') {
+  if (req.method === 'PATCH' || req.method === 'PUT') {
     return handleActivate(req, res, user);
   }
 

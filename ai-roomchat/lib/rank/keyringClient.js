@@ -160,7 +160,7 @@ export async function registerRankApiKey({ apiKey, activate = true, context = {}
 }
 
 export async function activateRankApiKey({ entryId, context = {} }) {
-  return requestUserApiKeyring('PUT', { id: entryId, isActive: true }, context);
+  return requestUserApiKeyring('PATCH', { id: entryId }, context);
 }
 
 export async function deactivateRankApiKey({ entryId, context = {} }) {
