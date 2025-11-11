@@ -15,18 +15,18 @@ export default function Document() {
                 baseUrl: base,
                 getWorkerUrl: function (moduleId, label) {
                   if (label === 'json') {
-                    return base + '/language/json/json.worker.js';
+                    return base + '/language/json/jsonWorker.js';
                   }
                   if (label === 'css' || label === 'scss' || label === 'less') {
-                    return base + '/language/css/css.worker.js';
+                    return base + '/language/css/cssWorker.js';
                   }
                   if (label === 'html' || label === 'handlebars' || label === 'razor') {
-                    return base + '/language/html/html.worker.js';
+                    return base + '/language/html/htmlWorker.js';
                   }
                   if (label === 'typescript' || label === 'javascript') {
-                    return base + '/language/typescript/ts.worker.js';
+                    return base + '/language/typescript/tsWorker.js';
                   }
-                  return base + '/editor/editor.worker.js';
+                  return base + '/base/worker/workerMain.js';
                 },
               };
             })();
