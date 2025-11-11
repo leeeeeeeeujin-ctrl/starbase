@@ -3,6 +3,10 @@ import { withTableQuery } from '../../supabaseTables';
 import { failure, success, asError } from './result';
 import { sortPromptSets } from './sort';
 
+const CREATE_DEDUPE_WINDOW_MS = 3000;
+const inflightCreate = new Map(); // ownerId -> Promise
+const recentCreate = new Map(); // ownerId -> { at, data }
+
 export const promptSetsRepository = {
   async list(ownerId) {
     if (!ownerId) {
@@ -25,15 +29,35 @@ export const promptSetsRepository = {
       return failure(new Error('로그인이 필요합니다.'));
     }
 
-    const { data, error } = await withTableQuery(supabase, 'prompt_sets', from =>
-      from.insert({ name: '새 세트', owner_id: ownerId }).select().single()
-    );
-
-    if (error || !data) {
-      return failure(asError(error, '세트를 생성하지 못했습니다.'));
+    const now = Date.now();
+    const recent = recentCreate.get(ownerId);
+    if (recent && now - recent.at < CREATE_DEDUPE_WINDOW_MS) {
+      return success(recent.data);
     }
 
-    return success(data);
+    if (inflightCreate.has(ownerId)) {
+      return inflightCreate.get(ownerId);
+    }
+
+    const createPromise = (async () => {
+      const { data, error } = await withTableQuery(supabase, 'prompt_sets', from =>
+        from.insert({ name: '새 세트', owner_id: ownerId }).select().single()
+      );
+
+      if (error || !data) {
+        return failure(asError(error, '세트를 생성하지 못했습니다.'));
+      }
+
+      recentCreate.set(ownerId, { at: Date.now(), data });
+      return success(data);
+    })();
+
+    inflightCreate.set(ownerId, createPromise);
+    try {
+      return await createPromise;
+    } finally {
+      inflightCreate.delete(ownerId);
+    }
   },
 
   async rename(id, nextName) {

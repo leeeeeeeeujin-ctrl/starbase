@@ -3,10 +3,9 @@
 import loader from '@monaco-editor/loader';
 
 const CDN_PATH = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs';
-const MONACO_BASE =
-  (process.env.NEXT_PUBLIC_MONACO_BASE_URL && process.env.NEXT_PUBLIC_MONACO_BASE_URL.trim().length > 0
-    ? process.env.NEXT_PUBLIC_MONACO_BASE_URL.trim()
-    : null) || CDN_PATH;
+const envBase = process.env.NEXT_PUBLIC_MONACO_BASE_URL?.trim();
+const MONACO_BASE = envBase && envBase.length > 0 ? envBase : CDN_PATH;
+const NORMALIZED_CDN_BASE = normalizeBasePath(CDN_PATH);
 
 const monacoState = {
   status: 'pending', // 'pending' | 'ready' | 'error'
@@ -16,25 +15,66 @@ const monacoState = {
   lastBase: null,
 };
 
+function stripTrailingSlash(value) {
+  return value ? value.replace(/\/+$/, '') : '';
+}
+
+function normalizeBasePath(input) {
+  const raw = (input || '').trim();
+  if (!raw) return '';
+  if (/^https?:\/\//i.test(raw)) {
+    return stripTrailingSlash(raw);
+  }
+  if (raw.startsWith('//')) {
+    const protocol =
+      typeof window !== 'undefined' && window.location?.protocol
+        ? window.location.protocol
+        : 'https:';
+    return stripTrailingSlash(`${protocol}${raw}`);
+  }
+  if (typeof window !== 'undefined') {
+    if (raw.startsWith('/')) {
+      const origin = window.location?.origin || '';
+      return stripTrailingSlash(`${origin}${raw}`);
+    }
+    return stripTrailingSlash(raw);
+  }
+  return stripTrailingSlash(raw);
+}
+
 function resolvePreferredBase() {
   if (typeof window !== 'undefined') {
-    return window.__MONACO_BASE_URL__ || MONACO_BASE;
+    const envBaseUrl =
+      window.MonacoEnvironment && typeof window.MonacoEnvironment.baseUrl === 'string'
+        ? window.MonacoEnvironment.baseUrl
+        : null;
+    if (envBaseUrl) {
+      return envBaseUrl;
+    }
+    if (typeof window.__MONACO_BASE_URL__ === 'string' && window.__MONACO_BASE_URL__.length) {
+      return window.__MONACO_BASE_URL__;
+    }
   }
   return MONACO_BASE;
 }
 
 function configureLoader(basePath) {
-  if (typeof window === 'undefined' || !loader || typeof loader.config !== 'function') return;
-  if (monacoState.lastBase === basePath) return;
-  loader.config({ paths: { vs: basePath } });
-  monacoState.lastBase = basePath;
+  if (!loader || typeof loader.config !== 'function') return;
+  const normalized = normalizeBasePath(basePath) || NORMALIZED_CDN_BASE;
+  if (monacoState.lastBase === normalized) return;
+  loader.config({ paths: { vs: normalized } });
+  monacoState.lastBase = normalized;
   if (typeof window !== 'undefined') {
-    window.__MONACO_BASE_URL__ = basePath;
+    window.__MONACO_BASE_URL__ = normalized;
+    if (window.MonacoEnvironment) {
+      window.MonacoEnvironment.baseUrl = normalized;
+    }
   }
 }
 
 async function initWithBase(basePath) {
-  configureLoader(basePath);
+  const normalized = normalizeBasePath(basePath) || NORMALIZED_CDN_BASE;
+  configureLoader(normalized);
   const monaco = await loader.init();
   if (!monaco || !monaco.editor) {
     const err = new Error('Monaco not available');
@@ -58,7 +98,7 @@ export async function initMonaco() {
   }
 
   monacoState.promise = (async () => {
-    const preferredBase = resolvePreferredBase();
+    const preferredBase = normalizeBasePath(resolvePreferredBase()) || NORMALIZED_CDN_BASE;
     try {
       const monaco = await initWithBase(preferredBase);
       monacoState.instance = monaco;
@@ -66,9 +106,9 @@ export async function initMonaco() {
       monacoState.error = null;
       return monaco;
     } catch (error) {
-      if (preferredBase !== CDN_PATH) {
+      if (preferredBase !== NORMALIZED_CDN_BASE) {
         try {
-          const fallbackMonaco = await initWithBase(CDN_PATH);
+          const fallbackMonaco = await initWithBase(NORMALIZED_CDN_BASE);
           monacoState.instance = fallbackMonaco;
           monacoState.status = 'ready';
           monacoState.error = null;
