@@ -1,96 +1,65 @@
 "use client";
 
-import loader from '@monaco-editor/loader';
-
-const CDN_PATH = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs';
-const envBase = process.env.NEXT_PUBLIC_MONACO_BASE_URL?.trim();
-const MONACO_BASE = envBase && envBase.length > 0 ? envBase : CDN_PATH;
-const NORMALIZED_CDN_BASE = normalizeBasePath(CDN_PATH);
-
 const monacoState = {
   status: 'pending', // 'pending' | 'ready' | 'error'
   error: null,
   instance: null,
   promise: null,
-  lastBase: null,
 };
 
-function stripTrailingSlash(value) {
-  return value ? value.replace(/\/+$/, '') : '';
+function isBrowser() {
+  return typeof window !== 'undefined';
 }
 
-function normalizeBasePath(input) {
-  const raw = (input || '').trim();
-  if (!raw) return '';
-  if (/^https?:\/\//i.test(raw)) {
-    return stripTrailingSlash(raw);
+function resolveMonacoFromGlobal() {
+  if (!isBrowser()) return null;
+  const monaco = window.monaco || null;
+  if (monaco && monaco.editor) {
+    return monaco;
   }
-  if (raw.startsWith('//')) {
-    const protocol =
-      typeof window !== 'undefined' && window.location?.protocol
-        ? window.location.protocol
-        : 'https:';
-    return stripTrailingSlash(`${protocol}${raw}`);
-  }
-  if (typeof window !== 'undefined') {
-    if (raw.startsWith('/')) {
-      const origin = window.location?.origin || '';
-      return stripTrailingSlash(`${origin}${raw}`);
-    }
-    return stripTrailingSlash(raw);
-  }
-  return stripTrailingSlash(raw);
+  return null;
 }
 
-function resolvePreferredBase() {
-  if (typeof window !== 'undefined') {
-    const envBaseUrl =
-      window.MonacoEnvironment && typeof window.MonacoEnvironment.baseUrl === 'string'
-        ? window.MonacoEnvironment.baseUrl
-        : null;
-    if (envBaseUrl) {
-      return envBaseUrl;
-    }
-    if (typeof window.__MONACO_BASE_URL__ === 'string' && window.__MONACO_BASE_URL__.length) {
-      return window.__MONACO_BASE_URL__;
-    }
+function resolveMonacoPromise() {
+  if (!isBrowser()) {
+    return Promise.reject(new Error('Monaco loader is browser-only'));
   }
-  return MONACO_BASE;
-}
+  const immediate = resolveMonacoFromGlobal();
+  if (immediate) {
+    return Promise.resolve(immediate);
+  }
+  const externalPromise =
+    window.__MONACO_INIT__ && typeof window.__MONACO_INIT__.then === 'function'
+      ? window.__MONACO_INIT__
+      : null;
+  if (externalPromise) {
+    return externalPromise.then(result => {
+      if (result && result.editor) {
+        return result;
+      }
+      const fallback = resolveMonacoFromGlobal();
+      if (fallback) return fallback;
+      throw new Error('Monaco not available');
+    });
+  }
 
-function configureLoader(basePath) {
-  if (!loader || typeof loader.config !== 'function') return;
-  const normalized = normalizeBasePath(basePath) || NORMALIZED_CDN_BASE;
-  if (monacoState.lastBase === normalized) return;
-  loader.config({ paths: { vs: normalized } });
-  monacoState.lastBase = normalized;
-  if (typeof window !== 'undefined') {
-    window.__MONACO_BASE_URL__ = normalized;
-    if (window.MonacoEnvironment) {
-      window.MonacoEnvironment.baseUrl = normalized;
-    }
-  }
-}
-
-async function initWithBase(basePath) {
-  const normalized = normalizeBasePath(basePath) || NORMALIZED_CDN_BASE;
-  if (typeof window !== 'undefined') {
-    console.info('[monaco] configure loader', { base: normalized });
-  }
-  configureLoader(normalized);
-  const monaco = await loader.init();
-  if (typeof window !== 'undefined') {
-    console.info('[monaco] loader init result', monaco ? Object.keys(monaco) : null);
-  }
-  if (!monaco || !monaco.editor) {
-    const err = new Error('Monaco not available');
-    err.code = 'monaco_unavailable';
-    if (typeof window !== 'undefined') {
-      console.error('[monaco] editor missing after loader init', err);
-    }
-    throw err;
-  }
-  return monaco;
+  return new Promise((resolve, reject) => {
+    let attempts = 0;
+    const maxAttempts = 280; // ~7 seconds
+    const timer = setInterval(() => {
+      attempts += 1;
+      const monaco = resolveMonacoFromGlobal();
+      if (monaco) {
+        clearInterval(timer);
+        resolve(monaco);
+        return;
+      }
+      if (attempts >= maxAttempts) {
+        clearInterval(timer);
+        reject(new Error('Monaco loader not initialized'));
+      }
+    }, 25);
+  });
 }
 
 export function getMonacoLoaderState() {
@@ -106,35 +75,21 @@ export async function initMonaco() {
     return monacoState.promise;
   }
 
-  monacoState.promise = (async () => {
-    const preferredBase = normalizeBasePath(resolvePreferredBase()) || NORMALIZED_CDN_BASE;
-    try {
-      const monaco = await initWithBase(preferredBase);
+  monacoState.promise = resolveMonacoPromise()
+    .then(monaco => {
       monacoState.instance = monaco;
       monacoState.status = 'ready';
       monacoState.error = null;
       return monaco;
-    } catch (error) {
-      if (preferredBase !== NORMALIZED_CDN_BASE) {
-        try {
-          const fallbackMonaco = await initWithBase(NORMALIZED_CDN_BASE);
-          monacoState.instance = fallbackMonaco;
-          monacoState.status = 'ready';
-          monacoState.error = null;
-          return fallbackMonaco;
-        } catch (cdnError) {
-          monacoState.status = 'error';
-          monacoState.error = cdnError;
-          throw cdnError;
-        }
-      }
+    })
+    .catch(error => {
       monacoState.status = 'error';
       monacoState.error = error;
       throw error;
-    }
-  })().finally(() => {
-    monacoState.promise = null;
-  });
+    })
+    .finally(() => {
+      monacoState.promise = null;
+    });
 
   return monacoState.promise;
 }

@@ -11,6 +11,7 @@ export default function Document() {
     <Html lang="ko">
       <Head>
         <meta name="mobile-web-app-capable" content="yes" />
+        <Script src={`${MONACO_BASE}/loader.js`} strategy="beforeInteractive" />
         <Script id="monaco-env" strategy="beforeInteractive">
           {`
             (function () {
@@ -40,29 +41,72 @@ export default function Document() {
                 var right = (segment || '').replace(/^\\/+/, '');
                 return left + '/' + right;
               }
-              var base = normaliseBase(rawBase);
-              window.__MONACO_BASE_URL__ = base;
-              window.MonacoEnvironment = {
-                baseUrl: base,
-                getWorkerUrl: function (moduleId, label) {
-                  var workerMap = {
-                    json: 'language/json/jsonWorker.js',
-                    css: 'language/css/cssWorker.js',
-                    scss: 'language/css/cssWorker.js',
-                    less: 'language/css/cssWorker.js',
-                    html: 'language/html/htmlWorker.js',
-                    handlebars: 'language/html/htmlWorker.js',
-                    razor: 'language/html/htmlWorker.js',
-                    typescript: 'language/typescript/tsWorker.js',
-                    javascript: 'language/typescript/tsWorker.js',
+              function setup() {
+                if (typeof window === 'undefined') return;
+                var base = normaliseBase(rawBase);
+                window.__MONACO_BASE_URL__ = base;
+                function ensure() {
+                  if (typeof window.require !== 'function') {
+                    setTimeout(ensure, 20);
+                    return;
+                  }
+                  if (window.__MONACO_BOOTSTRAPPED__) return;
+                  window.__MONACO_BOOTSTRAPPED__ = true;
+                  window.MonacoEnvironment = {
+                    baseUrl: base,
+                    getWorkerUrl: function (moduleId, label) {
+                      var workerMap = {
+                        json: 'language/json/jsonWorker.js',
+                        css: 'language/css/cssWorker.js',
+                        scss: 'language/css/cssWorker.js',
+                        less: 'language/css/cssWorker.js',
+                        html: 'language/html/htmlWorker.js',
+                        handlebars: 'language/html/htmlWorker.js',
+                        razor: 'language/html/htmlWorker.js',
+                        typescript: 'language/typescript/tsWorker.js',
+                        javascript: 'language/typescript/tsWorker.js',
+                      };
+                      var resolved =
+                        (label && workerMap[label]) ||
+                        (label === 'editorWorkerService' ? 'base/worker/workerMain.js' : null) ||
+                        'base/worker/workerMain.js';
+                      return joinPath(base, resolved);
+                    },
                   };
-                  var resolved =
-                    (label && workerMap[label]) ||
-                    (label === 'editorWorkerService' ? 'base/worker/workerMain.js' : null) ||
-                    'base/worker/workerMain.js';
-                  return joinPath(base, resolved);
-                },
-              };
+
+                  if (!window.__MONACO_INIT__) {
+                    window.__MONACO_INIT__ = new Promise(function (resolve, reject) {
+                      try {
+                        window.require.config({ paths: { vs: base } });
+                      } catch (configErr) {
+                        console.error('[monaco] require.config failed', configErr);
+                        reject(configErr);
+                        return;
+                      }
+                      try {
+                        window.require(['vs/editor/editor.main'], function (monaco) {
+                          if (monaco && monaco.editor) {
+                            window.monaco = monaco;
+                            resolve(monaco);
+                          } else {
+                            var err = new Error('monaco_missing_editor');
+                            console.error('[monaco] editor missing after require', err);
+                            reject(err);
+                          }
+                        }, function (err) {
+                          console.error('[monaco] require failed', err);
+                          reject(err);
+                        });
+                      } catch (requireErr) {
+                        console.error('[monaco] require threw', requireErr);
+                        reject(requireErr);
+                      }
+                    });
+                  }
+                }
+                ensure();
+              }
+              setup();
             })();
           `}
         </Script>
