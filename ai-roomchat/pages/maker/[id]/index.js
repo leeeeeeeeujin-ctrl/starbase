@@ -6,6 +6,7 @@ import UnifiedWorkbench from '../../../components/studio/UnifiedWorkbench.jsx';
 import StudioPersistentProvider from '../../../contexts/StudioPersistentProvider.jsx';
 import { useEffect, useState } from 'react';
 import WorkspaceFrame from '../../../components/workspace/WorkspaceFrame.jsx';
+import LoginDebugOverlay from '../../../components/common/LoginDebugOverlay.jsx';
 
 export default function MakerEditorPage() {
   const router = useRouter();
@@ -29,6 +30,7 @@ export default function MakerEditorPage() {
       <WorkspaceFrame id={id}>
         {useUnified ? <UnifiedWorkbench /> : <MakerEditor />}
       </WorkspaceFrame>
+      <LoginDebugOverlay scope={`maker:${id}`} />
     </StudioPersistentProvider>
   );
 }

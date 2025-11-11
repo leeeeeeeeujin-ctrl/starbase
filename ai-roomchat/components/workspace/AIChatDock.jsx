@@ -48,7 +48,7 @@ export default function AIChatDock({ onClose }) {
     deleteSession,
   } = useAiChatSessions();
 
-  const { token: sessionToken, refresh: refreshSessionToken } = useSupabaseSessionToken();
+  const { token: sessionToken, user: sessionUser, refresh: refreshSessionToken } = useSupabaseSessionToken();
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState(null);
@@ -250,6 +250,9 @@ export default function AIChatDock({ onClose }) {
               ✕
             </button>
           </div>
+        </div>
+        <div style={{ fontSize: 11, color: '#94a3b8' }}>
+          로그인: {sessionUser?.email || sessionUser?.id || '없음'}
         </div>
         <div
           style={{
