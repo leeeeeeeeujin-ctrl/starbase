@@ -16,10 +16,7 @@ import {
   registerRankApiKey,
   sanitizeKeyringStorageEntry,
 } from '@/lib/rank/keyringClient';
-import {
-  persistRankKeyringSnapshot,
-  readRankKeyringSnapshot,
-} from '@/lib/rank/keyringStorage';
+import { persistRankKeyringSnapshot, readRankKeyringSnapshot } from '@/lib/rank/keyringStorage';
 
 const PROMPT_HEADER = 'You are a workspace assistant helping edit files.';
 
@@ -29,8 +26,8 @@ export default function AIChatDock({ onClose }) {
   const { token: sessionToken, user: sessionUser, refresh: refreshSessionToken } =
     useSupabaseSessionToken();
 
-  const cachedSnapshot = useMemo(() => readRankKeyringSnapshot(), []);
-  const [keyringEntries, setKeyringEntries] = useState(cachedSnapshot.entries || []);
+  const snapshot = useMemo(() => readRankKeyringSnapshot(), []);
+  const [keyringEntries, setKeyringEntries] = useState(snapshot.entries || []);
   const [keyringLimit, setKeyringLimit] = useState(KEYRING_LIMIT_FALLBACK);
   const [keyringLoading, setKeyringLoading] = useState(false);
   const [keyringError, setKeyringError] = useState(null);
@@ -44,18 +41,31 @@ export default function AIChatDock({ onClose }) {
 
   const logRef = useRef(null);
 
+  const hasActiveKey = keyringEntries.some(entry => entry.isActive);
+
   const getSessionToken = useCallback(
     async (options = {}) => {
       const { optional = false } = options;
       if (sessionToken) return sessionToken;
       const refreshed = await refreshSessionToken();
       if (!optional && !refreshed) {
-        throw new Error('로그인이 필요합니다.');
+        throw new Error('로그인 후 이용할 수 있습니다.');
       }
       return refreshed;
     },
     [sessionToken, refreshSessionToken]
   );
+
+  useEffect(() => {
+    const handleKey = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose?.();
+      }
+    };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [onClose]);
 
   useEffect(() => {
     try {
@@ -64,7 +74,7 @@ export default function AIChatDock({ onClose }) {
         el.scrollTop = el.scrollHeight;
       }
     } catch {
-      /* no-op */
+      /* ignored */
     }
   }, [logs]);
 
@@ -97,7 +107,9 @@ export default function AIChatDock({ onClose }) {
       setKeyringLimit(
         Number.isFinite(payload?.limit) ? Number(payload.limit) : KEYRING_LIMIT_FALLBACK
       );
-      setKeyringMessage(entries.length ? '' : '등록된 API 키가 없습니다. 새 키를 추가해 주세요.');
+      setKeyringMessage(
+        entries.length ? '' : '등록된 API 키가 없습니다. 위 입력창에서 새 키를 등록한 뒤 활성화해 주세요.'
+      );
       applySnapshot(sessionUser.id, entries);
     } catch (error) {
       console.error('[AIChatDock] failed to load keyring', error);
@@ -111,11 +123,8 @@ export default function AIChatDock({ onClose }) {
     loadKeyring();
   }, [loadKeyring]);
 
-  const hasActiveKey = keyringEntries.some(entry => entry.isActive);
-
   const handleRegisterKey = useCallback(async () => {
-    const trimmed = newApiKey.trim();
-    if (!trimmed || keyringSubmitting) return;
+    if (!newApiKey.trim() || keyringSubmitting) return;
     if (!sessionUser?.id) {
       setKeyringError(new Error('로그인 상태에서만 API 키를 등록할 수 있습니다.'));
       return;
@@ -125,7 +134,7 @@ export default function AIChatDock({ onClose }) {
     try {
       const token = await getSessionToken();
       const payload = await registerRankApiKey({
-        apiKey: trimmed,
+        apiKey: newApiKey.trim(),
         context: { userId: sessionUser.id, accessToken: token },
       });
       const entry = normalizeKeyringEntry(payload?.entry);
@@ -139,7 +148,7 @@ export default function AIChatDock({ onClose }) {
         Number.isFinite(payload?.limit) ? Number(payload.limit) : KEYRING_LIMIT_FALLBACK
       );
       applySnapshot(sessionUser.id, entries);
-      setKeyringMessage('API 키가 저장되었습니다. 사용 설정으로 활성화할 수 있습니다.');
+      setKeyringMessage('API 키가 저장되었습니다.');
       setNewApiKey('');
     } catch (error) {
       console.error('[AIChatDock] failed to store api key', error);
@@ -221,7 +230,7 @@ export default function AIChatDock({ onClose }) {
       return;
     }
     if (!hasActiveKey) {
-      const message = '활성화된 API 키가 없습니다. 상단에서 사용할 키를 선택해 주세요.';
+      const message = '활성화된 API 키가 없습니다. 왼쪽에서 사용할 키를 선택해 주세요.';
       setChatError(message);
       append('error', message);
       return;
@@ -275,182 +284,201 @@ export default function AIChatDock({ onClose }) {
   }, [append, getSessionToken, hasActiveKey, input, sessionUser?.id]);
 
   const keyringStatusText = hasActiveKey
-    ? '활성화된 API 키로 Gemini 호출을 수행합니다.'
-    : '활성화된 키가 없으면 요청이 거절됩니다.';
+    ? '활성화된 키로 Gemini 호출을 실행할 준비가 되었습니다.'
+    : '좌측 목록에서 사용할 API 키를 활성화해야 요청을 보낼 수 있습니다.';
 
   return (
-    <div style={styles.dock}>
-      <section style={styles.section}>
-        <div style={styles.sectionHeader}>
+    <div style={styles.backdrop}>
+      <div style={styles.panel}>
+        <header style={styles.header}>
           <div>
-            <h3 style={styles.sectionTitle}>API 키 관리</h3>
-            <p style={styles.sectionHint}>
-              Supabase 키링에 저장된 키만 서버 호출에 사용됩니다. 새 키를 등록한 뒤 활성화해 주세요.
-            </p>
+            <h2 style={styles.title}>AI 코드 어시스턴트</h2>
+            <p style={styles.subtitle}>Supabase 키링에 보관한 개인 API 키로 Gemini/Groq 요청을 실행합니다.</p>
           </div>
-          <button type="button" style={styles.ghostButton} onClick={loadKeyring}>
-            새로고침
-          </button>
-        </div>
-        <div style={styles.keyInputRow}>
-          <textarea
-            value={newApiKey}
-            onChange={(e) => setNewApiKey(e.target.value)}
-            placeholder="AI API 키를 붙여넣으세요"
-            style={styles.keyInput}
-          />
-          <button
-            type="button"
-            style={styles.primaryButton(keyringSubmitting || !newApiKey.trim())}
-            onClick={handleRegisterKey}
-            disabled={keyringSubmitting || !newApiKey.trim()}
-          >
-            {keyringSubmitting ? '저장 중…' : '키 등록'}
-          </button>
-        </div>
-        <div style={styles.sectionHint}>
-          등록된 키 {keyringEntries.length}/{keyringLimit}
-        </div>
-        {keyringError ? (
-          <div style={styles.errorBox}>{keyringError.message || 'API 키 작업 중 오류가 발생했습니다.'}</div>
-        ) : null}
-        {keyringMessage ? <div style={styles.infoBox}>{keyringMessage}</div> : null}
-        {keyringLoading ? (
-          <div style={styles.sectionHint}>키 목록을 불러오는 중입니다…</div>
-        ) : keyringEntries.length === 0 ? (
-          <div style={styles.emptyBox}>등록된 키가 없습니다.</div>
-        ) : (
-          <div style={styles.keyList}>
-            {keyringEntries.map((entry) => (
-              <div key={entry.id} style={styles.keyEntry(entry.isActive)}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <span style={{ fontWeight: 700 }}>{formatKeyProviderLabel(entry.provider)}</span>
-                    {entry.isActive ? (
-                      <span style={styles.activeBadge}>사용 중</span>
-                    ) : null}
-                  </div>
-                  <div style={{ color: '#94a3b8', fontSize: 12 }}>
-                    샘플: {entry.keySample || '미확인'}
-                  </div>
-                  <div style={{ color: '#64748b', fontSize: 11 }}>
-                    업데이트: {formatTimestamp(entry.updatedAt || entry.createdAt)}
-                  </div>
-                </div>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <button
-                    type="button"
-                    style={styles.smallButton(keyringSubmitting)}
-                    onClick={() => handleToggleEntry(entry)}
-                    disabled={keyringSubmitting}
-                  >
-                    {entry.isActive ? '비활성화' : '이 키 사용'}
-                  </button>
-                  <button
-                    type="button"
-                    style={styles.smallDangerButton(keyringSubmitting)}
-                    onClick={() => handleDeleteEntry(entry)}
-                    disabled={keyringSubmitting}
-                  >
-                    삭제
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section style={styles.section}>
-        <div style={styles.sectionHeader}>
-          <div>
-            <h3 style={styles.sectionTitle}>AI 대화</h3>
-            <p style={styles.sectionHint}>{keyringStatusText}</p>
-          </div>
-          <div style={styles.sessionControls}>
-            <select
-              value={currentId || ''}
-              onChange={(e) => setCurrentId(e.target.value)}
-              style={styles.sessionSelect}
-            >
-              {sessions.map((session) => (
-                <option key={session.id} value={session.id}>
-                  {session.title || '새 채팅'}
-                </option>
-              ))}
-            </select>
-            <button type="button" style={styles.ghostButton} onClick={startNewChat}>
-              새 채팅
+          <div style={styles.headerActions}>
+            <span style={hasActiveKey ? styles.statusReady : styles.statusMissing}>
+              {hasActiveKey ? '키 활성화됨' : '키 없음'}
+            </span>
+            <button type="button" style={styles.ghostButton} onClick={loadKeyring}>
+              새로고침
             </button>
-            <button
-              type="button"
-              style={styles.ghostButton}
-              onClick={() => currentId && deleteSession(currentId)}
-              disabled={!currentId}
-            >
-              삭제
-            </button>
-            <button type="button" style={styles.ghostButton} onClick={onClose}>
+            <button type="button" style={styles.dangerButton} onClick={onClose}>
               닫기
             </button>
           </div>
-        </div>
+        </header>
 
-        <div ref={logRef} style={styles.logPanel}>
-          {logs.length === 0 ? (
-            <div style={styles.sectionHint}>아직 대화가 없습니다. 메시지를 입력해 보세요.</div>
-          ) : (
-            logs.map((entry, idx) => (
-              <div key={`${entry.role}-${idx}`} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <div style={{ fontSize: 11, color: '#94a3b8' }}>
-                  {entry.role === 'user' ? '사용자' : entry.role === 'assistant' ? 'AI' : '시스템'}
-                </div>
-                <div
-                  style={{
-                    whiteSpace: 'pre-wrap',
-                    background: entry.role === 'assistant' ? '#0f172a' : '#111827',
-                    border: '1px solid #1f2937',
-                    borderRadius: 8,
-                    padding: '8px 10px',
-                    color: entry.role === 'error' ? '#fecaca' : '#e2e8f0',
-                  }}
-                >
-                  {typeof entry.msg === 'string' ? entry.msg : JSON.stringify(entry.msg, null, 2)}
-                </div>
+        <div style={styles.body}>
+          <section style={styles.columnLeft}>
+            <div style={styles.sectionHeader}>
+              <div>
+                <h3 style={styles.sectionTitle}>API 키 관리</h3>
+                <p style={styles.sectionHint}>
+                  키는 모두 Supabase 키링에 암호화해 저장됩니다. 등록 후 "이 키 사용" 버튼으로 활성화하세요.
+                </p>
+                <ol style={styles.instructionsList}>
+                  <li style={styles.instructionsItem}>API 키를 붙여 넣고 "키 등록"으로 저장합니다.</li>
+                  <li style={styles.instructionsItem}>목록에서 사용할 키를 골라 "이 키 사용"을 누릅니다.</li>
+                  <li style={styles.instructionsItem}>오른쪽 대화창에서 요청을 전송합니다.</li>
+                </ol>
               </div>
-            ))
-          )}
-        </div>
+            </div>
+            <div style={styles.keyInputRow}>
+              <textarea
+                value={newApiKey}
+                onChange={(e) => setNewApiKey(e.target.value)}
+                placeholder="AI API 키를 붙여 넣으세요"
+                style={styles.keyInput}
+              />
+              <button
+                type="button"
+                style={styles.primaryButton(keyringSubmitting || !newApiKey.trim())}
+                onClick={handleRegisterKey}
+                disabled={keyringSubmitting || !newApiKey.trim()}
+              >
+                {keyringSubmitting ? '저장 중…' : '키 등록'}
+              </button>
+            </div>
+            <p style={styles.sectionHint}>
+              등록된 키 {keyringEntries.length}개 (최대 {keyringLimit})
+            </p>
+            {keyringError ? (
+              <div style={styles.errorBox}>{keyringError.message || 'API 키 작업 중 오류가 발생했습니다.'}</div>
+            ) : null}
+            {keyringMessage ? <div style={styles.infoBox}>{keyringMessage}</div> : null}
+            {keyringLoading ? (
+              <div style={styles.sectionHint}>키 목록을 불러오는 중입니다…</div>
+            ) : keyringEntries.length === 0 ? (
+              <div style={styles.emptyBox}>등록된 키가 없습니다.</div>
+            ) : (
+              <div style={styles.keyList}>
+                {keyringEntries.map((entry) => (
+                  <div key={entry.id} style={styles.keyEntry(entry.isActive)}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <span style={{ fontWeight: 700 }}>{formatKeyProviderLabel(entry.provider)}</span>
+                        {entry.isActive ? <span style={styles.activeBadge}>사용 중</span> : null}
+                      </div>
+                      <div style={{ color: '#94a3b8', fontSize: 12 }}>
+                        샘플: {entry.keySample || '미확인'}
+                      </div>
+                      <div style={{ color: '#64748b', fontSize: 11 }}>
+                        업데이트: {formatTimestamp(entry.updatedAt || entry.createdAt)}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button
+                        type="button"
+                        style={styles.smallButton(keyringSubmitting)}
+                        onClick={() => handleToggleEntry(entry)}
+                        disabled={keyringSubmitting}
+                      >
+                        {entry.isActive ? '비활성화' : '이 키 사용'}
+                      </button>
+                      <button
+                        type="button"
+                        style={styles.smallDangerButton(keyringSubmitting)}
+                        onClick={() => handleDeleteEntry(entry)}
+                        disabled={keyringSubmitting}
+                      >
+                        삭제
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {chatError ? <div style={styles.errorBox}>{chatError}</div> : null}
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSend();
-              }
-            }}
-            placeholder="요청을 입력해 주세요"
-            style={styles.chatInput}
-          />
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 11, color: '#64748b' }}>
-              {sending ? 'AI가 응답을 생성하는 중…' : 'Shift+Enter 로 줄바꿈'}
-            </span>
-            <button
-              type="button"
-              style={styles.primaryButton(sending || !input.trim() || !hasActiveKey)}
-              onClick={handleSend}
-              disabled={sending || !input.trim() || !hasActiveKey}
-            >
-              {sending ? '전송 중…' : '전송'}
-            </button>
-          </div>
+          <section style={styles.columnRight}>
+            <div style={styles.sectionHeader}>
+              <div>
+                <h3 style={styles.sectionTitle}>AI 대화</h3>
+                <p style={styles.sectionHint}>{keyringStatusText}</p>
+              </div>
+              <div style={styles.sessionControls}>
+                <select
+                  value={currentId || ''}
+                  onChange={(e) => setCurrentId(e.target.value)}
+                  style={styles.sessionSelect}
+                >
+                  {sessions.map((session) => (
+                    <option key={session.id} value={session.id}>
+                      {session.title || '새 채팅'}
+                    </option>
+                  ))}
+                </select>
+                <button type="button" style={styles.ghostButton} onClick={startNewChat}>
+                  새 채팅
+                </button>
+                <button
+                  type="button"
+                  style={styles.ghostButton}
+                  onClick={() => currentId && deleteSession(currentId)}
+                  disabled={!currentId}
+                >
+                  삭제
+                </button>
+              </div>
+            </div>
+
+            <div ref={logRef} style={styles.logPanel}>
+              {logs.length === 0 ? (
+                <div style={styles.sectionHint}>아직 대화가 없습니다. 메시지를 입력해 보세요.</div>
+              ) : (
+                logs.map((entry, idx) => (
+                  <div key={`${entry.role}-${idx}`} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div style={{ fontSize: 11, color: '#94a3b8' }}>
+                      {entry.role === 'user' ? '사용자' : entry.role === 'assistant' ? 'AI' : '시스템'}
+                    </div>
+                    <div
+                      style={{
+                        whiteSpace: 'pre-wrap',
+                        background: entry.role === 'assistant' ? '#0f172a' : '#111827',
+                        border: '1px solid #1f2937',
+                        borderRadius: 8,
+                        padding: '8px 10px',
+                        color: entry.role === 'error' ? '#fecaca' : '#e2e8f0',
+                      }}
+                    >
+                      {typeof entry.msg === 'string' ? entry.msg : JSON.stringify(entry.msg, null, 2)}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {chatError ? <div style={styles.errorBox}>{chatError}</div> : null}
+              <textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
+                placeholder="요청을 입력해 주세요"
+                style={styles.chatInput}
+              />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 11, color: '#64748b' }}>
+                  {sending ? 'AI가 응답을 생성하는 중…' : 'Shift+Enter 로 줄바꿈'}
+                </span>
+                <button
+                  type="button"
+                  style={styles.primaryButton(sending || !input.trim() || !hasActiveKey)}
+                  onClick={handleSend}
+                  disabled={sending || !input.trim() || !hasActiveKey}
+                >
+                  {sending ? '전송 중…' : '전송'}
+                </button>
+              </div>
+            </div>
+          </section>
         </div>
-      </section>
+      </div>
     </div>
   );
 }
@@ -476,23 +504,87 @@ function formatTimestamp(value) {
 }
 
 const styles = {
-  dock: {
-    width: 520,
-    maxWidth: '95vw',
-    maxHeight: '90vh',
+  backdrop: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(2, 6, 23, 0.92)',
+    padding: '32px 40px',
+    zIndex: 2000,
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  panel: {
+    width: 'min(1200px, 100%)',
+    height: 'min(90vh, 880px)',
     background: '#040a16',
-    border: '1px solid #1f2937',
-    borderRadius: 22,
-    padding: 18,
+    border: '1px solid #132032',
+    borderRadius: 28,
+    padding: 24,
     display: 'flex',
     flexDirection: 'column',
-    gap: 16,
-    boxShadow: '0 24px 64px rgba(0,0,0,0.6)',
-    overflow: 'auto',
+    gap: 18,
+    boxShadow: '0 40px 120px rgba(0,0,0,0.55)',
   },
-  section: {
-    border: '1px solid #1f2937',
-    borderRadius: 18,
+  header: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 16,
+    alignItems: 'flex-start',
+  },
+  headerActions: {
+    display: 'flex',
+    gap: 8,
+    alignItems: 'center',
+  },
+  title: {
+    margin: 0,
+    color: '#f8fafc',
+    fontSize: 24,
+    fontWeight: 800,
+  },
+  subtitle: {
+    margin: '6px 0 0',
+    color: '#94a3b8',
+    fontSize: 14,
+  },
+  statusReady: {
+    padding: '4px 10px',
+    borderRadius: 999,
+    background: 'rgba(14,165,233,0.18)',
+    color: '#7dd3fc',
+    fontSize: 12,
+    border: '1px solid rgba(14,165,233,0.4)',
+  },
+  statusMissing: {
+    padding: '4px 10px',
+    borderRadius: 999,
+    background: 'rgba(248,113,113,0.14)',
+    color: '#fecaca',
+    fontSize: 12,
+    border: '1px solid rgba(248,113,113,0.4)',
+  },
+  body: {
+    flex: 1,
+    display: 'flex',
+    gap: 16,
+    minHeight: 0,
+  },
+  columnLeft: {
+    flex: '0 0 40%',
+    minWidth: 320,
+    border: '1px solid #162338',
+    borderRadius: 20,
+    padding: 16,
+    background: '#050f21',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+  },
+  columnRight: {
+    flex: '1 1 auto',
+    border: '1px solid #162338',
+    borderRadius: 20,
     padding: 16,
     background: '#050f21',
     display: 'flex',
@@ -507,22 +599,23 @@ const styles = {
   },
   sectionTitle: {
     margin: 0,
-    fontSize: 16,
-    fontWeight: 700,
     color: '#e2e8f0',
+    fontSize: 18,
+    fontWeight: 700,
   },
   sectionHint: {
     margin: 0,
     color: '#94a3b8',
     fontSize: 12,
   },
-  ghostButton: {
-    padding: '6px 10px',
-    borderRadius: 8,
-    border: '1px solid rgba(148,163,184,0.4)',
-    background: 'transparent',
-    color: '#e2e8f0',
+  instructionsList: {
+    margin: '4px 0 10px 18px',
+    color: '#94a3b8',
     fontSize: 12,
+    lineHeight: 1.5,
+  },
+  instructionsItem: {
+    marginBottom: 2,
   },
   keyInputRow: {
     display: 'flex',
@@ -531,10 +624,10 @@ const styles = {
   },
   keyInput: {
     flex: 1,
-    minHeight: 72,
+    minHeight: 84,
     borderRadius: 12,
     border: '1px solid #334155',
-    background: '#050b16',
+    background: '#040b18',
     color: '#e2e8f0',
     padding: '8px 10px',
     fontSize: 13,
@@ -548,6 +641,47 @@ const styles = {
     fontWeight: 600,
     opacity: disabled ? 0.6 : 1,
   }),
+  ghostButton: {
+    padding: '6px 10px',
+    borderRadius: 10,
+    border: '1px solid rgba(148,163,184,0.4)',
+    background: 'transparent',
+    color: '#f1f5f9',
+    fontSize: 12,
+  },
+  dangerButton: {
+    padding: '6px 12px',
+    borderRadius: 10,
+    border: '1px solid #dc2626',
+    background: 'rgba(220,38,38,0.2)',
+    color: '#fecaca',
+    fontWeight: 600,
+  },
+  keyList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+    overflowY: 'auto',
+  },
+  keyEntry: (active) => ({
+    border: `1px solid ${active ? '#22d3ee' : '#1f2937'}`,
+    borderRadius: 16,
+    padding: '12px 14px',
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 12,
+    background: active ? 'rgba(15,118,110,0.18)' : 'rgba(15,23,42,0.6)',
+    flexWrap: 'wrap',
+  }),
+  activeBadge: {
+    fontSize: 10,
+    borderRadius: 999,
+    padding: '2px 8px',
+    background: '#0f766e',
+    color: '#ecfeff',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
   smallButton: (disabled) => ({
     padding: '6px 10px',
     borderRadius: 8,
@@ -590,30 +724,6 @@ const styles = {
     textAlign: 'center',
     fontSize: 12,
   },
-  keyList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 10,
-  },
-  keyEntry: (isActive) => ({
-    border: '1px solid ' + (isActive ? '#22d3ee' : '#1f2937'),
-    borderRadius: 14,
-    padding: '12px 14px',
-    display: 'flex',
-    justifyContent: 'space-between',
-    gap: 12,
-    background: isActive ? 'rgba(15,118,110,0.2)' : 'rgba(15,23,42,0.6)',
-    flexWrap: 'wrap',
-  }),
-  activeBadge: {
-    fontSize: 10,
-    borderRadius: 999,
-    padding: '2px 8px',
-    background: '#0f766e',
-    color: '#ecfeff',
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
   logPanel: {
     flex: 1,
     border: '1px solid #1f2937',
@@ -621,14 +731,13 @@ const styles = {
     padding: '12px 16px',
     background: '#030712',
     overflowY: 'auto',
-    maxHeight: 280,
     display: 'flex',
     flexDirection: 'column',
     gap: 10,
   },
   chatInput: {
     resize: 'none',
-    minHeight: 90,
+    minHeight: 100,
     borderRadius: 12,
     border: '1px solid #334155',
     padding: '8px 10px',

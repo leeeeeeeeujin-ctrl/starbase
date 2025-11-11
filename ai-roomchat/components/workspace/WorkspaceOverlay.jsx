@@ -9,6 +9,7 @@ const MainGameMobileUI = dynamic(() => import('../game/MainGameMobileUI.jsx'), {
 import SyncTemplateToVfs from './SyncTemplateToVfs.jsx';
 import AIChatDock from './AIChatDock.jsx';
 import { usePersistentState } from './hooks/usePersistentState';
+import { readRankKeyringSnapshot, RANK_KEYRING_STORAGE_EVENT } from '@/lib/rank/keyringStorage';
 
   function EditorPane() {
     const { files, activePath, inferLang, saveFileAndPush, saveFile, storageNamespace, writeFile } = useWorkspace();
@@ -54,6 +55,13 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [aiMenuOpen, setAiMenuOpen] = useState(false);
   const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
+  const [keyringStatus, setKeyringStatus] = useState(() => {
+    const snapshot = readRankKeyringSnapshot();
+    return {
+      ready: Array.isArray(snapshot.entries) && snapshot.entries.some(entry => entry.isActive),
+      count: Array.isArray(snapshot.entries) ? snapshot.entries.length : 0,
+    };
+  });
   const fileMenuRef = useRef(null);
   const aiMenuRef = useRef(null);
   const toolsMenuRef = useRef(null);
@@ -75,6 +83,25 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
   };
   const [overlayTree, setOverlayTree] = useState(computeOverlayTree());
   const PREF_SNAP = 'maker:ui:snap';
+
+  useEffect(() => {
+    const updateKeyringStatus = () => {
+      const snapshot = readRankKeyringSnapshot();
+      setKeyringStatus({
+        ready: Array.isArray(snapshot.entries) && snapshot.entries.some(entry => entry.isActive),
+        count: Array.isArray(snapshot.entries) ? snapshot.entries.length : 0,
+      });
+    };
+    updateKeyringStatus();
+    if (typeof window !== 'undefined') {
+      window.addEventListener(RANK_KEYRING_STORAGE_EVENT, updateKeyringStatus);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener(RANK_KEYRING_STORAGE_EVENT, updateKeyringStatus);
+      }
+    };
+  }, []);
   // keep tree width responsive on resize
   useEffect(() => {
     const onResize = () => {
@@ -251,13 +278,28 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
               </div>
             )}
           </div>
-          <div ref={aiMenuRef} style={{ position:'relative' }}>
-            <MenuButton onClick={() => setAiMenuOpen(v=>{ const next=!v; if (next) { setFileMenuOpen(false); setShowTree(false); } return next; })} active={aiMenuOpen} label="AI 코딩" />
-            {aiMenuOpen && (
-              <div style={{ position:'absolute', zIndex: 20, background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, display:'grid', gap:6, minWidth:180 }}>
-                <button onClick={() => { setChatDockOpen(true); setAiMenuOpen(false); }} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>AI 채팅 열기</button>
-              </div>
-            )}
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <div ref={aiMenuRef} style={{ position:'relative' }}>
+              <MenuButton onClick={() => setAiMenuOpen(v=>{ const next=!v; if (next) { setFileMenuOpen(false); setShowTree(false); } return next; })} active={aiMenuOpen} label="AI 코딩" />
+              {aiMenuOpen && (
+                <div style={{ position:'absolute', zIndex: 20, background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, display:'grid', gap:6, minWidth:180 }}>
+                  <button onClick={() => { setChatDockOpen(true); setAiMenuOpen(false); }} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>AI 채팅 열기</button>
+                </div>
+              )}
+            </div>
+            <span
+              style={{
+                padding: '4px 8px',
+                borderRadius: 999,
+                border: keyringStatus.ready ? '1px solid rgba(14,165,233,0.5)' : '1px solid rgba(248,113,113,0.4)',
+                background: keyringStatus.ready ? 'rgba(14,165,233,0.15)' : 'rgba(248,113,113,0.15)',
+                color: keyringStatus.ready ? '#7dd3fc' : '#fecaca',
+                fontSize: 11,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {keyringStatus.ready ? `AI 키 ${keyringStatus.count}개` : 'AI 키 없음'}
+            </span>
           </div>
           <MenuButton onClick={() => setShowPlay(true)} active={showPlay} label="플레이" />
           <div ref={toolsMenuRef} style={{ position:'relative' }}>
