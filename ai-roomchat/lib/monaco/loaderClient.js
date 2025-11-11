@@ -3,10 +3,10 @@
 import loader from '@monaco-editor/loader';
 
 const CDN_PATH = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs';
-const LOCAL_PATH =
-  process.env.NEXT_PUBLIC_MONACO_BASE_URL && process.env.NEXT_PUBLIC_MONACO_BASE_URL.trim().length > 0
+const MONACO_BASE =
+  (process.env.NEXT_PUBLIC_MONACO_BASE_URL && process.env.NEXT_PUBLIC_MONACO_BASE_URL.trim().length > 0
     ? process.env.NEXT_PUBLIC_MONACO_BASE_URL.trim()
-    : '/monaco/vs';
+    : null) || CDN_PATH;
 
 const monacoState = {
   status: 'pending', // 'pending' | 'ready' | 'error'
@@ -18,9 +18,9 @@ const monacoState = {
 
 function resolvePreferredBase() {
   if (typeof window !== 'undefined') {
-    return window.__MONACO_BASE_URL__ || LOCAL_PATH;
+    return window.__MONACO_BASE_URL__ || MONACO_BASE;
   }
-  return LOCAL_PATH;
+  return MONACO_BASE;
 }
 
 function configureLoader(basePath) {
