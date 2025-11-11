@@ -1,17 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { CodeWorkspaceProvider } from '../workspace/CodeWorkspaceProvider.jsx';
 import dynamic from 'next/dynamic';
-import {
-  getMonacoLoaderError,
-  useMonacoLoaderStatus,
-} from './hooks/useMonacoLoaderStatus';
 import { useSupabaseSessionToken } from './hooks/useSupabaseSessionToken';
 import { applySupabaseAccessToken } from '../../lib/api/authHeaders';
 
 // WorkspaceFrame: fetch workspace set data server-first, then mount CodeWorkspaceProvider consistently.
 export default function WorkspaceFrame({ id, children, onReady = () => {} }) {
-  const monacoStatus = useMonacoLoaderStatus();
-  const monacoError = getMonacoLoaderError();
   const { token: sessionToken, loading: sessionLoading } = useSupabaseSessionToken();
   const [initFiles, setInitFiles] = useState(null);
   const [etag, setEtag] = useState(null);
@@ -121,10 +115,6 @@ export default function WorkspaceFrame({ id, children, onReady = () => {} }) {
 
   if (!id) return null;
 
-  if (monacoStatus === 'pending') {
-    return <div style={{ padding: 20 }}>Initializing Monaco editor...</div>;
-  }
-
   if (initFiles == null) {
     return (
       <div style={{ padding: 20 }}>
@@ -163,22 +153,6 @@ export default function WorkspaceFrame({ id, children, onReady = () => {} }) {
       initialFiles={initFiles}
       initialEtag={etag}
     >
-      {monacoStatus === 'error' && (
-        <div
-          style={{
-            padding: '8px 12px',
-            borderRadius: 8,
-            border: '1px solid #fbbf24',
-            background: '#fef3c7',
-            color: '#92400e',
-            fontSize: 12,
-            margin: 8,
-          }}
-        >
-          Monaco editor failed to load. Falling back to the basic editor.
-          {monacoError?.message ? ` (${monacoError.message})` : ''}
-        </div>
-      )}
       {process.env.NEXT_PUBLIC_SYNC_EXPERIMENT === '1' ? (
         (() => {
           const SyncMount = dynamic(() => import('./WorkspaceSyncMount.jsx'), { ssr: false });
