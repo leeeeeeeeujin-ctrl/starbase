@@ -248,9 +248,14 @@ export default function AIChatDock({ onClose }) {
       const text = extractGeminiText(data.data) || '(빈 응답)';
       append('assistant', text);
     } catch (e) {
+      console.error('[AIChatDock] Gemini request failed', e);
       const message = e?.message || '요청이 실패했습니다.';
       setError(message);
-      append('error', message);
+      append('error', {
+        message,
+        status: e?.status || null,
+        detail: e?.data || e?.stack || null,
+      });
     } finally {
       setSending(false);
     }
@@ -546,7 +551,7 @@ export default function AIChatDock({ onClose }) {
             minHeight: 72,
             maxHeight: 140,
             borderRadius: 10,
-            border: '1px solid '#334155',
+            border: '1px solid #334155',
             padding: '8px 10px',
             background: '#0b1220',
             color: '#e2e8f0',
