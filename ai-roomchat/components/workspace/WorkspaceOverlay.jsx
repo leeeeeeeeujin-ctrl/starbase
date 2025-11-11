@@ -4,11 +4,10 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useWorkspace } from "./CodeWorkspaceProvider.jsx";
 import FileTree from "./FileTree.jsx";
 import EditorMonaco from "../EditorMonaco.jsx";
-import { supabase } from "../../lib/supabase";
 import dynamic from 'next/dynamic';
 const MainGameMobileUI = dynamic(() => import('../game/MainGameMobileUI.jsx'), { ssr: false });
 import SyncTemplateToVfs from './SyncTemplateToVfs.jsx';
-import AICodeChatPanel from './AICodeChatPanel.jsx';
+import AIChatDock from './AIChatDock.jsx';
 import { usePersistentState } from './hooks/usePersistentState';
 
   function EditorPane() {
@@ -50,65 +49,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
   // 코드 에디터 전면 플레이 오버레이
   const [showPlay, setShowPlay] = useState(false);
   const [showTree, setShowTree] = useState(true);
-  const [showCodeChat, setShowCodeChat] = useState(false);
-  const [chatSize, setChatSize] = usePersistentState('workspace:chat:size', () => ({ w: 420, h: 360 }));
-  const [resizing, setResizing] = useState(false);
-  const dragStateRef = useRef({ lastX: 0, lastY: 0, active: false });
-  useEffect(() => {
-    if (!resizing) return undefined;
-    dragStateRef.current.active = false;
-
-    const applyDelta = (dx = 0, dy = 0) => {
-      if (!dx && !dy) return;
-      setChatSize(s => ({
-        w: Math.min(Math.max(320, s.w + dx), 900),
-        h: Math.min(Math.max(240, s.h + dy), 900),
-      }));
-    };
-
-    const onMouseMove = (event) => {
-      if (typeof event.preventDefault === 'function') event.preventDefault();
-      applyDelta(event.movementX || 0, event.movementY || 0);
-    };
-
-    const onTouchMove = (event) => {
-      if (!event.touches?.length) return;
-      const touch = event.touches[0];
-      const state = dragStateRef.current;
-      if (!state.active) {
-        state.lastX = touch.clientX;
-        state.lastY = touch.clientY;
-        state.active = true;
-        return;
-      }
-      const dx = touch.clientX - state.lastX;
-      const dy = touch.clientY - state.lastY;
-      state.lastX = touch.clientX;
-      state.lastY = touch.clientY;
-      if (typeof event.preventDefault === 'function') event.preventDefault();
-      applyDelta(dx, dy);
-    };
-
-    const stopResize = () => {
-      dragStateRef.current.active = false;
-      setResizing(false);
-    };
-
-    const touchMoveOptions = { passive: false };
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', stopResize);
-    window.addEventListener('touchmove', onTouchMove, touchMoveOptions);
-    window.addEventListener('touchend', stopResize);
-    window.addEventListener('touchcancel', stopResize);
-
-    return () => {
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', stopResize);
-      window.removeEventListener('touchmove', onTouchMove, touchMoveOptions);
-      window.removeEventListener('touchend', stopResize);
-      window.removeEventListener('touchcancel', stopResize);
-    };
-  }, [resizing]);
+  const [chatDockOpen, setChatDockOpen] = useState(false);
   const [toolbarCollapsed, setToolbarCollapsed] = useState(true);
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [aiMenuOpen, setAiMenuOpen] = useState(false);
@@ -134,8 +75,6 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
   };
   const [overlayTree, setOverlayTree] = useState(computeOverlayTree());
   const PREF_SNAP = 'maker:ui:snap';
-  // 안정적 레이아웃: 자연 플렉스 레이아웃으로 상단/본문 배치
-  const [bottomH, setBottomH] = useState(0);
   // keep tree width responsive on resize
   useEffect(() => {
     const onResize = () => {
@@ -164,10 +103,6 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
       }
     } catch {}
   }, []);
-  // 툴바 높이 측정 없이 자연 레이아웃 사용
-  // Chat panel is now floating overlay; editor area bottom inset remains 0
-  useEffect(() => { setBottomH(0); }, [showCodeChat]);
-
   // 클릭 바깥 감지로 드롭다운 자동 닫기
   useEffect(() => {
     const onDoc = (e) => {
@@ -320,7 +255,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
             <MenuButton onClick={() => setAiMenuOpen(v=>{ const next=!v; if (next) { setFileMenuOpen(false); setShowTree(false); } return next; })} active={aiMenuOpen} label="AI 코딩" />
             {aiMenuOpen && (
               <div style={{ position:'absolute', zIndex: 20, background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, display:'grid', gap:6, minWidth:180 }}>
-                <button onClick={() => { try { window.dispatchEvent(new CustomEvent('overlay:open', { detail: { type: 'ai' } })); } catch {}; setAiMenuOpen(false); }} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>AI 코드채팅 열기</button>
+                <button onClick={() => { setChatDockOpen(true); setAiMenuOpen(false); }} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>AI 채팅 열기</button>
               </div>
             )}
           </div>
@@ -334,7 +269,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
                 <button onClick={() => { try { open('/game/runtime.config.json'); } catch {} finally { setToolsMenuOpen(false); } }} data-test-id="open-runtime-config" style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>런타임 설정 열기</button>
                 <button onClick={() => { try { window.location.href = '/studio?mode=ui'; } catch {} finally { setToolsMenuOpen(false); } }} data-test-id="open-ui-editor" style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>UI 편집기</button>
                 <div style={{ height:1, background:'rgba(148,163,184,0.2)', margin:'4px 2px' }} />
-                <button onClick={() => { try { setShowCodeChat(true); } finally { setToolsMenuOpen(false); } }} data-test-id="open-ai-agent" style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #2563eb', background:'#0b1220', color:'#93c5fd', whiteSpace:'nowrap' }}>AI 에이전트</button>
+                <button onClick={() => { setChatDockOpen(true); setToolsMenuOpen(false); }} data-test-id="open-ai-agent" style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #2563eb', background:'#0b1220', color:'#93c5fd', whiteSpace:'nowrap' }}>AI 채팅</button>
                 <button onClick={() => { try { window.location.href = '/game/dev-local'; } catch {} finally { setToolsMenuOpen(false); } }} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>메인게임 (dev-local)</button>
                 <button onClick={() => { try { window.location.href = '/game/dev-graph'; } catch {} finally { setToolsMenuOpen(false); } }} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>메인게임 (dev-graph)</button>
               </div>
@@ -450,7 +385,11 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
           </div>
         </div>
       )}
-      {/* AI 코드채팅은 OverlayHost가 단일 인스턴스로 관리 */}
+      {chatDockOpen && (
+        <div style={{ position:'fixed', right:24, bottom:24, zIndex:40 }}>
+          <AIChatDock onClose={() => setChatDockOpen(false)} />
+        </div>
+      )}
     </WorkspaceBoundary>
   );
 }
@@ -471,5 +410,3 @@ function PlayOverlayContent({ templateBinding }){
     return <div style={{ padding:16, color:'#94a3b8' }}>템플릿을 불러올 수 없습니다.</div>;
   }
 }
-
-// AICodeChatPanel moved to components/workspace/AICodeChatPanel.jsx
