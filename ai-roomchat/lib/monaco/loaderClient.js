@@ -74,11 +74,20 @@ function configureLoader(basePath) {
 
 async function initWithBase(basePath) {
   const normalized = normalizeBasePath(basePath) || NORMALIZED_CDN_BASE;
+  if (typeof window !== 'undefined') {
+    console.info('[monaco] configure loader', { base: normalized });
+  }
   configureLoader(normalized);
   const monaco = await loader.init();
+  if (typeof window !== 'undefined') {
+    console.info('[monaco] loader init result', monaco ? Object.keys(monaco) : null);
+  }
   if (!monaco || !monaco.editor) {
     const err = new Error('Monaco not available');
     err.code = 'monaco_unavailable';
+    if (typeof window !== 'undefined') {
+      console.error('[monaco] editor missing after loader init', err);
+    }
     throw err;
   }
   return monaco;
