@@ -17,6 +17,10 @@ export default function Document() {
           {`
             (function () {
               var baseRoot = ${MONACO_ROOT_SCRIPT_VALUE};
+              function trimTrailingSlash(value) {
+                if (!value) return '';
+                return value.endsWith('/') ? value.slice(0, -1) : value;
+              }
               function resolveOrigin() {
                 if (typeof window === 'undefined') return '';
                 if (window.location && window.location.origin) return window.location.origin;
@@ -39,9 +43,9 @@ export default function Document() {
               }
               function createWorkerBlob(rootBase, vsBase, label) {
                 if (typeof URL === 'function' && typeof Blob === 'function') {
-                  var cleanRoot = (rootBase || '').replace(/\/$/, '');
-                  var cleanVs = (vsBase || '').replace(/\/$/, '');
-                  var workerEntry = cleanVs + '/base/worker/workerMain.js';
+                  var cleanRoot = trimTrailingSlash(rootBase || '');
+                  var cleanVs = trimTrailingSlash(vsBase || '');
+                 var workerEntry = cleanVs + '/base/worker/workerMain.js';
                   var source = [
                     "self.MonacoEnvironment = self.MonacoEnvironment || {};",
                     "self.MonacoEnvironment.baseUrl = " + JSON.stringify(cleanRoot) + ";",
@@ -63,8 +67,9 @@ export default function Document() {
 
               function assignEnvironment() {
                 if (typeof window === 'undefined') return;
-                var normalizedRoot = normaliseBase(baseRoot);
-                var normalizedVs = normalizedRoot.replace(/\/$/, '') + '/vs';
+                var normalizedRoot = trimTrailingSlash(normaliseBase(baseRoot));
+                if (!normalizedRoot) normalizedRoot = trimTrailingSlash(resolveOrigin() + '/monaco');
+                var normalizedVs = trimTrailingSlash(normalizedRoot) + '/vs';
                 window.__MONACO_BASE_URL__ = normalizedRoot;
                 var env = window.MonacoEnvironment || {};
                 env.baseUrl = normalizedRoot;
