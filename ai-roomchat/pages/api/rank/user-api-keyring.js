@@ -244,7 +244,7 @@ async function handleList(req, res, user) {
 
     return res.status(200).json({
       ok: true,
-      keys: sanitized,
+      entries: sanitized,
       limit: USER_API_KEYRING_LIMIT,
     });
   } catch (error) {
