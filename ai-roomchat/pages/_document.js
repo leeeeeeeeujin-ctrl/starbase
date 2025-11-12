@@ -41,6 +41,21 @@ export default function Document() {
                 var right = (segment || '').replace(/^\\/+/, '');
                 return left + '/' + right;
               }
+              function createWorkerUrl(base, label) {
+                if (typeof URL === 'function' && typeof Blob === 'function') {
+                  var source =
+                    "self.MonacoEnvironment = { baseUrl: '" + base + "' };" +
+                    "self.MONACO_WORKER_LABEL = '" + label + "';" +
+                    "importScripts('" + base + "/base/worker/workerMain.js');";
+                  try {
+                    return URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+                  } catch (e) {
+                    console.error('[monaco] failed to create worker blob', e);
+                  }
+                }
+                return base + '/base/worker/workerMain.js';
+              }
+
               function setup() {
                 if (typeof window === 'undefined') return;
                 var base = normaliseBase(rawBase);
@@ -55,22 +70,7 @@ export default function Document() {
                   window.MonacoEnvironment = {
                     baseUrl: base,
                     getWorkerUrl: function (moduleId, label) {
-                      var workerMap = {
-                        json: 'language/json/jsonWorker.js',
-                        css: 'language/css/cssWorker.js',
-                        scss: 'language/css/cssWorker.js',
-                        less: 'language/css/cssWorker.js',
-                        html: 'language/html/htmlWorker.js',
-                        handlebars: 'language/html/htmlWorker.js',
-                        razor: 'language/html/htmlWorker.js',
-                        typescript: 'language/typescript/tsWorker.js',
-                        javascript: 'language/typescript/tsWorker.js',
-                      };
-                      var resolved =
-                        (label && workerMap[label]) ||
-                        (label === 'editorWorkerService' ? 'base/worker/workerMain.js' : null) ||
-                        'base/worker/workerMain.js';
-                      return joinPath(base, resolved);
+                      return createWorkerUrl(base, label || '');
                     },
                   };
 
