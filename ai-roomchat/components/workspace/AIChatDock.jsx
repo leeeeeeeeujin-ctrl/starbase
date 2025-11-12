@@ -691,7 +691,7 @@ export default function AIChatDock({ onClose }) {
         <div style={styles.body}>
           <section style={styles.chatColumn}>
             {keyringMessage && <div style={styles.infoBanner}>{keyringMessage}</div>}
-            {chatError && <div style={styles.errorBanner}>{chatError}</div>}            </div>
+            {chatError && <div style={styles.errorBanner}>{chatError}</div>}
 
             <div ref={logRef} style={styles.logPanel}>
               <ChatLog logs={logs} />
