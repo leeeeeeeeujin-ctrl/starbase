@@ -54,7 +54,11 @@ const MAX_ATTACHMENT_BYTES = 2 * 1024 * 1024;
 const HISTORY_SLICE = 12;
 const MAX_AUTO_CHAIN_DEPTH = 4;
 const ACTION_ALLOWLIST_PATH = 'workspace/config/ai-actions-allowlist.json';
-const POLICY_LABELS = {\n  allow: '허용',\n  prompt: '확인',\n  deny: '거부',\n};
+const POLICY_LABELS = {
+  allow: '허용',
+  prompt: '확인',
+  deny: '거부',
+};
 
 export default function AIChatDock({ onClose }) {
   const panelRef = useRef(null);
