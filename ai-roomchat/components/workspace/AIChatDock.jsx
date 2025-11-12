@@ -691,27 +691,7 @@ export default function AIChatDock({ onClose }) {
         <div style={styles.body}>
           <section style={styles.chatColumn}>
             {keyringMessage && <div style={styles.infoBanner}>{keyringMessage}</div>}
-            {chatError && <div style={styles.errorBanner}>{chatError}</div>}
-            <div style={styles.statusRow}>
-              <div style={styles.badgeRow}>
-                {statusBadges.map((badge, index) => (
-                  <span
-                    key={`${badge.label}-${index}`}
-                    style={{
-                      ...styles.badge,
-                      ...(badge.tone === 'ok'
-                        ? styles.badgeOk
-                        : badge.tone === 'warn'
-                        ? styles.badgeWarn
-                        : styles.badgeNeutral),
-                    }}
-                    title={badge.title}
-                  >
-                    {badge.label}
-                  </span>
-                ))}
-              </div>
-            </div>
+            {chatError && <div style={styles.errorBanner}>{chatError}</div>}            </div>
 
             <div ref={logRef} style={styles.logPanel}>
               <ChatLog logs={logs} />
@@ -1138,7 +1118,7 @@ function KeyringModal({
             <div key={entry.id} style={styles.keyEntry(entry.isActive)}>
               <div>
                 <div style={{ fontWeight: 600 }}>{formatKeyProviderLabel(entry.provider)}</div>
-                <div style={{ fontSize: 12, color: '#cbd5f5' }}>
+                <div style={{ fontSize: 12, color: '#dbeafe' }}>
                   {entry.modelLabel || entry.geminiModel || '사용자 지정 모델'}
                 </div>
                 <div style={{ fontSize: 11, color: '#9ca3af' }}>
@@ -1246,7 +1226,7 @@ function HistoryPanel({ sessions, currentId, onSelect, onDelete, onNewChat, onCl
                   onClick={() => onSelect(session.id)}
                 >
                   <div style={{ fontWeight: 600 }}>{session.title || '제목 없음'}</div>
-                  <div style={{ fontSize: 11, color: '#94a3b8' }}>
+                  <div style={{ fontSize: 11, color: '#b6c2d9' }}>
                     {preview || '메시지가 없습니다.'}
                   </div>
                 </button>
@@ -1798,7 +1778,7 @@ const styles = {
   },
   subtitle: {
     margin: 0,
-    color: '#94a3b8',
+    color: '#b6c2d9',
     fontSize: 12,
   },
   headerToolbar: {
@@ -1876,34 +1856,26 @@ const styles = {
   },
   logPanel: {
     flex: 1,
-    border: '1px solid #1f2937',
+    border: '1px solid #273449',
     borderRadius: 14,
     padding: 12,
     background: '#020617',
     overflowY: 'auto',
     color: '#e2e8f0',
   },
-  logBubble: {
-    padding: 12,
-    borderRadius: 10,
-    border: '1px solid rgba(148,163,184,0.2)',
-    whiteSpace: 'pre-wrap',
-    fontSize: 13,
-    color: '#e2e8f0',
-    lineHeight: 1.6,
-  },
-  logUser: { background: 'rgba(37,99,235,0.15)', borderColor: 'rgba(96,165,250,0.4)' },
-  logAssistant: { background: 'rgba(30,64,175,0.25)', borderColor: 'rgba(129,140,248,0.5)' },
-  logSystem: { background: 'rgba(15,23,42,0.4)', borderColor: 'rgba(148,163,184,0.3)' },
-  logError: { background: 'rgba(127,29,29,0.3)', borderColor: 'rgba(248,113,113,0.4)' },
-  logAction: { background: 'rgba(15,118,110,0.25)', borderColor: 'rgba(45,212,191,0.4)' },
+  logBubble: {\n    padding: 12,\n    borderRadius: 14,\n    border: '1px solid rgba(148,163,184,0.25)',\n    whiteSpace: 'pre-wrap',\n    fontSize: 13,\n    lineHeight: 1.6,\n    maxWidth: '82%',\n    alignSelf: 'flex-start',\n    boxShadow: '0 8px 24px rgba(0,0,0,0.25)',\n  },
+  logUser: { background: 'rgba(167,139,250,0.18)', borderColor: '#a78bfa', alignSelf: 'flex-end', color: '#f5f3ff' },
+  logAssistant: { background: 'rgba(96,165,250,0.15)', borderColor: '#60a5fa', alignSelf: 'flex-start', color: '#eaf2ff' },
+  logSystem: { background: 'rgba(2,6,23,0.5)', borderColor: 'rgba(148,163,184,0.35)', color: '#cbd5e1' },
+  logError: { background: 'rgba(127,29,29,0.3)', borderColor: 'rgba(248,113,113,0.5)', color: '#fee2e2' },
+  logAction: { background: 'rgba(13,148,136,0.22)', borderColor: 'rgba(45,212,191,0.45)', color: '#ccfbf1' },
   logAttachmentList: {
     marginTop: 8,
     fontSize: 11,
-    color: '#cbd5f5',
+    color: '#dbeafe',
   },
   attachmentsBar: {
-    border: '1px solid #1f2937',
+    border: '1px solid #273449',
     borderRadius: 12,
     padding: 8,
     background: '#050d1c',
@@ -1921,7 +1893,7 @@ const styles = {
     borderRadius: 999,
     padding: '2px 10px',
     fontSize: 12,
-    color: '#cbd5f5',
+    color: '#dbeafe',
   },
   attachmentRemove: {
     marginLeft: 6,
@@ -1943,7 +1915,7 @@ const styles = {
     lineHeight: 1.35,
   },
   composerBar: {
-    border: '1px solid #1f2937',
+    border: '1px solid #273449',
     borderRadius: 14,
     padding: '6px 8px',
     background: '#030a17',
@@ -1989,9 +1961,9 @@ const styles = {
     width: 32,
     height: 36,
     borderRadius: 10,
-    border: '1px solid #1f2937',
+    border: '1px solid #273449',
     background: '#0b1222',
-    color: '#cbd5f5',
+    color: '#dbeafe',
     fontSize: 14,
     cursor: 'pointer',
   },
@@ -2044,7 +2016,7 @@ const styles = {
   },
   historyPanel: {
     width: 240,
-    border: '1px solid #1f2937',
+    border: '1px solid #273449',
     borderRadius: 14,
     padding: 12,
     display: 'flex',
@@ -2064,7 +2036,7 @@ const styles = {
     overflowY: 'auto',
   },
   historyItem: {
-    border: '1px solid #1f2937',
+    border: '1px solid #273449',
     borderRadius: 12,
     padding: 8,
     display: 'flex',
@@ -2100,7 +2072,7 @@ const styles = {
     maxHeight: '90vh',
     overflowY: 'auto',
     borderRadius: 16,
-    border: '1px solid #1f2937',
+    border: '1px solid #273449',
     background: '#030712',
     padding: 16,
     display: 'flex',
@@ -2119,7 +2091,7 @@ const styles = {
   },
   modalSubtitle: {
     margin: 0,
-    color: '#94a3b8',
+    color: '#b6c2d9',
     fontSize: 12,
   },
   modalSection: {
@@ -2196,7 +2168,7 @@ const styles = {
     border: '1px dashed #334155',
     borderRadius: 12,
     padding: 12,
-    color: '#94a3b8',
+    color: '#b6c2d9',
     textAlign: 'center',
   },
   instructionsTextarea: {
@@ -2214,7 +2186,7 @@ const styles = {
     right: 40,
     width: 260,
     background: '#020617',
-    border: '1px solid #1f2937',
+    border: '1px solid #273449',
     borderRadius: 12,
     padding: 14,
     display: 'flex',
@@ -2236,7 +2208,7 @@ const styles = {
   },
   menuValue: {
     fontSize: 12,
-    color: '#94a3b8',
+    color: '#b6c2d9',
   },
   menuButton: {
     width: '100%',
@@ -2256,7 +2228,7 @@ const styles = {
   menuListButton: {
     width: '100%',
     borderRadius: 8,
-    border: '1px solid #1f2937',
+    border: '1px solid #273449',
     background: '#050d1c',
     color: '#e2e8f0',
     padding: '8px 10px',
@@ -2268,7 +2240,7 @@ const styles = {
     flexDirection: 'column',
     gap: 6,
     fontSize: 12,
-    color: '#cbd5f5',
+    color: '#dbeafe',
   },
   menuPath: {
     fontFamily: 'monospace',
@@ -2289,7 +2261,7 @@ const styles = {
     right: 8,
     width: 260,
     borderRadius: 12,
-    border: '1px solid #1f2937',
+    border: '1px solid #273449',
     background: '#050b18',
     boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
     padding: 12,
@@ -2325,7 +2297,7 @@ const styles = {
   }),
   allowlistNote: {
     fontSize: 11,
-    color: '#94a3b8',
+    color: '#b6c2d9',
   },
   autoHint: {
     marginTop: 6,
@@ -2333,6 +2305,11 @@ const styles = {
     color: '#8ea2c8',
   },
 };
+
+
+
+
+
 
 
 
