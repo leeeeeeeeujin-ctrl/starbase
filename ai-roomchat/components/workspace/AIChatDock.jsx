@@ -592,12 +592,36 @@ export default function AIChatDock({ onClose }) {
             <button
               type="button"
               style={styles.toolbarButton}
+              onClick={() => {
+                startNewChat();
+                setMenuOpen(false);
+              }}
+              title="새 대화"
+              aria-label="새 대화"
+            >
+              새 대화
+            </button>
+            <button
+              type="button"
+              style={styles.toolbarButton}
               data-ai-chat-menu-trigger
               onClick={() => setMenuOpen((prev) => !prev)}
-              title="도구 메뉴"
-              aria-label="도구 메뉴"
+              title="정보 / 설정"
+              aria-label="정보 / 설정"
             >
-              ⋯
+              정보
+            </button>
+            <button
+              type="button"
+              style={styles.toolbarButton}
+              onClick={() => {
+                setKeyringOpen(true);
+                reloadKeyring();
+              }}
+              title="API 키 추가"
+              aria-label="API 키 추가"
+            >
+              +
             </button>
             <button
               type="button"
