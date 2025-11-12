@@ -535,7 +535,7 @@ export default function AIChatDock({ onClose }) {
     ]
   );
 
-  const panelModeLabel = prefs.mode === 'fullscreen' ? '-' : '+';
+  const panelModeLabel = prefs.mode === 'fullscreen' ? '창' : '전';
 
   const backdropStyle = prefs.mode === 'fullscreen' ? styles.backdropFullscreen : styles.backdropWindow;
   const panelBaseStyle = prefs.mode === 'fullscreen' ? styles.panelFullscreen : styles.panelWindow;
@@ -561,7 +561,7 @@ export default function AIChatDock({ onClose }) {
         >
           <div style={styles.headerInfo}>
             <h2 style={styles.title}>AI 코드 채팅</h2>
-            <p style={styles.subtitle}>에디터를 가리지 않고 돕는 보조 창</p>
+            <p style={styles.subtitle}>에디터와 나란히 쓰는 실험용 패널</p>
           </div>
           <div style={styles.headerToolbar} data-stop-drag="true">
             <button
@@ -570,33 +570,14 @@ export default function AIChatDock({ onClose }) {
               onClick={handleHistoryToggle}
               title="대화 기록"
             >
-              기
-            </button>
-            <button
-              type="button"
-              style={styles.toolbarButton}
-              onClick={() => setInstructionsOpen(true)}
-              title="사용자 지침"
-            >
-              지
-            </button>
-            <button
-              type="button"
-              style={styles.toolbarButton}
-              onClick={() => {
-                setKeyringOpen(true);
-                reloadKeyring();
-              }}
-              title="API 키"
-            >
-              키
+              기록
             </button>
             <button
               type="button"
               style={styles.toolbarButton}
               data-ai-chat-menu-trigger
               onClick={() => setMenuOpen((prev) => !prev)}
-              title="도구 설정"
+              title="도구 메뉴"
             >
               ⋯
             </button>
@@ -605,12 +586,12 @@ export default function AIChatDock({ onClose }) {
               style={styles.toolbarButton}
               onClick={handleToggleMode}
               data-stop-drag="true"
-              title={prefs.mode === 'fullscreen' ? '창 모드' : '전체 화면'}
+              title={prefs.mode === 'fullscreen' ? '창 모드로 전환' : '전체 화면으로 전환'}
             >
               {panelModeLabel}
             </button>
             <button type="button" style={styles.closeButton} onClick={onClose} title="닫기">
-              닫
+              닫기
             </button>
           </div>
         </header>
@@ -1227,7 +1208,7 @@ function DockMenu({
       <div style={styles.menuSection}>
         <div style={styles.menuRow}>
           <label>
-            <input type="checkbox" checked={historyOpen} onChange={onToggleHistory} /> 히스토리 표시
+            <input type="checkbox" checked={historyOpen} onChange={onToggleHistory} /> 기록 패널
           </label>
         </div>
         <button type="button" style={styles.menuButton} onClick={onNewChat}>
@@ -1249,28 +1230,29 @@ function DockMenu({
           onChange={(event) => onTrustLimitChange(Number(event.target.value))}
           style={{ width: '100%' }}
         />
-        <small>한 번에 허용할 자동 작업 횟수입니다.</small>
+        <small>허용 횟수만큼 자동 작업을 실행합니다.</small>
       </div>
       <div style={styles.menuSection}>
         <label style={styles.menuRow}>
-          <input type="checkbox" checked={sandboxEnabled} onChange={onToggleSandbox} /> 샌드박스 작업 허용
+          <input type="checkbox" checked={sandboxEnabled} onChange={onToggleSandbox} /> 샌드박스 작업
         </label>
         <label style={styles.menuRow}>
-          <input type="checkbox" checked={testerEnabled} onChange={onToggleTester} /> 간이 테스트 환경
+          <input type="checkbox" checked={testerEnabled} onChange={onToggleTester} /> 간이 테스트
         </label>
       </div>
       <div style={styles.menuSection}>
-        <button type="button" style={styles.menuButton} onClick={onOpenInstructions}>
-          사용자 지침 편집
-        </button>
-        <button type="button" style={styles.menuButton} onClick={onOpenKeyring}>
-          API 키 관리
-        </button>
+        <div style={styles.menuList}>
+          <button type="button" style={styles.menuListButton} onClick={onOpenInstructions}>
+            사용자 지침 관리
+          </button>
+          <button type="button" style={styles.menuListButton} onClick={onOpenKeyring}>
+            API 키 관리
+          </button>
+        </div>
       </div>
     </div>
   );
 }
-
 function ChatLog({ logs }) {
   if (!logs.length) {
     return <div style={styles.emptyState}>아직 메시지가 없습니다.</div>;
@@ -2131,6 +2113,21 @@ const styles = {
     color: '#e2e8f0',
     padding: '6px 10px',
     marginTop: 6,
+    cursor: 'pointer',
+  },
+  menuList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  menuListButton: {
+    width: '100%',
+    borderRadius: 8,
+    border: '1px solid #1f2937',
+    background: '#050d1c',
+    color: '#e2e8f0',
+    padding: '8px 10px',
+    textAlign: 'left',
     cursor: 'pointer',
   },
   emptyState: {
