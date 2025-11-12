@@ -512,7 +512,7 @@ export default function AIChatDock({ onClose }) {
         label: chatOptions.trustEnabled ? '신O' : '신X',
         tone: chatOptions.trustEnabled ? 'ok' : 'neutral',
         title: chatOptions.trustEnabled
-          ? 신뢰 모드 회 허용
+          ? `신뢰 모드 ${chatOptions.trustLimit}회 허용`
           : '신뢰 모드 꺼짐',
       },
       {
