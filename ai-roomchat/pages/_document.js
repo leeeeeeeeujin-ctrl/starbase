@@ -1,7 +1,7 @@
 import { Html, Head, Main, NextScript } from 'next/document';
 import Script from 'next/script';
 
-const DEFAULT_MONACO_BASE = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs';
+const DEFAULT_MONACO_BASE = '/monaco/vs';
 const rawBase = process.env.NEXT_PUBLIC_MONACO_BASE_URL?.trim();
 const MONACO_BASE = rawBase && rawBase.length > 0 ? rawBase : DEFAULT_MONACO_BASE;
 const MONACO_BASE_SCRIPT_VALUE = JSON.stringify(MONACO_BASE);
