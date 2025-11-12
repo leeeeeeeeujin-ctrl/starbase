@@ -35,6 +35,26 @@ export default function Document() {
                 }
                 return trimmed;
               }
+              function createWorkerBlob(base, label) {
+                if (typeof URL === 'function' && typeof Blob === 'function') {
+                  var source =
+                    "self.MonacoEnvironment = self.MonacoEnvironment || {};" +
+                    "self.MonacoEnvironment.baseUrl = '" + base + "';" +
+                    "self.MONACO_WORKER_LABEL = '" + label + "';" +
+                    "importScripts('" + base + "/base/worker/workerMain.js');";
+                  try {
+                    var blob = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+                    console.info('[monaco] created worker blob', { label: label, url: blob });
+                    return blob;
+                  } catch (err) {
+                    console.error('[monaco] failed to create worker blob', err);
+                  }
+                } else {
+                  console.warn('[monaco] Blob/URL API not available; fallback worker URL will be used');
+                }
+                return null;
+              }
+
               function assignEnvironment() {
                 if (typeof window === 'undefined') return;
                 var base = normaliseBase(rawBase);
@@ -42,7 +62,11 @@ export default function Document() {
                 var env = window.MonacoEnvironment || {};
                 env.baseUrl = base;
                 env.getWorkerUrl = function (moduleId, label) {
-                  return base + '/base/worker/workerMain.js';
+                  var blobUrl = createWorkerBlob(base, label || '');
+                  if (blobUrl) return blobUrl;
+                  var fallback = base + '/base/worker/workerMain.js';
+                  console.warn('[monaco] using fallback worker url', fallback);
+                  return fallback;
                 };
                 window.MonacoEnvironment = env;
                 try {
