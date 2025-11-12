@@ -1683,6 +1683,7 @@ const styles = {
     flexDirection: 'column',
     boxShadow: '0 24px 60px rgba(0,0,0,0.45)',
     position: 'relative',
+    touchAction: 'none',
   },
   panelFullscreen: {
     pointerEvents: 'auto',
@@ -1703,6 +1704,7 @@ const styles = {
     padding: '16px 20px',
     borderBottom: '1px solid #1f2a3b',
     cursor: 'grab',
+    touchAction: 'none',
   },
   headerInfo: {
     display: 'flex',
