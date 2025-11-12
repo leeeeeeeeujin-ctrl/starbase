@@ -1,7 +1,7 @@
 ﻿import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
 
 const STORAGE_KEY = 'workspace:aiChat:sessions.v1';
-const DEFAULT_TITLE = 'Untitled Chat';
+const DEFAULT_TITLE = '제목 없음';
 
 const createSession = () => ({
   id: `s_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,

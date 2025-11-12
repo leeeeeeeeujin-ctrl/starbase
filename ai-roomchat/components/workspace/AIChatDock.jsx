@@ -25,10 +25,10 @@ import {
 import { persistRankKeyringSnapshot, readRankKeyringSnapshot } from '@/lib/rank/keyringStorage';
 
 const PROMPT_HEADER = [
-  'You are the Starbase workspace assistant.',
-  'Respond with JSON only: {"message":string,"actions?":[], "followup?":string}.',
-  'When edits, tests, or queries are required, emit actions instead of asking the user to do them manually.',
-  'Keep explanations concise and continue execution until blocked.',
+  '당신은 Starbase 워크스페이스에서 코드를 도와주는 어시스턴트입니다.',
+  '항상 JSON 형식으로만 응답하세요: {"message":string,"actions?":[], "followup?":string}.',
+  '수정/테스트/검색이 필요하면 사용자가 직접 하도록 요구하지 말고 actions 항목으로 실행 계획을 제시하세요.',
+  '설명은 간결하게, 막히기 전까지는 스스로 다음 단계를 이어가세요.',
 ].join('\n');
 
 const DOCK_PREFS_KEY = 'workspace:aiChat:prefs.v2';
@@ -252,8 +252,8 @@ export default function AIChatDock({ onClose }) {
       let error = '';
       files.forEach((file) => {
         if (next.length >= MAX_ATTACHMENTS) return;
-        if (file.size > MAX_ATTACHMENT_BYTES) {
-          error = `Files must be <= ${formatBytes(MAX_ATTACHMENT_BYTES)}.`;
+      if (file.size > MAX_ATTACHMENT_BYTES) {
+        error = `파일은 ${formatBytes(MAX_ATTACHMENT_BYTES)} 이하만 업로드할 수 있습니다.`;
           return;
         }
         next = [...next, createAttachmentMeta(file)];
@@ -331,7 +331,7 @@ export default function AIChatDock({ onClose }) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.ok) {
-        throw Object.assign(new Error(data?.error || 'AI request failed'), {
+        throw Object.assign(new Error(data?.error || 'AI 응답을 받지 못했습니다.'), {
           status: res.status,
           detail: data,
         });
@@ -350,7 +350,7 @@ export default function AIChatDock({ onClose }) {
         return;
       }
       if (!canAutoRun) {
-        const warning = `AI requested ${normalizedActions.length} action(s) but trust mode is off.`;
+        const warning = `AI가 ${normalizedActions.length}개의 작업을 요청했지만 신뢰 모드가 꺼져 있습니다.`;
         workingLogs.push({ role: 'system', msg: warning });
         append('system', warning);
         return;
@@ -391,13 +391,13 @@ export default function AIChatDock({ onClose }) {
     const trimmed = input.trim();
     if (!trimmed) return;
     if (!sessionUser?.id) {
-      setChatError('Sign in is required before sending messages.');
-      append('error', 'Login is required before sending messages.');
+      setChatError('로그인 후에만 메시지를 보낼 수 있습니다.');
+      append('error', '로그인 후에만 메시지를 보낼 수 있습니다.');
       return;
     }
     if (!hasActiveKey) {
-      setChatError('Activate at least one API key to talk to Gemini.');
-      append('error', 'No active API key is available.');
+      setChatError('Gemini와 대화하려면 활성화된 API 키가 필요합니다.');
+      append('error', '활성화된 API 키가 없습니다.');
       return;
     }
 
@@ -416,7 +416,7 @@ export default function AIChatDock({ onClose }) {
       });
     } catch (error) {
       console.error('[AIChatDock] send failed', error);
-      const message = error?.message || 'Request failed.';
+      const message = error?.message || '요청을 처리하지 못했습니다.';
       setChatError(message);
       append('error', { message, detail: error?.detail || null });
     } finally {
@@ -446,19 +446,19 @@ export default function AIChatDock({ onClose }) {
   const statusBadges = useMemo(() => {
     const badges = [];
     badges.push({
-      label: hasActiveKey ? 'Key ready' : 'API key missing',
+      label: hasActiveKey ? 'API 키 준비' : 'API 키 없음',
       tone: hasActiveKey ? 'ok' : 'warn',
     });
     badges.push({
-      label: chatOptions.trustEnabled ? `Trust ${chatOptions.trustLimit}` : 'Trust off',
+      label: chatOptions.trustEnabled ? `신뢰 모드 ${chatOptions.trustLimit}회` : '신뢰 모드 꺼짐',
       tone: chatOptions.trustEnabled ? 'ok' : 'neutral',
     });
     badges.push({
-      label: chatOptions.sandboxEnabled ? 'Sandbox on' : 'Sandbox off',
+      label: chatOptions.sandboxEnabled ? '샌드박스 ON' : '샌드박스 OFF',
       tone: chatOptions.sandboxEnabled ? 'ok' : 'neutral',
     });
     badges.push({
-      label: chatOptions.testHarness ? 'Tester on' : 'Tester off',
+      label: chatOptions.testHarness ? '간이 테스트 ON' : '간이 테스트 OFF',
       tone: chatOptions.testHarness ? 'ok' : 'neutral',
     });
     return badges;
@@ -472,14 +472,17 @@ export default function AIChatDock({ onClose }) {
 
   const panelModeLabel = prefs.mode === 'fullscreen' ? '−' : '+';
 
+  const backdropStyle = prefs.mode === 'fullscreen' ? styles.backdropFullscreen : styles.backdropWindow;
+  const panelBaseStyle = prefs.mode === 'fullscreen' ? styles.panelFullscreen : styles.panelWindow;
+
   return (
-    <div style={styles.backdrop}>
+    <div style={backdropStyle}>
       <div
         ref={panelRef}
         style={{
-          ...styles.panel,
+          ...panelBaseStyle,
           ...(prefs.mode === 'fullscreen'
-            ? styles.panelFullscreen
+            ? {}
             : {
                 width: `${prefs.size.width}px`,
                 height: `${prefs.size.height}px`,
@@ -492,9 +495,9 @@ export default function AIChatDock({ onClose }) {
           onPointerDown={(event) => beginPointerInteraction(event, 'move')}
         >
           <div>
-            <h2 style={styles.title}>AI Code Chat</h2>
+            <h2 style={styles.title}>AI 코드 채팅</h2>
             <p style={styles.subtitle}>
-              Local history stays on this device. Use the menu for API keys and preferences.
+              대화 기록은 이 기기에만 저장됩니다. 메뉴에서 API 키와 환경 설정을 관리할 수 있어요.
             </p>
           </div>
           <div style={styles.headerActions} data-stop-drag="true">
@@ -530,7 +533,7 @@ export default function AIChatDock({ onClose }) {
               {panelModeLabel}
             </button>
             <button type="button" style={styles.closeButton} onClick={onClose}>
-              ×
+              닫기
             </button>
           </div>
         </header>
@@ -566,7 +569,7 @@ export default function AIChatDock({ onClose }) {
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
                 onKeyDown={handleInputKeyDown}
-                placeholder="Ask the workspace assistant..."
+                placeholder="도움이 필요한 내용을 입력하세요..."
                 style={styles.chatInput}
               />
               <div style={styles.composerFooter}>
@@ -576,11 +579,11 @@ export default function AIChatDock({ onClose }) {
                     style={styles.attachButton}
                     onClick={() => fileInputRef.current?.click()}
                   >
-                    Attach
+                    파일 첨부
                   </button>
                   {autoStatus.running && (
                     <span style={styles.autoStatus}>
-                      Auto actions running ({autoStatus.remaining} left)
+                      자동 작업 실행 중 (남은 {autoStatus.remaining}회)
                     </span>
                   )}
                 </div>
@@ -590,7 +593,7 @@ export default function AIChatDock({ onClose }) {
                   onClick={handleSend}
                   disabled={sending || !input.trim() || !hasActiveKey}
                 >
-                  {sending ? 'Sending…' : 'Send'}
+                  {sending ? '전송 중...' : '보내기'}
                 </button>
               </div>
             </div>
@@ -713,8 +716,12 @@ function sanitizeDockPrefs(prefs) {
     ...DEFAULT_DOCK_PREFS,
     ...prefs,
     position: {
-      x: Number.isFinite(prefs?.position?.x) ? prefs.position.x : DEFAULT_DOCK_PREFS.position.x,
-      y: Number.isFinite(prefs?.position?.y) ? prefs.position.y : DEFAULT_DOCK_PREFS.position.y,
+      x: Number.isFinite(prefs?.position?.x)
+        ? prefs.position.x
+        : computeDefaultPosition(prefs.size).x,
+      y: Number.isFinite(prefs?.position?.y)
+        ? prefs.position.y
+        : computeDefaultPosition(prefs.size).y,
     },
     size: {
       width: Math.max(MIN_WIDTH, Number(prefs?.size?.width) || DEFAULT_DOCK_PREFS.size.width),
@@ -749,7 +756,7 @@ function useKeyringController({ sessionUser, getSessionToken }) {
   const load = useCallback(async () => {
     if (!sessionUser?.id) {
       setEntries([]);
-      setMessage('Sign in to link an API key.');
+      setMessage('로그인하면 API 키를 연결할 수 있습니다.');
       return;
     }
     setLoading(true);
@@ -763,7 +770,7 @@ function useKeyringController({ sessionUser, getSessionToken }) {
       const nextEntries = payload.entries || [];
       setEntries(nextEntries);
       setLimit(Number.isFinite(payload?.limit) ? Number(payload.limit) : KEYRING_LIMIT_FALLBACK);
-      setMessage(nextEntries.length ? '' : 'Register a Gemini key to enable chat.');
+      setMessage(nextEntries.length ? '' : 'Gemini API 키를 등록하면 채팅을 시작할 수 있습니다.');
       applySnapshot(sessionUser.id, nextEntries);
     } catch (err) {
       console.error('[AIChatDock] failed to load keyring', err);
@@ -780,7 +787,7 @@ function useKeyringController({ sessionUser, getSessionToken }) {
   const register = useCallback(async () => {
     if (!pendingKey.trim() || submitting) return;
     if (!sessionUser?.id) {
-      setError(new Error('Sign in before registering an API key.'));
+      setError(new Error('API 키를 등록하려면 로그인하세요.'));
       return;
     }
     setSubmitting(true);
@@ -914,28 +921,28 @@ function KeyringModal({
       <div style={styles.modal}>
         <div style={styles.modalHeader}>
           <div>
-            <h3 style={styles.modalTitle}>API Key Manager</h3>
+            <h3 style={styles.modalTitle}>API 키 관리</h3>
             <p style={styles.modalSubtitle}>
-              Stored keys are encrypted through Supabase. Limit {entries.length}/{limit}.
+              저장된 키는 Supabase에서 암호화되어 보관됩니다. {entries.length}/{limit}
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button type="button" style={styles.secondaryButton} onClick={onRefresh}>
-              Refresh
+              새로고침
             </button>
             <button type="button" style={styles.secondaryButton} onClick={onClose}>
-              Close
+              닫기
             </button>
           </div>
         </div>
         {message && <div style={styles.infoBox}>{message}</div>}
-        {loading && <div style={styles.infoBox}>Loading keyring…</div>}
-        {error && <div style={styles.errorBox}>{error.message || 'Keyring error.'}</div>}
+        {loading && <div style={styles.infoBox}>키 정보를 불러오는 중입니다…</div>}
+        {error && <div style={styles.errorBox}>{error.message || '키 정보를 읽어 오는 중 오류가 발생했습니다.'}</div>}
         <div style={styles.modalSection}>
           <textarea
             value={pendingKey}
             onChange={(event) => setPendingKey(event.target.value)}
-            placeholder="Paste your Gemini API key (it stays encrypted in Supabase)."
+            placeholder="Gemini API 키를 붙여넣으면 Supabase에 암호화되어 저장됩니다."
             style={styles.keyInput}
           />
           <button
@@ -944,31 +951,31 @@ function KeyringModal({
             onClick={onRegister}
             disabled={!pendingKey.trim() || submitting}
           >
-            {submitting ? 'Saving…' : 'Save & Activate'}
+            {submitting ? '저장 중...' : '저장하고 활성화'}
           </button>
         </div>
         <div style={styles.keyList}>
-          {entries.length === 0 && <div style={styles.emptyBox}>No keys stored yet.</div>}
+          {entries.length === 0 && <div style={styles.emptyBox}>저장된 키가 없습니다.</div>}
           {entries.map((entry) => (
             <div key={entry.id} style={styles.keyEntry(entry.isActive)}>
               <div>
                 <div style={{ fontWeight: 600 }}>{formatKeyProviderLabel(entry.provider)}</div>
                 <div style={{ fontSize: 12, color: '#cbd5f5' }}>
-                  {entry.modelLabel || entry.geminiModel || 'Custom model'}
+                  {entry.modelLabel || entry.geminiModel || '사용자 지정 모델'}
                 </div>
                 <div style={{ fontSize: 11, color: '#9ca3af' }}>
                   {entry.keySample || '••••••'}
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {entry.isActive && <span style={styles.activeBadge}>Active</span>}
+                {entry.isActive && <span style={styles.activeBadge}>사용 중</span>}
                 <button
                   type="button"
                   style={styles.smallButton(false)}
                   onClick={() => (entry.isActive ? onDeactivate(entry) : onActivate(entry))}
                   disabled={submitting}
                 >
-                  {entry.isActive ? 'Deactivate' : 'Make active'}
+                  {entry.isActive ? '비활성화' : '활성화'}
                 </button>
                 <button
                   type="button"
@@ -976,7 +983,7 @@ function KeyringModal({
                   onClick={() => onRemove(entry)}
                   disabled={submitting}
                 >
-                  Remove
+                  삭제
                 </button>
               </div>
             </div>
@@ -994,29 +1001,29 @@ function InstructionsModal({ initialValue, onSave, onClose }) {
       <div style={styles.modal}>
         <div style={styles.modalHeader}>
           <div>
-            <h3 style={styles.modalTitle}>User Instructions</h3>
-            <p style={styles.modalSubtitle}>These instructions are injected into each prompt.</p>
+            <h3 style={styles.modalTitle}>사용자 지침</h3>
+            <p style={styles.modalSubtitle}>입력한 지침은 모든 프롬프트에 함께 전달됩니다.</p>
           </div>
           <button type="button" style={styles.secondaryButton} onClick={onClose}>
-            Close
+            닫기
           </button>
         </div>
         <textarea
           value={value}
           onChange={(event) => setValue(event.target.value)}
           style={styles.instructionsTextarea}
-          placeholder="Example: Prefer TypeScript, keep commits atomic, avoid deleting tests."
+          placeholder="예: 타입스크립트를 우선으로 사용하고, 커밋은 기능 단위로 분리해 주세요."
         />
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
           <button type="button" style={styles.secondaryButton} onClick={() => setValue('')}>
-            Clear
+            초기화
           </button>
           <button
             type="button"
             style={styles.primaryButton(!value && !initialValue)}
             onClick={() => onSave(value)}
           >
-            Save
+            저장
           </button>
         </div>
       </div>
@@ -1027,9 +1034,9 @@ function HistoryPanel({ sessions, currentId, onSelect, onDelete, onNewChat }) {
   return (
     <aside style={styles.historyPanel}>
       <div style={styles.historyHeader}>
-        <h4 style={{ margin: 0 }}>History</h4>
+        <h4 style={{ margin: 0 }}>대화 기록</h4>
         <button type="button" style={styles.secondaryButton} onClick={onNewChat}>
-          New chat
+          새 대화
         </button>
       </div>
       <div style={styles.historyList}>
@@ -1043,22 +1050,22 @@ function HistoryPanel({ sessions, currentId, onSelect, onDelete, onNewChat }) {
           return (
             <div
               key={session.id}
-              style={{
-                ...styles.historyItem,
-                borderColor: active ? '#38bdf8' : '#1e293b',
-                background: active ? 'rgba(14,165,233,0.08)' : 'transparent',
-              }}
+            style={{
+              ...styles.historyItem,
+              borderColor: active ? '#38bdf8' : '#1e293b',
+              background: active ? 'rgba(14,165,233,0.08)' : 'transparent',
+            }}
             >
               <button
                 type="button"
                 style={styles.historySelectButton}
                 onClick={() => onSelect(session.id)}
-              >
-                <div style={{ fontWeight: 600 }}>{session.title || 'Untitled Chat'}</div>
-                <div style={{ fontSize: 11, color: '#94a3b8' }}>
-                  {preview || 'No messages yet.'}
-                </div>
-              </button>
+            >
+              <div style={{ fontWeight: 600 }}>{session.title || '제목 없음'}</div>
+              <div style={{ fontSize: 11, color: '#94a3b8' }}>
+                  {preview || '메시지가 없습니다.'}
+              </div>
+            </button>
               <button type="button" style={styles.historyDeleteButton} onClick={() => onDelete(session.id)}>
                 ×
               </button>
@@ -1083,7 +1090,7 @@ function AttachmentsBar({ attachments, onRemove, onPick, error }) {
           </span>
         ))}
         <button type="button" style={styles.secondaryButton} onClick={onPick}>
-          + Add file
+          + 파일 추가
         </button>
       </div>
       {error && <div style={styles.errorText}>{error}</div>}
@@ -1111,17 +1118,17 @@ function DockMenu({
       <div style={styles.menuSection}>
         <div style={styles.menuRow}>
           <label>
-            <input type="checkbox" checked={historyOpen} onChange={onToggleHistory} /> Show history panel
+            <input type="checkbox" checked={historyOpen} onChange={onToggleHistory} /> 히스토리 표시
           </label>
         </div>
         <button type="button" style={styles.menuButton} onClick={onNewChat}>
-          Start a new chat
+          새 대화 시작
         </button>
       </div>
       <div style={styles.menuSection}>
         <div style={styles.menuRow}>
           <label>
-            <input type="checkbox" checked={trustEnabled} onChange={onToggleTrust} /> Trust mode
+            <input type="checkbox" checked={trustEnabled} onChange={onToggleTrust} /> 신뢰 모드
           </label>
           <span style={styles.menuValue}>{trustLimit}</span>
         </div>
@@ -1133,22 +1140,22 @@ function DockMenu({
           onChange={(event) => onTrustLimitChange(Number(event.target.value))}
           style={{ width: '100%' }}
         />
-        <small>Maximum automatic actions per turn.</small>
+        <small>한 번에 허용할 자동 작업 횟수입니다.</small>
       </div>
       <div style={styles.menuSection}>
         <label style={styles.menuRow}>
-          <input type="checkbox" checked={sandboxEnabled} onChange={onToggleSandbox} /> Sandbox actions
+          <input type="checkbox" checked={sandboxEnabled} onChange={onToggleSandbox} /> 샌드박스 작업 허용
         </label>
         <label style={styles.menuRow}>
-          <input type="checkbox" checked={testerEnabled} onChange={onToggleTester} /> Simple test harness
+          <input type="checkbox" checked={testerEnabled} onChange={onToggleTester} /> 간이 테스트 환경
         </label>
       </div>
       <div style={styles.menuSection}>
         <button type="button" style={styles.menuButton} onClick={onOpenInstructions}>
-          Edit user instructions
+          사용자 지침 편집
         </button>
         <button type="button" style={styles.menuButton} onClick={onOpenKeyring}>
-          Manage API keys
+          API 키 관리
         </button>
       </div>
     </div>
@@ -1157,7 +1164,7 @@ function DockMenu({
 
 function ChatLog({ logs }) {
   if (!logs.length) {
-    return <div style={styles.emptyState}>No messages yet.</div>;
+    return <div style={styles.emptyState}>아직 메시지가 없습니다.</div>;
   }
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -1228,7 +1235,7 @@ async function runActionsAndSummarize({ actions, budget, append, getSessionToken
   try {
     token = await getSessionToken();
   } catch (err) {
-    append('error', { message: err.message || 'Missing session for actions.' });
+    append('error', { message: err.message || '작업을 수행하려면 로그인이 필요합니다.' });
     setAutoStatus({ running: false, executed: 0, remaining });
     return { remainingBudget: remaining };
   }
@@ -1310,23 +1317,23 @@ async function executeWorkspaceAction(action, token) {
 
 function buildActionSummary(executed, remainingBudget) {
   const lines = executed.map((entry, index) => {
-    const status = entry.result?.ok ? 'ok' : entry.result?.error || 'failed';
+    const status = entry.result?.ok ? '성공' : entry.result?.error || '실패';
     const target = entry.action.path ? ` (${entry.action.path})` : '';
     return `#${index + 1} ${entry.action.type}${target} → ${status}`;
   });
   const visibleLog = [
-    'Action report:',
+    '자동 작업 요약',
     ...lines,
     remainingBudget > 0
-      ? `Trust budget remaining: ${remainingBudget}`
-      : 'Trust budget exhausted. Awaiting user input.',
+      ? `남은 신뢰 예산: ${remainingBudget}`
+      : '신뢰 예산이 모두 소진되었습니다. 사용자 입력을 기다립니다.',
   ].join('\n');
   const promptForModel = [
     '<<ACTION_RESULTS>>',
     ...lines,
     remainingBudget > 0
-      ? 'Continue without waiting for the user unless clarification is required.'
-      : 'Trust budget is exhausted. Summarize the state and wait for the user.',
+      ? '추가 설명이 필요하지 않다면 사용자 응답을 기다리지 말고 계속 진행하세요.'
+      : '신뢰 예산이 없으므로 현재 상태를 요약하고 사용자 입력을 기다리세요.',
   ].join('\n');
   return { visibleLog, promptForModel };
 }
@@ -1335,17 +1342,17 @@ function buildModelPayload({ logs, requestText, attachmentBundle, options }) {
   const history = (logs || []).slice(-HISTORY_SLICE).map(convertLogToContent).filter(Boolean);
   const headerLines = [
     PROMPT_HEADER,
-    options.userInstructions ? `User instructions: ${options.userInstructions}` : null,
+    options.userInstructions ? `사용자 지침: ${options.userInstructions}` : null,
     options.trustEnabled
-      ? `Auto actions: enabled (max ${options.remainingBudget ?? options.trustLimit} steps per turn).`
-      : 'Auto actions: disabled. Ask before running tools.',
+      ? `자동 작업: 사용 (이번 회차 최대 ${options.remainingBudget ?? options.trustLimit}회).`
+      : '자동 작업: 사용 안 함. 도구 실행 전 사용자에게 확인하세요.',
     options.sandboxEnabled
-      ? 'Sandbox mode is ON. File edits/tests are allowed via actions.'
-      : 'Sandbox mode is OFF. Avoid destructive changes.',
+      ? '샌드박스 모드: 켜짐 (파일 수정/테스트 작업 허용).'
+      : '샌드박스 모드: 꺼짐 (파괴적 변경은 피하세요).',
     options.testHarness
-      ? 'Simple test harness is available. Use it when validating scripts.'
-      : 'Simple test harness is unavailable.',
-    attachmentBundle?.summary ? `Attachments:\n${attachmentBundle.summary}` : null,
+      ? '간이 테스트 환경을 사용할 수 있습니다.'
+      : '간이 테스트 환경을 사용할 수 없습니다.',
+    attachmentBundle?.summary ? `첨부 파일:\n${attachmentBundle.summary}` : null,
   ]
     .filter(Boolean)
     .join('\n\n');
@@ -1372,7 +1379,7 @@ function convertLogToContent(entry) {
   } else if (entry.msg?.message) {
     text = entry.msg.message;
   } else if (entry.msg?.action) {
-    text = `Action ${entry.msg.action.type}: ${JSON.stringify(entry.msg.result || {})}`;
+    text = `작업 ${entry.msg.action.type}: ${JSON.stringify(entry.msg.result || {})}`;
   } else if (entry.msg) {
     text = JSON.stringify(entry.msg);
   }
@@ -1471,6 +1478,18 @@ function clampPosition(position, width, height) {
   };
 }
 
+function computeDefaultPosition(size) {
+  if (typeof window === 'undefined') {
+    return { ...DEFAULT_DOCK_PREFS.position };
+  }
+  const usableWidth = Math.min(size?.width || DEFAULT_DOCK_PREFS.size.width, window.innerWidth - 32);
+  const usableHeight = Math.min(size?.height || DEFAULT_DOCK_PREFS.size.height, window.innerHeight - 32);
+  return {
+    x: Math.max(16, window.innerWidth - usableWidth - 24),
+    y: Math.max(16, window.innerHeight - usableHeight - 24),
+  };
+}
+
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
@@ -1505,30 +1524,45 @@ function formatBytes(value) {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 const styles = {
-  backdrop: {
+  backdropWindow: {
     position: 'fixed',
     inset: 0,
-    background: 'rgba(2, 6, 23, 0.88)',
-    padding: 24,
+    pointerEvents: 'none',
+    background: 'transparent',
     zIndex: 2000,
+  },
+  backdropFullscreen: {
+    position: 'fixed',
+    inset: 0,
+    pointerEvents: 'auto',
+    background: 'rgba(2, 6, 23, 0.85)',
     display: 'flex',
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 24,
+    zIndex: 2000,
   },
-  panel: {
+  panelWindow: {
+    pointerEvents: 'auto',
+    width: '420px',
+    height: '600px',
+    background: 'rgba(5, 11, 22, 0.95)',
+    border: '1px solid #131c2f',
+    borderRadius: 20,
+    display: 'flex',
+    flexDirection: 'column',
+    boxShadow: '0 24px 60px rgba(0,0,0,0.45)',
+  },
+  panelFullscreen: {
+    pointerEvents: 'auto',
+    width: 'calc(100vw - 48px)',
+    height: 'calc(100vh - 48px)',
     background: '#040b18',
     border: '1px solid #1e293b',
     borderRadius: 18,
     display: 'flex',
     flexDirection: 'column',
     boxShadow: '0 20px 40px rgba(0,0,0,0.45)',
-    maxWidth: '96vw',
-    maxHeight: '94vh',
-  },
-  panelFullscreen: {
-    width: 'calc(100vw - 48px)',
-    height: 'calc(100vh - 48px)',
-    transform: 'translate3d(0, 0, 0)',
   },
   header: {
     display: 'flex',
