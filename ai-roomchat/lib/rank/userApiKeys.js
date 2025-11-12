@@ -147,7 +147,21 @@ function b64ToBuf(b64) {
 }
 
 function deriveAesKey(secret) {
-  return crypto.createHash('sha256').update(String(secret || '')).digest();
+  const normalized = String(secret || '').trim();
+  if (!normalized) {
+    throw new Error('RANK_API_KEY_SECRET is required for decryption');
+  }
+
+  try {
+    const decoded = Buffer.from(normalized, 'base64');
+    if (decoded.length === 32) {
+      return decoded;
+    }
+  } catch (error) {
+    // ignore, fallback to hash derivation
+  }
+
+  return crypto.createHash('sha256').update(normalized, 'utf8').digest();
 }
 
 export async function decryptParts({ ciphertextB64, ivB64, tagB64 }, secret) {
