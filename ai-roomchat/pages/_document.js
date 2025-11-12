@@ -37,13 +37,17 @@ export default function Document() {
                 }
                 return trimmed;
               }
-              function createWorkerBlob(base, label) {
+              function createWorkerBlob(rootBase, vsBase, label) {
                 if (typeof URL === 'function' && typeof Blob === 'function') {
-                  var source =
-                    "self.MonacoEnvironment = self.MonacoEnvironment || {};" +
-                    "self.MonacoEnvironment.baseUrl = '" + base + "';" +
-                    "self.MONACO_WORKER_LABEL = '" + label + "';" +
-                    "importScripts('" + base + "/base/worker/workerMain.js');";
+                  var cleanRoot = (rootBase || '').replace(/\/$/, '');
+                  var cleanVs = (vsBase || '').replace(/\/$/, '');
+                  var workerEntry = cleanVs + '/base/worker/workerMain.js';
+                  var source = [
+                    "self.MonacoEnvironment = self.MonacoEnvironment || {};",
+                    "self.MonacoEnvironment.baseUrl = " + JSON.stringify(cleanRoot) + ";",
+                    "self.MONACO_WORKER_LABEL = " + JSON.stringify(label || '') + ";",
+                    "importScripts(" + JSON.stringify(workerEntry) + ");",
+                  ].join('\\n');
                   try {
                     var blob = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
                     console.info('[monaco] created worker blob', { label: label, url: blob });
@@ -65,7 +69,7 @@ export default function Document() {
                 var env = window.MonacoEnvironment || {};
                 env.baseUrl = normalizedRoot;
                 env.getWorkerUrl = function (moduleId, label) {
-                  var blobUrl = createWorkerBlob(normalizedVs, label || '');
+                  var blobUrl = createWorkerBlob(normalizedRoot, normalizedVs, label || '');
                   if (blobUrl) return blobUrl;
                   var fallback = normalizedVs + '/base/worker/workerMain.js';
                   console.warn('[monaco] using fallback worker url', fallback);
@@ -74,7 +78,7 @@ export default function Document() {
                 window.MonacoEnvironment = env;
                 try {
                   var sampleUrl = env.getWorkerUrl(null, 'json');
-                  console.info('[monaco] env assigned', { baseUrl: base, sampleWorker: sampleUrl });
+                  console.info('[monaco] env assigned', { baseUrl: normalizedRoot, sampleWorker: sampleUrl });
                 } catch (envErr) {
                   console.error('[monaco] failed to sample worker url', envErr);
                 }
