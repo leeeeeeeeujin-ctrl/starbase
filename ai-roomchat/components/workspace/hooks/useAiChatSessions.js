@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
 
 const STORAGE_KEY = 'workspace:aiChat:sessions.v1';
+const DEFAULT_TITLE = 'Untitled Chat';
 
 const createSession = () => ({
   id: `s_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-  title: '새 대화',
+  title: DEFAULT_TITLE,
   createdAt: Date.now(),
   logs: [],
 });
@@ -32,9 +33,10 @@ function sessionReducer(state, action) {
         const fallback = createSession();
         return { sessions: [fallback], currentId: fallback.id };
       }
-      const nextId = action.payload.id === state.currentId
-        ? (filtered.find(hasLogs) || filtered[0]).id
-        : state.currentId;
+      const nextId =
+        action.payload.id === state.currentId
+          ? (filtered.find(hasLogs) || filtered[0]).id
+          : state.currentId;
       return { sessions: filtered, currentId: nextId };
     }
     case 'APPEND': {
@@ -42,11 +44,11 @@ function sessionReducer(state, action) {
       const nextSessions = state.sessions.map((session) => {
         if (session.id !== sessionId) return session;
         const logs = [...(session.logs || []), { t: Date.now(), role, msg }];
-        const shouldRename = session.title === '새 대화' && role === 'user';
-        const preview = typeof msg === 'string' ? msg : '';
+        const shouldRename = session.title === DEFAULT_TITLE && role === 'user';
+        const preview = typeof msg === 'string' ? msg : msg?.text || '';
         return {
           ...session,
-          title: shouldRename ? (preview.slice(0, 24) || '대화') : session.title,
+          title: shouldRename ? preview.slice(0, 48) || DEFAULT_TITLE : session.title,
           logs,
         };
       });
@@ -64,6 +66,15 @@ function sessionReducer(state, action) {
       });
       return { ...state, sessions: nextSessions };
     }
+    case 'RENAME': {
+      const { sessionId, title } = action.payload;
+      if (!sessionId || typeof title !== 'string') return state;
+      const trimmed = title.trim() || DEFAULT_TITLE;
+      const nextSessions = state.sessions.map((session) =>
+        session.id === sessionId ? { ...session, title: trimmed } : session
+      );
+      return { ...state, sessions: nextSessions };
+    }
     default:
       return state;
   }
@@ -74,7 +85,9 @@ function sanitizeLoadedSessions(raw) {
   return raw
     .map((session) => ({
       id: session?.id || createSession().id,
-      title: typeof session?.title === 'string' ? session.title : '새 대화',
+      title: typeof session?.title === 'string' && session.title.trim()
+        ? session.title
+        : DEFAULT_TITLE,
       createdAt: session?.createdAt || Date.now(),
       logs: Array.isArray(session?.logs) ? session.logs : [],
     }))
@@ -161,9 +174,13 @@ export function useAiChatSessions() {
     dispatch({ type: 'DELETE', payload: { id } });
   }, []);
 
+  const renameSession = useCallback((id, title) => {
+    dispatch({ type: 'RENAME', payload: { sessionId: id, title } });
+  }, []);
+
   const currentSession = useMemo(() => {
     if (!state.sessions.length) {
-      return { id: '', title: '새 대화', logs: [] };
+      return { id: '', title: DEFAULT_TITLE, logs: [] };
     }
     return state.sessions.find((session) => session.id === state.currentId) || state.sessions[0];
   }, [state.sessions, state.currentId]);
@@ -180,5 +197,6 @@ export function useAiChatSessions() {
     appendPreview,
     startNewChat,
     deleteSession,
+    renameSession,
   };
 }

@@ -13,12 +13,12 @@ export const promptSetsRepository = {
       return success([]);
     }
 
-    const { data, error } = await withTableQuery(supabase, 'prompt_sets', from =>
+    const { data, error } = await withTableQuery(supabase, 'prompt_sets', (from) =>
       from.select('*').eq('owner_id', ownerId).order('created_at', { ascending: false })
     );
 
     if (error) {
-      return failure(asError(error, '프롬프트 세트를 불러오지 못했습니다.'));
+      return failure(asError(error, 'Failed to load prompt sets.'));
     }
 
     return success(sortPromptSets(data || []));
@@ -26,7 +26,7 @@ export const promptSetsRepository = {
 
   async create(ownerId) {
     if (!ownerId) {
-      return failure(new Error('로그인이 필요합니다.'));
+      return failure(new Error('Login is required to create a prompt set.'));
     }
 
     const now = Date.now();
@@ -40,19 +40,19 @@ export const promptSetsRepository = {
     }
 
     const createPromise = (async () => {
-      const { data, error } = await withTableQuery(supabase, 'prompt_sets', from =>
-        from.insert({ name: '새 세트', owner_id: ownerId }).select().single()
+      const { data, error } = await withTableQuery(supabase, 'prompt_sets', (from) =>
+        from.insert({ name: 'New Prompt Set', owner_id: ownerId }).select().single()
       );
 
       if (error || !data) {
-        return failure(asError(error, '세트를 생성하지 못했습니다.'));
+        return failure(asError(error, 'Failed to create a prompt set.'));
       }
 
       recentCreate.set(ownerId, { at: Date.now(), data });
 
       try {
         const cutoffIso = new Date(Date.now() - CREATE_DEDUPE_WINDOW_MS).toISOString();
-        await withTableQuery(supabase, 'prompt_sets', from =>
+        await withTableQuery(supabase, 'prompt_sets', (from) =>
           from
             .delete()
             .eq('owner_id', ownerId)
@@ -77,15 +77,15 @@ export const promptSetsRepository = {
   async rename(id, nextName) {
     const trimmed = nextName?.trim?.() ?? '';
     if (!trimmed) {
-      return failure(new Error('세트 이름을 입력해 주세요.'));
+      return failure(new Error('Please provide a non-empty prompt set name.'));
     }
 
-    const { error } = await withTableQuery(supabase, 'prompt_sets', from =>
+    const { error } = await withTableQuery(supabase, 'prompt_sets', (from) =>
       from.update({ name: trimmed }).eq('id', id)
     );
 
     if (error) {
-      return failure(asError(error, '세트 이름을 변경하지 못했습니다.'));
+      return failure(asError(error, 'Failed to rename the prompt set.'));
     }
 
     return success(trimmed);
@@ -102,13 +102,13 @@ export const promptSetsRepository = {
         return success(true);
       }
       const j = await resp.json().catch(() => ({}));
-      return failure(asError(j?.error || '세트를 삭제하지 못했습니다.'));
+      return failure(asError(j?.error || 'Failed to remove the prompt set.'));
     } catch (e) {
       try {
         const { data: usageRows, error: usageError } = await withTableQuery(
           supabase,
           'rank_games',
-          from => from.select('id').eq('prompt_set_id', id).limit(1)
+          (from) => from.select('id').eq('prompt_set_id', id).limit(1)
         );
         if (!usageError) {
           const used = Array.isArray(usageRows)
@@ -116,19 +116,19 @@ export const promptSetsRepository = {
             : Boolean(usageRows && usageRows.id);
           if (used) {
             return failure(
-              new Error('이미 게임에 사용 중인 세트입니다. 먼저 게임에서 해제해 주세요.')
+              new Error('This prompt set is in use. Remove it from any active games first.')
             );
           }
         }
       } catch (pre) {
-        return failure(asError(pre, '세트 사용 여부 확인에 실패했습니다. 다시 시도해 주세요.'));
+        return failure(asError(pre, 'Could not verify prompt set usage. Please retry.'));
       }
 
-      const { error } = await withTableQuery(supabase, 'prompt_sets', from =>
+      const { error } = await withTableQuery(supabase, 'prompt_sets', (from) =>
         from.delete().eq('id', id)
       );
       if (error) {
-        return failure(asError(error, '세트를 삭제하지 못했습니다.'));
+        return failure(asError(error, 'Failed to delete the prompt set.'));
       }
 
       try {
