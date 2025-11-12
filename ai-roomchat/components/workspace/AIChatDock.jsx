@@ -8,6 +8,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 
 import { useAiChatSessions } from './hooks/useAiChatSessions';
 import { useSupabaseSessionToken } from './hooks/useSupabaseSessionToken';
@@ -53,11 +54,7 @@ const MAX_ATTACHMENT_BYTES = 2 * 1024 * 1024;
 const HISTORY_SLICE = 12;
 const MAX_AUTO_CHAIN_DEPTH = 4;
 const ACTION_ALLOWLIST_PATH = 'workspace/config/ai-actions-allowlist.json';
-const POLICY_LABELS = {
-  allow: '허용',
-  prompt: '매번 확인',
-  deny: '거부',
-};
+const POLICY_LABELS = {\n  allow: '허용',\n  prompt: '확인',\n  deny: '거부',\n};
 
 export default function AIChatDock({ onClose }) {
   const panelRef = useRef(null);
@@ -554,63 +551,6 @@ export default function AIChatDock({ onClose }) {
     [handleSend]
   );
 
-  const statusBadges = useMemo(() => {
-    const badges = [];
-    badges.push({
-      label: hasActiveKey ? '키 연결' : '키 필요',
-      tone: hasActiveKey ? 'ok' : 'warn',
-      title: hasActiveKey ? 'API 키가 활성화되었습니다.' : '먼저 API 키를 등록하세요.',
-    });
-    badges.push({
-      label: chatOptions.trustLimit > 1 ? `자동 ${chatOptions.trustLimit}회` : '자동 꺼짐',
-      tone: chatOptions.trustLimit > 1 ? 'ok' : 'neutral',
-      title:
-        chatOptions.trustLimit > 1
-          ? `자동 실행을 최대 ${chatOptions.trustLimit}회 허용합니다.`
-          : '자동 실행이 비활성화되어 있습니다.',
-    });
-    const sandboxTone =
-      chatOptions.sandboxPolicy === 'allow'
-        ? 'ok'
-        : chatOptions.sandboxPolicy === 'prompt'
-        ? 'neutral'
-        : 'warn';
-    const sandboxLabel =
-      chatOptions.sandboxPolicy === 'allow'
-        ? '샌드 허용'
-        : chatOptions.sandboxPolicy === 'prompt'
-        ? '샌드 확인'
-        : '샌드 차단';
-    badges.push({
-      label: sandboxLabel,
-      tone: sandboxTone,
-      title: '샌드박스 실행 정책',
-    });
-    const testerTone =
-      chatOptions.testerPolicy === 'allow'
-        ? 'ok'
-        : chatOptions.testerPolicy === 'prompt'
-        ? 'neutral'
-        : 'warn';
-    const testerLabel =
-      chatOptions.testerPolicy === 'allow'
-        ? '테스트 허용'
-        : chatOptions.testerPolicy === 'prompt'
-        ? '테스트 확인'
-        : '테스트 차단';
-    badges.push({
-      label: testerLabel,
-      tone: testerTone,
-      title: '간이 테스트 실행 정책',
-    });
-    return badges;
-  }, [
-    chatOptions.sandboxPolicy,
-    chatOptions.testerPolicy,
-    chatOptions.trustLimit,
-    hasActiveKey,
-  ]);
-
   const autoHintText = useMemo(() => {
     if (autoStatus.running) {
       return `자동 실행 중 · 남은 ${autoStatus.remaining}회`;
@@ -646,7 +586,7 @@ export default function AIChatDock({ onClose }) {
           <div style={styles.headerInfo}>
             <h2 style={styles.title}>AI 코드 채팅</h2>
           </div>
-                    <div style={styles.headerToolbar} data-stop-drag="true">
+                              <div style={styles.headerToolbar} data-stop-drag="true">
             <button
               type="button"
               style={styles.toolbarButton}
@@ -760,6 +700,13 @@ export default function AIChatDock({ onClose }) {
             <div style={styles.autoHint}>{autoHintText}</div>
           </section>
         </div>
+        {prefs.mode === 'mini' && (
+          <div
+            style={styles.resizeHandle}
+            onPointerDown={(event) => beginPointerInteraction(event, 'resize')}
+            aria-label="창 크기 조절"
+          />
+        )}
         {prefs.historyOpen && (
           <HistoryPanel
             sessions={sessions}
@@ -1074,19 +1021,22 @@ function KeyringModal({
   onRemove,
   submitting,
 }) {
-  return (
+  const modalRoot = typeof document !== 'undefined' ? document.body : null;
+  if (!modalRoot) return null;
+
+  return createPortal(
     <div style={styles.modalBackdrop}>
       <div style={styles.modal}>
         <div style={styles.modalHeader}>
           <div>
             <h3 style={styles.modalTitle}>API 키 관리</h3>
             <p style={styles.modalSubtitle}>
-              저장된 키는 Supabase에서 암호화되어 보관됩니다. {entries.length}/{limit}
+              입력한 키는 Supabase에 암호화되어 저장됩니다. {entries.length}/{limit}
             </p>
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={styles.modalHeaderButtons}>
             <button type="button" style={styles.secondaryButton} onClick={onRefresh}>
-              새로고침
+              새로 고침
             </button>
             <button type="button" style={styles.secondaryButton} onClick={onClose}>
               닫기
@@ -1094,13 +1044,15 @@ function KeyringModal({
           </div>
         </div>
         {message && <div style={styles.infoBox}>{message}</div>}
-        {loading && <div style={styles.infoBox}>키 정보를 불러오는 중입니다…</div>}
-        {error && <div style={styles.errorBox}>{error.message || '키 정보를 읽어 오는 중 오류가 발생했습니다.'}</div>}
+        {loading && <div style={styles.infoBox}>키 목록을 불러오는 중입니다…</div>}
+        {error && (
+          <div style={styles.errorBox}>{error.message || '키를 불러오는 중 오류가 발생했습니다.'}</div>
+        )}
         <div style={styles.modalSection}>
           <textarea
             value={pendingKey}
             onChange={(event) => setPendingKey(event.target.value)}
-            placeholder="Gemini API 키를 붙여넣으면 Supabase에 암호화되어 저장됩니다."
+            placeholder="예: AIza... / Gemini API 키를 붙여 넣으세요."
             style={styles.keyInput}
           />
           <button
@@ -1109,31 +1061,29 @@ function KeyringModal({
             onClick={onRegister}
             disabled={!pendingKey.trim() || submitting}
           >
-            {submitting ? '저장 중...' : '저장하고 활성화'}
+            {submitting ? '등록 중…' : '등록하고 활성화'}
           </button>
         </div>
-        <div style={styles.keyList}>
-          {entries.length === 0 && <div style={styles.emptyBox}>저장된 키가 없습니다.</div>}
+        <div style={styles.keyGrid}>
+          {entries.length === 0 && <div style={styles.emptyBox}>등록된 키가 없습니다.</div>}
           {entries.map((entry) => (
-            <div key={entry.id} style={styles.keyEntry(entry.isActive)}>
-              <div>
-                <div style={{ fontWeight: 600 }}>{formatKeyProviderLabel(entry.provider)}</div>
-                <div style={{ fontSize: 12, color: '#dbeafe' }}>
-                  {entry.modelLabel || entry.geminiModel || '사용자 지정 모델'}
-                </div>
-                <div style={{ fontSize: 11, color: '#9ca3af' }}>
-                  {entry.keySample || '••••••'}
-                </div>
+            <div key={entry.id} style={styles.keyEntryCard}>
+              <div style={styles.keyMeta}>
+                <span style={styles.keyProvider}>{formatKeyProviderLabel(entry.provider)}</span>
+                {entry.isActive && <span style={styles.activeBadge}>활성</span>}
               </div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {entry.isActive && <span style={styles.activeBadge}>사용 중</span>}
+              <div style={styles.keyDetails}>
+                <span>{entry.modelLabel || entry.geminiModel || '모델 정보 없음'}</span>
+                <code style={styles.keySample}>{entry.keySample || '****'}</code>
+              </div>
+              <div style={styles.keyActions}>
                 <button
                   type="button"
                   style={styles.smallButton(false)}
                   onClick={() => (entry.isActive ? onDeactivate(entry) : onActivate(entry))}
                   disabled={submitting}
                 >
-                  {entry.isActive ? '비활성화' : '활성화'}
+                  {entry.isActive ? '비활성화' : '이 키 사용'}
                 </button>
                 <button
                   type="button"
@@ -1148,11 +1098,51 @@ function KeyringModal({
           ))}
         </div>
       </div>
-    </div>
+    </div>,
+    modalRoot
   );
 }
 
 function InstructionsModal({ initialValue, onSave, onClose }) {
+  const [value, setValue] = useState(initialValue || '');
+  const modalRoot = typeof document !== 'undefined' ? document.body : null;
+  if (!modalRoot) return null;
+
+  return createPortal(
+    <div style={styles.modalBackdrop}>
+      <div style={styles.modal}>
+        <div style={styles.modalHeader}>
+          <div>
+            <h3 style={styles.modalTitle}>사용자 지침</h3>
+            <p style={styles.modalSubtitle}>입력한 지침은 프로젝트 전체에 공유됩니다.</p>
+          </div>
+          <button type="button" style={styles.secondaryButton} onClick={onClose}>
+            닫기
+          </button>
+        </div>
+        <textarea
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          style={styles.instructionsTextarea}
+          placeholder="예: 테스트를 실행할 때는 로그를 모두 요약해 주세요."
+        />
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+          <button type="button" style={styles.secondaryButton} onClick={() => setValue('')}>
+            초기화
+          </button>
+          <button
+            type="button"
+            style={styles.primaryButton(!value && !initialValue)}
+            onClick={() => onSave(value)}
+          >
+            저장
+          </button>
+        </div>
+      </div>
+    </div>,
+    modalRoot
+  );
+}function InstructionsModal({ initialValue, onSave, onClose }) {
   const [value, setValue] = useState(initialValue || '');
   return (
     <div style={styles.modalBackdrop}>
@@ -1301,7 +1291,7 @@ function DockMenu({
       </div>
       <div style={styles.menuSection}>
         <div style={styles.menuInfo}>
-          실행 버튼 옆 ▼ 메뉴에서 샌드박스·테스트 권한을 허용/거부할 수 있습니다.
+          실행 버튼 옆 ▼ 메뉴에서 샌드박스·테스트 권한을 설정할 수 있습니다.
           <div style={styles.menuPath}>{allowlistPath}</div>
           <button type="button" style={styles.menuButton} onClick={onCopyAllowlistPath}>
             경로 복사
@@ -1313,6 +1303,44 @@ function DockMenu({
 }
 
 function RunPolicyMenu({
+  sandboxPolicy,
+  testerPolicy,
+  onChangeSandbox,
+  onChangeTester,
+  allowlistPath,
+}) {
+  const renderButtons = (active, onChange) =>
+    ['allow', 'prompt', 'deny'].map((policy) => (
+      <button
+        key={policy}
+        type="button"
+        style={styles.policyButton(active === policy)}
+        onClick={() => onChange(policy)}
+      >
+        {POLICY_LABELS[policy]}
+      </button>
+    ));
+
+  return (
+    <div style={styles.runMenu} data-run-menu="true">
+      <div style={styles.runMenuSection}>
+        <div style={styles.policyRow}>
+          <span>샌드박스 작업</span>
+        </div>
+        <div style={styles.policyButtons}>{renderButtons(sandboxPolicy, onChangeSandbox)}</div>
+      </div>
+      <div style={styles.runMenuSection}>
+        <div style={styles.policyRow}>
+          <span>간이 테스트</span>
+        </div>
+        <div style={styles.policyButtons}>{renderButtons(testerPolicy, onChangeTester)}</div>
+      </div>
+      <div style={styles.allowlistNote}>
+        '허용'을 선택하면 동일 명령은 {allowlistPath}에 기록되어 자동 실행됩니다.
+      </div>
+    </div>
+  );
+}function RunPolicyMenu({
   sandboxPolicy,
   testerPolicy,
   onChangeSandbox,
@@ -1761,7 +1789,7 @@ const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '16px 20px',
+    padding: '12px 16px',
     borderBottom: '1px solid #1f2a3b',
     cursor: 'grab',
     touchAction: 'none',
@@ -1787,37 +1815,37 @@ const styles = {
     gap: 6,
   },
   toolbarButton: {
-    minWidth: 42,
-    height: 32,
-    borderRadius: 10,
-    border: '1px solid #2c3549',
-    background: '#0f172a',
-    color: '#e2e8f0',
+    minWidth: 36,
+    height: 30,
+    borderRadius: 9,
+    border: '1px solid #2b3145',
+    background: '#0d1424',
+    color: '#e0e7ff',
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '0 10px',
-    fontWeight: 600,
-    fontSize: 13,
+    padding: '0 8px',
+    fontWeight: 500,
+    fontSize: 12,
     lineHeight: 1,
     whiteSpace: 'nowrap',
     cursor: 'pointer',
   },
   closeButton: {
-    minWidth: 40,
-    height: 32,
-    borderRadius: 12,
+    minWidth: 34,
+    height: 30,
+    borderRadius: 10,
     border: '1px solid #b91c1c',
     background: '#7f1d1d',
     color: '#fee2e2',
-    fontSize: 18,
+    fontSize: 16,
     cursor: 'pointer',
   },
   body: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 10,
-    padding: '10px 14px',
+    gap: 8,
+    padding: '10px 12px',
     flex: 1,
     minHeight: 0,
   },
@@ -1827,32 +1855,6 @@ const styles = {
     flexDirection: 'column',
     gap: 10,
     minHeight: 0,
-  },
-  statusRow: {
-    marginTop: 4,
-    marginBottom: 4,
-  },
-  badgeRow: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  badge: {
-    padding: '2px 8px',
-    borderRadius: 999,
-    fontSize: 11,
-  },
-  badgeOk: {
-    border: '1px solid #8b5cf6',
-    color: '#d8b4fe',
-  },
-  badgeWarn: {
-    border: '1px solid #f97316',
-    color: '#ffd8b4',
-  },
-  badgeNeutral: {
-    border: '1px solid #2d3a4e',
-    color: '#cfd6ea',
   },
   logPanel: {
     flex: 1,
@@ -1958,8 +1960,8 @@ const styles = {
   sendButton: (disabled) => ({
     borderRadius: 12,
     border: '1px solid #8b5cf6',
-    background: disabled ? '#0f172a' : '#7c3aed',
-    color: '#e0f2fe',
+    background: disabled ? '#2d1b46' : '#7c3aed',
+    color: '#f3e8ff',
     width: 36,
     height: 36,
     fontSize: 18,
@@ -2095,6 +2097,11 @@ const styles = {
     alignItems: 'center',
     gap: 12,
   },
+  modalHeaderButtons: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
   modalTitle: {
     margin: 0,
     color: '#e2e8f0',
@@ -2112,40 +2119,67 @@ const styles = {
   keyInput: {
     width: '100%',
     minHeight: 80,
-    borderRadius: 10,
-    border: '1px solid #334155',
-    background: '#020617',
-    color: '#e2e8f0',
-    padding: 10,
+    borderRadius: 12,
+    border: '1px solid #2a3245',
+    background: '#050b18',
+    color: '#e5edff',
+    padding: 12,
   },
-  keyList: {
+  keyGrid: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+  },
+  keyEntryCard: {
+    border: '1px solid #2a3245',
+    borderRadius: 14,
+    padding: 14,
+    background: '#070d1a',
     display: 'flex',
     flexDirection: 'column',
     gap: 10,
   },
-  keyEntry: (active) => ({
-    border: `1px solid ${active ? '#0ea5e9' : '#1f2937'}`,
-    borderRadius: 12,
-    padding: 12,
+  keyMeta: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+  },
+  keyProvider: {
+    fontWeight: 600,
+    color: '#f8fafc',
+  },
+  keyDetails: {
     display: 'flex',
     justifyContent: 'space-between',
-    gap: 12,
     flexWrap: 'wrap',
-  }),
+    gap: 8,
+    fontSize: 13,
+    color: '#cbd5f5',
+  },
+  keySample: {
+    fontFamily: 'monospace',
+    fontSize: 12,
+    color: '#a5b4fc',
+  },
+  keyActions: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
   activeBadge: {
     fontSize: 10,
     padding: '2px 8px',
     borderRadius: 999,
-    background: '#0d9488',
-    color: '#ecfeff',
+    background: '#7c3aed',
+    color: '#f3e8ff',
     textTransform: 'uppercase',
   },
   smallButton: (disabled) => ({
     borderRadius: 8,
-    border: '1px solid #2563eb',
-    background: disabled ? '#0f172a' : '#172554',
-    color: '#bfdbfe',
-    padding: '4px 8px',
+    border: '1px solid #7c3aed',
+    background: disabled ? '#2a1a44' : '#3b1d74',
+    color: '#f3e8ff',
+    padding: '4px 10px',
     fontSize: 12,
     cursor: disabled ? 'not-allowed' : 'pointer',
   }),
@@ -2185,9 +2219,9 @@ const styles = {
     width: '100%',
     minHeight: 200,
     borderRadius: 12,
-    border: '1px solid #334155',
-    background: '#020617',
-    color: '#e2e8f0',
+    border: '1px solid #2a3245',
+    background: '#050b18',
+    color: '#e5edff',
     padding: 12,
   },
   menu: {
@@ -2309,12 +2343,28 @@ const styles = {
     fontSize: 11,
     color: '#b6c2d9',
   },
+  resizeHandle: {
+    position: 'absolute',
+    width: 18,
+    height: 18,
+    right: 8,
+    bottom: 8,
+    borderBottom: '2px solid rgba(148,163,184,0.6)',
+    borderRight: '2px solid rgba(148,163,184,0.6)',
+    borderBottomRightRadius: 4,
+    cursor: 'nwse-resize',
+  },
   autoHint: {
     marginTop: 6,
     fontSize: 12,
     color: '#8ea2c8',
   },
 };
+
+
+
+
+
 
 
 
