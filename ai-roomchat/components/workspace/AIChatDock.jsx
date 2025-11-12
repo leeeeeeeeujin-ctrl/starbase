@@ -1189,7 +1189,7 @@ function HistoryPanel({ sessions, currentId, onSelect, onDelete, onNewChat, onCl
   );
 }
 
-function AttachmentsBar({ attachments, onRemove, error }) {({ attachments, onRemove, error }) {
+function AttachmentsBar({ attachments, onRemove, error }) {
   return (
     <div style={styles.attachmentsBar}>
       <div style={styles.attachmentRow}>
