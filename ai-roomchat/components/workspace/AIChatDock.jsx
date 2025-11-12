@@ -162,6 +162,9 @@ export default function AIChatDock({ onClose }) {
   const handlePointerMove = useCallback((event) => {
     const state = pointerStateRef.current;
     if (!state || event.pointerId !== state.pointerId) return;
+    if (event.cancelable) {
+      event.preventDefault();
+    }
     const el = panelRef.current;
     if (!el) return;
     const dx = event.clientX - state.startX;
@@ -271,7 +274,7 @@ export default function AIChatDock({ onClose }) {
       };
       pointerStateRef.current = state;
       el.setPointerCapture?.(event.pointerId);
-      window.addEventListener('pointermove', handlePointerMove, { passive: true });
+      window.addEventListener('pointermove', handlePointerMove, { passive: false });
       window.addEventListener('pointerup', handlePointerUp);
       window.addEventListener('pointercancel', handlePointerCancel);
     },
@@ -501,8 +504,6 @@ export default function AIChatDock({ onClose }) {
     [handleSend]
   );
 
-  const panelModeLabel = prefs.mode === 'fullscreen' ? '창' : '전';
-
   const backdropStyle = prefs.mode === 'fullscreen' ? styles.backdropFullscreen : styles.backdropWindow;
   const panelBaseStyle = prefs.mode === 'fullscreen' ? styles.panelFullscreen : styles.panelWindow;
 
@@ -527,7 +528,6 @@ export default function AIChatDock({ onClose }) {
         >
           <div style={styles.headerInfo}>
             <h2 style={styles.title}>AI 코드 채팅</h2>
-            <p style={styles.subtitle}>에디터와 나란히 쓰는 실험용 패널</p>
           </div>
           <div style={styles.headerToolbar} data-stop-drag="true">
             <button
@@ -535,6 +535,7 @@ export default function AIChatDock({ onClose }) {
               style={styles.toolbarButton}
               onClick={handleHistoryToggle}
               title="대화 기록"
+              aria-label="대화 기록"
             >
               기록
             </button>
@@ -544,6 +545,7 @@ export default function AIChatDock({ onClose }) {
               data-ai-chat-menu-trigger
               onClick={() => setMenuOpen((prev) => !prev)}
               title="도구 메뉴"
+              aria-label="도구 메뉴"
             >
               ⋯
             </button>
@@ -553,11 +555,18 @@ export default function AIChatDock({ onClose }) {
               onClick={handleToggleMode}
               data-stop-drag="true"
               title={prefs.mode === 'fullscreen' ? '창 모드로 전환' : '전체 화면으로 전환'}
+              aria-label={prefs.mode === 'fullscreen' ? '창 모드로 전환' : '전체 화면으로 전환'}
             >
-              {panelModeLabel}
+              {prefs.mode === 'fullscreen' ? '▣' : '⛶'}
             </button>
-            <button type="button" style={styles.closeButton} onClick={onClose} title="닫기">
-              닫기
+            <button
+              type="button"
+              style={styles.closeButton}
+              onClick={onClose}
+              title="닫기"
+              aria-label="닫기"
+            >
+              ×
             </button>
           </div>
         </header>
@@ -585,6 +594,7 @@ export default function AIChatDock({ onClose }) {
                 style={styles.attachCircle}
                 onClick={handlePickAttachment}
                 title="파일 첨부"
+                aria-label="파일 첨부"
               >
                 +
               </button>
@@ -1632,23 +1642,30 @@ const styles = {
     gap: 6,
   },
   toolbarButton: {
-    width: 32,
+    minWidth: 42,
     height: 32,
     borderRadius: 10,
-    border: '1px solid #334155',
+    border: '1px solid #2c3549',
     background: '#0f172a',
     color: '#e2e8f0',
-    cursor: 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '0 10px',
     fontWeight: 600,
+    fontSize: 13,
+    lineHeight: 1,
+    whiteSpace: 'nowrap',
+    cursor: 'pointer',
   },
   closeButton: {
-    width: 34,
-    height: 34,
+    minWidth: 40,
+    height: 32,
     borderRadius: 12,
     border: '1px solid #b91c1c',
     background: '#7f1d1d',
     color: '#fee2e2',
-    fontSize: 14,
+    fontSize: 18,
     cursor: 'pointer',
   },
   body: {
