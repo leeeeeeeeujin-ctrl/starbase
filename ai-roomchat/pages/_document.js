@@ -1,10 +1,12 @@
 import { Html, Head, Main, NextScript } from 'next/document';
 import Script from 'next/script';
 
-const DEFAULT_MONACO_BASE = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs';
+const DEFAULT_MONACO_ROOT = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min';
 const rawBase = process.env.NEXT_PUBLIC_MONACO_BASE_URL?.trim();
-const MONACO_BASE = rawBase && rawBase.length > 0 ? rawBase : DEFAULT_MONACO_BASE;
-const MONACO_BASE_SCRIPT_VALUE = JSON.stringify(MONACO_BASE);
+const MONACO_ROOT = rawBase && rawBase.length > 0 ? rawBase : DEFAULT_MONACO_ROOT;
+const MONACO_VS = `${MONACO_ROOT.replace(/\/$/, '')}/vs`;
+const MONACO_ROOT_SCRIPT_VALUE = JSON.stringify(MONACO_ROOT);
+const MONACO_VS_SCRIPT_VALUE = JSON.stringify(MONACO_VS);
 
 export default function Document() {
   return (
@@ -14,7 +16,8 @@ export default function Document() {
         <Script id="monaco-env-setup" strategy="beforeInteractive">
           {`
             (function () {
-              var rawBase = ${MONACO_BASE_SCRIPT_VALUE};
+              var baseRoot = ${MONACO_ROOT_SCRIPT_VALUE};
+              var vsPath = ${MONACO_VS_SCRIPT_VALUE};
               function resolveOrigin() {
                 if (typeof window === 'undefined') return '';
                 if (window.location && window.location.origin) return window.location.origin;
@@ -23,9 +26,9 @@ export default function Document() {
                 return protocol && host ? protocol + '//' + host : '';
               }
               function normaliseBase(input) {
-                if (!input) return resolveOrigin() + '/monaco/vs';
+                if (!input) return resolveOrigin() + '/monaco';
                 var trimmed = String(input).trim();
-                if (!trimmed) return resolveOrigin() + '/monaco/vs';
+                if (!trimmed) return resolveOrigin() + '/monaco';
                 if (/^https?:\\/\\//i.test(trimmed)) return trimmed.replace(/\\/+$/, '');
                 if (trimmed.startsWith('//')) {
                   return (window.location ? window.location.protocol : 'https:') + trimmed;
@@ -57,7 +60,7 @@ export default function Document() {
 
               function assignEnvironment() {
                 if (typeof window === 'undefined') return;
-                var base = normaliseBase(rawBase);
+                var base = normaliseBase(baseRoot);
                 window.__MONACO_BASE_URL__ = base;
                 var env = window.MonacoEnvironment || {};
                 env.baseUrl = base;
@@ -103,43 +106,15 @@ export default function Document() {
             })();
           `}
         </Script>
-        <Script src={`${MONACO_BASE}/loader.js`} strategy="beforeInteractive" />
+        <Script src={`${MONACO_VS}/loader.js`} strategy="beforeInteractive" />
         <Script id="monaco-env" strategy="beforeInteractive">
           {`
             (function () {
-              var rawBase = ${MONACO_BASE_SCRIPT_VALUE};
-              function resolveOrigin() {
-                if (typeof window === 'undefined') return '';
-                if (window.location && window.location.origin) return window.location.origin;
-                var protocol = window.location ? window.location.protocol : 'https:';
-                var host = window.location ? window.location.host : '';
-                return protocol && host ? protocol + '//' + host : '';
-              }
-              function normaliseBase(input) {
-                if (!input) return resolveOrigin() + '/monaco/vs';
-                var trimmed = String(input).trim();
-                if (!trimmed) return resolveOrigin() + '/monaco/vs';
-                if (/^https?:\\/\\//i.test(trimmed)) return trimmed.replace(/\\/+$/, '');
-                if (trimmed.startsWith('//')) {
-                  return (window.location ? window.location.protocol : 'https:') + trimmed;
-                }
-                if (trimmed.startsWith('/')) {
-                  return resolveOrigin() + trimmed;
-                }
-                return trimmed;
-              }
-              function joinPath(base, segment) {
-                var left = (base || '').replace(/\\/+$/, '');
-                var right = (segment || '').replace(/^\\/+/, '');
-                return left + '/' + right;
-              }
+              var vsPath = ${MONACO_VS_SCRIPT_VALUE};
               function setup() {
                 if (typeof window === 'undefined') return;
-                var base = normaliseBase(rawBase);
                 if (typeof window.__MONACO_ASSIGN_ENV__ === 'function') {
                   window.__MONACO_ASSIGN_ENV__();
-                } else {
-                  window.__MONACO_BASE_URL__ = base;
                 }
                 function ensure() {
                   if (typeof window.require !== 'function') {
@@ -151,7 +126,7 @@ export default function Document() {
                   if (!window.__MONACO_INIT__) {
                     window.__MONACO_INIT__ = new Promise(function (resolve, reject) {
                       try {
-                        window.require.config({ paths: { vs: base } });
+                        window.require.config({ paths: { vs: vsPath } });
                       } catch (configErr) {
                         console.error('[monaco] require.config failed', configErr);
                         reject(configErr);
