@@ -61,6 +61,33 @@ export default function Document() {
                   return blobUrl || base + '/base/worker/workerMain.js';
                 };
                 window.MonacoEnvironment = env;
+                try {
+                  var sampleUrl = env.getWorkerUrl(null, 'json');
+                  console.info('[monaco] env assigned', { baseUrl: base, sampleWorker: sampleUrl });
+                } catch (envErr) {
+                  console.error('[monaco] failed to sample worker url', envErr);
+                }
+                try {
+                  fetch(base + '/base/worker/workerMain.js', { method: 'HEAD' })
+                    .then(function (res) {
+                      console.info('[monaco] workerMain HEAD', res.status, res.statusText);
+                    })
+                    .catch(function (err) {
+                      console.error('[monaco] workerMain HEAD failed', err);
+                    });
+                } catch (headErr) {
+                  console.error('[monaco] workerMain HEAD threw', headErr);
+                }
+                try {
+                  var cspMeta = document.querySelector('meta[http-equiv="Content-Security-Policy"]');
+                  if (cspMeta) {
+                    console.info('[monaco] meta CSP', cspMeta.content || '');
+                  } else {
+                    console.info('[monaco] meta CSP not found');
+                  }
+                } catch (cspErr) {
+                  console.error('[monaco] meta CSP inspection failed', cspErr);
+                }
                 window.__MONACO_ENV_READY__ = true;
               }
               assignEnvironment();
