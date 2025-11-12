@@ -35,21 +35,6 @@ export default function Document() {
                 }
                 return trimmed;
               }
-              function createWorkerBlob(base, label) {
-                if (typeof URL === 'function' && typeof Blob === 'function') {
-                  var source =
-                    "self.MonacoEnvironment = self.MonacoEnvironment || {};" +
-                    "self.MonacoEnvironment.baseUrl = '" + base + "';" +
-                    "self.MONACO_WORKER_LABEL = '" + label + "';" +
-                    "importScripts('" + base + "/base/worker/workerMain.js');";
-                  try {
-                    return URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
-                  } catch (err) {
-                    console.error('[monaco] failed to create worker blob', err);
-                  }
-                }
-                return null;
-              }
               function assignEnvironment() {
                 if (typeof window === 'undefined') return;
                 var base = normaliseBase(rawBase);
@@ -57,8 +42,7 @@ export default function Document() {
                 var env = window.MonacoEnvironment || {};
                 env.baseUrl = base;
                 env.getWorkerUrl = function (moduleId, label) {
-                  var blobUrl = createWorkerBlob(base, label || '');
-                  return blobUrl || base + '/base/worker/workerMain.js';
+                  return base + '/base/worker/workerMain.js';
                 };
                 window.MonacoEnvironment = env;
                 try {
