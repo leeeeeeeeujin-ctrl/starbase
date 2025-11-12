@@ -501,40 +501,6 @@ export default function AIChatDock({ onClose }) {
     [handleSend]
   );
 
-  const statusBadges = useMemo(
-    () => [
-      {
-        label: hasActiveKey ? '키O' : '키X',
-        tone: hasActiveKey ? 'ok' : 'warn',
-        title: hasActiveKey ? 'API 키 연결됨' : 'API 키 필요',
-      },
-      {
-        label: chatOptions.trustEnabled ? '신O' : '신X',
-        tone: chatOptions.trustEnabled ? 'ok' : 'neutral',
-        title: chatOptions.trustEnabled
-          ? `신뢰 모드 ${chatOptions.trustLimit}회 허용`
-          : '신뢰 모드 꺼짐',
-      },
-      {
-        label: chatOptions.sandboxEnabled ? '샌O' : '샌X',
-        tone: chatOptions.sandboxEnabled ? 'ok' : 'neutral',
-        title: chatOptions.sandboxEnabled ? '샌드박스 사용 중' : '샌드박스 꺼짐',
-      },
-      {
-        label: chatOptions.testHarness ? '테O' : '테X',
-        tone: chatOptions.testHarness ? 'ok' : 'neutral',
-        title: chatOptions.testHarness ? '간이 테스트 허용' : '테스트 꺼짐',
-      },
-    ],
-    [
-      chatOptions.sandboxEnabled,
-      chatOptions.testHarness,
-      chatOptions.trustEnabled,
-      chatOptions.trustLimit,
-      hasActiveKey,
-    ]
-  );
-
   const panelModeLabel = prefs.mode === 'fullscreen' ? '창' : '전';
 
   const backdropStyle = prefs.mode === 'fullscreen' ? styles.backdropFullscreen : styles.backdropWindow;
@@ -601,30 +567,6 @@ export default function AIChatDock({ onClose }) {
             {keyringMessage && <div style={styles.infoBanner}>{keyringMessage}</div>}
             {chatError && <div style={styles.errorBanner}>{chatError}</div>}
 
-            <div style={styles.statusRow}>
-              <div style={styles.badgeRow}>
-                {statusBadges.map((badge) => (
-                  <span
-                    key={badge.label}
-                    style={{
-                      ...styles.badge,
-                      ...(badge.tone === 'ok'
-                        ? styles.badgeOk
-                        : badge.tone === 'warn'
-                        ? styles.badgeWarn
-                        : styles.badgeNeutral),
-                    }}
-                    title={badge.title}
-                  >
-                    {badge.label}
-                  </span>
-                ))}
-              </div>
-              <button type="button" style={styles.microButton} onClick={startNewChat}>
-                새 대화
-              </button>
-            </div>
-
             <div ref={logRef} style={styles.logPanel}>
               <ChatLog logs={logs} />
             </div>
@@ -652,25 +594,29 @@ export default function AIChatDock({ onClose }) {
                 onKeyDown={handleInputKeyDown}
                 placeholder="변경 요청이나 질문을 입력하세요"
                 style={styles.chatInput}
+                rows={1}
               />
-              <button
-                type="button"
-                style={styles.sendButton(sending || !input.trim() || !hasActiveKey)}
-                onClick={handleSend}
-                disabled={sending || !input.trim() || !hasActiveKey}
-              >
-                {sending ? '전송 중' : '보내기'}
-              </button>
+              <div style={styles.sendGroup}>
+                <span style={styles.autoStatus}>
+                  {autoStatus.running
+                    ? `자동 ${autoStatus.remaining}회`
+                    : hasActiveKey
+                    ? '준비 완료'
+                    : 'API 키 필요'}
+                </span>
+                <button
+                  type="button"
+                  style={styles.sendButton(sending || !input.trim() || !hasActiveKey)}
+                  onClick={handleSend}
+                  disabled={sending || !input.trim() || !hasActiveKey}
+                  aria-label="보내기"
+                  title="보내기"
+                >
+                  {sending ? '···' : '➤'}
+                </button>
+              </div>
             </div>
 
-            <div style={styles.composerMetaRow}>
-              <span style={styles.autoStatus}>
-                {autoStatus.running
-                  ? `자동 실행 · 남은 ${autoStatus.remaining}회`
-                  : '자동 실행 대기'
-                }
-              </span>
-            </div>
           </section>
         </div>
         {prefs.historyOpen && (
@@ -1685,23 +1631,6 @@ const styles = {
     alignItems: 'center',
     gap: 6,
   },
-  badge: {
-    padding: '2px 8px',
-    borderRadius: 999,
-    fontSize: 11,
-  },
-  badgeOk: {
-    border: '1px solid #0d9488',
-    color: '#99f6e4',
-  },
-  badgeWarn: {
-    border: '1px solid #f97316',
-    color: '#ffedd5',
-  },
-  badgeNeutral: {
-    border: '1px solid #334155',
-    color: '#cbd5f5',
-  },
   toolbarButton: {
     width: 32,
     height: 32,
@@ -1725,8 +1654,8 @@ const styles = {
   body: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 12,
-    padding: '12px 16px',
+    gap: 10,
+    padding: '10px 14px',
     flex: 1,
     minHeight: 0,
   },
@@ -1734,37 +1663,17 @@ const styles = {
     flex: 1,
     display: 'flex',
     flexDirection: 'column',
-    gap: 12,
-    minHeight: 0,
-  },
-  statusRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    flexWrap: 'wrap',
     gap: 10,
-  },
-  badgeRow: {
-    display: 'flex',
-    gap: 6,
-    flexWrap: 'wrap',
-  },
-  microButton: {
-    borderRadius: 999,
-    border: '1px solid #334155',
-    background: '#0f172a',
-    color: '#e2e8f0',
-    padding: '4px 10px',
-    fontSize: 12,
-    cursor: 'pointer',
+    minHeight: 0,
   },
   logPanel: {
     flex: 1,
     border: '1px solid #1f2937',
     borderRadius: 14,
-    padding: 16,
+    padding: 12,
     background: '#020617',
     overflowY: 'auto',
+    color: '#e2e8f0',
   },
   logBubble: {
     padding: 12,
@@ -1772,6 +1681,8 @@ const styles = {
     border: '1px solid rgba(148,163,184,0.2)',
     whiteSpace: 'pre-wrap',
     fontSize: 13,
+    color: '#e2e8f0',
+    lineHeight: 1.6,
   },
   logUser: { background: 'rgba(37,99,235,0.15)', borderColor: 'rgba(96,165,250,0.4)' },
   logAssistant: { background: 'rgba(30,64,175,0.25)', borderColor: 'rgba(129,140,248,0.5)' },
@@ -1813,7 +1724,7 @@ const styles = {
   },
   chatInput: {
     flex: 1,
-    minHeight: 70,
+    minHeight: 40,
     resize: 'none',
     borderRadius: 10,
     border: '1px solid #334155',
@@ -1821,6 +1732,7 @@ const styles = {
     color: '#e2e8f0',
     padding: 10,
     fontSize: 13,
+    lineHeight: 1.4,
   },
   composerBar: {
     border: '1px solid #1f2937',
@@ -1829,7 +1741,7 @@ const styles = {
     background: '#030a17',
     display: 'flex',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
   },
   attachCircle: {
     width: 36,
@@ -1843,25 +1755,26 @@ const styles = {
     cursor: 'pointer',
   },
   autoStatus: {
-    fontSize: 12,
-    color: '#38bdf8',
+    fontSize: 11,
+    color: '#9da9c4',
+  },
+  sendGroup: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
   },
   sendButton: (disabled) => ({
-    borderRadius: 10,
+    borderRadius: 12,
     border: '1px solid #0891b2',
     background: disabled ? '#0f172a' : '#0284c7',
     color: '#e0f2fe',
-    padding: '10px 18px',
+    width: 40,
+    height: 36,
+    fontSize: 18,
     fontWeight: 600,
     cursor: disabled ? 'not-allowed' : 'pointer',
     opacity: disabled ? 0.5 : 1,
   }),
-  composerMetaRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    fontSize: 12,
-    color: '#94a3b8',
-  },
   secondaryButton: {
     borderRadius: 8,
     border: '1px solid #334155',
