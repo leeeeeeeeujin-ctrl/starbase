@@ -42,12 +42,11 @@ export default function Document() {
                   var cleanRoot = (rootBase || '').replace(/\/$/, '');
                   var cleanVs = (vsBase || '').replace(/\/$/, '');
                   var workerEntry = cleanVs + '/base/worker/workerMain.js';
-                  var source = [
-                    "self.MonacoEnvironment = self.MonacoEnvironment || {};",
-                    "self.MonacoEnvironment.baseUrl = " + JSON.stringify(cleanRoot) + ";",
-                    "self.MONACO_WORKER_LABEL = " + JSON.stringify(label || '') + ";",
-                    "importScripts(" + JSON.stringify(workerEntry) + ");",
-                  ].join('\\n');
+                  var source =
+"self.MonacoEnvironment = self.MonacoEnvironment || {};\n" +
+"self.MonacoEnvironment.baseUrl = " + JSON.stringify(cleanRoot) + ";\n" +
+"self.MONACO_WORKER_LABEL = " + JSON.stringify(label || '') + ";\n" +
+"importScripts(" + JSON.stringify(workerEntry) + ");";
                   try {
                     var blob = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
                     console.info('[monaco] created worker blob', { label: label, url: blob });
