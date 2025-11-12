@@ -42,6 +42,8 @@ const DEFAULT_DOCK_PREFS = {
   sandboxEnabled: false,
   testHarness: false,
   userInstructions: '',
+  sandboxPolicy: 'prompt',
+  testerPolicy: 'prompt',
 };
 
 const MIN_WIDTH = 360;
@@ -50,6 +52,12 @@ const MAX_ATTACHMENTS = 4;
 const MAX_ATTACHMENT_BYTES = 2 * 1024 * 1024;
 const HISTORY_SLICE = 12;
 const MAX_AUTO_CHAIN_DEPTH = 4;
+const ACTION_ALLOWLIST_PATH = 'workspace/config/ai-actions-allowlist.json';
+const POLICY_LABELS = {
+  allow: '허용',
+  prompt: '매번 확인',
+  deny: '거부',
+};
 
 export default function AIChatDock({ onClose }) {
   const panelRef = useRef(null);
@@ -113,6 +121,7 @@ export default function AIChatDock({ onClose }) {
   const [chatError, setChatError] = useState('');
   const [sending, setSending] = useState(false);
   const [autoStatus, setAutoStatus] = useState({ running: false, executed: 0, remaining: 0 });
+  const [runMenuOpen, setRunMenuOpen] = useState(false);
 
   useEffect(() => {
     const handleKey = (event) => {
@@ -148,6 +157,20 @@ export default function AIChatDock({ onClose }) {
     window.addEventListener('mousedown', handleClick);
     return () => window.removeEventListener('mousedown', handleClick);
   }, [menuOpen]);
+
+  useEffect(() => {
+    if (!runMenuOpen) return;
+    const close = event => {
+      if (
+        !event.target.closest?.('[data-run-menu]') &&
+        !event.target.closest?.('[data-run-menu-trigger]')
+      ) {
+        setRunMenuOpen(false);
+      }
+    };
+    window.addEventListener('pointerdown', close);
+    return () => window.removeEventListener('pointerdown', close);
+  }, [runMenuOpen]);
 
   useEffect(() => {
     if (!logRef.current) return;
@@ -322,6 +345,36 @@ export default function AIChatDock({ onClose }) {
     setAttachments((prev) => prev.filter((item) => item.id !== id));
   }, []);
 
+  const setSandboxPolicy = useCallback(
+    (policy) => updatePrefs((prev) => ({ ...prev, sandboxPolicy: policy })),
+    [updatePrefs]
+  );
+
+  const setTesterPolicy = useCallback(
+    (policy) => updatePrefs((prev) => ({ ...prev, testerPolicy: policy })),
+    [updatePrefs]
+  );
+
+  const handleAllowlistCopy = useCallback(() => {
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(ACTION_ALLOWLIST_PATH);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const handleTrustLimitChange = useCallback(
+    (value) =>
+      updatePrefs((prev) => ({
+        ...prev,
+        trustLimit: value,
+        trustEnabled: value > 1,
+      })),
+    [updatePrefs]
+  );
+
   const handlePickAttachment = useCallback(() => {
     fileInputRef.current?.click();
   }, []);
@@ -334,17 +387,13 @@ export default function AIChatDock({ onClose }) {
     () => ({
       trustEnabled: prefs.trustEnabled,
       trustLimit: prefs.trustLimit,
-      sandboxEnabled: prefs.sandboxEnabled,
-      testHarness: prefs.testHarness,
+      sandboxEnabled: prefs.sandboxPolicy !== 'deny',
+      testHarness: prefs.testerPolicy !== 'deny',
+      sandboxPolicy: prefs.sandboxPolicy,
+      testerPolicy: prefs.testerPolicy,
       userInstructions: prefs.userInstructions,
     }),
-    [
-      prefs.sandboxEnabled,
-      prefs.testHarness,
-      prefs.trustEnabled,
-      prefs.trustLimit,
-      prefs.userInstructions,
-    ]
+    [prefs.sandboxPolicy, prefs.testerPolicy, prefs.trustEnabled, prefs.trustLimit, prefs.userInstructions]
   );
 
   const runRequest = useCallback(
@@ -451,6 +500,7 @@ export default function AIChatDock({ onClose }) {
   const handleSend = useCallback(async () => {
     const trimmed = input.trim();
     if (!trimmed) return;
+    setRunMenuOpen(false);
     if (!sessionUser?.id) {
       setChatError('로그인 후에만 메시지를 보낼 수 있습니다.');
       append('error', '로그인 후에만 메시지를 보낼 수 있습니다.');
@@ -614,17 +664,38 @@ export default function AIChatDock({ onClose }) {
                     ? '준비 완료'
                     : 'API 키 필요'}
                 </span>
-                <button
-                  type="button"
-                  style={styles.sendButton(sending || !input.trim() || !hasActiveKey)}
-                  onClick={handleSend}
-                  disabled={sending || !input.trim() || !hasActiveKey}
-                  aria-label="보내기"
-                  title="보내기"
-                >
-                  {sending ? '···' : '➤'}
-                </button>
+                <div style={styles.sendButtons}>
+                  <button
+                    type="button"
+                    style={styles.sendButton(sending || !input.trim() || !hasActiveKey)}
+                    onClick={handleSend}
+                    disabled={sending || !input.trim() || !hasActiveKey}
+                    aria-label="보내기"
+                    title="보내기"
+                  >
+                    {sending ? '···' : '➤'}
+                  </button>
+                  <button
+                    type="button"
+                    style={styles.sendMenuButton}
+                    data-run-menu-trigger
+                    onClick={() => setRunMenuOpen((prev) => !prev)}
+                    aria-label="실행 옵션"
+                    title="실행 옵션"
+                  >
+                    ▼
+                  </button>
+                </div>
               </div>
+              {runMenuOpen && (
+                <RunPolicyMenu
+                  sandboxPolicy={prefs.sandboxPolicy}
+                  testerPolicy={prefs.testerPolicy}
+                  onChangeSandbox={setSandboxPolicy}
+                  onChangeTester={setTesterPolicy}
+                  allowlistPath={ACTION_ALLOWLIST_PATH}
+                />
+              )}
             </div>
 
           </section>
@@ -641,32 +712,15 @@ export default function AIChatDock({ onClose }) {
         )}
         {menuOpen && (
           <DockMenu
-            onToggleHistory={handleHistoryToggle}
-            onToggleTrust={() =>
-              updatePrefs((prev) => ({ ...prev, trustEnabled: !prev.trustEnabled }))
-            }
-            onTrustLimitChange={(value) => updatePrefs((prev) => ({ ...prev, trustLimit: value }))}
-            onToggleSandbox={() =>
-              updatePrefs((prev) => ({ ...prev, sandboxEnabled: !prev.sandboxEnabled }))
-            }
-            onToggleTester={() =>
-              updatePrefs((prev) => ({ ...prev, testHarness: !prev.testHarness }))
-            }
+            onTrustLimitChange={handleTrustLimitChange}
             onOpenInstructions={() => setInstructionsOpen(true)}
             onOpenKeyring={() => {
               setKeyringOpen(true);
               reloadKeyring();
             }}
-            onNewChat={() => {
-              startNewChat();
-              setMenuOpen(false);
-            }}
+            onCopyAllowlistPath={handleAllowlistCopy}
             trustLimit={prefs.trustLimit}
-            trustEnabled={prefs.trustEnabled}
-            sandboxEnabled={prefs.sandboxEnabled}
-            testerEnabled={prefs.testHarness}
-            historyOpen={prefs.historyOpen}
-            data-ai-chat-menu="true"
+            allowlistPath={ACTION_ALLOWLIST_PATH}
           />
         )}
 
@@ -769,7 +823,13 @@ function sanitizeDockPrefs(prefs) {
       1,
       Math.min(25, Number(prefs?.trustLimit) || DEFAULT_DOCK_PREFS.trustLimit)
     ),
+    sandboxPolicy: normalizePolicy(prefs?.sandboxPolicy),
+    testerPolicy: normalizePolicy(prefs?.testerPolicy),
   };
+}
+
+function normalizePolicy(value) {
+  return ['prompt', 'allow', 'deny'].includes(value) ? value : 'prompt';
 }
 
 function useKeyringController({ sessionUser, getSessionToken }) {
@@ -1145,38 +1205,19 @@ function AttachmentsBar({ attachments, onRemove, error }) {
 }
 
 function DockMenu({
-  onToggleHistory,
-  onToggleTrust,
   onTrustLimitChange,
-  onToggleSandbox,
-  onToggleTester,
   onOpenInstructions,
   onOpenKeyring,
-  onNewChat,
+  onCopyAllowlistPath,
   trustLimit,
-  trustEnabled,
-  sandboxEnabled,
-  testerEnabled,
-  historyOpen,
+  allowlistPath,
 }) {
   return (
     <div style={styles.menu} data-ai-chat-menu="true">
       <div style={styles.menuSection}>
-        <div style={styles.menuRow}>
-          <label>
-            <input type="checkbox" checked={historyOpen} onChange={onToggleHistory} /> 기록 패널
-          </label>
-        </div>
-        <button type="button" style={styles.menuButton} onClick={onNewChat}>
-          새 대화 시작
-        </button>
-      </div>
-      <div style={styles.menuSection}>
-        <div style={styles.menuRow}>
-          <label>
-            <input type="checkbox" checked={trustEnabled} onChange={onToggleTrust} /> 신뢰 모드
-          </label>
-          <span style={styles.menuValue}>{trustLimit}</span>
+        <div style={{ ...styles.menuRow, justifyContent: 'space-between' }}>
+          <span>자동 실행 횟수</span>
+          <span style={styles.menuValue}>{trustLimit}회</span>
         </div>
         <input
           type="range"
@@ -1186,15 +1227,7 @@ function DockMenu({
           onChange={(event) => onTrustLimitChange(Number(event.target.value))}
           style={{ width: '100%' }}
         />
-        <small>허용 횟수만큼 자동 작업을 실행합니다.</small>
-      </div>
-      <div style={styles.menuSection}>
-        <label style={styles.menuRow}>
-          <input type="checkbox" checked={sandboxEnabled} onChange={onToggleSandbox} /> 샌드박스 작업
-        </label>
-        <label style={styles.menuRow}>
-          <input type="checkbox" checked={testerEnabled} onChange={onToggleTester} /> 간이 테스트
-        </label>
+        <small>슬라이더를 밀어 자동 작업 허용 횟수를 정할 수 있습니다.</small>
       </div>
       <div style={styles.menuSection}>
         <div style={styles.menuList}>
@@ -1206,9 +1239,59 @@ function DockMenu({
           </button>
         </div>
       </div>
+      <div style={styles.menuSection}>
+        <div style={styles.menuInfo}>
+          실행 버튼 옆 ▼ 메뉴에서 샌드박스·테스트 권한을 허용/거부할 수 있습니다.
+          <div style={styles.menuPath}>{allowlistPath}</div>
+          <button type="button" style={styles.menuButton} onClick={onCopyAllowlistPath}>
+            경로 복사
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
+
+function RunPolicyMenu({
+  sandboxPolicy,
+  testerPolicy,
+  onChangeSandbox,
+  onChangeTester,
+  allowlistPath,
+}) {
+  const renderButtons = (active, onChange) =>
+    ['allow', 'prompt', 'deny'].map((policy) => (
+      <button
+        key={policy}
+        type="button"
+        style={styles.policyButton(active === policy)}
+        onClick={() => onChange(policy)}
+      >
+        {POLICY_LABELS[policy]}
+      </button>
+    ));
+
+  return (
+    <div style={styles.runMenu} data-run-menu="true">
+      <div style={styles.runMenuSection}>
+        <div style={styles.policyRow}>
+          <span>샌드박스 작업</span>
+        </div>
+        <div style={styles.policyButtons}>{renderButtons(sandboxPolicy, onChangeSandbox)}</div>
+      </div>
+      <div style={styles.runMenuSection}>
+        <div style={styles.policyRow}>
+          <span>간이 테스트</span>
+        </div>
+        <div style={styles.policyButtons}>{renderButtons(testerPolicy, onChangeTester)}</div>
+      </div>
+      <div style={styles.allowlistNote}>
+        '허용'을 선택하면 동일 명령은 {allowlistPath} 에 기록되어 자동 실행됩니다.
+      </div>
+    </div>
+  );
+}
+
 function ChatLog({ logs }) {
   if (!logs.length) {
     return <div style={styles.emptyState}>아직 메시지가 없습니다.</div>;
@@ -1759,6 +1842,7 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: 10,
+    position: 'relative',
   },
   attachCircle: {
     width: 36,
@@ -1778,7 +1862,12 @@ const styles = {
   sendGroup: {
     display: 'flex',
     alignItems: 'center',
-    gap: 6,
+    gap: 10,
+  },
+  sendButtons: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
   },
   sendButton: (disabled) => ({
     borderRadius: 12,
@@ -1792,6 +1881,16 @@ const styles = {
     cursor: disabled ? 'not-allowed' : 'pointer',
     opacity: disabled ? 0.5 : 1,
   }),
+  sendMenuButton: {
+    width: 32,
+    height: 36,
+    borderRadius: 10,
+    border: '1px solid #1f2937',
+    background: '#0b1222',
+    color: '#cbd5f5',
+    fontSize: 14,
+    cursor: 'pointer',
+  },
   secondaryButton: {
     borderRadius: 8,
     border: '1px solid #334155',
@@ -1893,13 +1992,13 @@ const styles = {
     zIndex: 2100,
   },
   modal: {
-    width: 'min(640px, 90vw)',
+    width: 'min(520px, 92vw)',
     maxHeight: '90vh',
     overflowY: 'auto',
     borderRadius: 16,
     border: '1px solid #1f2937',
     background: '#030712',
-    padding: 20,
+    padding: 16,
     display: 'flex',
     flexDirection: 'column',
     gap: 16,
@@ -2060,9 +2159,69 @@ const styles = {
     textAlign: 'left',
     cursor: 'pointer',
   },
+  menuInfo: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+    fontSize: 12,
+    color: '#cbd5f5',
+  },
+  menuPath: {
+    fontFamily: 'monospace',
+    fontSize: 12,
+    background: '#0b1222',
+    border: '1px solid #1d2536',
+    borderRadius: 6,
+    padding: '4px 6px',
+    color: '#9fb3df',
+  },
   emptyState: {
     color: '#64748b',
     textAlign: 'center',
+  },
+  runMenu: {
+    position: 'absolute',
+    bottom: 'calc(100% + 8px)',
+    right: 8,
+    width: 260,
+    borderRadius: 12,
+    border: '1px solid #1f2937',
+    background: '#050b18',
+    boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
+    padding: 12,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+    zIndex: 2050,
+  },
+  runMenuSection: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+  },
+  policyRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    fontSize: 13,
+    color: '#e2e8f0',
+  },
+  policyButtons: {
+    display: 'flex',
+    gap: 6,
+  },
+  policyButton: (active) => ({
+    borderRadius: 8,
+    border: `1px solid ${active ? '#0ea5e9' : '#1f2937'}`,
+    background: active ? 'rgba(14,165,233,0.12)' : '#0b1222',
+    color: active ? '#bae6fd' : '#94a3b8',
+    padding: '4px 8px',
+    fontSize: 12,
+    cursor: 'pointer',
+  }),
+  allowlistNote: {
+    fontSize: 11,
+    color: '#94a3b8',
   },
 };
 
