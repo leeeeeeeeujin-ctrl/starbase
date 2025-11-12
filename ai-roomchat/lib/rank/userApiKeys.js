@@ -163,7 +163,49 @@ export async function decryptParts({ ciphertextB64, ivB64, tagB64 }, secret) {
   return Buffer.concat([dec1, dec2]).toString('utf8');
 }
 
-export async function fetchLatestGeminiKey({ supabaseUrl, anonKey, accessToken }) {
+export async function fetchLatestGeminiKey(options = {}) {
+  const { userId, supabaseUrl, anonKey, accessToken } = options;
+
+  if (userId) {
+    const { data, error } = await supabaseAdmin
+      .from('rank_user_api_keyring')
+      .select(
+        [
+          'provider',
+          'model_label',
+          'api_version',
+          'gemini_mode',
+          'gemini_model',
+          'key_ciphertext',
+          'key_iv',
+          'key_tag',
+          'updated_at',
+        ].join(', ')
+      )
+      .eq('user_id', userId)
+      .eq('provider', 'gemini')
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    if (!data) {
+      return null;
+    }
+
+    return {
+      model: data.gemini_model || data.model_label || 'gemini-2.5-flash',
+      apiVersion: data.api_version || null,
+      geminiMode: data.gemini_mode || 'v1beta',
+      ciphertextB64: data.key_ciphertext,
+      ivB64: data.key_iv,
+      tagB64: data.key_tag,
+    };
+  }
+
   if (!supabaseUrl) throw new Error('Missing SUPABASE_URL');
   if (!anonKey) throw new Error('Missing SUPABASE_ANON_KEY');
   if (!accessToken) throw new Error('Missing user access token');

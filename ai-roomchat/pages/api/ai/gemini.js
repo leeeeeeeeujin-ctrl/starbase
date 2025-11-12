@@ -2,13 +2,33 @@
 // or a direct key from headers/body. This avoids any client-side Supabase usage.
 // Route: POST /api/ai/gemini
 
+import { createClient } from '@supabase/supabase-js';
+
 import { decryptParts, fetchLatestGeminiKey } from '../../../lib/rank/userApiKeys';
+import { sanitizeSupabaseUrl } from '../../../lib/supabaseEnv';
 
 export const config = {
   api: {
     bodyParser: true,
   },
 };
+
+const supabaseUrl = sanitizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL);
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error('Missing Supabase configuration for Gemini API route');
+}
+
+const anonClient = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: { persistSession: false },
+  global: {
+    headers: {
+      apikey: supabaseAnonKey,
+      Authorization: `Bearer ${supabaseAnonKey}`,
+    },
+  },
+});
 
 function json(res, status, data) {
   res.status(status).setHeader('Content-Type', 'application/json');
@@ -31,26 +51,24 @@ class HandlerError extends Error {
   }
 }
 
-async function resolveApiKey({ req, prefer }) {
+async function resolveApiKey({ req, prefer, supabaseUser, accessToken }) {
   const directKey = req.headers['x-ai-api-key'] || (req.body && req.body.apiKey);
   if (prefer === 'direct' && directKey) {
     return { apiKey: String(directKey), source: 'direct' };
   }
 
   if (prefer === 'keyring' || !prefer) {
-    const accessToken = await getUserAccessTokenFromAuthHeader(req);
-    if (accessToken) {
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-      const secret = process.env.RANK_API_KEY_SECRET;
-      if (!supabaseUrl || !anonKey) {
-        throw new HandlerError({
-          message: 'Supabase configuration missing',
-          status: 500,
-          code: 'missing_supabase_env',
-          detail: 'NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY is not set',
-        });
+    if (!supabaseUser) {
+      if (prefer === 'keyring') {
+        return {
+          error: 'missing_keyring_token',
+          status: 401,
+          code: 'missing_keyring_token',
+          detail: 'Authorization bearer token is required when prefer=keyring',
+        };
       }
+    } else {
+      const secret = process.env.RANK_API_KEY_SECRET;
       if (!secret) {
         throw new HandlerError({
           message: 'Rank API key secret missing',
@@ -59,59 +77,68 @@ async function resolveApiKey({ req, prefer }) {
           detail: 'RANK_API_KEY_SECRET is required to decrypt stored Gemini keys',
         });
       }
-      let latest;
+
+      let latest = null;
       try {
-        latest = await fetchLatestGeminiKey({ supabaseUrl, anonKey, accessToken });
+        latest = await fetchLatestGeminiKey({ userId: supabaseUser.id });
       } catch (err) {
-        throw new HandlerError({
-          message: 'Failed to fetch keyring entry',
-          status: 502,
-          code: 'keyring_fetch_failed',
-          detail: err?.message || String(err),
-        });
+        console.warn('[ai/gemini] Failed to fetch keyring via admin client', err);
       }
-      if (!latest) {
-        if (prefer === 'keyring') {
-          return {
-            error: 'missing_keyring',
-            status: 404,
-            code: 'missing_keyring',
-            detail: 'No Gemini keyring entry found for this user',
-          };
+
+      if (!latest && accessToken) {
+        try {
+          latest = await fetchLatestGeminiKey({
+            supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
+            anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+            accessToken,
+          });
+        } catch (err) {
+          console.warn('[ai/gemini] Fallback REST keyring fetch failed', err);
+          if (prefer === 'keyring') {
+            throw new HandlerError({
+              message: 'Failed to fetch keyring entry',
+              status: 502,
+              code: 'keyring_fetch_failed',
+              detail: err?.message || String(err),
+            });
+          }
         }
-        return null;
       }
-      let apiKey;
-      try {
-        apiKey = await decryptParts(
-          {
-            ciphertextB64: latest.ciphertextB64,
-            ivB64: latest.ivB64,
-            tagB64: latest.tagB64,
-          },
-          secret
-        );
-      } catch (err) {
-        throw new HandlerError({
-          message: 'Failed to decrypt Gemini keyring entry',
-          status: 500,
-          code: 'keyring_decryption_failed',
-          detail: err?.message || String(err),
-        });
+
+      if (latest) {
+        let apiKey;
+        try {
+          apiKey = await decryptParts(
+            {
+              ciphertextB64: latest.ciphertextB64,
+              ivB64: latest.ivB64,
+              tagB64: latest.tagB64,
+            },
+            secret
+          );
+        } catch (err) {
+          throw new HandlerError({
+            message: 'Failed to decrypt Gemini keyring entry',
+            status: 500,
+            code: 'keyring_decryption_failed',
+            detail: err?.message || String(err),
+          });
+        }
+        return {
+          apiKey,
+          model: latest.model,
+          mode: latest.geminiMode || 'v1beta',
+          source: 'keyring',
+        };
       }
-      return {
-        apiKey,
-        model: latest.model,
-        mode: latest.geminiMode || 'v1beta',
-        source: 'keyring',
-      };
     }
+
     if (prefer === 'keyring') {
       return {
-        error: 'missing_keyring_token',
-        status: 401,
-        code: 'missing_keyring_token',
-        detail: 'Authorization bearer token is required when prefer=keyring',
+        error: 'missing_keyring',
+        status: 404,
+        code: 'missing_keyring',
+        detail: 'No Gemini keyring entry found for this user',
       };
     }
   }
@@ -177,7 +204,19 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return json(res, 405, { error: 'Method Not Allowed' });
   try {
     const { prefer, contents, generationConfig, model } = req.body || {};
-    const resolved = await resolveApiKey({ req, prefer });
+    const accessToken = await getUserAccessTokenFromAuthHeader(req);
+    let supabaseUser = null;
+    if (accessToken) {
+      try {
+        const { data, error } = await anonClient.auth.getUser(accessToken);
+        if (!error && data?.user) {
+          supabaseUser = data.user;
+        }
+      } catch (err) {
+        console.warn('[ai/gemini] Failed to verify Supabase user from token', err);
+      }
+    }
+    const resolved = await resolveApiKey({ req, prefer, supabaseUser, accessToken });
     if (!resolved || !resolved.apiKey) {
       return json(res, resolved?.status || 401, {
         error: resolved?.error || 'No API key available',

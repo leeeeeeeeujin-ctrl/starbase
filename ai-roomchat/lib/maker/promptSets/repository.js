@@ -18,7 +18,7 @@ export const promptSetsRepository = {
     );
 
     if (error) {
-      return failure(asError(error, '세트를 불러오지 못했습니다.'));
+      return failure(asError(error, '?�트�?불러?��? 못했?�니??'));
     }
 
     return success(sortPromptSets(data || []));
@@ -26,7 +26,7 @@ export const promptSetsRepository = {
 
   async create(ownerId) {
     if (!ownerId) {
-      return failure(new Error('로그인이 필요합니다.'));
+      return failure(new Error('로그?�이 ?�요?�니??'));
     }
 
     const now = Date.now();
@@ -41,14 +41,26 @@ export const promptSetsRepository = {
 
     const createPromise = (async () => {
       const { data, error } = await withTableQuery(supabase, 'prompt_sets', from =>
-        from.insert({ name: '새 세트', owner_id: ownerId }).select().single()
+        from.insert({ name: '???�트', owner_id: ownerId }).select().single()
       );
 
       if (error || !data) {
-        return failure(asError(error, '세트를 생성하지 못했습니다.'));
+        return failure(asError(error, '?�트�??�성?��? 못했?�니??'));
       }
 
       recentCreate.set(ownerId, { at: Date.now(), data });
+      try {
+        const cutoffIso = new Date(Date.now() - CREATE_DEDUPE_WINDOW_MS).toISOString();
+        await withTableQuery(supabase, 'prompt_sets', from =>
+          from
+            .delete()
+            .eq('owner_id', ownerId)
+            .neq('id', data.id)
+            .gte('created_at', cutoffIso)
+        );
+      } catch (cleanupError) {
+        console.warn('[promptSetsRepository] duplicate cleanup failed', cleanupError);
+      }
       return success(data);
     })();
 
@@ -63,7 +75,7 @@ export const promptSetsRepository = {
   async rename(id, nextName) {
     const trimmed = nextName?.trim?.() ?? '';
     if (!trimmed) {
-      return failure(new Error('세트 이름을 입력하세요.'));
+      return failure(new Error('?�트 ?�름???�력?�세??'));
     }
 
     const { error } = await withTableQuery(supabase, 'prompt_sets', from =>
@@ -71,7 +83,7 @@ export const promptSetsRepository = {
     );
 
     if (error) {
-      return failure(asError(error, '세트 이름을 변경하지 못했습니다.'));
+      return failure(asError(error, '?�트 ?�름??변경하지 못했?�니??'));
     }
 
     return success(trimmed);
@@ -89,7 +101,7 @@ export const promptSetsRepository = {
         return success(true);
       }
       const j = await resp.json().catch(() => ({}));
-      return failure(asError(j?.error || '세트를 삭제하지 못했습니다.'));
+      return failure(asError(j?.error || '?�트�???��?��? 못했?�니??'));
     } catch (e) {
       // Fallback to legacy client-side flow for local/dev environments
       // Guard: don't allow delete when set is registered to a game
@@ -105,13 +117,13 @@ export const promptSetsRepository = {
             : Boolean(usageRows && usageRows.id);
           if (used) {
             return failure(
-              new Error('현재 게임에 등록된 세트는 삭제할 수 없습니다. 먼저 게임 등록을 해제하세요.')
+              new Error('?�재 게임???�록???�트????��?????�습?�다. 먼�? 게임 ?�록???�제?�세??')
             );
           }
         }
       } catch (pre) {
         return failure(
-          asError(pre, '세트 삭제 사전 검사에 실패했습니다. 잠시 후 다시 시도해 주세요.')
+          asError(pre, '?�트 ??�� ?�전 검?�에 ?�패?�습?�다. ?�시 ???�시 ?�도??주세??')
         );
       }
 
@@ -119,7 +131,7 @@ export const promptSetsRepository = {
         from.delete().eq('id', id)
       );
       if (error) {
-        return failure(asError(error, '세트를 삭제하지 못했습니다.'));
+        return failure(asError(error, '?�트�???��?��? 못했?�니??'));
       }
 
       // Best-effort cleanup (studio resources)
