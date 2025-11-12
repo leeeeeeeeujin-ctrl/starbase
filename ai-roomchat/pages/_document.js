@@ -79,7 +79,7 @@ export default function Document() {
                   console.error('[monaco] failed to sample worker url', envErr);
                 }
                 try {
-                  fetch(base + '/base/worker/workerMain.js', { method: 'HEAD' })
+                  fetch(base + '/vs/base/worker/workerMain.js', { method: 'HEAD' })
                     .then(function (res) {
                       console.info('[monaco] workerMain HEAD', res.status, res.statusText);
                     })
