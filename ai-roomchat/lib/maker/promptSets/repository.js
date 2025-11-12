@@ -1,4 +1,4 @@
-import { supabase } from '../../supabase';
+﻿import { supabase } from '../../supabase';
 import { withTableQuery } from '../../supabaseTables';
 import { failure, success, asError } from './result';
 import { sortPromptSets } from './sort';
@@ -18,7 +18,7 @@ export const promptSetsRepository = {
     );
 
     if (error) {
-      return failure(asError(error, '?�트�?불러?��? 못했?�니??'));
+      return failure(asError(error, '프롬프트 세트를 불러오지 못했습니다.'));
     }
 
     return success(sortPromptSets(data || []));
@@ -26,7 +26,7 @@ export const promptSetsRepository = {
 
   async create(ownerId) {
     if (!ownerId) {
-      return failure(new Error('로그?�이 ?�요?�니??'));
+      return failure(new Error('로그인이 필요합니다.'));
     }
 
     const now = Date.now();
@@ -41,14 +41,15 @@ export const promptSetsRepository = {
 
     const createPromise = (async () => {
       const { data, error } = await withTableQuery(supabase, 'prompt_sets', from =>
-        from.insert({ name: '???�트', owner_id: ownerId }).select().single()
+        from.insert({ name: '새 세트', owner_id: ownerId }).select().single()
       );
 
       if (error || !data) {
-        return failure(asError(error, '?�트�??�성?��? 못했?�니??'));
+        return failure(asError(error, '세트를 생성하지 못했습니다.'));
       }
 
       recentCreate.set(ownerId, { at: Date.now(), data });
+
       try {
         const cutoffIso = new Date(Date.now() - CREATE_DEDUPE_WINDOW_MS).toISOString();
         await withTableQuery(supabase, 'prompt_sets', from =>
@@ -61,6 +62,7 @@ export const promptSetsRepository = {
       } catch (cleanupError) {
         console.warn('[promptSetsRepository] duplicate cleanup failed', cleanupError);
       }
+
       return success(data);
     })();
 
@@ -75,7 +77,7 @@ export const promptSetsRepository = {
   async rename(id, nextName) {
     const trimmed = nextName?.trim?.() ?? '';
     if (!trimmed) {
-      return failure(new Error('?�트 ?�름???�력?�세??'));
+      return failure(new Error('세트 이름을 입력해 주세요.'));
     }
 
     const { error } = await withTableQuery(supabase, 'prompt_sets', from =>
@@ -83,14 +85,13 @@ export const promptSetsRepository = {
     );
 
     if (error) {
-      return failure(asError(error, '?�트 ?�름??변경하지 못했?�니??'));
+      return failure(asError(error, '세트 이름을 변경하지 못했습니다.'));
     }
 
     return success(trimmed);
   },
 
   async remove(id) {
-    // Prefer server-side deletion to avoid client query-builder issues across environments
     try {
       const resp = await fetch('/api/maker/prompt-sets/remove', {
         method: 'POST',
@@ -101,10 +102,8 @@ export const promptSetsRepository = {
         return success(true);
       }
       const j = await resp.json().catch(() => ({}));
-      return failure(asError(j?.error || '?�트�???��?��? 못했?�니??'));
+      return failure(asError(j?.error || '세트를 삭제하지 못했습니다.'));
     } catch (e) {
-      // Fallback to legacy client-side flow for local/dev environments
-      // Guard: don't allow delete when set is registered to a game
       try {
         const { data: usageRows, error: usageError } = await withTableQuery(
           supabase,
@@ -117,24 +116,21 @@ export const promptSetsRepository = {
             : Boolean(usageRows && usageRows.id);
           if (used) {
             return failure(
-              new Error('?�재 게임???�록???�트????��?????�습?�다. 먼�? 게임 ?�록???�제?�세??')
+              new Error('이미 게임에 사용 중인 세트입니다. 먼저 게임에서 해제해 주세요.')
             );
           }
         }
       } catch (pre) {
-        return failure(
-          asError(pre, '?�트 ??�� ?�전 검?�에 ?�패?�습?�다. ?�시 ???�시 ?�도??주세??')
-        );
+        return failure(asError(pre, '세트 사용 여부 확인에 실패했습니다. 다시 시도해 주세요.'));
       }
 
       const { error } = await withTableQuery(supabase, 'prompt_sets', from =>
         from.delete().eq('id', id)
       );
       if (error) {
-        return failure(asError(error, '?�트�???��?��? 못했?�니??'));
+        return failure(asError(error, '세트를 삭제하지 못했습니다.'));
       }
 
-      // Best-effort cleanup (studio resources)
       try {
         await fetch('/api/storage/delete-prefix', {
           method: 'POST',
@@ -143,9 +139,8 @@ export const promptSetsRepository = {
         });
       } catch {}
 
-      // Best-effort cleanup (games/*/{setId}/)
       try {
-        for (let i = 0; i < 5; i++) {
+        for (let i = 0; i < 5; i += 1) {
           const resp = await fetch('/api/storage/delete-by-set', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
