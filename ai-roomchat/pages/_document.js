@@ -17,7 +17,6 @@ export default function Document() {
           {`
             (function () {
               var baseRoot = ${MONACO_ROOT_SCRIPT_VALUE};
-              var vsPath = ${MONACO_VS_SCRIPT_VALUE};
               function resolveOrigin() {
                 if (typeof window === 'undefined') return '';
                 if (window.location && window.location.origin) return window.location.origin;
@@ -60,14 +59,15 @@ export default function Document() {
 
               function assignEnvironment() {
                 if (typeof window === 'undefined') return;
-                var base = normaliseBase(baseRoot);
-                window.__MONACO_BASE_URL__ = base;
+                var normalizedRoot = normaliseBase(baseRoot);
+                var normalizedVs = normalizedRoot.replace(/\/$/, '') + '/vs';
+                window.__MONACO_BASE_URL__ = normalizedRoot;
                 var env = window.MonacoEnvironment || {};
-                env.baseUrl = base;
+                env.baseUrl = normalizedRoot;
                 env.getWorkerUrl = function (moduleId, label) {
-                  var blobUrl = createWorkerBlob(base, label || '');
+                  var blobUrl = createWorkerBlob(normalizedVs, label || '');
                   if (blobUrl) return blobUrl;
-                  var fallback = base + '/base/worker/workerMain.js';
+                  var fallback = normalizedVs + '/base/worker/workerMain.js';
                   console.warn('[monaco] using fallback worker url', fallback);
                   return fallback;
                 };
@@ -79,7 +79,7 @@ export default function Document() {
                   console.error('[monaco] failed to sample worker url', envErr);
                 }
                 try {
-                  fetch(base + '/vs/base/worker/workerMain.js', { method: 'HEAD' })
+                  fetch(normalizedVs + '/base/worker/workerMain.js', { method: 'HEAD' })
                     .then(function (res) {
                       console.info('[monaco] workerMain HEAD', res.status, res.statusText);
                     })
@@ -110,7 +110,6 @@ export default function Document() {
         <Script id="monaco-env" strategy="beforeInteractive">
           {`
             (function () {
-              var vsPath = ${MONACO_VS_SCRIPT_VALUE};
               function setup() {
                 if (typeof window === 'undefined') return;
                 if (typeof window.__MONACO_ASSIGN_ENV__ === 'function') {
@@ -126,7 +125,7 @@ export default function Document() {
                   if (!window.__MONACO_INIT__) {
                     window.__MONACO_INIT__ = new Promise(function (resolve, reject) {
                       try {
-                        window.require.config({ paths: { vs: vsPath } });
+                        window.require.config({ paths: { vs: ${MONACO_VS_SCRIPT_VALUE} } });
                       } catch (configErr) {
                         console.error('[monaco] require.config failed', configErr);
                         reject(configErr);
