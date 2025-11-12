@@ -36,7 +36,7 @@ const DEFAULT_DOCK_PREFS = {
   mode: 'mini',
   position: { x: 32, y: 64 },
   size: { width: 440, height: 580 },
-  historyOpen: true,
+  historyOpen: false,
   trustEnabled: false,
   trustLimit: 5,
   sandboxEnabled: false,
@@ -159,6 +159,91 @@ export default function AIChatDock({ onClose }) {
     applyPanelGeometry(panelRef.current, prefs);
   }, [prefs]);
 
+  const handlePointerMove = useCallback((event) => {
+    const state = pointerStateRef.current;
+    if (!state || event.pointerId !== state.pointerId) return;
+    const el = panelRef.current;
+    if (!el) return;
+    const dx = event.clientX - state.startX;
+    const dy = event.clientY - state.startY;
+    state.lastDx = dx;
+    state.lastDy = dy;
+    if (state.kind === 'move') {
+      scheduleLiveFrame(liveFrameRef, () => {
+        el.style.transform = `translate3d(${state.baseX + dx}px, ${state.baseY + dy}px, 0)`;
+      });
+    } else {
+      const width = Math.max(MIN_WIDTH, state.baseWidth + dx);
+      const height = Math.max(MIN_HEIGHT, state.baseHeight + dy);
+      scheduleLiveFrame(liveFrameRef, () => {
+        el.style.width = `${width}px`;
+        el.style.height = `${height}px`;
+      });
+    }
+  }, []);
+
+  const finalizePointerInteraction = useCallback(
+    (event, cancelled = false) => {
+      const state = pointerStateRef.current;
+      if (!state || (event && event.pointerId !== state.pointerId)) return;
+      const cleanup = state.cleanup;
+      pointerStateRef.current = null;
+      cleanup?.();
+      const el = panelRef.current;
+      cancelFrame(liveFrameRef);
+      if (el && el.hasPointerCapture?.(state.pointerId)) {
+        try {
+          el.releasePointerCapture(state.pointerId);
+        } catch {
+          /* ignore */
+        }
+      }
+      if (!el) return;
+      if (cancelled) {
+        applyPanelGeometry(el, {
+          mode: state.mode,
+          position: { x: state.baseX, y: state.baseY },
+          size: { width: state.baseWidth, height: state.baseHeight },
+        });
+        return;
+      }
+      const dx = event ? event.clientX - state.startX : state.lastDx || 0;
+      const dy = event ? event.clientY - state.startY : state.lastDy || 0;
+      if (state.kind === 'move') {
+        const nextPosition = clampPosition(
+          { x: state.baseX + dx, y: state.baseY + dy },
+          state.baseWidth,
+          state.baseHeight
+        );
+        el.style.transform = `translate3d(${nextPosition.x}px, ${nextPosition.y}px, 0)`;
+        updatePrefs((prev) => ({ ...prev, position: nextPosition }));
+      } else {
+        const width = Math.max(MIN_WIDTH, state.baseWidth + dx);
+        const height = Math.max(MIN_HEIGHT, state.baseHeight + dy);
+        const nextPosition = clampPosition(
+          { x: state.baseX, y: state.baseY },
+          width,
+          height
+        );
+        el.style.width = `${width}px`;
+        el.style.height = `${height}px`;
+        el.style.transform = `translate3d(${nextPosition.x}px, ${nextPosition.y}px, 0)`;
+        updatePrefs((prev) => ({ ...prev, size: { width, height }, position: nextPosition }));
+      }
+    },
+    [handlePointerMove, updatePrefs]
+  );
+
+  const handlePointerUp = useCallback(
+    (event) => finalizePointerInteraction(event, false),
+    [finalizePointerInteraction]
+  );
+
+  const handlePointerCancel = useCallback(
+    (event) => finalizePointerInteraction(event, true),
+    [finalizePointerInteraction]
+  );
+
   const beginPointerInteraction = useCallback(
     (event, kind) => {
       if (prefs.mode === 'fullscreen' || event.button !== 0) return;
@@ -175,66 +260,31 @@ export default function AIChatDock({ onClose }) {
         baseY: prefs.position.y,
         baseWidth: prefs.size.width,
         baseHeight: prefs.size.height,
+        lastDx: 0,
+        lastDy: 0,
+        mode: prefs.mode,
+      };
+      state.cleanup = () => {
+        window.removeEventListener('pointermove', handlePointerMove);
+        window.removeEventListener('pointerup', handlePointerUp);
+        window.removeEventListener('pointercancel', handlePointerCancel);
       };
       pointerStateRef.current = state;
       el.setPointerCapture?.(event.pointerId);
-      window.addEventListener('pointermove', handlePointerMove);
+      window.addEventListener('pointermove', handlePointerMove, { passive: true });
       window.addEventListener('pointerup', handlePointerUp);
+      window.addEventListener('pointercancel', handlePointerCancel);
     },
-    [prefs.mode, prefs.position.x, prefs.position.y, prefs.size.height, prefs.size.width]
-  );
-
-  const handlePointerMove = useCallback((event) => {
-    const state = pointerStateRef.current;
-    if (!state) return;
-    const el = panelRef.current;
-    if (!el) return;
-    const dx = event.clientX - state.startX;
-    const dy = event.clientY - state.startY;
-    if (state.kind === 'move') {
-      scheduleLiveFrame(liveFrameRef, () => {
-        el.style.transform = `translate3d(${state.baseX + dx}px, ${state.baseY + dy}px, 0)`;
-      });
-    } else {
-      const width = Math.max(MIN_WIDTH, state.baseWidth + dx);
-      const height = Math.max(MIN_HEIGHT, state.baseHeight + dy);
-      scheduleLiveFrame(liveFrameRef, () => {
-        el.style.width = `${width}px`;
-        el.style.height = `${height}px`;
-      });
-    }
-  }, []);
-
-  const handlePointerUp = useCallback(
-    (event) => {
-      const state = pointerStateRef.current;
-      if (!state) return;
-      pointerStateRef.current = null;
-      const el = panelRef.current;
-      if (el) {
-        el.releasePointerCapture?.(state.pointerId);
-        cancelFrame(liveFrameRef);
-        applyPanelGeometry(el, prefs);
-      }
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', handlePointerUp);
-      const dx = event.clientX - state.startX;
-      const dy = event.clientY - state.startY;
-      if (state.kind === 'move') {
-        const nextPosition = clampPosition(
-          { x: state.baseX + dx, y: state.baseY + dy },
-          state.baseWidth,
-          state.baseHeight
-        );
-        updatePrefs((prev) => ({ ...prev, position: nextPosition }));
-      } else {
-        const width = Math.max(MIN_WIDTH, state.baseWidth + dx);
-        const height = Math.max(MIN_HEIGHT, state.baseHeight + dy);
-        const nextPosition = clampPosition({ x: state.baseX, y: state.baseY }, width, height);
-        updatePrefs((prev) => ({ ...prev, size: { width, height }, position: nextPosition }));
-      }
-    },
-    [handlePointerMove, prefs, updatePrefs]
+    [
+      prefs.mode,
+      prefs.position.x,
+      prefs.position.y,
+      prefs.size.height,
+      prefs.size.width,
+      handlePointerMove,
+      handlePointerUp,
+      handlePointerCancel,
+    ]
   );
 
   const handleToggleMode = useCallback(() => {
@@ -268,6 +318,14 @@ export default function AIChatDock({ onClose }) {
   const removeAttachment = useCallback((id) => {
     setAttachments((prev) => prev.filter((item) => item.id !== id));
   }, []);
+
+  const handlePickAttachment = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleHistoryToggle = useCallback(() => {
+    updatePrefs((prev) => ({ ...prev, historyOpen: !prev.historyOpen }));
+  }, [updatePrefs]);
 
   const chatOptions = useMemo(
     () => ({
@@ -443,34 +501,41 @@ export default function AIChatDock({ onClose }) {
     [handleSend]
   );
 
-  const statusBadges = useMemo(() => {
-    const badges = [];
-    badges.push({
-      label: hasActiveKey ? 'API 키 준비' : 'API 키 없음',
-      tone: hasActiveKey ? 'ok' : 'warn',
-    });
-    badges.push({
-      label: chatOptions.trustEnabled ? `신뢰 모드 ${chatOptions.trustLimit}회` : '신뢰 모드 꺼짐',
-      tone: chatOptions.trustEnabled ? 'ok' : 'neutral',
-    });
-    badges.push({
-      label: chatOptions.sandboxEnabled ? '샌드박스 ON' : '샌드박스 OFF',
-      tone: chatOptions.sandboxEnabled ? 'ok' : 'neutral',
-    });
-    badges.push({
-      label: chatOptions.testHarness ? '간이 테스트 ON' : '간이 테스트 OFF',
-      tone: chatOptions.testHarness ? 'ok' : 'neutral',
-    });
-    return badges;
-  }, [
-    chatOptions.sandboxEnabled,
-    chatOptions.testHarness,
-    chatOptions.trustEnabled,
-    chatOptions.trustLimit,
-    hasActiveKey,
-  ]);
+  const statusBadges = useMemo(
+    () => [
+      {
+        label: hasActiveKey ? '키O' : '키X',
+        tone: hasActiveKey ? 'ok' : 'warn',
+        title: hasActiveKey ? 'API 키 연결됨' : 'API 키 필요',
+      },
+      {
+        label: chatOptions.trustEnabled ? '신O' : '신X',
+        tone: chatOptions.trustEnabled ? 'ok' : 'neutral',
+        title: chatOptions.trustEnabled
+          ? 신뢰 모드 회 허용
+          : '신뢰 모드 꺼짐',
+      },
+      {
+        label: chatOptions.sandboxEnabled ? '샌O' : '샌X',
+        tone: chatOptions.sandboxEnabled ? 'ok' : 'neutral',
+        title: chatOptions.sandboxEnabled ? '샌드박스 사용 중' : '샌드박스 꺼짐',
+      },
+      {
+        label: chatOptions.testHarness ? '테O' : '테X',
+        tone: chatOptions.testHarness ? 'ok' : 'neutral',
+        title: chatOptions.testHarness ? '간이 테스트 허용' : '테스트 꺼짐',
+      },
+    ],
+    [
+      chatOptions.sandboxEnabled,
+      chatOptions.testHarness,
+      chatOptions.trustEnabled,
+      chatOptions.trustLimit,
+      hasActiveKey,
+    ]
+  );
 
-  const panelModeLabel = prefs.mode === 'fullscreen' ? '−' : '+';
+  const panelModeLabel = prefs.mode === 'fullscreen' ? '-' : '+';
 
   const backdropStyle = prefs.mode === 'fullscreen' ? styles.backdropFullscreen : styles.backdropWindow;
   const panelBaseStyle = prefs.mode === 'fullscreen' ? styles.panelFullscreen : styles.panelWindow;
@@ -494,116 +559,152 @@ export default function AIChatDock({ onClose }) {
           style={styles.header}
           onPointerDown={(event) => beginPointerInteraction(event, 'move')}
         >
-          <div>
+          <div style={styles.headerInfo}>
             <h2 style={styles.title}>AI 코드 채팅</h2>
-            <p style={styles.subtitle}>
-              대화 기록은 이 기기에만 저장됩니다. 메뉴에서 API 키와 환경 설정을 관리할 수 있어요.
-            </p>
+            <p style={styles.subtitle}>에디터를 가리지 않고 돕는 보조 창</p>
           </div>
-          <div style={styles.headerActions} data-stop-drag="true">
-            {statusBadges.map((badge) => (
-              <span
-                key={badge.label}
-                style={{
-                  ...styles.badge,
-                  ...(badge.tone === 'ok'
-                    ? styles.badgeOk
-                    : badge.tone === 'warn'
-                    ? styles.badgeWarn
-                    : styles.badgeNeutral),
-                }}
-              >
-                {badge.label}
-              </span>
-            ))}
+          <div style={styles.headerToolbar} data-stop-drag="true">
             <button
               type="button"
+              style={styles.toolbarButton}
+              onClick={handleHistoryToggle}
+              title="대화 기록"
+            >
+              기
+            </button>
+            <button
+              type="button"
+              style={styles.toolbarButton}
+              onClick={() => setInstructionsOpen(true)}
+              title="사용자 지침"
+            >
+              지
+            </button>
+            <button
+              type="button"
+              style={styles.toolbarButton}
+              onClick={() => {
+                setKeyringOpen(true);
+                reloadKeyring();
+              }}
+              title="API 키"
+            >
+              키
+            </button>
+            <button
+              type="button"
+              style={styles.toolbarButton}
               data-ai-chat-menu-trigger
-              style={styles.iconButton}
               onClick={() => setMenuOpen((prev) => !prev)}
+              title="도구 설정"
             >
               ⋯
             </button>
             <button
               type="button"
-              style={styles.iconButton}
+              style={styles.toolbarButton}
               onClick={handleToggleMode}
               data-stop-drag="true"
+              title={prefs.mode === 'fullscreen' ? '창 모드' : '전체 화면'}
             >
               {panelModeLabel}
             </button>
-            <button type="button" style={styles.closeButton} onClick={onClose}>
-              닫기
+            <button type="button" style={styles.closeButton} onClick={onClose} title="닫기">
+              닫
             </button>
           </div>
         </header>
 
         <div style={styles.body}>
-          {prefs.historyOpen && (
-            <HistoryPanel
-              sessions={sessions}
-              currentId={currentId}
-              onSelect={setCurrentId}
-              onDelete={deleteSession}
-              onNewChat={startNewChat}
-            />
-          )}
-
           <section style={styles.chatColumn}>
             {keyringMessage && <div style={styles.infoBanner}>{keyringMessage}</div>}
             {chatError && <div style={styles.errorBanner}>{chatError}</div>}
+
+            <div style={styles.statusRow}>
+              <div style={styles.badgeRow}>
+                {statusBadges.map((badge) => (
+                  <span
+                    key={badge.label}
+                    style={{
+                      ...styles.badge,
+                      ...(badge.tone === 'ok'
+                        ? styles.badgeOk
+                        : badge.tone === 'warn'
+                        ? styles.badgeWarn
+                        : styles.badgeNeutral),
+                    }}
+                    title={badge.title}
+                  >
+                    {badge.label}
+                  </span>
+                ))}
+              </div>
+              <button type="button" style={styles.microButton} onClick={startNewChat}>
+                새 대화
+              </button>
+            </div>
 
             <div ref={logRef} style={styles.logPanel}>
               <ChatLog logs={logs} />
             </div>
 
-            <AttachmentsBar
-              attachments={attachments}
-              onRemove={removeAttachment}
-              onPick={() => fileInputRef.current?.click()}
-              error={attachmentError}
-            />
+            {(attachments.length > 0 || attachmentError) && (
+              <AttachmentsBar
+                attachments={attachments}
+                onRemove={removeAttachment}
+                error={attachmentError}
+              />
+            )}
 
-            <div style={styles.composer}>
+            <div style={styles.composerBar} data-stop-drag="true">
+              <button
+                type="button"
+                style={styles.attachCircle}
+                onClick={handlePickAttachment}
+                title="파일 첨부"
+              >
+                +
+              </button>
               <textarea
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
                 onKeyDown={handleInputKeyDown}
-                placeholder="도움이 필요한 내용을 입력하세요..."
+                placeholder="변경 요청이나 질문을 입력하세요"
                 style={styles.chatInput}
               />
-              <div style={styles.composerFooter}>
-                <div style={styles.composerMeta}>
-                  <button
-                    type="button"
-                    style={styles.attachButton}
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    파일 첨부
-                  </button>
-                  {autoStatus.running && (
-                    <span style={styles.autoStatus}>
-                      자동 작업 실행 중 (남은 {autoStatus.remaining}회)
-                    </span>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  style={styles.primaryButton(sending || !input.trim() || !hasActiveKey)}
-                  onClick={handleSend}
-                  disabled={sending || !input.trim() || !hasActiveKey}
-                >
-                  {sending ? '전송 중...' : '보내기'}
-                </button>
-              </div>
+              <button
+                type="button"
+                style={styles.sendButton(sending || !input.trim() || !hasActiveKey)}
+                onClick={handleSend}
+                disabled={sending || !input.trim() || !hasActiveKey}
+              >
+                {sending ? '전송 중' : '보내기'}
+              </button>
+            </div>
+
+            <div style={styles.composerMetaRow}>
+              <span style={styles.autoStatus}>
+                {autoStatus.running
+                  ? `자동 실행 · 남은 ${autoStatus.remaining}회`
+                  : '자동 실행 대기'
+                }
+              </span>
             </div>
           </section>
         </div>
+        {prefs.historyOpen && (
+          <HistoryPanel
+            sessions={sessions}
+            currentId={currentId}
+            onSelect={setCurrentId}
+            onDelete={deleteSession}
+            onNewChat={startNewChat}
+            onClose={handleHistoryToggle}
+          />
+        )}
         {menuOpen && (
           <DockMenu
-            onToggleHistory={() =>
-              updatePrefs((prev) => ({ ...prev, historyOpen: !prev.historyOpen }))
-            }
+            onToggleHistory={handleHistoryToggle}
             onToggleTrust={() =>
               updatePrefs((prev) => ({ ...prev, trustEnabled: !prev.trustEnabled }))
             }
@@ -1030,57 +1131,68 @@ function InstructionsModal({ initialValue, onSave, onClose }) {
     </div>
   );
 }
-function HistoryPanel({ sessions, currentId, onSelect, onDelete, onNewChat }) {
+function HistoryPanel({ sessions, currentId, onSelect, onDelete, onNewChat, onClose }) {
   return (
-    <aside style={styles.historyPanel}>
-      <div style={styles.historyHeader}>
-        <h4 style={{ margin: 0 }}>대화 기록</h4>
-        <button type="button" style={styles.secondaryButton} onClick={onNewChat}>
-          새 대화
-        </button>
-      </div>
-      <div style={styles.historyList}>
-        {sessions.map((session) => {
-          const lastLog = session.logs?.[session.logs.length - 1];
-          const preview =
-            typeof lastLog?.msg === 'string'
-              ? lastLog.msg
-              : lastLog?.msg?.text || lastLog?.msg?.message || '';
-          const active = session.id === currentId;
-          return (
-            <div
-              key={session.id}
-            style={{
-              ...styles.historyItem,
-              borderColor: active ? '#38bdf8' : '#1e293b',
-              background: active ? 'rgba(14,165,233,0.08)' : 'transparent',
-            }}
-            >
-              <button
-                type="button"
-                style={styles.historySelectButton}
-                onClick={() => onSelect(session.id)}
-            >
-              <div style={{ fontWeight: 600 }}>{session.title || '제목 없음'}</div>
-              <div style={{ fontSize: 11, color: '#94a3b8' }}>
-                  {preview || '메시지가 없습니다.'}
-              </div>
+    <div style={styles.historyDrawerBackdrop}>
+      <aside style={styles.historyPanel}>
+        <div style={styles.historyHeader}>
+          <h4 style={{ margin: 0 }}>대화 기록</h4>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" style={styles.secondaryButton} onClick={onNewChat}>
+              새 대화
             </button>
-              <button type="button" style={styles.historyDeleteButton} onClick={() => onDelete(session.id)}>
-                ×
-              </button>
-            </div>
-          );
-        })}
-      </div>
-    </aside>
+            <button type="button" style={styles.secondaryButton} onClick={onClose}>
+              닫기
+            </button>
+          </div>
+        </div>
+        <div style={styles.historyList}>
+          {sessions.map((session) => {
+            const lastLog = session.logs?.[session.logs.length - 1];
+            const preview =
+              typeof lastLog?.msg === 'string'
+                ? lastLog.msg
+                : lastLog?.msg?.text || lastLog?.msg?.message || '';
+            const active = session.id === currentId;
+            return (
+              <div
+                key={session.id}
+                style={{
+                  ...styles.historyItem,
+                  borderColor: active ? '#38bdf8' : '#1e293b',
+                  background: active ? 'rgba(14,165,233,0.08)' : 'transparent',
+                }}
+              >
+                <button
+                  type="button"
+                  style={styles.historySelectButton}
+                  onClick={() => onSelect(session.id)}
+                >
+                  <div style={{ fontWeight: 600 }}>{session.title || '제목 없음'}</div>
+                  <div style={{ fontSize: 11, color: '#94a3b8' }}>
+                    {preview || '메시지가 없습니다.'}
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  style={styles.historyDeleteButton}
+                  onClick={() => onDelete(session.id)}
+                >
+                  ×
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </aside>
+    </div>
   );
 }
 
-function AttachmentsBar({ attachments, onRemove, onPick, error }) {
+function AttachmentsBar({ attachments, onRemove, error }) {({ attachments, onRemove, error }) {
   return (
     <div style={styles.attachmentsBar}>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <div style={styles.attachmentRow}>
         {attachments.map((item) => (
           <span key={item.id} style={styles.attachmentChip}>
             {item.name} ({formatBytes(item.size)})
@@ -1089,9 +1201,6 @@ function AttachmentsBar({ attachments, onRemove, onPick, error }) {
             </button>
           </span>
         ))}
-        <button type="button" style={styles.secondaryButton} onClick={onPick}>
-          + 파일 추가
-        </button>
       </div>
       {error && <div style={styles.errorText}>{error}</div>}
     </div>
@@ -1552,6 +1661,7 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     boxShadow: '0 24px 60px rgba(0,0,0,0.45)',
+    position: 'relative',
   },
   panelFullscreen: {
     pointerEvents: 'auto',
@@ -1563,6 +1673,7 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     boxShadow: '0 20px 40px rgba(0,0,0,0.45)',
+    position: 'relative',
   },
   header: {
     display: 'flex',
@@ -1571,6 +1682,11 @@ const styles = {
     padding: '16px 20px',
     borderBottom: '1px solid #1f2a3b',
     cursor: 'grab',
+  },
+  headerInfo: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
   },
   title: {
     margin: 0,
@@ -1582,10 +1698,10 @@ const styles = {
     color: '#94a3b8',
     fontSize: 12,
   },
-  headerActions: {
+  headerToolbar: {
     display: 'flex',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   badge: {
     padding: '2px 8px',
@@ -1604,29 +1720,31 @@ const styles = {
     border: '1px solid #334155',
     color: '#cbd5f5',
   },
-  iconButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
+  toolbarButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
     border: '1px solid #334155',
     background: '#0f172a',
     color: '#e2e8f0',
     cursor: 'pointer',
+    fontWeight: 600,
   },
   closeButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 999,
+    width: 34,
+    height: 34,
+    borderRadius: 12,
     border: '1px solid #b91c1c',
     background: '#7f1d1d',
     color: '#fee2e2',
-    fontSize: 18,
+    fontSize: 14,
     cursor: 'pointer',
   },
   body: {
     display: 'flex',
-    gap: 16,
-    padding: 16,
+    flexDirection: 'column',
+    gap: 12,
+    padding: '12px 16px',
     flex: 1,
     minHeight: 0,
   },
@@ -1636,6 +1754,27 @@ const styles = {
     flexDirection: 'column',
     gap: 12,
     minHeight: 0,
+  },
+  statusRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  badgeRow: {
+    display: 'flex',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  microButton: {
+    borderRadius: 999,
+    border: '1px solid #334155',
+    background: '#0f172a',
+    color: '#e2e8f0',
+    padding: '4px 10px',
+    fontSize: 12,
+    cursor: 'pointer',
   },
   logPanel: {
     flex: 1,
@@ -1663,12 +1802,18 @@ const styles = {
     color: '#cbd5f5',
   },
   attachmentsBar: {
-    border: '1px dashed #1f2937',
+    border: '1px solid #1f2937',
     borderRadius: 12,
     padding: 8,
+    background: '#050d1c',
     display: 'flex',
     flexDirection: 'column',
-    gap: 4,
+    gap: 6,
+  },
+  attachmentRow: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap',
   },
   attachmentChip: {
     border: '1px solid #334155',
@@ -1684,17 +1829,9 @@ const styles = {
     color: '#fca5a5',
     cursor: 'pointer',
   },
-  composer: {
-    border: '1px solid #1f2937',
-    borderRadius: 14,
-    padding: 12,
-    background: '#030a17',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 8,
-  },
   chatInput: {
-    minHeight: 110,
+    flex: 1,
+    minHeight: 70,
     resize: 'none',
     borderRadius: 10,
     border: '1px solid #334155',
@@ -1703,28 +1840,53 @@ const styles = {
     padding: 10,
     fontSize: 13,
   },
-  composerFooter: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 12,
-  },
-  composerMeta: {
+  composerBar: {
+    border: '1px solid #1f2937',
+    borderRadius: 14,
+    padding: 8,
+    background: '#030a17',
     display: 'flex',
     alignItems: 'center',
     gap: 8,
   },
-  attachButton: {
+  attachCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
     border: '1px solid #334155',
-    borderRadius: 8,
-    padding: '6px 10px',
     background: '#0f172a',
-    color: '#cbd5f5',
+    color: '#e2e8f0',
+    fontSize: 20,
+    lineHeight: 1,
     cursor: 'pointer',
   },
   autoStatus: {
     fontSize: 12,
     color: '#38bdf8',
+  },
+  sendButton: (disabled) => ({
+    borderRadius: 10,
+    border: '1px solid #0891b2',
+    background: disabled ? '#0f172a' : '#0284c7',
+    color: '#e0f2fe',
+    padding: '10px 18px',
+    fontWeight: 600,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.5 : 1,
+  }),
+  composerMetaRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    fontSize: 12,
+    color: '#94a3b8',
+  },
+  secondaryButton: {
+    borderRadius: 8,
+    border: '1px solid #334155',
+    background: '#0f172a',
+    color: '#e2e8f0',
+    padding: '6px 12px',
+    cursor: 'pointer',
   },
   primaryButton: (disabled) => ({
     borderRadius: 10,
@@ -1736,14 +1898,6 @@ const styles = {
     cursor: disabled ? 'not-allowed' : 'pointer',
     opacity: disabled ? 0.5 : 1,
   }),
-  secondaryButton: {
-    borderRadius: 8,
-    border: '1px solid #334155',
-    background: '#0f172a',
-    color: '#e2e8f0',
-    padding: '6px 12px',
-    cursor: 'pointer',
-  },
   infoBanner: {
     border: '1px solid #0ea5e9',
     background: 'rgba(14,165,233,0.1)',
@@ -1763,6 +1917,15 @@ const styles = {
   errorText: {
     color: '#fca5a5',
     fontSize: 12,
+  },
+  historyDrawerBackdrop: {
+    position: 'absolute',
+    inset: 0,
+    background: 'rgba(2,6,23,0.65)',
+    display: 'flex',
+    justifyContent: 'flex-start',
+    padding: 16,
+    zIndex: 2040,
   },
   historyPanel: {
     width: 240,
@@ -1975,3 +2138,11 @@ const styles = {
     textAlign: 'center',
   },
 };
+
+
+
+
+
+
+
+
