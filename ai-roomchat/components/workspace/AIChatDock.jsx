@@ -1097,20 +1097,29 @@ function KeyringModal({
         {loading && <div style={styles.infoBox}>키 정보를 불러오는 중입니다…</div>}
         {error && <div style={styles.errorBox}>{error.message || '키 정보를 읽어 오는 중 오류가 발생했습니다.'}</div>}
         <div style={styles.modalSection}>
-          <textarea
-            value={pendingKey}
-            onChange={(event) => setPendingKey(event.target.value)}
-            placeholder="예: AIza... 형식의 Google Gemini 키를 붙여넣으세요."
-            style={styles.keyInput}
-          />
-          <button
-            type="button"
-            style={styles.primaryButton(!pendingKey.trim() || submitting)}
-            onClick={onRegister}
-            disabled={!pendingKey.trim() || submitting}
-          >
-            {submitting ? '저장 중...' : '저장 후 활성화'}
-          </button>
+          <div style={styles.keyRow}>
+            <input
+              type="text"
+              value={pendingKey}
+              onChange={(event) => setPendingKey(event.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && pendingKey.trim() && !submitting) onRegister();
+              }}
+              placeholder="예: AIza... 형식의 Google Gemini 키"
+              autoComplete="off"
+              spellCheck={false}
+              inputMode="text"
+              style={styles.keyInputLine}
+            />
+            <button
+              type="button"
+              style={styles.primaryButton(!pendingKey.trim() || submitting)}
+              onClick={onRegister}
+              disabled={!pendingKey.trim() || submitting}
+            >
+              {submitting ? '저장 중...' : '저장 후 활성화'}
+            </button>
+          </div>
         </div>
         <div style={styles.keyList}>
           {entries.length === 0 && <div style={styles.emptyBox}>저장된 키가 없습니다.</div>}
@@ -2135,6 +2144,23 @@ const styles = {
     padding: 10,
     boxSizing: 'border-box',
   },
+  keyRow: {
+    display: 'flex',
+    gap: 8,
+    alignItems: 'center',
+  },
+  keyInputLine: {
+    width: '100%',
+    height: 38,
+    borderRadius: 10,
+    border: '1px solid #334155',
+    background: '#020617',
+    color: '#e2e8f0',
+    padding: '8px 12px',
+    fontFamily: 'monospace',
+    fontSize: 13,
+    boxSizing: 'border-box',
+  },
   keyList: {
     display: 'flex',
     flexDirection: 'column',
@@ -2423,8 +2449,6 @@ const styles = {
     color: '#9fb3df',
   },
 };
-
-
 
 
 
