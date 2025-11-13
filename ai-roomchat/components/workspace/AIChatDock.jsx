@@ -1115,21 +1115,19 @@ function KeyringModal({
         <div style={styles.keyList}>
           {entries.length === 0 && <div style={styles.emptyBox}>저장된 키가 없습니다.</div>}
           {entries.map((entry) => (
-            <div key={entry.id} style={styles.keyEntry(entry.isActive)}>
-              <div>
-                <div style={{ fontWeight: 600 }}>{formatKeyProviderLabel(entry.provider)}</div>
-                <div style={{ fontSize: 12, color: '#dbeafe' }}>
-                  {entry.modelLabel || entry.geminiModel || '사용자 지정 모델'}
+            <div key={entry.id} style={styles.keyItem}>
+              <div style={styles.keyLeft}>
+                <div style={styles.keyProviderRow}>
+                  <span style={styles.keyProviderChip}>{formatKeyProviderLabel(entry.provider)}</span>
+                  {entry.isActive && <span style={styles.keyDot} title="사용 중" aria-label="사용 중" />}
                 </div>
-                <div style={{ fontSize: 11, color: '#9ca3af' }}>
-                  {entry.keySample || '••••••'}
-                </div>
+                <div style={styles.keyModel}>{entry.modelLabel || entry.geminiModel || '사용자 지정 모델'}</div>
+                <div style={styles.keySampleText}>{entry.keySample || '••••••'}</div>
               </div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {entry.isActive && <span style={styles.activeBadge}>사용 중</span>}
+              <div style={styles.keyRight}>
                 <button
                   type="button"
-                  style={styles.smallButton(false)}
+                  style={styles.keyPrimary(entry.isActive)}
                   onClick={() => (entry.isActive ? onDeactivate(entry) : onActivate(entry))}
                   disabled={submitting}
                 >
@@ -1137,11 +1135,13 @@ function KeyringModal({
                 </button>
                 <button
                   type="button"
-                  style={styles.smallDangerButton(submitting)}
+                  style={styles.keyDangerIcon(submitting)}
                   onClick={() => onRemove(entry)}
                   disabled={submitting}
+                  aria-label="삭제"
+                  title="삭제"
                 >
-                  삭제
+                  🗑
                 </button>
               </div>
             </div>
@@ -1937,6 +1937,7 @@ const styles = {
     fontSize: 13,
     lineHeight: 1.2,
     overflow: 'hidden',
+    boxSizing: 'border-box',
   },
   composerBar: {
     border: '1px solid #273449',
@@ -2132,6 +2133,7 @@ const styles = {
     background: '#020617',
     color: '#e2e8f0',
     padding: 10,
+    boxSizing: 'border-box',
   },
   keyList: {
     display: 'flex',
@@ -2139,15 +2141,83 @@ const styles = {
     gap: 10,
     maxWidth: '100%',
   },
-  keyEntry: (active) => ({
-    border: `1px solid ${active ? '#0ea5e9' : '#1f2937'}`,
+  keyItem: {
+    border: '1px solid #1f2937',
     borderRadius: 12,
     padding: 12,
     display: 'flex',
     justifyContent: 'space-between',
+    alignItems: 'center',
     gap: 12,
-    flexWrap: 'wrap',
     minWidth: 0,
+  },
+  keyLeft: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+    minWidth: 0,
+  },
+  keyProviderRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+  },
+  keyProviderChip: {
+    borderRadius: 999,
+    border: '1px solid #273449',
+    background: '#050d1c',
+    color: '#e2e8f0',
+    padding: '2px 8px',
+    fontSize: 12,
+    fontWeight: 700,
+  },
+  keyDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 999,
+    background: '#10b981',
+    border: '1px solid #064e3b',
+  },
+  keyModel: {
+    fontSize: 12,
+    color: '#dbeafe',
+  },
+  keySampleText: {
+    fontFamily: 'monospace',
+    fontSize: 11,
+    color: '#9ca3af',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    maxWidth: '100%',
+  },
+  keyRight: {
+    display: 'flex',
+    gap: 8,
+    alignItems: 'center',
+    flex: '0 0 auto',
+  },
+  keyPrimary: (active) => ({
+    borderRadius: 10,
+    border: `1px solid ${active ? '#475569' : '#2563eb'}`,
+    background: active ? '#0f172a' : '#1d4ed8',
+    color: active ? '#cbd5e1' : '#e0f2fe',
+    padding: '6px 10px',
+    fontSize: 12,
+    cursor: 'pointer',
+  }),
+  keyDangerIcon: (disabled) => ({
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    border: '1px solid #7f1d1d',
+    background: disabled ? '#2b0d0d' : '#450a0a',
+    color: '#fecaca',
+    fontSize: 16,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   }),
   activeBadge: {
     fontSize: 10,
@@ -2246,6 +2316,7 @@ const styles = {
     padding: '6px 10px',
     marginTop: 6,
     cursor: 'pointer',
+    boxSizing: 'border-box',
   },
   menuList: {
     display: 'flex',
@@ -2261,6 +2332,7 @@ const styles = {
     padding: '8px 10px',
     textAlign: 'left',
     cursor: 'pointer',
+    boxSizing: 'border-box',
   },
   menuInfo: {
     display: 'flex',
@@ -2351,9 +2423,6 @@ const styles = {
     color: '#9fb3df',
   },
 };
-
-
-
 
 
 
