@@ -71,6 +71,15 @@ export default async function handler(req, res) {
     editFile: 'edit_patch',
     readDir: 'list_files',
     listFiles: 'list_files',
+    deleteFile: 'delete_file',
+    removeFile: 'delete_file',
+    renameFile: 'move_file',
+    moveFile: 'move_file',
+    mkdir: 'mkdirs',
+    makeDir: 'mkdirs',
+    searchFiles: 'search_text',
+    grep: 'search_text',
+    readRange: 'read_file_range',
   };
   const normalizedAction = ALIASES[action] || action;
 

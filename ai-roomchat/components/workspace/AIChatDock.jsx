@@ -39,6 +39,14 @@ const PROMPT_HEADER = [
   '- list_files { path?: string }  — 디렉터리 목록을 읽습니다. 지정 안 하면 루트.',
   '- write_file { path: string, content: string }  — 파일을 새로 쓰거나 교체합니다.',
   '- edit_patch { path: string, diff: string }  — 해당 파일에 유니파이드 패치(diff)를 적용합니다.',
+  '- delete_file { path: string } — 파일을 삭제합니다.',
+  '- move_file { from: string, to: string } — 파일/경로를 이동 또는 이름 변경합니다.',
+  '- mkdirs { path: string } — 디렉터리를 생성합니다(필요시 중첩).',
+  '- delete_dir { path: string } — 디렉터리를 삭제합니다.',
+  '- copy_file { from: string, to: string } — 파일 복사.',
+  '- stat_file { path: string } — 파일/디렉터리 메타 조회.',
+  '- search_text { query: string, path?: string, max_results?: number } — 텍스트를 검색합니다.',
+  '- read_file_range { path: string, start?: number, end?: number } — 일부 범위만 읽습니다.',
   '- sandbox_exec { cmd: string, cwd?: string, timeout_ms?: number }  — 샌드박스에서 명령을 실행합니다.',
   '- memory_put { scope: "short"|"long", key: string, content: string } — 메모리에 기록합니다.',
   '- memory_delete { scope: "short"|"long", key: string } — 메모리에서 항목을 삭제합니다.',
@@ -82,6 +90,72 @@ const POLICY_LABELS = {
   prompt: '매번 확인',
   deny: '거부',
 };
+
+// --- Allowlist helpers (client-side) ---
+const ALLOWLIST_DEFAULT = { sandbox_exec: { cmds: [] } };
+
+function loadPrefsFromStorage() {
+  try {
+    if (typeof window === 'undefined') return null;
+    const raw = window.localStorage.getItem('workspace:aiChat:prefs.v2');
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function readAllowlist(token) {
+  try {
+    const res = await fetch('/api/rank/handle-action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' },
+      body: JSON.stringify({ action: 'read_file', payload: { path: ACTION_ALLOWLIST_PATH } }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data?.error) throw new Error(data?.error || 'read_failed');
+    try {
+      const obj = JSON.parse(String(data?.result?.content || data?.content || '{}'));
+      return obj && typeof obj === 'object' ? obj : { ...ALLOWLIST_DEFAULT };
+    } catch {
+      return { ...ALLOWLIST_DEFAULT };
+    }
+  } catch {
+    return { ...ALLOWLIST_DEFAULT };
+  }
+}
+
+async function writeAllowlist(token, allowlist) {
+  try {
+    const content = JSON.stringify(allowlist || ALLOWLIST_DEFAULT, null, 2);
+    const res = await fetch('/api/rank/handle-action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: token ? `Bearer ${token}` : '' },
+      body: JSON.stringify({ action: 'write_file', payload: { path: ACTION_ALLOWLIST_PATH, content } }),
+    });
+    const data = await res.json().catch(() => ({}));
+    return !!(res.ok && !data?.error);
+  } catch {
+    return false;
+  }
+}
+
+async function recordSandboxAllowIfEnabled(token, cmd) {
+  if (!cmd) return;
+  try {
+    const prefs = loadPrefsFromStorage();
+    if (!prefs || prefs.sandboxPolicy !== 'allow') return;
+    const allow = await readAllowlist(token);
+    const list = Array.isArray(allow?.sandbox_exec?.cmds) ? allow.sandbox_exec.cmds : [];
+    if (!list.includes(cmd)) {
+      const next = { ...ALLOWLIST_DEFAULT, ...(allow || {}) };
+      const cur = Array.isArray(next.sandbox_exec?.cmds) ? next.sandbox_exec.cmds : [];
+      next.sandbox_exec = { cmds: [...cur, cmd].slice(0, 200) };
+      await writeAllowlist(token, next);
+    }
+  } catch {
+    /* ignore */
+  }
+}
 
 export default function AIChatDock({ onClose }) {
   const panelRef = useRef(null);
@@ -1575,6 +1649,19 @@ async function executeWorkspaceAction(action, token) {
       editFile: 'edit_patch',
       readDir: 'list_files',
       listFiles: 'list_files',
+      deleteFile: 'delete_file',
+      removeFile: 'delete_file',
+      renameFile: 'move_file',
+      moveFile: 'move_file',
+      makeDir: 'mkdirs',
+      mkdir: 'mkdirs',
+      searchFiles: 'search_text',
+      grep: 'search_text',
+      readRange: 'read_file_range',
+      statFile: 'stat_file',
+      deleteDir: 'delete_dir',
+      removeDir: 'delete_dir',
+      copyFile: 'copy_file',
       memoryPut: 'memory_put',
       memoryDelete: 'memory_delete',
       memoryPromote: 'memory_promote',
@@ -1643,6 +1730,10 @@ async function executeWorkspaceAction(action, token) {
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data?.ok) {
       return { ok: false, error: data?.error || 'action_failed', detail: data };
+    }
+    // Record allow for sandbox_exec when policy is 'allow'
+    if (actionType === 'sandbox_exec') {
+      await recordSandboxAllowIfEnabled(token, action.payload?.cmd || '');
     }
     return { ok: true, result: data.result || null };
   } catch (err) {
@@ -2566,6 +2657,7 @@ styles = {
   instructionsTextarea: {
     width: '100%',
     minHeight: 200,
+    resize: 'none',
     borderRadius: 12,
     border: '1px solid #334155',
     background: '#020617',
