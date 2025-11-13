@@ -517,6 +517,46 @@ registerAction('copy_file', {
   },
 });
 
+// Batch actions: execute multiple actions in one request
+registerAction('batch', {
+  schema: z.object({
+    actions: z.array(z.object({ action: z.string(), payload: z.any().optional(), session_id: z.string().optional(), game_id: z.string().optional(), idempotencyKey: z.string().optional() })),
+    sequential: z.boolean().optional(),
+  }),
+  handler: async (ctx, payload = {}) => {
+    const list = Array.isArray(payload.actions) ? payload.actions : [];
+    const sequential = payload.sequential !== false; // default sequential
+    const results = [];
+    if (sequential) {
+      for (const item of list) {
+        const r = await dispatchAction({
+          name: item.action,
+          user: ctx.user,
+          sessionId: item.session_id || ctx.sessionId,
+          gameId: item.game_id || ctx.gameId,
+          payload: item.payload || {},
+          idempotencyKey: item.idempotencyKey || null,
+        });
+        results.push(r);
+      }
+    } else {
+      const tasks = list.map(item =>
+        dispatchAction({
+          name: item.action,
+          user: ctx.user,
+          sessionId: item.session_id || ctx.sessionId,
+          gameId: item.game_id || ctx.gameId,
+          payload: item.payload || {},
+          idempotencyKey: item.idempotencyKey || null,
+        })
+      );
+      const settled = await Promise.allSettled(tasks);
+      settled.forEach(s => results.push(s.status === 'fulfilled' ? s.value : { ok: false, error: 'batch_item_failed' }));
+    }
+    return { ok: true, results };
+  },
+});
+
 // Convenience runners (delegate to sandbox with allowed presets)
 function resolvePresetCmd(kind, preset) {
   const p = String(preset || '').toLowerCase();

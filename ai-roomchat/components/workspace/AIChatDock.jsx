@@ -51,19 +51,28 @@ const PROMPT_HEADER = [
   '- test_run { preset?: string } — 테스트 실행(unit/e2e 등 사전 정의).',
   '- lint_run { preset?: string } — 린트 실행.',
   '- build_run { preset?: string } — 빌드 실행.',
+  '- batch { actions: {action,payload}[], sequential?: boolean } — 여러 작업을 묶어 순차/병렬 실행.',
   '- sandbox_exec { cmd: string, cwd?: string, timeout_ms?: number }  — 샌드박스에서 명령을 실행합니다.',
   '- memory_put { scope: "short"|"long", key: string, content: string } — 메모리에 기록합니다.',
   '- memory_delete { scope: "short"|"long", key: string } — 메모리에서 항목을 삭제합니다.',
   '- memory_promote { key: string } — 단기 → 장기로 승격합니다.',
   '- memory_list { scope: "short"|"long" } — 메모리 목록을 조회합니다.',
+  '- memory_todo_add { text: string } — 단기기억 TODO에 항목 추가.',
+  '- memory_todo_replace { items: string[] } — TODO 전체 교체.',
+  '- memory_todo_remove { index?: number, text?: string } — TODO 항목 제거.',
+  '- memory_todo_clear {} — TODO 모두 비우기.',
+  '- memory_todo_list {} — TODO 목록 조회.',
   '',
   '주의사항:',
   '- runCommand, readFile 같은 다른 이름은 사용하지 마세요. 위의 정확한 이름만 사용하세요.',
-  '- 여러 단계를 합칠 수 있으면 한 번의 응답에 여러 actions를 제시하세요.',
-  '- 첨부 파일이 있는 경우(이미지/오디오/텍스트 등) message의 맥락에서 활용 계획을 쓰고, 필요하면 write_file로 워크스페이스에 반영하세요.',
-  '- 반복적으로 참조할 사실/요약은 memory_put으로 단기(short)에 기록하고, 여러 번 쓰이거나 중요하면 memory_promote로 장기(long)로 옮기세요.',
+  '- 여러 단계를 합칠 수 있으면 batch로 묶어 순차 실행하세요(또는 actions 배열에 여러 개를 제시).',
+  '- 첨부 파일이 있으면 message에 활용 계획을 간단히 쓰고, 필요 시 write_file로 반영하세요.',
+  '- 기억 관리 원칙:',
+  '  • 반복되거나 중요한 사실/규칙은 memory_put(scope:"short")로 기록한 뒤, 여러 번 쓰이거나 장기적으로 중요하면 memory_promote로 장기(long)로 올리세요.',
+  '  • TODO는 memory_todo_* 액션으로 관리하세요. 완료/불필요 항목은 제거하거나 숨겨 가독성을 유지하고, 필요하면 memory_put(scope:"long", key:"TODO")로 장기 보관하세요.',
+  '  • 불필요해진 단기 기억은 memory_delete로 정리해 프롬프트 길이를 줄이세요.',
   '- 연속 실행 예산이 제한되어 있으므로, 각 action은 목적을 달성하는 최소 단위로 작성하세요.',
-  '- 설명은 간결하게. 불필요한 서문, 인사말을 길게 쓰지 마세요.',
+  '- 설명은 간결하게. 불필요한 서문/인사말은 피하고 JSON만 출력하세요.',
 ].join('\n');
 
 const DOCK_PREFS_KEY = 'workspace:aiChat:prefs.v2';
@@ -97,7 +106,9 @@ const POLICY_LABELS = {
   deny: '거부',
 };
 const ALLOWED_ACTIONS = new Set([
-  'read_file','list_files','write_file','edit_patch','delete_file','move_file','mkdirs','delete_dir','copy_file','stat_file','search_text','read_file_range','sandbox_exec','memory_put','memory_delete','memory_promote','memory_list','test_run','lint_run','build_run'
+  'read_file','list_files','write_file','edit_patch','delete_file','move_file','mkdirs','delete_dir','copy_file','stat_file','search_text','read_file_range','sandbox_exec','memory_put','memory_delete','memory_promote','memory_list','test_run','lint_run','build_run','batch',
+  'memory_todo_add','memory_todo_replace','memory_todo_remove','memory_todo_clear','memory_todo_list',
+  'memory_todo_prefs_set','memory_todo_prefs_get'
 ]);
 
 // --- Allowlist helpers (client-side) ---
@@ -299,11 +310,13 @@ export default function AIChatDock({ onClose }) {
     activate: activateKey,
     deactivate: deactivateKey,
     remove: removeKey,
+    markExpired: markKeyExpired,
   } = useKeyringController({ sessionUser, getSessionToken });
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [instructionsOpen, setInstructionsOpen] = useState(false);
   const [keyringOpen, setKeyringOpen] = useState(false);
+  const [todoOpen, setTodoOpen] = useState(true);
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState([]);
   const [attachmentError, setAttachmentError] = useState('');
@@ -620,6 +633,7 @@ export default function AIChatDock({ onClose }) {
       sandboxPolicy: prefs.sandboxPolicy,
       testerPolicy: prefs.testerPolicy,
       userInstructions: prefs.userInstructions,
+      todo: readTodoList(),
     }),
     [prefs.sandboxPolicy, prefs.testerPolicy, prefs.trustEnabled, prefs.trustLimit, prefs.userInstructions]
   );
@@ -656,10 +670,19 @@ export default function AIChatDock({ onClose }) {
         ? await readLongMemoryRemote(tokenForMem).catch(() => readMemory('long'))
         : readMemory('long');
       const shortMemItems = readMemory('short');
-      const memoryHeader = [
-        summarizeMemory(shortMemItems) ? `단기기억:\n${summarizeMemory(shortMemItems)}` : null,
-        summarizeMemory(longMemItems) ? `장기기억:\n${summarizeMemory(longMemItems)}` : null,
-      ].filter(Boolean).join('\n\n');
+      // Build memory header with TODO first
+      const todoListRaw = readTodoList();
+      const todoPrefs = readTodoPrefs();
+      const todoList = todoPrefs.hideCompleted ? todoListRaw.filter((t) => !t.done) : todoListRaw;
+      const sections = [];
+      if (todoList.length) {
+        sections.push('TODO:\n' + todoList.map((t, i) => `- ${t.done ? '[x]' : '[ ]'} ${t.text}`).join('\n'));
+      }
+      const shortSummary = summarizeMemory(shortMemItems);
+      const longSummary = summarizeMemory(longMemItems);
+      if (shortSummary) sections.push(`단기기억:\n${shortSummary}`);
+      if (longSummary) sections.push(`장기기억:\n${longSummary}`);
+      const memoryHeader = sections.join('\n\n');
 
       const payload = buildModelPayload({
         logs: workingLogs,
@@ -683,6 +706,17 @@ export default function AIChatDock({ onClose }) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.ok) {
+        // Auto-disable active API key on quota/overload/unauthorized
+        if (res.status === 401 || res.status === 403 || res.status === 429) {
+          try {
+            const active = (keyringEntries || []).find((e) => e.isActive);
+            if (active && typeof deactivate === 'function') {
+              await deactivate(active);
+              if (typeof markKeyExpired === 'function') markKeyExpired(active.id);
+              append('system', '활성 API 키가 과부하/만료로 비활성화되었습니다. 다른 키를 선택하세요.');
+            }
+          } catch {}
+        }
         throw Object.assign(new Error(data?.error || 'AI 응답을 받지 못했습니다.'), {
           status: res.status,
           detail: data,
@@ -911,6 +945,15 @@ export default function AIChatDock({ onClose }) {
             <button
               type="button"
               style={styles.toolbarButton}
+              onClick={() => setExtensionsOpen(true)}
+              title="확장 프로그램"
+              aria-label="확장 프로그램"
+            >
+              확장
+            </button>
+            <button
+              type="button"
+              style={styles.toolbarButton}
               onClick={handleToggleMode}
               data-stop-drag="true"
               title={prefs.mode === 'fullscreen' ? '창 모드로 전환' : '전체 화면으로 전환'}
@@ -932,6 +975,47 @@ export default function AIChatDock({ onClose }) {
 
         <div style={styles.body}>
           <section style={styles.chatColumn}>
+            <div style={styles.todoBar} data-stop-drag="true">
+              <button type="button" style={styles.todoToggle} onClick={() => setTodoOpen((v) => !v)} aria-label="TODO 토글">
+                {todoOpen ? '▼' : '▶'} TODO
+              </button>
+              <span style={styles.todoProgress}>
+                {(() => { const list = readTodoList(); const done = list.filter(i=>i.done).length; return `${done}/${list.length}`; })()}
+              </span>
+              {REMOTE_MEMORY_ENABLED && (
+                <span style={styles.todoActions}>
+                  <button
+                    type="button"
+                    style={styles.smallButton(false)}
+                    onClick={async () => {
+                      try { const token = await getSessionToken({ optional: true }); await writeLongTodoRemote(readTodoList(), token); append('system','TODO를 장기 메모리에 저장했습니다.'); } catch {}
+                    }}
+                  >원격 저장</button>
+                  <button
+                    type="button"
+                    style={styles.smallButton(false)}
+                    onClick={async () => {
+                      try { const token = await getSessionToken({ optional: true }); const remote = await readLongTodoRemote(token); if (remote.length) { writeTodoList(remote); append('system','장기 메모리의 TODO를 불러왔습니다.'); } } catch {}
+                    }}
+                  >불러오기</button>
+                </span>
+              )}
+            </div>
+            {todoOpen && (
+              <div style={styles.todoList} data-stop-drag="true">
+                {(() => { const list = readTodoList(); return list.length === 0 ? <div style={styles.todoEmpty}>등록된 TODO가 없습니다.</div> : null; })()}
+                {(() => { const prefs = readTodoPrefs(); const list = readTodoList(); const render = prefs.hideCompleted ? list.filter(i=>!i.done) : list; return render; })().map((item, idx) => (
+                  <label key={idx} style={styles.todoItem}>
+                    <input
+                      type="checkbox"
+                      checked={!!item.done}
+                      onChange={() => { toggleTodo(idx); setTodoOpen(true); }}
+                    />
+                    <span style={{ ...(styles.todoText), ...(item.done ? styles.todoDone : null) }}>{item.text}</span>
+                  </label>
+                ))}
+              </div>
+            )}
             {keyringMessage && <div style={styles.infoBanner}>{keyringMessage}</div>}
             {chatError && <div style={styles.errorBanner}>{chatError}</div>}
 
@@ -1070,7 +1154,9 @@ export default function AIChatDock({ onClose }) {
             submitting={keyringSubmitting}
           />
         )}
-
+        {extensionsOpen && (
+          <ExtensionInstallModal onClose={() => setExtensionsOpen(false)} />
+        )}
         <input
           ref={fileInputRef}
           type="file"
@@ -1296,6 +1382,19 @@ function useKeyringController({ sessionUser, getSessionToken }) {
     },
     [applySnapshot, entries, getSessionToken, sessionUser?.id, submitting]
   );
+  
+  const markExpired = useCallback(
+    (entryId) => {
+      setEntries((prev) => {
+        const next = prev.map((item) =>
+          item.id === entryId ? { ...item, expired: true, isActive: false } : item
+        );
+        applySnapshot(sessionUser?.id || '', next);
+        return next;
+      });
+    },
+    [applySnapshot, sessionUser?.id]
+  );
 
   return {
     entries,
@@ -1312,6 +1411,7 @@ function useKeyringController({ sessionUser, getSessionToken }) {
     activate,
     deactivate,
     remove,
+    markExpired,
   };
 }
 
@@ -1331,6 +1431,26 @@ function KeyringModal({
   onRemove,
   submitting,
 }) {
+  const [showExpiredOnly, setShowExpiredOnly] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const expiredEntries = Array.isArray(entries) ? entries.filter((e) => e.expired) : [];
+  const renderList = showExpiredOnly ? expiredEntries : (entries || []);
+
+  const handleBulkDeleteExpired = async () => {
+    if (!expiredEntries.length || bulkBusy) return;
+    setBulkBusy(true);
+    try {
+      for (const entry of expiredEntries) {
+        await onRemove(entry);
+      }
+      await onRefresh();
+    } catch (e) {
+      // ignore
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
   return (
     <div style={styles.modalBackdrop}>
       <div style={styles.modal}>
@@ -1341,7 +1461,24 @@ function KeyringModal({
               저장된 키는 Supabase에 암호화되어 보관됩니다. {entries.length}/{limit}개
             </p>
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#b6c2d9' }}>
+              <input
+                type="checkbox"
+                checked={showExpiredOnly}
+                onChange={(e) => setShowExpiredOnly(e.target.checked)}
+              />
+              만료만 보기
+            </label>
+            <button
+              type="button"
+              style={styles.smallDangerButton(bulkBusy || !expiredEntries.length)}
+              onClick={handleBulkDeleteExpired}
+              disabled={bulkBusy || !expiredEntries.length}
+              title={expiredEntries.length ? `만료된 키 ${expiredEntries.length}개 삭제` : '만료된 키가 없습니다.'}
+            >
+              만료 일괄 삭제
+            </button>
             <button type="button" style={styles.secondaryButton} onClick={onRefresh}>
               새로고침
             </button>
@@ -1379,13 +1516,16 @@ function KeyringModal({
           </div>
         </div>
         <div style={styles.keyList}>
-          {entries.length === 0 && <div style={styles.emptyBox}>저장된 키가 없습니다.</div>}
-          {entries.map((entry) => (
+          {renderList.length === 0 && <div style={styles.emptyBox}>저장된 키가 없습니다.</div>}
+          {renderList.map((entry) => (
             <div key={entry.id} style={styles.keyItem}>
               <div style={styles.keyLeft}>
                 <div style={styles.keyProviderRow}>
                   <span style={styles.keyProviderChip}>{formatKeyProviderLabel(entry.provider)}</span>
                   {entry.isActive && <span style={styles.keyDot} title="사용 중" aria-label="사용 중" />}
+                  {entry.expired && (
+                    <span style={styles.keyExpiredBadge} title="만료됨" aria-label="만료됨">만료됨</span>
+                  )}
                 </div>
                 <div style={styles.keyModel}>{entry.modelLabel || entry.geminiModel || '사용자 지정 모델'}</div>
                 <div style={styles.keySampleText}>{entry.keySample || '••••••'}</div>
@@ -1623,7 +1763,7 @@ function ChatLog({ logs }) {
     return <div style={styles.emptyState}>아직 메시지가 없습니다.</div>;
   }
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       {logs.map((entry, index) => (
         <LogBubble key={entry.t || index} entry={entry} />
       ))}
@@ -1652,13 +1792,10 @@ function LogBubble({ entry }) {
     if (typeof msg.text === 'string') return msg.text;
     if (typeof msg.message === 'string') return msg.message;
     if (msg.action) {
-      return [
-        `Action: ${msg.action.type || msg.action.name || 'unknown'}`,
-        msg.action.path ? `Target: ${msg.action.path}` : null,
-        msg.result?.ok ? 'Result: ok' : `Result: ${msg.result?.error || 'failed'}`,
-      ]
-        .filter(Boolean)
-        .join('\n');
+      const t = msg.action.type || msg.action.name || 'unknown';
+      const p = msg.action.path ? ` (${msg.action.path})` : '';
+      const r = msg.result?.ok ? 'ok' : `error: ${msg.result?.error || 'failed'}`;
+      return `action ${t}${p} • ${r}`;
     }
     if (msg.detail) {
       return `${msg.message || 'Error'}\n${JSON.stringify(msg.detail, null, 2)}`;
@@ -1696,6 +1833,37 @@ async function runActionsAndSummarize({ actions, budget, append, getSessionToken
     return { remainingBudget: remaining };
   }
 
+  // Batch fast-path: reduce network roundtrips
+  if (normalized.length > 1) {
+    const items = normalized.map((a) => ({
+      action: a.type,
+      payload: a.payload || (a.path ? { path: a.path } : {}),
+      session_id: a.sessionId || null,
+      game_id: a.gameId || null,
+      idempotencyKey: a.idempotencyKey || null,
+    }));
+    const batchRes = await executeWorkspaceAction({ type: 'batch', payload: { actions: items, sequential: true } }, token);
+    if (batchRes?.ok) {
+      const results = Array.isArray(batchRes.result?.results) ? batchRes.result.results : [];
+      results.forEach((r, i) => {
+        const act = normalized[i];
+        const rec = (r && typeof r === 'object' && 'result' in r) ? r.result : r;
+        executed.push({ action: act, result: rec });
+        append('action', { action: act, result: rec });
+        workingLogs.push({ role: 'action', msg: { action: act, result: rec } });
+      });
+      remaining = Math.max(0, remaining - results.length);
+      setAutoStatus({ running: false, executed: executed.length, remaining });
+      const summary = buildActionSummary(executed, remaining);
+      return {
+        nextPrompt: summary.promptForModel,
+        visibleLog: summary.visibleLog,
+        remainingBudget: remaining,
+        executed,
+      };
+    }
+  }
+
   for (const action of normalized) {
     if (remaining <= 0) break;
     const result = await executeWorkspaceAction(action, token);
@@ -1719,6 +1887,28 @@ async function runActionsAndSummarize({ actions, budget, append, getSessionToken
     remainingBudget: remaining,
     executed,
   };
+}
+
+function buildActionSummary(executed, remainingBudget) {
+  const items = executed.map((entry) => {
+    const a = entry?.action || {};
+    const r = entry?.result || {};
+    const ok = r.ok !== false;
+    const kind = a.type || a.name || 'action';
+    const path = a.path ? ` (${a.path})` : '';
+    const res = ok ? 'ok' : `error: ${r.error || 'unknown'}`;
+    return `• ${kind}${path} — ${res}`;
+  });
+  const visibleLog = items.filter(Boolean).join('\n');
+  const promptForModel = [
+    '위 작업 결과를 반영해 다음 응답을 간결히 준비하세요.',
+    `남은 자동 실행 예산: ${remainingBudget}`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  const parts = [{ text: `${visibleLog}\n\n${promptForModel}` }];
+  return { visibleLog, promptForModel, parts };
 }
 
 function normalizeActions(actions) {
@@ -1776,6 +1966,13 @@ async function executeWorkspaceAction(action, token) {
       memoryDelete: 'memory_delete',
       memoryPromote: 'memory_promote',
       memoryList: 'memory_list',
+      todoAdd: 'memory_todo_add',
+      todoReplace: 'memory_todo_replace',
+      todoRemove: 'memory_todo_remove',
+      todoClear: 'memory_todo_clear',
+      todoList: 'memory_todo_list',
+      todoPrefsSet: 'memory_todo_prefs_set',
+      todoPrefsGet: 'memory_todo_prefs_get',
     };
     const actionType = alias[action.type] || action.type;
 
@@ -1822,6 +2019,41 @@ async function executeWorkspaceAction(action, token) {
         ? await readLongMemoryRemote(token).catch(() => readMemory('long'))
         : readMemory('short');
       return { ok: true, data: { items } };
+    }
+    if (actionType === 'memory_todo_add') {
+      const text = String(action.payload?.text || '').trim();
+      if (!text) return { ok: false, error: 'invalid_args' };
+      addTodo(text);
+      return { ok: true };
+    }
+    if (actionType === 'memory_todo_replace') {
+      const items = Array.isArray(action.payload?.items) ? action.payload.items : [];
+      writeTodoList(items);
+      return { ok: true };
+    }
+    if (actionType === 'memory_todo_remove') {
+      const index = Number.isInteger(action.payload?.index) ? action.payload.index : null;
+      const text = action.payload?.text ? String(action.payload.text) : null;
+      if (index == null && !text) return { ok: false, error: 'invalid_args' };
+      removeTodo({ index, text });
+      return { ok: true };
+    }
+    if (actionType === 'memory_todo_clear') {
+      writeTodoList([]);
+      return { ok: true };
+    }
+    if (actionType === 'memory_todo_list') {
+      const items = readTodoList();
+      return { ok: true, data: { items } };
+    }
+    if (actionType === 'memory_todo_prefs_set') {
+      const hideCompleted = !!action.payload?.hideCompleted;
+      writeTodoPrefs({ hideCompleted });
+      return { ok: true };
+    }
+    if (actionType === 'memory_todo_prefs_get') {
+      const prefs = readTodoPrefs();
+      return { ok: true, data: { prefs } };
     }
     // Pre-check sandbox allowlist for sandbox_exec/test/lint/build
     if (['sandbox_exec','test_run','lint_run','build_run'].includes(actionType)) {
@@ -1960,6 +2192,8 @@ const MEMORY_KEYS = {
   short: 'workspace:aiChat:mem.short',
   long: 'workspace:aiChat:mem.long',
 };
+const TODO_KEY = 'TODO';
+const TODO_PREFS_KEY = 'TODO_PREFS';
 
 function readMemory(scope) {
   if (typeof window === 'undefined') return [];
@@ -2028,6 +2262,107 @@ function summarizeMemory(list, maxChars = 800) {
     used += text.length;
   }
   return lines.join('\n');
+}
+
+// --- TODO helpers (short memory) ---
+function readTodoList() {
+  try {
+    const list = readMemory('short');
+    const item = list.find((e) => e.key === TODO_KEY);
+    if (!item || !item.content) return [];
+    try {
+      const arr = JSON.parse(String(item.content));
+      if (Array.isArray(arr)) {
+        return arr.map((v) => {
+          if (typeof v === 'string') return { text: v, done: false };
+          const text = String(v?.text || '');
+          const done = !!v?.done;
+          return text ? { text, done } : null;
+        }).filter(Boolean);
+      }
+      return [];
+    } catch {
+      return String(item.content)
+        .split(/\r?\n/)
+        .filter(Boolean)
+        .map((t) => ({ text: t, done: false }));
+    }
+  } catch { return []; }
+}
+
+function writeTodoList(items) {
+  const list = Array.isArray(items)
+    ? items
+        .map((v) => ({ text: String(v?.text || v || ''), done: !!(v?.done) }))
+        .filter((v) => v.text)
+    : [];
+  saveMemoryEntry('short', { key: TODO_KEY, content: JSON.stringify(list) });
+}
+
+function addTodo(text) {
+  const cur = readTodoList();
+  const t = String(text || '').trim();
+  if (!t) return;
+  const next = [...cur, { text: t, done: false }];
+  writeTodoList(next);
+}
+
+function removeTodo({ index = null, text = null } = {}) {
+  const cur = readTodoList();
+  let next = cur;
+  if (index != null && Number.isInteger(index)) {
+    next = cur.filter((_, i) => i !== index);
+  } else if (text) {
+    next = cur.filter((t) => t.text !== text);
+  }
+  writeTodoList(next);
+}
+
+function toggleTodo(index) {
+  const cur = readTodoList();
+  if (index < 0 || index >= cur.length) return;
+  const next = cur.slice();
+  next[index] = { ...next[index], done: !next[index].done };
+  writeTodoList(next);
+}
+
+async function readLongTodoRemote(token) {
+  try {
+    const items = await readLongMemoryRemote(token);
+    const row = (items || []).find((e) => e.key === TODO_KEY);
+    if (!row) return [];
+    const parsed = JSON.parse(String(row.content || '[]'));
+    return Array.isArray(parsed)
+      ? parsed.map((v) => ({ text: String(v?.text || v || ''), done: !!(v?.done) })).filter((v) => v.text)
+      : [];
+  } catch { return []; }
+}
+
+async function writeLongTodoRemote(list, token) {
+  try {
+    const content = JSON.stringify(list || []);
+    const ok = await writeLongMemoryRemote({ key: TODO_KEY, content }, token);
+    return !!ok;
+  } catch { return false; }
+}
+
+function readTodoPrefs() {
+  try {
+    const list = readMemory('short');
+    const item = list.find((e) => e.key === TODO_PREFS_KEY);
+    if (!item || !item.content) return { hideCompleted: false };
+    const obj = JSON.parse(String(item.content));
+    return {
+      hideCompleted: !!obj?.hideCompleted,
+    };
+  } catch {
+    return { hideCompleted: false };
+  }
+}
+
+function writeTodoPrefs(prefs) {
+  const merged = { hideCompleted: !!prefs?.hideCompleted };
+  saveMemoryEntry('short', { key: TODO_PREFS_KEY, content: JSON.stringify(merged) });
 }
 
 // Remote long-memory helpers (best-effort)
@@ -2338,6 +2673,56 @@ styles = {
     overflowY: 'auto',
     color: '#e2e8f0',
   },
+  todoBar: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  todoToggle: {
+    border: '1px solid #334155',
+    background: '#0f172a',
+    color: '#e2e8f0',
+    borderRadius: 8,
+    padding: '2px 6px',
+    cursor: 'pointer',
+  },
+  todoProgress: {
+    fontSize: 12,
+    color: '#b6c2d9',
+  },
+  todoActions: {
+    marginLeft: 'auto',
+    display: 'flex',
+    gap: 6,
+  },
+  todoList: {
+    border: '1px solid #273449',
+    borderRadius: 10,
+    padding: 8,
+    background: 'rgba(3, 10, 23, 0.55)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+  },
+  todoItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    fontSize: 13,
+    color: '#e2e8f0',
+  },
+  todoText: {
+    flex: 1,
+  },
+  todoDone: {
+    textDecoration: 'line-through',
+    color: '#94a3b8',
+  },
+  todoEmpty: {
+    fontSize: 12,
+    color: '#9fb3df',
+  },
   newMessagePill: {
     position: 'absolute',
     right: 20,
@@ -2352,12 +2737,12 @@ styles = {
     boxShadow: '0 6px 18px rgba(0,0,0,0.35)'
   },
   logBubble: {
-    padding: 12,
+    padding: 8,
     borderRadius: 14,
     border: '1px solid rgba(148,163,184,0.25)',
     whiteSpace: 'pre-wrap',
     fontSize: 13,
-    lineHeight: 1.6,
+    lineHeight: 1.4,
     maxWidth: '82%',
     alignSelf: 'flex-start',
     boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
@@ -2700,6 +3085,15 @@ styles = {
     gap: 8,
     alignItems: 'center',
     flex: '0 0 auto',
+  },
+  keyExpiredBadge: {
+    marginLeft: 6,
+    padding: '2px 8px',
+    borderRadius: 999,
+    fontSize: 10,
+    border: '1px solid #7f1d1d',
+    color: '#fecaca',
+    background: '#450a0a',
   },
   keyPrimary: (active) => ({
     borderRadius: 10,
