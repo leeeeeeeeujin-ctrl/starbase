@@ -1,4 +1,4 @@
-ï»¿"use client";
+"use client";
 
 import React, {
   useCallback,
@@ -26,10 +26,10 @@ import {
 import { persistRankKeyringSnapshot, readRankKeyringSnapshot } from '@/lib/rank/keyringStorage';
 
 const PROMPT_HEADER = [
-  'ë‹¹ì‹ ì€ Starbase ì›Œí¬ìŠ¤í˜ì´ìŠ¤ì—ì„œ ì½”ë“œë¥¼ ë„ì™€ì£¼ëŠ” ì–´ì‹œìŠ¤í„´íŠ¸ì…ë‹ˆë‹¤.',
-  'í•­ìƒ JSON í˜•ì‹ìœ¼ë¡œë§Œ ì‘ë‹µí•˜ì„¸ìš”: {"message":string,"actions?":[], "followup?":string}.',
-  'ìˆ˜ì •/í…ŒìŠ¤íŠ¸/ê²€ìƒ‰ì´ í•„ìš”í•˜ë©´ ì‚¬ìš©ìê°€ ì§ì ‘ í•˜ë„ë¡ ìš”êµ¬í•˜ì§€ ë§ê³  actions í•­ëª©ìœ¼ë¡œ ì‹¤í–‰ ê³„íšì„ ì œì‹œí•˜ì„¸ìš”.',
-  'ì„¤ëª…ì€ ê°„ê²°í•˜ê²Œ, ë§‰íˆê¸° ì „ê¹Œì§€ëŠ” ìŠ¤ìŠ¤ë¡œ ë‹¤ìŒ ë‹¨ê³„ë¥¼ ì´ì–´ê°€ì„¸ìš”.',
+  '´ç½ÅÀº Starbase ¿öÅ©½ºÆäÀÌ½º¿¡¼­ ÄÚµå¸¦ µµ¿ÍÁÖ´Â ¾î½Ã½ºÅÏÆ®ÀÔ´Ï´Ù.',
+  'Ç×»ó JSON Çü½ÄÀ¸·Î¸¸ ÀÀ´äÇÏ¼¼¿ä: {"message":string,"actions?":[], "followup?":string}.',
+  '¼öÁ¤/Å×½ºÆ®/°Ë»öÀÌ ÇÊ¿äÇÏ¸é »ç¿ëÀÚ°¡ Á÷Á¢ ÇÏµµ·Ï ¿ä±¸ÇÏÁö ¸»°í actions Ç×¸ñÀ¸·Î ½ÇÇà °èÈ¹À» Á¦½ÃÇÏ¼¼¿ä.',
+  '¼³¸íÀº °£°áÇÏ°Ô, ¸·È÷±â Àü±îÁö´Â ½º½º·Î ´ÙÀ½ ´Ü°è¸¦ ÀÌ¾î°¡¼¼¿ä.',
 ].join('\n');
 
 const DOCK_PREFS_KEY = 'workspace:aiChat:prefs.v2';
@@ -55,9 +55,9 @@ const HISTORY_SLICE = 12;
 const MAX_AUTO_CHAIN_DEPTH = 4;
 const ACTION_ALLOWLIST_PATH = 'workspace/config/ai-actions-allowlist.json';
 const POLICY_LABELS = {
-  allow: 'í—ˆìš©',
-  prompt: 'í™•ì¸',
-  deny: 'ê±°ë¶€',
+  allow: 'Çã¿ë',
+  prompt: 'È®ÀÎ',
+  deny: '°ÅºÎ',
 };
 
 export default function AIChatDock({ onClose }) {
@@ -330,7 +330,7 @@ export default function AIChatDock({ onClose }) {
       files.forEach((file) => {
         if (next.length >= MAX_ATTACHMENTS) return;
       if (file.size > MAX_ATTACHMENT_BYTES) {
-        error = `íŒŒì¼ì€ ${formatBytes(MAX_ATTACHMENT_BYTES)} ì´í•˜ë§Œ ì—…ë¡œë“œí•  ìˆ˜ ìˆìŠµë‹ˆë‹¤.`;
+        error = `ÆÄÀÏÀº ${formatBytes(MAX_ATTACHMENT_BYTES)} ÀÌÇÏ¸¸ ¾÷·ÎµåÇÒ ¼ö ÀÖ½À´Ï´Ù.`;
           return;
         }
         next = [...next, createAttachmentMeta(file)];
@@ -442,7 +442,7 @@ export default function AIChatDock({ onClose }) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.ok) {
-        throw Object.assign(new Error(data?.error || 'AI ì‘ë‹µì„ ë°›ì§€ ëª»í–ˆìŠµë‹ˆë‹¤.'), {
+        throw Object.assign(new Error(data?.error || 'AI ÀÀ´äÀ» ¹ŞÁö ¸øÇß½À´Ï´Ù.'), {
           status: res.status,
           detail: data,
         });
@@ -461,7 +461,7 @@ export default function AIChatDock({ onClose }) {
         return;
       }
       if (!canAutoRun) {
-        const warning = `AIê°€ ${normalizedActions.length}ê°œì˜ ì‘ì—…ì„ ìš”ì²­í–ˆì§€ë§Œ ì‹ ë¢° ëª¨ë“œê°€ êº¼ì ¸ ìˆìŠµë‹ˆë‹¤.`;
+        const warning = `AI°¡ ${normalizedActions.length}°³ÀÇ ÀÛ¾÷À» ¿äÃ»ÇßÁö¸¸ ½Å·Ú ¸ğµå°¡ ²¨Á® ÀÖ½À´Ï´Ù.`;
         workingLogs.push({ role: 'system', msg: warning });
         append('system', warning);
         return;
@@ -503,13 +503,13 @@ export default function AIChatDock({ onClose }) {
     if (!trimmed) return;
     setRunMenuOpen(false);
     if (!sessionUser?.id) {
-      setChatError('ë¡œê·¸ì¸ í›„ì—ë§Œ ë©”ì‹œì§€ë¥¼ ë³´ë‚¼ ìˆ˜ ìˆìŠµë‹ˆë‹¤.');
-      append('error', 'ë¡œê·¸ì¸ í›„ì—ë§Œ ë©”ì‹œì§€ë¥¼ ë³´ë‚¼ ìˆ˜ ìˆìŠµë‹ˆë‹¤.');
+      setChatError('·Î±×ÀÎ ÈÄ¿¡¸¸ ¸Ş½ÃÁö¸¦ º¸³¾ ¼ö ÀÖ½À´Ï´Ù.');
+      append('error', '·Î±×ÀÎ ÈÄ¿¡¸¸ ¸Ş½ÃÁö¸¦ º¸³¾ ¼ö ÀÖ½À´Ï´Ù.');
       return;
     }
     if (!hasActiveKey) {
-      setChatError('Geminiì™€ ëŒ€í™”í•˜ë ¤ë©´ í™œì„±í™”ëœ API í‚¤ê°€ í•„ìš”í•©ë‹ˆë‹¤.');
-      append('error', 'í™œì„±í™”ëœ API í‚¤ê°€ ì—†ìŠµë‹ˆë‹¤.');
+      setChatError('Gemini¿Í ´ëÈ­ÇÏ·Á¸é È°¼ºÈ­µÈ API Å°°¡ ÇÊ¿äÇÕ´Ï´Ù.');
+      append('error', 'È°¼ºÈ­µÈ API Å°°¡ ¾ø½À´Ï´Ù.');
       return;
     }
 
@@ -528,7 +528,7 @@ export default function AIChatDock({ onClose }) {
       });
     } catch (error) {
       console.error('[AIChatDock] send failed', error);
-      const message = error?.message || 'ìš”ì²­ì„ ì²˜ë¦¬í•˜ì§€ ëª»í–ˆìŠµë‹ˆë‹¤.';
+      const message = error?.message || '¿äÃ»À» Ã³¸®ÇÏÁö ¸øÇß½À´Ï´Ù.';
       setChatError(message);
       append('error', { message, detail: error?.detail || null });
     } finally {
@@ -557,12 +557,12 @@ export default function AIChatDock({ onClose }) {
 
   const autoHintText = useMemo(() => {
     if (autoStatus.running) {
-      return `ìë™ ì‹¤í–‰ ì¤‘ Â· ë‚¨ì€ ${autoStatus.remaining}íšŒ`;
+      return `ÀÚµ¿ ½ÇÇà Áß ¡¤ ³²Àº ${autoStatus.remaining}È¸`;
     }
     if (chatOptions.trustLimit > 1) {
-      return `ìë™ ì‹¤í–‰ í—ˆìš© ${chatOptions.trustLimit}íšŒ`;
+      return `ÀÚµ¿ ½ÇÇà Çã¿ë ${chatOptions.trustLimit}È¸`;
     }
-    return 'ìë™ ì‹¤í–‰ êº¼ì§';
+    return 'ÀÚµ¿ ½ÇÇà ²¨Áü';
   }, [autoStatus.running, autoStatus.remaining, chatOptions.trustLimit]);
 
   const backdropStyle = prefs.mode === 'fullscreen' ? styles.backdropFullscreen : styles.backdropWindow;
@@ -588,46 +588,46 @@ export default function AIChatDock({ onClose }) {
           onPointerDown={(event) => beginPointerInteraction(event, 'move')}
         >
           <div style={styles.headerInfo}>
-            <h2 style={styles.title}>AI ì½”ë“œ ì±„íŒ…</h2>
+            <h2 style={styles.title}>AI ÄÚµå Ã¤ÆÃ</h2>
           </div>
                               <div style={styles.headerToolbar} data-stop-drag="true">
             <button
               type="button"
               style={styles.toolbarButton}
               onClick={handleHistoryToggle}
-              title="ëŒ€í™” ê¸°ë¡"
-              aria-label="ëŒ€í™” ê¸°ë¡"
+              title="´ëÈ­ ±â·Ï"
+              aria-label="´ëÈ­ ±â·Ï"
             >
-              ê¸°ë¡
+              ±â·Ï
             </button>
             <button
               type="button"
               style={styles.toolbarButton}
               data-ai-chat-menu-trigger
               onClick={() => setMenuOpen((prev) => !prev)}
-              title="ë©”ë‰´"
-              aria-label="ë©”ë‰´"
+              title="¸Ş´º"
+              aria-label="¸Ş´º"
             >
-              â‹¯
+              ?
             </button>
             <button
               type="button"
               style={styles.toolbarButton}
               onClick={handleToggleMode}
               data-stop-drag="true"
-              title={prefs.mode === 'fullscreen' ? 'ì°½ ëª¨ë“œë¡œ ì „í™˜' : 'ì „ì²´ í™”ë©´ìœ¼ë¡œ ì „í™˜'}
-              aria-label={prefs.mode === 'fullscreen' ? 'ì°½ ëª¨ë“œë¡œ ì „í™˜' : 'ì „ì²´ í™”ë©´ìœ¼ë¡œ ì „í™˜'}
+              title={prefs.mode === 'fullscreen' ? 'Ã¢ ¸ğµå·Î ÀüÈ¯' : 'ÀüÃ¼ È­¸éÀ¸·Î ÀüÈ¯'}
+              aria-label={prefs.mode === 'fullscreen' ? 'Ã¢ ¸ğµå·Î ÀüÈ¯' : 'ÀüÃ¼ È­¸éÀ¸·Î ÀüÈ¯'}
             >
-              {prefs.mode === 'fullscreen' ? 'â–£' : 'â›¶'}
+              {prefs.mode === 'fullscreen' ? '¢Ã' : '?'}
             </button>
             <button
               type="button"
               style={styles.closeButton}
               onClick={onClose}
-              title="ë‹«ê¸°"
-              aria-label="ë‹«ê¸°"
+              title="´İ±â"
+              aria-label="´İ±â"
             >
-              Ã—
+              ¡¿
             </button>
           </div>
         </header>
@@ -654,8 +654,8 @@ export default function AIChatDock({ onClose }) {
                 type="button"
                 style={styles.attachCircle}
                 onClick={handlePickAttachment}
-                title="íŒŒì¼ ì²¨ë¶€"
-                aria-label="íŒŒì¼ ì²¨ë¶€"
+                title="ÆÄÀÏ Ã·ºÎ"
+                aria-label="ÆÄÀÏ Ã·ºÎ"
               >
                 +
               </button>
@@ -663,7 +663,7 @@ export default function AIChatDock({ onClose }) {
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
                 onKeyDown={handleInputKeyDown}
-                placeholder="ë³€ê²½ ìš”ì²­ì´ë‚˜ ì§ˆë¬¸ì„ ì…ë ¥í•˜ì„¸ìš”"
+                placeholder="º¯°æ ¿äÃ»ÀÌ³ª Áú¹®À» ÀÔ·ÂÇÏ¼¼¿ä"
                 style={styles.chatInput}
                 rows={1}
               />
@@ -674,20 +674,20 @@ export default function AIChatDock({ onClose }) {
                     style={styles.sendButton(sending || !input.trim() || !hasActiveKey)}
                     onClick={handleSend}
                     disabled={sending || !input.trim() || !hasActiveKey}
-                    aria-label="ë³´ë‚´ê¸°"
-                    title="ë³´ë‚´ê¸°"
+                    aria-label="º¸³»±â"
+                    title="º¸³»±â"
                   >
-                    {sending ? 'Â·Â·Â·' : 'â¤'}
+                    {sending ? '¡¤¡¤¡¤' : '?'}
                   </button>
                   <button
                     type="button"
                     style={styles.sendMenuButton}
                     data-run-menu-trigger
                     onClick={() => setRunMenuOpen((prev) => !prev)}
-                    aria-label="ì‹¤í–‰ ì˜µì…˜"
-                    title="ì‹¤í–‰ ì˜µì…˜"
+                    aria-label="½ÇÇà ¿É¼Ç"
+                    title="½ÇÇà ¿É¼Ç"
                   >
-                    â–¼
+                    ¡å
                   </button>
                 </div>
               </div>
@@ -708,7 +708,7 @@ export default function AIChatDock({ onClose }) {
           <div
             style={styles.resizeHandle}
             onPointerDown={(event) => beginPointerInteraction(event, 'resize')}
-            aria-label="ì°½ í¬ê¸° ì¡°ì ˆ"
+            aria-label="Ã¢ Å©±â Á¶Àı"
           />
         )}
         {prefs.historyOpen && (
@@ -865,7 +865,7 @@ function useKeyringController({ sessionUser, getSessionToken }) {
   const load = useCallback(async () => {
     if (!sessionUser?.id) {
       setEntries([]);
-      setMessage('ë¡œê·¸ì¸í•˜ë©´ API í‚¤ë¥¼ ì—°ê²°í•  ìˆ˜ ìˆìŠµë‹ˆë‹¤.');
+      setMessage('·Î±×ÀÎÇÏ¸é API Å°¸¦ ¿¬°áÇÒ ¼ö ÀÖ½À´Ï´Ù.');
       return;
     }
     setLoading(true);
@@ -879,7 +879,7 @@ function useKeyringController({ sessionUser, getSessionToken }) {
       const nextEntries = payload.entries || [];
       setEntries(nextEntries);
       setLimit(Number.isFinite(payload?.limit) ? Number(payload.limit) : KEYRING_LIMIT_FALLBACK);
-      setMessage(nextEntries.length ? '' : 'Gemini API í‚¤ë¥¼ ë“±ë¡í•˜ë©´ ì±„íŒ…ì„ ì‹œì‘í•  ìˆ˜ ìˆìŠµë‹ˆë‹¤.');
+      setMessage(nextEntries.length ? '' : 'Gemini API Å°¸¦ µî·ÏÇÏ¸é Ã¤ÆÃÀ» ½ÃÀÛÇÒ ¼ö ÀÖ½À´Ï´Ù.');
       applySnapshot(sessionUser.id, nextEntries);
     } catch (err) {
       console.error('[AIChatDock] failed to load keyring', err);
@@ -896,7 +896,7 @@ function useKeyringController({ sessionUser, getSessionToken }) {
   const register = useCallback(async () => {
     if (!pendingKey.trim() || submitting) return;
     if (!sessionUser?.id) {
-      setError(new Error('API í‚¤ë¥¼ ë“±ë¡í•˜ë ¤ë©´ ë¡œê·¸ì¸í•˜ì„¸ìš”.'));
+      setError(new Error('API Å°¸¦ µî·ÏÇÏ·Á¸é ·Î±×ÀÎÇÏ¼¼¿ä.'));
       return;
     }
     setSubmitting(true);
@@ -1033,30 +1033,30 @@ function KeyringModal({
       <div style={styles.modal}>
         <div style={styles.modalHeader}>
           <div>
-            <h3 style={styles.modalTitle}>API í‚¤ ê´€ë¦¬</h3>
+            <h3 style={styles.modalTitle}>API Å° °ü¸®</h3>
             <p style={styles.modalSubtitle}>
-              ì…ë ¥í•œ í‚¤ëŠ” Supabaseì— ì•”í˜¸í™”ë˜ì–´ ì €ì¥ë©ë‹ˆë‹¤. {entries.length}/{limit}
+              ÀÔ·ÂÇÑ Å°´Â Supabase¿¡ ¾ÏÈ£È­µÇ¾î ÀúÀåµË´Ï´Ù. {entries.length}/{limit}
             </p>
           </div>
           <div style={styles.modalHeaderButtons}>
             <button type="button" style={styles.secondaryButton} onClick={onRefresh}>
-              ìƒˆë¡œ ê³ ì¹¨
+              »õ·Î °íÄ§
             </button>
             <button type="button" style={styles.secondaryButton} onClick={onClose}>
-              ë‹«ê¸°
+              ´İ±â
             </button>
           </div>
         </div>
         {message && <div style={styles.infoBox}>{message}</div>}
-        {loading && <div style={styles.infoBox}>í‚¤ ëª©ë¡ì„ ë¶ˆëŸ¬ì˜¤ëŠ” ì¤‘ì…ë‹ˆë‹¤â€¦</div>}
+        {loading && <div style={styles.infoBox}>Å° ¸ñ·ÏÀ» ºÒ·¯¿À´Â ÁßÀÔ´Ï´Ù¡¦</div>}
         {error && (
-          <div style={styles.errorBox}>{error.message || 'í‚¤ë¥¼ ë¶ˆëŸ¬ì˜¤ëŠ” ì¤‘ ì˜¤ë¥˜ê°€ ë°œìƒí–ˆìŠµë‹ˆë‹¤.'}</div>
+          <div style={styles.errorBox}>{error.message || 'Å°¸¦ ºÒ·¯¿À´Â Áß ¿À·ù°¡ ¹ß»ıÇß½À´Ï´Ù.'}</div>
         )}
         <div style={styles.modalSection}>
           <textarea
             value={pendingKey}
             onChange={(event) => setPendingKey(event.target.value)}
-            placeholder="ì˜ˆ: AIza... / Gemini API í‚¤ë¥¼ ë¶™ì—¬ ë„£ìœ¼ì„¸ìš”."
+            placeholder="¿¹: AIza... / Gemini API Å°¸¦ ºÙ¿© ³ÖÀ¸¼¼¿ä."
             style={styles.keyInput}
           />
           <button
@@ -1065,19 +1065,19 @@ function KeyringModal({
             onClick={onRegister}
             disabled={!pendingKey.trim() || submitting}
           >
-            {submitting ? 'ë“±ë¡ ì¤‘â€¦' : 'ë“±ë¡í•˜ê³  í™œì„±í™”'}
+            {submitting ? 'µî·Ï Áß¡¦' : 'µî·ÏÇÏ°í È°¼ºÈ­'}
           </button>
         </div>
         <div style={styles.keyGrid}>
-          {entries.length === 0 && <div style={styles.emptyBox}>ë“±ë¡ëœ í‚¤ê°€ ì—†ìŠµë‹ˆë‹¤.</div>}
+          {entries.length === 0 && <div style={styles.emptyBox}>µî·ÏµÈ Å°°¡ ¾ø½À´Ï´Ù.</div>}
           {entries.map((entry) => (
             <div key={entry.id} style={styles.keyEntryCard}>
               <div style={styles.keyMeta}>
                 <span style={styles.keyProvider}>{formatKeyProviderLabel(entry.provider)}</span>
-                {entry.isActive && <span style={styles.activeBadge}>í™œì„±</span>}
+                {entry.isActive && <span style={styles.activeBadge}>È°¼º</span>}
               </div>
               <div style={styles.keyDetails}>
-                <span>{entry.modelLabel || entry.geminiModel || 'ëª¨ë¸ ì •ë³´ ì—†ìŒ'}</span>
+                <span>{entry.modelLabel || entry.geminiModel || '¸ğµ¨ Á¤º¸ ¾øÀ½'}</span>
                 <code style={styles.keySample}>{entry.keySample || '****'}</code>
               </div>
               <div style={styles.keyActions}>
@@ -1087,7 +1087,7 @@ function KeyringModal({
                   onClick={() => (entry.isActive ? onDeactivate(entry) : onActivate(entry))}
                   disabled={submitting}
                 >
-                  {entry.isActive ? 'ë¹„í™œì„±í™”' : 'ì´ í‚¤ ì‚¬ìš©'}
+                  {entry.isActive ? 'ºñÈ°¼ºÈ­' : 'ÀÌ Å° »ç¿ë'}
                 </button>
                 <button
                   type="button"
@@ -1095,7 +1095,7 @@ function KeyringModal({
                   onClick={() => onRemove(entry)}
                   disabled={submitting}
                 >
-                  ì‚­ì œ
+                  »èÁ¦
                 </button>
               </div>
             </div>
@@ -1117,49 +1117,48 @@ function InstructionsModal({ initialValue, onSave, onClose }) {
       <div style={styles.modal}>
         <div style={styles.modalHeader}>
           <div>
-            <h3 style={styles.modalTitle}>ì‚¬ìš©ì ì§€ì¹¨</h3>
-            <p style={styles.modalSubtitle}>ì…ë ¥í•œ ì§€ì¹¨ì€ í”„ë¡œì íŠ¸ ì „ì²´ì— ê³µìœ ë©ë‹ˆë‹¤.</p>
+            <h3 style={styles.modalTitle}>»ç¿ëÀÚ ÁöÄ§</h3>
+            <p style={styles.modalSubtitle}>ÀÔ·ÂÇÑ ÁöÄ§Àº ÇÁ·ÎÁ§Æ® ÀüÃ¼¿¡ °øÀ¯µË´Ï´Ù.</p>
           </div>
           <button type="button" style={styles.secondaryButton} onClick={onClose}>
-            ë‹«ê¸°
+            ´İ±â
           </button>
         </div>
         <textarea
           value={value}
           onChange={(event) => setValue(event.target.value)}
           style={styles.instructionsTextarea}
-          placeholder="ì˜ˆ: í…ŒìŠ¤íŠ¸ë¥¼ ì‹¤í–‰í•  ë•ŒëŠ” ë¡œê·¸ë¥¼ ëª¨ë‘ ìš”ì•½í•´ ì£¼ì„¸ìš”."
+          placeholder="¿¹: Å×½ºÆ®¸¦ ½ÇÇàÇÒ ¶§´Â ·Î±×¸¦ ¸ğµÎ ¿ä¾àÇØ ÁÖ¼¼¿ä."
         />
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
           <button type="button" style={styles.secondaryButton} onClick={() => setValue('')}>
-            ì´ˆê¸°í™”
+            ÃÊ±âÈ­
           </button>
           <button
             type="button"
             style={styles.primaryButton(!value && !initialValue)}
             onClick={() => onSave(value)}
           >
-            ì €ì¥
+            ÀúÀå
           </button>
         </div>
       </div>
     </div>,
     modalRoot
   );
-}
 
 function HistoryPanel({ sessions, currentId, onSelect, onDelete, onNewChat, onClose }) {
   return (
     <div style={styles.historyDrawerBackdrop}>
       <aside style={styles.historyPanel}>
         <div style={styles.historyHeader}>
-          <h4 style={{ margin: 0 }}>ëŒ€í™” ê¸°ë¡</h4>
+          <h4 style={{ margin: 0 }}>´ëÈ­ ±â·Ï</h4>
           <div style={{ display: 'flex', gap: 8 }}>
             <button type="button" style={styles.secondaryButton} onClick={onNewChat}>
-              ìƒˆ ëŒ€í™”
+              »õ ´ëÈ­
             </button>
             <button type="button" style={styles.secondaryButton} onClick={onClose}>
-              ë‹«ê¸°
+              ´İ±â
             </button>
           </div>
         </div>
@@ -1185,9 +1184,9 @@ function HistoryPanel({ sessions, currentId, onSelect, onDelete, onNewChat, onCl
                   style={styles.historySelectButton}
                   onClick={() => onSelect(session.id)}
                 >
-                  <div style={{ fontWeight: 600 }}>{session.title || 'ì œëª© ì—†ìŒ'}</div>
+                  <div style={{ fontWeight: 600 }}>{session.title || 'Á¦¸ñ ¾øÀ½'}</div>
                   <div style={{ fontSize: 11, color: '#b6c2d9' }}>
-                    {preview || 'ë©”ì‹œì§€ê°€ ì—†ìŠµë‹ˆë‹¤.'}
+                    {preview || '¸Ş½ÃÁö°¡ ¾ø½À´Ï´Ù.'}
                   </div>
                 </button>
                 <button
@@ -1195,7 +1194,7 @@ function HistoryPanel({ sessions, currentId, onSelect, onDelete, onNewChat, onCl
                   style={styles.historyDeleteButton}
                   onClick={() => onDelete(session.id)}
                 >
-                  Ã—
+                  ¡¿
                 </button>
               </div>
             );
@@ -1214,7 +1213,7 @@ function AttachmentsBar({ attachments, onRemove, error }) {
           <span key={item.id} style={styles.attachmentChip}>
             {item.name} ({formatBytes(item.size)})
             <button type="button" style={styles.attachmentRemove} onClick={() => onRemove(item.id)}>
-              Ã—
+              ¡¿
             </button>
           </span>
         ))}
@@ -1236,8 +1235,8 @@ function DockMenu({
     <div style={styles.menu} data-ai-chat-menu="true">
       <div style={styles.menuSection}>
         <div style={{ ...styles.menuRow, justifyContent: 'space-between' }}>
-          <span>ìë™ ì‹¤í–‰ íšŸìˆ˜</span>
-          <span style={styles.menuValue}>{trustLimit}íšŒ</span>
+          <span>ÀÚµ¿ ½ÇÇà È½¼ö</span>
+          <span style={styles.menuValue}>{trustLimit}È¸</span>
         </div>
         <input
           type="range"
@@ -1247,24 +1246,24 @@ function DockMenu({
           onChange={(event) => onTrustLimitChange(Number(event.target.value))}
           style={{ width: '100%' }}
         />
-        <small>ìŠ¬ë¼ì´ë”ë¥¼ ë°€ì–´ ìë™ ì‘ì—… í—ˆìš© íšŸìˆ˜ë¥¼ ì •í•  ìˆ˜ ìˆìŠµë‹ˆë‹¤.</small>
+        <small>½½¶óÀÌ´õ¸¦ ¹Ğ¾î ÀÚµ¿ ÀÛ¾÷ Çã¿ë È½¼ö¸¦ Á¤ÇÒ ¼ö ÀÖ½À´Ï´Ù.</small>
       </div>
       <div style={styles.menuSection}>
         <div style={styles.menuList}>
           <button type="button" style={styles.menuListButton} onClick={onOpenInstructions}>
-            ì‚¬ìš©ì ì§€ì¹¨ ê´€ë¦¬
+            »ç¿ëÀÚ ÁöÄ§ °ü¸®
           </button>
           <button type="button" style={styles.menuListButton} onClick={onOpenKeyring}>
-            API í‚¤ ê´€ë¦¬
+            API Å° °ü¸®
           </button>
         </div>
       </div>
       <div style={styles.menuSection}>
         <div style={styles.menuInfo}>
-          ì‹¤í–‰ ë²„íŠ¼ ì˜† â–¼ ë©”ë‰´ì—ì„œ ìƒŒë“œë°•ìŠ¤Â·í…ŒìŠ¤íŠ¸ ê¶Œí•œì„ ì„¤ì •í•  ìˆ˜ ìˆìŠµë‹ˆë‹¤.
+          ½ÇÇà ¹öÆ° ¿· ¡å ¸Ş´º¿¡¼­ »÷µå¹Ú½º¡¤Å×½ºÆ® ±ÇÇÑÀ» ¼³Á¤ÇÒ ¼ö ÀÖ½À´Ï´Ù.
           <div style={styles.menuPath}>{allowlistPath}</div>
           <button type="button" style={styles.menuButton} onClick={onCopyAllowlistPath}>
-            ê²½ë¡œ ë³µì‚¬
+            °æ·Î º¹»ç
           </button>
         </div>
       </div>
@@ -1295,19 +1294,20 @@ function RunPolicyMenu({
     <div style={styles.runMenu} data-run-menu="true">
       <div style={styles.runMenuSection}>
         <div style={styles.policyRow}>
-          <span>ìƒŒë“œë°•ìŠ¤ ì‘ì—…</span>
+          <span>»÷µå¹Ú½º ÀÛ¾÷</span>
         </div>
         <div style={styles.policyButtons}>{renderButtons(sandboxPolicy, onChangeSandbox)}</div>
       </div>
       <div style={styles.runMenuSection}>
         <div style={styles.policyRow}>
-          <span>ê°„ì´ í…ŒìŠ¤íŠ¸</span>
+          <span>°£ÀÌ Å×½ºÆ®</span>
         </div>
         <div style={styles.policyButtons}>{renderButtons(testerPolicy, onChangeTester)}</div>
       </div>
       <div style={styles.allowlistNote}>
-        'í—ˆìš©'ì„ ì„ íƒí•˜ë©´ ë™ì¼ ëª…ë ¹ì€ {allowlistPath}ì— ê¸°ë¡ë˜ì–´ ìë™ ì‹¤í–‰ë©ë‹ˆë‹¤.
+        'Çã¿ë'À» ¼±ÅÃÇÏ¸é µ¿ÀÏ ¸í·ÉÀº {allowlistPath}¿¡ ±â·ÏµÇ¾î ÀÚµ¿ ½ÇÇàµË´Ï´Ù.
       </div>
     </div>
   );
 }
+
