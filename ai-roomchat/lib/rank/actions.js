@@ -325,6 +325,35 @@ registerAction('edit_patch', {
   },
 });
 
+// Server-side sandbox allowlist helpers
+async function readAllowlistForCtx(ctx) {
+  try {
+    const setId = deriveSetId(ctx, {});
+    const rec = await getWorkspaceRecord(setId);
+    const files = Array.isArray(rec?.files) ? rec.files : [];
+    const item = files.find((f) => f.path === '/workspace/config/ai-actions-allowlist.json');
+    if (!item || !item.content) return { sandbox_exec: { cmds: [] } };
+    try {
+      const obj = JSON.parse(String(item.content));
+      return obj && typeof obj === 'object' ? obj : { sandbox_exec: { cmds: [] } };
+    } catch {
+      return { sandbox_exec: { cmds: [] } };
+    }
+  } catch {
+    return { sandbox_exec: { cmds: [] } };
+  }
+}
+
+async function ensureSandboxAllowed(ctx, cmd) {
+  try {
+    const allow = await readAllowlistForCtx(ctx);
+    const list = Array.isArray(allow?.sandbox_exec?.cmds) ? allow.sandbox_exec.cmds : [];
+    return list.includes(cmd);
+  } catch {
+    return false;
+  }
+}
+
 registerAction('sandbox_exec', {
   schema: z.object({ cmd: z.string(), cwd: z.string().optional(), timeout_ms: z.number().optional() }).optional(),
   handler: async (ctx, payload = {}) => {
@@ -332,6 +361,9 @@ registerAction('sandbox_exec', {
     if (!enabled) return { ok: false, error: 'sandbox_disabled' };
     const cmd = String(payload?.cmd || '').trim();
     if (!cmd) return { ok: false, error: 'invalid_cmd' };
+    // Allowlist enforcement
+    const allowed = await ensureSandboxAllowed(ctx, cmd);
+    if (!allowed) return { ok: false, error: 'not_allowed' };
     // Basic guardrails (no chaining/redirection/subshells)
     const banned = /(\|\||&&|;|\||>|<|`|\$\(|\$\{)/;
     if (banned.test(cmd)) return { ok: false, error: 'cmd_not_allowed' };
@@ -482,6 +514,67 @@ registerAction('copy_file', {
     if (idx >= 0) files[idx] = clone; else files.push(clone);
     const next = await saveWorkspaceRecord(setId, files, { ...rec.meta });
     return { ok: true, from, to, etag: next.etag };
+  },
+});
+
+// Convenience runners (delegate to sandbox with allowed presets)
+function resolvePresetCmd(kind, preset) {
+  const p = String(preset || '').toLowerCase();
+  const byKind = {
+    test: ['npm test', 'npm run test', 'npm run test:unit'],
+    lint: ['npm run lint', 'eslint . --format unix'],
+    build: ['npm run build', 'next build'],
+  };
+  const arr = byKind[kind] || [];
+  if (!p) return arr[0] || null;
+  if (kind === 'test' && p === 'e2e') return 'npm run test:e2e';
+  if (kind === 'test' && (p === 'unit' || p === 'u')) return 'npm run test:unit';
+  if (kind === 'lint' && (p === 'fix' || p === 'f')) return 'npm run lint:fix';
+  if (kind === 'build' && (p === 'prod' || p === 'release')) return 'npm run build';
+  return arr.find((c) => c.toLowerCase().includes(p)) || arr[0] || null;
+}
+
+async function runPreset(kind, payload = {}) {
+  const enabled = process.env.SANDBOX_EXEC_ENABLE === '1';
+  if (!enabled) return { ok: false, error: 'sandbox_disabled' };
+  const cmd = payload?.cmd || resolvePresetCmd(kind, payload?.preset);
+  if (!cmd) return { ok: false, error: 'invalid_cmd' };
+  const banned = /(\|\||&&|;|\||>|<|`|\$\(|\$\{)/;
+  if (banned.test(cmd)) return { ok: false, error: 'cmd_not_allowed' };
+  const timeout = Math.min(Math.max(1000, Number(payload?.timeout_ms || 15000)), 60000);
+  try {
+    const { stdout, stderr } = await exec(cmd, { cwd: process.cwd(), timeout });
+    const cap = (s) => (s || '').toString().slice(0, 20000);
+    return { ok: true, cmd, exitCode: 0, stdout: cap(stdout), stderr: cap(stderr) };
+  } catch (e) {
+    return { ok: false, error: 'exec_failed', detail: e?.message || String(e) };
+  }
+}
+
+registerAction('test_run', {
+  schema: z.object({ preset: z.string().optional(), cmd: z.string().optional(), timeout_ms: z.number().optional() }).optional(),
+  handler: async (ctx, payload = {}) => {
+    const cmd = payload?.cmd || resolvePresetCmd('test', payload?.preset);
+    if (!(await ensureSandboxAllowed(ctx, String(cmd || 'test_run')))) return { ok: false, error: 'not_allowed' };
+    return runPreset('test', { ...payload, cmd });
+  },
+});
+
+registerAction('lint_run', {
+  schema: z.object({ preset: z.string().optional(), cmd: z.string().optional(), timeout_ms: z.number().optional() }).optional(),
+  handler: async (ctx, payload = {}) => {
+    const cmd = payload?.cmd || resolvePresetCmd('lint', payload?.preset);
+    if (!(await ensureSandboxAllowed(ctx, String(cmd || 'lint_run')))) return { ok: false, error: 'not_allowed' };
+    return runPreset('lint', { ...payload, cmd });
+  },
+});
+
+registerAction('build_run', {
+  schema: z.object({ preset: z.string().optional(), cmd: z.string().optional(), timeout_ms: z.number().optional() }).optional(),
+  handler: async (ctx, payload = {}) => {
+    const cmd = payload?.cmd || resolvePresetCmd('build', payload?.preset);
+    if (!(await ensureSandboxAllowed(ctx, String(cmd || 'build_run')))) return { ok: false, error: 'not_allowed' };
+    return runPreset('build', { ...payload, cmd });
   },
 });
 

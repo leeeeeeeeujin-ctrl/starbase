@@ -47,6 +47,9 @@ const PROMPT_HEADER = [
   '- stat_file { path: string } — 파일/디렉터리 메타 조회.',
   '- search_text { query: string, path?: string, max_results?: number } — 텍스트를 검색합니다.',
   '- read_file_range { path: string, start?: number, end?: number } — 일부 범위만 읽습니다.',
+  '- test_run { preset?: string } — 테스트 실행(unit/e2e 등 사전 정의).',
+  '- lint_run { preset?: string } — 린트 실행.',
+  '- build_run { preset?: string } — 빌드 실행.',
   '- sandbox_exec { cmd: string, cwd?: string, timeout_ms?: number }  — 샌드박스에서 명령을 실행합니다.',
   '- memory_put { scope: "short"|"long", key: string, content: string } — 메모리에 기록합니다.',
   '- memory_delete { scope: "short"|"long", key: string } — 메모리에서 항목을 삭제합니다.',
@@ -63,7 +66,9 @@ const PROMPT_HEADER = [
 ].join('\n');
 
 const DOCK_PREFS_KEY = 'workspace:aiChat:prefs.v2';
+const AUTOINIT_FLAG = 'workspace:aiChat:autoinit.applied';
 const REMOTE_MEMORY_ENABLED = process.env.NEXT_PUBLIC_REMOTE_MEMORY === '1';
+const AUTOINIT_ENABLED = process.env.NEXT_PUBLIC_WORKSPACE_AUTOINIT === '1';
 const DEFAULT_DOCK_PREFS = {
   mode: 'mini',
   position: { x: 32, y: 64 },
@@ -157,6 +162,48 @@ async function recordSandboxAllowIfEnabled(token, cmd) {
   }
 }
 
+async function checkSandboxAllowed(token, cmd) {
+  const prefs = loadPrefsFromStorage();
+  const policy = prefs?.sandboxPolicy || 'prompt';
+  if (policy === 'deny') return false;
+  if (policy === 'allow') {
+    // Ensure allowlist has the cmd before server-side enforcement
+    try {
+      const allow = await readAllowlist(token);
+      const next = { ...ALLOWLIST_DEFAULT, ...(allow || {}) };
+      const cur = Array.isArray(next.sandbox_exec?.cmds) ? next.sandbox_exec.cmds : [];
+      if (!cur.includes(cmd)) {
+        next.sandbox_exec = { cmds: [...cur, cmd].slice(0, 200) };
+        await writeAllowlist(token, next);
+      }
+    } catch {}
+    return true;
+  }
+  // prompt policy: allow if already in allowlist, else ask user
+  try {
+    const allow = await readAllowlist(token);
+    const list = Array.isArray(allow?.sandbox_exec?.cmds) ? allow.sandbox_exec.cmds : [];
+    if (list.includes(cmd)) return true;
+  } catch {}
+  try {
+    if (typeof window !== 'undefined') {
+      const ok = window.confirm(`샌드박스 명령을 실행할까요?\n\n${cmd}`);
+      if (ok) {
+        // optimistic: 기록 후 서버 실행 (서버가 allowlist를 강제함)
+        const allow = await readAllowlist(token);
+        const next = { ...ALLOWLIST_DEFAULT, ...(allow || {}) };
+        const cur = Array.isArray(next.sandbox_exec?.cmds) ? next.sandbox_exec.cmds : [];
+        if (!cur.includes(cmd)) {
+          next.sandbox_exec = { cmds: [...cur, cmd].slice(0, 200) };
+          await writeAllowlist(token, next);
+        }
+      }
+      return ok;
+    }
+  } catch {}
+  return false;
+}
+
 export default function AIChatDock({ onClose }) {
   const panelRef = useRef(null);
   const logRef = useRef(null);
@@ -179,6 +226,43 @@ export default function AIChatDock({ onClose }) {
     useSupabaseSessionToken();
 
   logsSnapshotRef.current = logs;
+
+  // Auto-init workspace if empty and flag enabled (one-time per browser)
+  useEffect(() => {
+    if (!AUTOINIT_ENABLED) return;
+    if (typeof window === 'undefined') return;
+    if (window.localStorage.getItem(AUTOINIT_FLAG) === '1') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getSessionToken({ optional: true });
+        if (!token) return;
+        const resList = await fetch('/api/rank/handle-action', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ action: 'list_files', payload: { path: '/' } }),
+        });
+        const dataList = await resList.json().catch(() => ({}));
+        const items = dataList?.result?.items || dataList?.items || [];
+        if (!Array.isArray(items) || items.length > 0) return;
+        // fetch starter pack
+        const packRes = await fetch('/api/workspace/starter-pack');
+        if (!packRes.ok) return;
+        const pack = await packRes.json().catch(() => ({}));
+        const files = Array.isArray(pack?.files) ? pack.files : [];
+        for (const f of files) {
+          if (cancelled) return;
+          await fetch('/api/rank/handle-action', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ action: 'write_file', payload: { path: f.path, content: f.content || '' } }),
+          });
+        }
+        if (!cancelled) window.localStorage.setItem(AUTOINIT_FLAG, '1');
+      } catch {}
+    })();
+    return () => { cancelled = true; };
+  }, [getSessionToken]);
 
   const getSessionToken = useCallback(
     async (options = {}) => {
@@ -1658,6 +1742,9 @@ async function executeWorkspaceAction(action, token) {
       searchFiles: 'search_text',
       grep: 'search_text',
       readRange: 'read_file_range',
+      testRun: 'test_run',
+      lintRun: 'lint_run',
+      buildRun: 'build_run',
       statFile: 'stat_file',
       deleteDir: 'delete_dir',
       removeDir: 'delete_dir',
@@ -1713,6 +1800,13 @@ async function executeWorkspaceAction(action, token) {
         : readMemory('short');
       return { ok: true, data: { items } };
     }
+    // Pre-check sandbox allowlist for sandbox_exec/test/lint/build
+    if (['sandbox_exec','test_run','lint_run','build_run'].includes(actionType)) {
+      const cmdPreview = actionType === 'sandbox_exec' ? (action.payload?.cmd || '') : actionType;
+      const allowed = await checkSandboxAllowed(token, String(cmdPreview));
+      if (!allowed) return { ok: false, error: 'sandbox_blocked' };
+    }
+
     const res = await fetch('/api/rank/handle-action', {
       method: 'POST',
       headers: {
