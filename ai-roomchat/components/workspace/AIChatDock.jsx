@@ -8,7 +8,6 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { createPortal } from 'react-dom';
 
 import { useAiChatSessions } from './hooks/useAiChatSessions';
 import { useSupabaseSessionToken } from './hooks/useSupabaseSessionToken';
@@ -56,7 +55,7 @@ const MAX_AUTO_CHAIN_DEPTH = 4;
 const ACTION_ALLOWLIST_PATH = 'workspace/config/ai-actions-allowlist.json';
 const POLICY_LABELS = {
   allow: '허용',
-  prompt: '확인',
+  prompt: '매번 확인',
   deny: '거부',
 };
 
@@ -555,6 +554,63 @@ export default function AIChatDock({ onClose }) {
     [handleSend]
   );
 
+  const statusBadges = useMemo(() => {
+    const badges = [];
+    badges.push({
+      label: hasActiveKey ? '키 연결' : '키 필요',
+      tone: hasActiveKey ? 'ok' : 'warn',
+      title: hasActiveKey ? 'API 키가 활성화되었습니다.' : '먼저 API 키를 등록하세요.',
+    });
+    badges.push({
+      label: chatOptions.trustLimit > 1 ? `자동 ${chatOptions.trustLimit}회` : '자동 꺼짐',
+      tone: chatOptions.trustLimit > 1 ? 'ok' : 'neutral',
+      title:
+        chatOptions.trustLimit > 1
+          ? `자동 실행을 최대 ${chatOptions.trustLimit}회 허용합니다.`
+          : '자동 실행이 비활성화되어 있습니다.',
+    });
+    const sandboxTone =
+      chatOptions.sandboxPolicy === 'allow'
+        ? 'ok'
+        : chatOptions.sandboxPolicy === 'prompt'
+        ? 'neutral'
+        : 'warn';
+    const sandboxLabel =
+      chatOptions.sandboxPolicy === 'allow'
+        ? '샌드 허용'
+        : chatOptions.sandboxPolicy === 'prompt'
+        ? '샌드 확인'
+        : '샌드 차단';
+    badges.push({
+      label: sandboxLabel,
+      tone: sandboxTone,
+      title: '샌드박스 실행 정책',
+    });
+    const testerTone =
+      chatOptions.testerPolicy === 'allow'
+        ? 'ok'
+        : chatOptions.testerPolicy === 'prompt'
+        ? 'neutral'
+        : 'warn';
+    const testerLabel =
+      chatOptions.testerPolicy === 'allow'
+        ? '테스트 허용'
+        : chatOptions.testerPolicy === 'prompt'
+        ? '테스트 확인'
+        : '테스트 차단';
+    badges.push({
+      label: testerLabel,
+      tone: testerTone,
+      title: '간이 테스트 실행 정책',
+    });
+    return badges;
+  }, [
+    chatOptions.sandboxPolicy,
+    chatOptions.testerPolicy,
+    chatOptions.trustLimit,
+    hasActiveKey,
+  ]);
+
   const autoHintText = useMemo(() => {
     if (autoStatus.running) {
       return `자동 실행 중 · 남은 ${autoStatus.remaining}회`;
@@ -590,7 +646,7 @@ export default function AIChatDock({ onClose }) {
           <div style={styles.headerInfo}>
             <h2 style={styles.title}>AI 코드 채팅</h2>
           </div>
-                              <div style={styles.headerToolbar} data-stop-drag="true">
+                    <div style={styles.headerToolbar} data-stop-drag="true">
             <button
               type="button"
               style={styles.toolbarButton}
@@ -704,13 +760,6 @@ export default function AIChatDock({ onClose }) {
             <div style={styles.autoHint}>{autoHintText}</div>
           </section>
         </div>
-        {prefs.mode === 'mini' && (
-          <div
-            style={styles.resizeHandle}
-            onPointerDown={(event) => beginPointerInteraction(event, 'resize')}
-            aria-label="창 크기 조절"
-          />
-        )}
         {prefs.historyOpen && (
           <HistoryPanel
             sessions={sessions}
@@ -1025,22 +1074,19 @@ function KeyringModal({
   onRemove,
   submitting,
 }) {
-  const modalRoot = typeof document !== 'undefined' ? document.body : null;
-  if (!modalRoot) return null;
-
-  return createPortal(
+  return (
     <div style={styles.modalBackdrop}>
       <div style={styles.modal}>
         <div style={styles.modalHeader}>
           <div>
             <h3 style={styles.modalTitle}>API 키 관리</h3>
             <p style={styles.modalSubtitle}>
-              입력한 키는 Supabase에 암호화되어 저장됩니다. {entries.length}/{limit}
+              저장된 키는 Supabase에서 암호화되어 보관됩니다. {entries.length}/{limit}
             </p>
           </div>
-          <div style={styles.modalHeaderButtons}>
+          <div style={{ display: 'flex', gap: 8 }}>
             <button type="button" style={styles.secondaryButton} onClick={onRefresh}>
-              새로 고침
+              새로고침
             </button>
             <button type="button" style={styles.secondaryButton} onClick={onClose}>
               닫기
@@ -1048,15 +1094,13 @@ function KeyringModal({
           </div>
         </div>
         {message && <div style={styles.infoBox}>{message}</div>}
-        {loading && <div style={styles.infoBox}>키 목록을 불러오는 중입니다…</div>}
-        {error && (
-          <div style={styles.errorBox}>{error.message || '키를 불러오는 중 오류가 발생했습니다.'}</div>
-        )}
+        {loading && <div style={styles.infoBox}>키 정보를 불러오는 중입니다…</div>}
+        {error && <div style={styles.errorBox}>{error.message || '키 정보를 읽어 오는 중 오류가 발생했습니다.'}</div>}
         <div style={styles.modalSection}>
           <textarea
             value={pendingKey}
             onChange={(event) => setPendingKey(event.target.value)}
-            placeholder="예: AIza... / Gemini API 키를 붙여 넣으세요."
+            placeholder="Gemini API 키를 붙여넣으면 Supabase에 암호화되어 저장됩니다."
             style={styles.keyInput}
           />
           <button
@@ -1065,29 +1109,31 @@ function KeyringModal({
             onClick={onRegister}
             disabled={!pendingKey.trim() || submitting}
           >
-            {submitting ? '등록 중…' : '등록하고 활성화'}
+            {submitting ? '저장 중...' : '저장하고 활성화'}
           </button>
         </div>
-        <div style={styles.keyGrid}>
-          {entries.length === 0 && <div style={styles.emptyBox}>등록된 키가 없습니다.</div>}
+        <div style={styles.keyList}>
+          {entries.length === 0 && <div style={styles.emptyBox}>저장된 키가 없습니다.</div>}
           {entries.map((entry) => (
-            <div key={entry.id} style={styles.keyEntryCard}>
-              <div style={styles.keyMeta}>
-                <span style={styles.keyProvider}>{formatKeyProviderLabel(entry.provider)}</span>
-                {entry.isActive && <span style={styles.activeBadge}>활성</span>}
+            <div key={entry.id} style={styles.keyEntry(entry.isActive)}>
+              <div>
+                <div style={{ fontWeight: 600 }}>{formatKeyProviderLabel(entry.provider)}</div>
+                <div style={{ fontSize: 12, color: '#dbeafe' }}>
+                  {entry.modelLabel || entry.geminiModel || '사용자 지정 모델'}
+                </div>
+                <div style={{ fontSize: 11, color: '#9ca3af' }}>
+                  {entry.keySample || '••••••'}
+                </div>
               </div>
-              <div style={styles.keyDetails}>
-                <span>{entry.modelLabel || entry.geminiModel || '모델 정보 없음'}</span>
-                <code style={styles.keySample}>{entry.keySample || '****'}</code>
-              </div>
-              <div style={styles.keyActions}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {entry.isActive && <span style={styles.activeBadge}>사용 중</span>}
                 <button
                   type="button"
                   style={styles.smallButton(false)}
                   onClick={() => (entry.isActive ? onDeactivate(entry) : onActivate(entry))}
                   disabled={submitting}
                 >
-                  {entry.isActive ? '비활성화' : '이 키 사용'}
+                  {entry.isActive ? '비활성화' : '활성화'}
                 </button>
                 <button
                   type="button"
@@ -1102,23 +1148,19 @@ function KeyringModal({
           ))}
         </div>
       </div>
-    </div>,
-    modalRoot
+    </div>
   );
 }
 
 function InstructionsModal({ initialValue, onSave, onClose }) {
   const [value, setValue] = useState(initialValue || '');
-  const modalRoot = typeof document !== 'undefined' ? document.body : null;
-  if (!modalRoot) return null;
-
-  return createPortal(
+  return (
     <div style={styles.modalBackdrop}>
       <div style={styles.modal}>
         <div style={styles.modalHeader}>
           <div>
             <h3 style={styles.modalTitle}>사용자 지침</h3>
-            <p style={styles.modalSubtitle}>입력한 지침은 프로젝트 전체에 공유됩니다.</p>
+            <p style={styles.modalSubtitle}>입력한 지침은 모든 프롬프트에 함께 전달됩니다.</p>
           </div>
           <button type="button" style={styles.secondaryButton} onClick={onClose}>
             닫기
@@ -1128,7 +1170,7 @@ function InstructionsModal({ initialValue, onSave, onClose }) {
           value={value}
           onChange={(event) => setValue(event.target.value)}
           style={styles.instructionsTextarea}
-          placeholder="예: 테스트를 실행할 때는 로그를 모두 요약해 주세요."
+          placeholder="예: 타입스크립트를 우선으로 사용하고, 커밋은 기능 단위로 분리해 주세요."
         />
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
           <button type="button" style={styles.secondaryButton} onClick={() => setValue('')}>
@@ -1143,11 +1185,9 @@ function InstructionsModal({ initialValue, onSave, onClose }) {
           </button>
         </div>
       </div>
-    </div>,
-    modalRoot
+    </div>
   );
 }
-
 function HistoryPanel({ sessions, currentId, onSelect, onDelete, onNewChat, onClose }) {
   return (
     <div style={styles.historyDrawerBackdrop}>
@@ -1261,7 +1301,7 @@ function DockMenu({
       </div>
       <div style={styles.menuSection}>
         <div style={styles.menuInfo}>
-          실행 버튼 옆 ▼ 메뉴에서 샌드박스·테스트 권한을 설정할 수 있습니다.
+          실행 버튼 옆 ▼ 메뉴에서 샌드박스·테스트 권한을 허용/거부할 수 있습니다.
           <div style={styles.menuPath}>{allowlistPath}</div>
           <button type="button" style={styles.menuButton} onClick={onCopyAllowlistPath}>
             경로 복사
@@ -1306,8 +1346,990 @@ function RunPolicyMenu({
         <div style={styles.policyButtons}>{renderButtons(testerPolicy, onChangeTester)}</div>
       </div>
       <div style={styles.allowlistNote}>
-        '허용'을 선택하면 동일 명령은 {allowlistPath}에 기록되어 자동 실행됩니다.
+        '허용'을 선택하면 동일 명령은 {allowlistPath} 에 기록되어 자동 실행됩니다.
       </div>
     </div>
   );
 }
+
+function ChatLog({ logs }) {
+  if (!logs.length) {
+    return <div style={styles.emptyState}>아직 메시지가 없습니다.</div>;
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {logs.map((entry, index) => (
+        <LogBubble key={entry.t || index} entry={entry} />
+      ))}
+    </div>
+  );
+}
+
+function LogBubble({ entry }) {
+  const { role, msg } = entry;
+  const bubbleStyle = {
+    ...styles.logBubble,
+    ...(role === 'assistant'
+      ? styles.logAssistant
+      : role === 'user'
+      ? styles.logUser
+      : role === 'error'
+      ? styles.logError
+      : role === 'action'
+      ? styles.logAction
+      : styles.logSystem),
+  };
+
+  const renderContent = () => {
+    if (typeof msg === 'string') return msg;
+    if (!msg) return '';
+    if (typeof msg.text === 'string') return msg.text;
+    if (typeof msg.message === 'string') return msg.message;
+    if (msg.action) {
+      return [
+        `Action: ${msg.action.type || msg.action.name || 'unknown'}`,
+        msg.action.path ? `Target: ${msg.action.path}` : null,
+        msg.result?.ok ? 'Result: ok' : `Result: ${msg.result?.error || 'failed'}`,
+      ]
+        .filter(Boolean)
+        .join('\n');
+    }
+    if (msg.detail) {
+      return `${msg.message || 'Error'}\n${JSON.stringify(msg.detail, null, 2)}`;
+    }
+    return JSON.stringify(msg);
+  };
+
+  return (
+    <div style={bubbleStyle}>
+      <div>{renderContent()}</div>
+      {Array.isArray(msg?.attachments) && msg.attachments.length > 0 && (
+        <div style={styles.logAttachmentList}>
+          {msg.attachments.map((att) => (
+            <span key={att.id}>{att.name || att.path}</span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+async function runActionsAndSummarize({ actions, budget, append, getSessionToken, setAutoStatus, workingLogs }) {
+  const normalized = normalizeActions(actions);
+  if (!normalized.length) {
+    return { remainingBudget: budget };
+  }
+  let remaining = budget;
+  const executed = [];
+  setAutoStatus({ running: true, executed: 0, remaining });
+  let token;
+  try {
+    token = await getSessionToken();
+  } catch (err) {
+    append('error', { message: err.message || '작업을 수행하려면 로그인이 필요합니다.' });
+    setAutoStatus({ running: false, executed: 0, remaining });
+    return { remainingBudget: remaining };
+  }
+
+  for (const action of normalized) {
+    if (remaining <= 0) break;
+    const result = await executeWorkspaceAction(action, token);
+    executed.push({ action, result });
+    append('action', { action, result });
+    workingLogs.push({ role: 'action', msg: { action, result } });
+    remaining -= 1;
+    setAutoStatus({ running: true, executed: executed.length, remaining });
+    if (!result.ok) break;
+  }
+
+  setAutoStatus({ running: false, executed: 0, remaining });
+  if (!executed.length) {
+    return { remainingBudget: remaining };
+  }
+
+  const summary = buildActionSummary(executed, remaining);
+  return {
+    nextPrompt: summary.promptForModel,
+    visibleLog: summary.visibleLog,
+    remainingBudget: remaining,
+    executed,
+  };
+}
+
+function normalizeActions(actions) {
+  return actions
+    .map((action, index) => {
+      if (!action || typeof action !== 'object') return null;
+      const type =
+        action.action || action.name || action.type || action.kind || `action_${index + 1}`;
+      return {
+        id: action.id || `action_${Date.now()}_${index}`,
+        type: String(type),
+        path: action.path || action.file || null,
+        payload: action.payload || action.data || {},
+        description: action.description || action.message || null,
+        sessionId: action.sessionId || action.session_id || null,
+        gameId: action.gameId || action.game_id || null,
+        idempotencyKey:
+          action.idempotencyKey || `auto:${type}:${Date.now()}:${Math.random().toString(16).slice(2)}`,
+      };
+    })
+    .filter(Boolean);
+}
+
+async function executeWorkspaceAction(action, token) {
+  if (!action.type) {
+    return { ok: false, error: 'missing_action_name' };
+  }
+  try {
+    const res = await fetch('/api/rank/handle-action', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        action: action.type,
+        payload: action.payload,
+        session_id: action.sessionId,
+        game_id: action.gameId,
+        idempotencyKey: action.idempotencyKey,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.ok) {
+      return { ok: false, error: data?.error || 'action_failed', detail: data };
+    }
+    return { ok: true, result: data.result || null };
+  } catch (err) {
+    return { ok: false, error: err?.message || 'action_request_failed' };
+  }
+}
+
+function buildActionSummary(executed, remainingBudget) {
+  const lines = executed.map((entry, index) => {
+    const status = entry.result?.ok ? '성공' : entry.result?.error || '실패';
+    const target = entry.action.path ? ` (${entry.action.path})` : '';
+    return `#${index + 1} ${entry.action.type}${target} → ${status}`;
+  });
+  const visibleLog = [
+    '자동 작업 요약',
+    ...lines,
+    remainingBudget > 0
+      ? `남은 신뢰 예산: ${remainingBudget}`
+      : '신뢰 예산이 모두 소진되었습니다. 사용자 입력을 기다립니다.',
+  ].join('\n');
+  const promptForModel = [
+    '<<ACTION_RESULTS>>',
+    ...lines,
+    remainingBudget > 0
+      ? '추가 설명이 필요하지 않다면 사용자 응답을 기다리지 말고 계속 진행하세요.'
+      : '신뢰 예산이 없으므로 현재 상태를 요약하고 사용자 입력을 기다리세요.',
+  ].join('\n');
+  return { visibleLog, promptForModel };
+}
+
+function buildModelPayload({ logs, requestText, attachmentBundle, options }) {
+  const history = (logs || []).slice(-HISTORY_SLICE).map(convertLogToContent).filter(Boolean);
+  const headerLines = [
+    PROMPT_HEADER,
+    options.userInstructions ? `사용자 지침: ${options.userInstructions}` : null,
+    options.trustEnabled
+      ? `자동 작업: 사용 (이번 회차 최대 ${options.remainingBudget ?? options.trustLimit}회).`
+      : '자동 작업: 사용 안 함. 도구 실행 전 사용자에게 확인하세요.',
+    options.sandboxEnabled
+      ? '샌드박스 모드: 켜짐 (파일 수정/테스트 작업 허용).'
+      : '샌드박스 모드: 꺼짐 (파괴적 변경은 피하세요).',
+    options.testHarness
+      ? '간이 테스트 환경을 사용할 수 있습니다.'
+      : '간이 테스트 환경을 사용할 수 없습니다.',
+    attachmentBundle?.summary ? `첨부 파일:\n${attachmentBundle.summary}` : null,
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+
+  const parts = [{ text: `${headerLines}\n\n<<REQUEST>>\n${requestText}` }];
+  if (attachmentBundle?.parts?.length) {
+    attachmentBundle.parts.forEach((part) => parts.push(part));
+  }
+
+  return {
+    prefer: 'keyring',
+    contents: [...history, { role: 'user', parts }],
+    generationConfig: { temperature: 0.2, topP: 0.85 },
+  };
+}
+
+function convertLogToContent(entry) {
+  if (!entry || !entry.role) return null;
+  let text = '';
+  if (typeof entry.msg === 'string') {
+    text = entry.msg;
+  } else if (entry.msg?.text) {
+    text = entry.msg.text;
+  } else if (entry.msg?.message) {
+    text = entry.msg.message;
+  } else if (entry.msg?.action) {
+    text = `작업 ${entry.msg.action.type}: ${JSON.stringify(entry.msg.result || {})}`;
+  } else if (entry.msg) {
+    text = JSON.stringify(entry.msg);
+  }
+  if (!text) return null;
+  const role = entry.role === 'assistant' ? 'model' : 'user';
+  return { role, parts: [{ text }] };
+}
+
+function extractGeminiText(payload) {
+  const parts = payload?.candidates?.[0]?.content?.parts;
+  if (Array.isArray(parts)) {
+    const textPart = parts.find((p) => typeof p?.text === 'string');
+    if (textPart?.text) return textPart.text.trim();
+  }
+  const text = payload?.generated_text || payload?.output || payload?.text;
+  if (typeof text === 'string') return text.trim();
+  return '';
+}
+
+function parseStructuredResponse(text) {
+  if (!text) return null;
+  const trimmed = text.trim();
+  const match = trimmed.match(/```(?:json)?([\s\S]+?)```/i);
+  const target = match ? match[1] : trimmed;
+  try {
+    return JSON.parse(target);
+  } catch {
+    return { message: trimmed };
+  }
+}
+
+function createAttachmentMeta(file) {
+  return {
+    id: `att_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    file,
+    name: file.name,
+    size: file.size,
+    type: file.type || 'application/octet-stream',
+    lastModified: file.lastModified || Date.now(),
+  };
+}
+
+async function prepareAttachmentBundle(attachments) {
+  if (!attachments.length) {
+    return { meta: [], parts: [], summary: '' };
+  }
+  const meta = attachments.map((item) => ({
+    id: item.id,
+    name: item.name,
+    size: item.size,
+    type: item.type,
+    lastModified: item.lastModified,
+  }));
+  const summary = meta
+    .map((item, index) => `${index + 1}. ${item.name} (${formatBytes(item.size)})`)
+    .join('\n');
+  const parts = await Promise.all(
+    attachments.map(async (item) => ({
+      inlineData: {
+        mimeType: item.type,
+        data: await encodeFileToBase64(item.file),
+      },
+    }))
+  );
+  return { meta, parts, summary };
+}
+
+function encodeFileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const buffer = reader.result;
+      if (!buffer) {
+        reject(new Error('Failed to read file.'));
+        return;
+      }
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      bytes.forEach((byte) => {
+        binary += String.fromCharCode(byte);
+      });
+      resolve(btoa(binary));
+    };
+    reader.onerror = () => reject(reader.error || new Error('File read error'));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function clampPosition(position, width, height) {
+  if (typeof window === 'undefined') return position;
+  const maxX = Math.max(0, window.innerWidth - width - 16);
+  const maxY = Math.max(0, window.innerHeight - height - 16);
+  return {
+    x: clamp(position.x, 0, maxX),
+    y: clamp(position.y, 0, maxY),
+  };
+}
+
+function computeDefaultPosition(size) {
+  if (typeof window === 'undefined') {
+    return { ...DEFAULT_DOCK_PREFS.position };
+  }
+  const usableWidth = Math.min(size?.width || DEFAULT_DOCK_PREFS.size.width, window.innerWidth - 32);
+  const usableHeight = Math.min(size?.height || DEFAULT_DOCK_PREFS.size.height, window.innerHeight - 32);
+  return {
+    x: Math.max(16, window.innerWidth - usableWidth - 24),
+    y: Math.max(16, window.innerHeight - usableHeight - 24),
+  };
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function applyPanelGeometry(el, prefs) {
+  if (!el) return;
+  if (prefs.mode === 'fullscreen') {
+    el.style.width = 'auto';
+    el.style.height = 'auto';
+    el.style.transform = 'translate3d(0,0,0)';
+    return;
+  }
+  el.style.width = `${prefs.size.width}px`;
+  el.style.height = `${prefs.size.height}px`;
+  el.style.transform = `translate3d(${prefs.position.x}px, ${prefs.position.y}px, 0)`;
+}
+
+function scheduleLiveFrame(ref, task) {
+  cancelFrame(ref);
+  ref.current = requestAnimationFrame(task);
+}
+
+function cancelFrame(ref) {
+  if (ref.current) cancelAnimationFrame(ref.current);
+  ref.current = null;
+}
+
+function formatBytes(value) {
+  if (!Number.isFinite(value)) return '0 B';
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+const styles = {
+  backdropWindow: {
+    position: 'fixed',
+    inset: 0,
+    pointerEvents: 'none',
+    background: 'transparent',
+    zIndex: 2000,
+  },
+  backdropFullscreen: {
+    position: 'fixed',
+    inset: 0,
+    pointerEvents: 'auto',
+    background: 'rgba(2, 6, 23, 0.85)',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+    zIndex: 2000,
+  },
+  panelWindow: {
+    pointerEvents: 'auto',
+    width: '420px',
+    height: '600px',
+    background: 'rgba(5, 11, 22, 0.95)',
+    border: '1px solid #131c2f',
+    borderRadius: 20,
+    display: 'flex',
+    flexDirection: 'column',
+    boxShadow: '0 24px 60px rgba(0,0,0,0.45)',
+    position: 'relative',
+    touchAction: 'none',
+  },
+  panelFullscreen: {
+    pointerEvents: 'auto',
+    width: 'calc(100vw - 48px)',
+    height: 'calc(100vh - 48px)',
+    background: '#040b18',
+    border: '1px solid #1e293b',
+    borderRadius: 18,
+    display: 'flex',
+    flexDirection: 'column',
+    boxShadow: '0 20px 40px rgba(0,0,0,0.45)',
+    position: 'relative',
+  },
+  header: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '16px 20px',
+    borderBottom: '1px solid #1f2a3b',
+    cursor: 'grab',
+    touchAction: 'none',
+  },
+  headerInfo: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 2,
+  },
+  title: {
+    margin: 0,
+    fontSize: 20,
+    color: '#e2e8f0',
+  },
+  subtitle: {
+    margin: 0,
+    color: '#b6c2d9',
+    fontSize: 12,
+  },
+  headerToolbar: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+  },
+  toolbarButton: {
+    minWidth: 42,
+    height: 32,
+    borderRadius: 10,
+    border: '1px solid #2c3549',
+    background: '#0f172a',
+    color: '#e2e8f0',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '0 10px',
+    fontWeight: 600,
+    fontSize: 13,
+    lineHeight: 1,
+    whiteSpace: 'nowrap',
+    cursor: 'pointer',
+  },
+  closeButton: {
+    minWidth: 40,
+    height: 32,
+    borderRadius: 12,
+    border: '1px solid #b91c1c',
+    background: '#7f1d1d',
+    color: '#fee2e2',
+    fontSize: 18,
+    cursor: 'pointer',
+  },
+  body: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+    padding: '10px 14px',
+    flex: 1,
+    minHeight: 0,
+  },
+  chatColumn: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+    minHeight: 0,
+  },
+  statusRow: {
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  badgeRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  badge: {
+    padding: '2px 8px',
+    borderRadius: 999,
+    fontSize: 11,
+  },
+  badgeOk: {
+    border: '1px solid #8b5cf6',
+    color: '#d8b4fe',
+  },
+  badgeWarn: {
+    border: '1px solid #f97316',
+    color: '#ffd8b4',
+  },
+  badgeNeutral: {
+    border: '1px solid #2d3a4e',
+    color: '#cfd6ea',
+  },
+  logPanel: {
+    flex: 1,
+    border: '1px solid #273449',
+    borderRadius: 14,
+    padding: 12,
+    background: '#020617',
+    overflowY: 'auto',
+    color: '#e2e8f0',
+  },
+  logBubble: {
+    padding: 12,
+    borderRadius: 14,
+    border: '1px solid rgba(148,163,184,0.25)',
+    whiteSpace: 'pre-wrap',
+    fontSize: 13,
+    lineHeight: 1.6,
+    maxWidth: '82%',
+    alignSelf: 'flex-start',
+    boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
+  },
+  logUser: { background: 'rgba(167,139,250,0.18)', borderColor: '#a78bfa', alignSelf: 'flex-end', color: '#f5f3ff' },
+  logAssistant: { background: 'rgba(96,165,250,0.15)', borderColor: '#60a5fa', alignSelf: 'flex-start', color: '#eaf2ff' },
+  logSystem: { background: 'rgba(2,6,23,0.5)', borderColor: 'rgba(148,163,184,0.35)', color: '#cbd5e1' },
+  logError: { background: 'rgba(127,29,29,0.3)', borderColor: 'rgba(248,113,113,0.5)', color: '#fee2e2' },
+  logAction: { background: 'rgba(13,148,136,0.22)', borderColor: 'rgba(45,212,191,0.45)', color: '#ccfbf1' },
+  logAttachmentList: {
+    marginTop: 8,
+    fontSize: 11,
+    color: '#dbeafe',
+  },
+  attachmentsBar: {
+    border: '1px solid #273449',
+    borderRadius: 12,
+    padding: 8,
+    background: '#050d1c',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+  },
+  attachmentRow: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  attachmentChip: {
+    border: '1px solid #334155',
+    borderRadius: 999,
+    padding: '2px 10px',
+    fontSize: 12,
+    color: '#dbeafe',
+  },
+  attachmentRemove: {
+    marginLeft: 6,
+    border: 'none',
+    background: 'transparent',
+    color: '#fca5a5',
+    cursor: 'pointer',
+  },
+  chatInput: {
+    flex: 1,
+    minHeight: 34,
+    resize: 'none',
+    borderRadius: 10,
+    border: '1px solid #334155',
+    background: '#020617',
+    color: '#e2e8f0',
+    padding: '6px 10px',
+    fontSize: 13,
+    lineHeight: 1.35,
+  },
+  composerBar: {
+    border: '1px solid #273449',
+    borderRadius: 14,
+    padding: '6px 8px',
+    background: '#030a17',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    position: 'relative',
+  },
+  attachCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    border: '1px solid #334155',
+    background: '#0f172a',
+    color: '#e2e8f0',
+    fontSize: 20,
+    lineHeight: 1,
+    cursor: 'pointer',
+  },
+  sendGroup: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+  },
+  sendButtons: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+  },
+  sendButton: (disabled) => ({
+    borderRadius: 12,
+    border: '1px solid #8b5cf6',
+    background: disabled ? '#0f172a' : '#7c3aed',
+    color: '#e0f2fe',
+    width: 36,
+    height: 36,
+    fontSize: 18,
+    fontWeight: 600,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.5 : 1,
+  }),
+  sendMenuButton: {
+    width: 32,
+    height: 36,
+    borderRadius: 10,
+    border: '1px solid #273449',
+    background: '#0b1222',
+    color: '#dbeafe',
+    fontSize: 14,
+    cursor: 'pointer',
+  },
+  secondaryButton: {
+    borderRadius: 8,
+    border: '1px solid #334155',
+    background: '#0f172a',
+    color: '#e2e8f0',
+    padding: '6px 12px',
+    cursor: 'pointer',
+  },
+  primaryButton: (disabled) => ({
+    borderRadius: 10,
+    border: '1px solid #8b5cf6',
+    background: disabled ? '#0f172a' : '#7c3aed',
+    color: '#e0f2fe',
+    padding: '8px 18px',
+    fontWeight: 600,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.5 : 1,
+  }),
+  infoBanner: {
+    border: '1px solid #60a5fa',
+    background: 'rgba(96,165,250,0.12)',
+    borderRadius: 10,
+    padding: 8,
+    color: '#bae6fd',
+    fontSize: 12,
+  },
+  errorBanner: {
+    border: '1px solid #f87171',
+    background: 'rgba(248,113,113,0.12)',
+    borderRadius: 10,
+    padding: 8,
+    color: '#fecaca',
+    fontSize: 12,
+  },
+  errorText: {
+    color: '#fca5a5',
+    fontSize: 12,
+  },
+  historyDrawerBackdrop: {
+    position: 'absolute',
+    inset: 0,
+    background: 'rgba(2,6,23,0.65)',
+    display: 'flex',
+    justifyContent: 'flex-start',
+    padding: 16,
+    zIndex: 2040,
+  },
+  historyPanel: {
+    width: 240,
+    border: '1px solid #273449',
+    borderRadius: 14,
+    padding: 12,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+    background: '#030712',
+  },
+  historyHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  historyList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+    overflowY: 'auto',
+  },
+  historyItem: {
+    border: '1px solid #273449',
+    borderRadius: 12,
+    padding: 8,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+  },
+  historySelectButton: {
+    flex: 1,
+    border: 'none',
+    background: 'transparent',
+    textAlign: 'left',
+    color: '#e2e8f0',
+    cursor: 'pointer',
+  },
+  historyDeleteButton: {
+    border: 'none',
+    background: 'transparent',
+    color: '#fda4af',
+    cursor: 'pointer',
+    fontSize: 16,
+  },
+  modalBackdrop: {
+    position: 'fixed',
+    inset: 0,
+    background: 'rgba(2,6,23,0.85)',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 2100,
+  },
+  modal: {
+    width: 'min(520px, 92vw)',
+    maxHeight: '90vh',
+    overflowY: 'auto',
+    borderRadius: 16,
+    border: '1px solid #273449',
+    background: '#030712',
+    padding: 16,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 16,
+  },
+  modalHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+  },
+  modalTitle: {
+    margin: 0,
+    color: '#e2e8f0',
+  },
+  modalSubtitle: {
+    margin: 0,
+    color: '#b6c2d9',
+    fontSize: 12,
+  },
+  modalSection: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  keyInput: {
+    width: '100%',
+    minHeight: 80,
+    borderRadius: 10,
+    border: '1px solid #334155',
+    background: '#020617',
+    color: '#e2e8f0',
+    padding: 10,
+  },
+  keyList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+  },
+  keyEntry: (active) => ({
+    border: `1px solid ${active ? '#0ea5e9' : '#1f2937'}`,
+    borderRadius: 12,
+    padding: 12,
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 12,
+    flexWrap: 'wrap',
+  }),
+  activeBadge: {
+    fontSize: 10,
+    padding: '2px 8px',
+    borderRadius: 999,
+    background: '#0d9488',
+    color: '#ecfeff',
+    textTransform: 'uppercase',
+  },
+  smallButton: (disabled) => ({
+    borderRadius: 8,
+    border: '1px solid #2563eb',
+    background: disabled ? '#0f172a' : '#172554',
+    color: '#bfdbfe',
+    padding: '4px 8px',
+    fontSize: 12,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+  }),
+  smallDangerButton: (disabled) => ({
+    borderRadius: 8,
+    border: '1px solid #7f1d1d',
+    background: disabled ? '#2b0d0d' : '#450a0a',
+    color: '#fecaca',
+    padding: '4px 8px',
+    fontSize: 12,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+  }),
+  infoBox: {
+    border: '1px solid #60a5fa',
+    background: 'rgba(96,165,250,0.12)',
+    borderRadius: 10,
+    padding: 8,
+    color: '#bae6fd',
+    fontSize: 12,
+  },
+  errorBox: {
+    border: '1px solid #f87171',
+    background: 'rgba(248,113,113,0.12)',
+    borderRadius: 10,
+    padding: 8,
+    color: '#fecaca',
+    fontSize: 12,
+  },
+  emptyBox: {
+    border: '1px dashed #334155',
+    borderRadius: 12,
+    padding: 12,
+    color: '#b6c2d9',
+    textAlign: 'center',
+  },
+  instructionsTextarea: {
+    width: '100%',
+    minHeight: 200,
+    borderRadius: 12,
+    border: '1px solid #334155',
+    background: '#020617',
+    color: '#e2e8f0',
+    padding: 12,
+  },
+  menu: {
+    position: 'absolute',
+    top: 70,
+    right: 40,
+    width: 260,
+    background: '#020617',
+    border: '1px solid #273449',
+    borderRadius: 12,
+    padding: 14,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+    zIndex: 2050,
+  },
+  menuSection: {
+    borderBottom: '1px solid #1e293b',
+    paddingBottom: 10,
+    marginBottom: 10,
+  },
+  menuRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    fontSize: 13,
+    color: '#e2e8f0',
+  },
+  menuValue: {
+    fontSize: 12,
+    color: '#b6c2d9',
+  },
+  menuButton: {
+    width: '100%',
+    borderRadius: 8,
+    border: '1px solid #334155',
+    background: '#0f172a',
+    color: '#e2e8f0',
+    padding: '6px 10px',
+    marginTop: 6,
+    cursor: 'pointer',
+  },
+  menuList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  menuListButton: {
+    width: '100%',
+    borderRadius: 8,
+    border: '1px solid #273449',
+    background: '#050d1c',
+    color: '#e2e8f0',
+    padding: '8px 10px',
+    textAlign: 'left',
+    cursor: 'pointer',
+  },
+  menuInfo: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+    fontSize: 12,
+    color: '#dbeafe',
+  },
+  menuPath: {
+    fontFamily: 'monospace',
+    fontSize: 12,
+    background: '#0b1222',
+    border: '1px solid #1d2536',
+    borderRadius: 6,
+    padding: '4px 6px',
+    color: '#9fb3df',
+  },
+  emptyState: {
+    color: '#64748b',
+    textAlign: 'center',
+  },
+  runMenu: {
+    position: 'absolute',
+    bottom: 'calc(100% + 8px)',
+    right: 8,
+    width: 260,
+    borderRadius: 12,
+    border: '1px solid #273449',
+    background: '#050b18',
+    boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
+    padding: 12,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 10,
+    zIndex: 2050,
+  },
+  runMenuSection: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+  },
+  policyRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    fontSize: 13,
+    color: '#e2e8f0',
+  },
+  policyButtons: {
+    display: 'flex',
+    gap: 6,
+  },
+  policyButton: (active) => ({
+    borderRadius: 8,
+    border: `1px solid ${active ? '#0ea5e9' : '#1f2937'}`,
+    background: active ? 'rgba(167,139,250,0.15)' : '#0b1222',
+    color: active ? '#ede9fe' : '#94a3b8',
+    padding: '4px 8px',
+    fontSize: 12,
+    cursor: 'pointer',
+  }),
+  allowlistNote: {
+    fontSize: 11,
+    color: '#b6c2d9',
+  },
+  autoHint: {
+    marginTop: 6,
+    fontSize: 12,
+    color: '#8ea2c8',
+  },
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
