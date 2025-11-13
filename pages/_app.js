@@ -6,8 +6,13 @@ try {
 } catch (_) {}
 
 import ExtensionsHost from '../components/workspace/ExtensionsHost';
+import { useEffect } from 'react';
+import { ensureMonaco } from '../lib/monaco/ensure';
 
 export default function MyApp({ Component, pageProps }) {
+  useEffect(() => {
+    ensureMonaco();
+  }, []);
   return (
     <>
       <Component {...pageProps} />
@@ -15,4 +20,3 @@ export default function MyApp({ Component, pageProps }) {
     </>
   );
 }
-
