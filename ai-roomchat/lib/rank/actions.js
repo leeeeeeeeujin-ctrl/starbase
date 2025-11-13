@@ -108,4 +108,25 @@ registerAction('award_xp', {
   },
 });
 
+// --- Workspace stubs (return success but do not mutate server state) ---
+registerAction('list_files', {
+  handler: async () => ({ ok: true, items: [] }),
+});
+
+registerAction('read_file', {
+  handler: async (ctx, payload = {}) => ({ ok: true, path: payload?.path || '', content: '' }),
+});
+
+registerAction('write_file', {
+  handler: async (ctx, payload = {}) => ({ ok: true, path: payload?.path || '', bytes: (payload?.content||'').length }),
+});
+
+registerAction('edit_patch', {
+  handler: async (ctx, payload = {}) => ({ ok: true, path: payload?.path || '', applied: false }),
+});
+
+registerAction('sandbox_exec', {
+  handler: async (ctx, payload = {}) => ({ ok: true, cmd: payload?.cmd || '', exitCode: 0, stdout: '', stderr: '' }),
+});
+
 export default { registerAction, dispatchAction };

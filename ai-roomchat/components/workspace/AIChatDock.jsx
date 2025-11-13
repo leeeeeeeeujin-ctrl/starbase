@@ -24,6 +24,11 @@ import {
 } from '@/lib/rank/keyringClient';
 import { persistRankKeyringSnapshot, readRankKeyringSnapshot } from '@/lib/rank/keyringStorage';
 
+// Ensure styles is always defined in module scope before any usage.
+// Some subcomponents may reference `styles` during early render in production builds.
+// We assign the object at the end of the file.
+let styles;
+
 const PROMPT_HEADER = [
   '당신은 Starbase 워크스페이스에서 코드를 도와주는 어시스턴트입니다.',
   '반드시 한국어로, 그리고 아래 JSON 스키마로만 응답하세요.',
@@ -50,6 +55,7 @@ const PROMPT_HEADER = [
 ].join('\n');
 
 const DOCK_PREFS_KEY = 'workspace:aiChat:prefs.v2';
+const REMOTE_MEMORY_ENABLED = process.env.NEXT_PUBLIC_REMOTE_MEMORY === '1';
 const DEFAULT_DOCK_PREFS = {
   mode: 'mini',
   position: { x: 32, y: 64 },
@@ -464,8 +470,12 @@ export default function AIChatDock({ onClose }) {
       }
 
       // Prepare memory header (short: local, long: remote preferred)
-      const tokenForMem = await getSessionToken({ optional: true }).catch(() => null);
-      const longMemItems = await readLongMemoryRemote(tokenForMem).catch(() => readMemory('long'));
+      const tokenForMem = REMOTE_MEMORY_ENABLED
+        ? await getSessionToken({ optional: true }).catch(() => null)
+        : null;
+      const longMemItems = REMOTE_MEMORY_ENABLED
+        ? await readLongMemoryRemote(tokenForMem).catch(() => readMemory('long'))
+        : readMemory('long');
       const shortMemItems = readMemory('short');
       const memoryHeader = [
         summarizeMemory(shortMemItems) ? `단기기억:\n${summarizeMemory(shortMemItems)}` : null,
@@ -1814,6 +1824,7 @@ function summarizeMemory(list, maxChars = 800) {
 
 // Remote long-memory helpers (best-effort)
 async function readLongMemoryRemote(token) {
+  if (!REMOTE_MEMORY_ENABLED) throw new Error('remote_disabled');
   const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
   const res = await fetch('/api/ai/memory/long', { method: 'GET', headers });
   if (!res.ok) throw new Error('remote_memory_failed');
@@ -1823,12 +1834,14 @@ async function readLongMemoryRemote(token) {
 }
 
 async function writeLongMemoryRemote(entry, token) {
+  if (!REMOTE_MEMORY_ENABLED) return false;
   const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
   const res = await fetch('/api/ai/memory/long', { method: 'POST', headers, body: JSON.stringify(entry) });
   return res.ok;
 }
 
 async function deleteLongMemoryRemote(key, token) {
+  if (!REMOTE_MEMORY_ENABLED) return false;
   const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
   const url = `/api/ai/memory/long?key=${encodeURIComponent(key)}`;
   const res = await fetch(url, { method: 'DELETE', headers });
@@ -1947,7 +1960,7 @@ function formatBytes(value) {
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
-const styles = {
+styles = {
   backdropWindow: {
     position: 'fixed',
     inset: 0,

@@ -61,6 +61,19 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'missing_action' });
   }
 
+  // Normalize common client aliases to server action names
+  const ALIASES = {
+    runCommand: 'sandbox_exec',
+    run_command: 'sandbox_exec',
+    sandbox: 'sandbox_exec',
+    readFile: 'read_file',
+    writeFile: 'write_file',
+    editFile: 'edit_patch',
+    readDir: 'list_files',
+    listFiles: 'list_files',
+  };
+  const normalizedAction = ALIASES[action] || action;
+
   // verify session ownership if sessionId provided
   if (sessionId) {
     const { data: session, error: sessionError } = await withTableQuery(
@@ -121,7 +134,7 @@ export default async function handler(req, res) {
   // dispatch
   try {
     const result = await dispatchAction({
-      name: action,
+      name: normalizedAction,
       user,
       sessionId,
       gameId,
@@ -136,7 +149,7 @@ export default async function handler(req, res) {
             request_id: idempotencyKey || null,
             session_id: sessionId || null,
             user_id: user?.id || null,
-            action_name: action,
+            action_name: normalizedAction,
             payload: actionPayload || {},
             result: null,
             ok: false,
@@ -157,7 +170,7 @@ export default async function handler(req, res) {
           request_id: idempotencyKey || null,
           session_id: sessionId || null,
           user_id: user?.id || null,
-          action_name: action,
+          action_name: normalizedAction,
           payload: actionPayload || {},
           result: result.result || null,
           ok: true,
