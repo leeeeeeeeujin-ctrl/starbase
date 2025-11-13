@@ -1081,7 +1081,7 @@ function KeyringModal({
           <div>
             <h3 style={styles.modalTitle}>API 키 관리</h3>
             <p style={styles.modalSubtitle}>
-              저장된 키는 Supabase에서 암호화되어 보관됩니다. {entries.length}/{limit}
+              저장된 키는 Supabase에 암호화되어 보관됩니다. {entries.length}/{limit}개
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -1100,7 +1100,7 @@ function KeyringModal({
           <textarea
             value={pendingKey}
             onChange={(event) => setPendingKey(event.target.value)}
-            placeholder="Gemini API 키를 붙여넣으면 Supabase에 암호화되어 저장됩니다."
+            placeholder="예: AIza... 형식의 Google Gemini 키를 붙여넣으세요."
             style={styles.keyInput}
           />
           <button
@@ -1109,7 +1109,7 @@ function KeyringModal({
             onClick={onRegister}
             disabled={!pendingKey.trim() || submitting}
           >
-            {submitting ? '저장 중...' : '저장하고 활성화'}
+            {submitting ? '저장 중...' : '저장 후 활성화'}
           </button>
         </div>
         <div style={styles.keyList}>
@@ -1133,7 +1133,7 @@ function KeyringModal({
                   onClick={() => (entry.isActive ? onDeactivate(entry) : onActivate(entry))}
                   disabled={submitting}
                 >
-                  {entry.isActive ? '비활성화' : '활성화'}
+                  {entry.isActive ? '해제' : '사용'}
                 </button>
                 <button
                   type="button"
@@ -1744,6 +1744,7 @@ const styles = {
     boxShadow: '0 24px 60px rgba(0,0,0,0.45)',
     position: 'relative',
     touchAction: 'none',
+    overflow: 'hidden',
   },
   panelFullscreen: {
     pointerEvents: 'auto',
@@ -2094,6 +2095,7 @@ const styles = {
     width: 'min(460px, 94vw)',
     maxHeight: '86vh',
     overflowY: 'auto',
+    overflowX: 'hidden',
     borderRadius: 16,
     border: '1px solid #273449',
     background: '#030712',
@@ -2135,6 +2137,7 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     gap: 10,
+    maxWidth: '100%',
   },
   keyEntry: (active) => ({
     border: `1px solid ${active ? '#0ea5e9' : '#1f2937'}`,
@@ -2144,6 +2147,7 @@ const styles = {
     justifyContent: 'space-between',
     gap: 12,
     flexWrap: 'wrap',
+    minWidth: 0,
   }),
   activeBadge: {
     fontSize: 10,
@@ -2273,6 +2277,8 @@ const styles = {
     borderRadius: 6,
     padding: '4px 6px',
     color: '#9fb3df',
+    overflowWrap: 'anywhere',
+    wordBreak: 'break-all',
   },
   emptyState: {
     color: '#64748b',
@@ -2345,8 +2351,6 @@ const styles = {
     color: '#9fb3df',
   },
 };
-
-
 
 
 
