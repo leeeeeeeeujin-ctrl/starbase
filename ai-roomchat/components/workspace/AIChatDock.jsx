@@ -231,6 +231,20 @@ export default function AIChatDock({ onClose }) {
 
   logsSnapshotRef.current = logs;
 
+  // Token helper is defined early to avoid TDZ issues when referenced by hooks below
+  const getSessionToken = useCallback(
+    async (options = {}) => {
+      const { optional = false } = options;
+      if (sessionToken) return sessionToken;
+      const refreshed = await refreshSessionToken();
+      if (!optional && !refreshed) {
+        throw new Error('A Supabase session is required.');
+      }
+      return refreshed;
+    },
+    [sessionToken, refreshSessionToken]
+  );
+
   // Auto-init workspace if empty and flag enabled (one-time per browser)
   useEffect(() => {
     if (!AUTOINIT_ENABLED) return;
@@ -239,7 +253,7 @@ export default function AIChatDock({ onClose }) {
     let cancelled = false;
     (async () => {
       try {
-        const token = await getSessionToken({ optional: true });
+        const token = sessionToken || (await refreshSessionToken());
         if (!token) return;
         const resList = await fetch('/api/rank/handle-action', {
           method: 'POST',
@@ -266,20 +280,9 @@ export default function AIChatDock({ onClose }) {
       } catch {}
     })();
     return () => { cancelled = true; };
-  }, [getSessionToken]);
+  }, [AUTOINIT_ENABLED, sessionToken, refreshSessionToken]);
 
-  const getSessionToken = useCallback(
-    async (options = {}) => {
-      const { optional = false } = options;
-      if (sessionToken) return sessionToken;
-      const refreshed = await refreshSessionToken();
-      if (!optional && !refreshed) {
-        throw new Error('A Supabase session is required.');
-      }
-      return refreshed;
-    },
-    [sessionToken, refreshSessionToken]
-  );
+  
 
   const {
     entries: keyringEntries,
