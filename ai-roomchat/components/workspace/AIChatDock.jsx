@@ -1308,3 +1308,5 @@ function RunPolicyMenu({
         '허용'을 선택하면 동일 명령은 {allowlistPath}에 기록되어 자동 실행됩니다.
       </div>
     </div>
+  );
+}
