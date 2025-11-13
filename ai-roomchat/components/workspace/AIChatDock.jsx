@@ -1275,9 +1275,9 @@ function DockMenu({
   return (
     <div style={styles.menu} data-ai-chat-menu="true">
       <div style={styles.menuSection}>
-        <div style={{ ...styles.menuRow, justifyContent: 'space-between' }}>
+        <div style={styles.sliderHeader}>
           <span>자동 실행 횟수</span>
-          <span style={styles.menuValue}>{trustLimit}회</span>
+          <strong>{trustLimit}회</strong>
         </div>
         <input
           type="range"
@@ -1285,9 +1285,9 @@ function DockMenu({
           max="25"
           value={trustLimit}
           onChange={(event) => onTrustLimitChange(Number(event.target.value))}
-          style={{ width: '100%' }}
+          style={styles.sliderTrack}
         />
-        <small>슬라이더를 밀어 자동 작업 허용 횟수를 정할 수 있습니다.</small>
+        <small style={styles.sliderHint}>오른쪽으로 밀면 AI가 연속으로 실행할 수 있는 횟수가 늘어나요.</small>
       </div>
       <div style={styles.menuSection}>
         <div style={styles.menuList}>
@@ -1761,8 +1761,8 @@ const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: '16px 20px',
-    borderBottom: '1px solid #1f2a3b',
+    padding: '12px 16px',
+    borderBottom: '1px solid #1a2536',
     cursor: 'grab',
     touchAction: 'none',
   },
@@ -1784,33 +1784,33 @@ const styles = {
   headerToolbar: {
     display: 'flex',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
   },
   toolbarButton: {
-    minWidth: 42,
-    height: 32,
-    borderRadius: 10,
-    border: '1px solid #2c3549',
-    background: '#0f172a',
+    minWidth: 34,
+    height: 30,
+    borderRadius: 8,
+    border: '1px solid #2b3448',
+    background: '#0b1222',
     color: '#e2e8f0',
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '0 10px',
+    padding: '0 8px',
     fontWeight: 600,
-    fontSize: 13,
+    fontSize: 12,
     lineHeight: 1,
     whiteSpace: 'nowrap',
     cursor: 'pointer',
   },
   closeButton: {
-    minWidth: 40,
-    height: 32,
-    borderRadius: 12,
+    minWidth: 34,
+    height: 30,
+    borderRadius: 10,
     border: '1px solid #b91c1c',
     background: '#7f1d1d',
     color: '#fee2e2',
-    fontSize: 18,
+    fontSize: 16,
     cursor: 'pointer',
   },
   body: {
@@ -1874,8 +1874,19 @@ const styles = {
     alignSelf: 'flex-start',
     boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
   },
-  logUser: { background: 'rgba(167,139,250,0.18)', borderColor: '#a78bfa', alignSelf: 'flex-end', color: '#f5f3ff' },
-  logAssistant: { background: 'rgba(96,165,250,0.15)', borderColor: '#60a5fa', alignSelf: 'flex-start', color: '#eaf2ff' },
+  logUser: {
+    background: 'linear-gradient(135deg, rgba(168,85,247,0.45), rgba(99,102,241,0.4))',
+    borderColor: '#a78bfa',
+    alignSelf: 'flex-end',
+    color: '#f5f3ff',
+    textAlign: 'right',
+  },
+  logAssistant: {
+    background: 'rgba(37,99,235,0.16)',
+    borderColor: '#60a5fa',
+    alignSelf: 'flex-start',
+    color: '#eaf2ff',
+  },
   logSystem: { background: 'rgba(2,6,23,0.5)', borderColor: 'rgba(148,163,184,0.35)', color: '#cbd5e1' },
   logError: { background: 'rgba(127,29,29,0.3)', borderColor: 'rgba(248,113,113,0.5)', color: '#fee2e2' },
   logAction: { background: 'rgba(13,148,136,0.22)', borderColor: 'rgba(45,212,191,0.45)', color: '#ccfbf1' },
@@ -1914,67 +1925,69 @@ const styles = {
   },
   chatInput: {
     flex: 1,
-    minHeight: 34,
+    minHeight: 0,
+    height: 38,
     resize: 'none',
     borderRadius: 10,
-    border: '1px solid #334155',
+    border: '1px solid #2c3448',
     background: '#020617',
     color: '#e2e8f0',
-    padding: '6px 10px',
+    padding: '8px 12px',
     fontSize: 13,
-    lineHeight: 1.35,
+    lineHeight: 1.2,
+    overflow: 'hidden',
   },
   composerBar: {
     border: '1px solid #273449',
     borderRadius: 14,
-    padding: '6px 8px',
+    padding: '4px 6px',
     background: '#030a17',
     display: 'flex',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
     position: 'relative',
   },
   attachCircle: {
-    width: 36,
-    height: 36,
+    width: 32,
+    height: 32,
     borderRadius: 12,
-    border: '1px solid #334155',
-    background: '#0f172a',
+    border: '1px solid #2c3448',
+    background: '#050d1c',
     color: '#e2e8f0',
-    fontSize: 20,
+    fontSize: 18,
     lineHeight: 1,
     cursor: 'pointer',
   },
   sendGroup: {
     display: 'flex',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
   },
   sendButtons: {
     display: 'flex',
     alignItems: 'center',
-    gap: 4,
+    gap: 2,
   },
   sendButton: (disabled) => ({
     borderRadius: 12,
     border: '1px solid #8b5cf6',
     background: disabled ? '#0f172a' : '#7c3aed',
     color: '#e0f2fe',
-    width: 36,
-    height: 36,
-    fontSize: 18,
+    width: 34,
+    height: 34,
+    fontSize: 16,
     fontWeight: 600,
     cursor: disabled ? 'not-allowed' : 'pointer',
     opacity: disabled ? 0.5 : 1,
   }),
   sendMenuButton: {
-    width: 32,
-    height: 36,
+    width: 30,
+    height: 34,
     borderRadius: 10,
     border: '1px solid #273449',
     background: '#0b1222',
     color: '#dbeafe',
-    fontSize: 14,
+    fontSize: 13,
     cursor: 'pointer',
   },
   secondaryButton: {
@@ -2078,13 +2091,13 @@ const styles = {
     zIndex: 2100,
   },
   modal: {
-    width: 'min(520px, 92vw)',
-    maxHeight: '90vh',
+    width: 'min(460px, 94vw)',
+    maxHeight: '86vh',
     overflowY: 'auto',
     borderRadius: 16,
     border: '1px solid #273449',
     background: '#030712',
-    padding: 16,
+    padding: '18px 20px',
     display: 'flex',
     flexDirection: 'column',
     gap: 16,
@@ -2310,17 +2323,28 @@ const styles = {
     color: '#b6c2d9',
   },
   autoHint: {
-    marginTop: 6,
+    marginTop: 4,
     fontSize: 12,
     color: '#8ea2c8',
+    textAlign: 'right',
+  },
+  sliderHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    fontSize: 13,
+    color: '#e2e8f0',
+  },
+  sliderTrack: {
+    width: '100%',
+  },
+  sliderHint: {
+    display: 'block',
+    marginTop: 4,
+    fontSize: 11,
+    color: '#9fb3df',
   },
 };
-
-
-
-
-
-
 
 
 
