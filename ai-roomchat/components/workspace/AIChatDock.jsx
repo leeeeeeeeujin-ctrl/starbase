@@ -1145,6 +1145,8 @@ function InstructionsModal({ initialValue, onSave, onClose }) {
       </div>
     </div>,
     modalRoot
+  );
+
 function HistoryPanel({ sessions, currentId, onSelect, onDelete, onNewChat, onClose }) {
   return (
     <div style={styles.historyDrawerBackdrop}>
