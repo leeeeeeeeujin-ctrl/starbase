@@ -474,7 +474,7 @@ registerAction('stat_file', {
   schema: z.object({ path: z.string() }),
   handler: async (ctx, payload = {}) => {
     const setId = deriveSetId(ctx, payload);
-    const rec = getSet(setId) || { id: setId, files: [] };
+    const rec = (await getWorkspaceRecord(setId)) || { id: setId, files: [] };
     const path = normalizePath(payload?.path);
     if (!path) return { ok: false, error: 'invalid_path' };
     const f = (rec.files || []).find((x) => x.path === path || (x.dir && path.startsWith(x.path + '/')));
@@ -488,7 +488,7 @@ registerAction('delete_dir', {
   schema: z.object({ path: z.string() }),
   handler: async (ctx, payload = {}) => {
     const setId = deriveSetId(ctx, payload);
-    const rec = getSet(setId);
+    const rec = await getWorkspaceRecord(setId);
     const path = normalizePath(payload?.path);
     if (!rec || !path) return { ok: false, error: 'not_found' };
     const prefix = path.endsWith('/') ? path.slice(0, -1) : path;

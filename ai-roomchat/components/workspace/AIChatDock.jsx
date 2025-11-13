@@ -2909,7 +2909,9 @@ styles = {
     marginTop: 4,
     fontSize: 12,
     color: '#8ea2c8',
-    textAlign: 'right',
+    textAlign: 'left',
+    alignSelf: 'flex-start',
+    marginLeft: 6,
   },
   sliderHeader: {
     display: 'flex',
