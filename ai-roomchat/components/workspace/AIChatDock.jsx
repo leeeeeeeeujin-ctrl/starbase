@@ -31,8 +31,9 @@ let styles;
 
 const PROMPT_HEADER = [
   '당신은 Starbase 워크스페이스에서 코드를 도와주는 어시스턴트입니다.',
-  '반드시 한국어로, 그리고 아래 JSON 스키마로만 응답하세요.',
+  '반드시 한국어로, 그리고 아래 JSON 스키마로만 응답하세요. 설명/코드블록 없이 JSON 한 개만 출력합니다.',
   'JSON 스키마: {"message": string, "actions?": Action[], "followup?": string}',
+  '출력 예시: {"message":"변경 요약","actions":[{"action":"write_file","payload":{"path":"/README.md","content":"..."}}]}',
   '',
   'Action 형식(정확한 이름을 사용하세요):',
   '- read_file { path: string }  — 워크스페이스의 파일 내용을 읽습니다.',
@@ -95,6 +96,9 @@ const POLICY_LABELS = {
   prompt: '매번 확인',
   deny: '거부',
 };
+const ALLOWED_ACTIONS = new Set([
+  'read_file','list_files','write_file','edit_patch','delete_file','move_file','mkdirs','delete_dir','copy_file','stat_file','search_text','read_file_range','sandbox_exec','memory_put','memory_delete','memory_promote','memory_list','test_run','lint_run','build_run'
+]);
 
 // --- Allowlist helpers (client-side) ---
 const ALLOWLIST_DEFAULT = { sandbox_exec: { cmds: [] } };
@@ -980,7 +984,7 @@ export default function AIChatDock({ onClose }) {
             </div>
             <div style={styles.autoHint}>{autoHintText}</div>
             {newMsgCount > 0 && !stickBottom && (
-              <button type="button" style={styles.newMessagePill} onClick={scrollLogToBottom}>
+              <button type="button" style={styles.newMessagePill} data-stop-drag="true" onClick={scrollLogToBottom}>
                 새 메시지 {newMsgCount}
               </button>
             )}
@@ -1518,7 +1522,7 @@ function DockMenu({
   allowlistPath,
 }) {
   return (
-    <div style={styles.menu} data-ai-chat-menu="true">
+    <div style={styles.menu} data-ai-chat-menu="true" data-stop-drag="true">
       <div style={styles.menuSection}>
         <div style={styles.sliderHeader}>
           <span>자동 실행 횟수</span>
@@ -1577,7 +1581,7 @@ function RunPolicyMenu({
     ));
 
   return (
-    <div style={styles.runMenu} data-run-menu="true">
+    <div style={styles.runMenu} data-run-menu="true" data-stop-drag="true">
       <div style={styles.runMenuSection}>
         <div style={styles.policyRow}>
           <span>샌드박스 작업</span>
@@ -1706,7 +1710,7 @@ function normalizeActions(actions) {
       if (!action || typeof action !== 'object') return null;
       const type =
         action.action || action.name || action.type || action.kind || `action_${index + 1}`;
-      return {
+      const out = {
         id: action.id || `action_${Date.now()}_${index}`,
         type: String(type),
         path: action.path || action.file || null,
@@ -1717,6 +1721,8 @@ function normalizeActions(actions) {
         idempotencyKey:
           action.idempotencyKey || `auto:${type}:${Date.now()}:${Math.random().toString(16).slice(2)}`,
       };
+      if (!ALLOWED_ACTIONS.has(String(type))) return null;
+      return out;
     })
     .filter(Boolean);
 }
@@ -2175,6 +2181,7 @@ styles = {
     flexDirection: 'column',
     boxShadow: '0 24px 60px rgba(0,0,0,0.45)',
     position: 'relative',
+    isolation: 'isolate',
     touchAction: 'none',
     overflow: 'hidden',
     backdropFilter: 'blur(6px)',
