@@ -26,9 +26,27 @@ import { persistRankKeyringSnapshot, readRankKeyringSnapshot } from '@/lib/rank/
 
 const PROMPT_HEADER = [
   '당신은 Starbase 워크스페이스에서 코드를 도와주는 어시스턴트입니다.',
-  '항상 JSON 형식으로만 응답하세요: {"message":string,"actions?":[], "followup?":string}.',
-  '수정/테스트/검색이 필요하면 사용자가 직접 하도록 요구하지 말고 actions 항목으로 실행 계획을 제시하세요.',
-  '설명은 간결하게, 막히기 전까지는 스스로 다음 단계를 이어가세요.',
+  '반드시 한국어로, 그리고 아래 JSON 스키마로만 응답하세요.',
+  'JSON 스키마: {"message": string, "actions?": Action[], "followup?": string}',
+  '',
+  'Action 형식(정확한 이름을 사용하세요):',
+  '- read_file { path: string }  — 워크스페이스의 파일 내용을 읽습니다.',
+  '- list_files { path?: string }  — 디렉터리 목록을 읽습니다. 지정 안 하면 루트.',
+  '- write_file { path: string, content: string }  — 파일을 새로 쓰거나 교체합니다.',
+  '- edit_patch { path: string, diff: string }  — 해당 파일에 유니파이드 패치(diff)를 적용합니다.',
+  '- sandbox_exec { cmd: string, cwd?: string, timeout_ms?: number }  — 샌드박스에서 명령을 실행합니다.',
+  '- memory_put { scope: "short"|"long", key: string, content: string } — 메모리에 기록합니다.',
+  '- memory_delete { scope: "short"|"long", key: string } — 메모리에서 항목을 삭제합니다.',
+  '- memory_promote { key: string } — 단기 → 장기로 승격합니다.',
+  '- memory_list { scope: "short"|"long" } — 메모리 목록을 조회합니다.',
+  '',
+  '주의사항:',
+  '- runCommand, readFile 같은 다른 이름은 사용하지 마세요. 위의 정확한 이름만 사용하세요.',
+  '- 여러 단계를 합칠 수 있으면 한 번의 응답에 여러 actions를 제시하세요.',
+  '- 첨부 파일이 있는 경우(이미지/오디오/텍스트 등) message의 맥락에서 활용 계획을 쓰고, 필요하면 write_file로 워크스페이스에 반영하세요.',
+  '- 반복적으로 참조할 사실/요약은 memory_put으로 단기(short)에 기록하고, 여러 번 쓰이거나 중요하면 memory_promote로 장기(long)로 옮기세요.',
+  '- 연속 실행 예산이 제한되어 있으므로, 각 action은 목적을 달성하는 최소 단위로 작성하세요.',
+  '- 설명은 간결하게. 불필요한 서문, 인사말을 길게 쓰지 마세요.',
 ].join('\n');
 
 const DOCK_PREFS_KEY = 'workspace:aiChat:prefs.v2';
@@ -122,6 +140,8 @@ export default function AIChatDock({ onClose }) {
   const [sending, setSending] = useState(false);
   const [autoStatus, setAutoStatus] = useState({ running: false, executed: 0, remaining: 0 });
   const [runMenuOpen, setRunMenuOpen] = useState(false);
+  const [stickBottom, setStickBottom] = useState(true);
+  const [newMsgCount, setNewMsgCount] = useState(0);
 
   useEffect(() => {
     const handleKey = (event) => {
@@ -173,9 +193,32 @@ export default function AIChatDock({ onClose }) {
   }, [runMenuOpen]);
 
   useEffect(() => {
-    if (!logRef.current) return;
-    logRef.current.scrollTop = logRef.current.scrollHeight;
-  }, [logs]);
+    const el = logRef.current;
+    if (!el) return;
+    const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 36;
+    if (nearBottom || stickBottom) {
+      el.scrollTop = el.scrollHeight;
+      setNewMsgCount(0);
+    } else {
+      setNewMsgCount((c) => c + 1);
+    }
+  }, [logs, stickBottom]);
+
+  const handleLogScroll = useCallback(() => {
+    const el = logRef.current;
+    if (!el) return;
+    const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 16;
+    setStickBottom(nearBottom);
+    if (nearBottom) setNewMsgCount(0);
+  }, []);
+
+  const scrollLogToBottom = useCallback(() => {
+    const el = logRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+    setStickBottom(true);
+    setNewMsgCount(0);
+  }, []);
 
   useLayoutEffect(() => {
     if (!panelRef.current || pointerStateRef.current) return;
@@ -420,6 +463,15 @@ export default function AIChatDock({ onClose }) {
         append('user', userEntry.msg);
       }
 
+      // Prepare memory header (short: local, long: remote preferred)
+      const tokenForMem = await getSessionToken({ optional: true }).catch(() => null);
+      const longMemItems = await readLongMemoryRemote(tokenForMem).catch(() => readMemory('long'));
+      const shortMemItems = readMemory('short');
+      const memoryHeader = [
+        summarizeMemory(shortMemItems) ? `단기기억:\n${summarizeMemory(shortMemItems)}` : null,
+        summarizeMemory(longMemItems) ? `장기기억:\n${summarizeMemory(longMemItems)}` : null,
+      ].filter(Boolean).join('\n\n');
+
       const payload = buildModelPayload({
         logs: workingLogs,
         requestText: trimmed,
@@ -428,9 +480,10 @@ export default function AIChatDock({ onClose }) {
           ...chatOptions,
           remainingBudget: actionBudget,
         },
+        memoryHeader,
       });
 
-      const token = await getSessionToken({ optional: false });
+      const token = tokenForMem || (await getSessionToken({ optional: false }));
       const res = await fetch('/api/ai/gemini', {
         method: 'POST',
         headers: {
@@ -693,7 +746,7 @@ export default function AIChatDock({ onClose }) {
             {keyringMessage && <div style={styles.infoBanner}>{keyringMessage}</div>}
             {chatError && <div style={styles.errorBanner}>{chatError}</div>}
 
-            <div ref={logRef} style={styles.logPanel}>
+            <div ref={logRef} style={styles.logPanel} onScroll={handleLogScroll}>
               <ChatLog logs={logs} />
             </div>
 
@@ -758,6 +811,11 @@ export default function AIChatDock({ onClose }) {
               )}
             </div>
             <div style={styles.autoHint}>{autoHintText}</div>
+            {newMsgCount > 0 && !stickBottom && (
+              <button type="button" style={styles.newMessagePill} onClick={scrollLogToBottom}>
+                새 메시지 {newMsgCount}
+              </button>
+            )}
           </section>
         </div>
         {prefs.historyOpen && (
@@ -1500,6 +1558,64 @@ async function executeWorkspaceAction(action, token) {
     return { ok: false, error: 'missing_action_name' };
   }
   try {
+    const alias = {
+      runCommand: 'sandbox_exec',
+      readFile: 'read_file',
+      writeFile: 'write_file',
+      editFile: 'edit_patch',
+      readDir: 'list_files',
+      listFiles: 'list_files',
+      memoryPut: 'memory_put',
+      memoryDelete: 'memory_delete',
+      memoryPromote: 'memory_promote',
+      memoryList: 'memory_list',
+    };
+    const actionType = alias[action.type] || action.type;
+
+    // Handle memory actions locally (no server call)
+    if (actionType === 'memory_put') {
+      const scope = (action.payload?.scope || 'short').toLowerCase();
+      const key = String(action.payload?.key || '').trim();
+      const content = String(action.payload?.content || '').trim();
+      if (!key || !content) return { ok: false, error: 'invalid_args' };
+      if (scope === 'long') {
+        const ok = await writeLongMemoryRemote({ key, content }, token).catch(() => false);
+        if (!ok) saveMemoryEntry('long', { key, content });
+      } else {
+        saveMemoryEntry(scope, { key, content });
+      }
+      return { ok: true };
+    }
+    if (actionType === 'memory_delete') {
+      const scope = (action.payload?.scope || 'short').toLowerCase();
+      const key = String(action.payload?.key || '').trim();
+      if (!key) return { ok: false, error: 'invalid_args' };
+      if (scope === 'long') {
+        const ok = await deleteLongMemoryRemote(key, token).catch(() => false);
+        if (!ok) deleteMemoryEntry('long', key);
+      } else {
+        deleteMemoryEntry(scope, key);
+      }
+      return { ok: true };
+    }
+    if (actionType === 'memory_promote') {
+      const key = String(action.payload?.key || '').trim();
+      if (!key) return { ok: false, error: 'invalid_args' };
+      // promote: short -> remote long (fallback local)
+      const short = readMemory('short');
+      const item = short.find((e) => e.key === key);
+      if (!item) return { ok: false, error: 'not_found' };
+      const ok = await writeLongMemoryRemote({ key, content: item.content }, token).catch(() => false);
+      if (!ok) promoteMemoryEntry(key); else deleteMemoryEntry('short', key);
+      return { ok: true };
+    }
+    if (actionType === 'memory_list') {
+      const scope = (action.payload?.scope || 'short').toLowerCase();
+      const items = scope === 'long'
+        ? await readLongMemoryRemote(token).catch(() => readMemory('long'))
+        : readMemory('short');
+      return { ok: true, data: { items } };
+    }
     const res = await fetch('/api/rank/handle-action', {
       method: 'POST',
       headers: {
@@ -1507,7 +1623,7 @@ async function executeWorkspaceAction(action, token) {
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
-        action: action.type,
+        action: actionType,
         payload: action.payload,
         session_id: action.sessionId,
         game_id: action.gameId,
@@ -1547,7 +1663,7 @@ function buildActionSummary(executed, remainingBudget) {
   return { visibleLog, promptForModel };
 }
 
-function buildModelPayload({ logs, requestText, attachmentBundle, options }) {
+function buildModelPayload({ logs, requestText, attachmentBundle, options, memoryHeader }) {
   const history = (logs || []).slice(-HISTORY_SLICE).map(convertLogToContent).filter(Boolean);
   const headerLines = [
     PROMPT_HEADER,
@@ -1562,6 +1678,7 @@ function buildModelPayload({ logs, requestText, attachmentBundle, options }) {
       ? '간이 테스트 환경을 사용할 수 있습니다.'
       : '간이 테스트 환경을 사용할 수 없습니다.',
     attachmentBundle?.summary ? `첨부 파일:\n${attachmentBundle.summary}` : null,
+    memoryHeader || null,
   ]
     .filter(Boolean)
     .join('\n\n');
@@ -1618,6 +1735,104 @@ function parseStructuredResponse(text) {
   } catch {
     return { message: trimmed };
   }
+}
+
+// --- Memory helpers ---
+const MEMORY_KEYS = {
+  short: 'workspace:aiChat:mem.short',
+  long: 'workspace:aiChat:mem.long',
+};
+
+function readMemory(scope) {
+  if (typeof window === 'undefined') return [];
+  const key = MEMORY_KEYS[scope] || MEMORY_KEYS.short;
+  try {
+    const raw = window.localStorage.getItem(key);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr)
+      ? arr
+          .map((e) => ({
+            key: String(e?.key || ''),
+            content: String(e?.content || ''),
+            usedCount: Number(e?.usedCount || 0),
+            updatedAt: Number(e?.updatedAt || 0),
+          }))
+          .filter((e) => e.key && e.content)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeMemory(scope, list) {
+  if (typeof window === 'undefined') return;
+  const key = MEMORY_KEYS[scope] || MEMORY_KEYS.short;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(list || []));
+  } catch {}
+}
+
+function saveMemoryEntry(scope, { key, content }) {
+  const list = readMemory(scope);
+  const idx = list.findIndex((e) => e.key === key);
+  const now = Date.now();
+  if (idx >= 0) {
+    list[idx] = { ...list[idx], content, updatedAt: now };
+  } else {
+    list.unshift({ key, content, usedCount: 0, updatedAt: now });
+  }
+  writeMemory(scope, list.slice(0, 100)); // soft cap
+}
+
+function deleteMemoryEntry(scope, key) {
+  const list = readMemory(scope).filter((e) => e.key !== key);
+  writeMemory(scope, list);
+}
+
+function promoteMemoryEntry(key) {
+  const short = readMemory('short');
+  const item = short.find((e) => e.key === key);
+  if (!item) return;
+  writeMemory('short', short.filter((e) => e.key !== key));
+  const long = readMemory('long');
+  long.unshift({ ...item, updatedAt: Date.now(), usedCount: 0 });
+  writeMemory('long', long.slice(0, 200));
+}
+
+function summarizeMemory(list, maxChars = 800) {
+  if (!Array.isArray(list) || !list.length) return '';
+  const lines = [];
+  let used = 0;
+  for (const e of list) {
+    const text = `${e.key}: ${String(e.content).replace(/\s+/g, ' ').slice(0, 160)}`;
+    if (used + text.length > maxChars) break;
+    lines.push(`- ${text}`);
+    used += text.length;
+  }
+  return lines.join('\n');
+}
+
+// Remote long-memory helpers (best-effort)
+async function readLongMemoryRemote(token) {
+  const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+  const res = await fetch('/api/ai/memory/long', { method: 'GET', headers });
+  if (!res.ok) throw new Error('remote_memory_failed');
+  const json = await res.json().catch(() => ({}));
+  const items = Array.isArray(json?.items) ? json.items : [];
+  return items.map((e) => ({ key: String(e.key||''), content: String(e.content||''), usedCount: Number(e.usedCount||0), updatedAt: Number(e.updatedAt||0) })).filter((e)=>e.key&&e.content);
+}
+
+async function writeLongMemoryRemote(entry, token) {
+  const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+  const res = await fetch('/api/ai/memory/long', { method: 'POST', headers, body: JSON.stringify(entry) });
+  return res.ok;
+}
+
+async function deleteLongMemoryRemote(key, token) {
+  const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+  const url = `/api/ai/memory/long?key=${encodeURIComponent(key)}`;
+  const res = await fetch(url, { method: 'DELETE', headers });
+  return res.ok;
 }
 
 function createAttachmentMeta(file) {
@@ -1755,8 +1970,8 @@ const styles = {
     pointerEvents: 'auto',
     width: '420px',
     height: '600px',
-    background: 'rgba(5, 11, 22, 0.95)',
-    border: '1px solid #131c2f',
+    background: 'rgba(5, 11, 22, 0.60)',
+    border: '1px solid rgba(19, 28, 47, 0.5)',
     borderRadius: 20,
     display: 'flex',
     flexDirection: 'column',
@@ -1764,6 +1979,8 @@ const styles = {
     position: 'relative',
     touchAction: 'none',
     overflow: 'hidden',
+    backdropFilter: 'blur(6px)',
+    WebkitBackdropFilter: 'blur(6px)',
   },
   resizeHandle: {
     position: 'absolute',
@@ -1854,6 +2071,7 @@ const styles = {
     flex: 1,
     minHeight: 0,
     overflowX: 'hidden',
+    position: 'relative',
   },
   chatColumn: {
     flex: 1,
@@ -1894,9 +2112,22 @@ const styles = {
     border: '1px solid #273449',
     borderRadius: 14,
     padding: 12,
-    background: '#020617',
+    background: 'rgba(2, 6, 23, 0.55)',
     overflowY: 'auto',
     color: '#e2e8f0',
+  },
+  newMessagePill: {
+    position: 'absolute',
+    right: 20,
+    bottom: 78,
+    borderRadius: 999,
+    border: '1px solid #2563eb',
+    background: '#0b1222',
+    color: '#93c5fd',
+    padding: '6px 10px',
+    fontSize: 12,
+    cursor: 'pointer',
+    boxShadow: '0 6px 18px rgba(0,0,0,0.35)'
   },
   logBubble: {
     padding: 12,
@@ -1931,10 +2162,10 @@ const styles = {
     color: '#dbeafe',
   },
   attachmentsBar: {
-    border: '1px solid #273449',
+    border: '1px solid rgba(39, 52, 73, 0.8)',
     borderRadius: 12,
     padding: 8,
-    background: '#050d1c',
+    background: 'rgba(5, 13, 28, 0.45)',
     display: 'flex',
     flexDirection: 'column',
     gap: 6,
@@ -1974,10 +2205,10 @@ const styles = {
     boxSizing: 'border-box',
   },
   composerBar: {
-    border: '1px solid #273449',
+    border: '1px solid rgba(39, 52, 73, 0.8)',
     borderRadius: 14,
     padding: '4px 6px',
-    background: '#030a17',
+    background: 'rgba(3, 10, 23, 0.55)',
     display: 'flex',
     alignItems: 'center',
     gap: 6,
@@ -2333,7 +2564,7 @@ const styles = {
     top: 70,
     right: 40,
     width: 260,
-    background: '#020617',
+    background: 'rgba(2, 6, 23, 0.9)',
     border: '1px solid #273449',
     borderRadius: 12,
     padding: 14,
@@ -2414,7 +2645,7 @@ const styles = {
     width: 260,
     borderRadius: 12,
     border: '1px solid #273449',
-    background: '#050b18',
+    background: 'rgba(5, 11, 24, 0.88)',
     boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
     padding: 12,
     display: 'flex',
@@ -2474,5 +2705,3 @@ const styles = {
     color: '#9fb3df',
   },
 };
-
-
