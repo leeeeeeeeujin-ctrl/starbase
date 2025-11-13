@@ -21,10 +21,17 @@ const anonClient = createClient(url, anonKey, {
   },
 });
 
-// Simple in-memory rate limiter for POC: userId -> [timestamps]
-const rateMap = new Map();
-const RATE_LIMIT_COUNT = 5;
-const RATE_LIMIT_WINDOW_MS = 10 * 1000; // 10 seconds
+// Simple in-memory rate limiter (per user, per action)
+const rateMap = new Map(); // key: `${userId}:${action}` -> [timestamps]
+const RATE_LIMIT_COUNT = Number(process.env.ACTION_RATE_LIMIT_COUNT || 30);
+const RATE_LIMIT_WINDOW_MS = Number(process.env.ACTION_RATE_LIMIT_WINDOW_MS || 10_000);
+const NO_RATELIMIT_ACTIONS = new Set([
+  'list_files',
+  'read_file',
+  'read_file_range',
+  'stat_file',
+  'search_text',
+]);
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -97,20 +104,22 @@ export default async function handler(req, res) {
       return res.status(409).json({ error: 'session_inactive' });
   }
 
-  // rate limit (POC, in-memory)
-  try {
-    const userKey = String(user.id);
-    const now = Date.now();
-    const arr = rateMap.get(userKey) || [];
-    // prune
-    const pruned = arr.filter(ts => now - ts < RATE_LIMIT_WINDOW_MS);
-    if (pruned.length >= RATE_LIMIT_COUNT) {
-      return res.status(429).json({ error: 'rate_limited' });
+  // rate limit (skip for read-only style actions)
+  const actionNameForLimit = (ALIASES[action] || action);
+  if (!NO_RATELIMIT_ACTIONS.has(actionNameForLimit)) {
+    try {
+      const key = `${String(user.id)}:${actionNameForLimit}`;
+      const now = Date.now();
+      const arr = rateMap.get(key) || [];
+      const pruned = arr.filter(ts => now - ts < RATE_LIMIT_WINDOW_MS);
+      if (pruned.length >= RATE_LIMIT_COUNT) {
+        return res.status(429).json({ error: 'rate_limited' });
+      }
+      pruned.push(now);
+      rateMap.set(key, pruned);
+    } catch (e) {
+      // ignore rate limiter failures
     }
-    pruned.push(now);
-    rateMap.set(userKey, pruned);
-  } catch (e) {
-    // ignore rate limiter failures
   }
 
   // idempotency: if idempotencyKey provided, try to find previous execution

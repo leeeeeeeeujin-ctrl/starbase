@@ -335,6 +335,20 @@ export default function AIChatDock({ onClose }) {
     return () => window.removeEventListener('keydown', handleKey);
   }, [instructionsOpen, keyringOpen, menuOpen, onClose]);
 
+  // Kill stray bottom-left UA/overlay resize handle if present
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const style = document.createElement('style');
+    style.setAttribute('data-ai-dock-anti-resize', '1');
+    style.textContent = [
+      'div[title="드래그로 크기 조절"],',
+      'div[title="Resize by dragging"],',
+      'div[aria-label="Drag to resize"] { display: none !important; }',
+    ].join('\n');
+    document.head.appendChild(style);
+    return () => { try { style.remove(); } catch {} };
+  }, []);
+
   useEffect(() => {
     const handleClick = (event) => {
       if (
