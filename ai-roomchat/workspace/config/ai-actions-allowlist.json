@@ -1,0 +1,14 @@
+{
+  "note": "Simple allowlist for sandbox_exec cmd prefixes.",
+  "allow": [
+    "echo ",
+    "node ",
+    "npm run ",
+    "npm test",
+    "npm run lint",
+    "npm run build",
+    "git status",
+    "git diff"
+  ]
+}
+

@@ -1934,6 +1934,10 @@ function normalizeActions(actions) {
     .filter(Boolean);
 }
 
+// Initialize extensions host eagerly in browser (no-op if already loaded)
+if (typeof window !== 'undefined' && !window.__extHostInit) {
+  try { import('./AIChatDock.extensions'); } catch (e) {}
+}
 async function executeWorkspaceAction(action, token) {
   if (!action.type) {
     return { ok: false, error: 'missing_action_name' };
@@ -1975,6 +1979,17 @@ async function executeWorkspaceAction(action, token) {
       todoPrefsGet: 'memory_todo_prefs_get',
     };
     const actionType = alias[action.type] || action.type;
+    // Ensure extensions modal host is initialized (lazy)
+    if (typeof window !== 'undefined' && !window.__extHostInit) {
+      try { await import('./AIChatDock.extensions'); } catch (e) {}
+    }
+    // Debounce read-only actions during resize/drag to avoid bursts
+    if (typeof window !== 'undefined') {
+      const READ_ONLY = new Set(['list_files','read_file','read_file_range','search_text','stat_file']);
+      if (READ_ONLY.has(actionType) && window.__aiDockIsResizing) {
+        await new Promise((r) => setTimeout(r, 150));
+      }
+    }
 
     // Handle memory actions locally (no server call)
     if (actionType === 'memory_put') {
@@ -2090,7 +2105,8 @@ async function executeWorkspaceAction(action, token) {
   }
 }
 
-function buildActionSummary(executed, remainingBudget) {
+// NOTE: Renamed to avoid duplicate definition; keep primary buildActionSummary above.
+function buildActionSummary_alt(executed, remainingBudget) {
   const lines = executed.map((entry, index) => {
     const status = entry.result?.ok ? '성공' : entry.result?.error || '실패';
     const target = entry.action.path ? ` (${entry.action.path})` : '';

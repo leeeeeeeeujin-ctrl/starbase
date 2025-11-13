@@ -1,621 +1,320 @@
-import { withTableQuery } from '@/lib/supabaseTables';
-import { supabaseAdmin } from '@/lib/supabaseAdmin';
-import { z } from 'zod';
-import { exec as execCb } from 'child_process';
-import { promisify } from 'util';
-import { getSet as getSetMem, saveSet as saveSetMem } from '@/lib/workspace/setStore';
+// Workspace action implementations
+// - File operations are restricted to a base root
+// - Sandbox commands guarded by env and allowlist
+// - Batch combines multiple actions
 
-const registry = new Map();
-const exec = promisify(execCb);
+import fs from 'fs/promises';
+import fscb from 'fs';
+import path from 'path';
+import os from 'os';
+import { spawn } from 'child_process';
 
-export function registerAction(name, { schema = null, roles = [], handler }) {
-  if (!name || typeof handler !== 'function') return;
-  registry.set(name, { schema, roles, handler });
+const BASE_ROOT = process.env.WORKSPACE_ROOT
+  ? path.resolve(process.env.WORKSPACE_ROOT)
+  : process.cwd();
+
+const DEFAULT_READONLY_EXEMPT = new Set([
+  'list_files',
+  'read_file',
+  'read_file_range',
+  'search_text',
+  'stat_file',
+]);
+
+const MAX_FILE_BYTES = Number(process.env.ACTION_MAX_FILE_BYTES || 2 * 1024 * 1024); // 2MB
+const SEARCH_MAX_RESULTS_DEFAULT = 200;
+
+function resolveSafe(p) {
+  const target = path.resolve(BASE_ROOT, p || '.');
+  if (!target.startsWith(BASE_ROOT)) throw new Error('path_outside_workspace');
+  return target;
 }
 
-export async function dispatchAction({
-  name,
-  user,
-  sessionId,
-  gameId,
-  payload = {},
-  idempotencyKey = null,
-}) {
-  if (!name) return { ok: false, error: 'missing_action' };
-  const entry = registry.get(name);
-  if (!entry) return { ok: false, error: 'unknown_action' };
+function isBinaryBuffer(buf) {
+  // Heuristic: zero bytes or high bytes early indicate likely binary
+  const len = Math.min(buf.length, 1024);
+  for (let i = 0; i < len; i++) {
+    const c = buf[i];
+    if (c === 0) return true;
+  }
+  return false;
+}
 
-  // Basic context passed to handlers
-  const ctx = { user, sessionId, gameId, idempotencyKey, supabaseAdmin, withTableQuery };
-
+async function pathExists(p) {
   try {
-    // validate payload if schema provided (expecting zod schema)
-    if (entry.schema) {
-      try {
-        // allow either zod schema or plain object with parse
-        if (typeof entry.schema.parse === 'function') {
-          payload = entry.schema.parse(payload);
-        } else {
-          // attempt basic coercion with zod.any()
-          payload = z.any().parse(payload);
-        }
-      } catch (err) {
-        return { ok: false, error: 'invalid_payload', detail: err?.message || String(err) };
-      }
-    }
-    const result = await entry.handler(ctx, payload);
-    // Ensure consistent shaped result
-    if (!result || typeof result !== 'object') {
-      return { ok: true, result: { ok: true }, changes: null };
-    }
-    return { ok: true, result: result, changes: result.changes || null };
-  } catch (error) {
-    console.error('[actions] handler error', name, error);
-    return { ok: false, error: error?.message || 'handler_error' };
-  }
-}
-
-// Demo handler: award_xp
-registerAction('award_xp', {
-  schema: z.object({
-    ownerId: z.string().uuid().optional(),
-    playerId: z.string().uuid().optional(),
-    amount: z.number().int().min(1),
-  }),
-  handler: async (ctx, payload = {}) => {
-    const { supabaseAdmin, withTableQuery } = ctx;
-    const ownerId = payload?.ownerId || payload?.playerId || null;
-    const amount = Number.isFinite(Number(payload?.amount))
-      ? Math.floor(Number(payload.amount))
-      : 0;
-
-    if (!ownerId || !amount || amount === 0) {
-      return { ok: false, error: 'invalid_payload' };
-    }
-
-    // Update rank_participants.score (simple POC)
-    const { data: updated, error: updateError } = await withTableQuery(
-      supabaseAdmin,
-      'rank_participants',
-      from =>
-        supabaseAdmin
-          .from(from)
-          .update({ score: supabaseAdmin.raw('coalesce(score, 0) + ?', [amount]) })
-          .eq('game_id', ctx.gameId)
-          .eq('owner_id', ownerId)
-          .select('id, owner_id, score')
-    );
-
-    if (updateError) {
-      throw updateError;
-    }
-
-    // Insert audit row in rank_action_logs if table exists (best-effort)
-    try {
-      await withTableQuery(supabaseAdmin, 'rank_action_logs', from =>
-        supabaseAdmin.from(from).insert({
-          request_id: ctx.idempotencyKey || null,
-          session_id: ctx.sessionId || null,
-          user_id: ctx.user?.id || null,
-          action_name: 'award_xp',
-          payload: payload || {},
-          result: updated || null,
-          ok: true,
-        })
-      );
-    } catch (err) {
-      // ignore audit write errors for POC
-      console.warn('[actions] audit insert failed', err?.message || err);
-    }
-
-    return { ok: true, changes: { participants: updated } };
-  },
-});
-
-// --- Workspace stubs (return success but do not mutate server state) ---
-// --- Workspace actions (dev in-memory set) ---
-function deriveSetId(ctx, payload) {
-  // Prefer explicit sessionId, then user-based bucket, fallback to singleton
-  const sid = payload?.setId || ctx.sessionId || null;
-  if (sid) return `ws:${sid}`;
-  const uid = ctx?.user?.id || null;
-  return uid ? `ws:user:${uid}` : 'ws:singleton';
-}
-
-function normalizePath(p) {
-  if (!p && p !== 0) return null;
-  const s = String(p).trim();
-  if (!s) return null;
-  return '/' + s.replace(/^[\\/]+/, '').replace(/\\/g, '/');
-}
-
-function upsertFile(record, filePath, content) {
-  const path = normalizePath(filePath);
-  if (!path) throw new Error('invalid_path');
-  const files = Array.isArray(record?.files) ? record.files.slice() : [];
-  const idx = files.findIndex((f) => f.path === path);
-  if (idx >= 0) files[idx] = { ...files[idx], path, content: String(content ?? '') };
-  else files.push({ path, content: String(content ?? '') });
-  return { ...record, files, meta: { ...record?.meta } };
-}
-
-async function getWorkspaceRecord(id) {
-  const key = String(id || 'ws:singleton');
-  try {
-    const { data, error } = await withTableQuery(
-      supabaseAdmin,
-      'workspace_sets',
-      from => supabaseAdmin.from(from).select('id, files, meta, etag, updated_at').eq('id', key).maybeSingle()
-    );
-    if (error) throw error;
-    if (!data) return getSetMem(key) || null;
-    return {
-      id: data.id,
-      files: Array.isArray(data.files) ? data.files : [],
-      meta: data.meta || {},
-      etag: data.etag || null,
-      updated_at: data.updated_at || null,
-    };
-  } catch (e) {
-    return getSetMem(key) || null;
-  }
-}
-
-async function saveWorkspaceRecord(id, files = [], meta = {}) {
-  const key = String(id || 'ws:singleton');
-  // Try remote first
-  try {
-    const payload = { id: key, files, meta, etag: new Date().toISOString(), updated_at: new Date().toISOString() };
-    const { data, error } = await withTableQuery(
-      supabaseAdmin,
-      'workspace_sets',
-      from => supabaseAdmin.from(from).upsert(payload, { onConflict: 'id' }).select('id, files, meta, etag, updated_at').maybeSingle()
-    );
-    if (error) throw error;
-    const row = data || payload;
-    return { id: row.id, files: row.files || [], meta: row.meta || {}, etag: row.etag || null, updated_at: row.updated_at || null };
-  } catch (e) {
-    // Fallback to in-memory
-    return saveSetMem(key, files, meta);
-  }
-}
-
-// --- Unified diff apply (minimal implementation) ---
-function parseHunks(diffText) {
-  const lines = String(diffText || '').replace(/\r\n/g, '\n').split('\n');
-  const hunks = [];
-  let i = 0;
-  // skip optional headers (---, +++)
-  while (i < lines.length && !/^@@ /.test(lines[i])) i++;
-  while (i < lines.length) {
-    const m = lines[i].match(/^@@\s+-([0-9]+)(?:,([0-9]+))?\s+\+([0-9]+)(?:,([0-9]+))?\s+@@/);
-    if (!m) { i++; continue; }
-    const h = { aStart: parseInt(m[1], 10), aLen: parseInt(m[2] || '1', 10), bStart: parseInt(m[3], 10), bLen: parseInt(m[4] || '1', 10), lines: [] };
-    i++;
-    while (i < lines.length && !/^@@ /.test(lines[i])) {
-      const ch = lines[i][0];
-      if (ch === '+' || ch === '-' || ch === ' ' || ch === '\\') {
-        h.lines.push(lines[i]);
-      } else if (lines[i].trim() === '') {
-        // allow blank context line (consider as space)
-        h.lines.push(' ');
-      } else {
-        // unexpected line; still include
-        h.lines.push(lines[i]);
-      }
-      i++;
-    }
-    hunks.push(h);
-  }
-  return hunks;
-}
-
-function applyUnifiedDiff(original, diffText) {
-  const o = String(original || '').replace(/\r\n/g, '\n').split('\n');
-  const hunks = parseHunks(diffText);
-  if (!hunks.length) {
-    throw new Error('invalid_diff');
-  }
-  let out = [];
-  let cursor = 0;
-  for (const h of hunks) {
-    const aIdx = Math.max(0, h.aStart - 1);
-    // copy unchanged before hunk
-    out = out.concat(o.slice(cursor, aIdx));
-    let oIndex = aIdx;
-    for (const raw of h.lines) {
-      const tag = raw[0];
-      const text = tag === ' ' || tag === '+' || tag === '-' ? raw.slice(1) : raw;
-      if (tag === ' ') {
-        if (o[oIndex] !== text) {
-          // context mismatch -> fail
-          throw new Error('context_mismatch');
-        }
-        out.push(text);
-        oIndex++;
-      } else if (tag === '-') {
-        if (o[oIndex] !== text) {
-          throw new Error('delete_mismatch');
-        }
-        // skip deletion
-        oIndex++;
-      } else if (tag === '+') {
-        out.push(text);
-      } else if (tag === '\\') {
-        // line like "\\ No newline at end of file" -> ignore
-      } else {
-        // treat as context
-        if (o[oIndex] !== raw) throw new Error('context_mismatch');
-        out.push(raw);
-        oIndex++;
-      }
-    }
-    cursor = oIndex;
-  }
-  out = out.concat(o.slice(cursor));
-  return out.join('\n');
-}
-
-registerAction('list_files', {
-  schema: z.object({ path: z.string().optional() }).optional(),
-  handler: async (ctx, payload = {}) => {
-    const setId = deriveSetId(ctx, payload);
-    const rec = (await getWorkspaceRecord(setId)) || { id: setId, files: [] };
-    const prefix = normalizePath(payload?.path || '/');
-    const items = (rec.files || [])
-      .filter((f) => f && f.path && f.path.startsWith(prefix === '/' ? '/' : prefix))
-      .map((f) => ({ path: f.path }));
-    return { ok: true, items };
-  },
-});
-
-registerAction('read_file', {
-  schema: z.object({ path: z.string() }),
-  handler: async (ctx, payload = {}) => {
-    const setId = deriveSetId(ctx, payload);
-    const rec = await getWorkspaceRecord(setId);
-    const path = normalizePath(payload?.path);
-    if (!rec || !path) return { ok: false, error: 'not_found' };
-    const f = (rec.files || []).find((x) => x.path === path);
-    if (!f) return { ok: false, error: 'not_found' };
-    return { ok: true, path, content: String(f.content ?? '') };
-  },
-});
-
-registerAction('write_file', {
-  schema: z.object({ path: z.string(), content: z.string().default('') }),
-  handler: async (ctx, payload = {}) => {
-    const setId = deriveSetId(ctx, payload);
-    const base = (await getWorkspaceRecord(setId)) || { id: setId, files: [], meta: {} };
-    const next = upsertFile(base, payload.path, payload.content);
-    const saved = await saveWorkspaceRecord(setId, next.files, next.meta);
-    const path = normalizePath(payload.path);
-    const bytes = Buffer.from(String(payload.content || ''), 'utf8').length;
-    return { ok: true, path, bytes, etag: saved.etag };
-  },
-});
-
-registerAction('edit_patch', {
-  schema: z.object({ path: z.string().optional(), diff: z.string() }),
-  handler: async (ctx, payload = {}) => {
-    // Determine target path: payload.path or from diff headers (---/+++)
-    let targetPath = normalizePath(payload?.path || null);
-    if (!targetPath) {
-      const hdrMatch = String(payload.diff || '').match(/^\+\+\+\s+[ab]\/(.+)$|^---\s+[ab]\/(.+)$/m);
-      const candidate = hdrMatch && (hdrMatch[1] || hdrMatch[2]);
-      if (candidate) targetPath = normalizePath(candidate);
-    }
-    if (!targetPath) return { ok: false, error: 'invalid_path' };
-
-    const setId = deriveSetId(ctx, payload);
-    const rec = (await getWorkspaceRecord(setId)) || { id: setId, files: [], meta: {} };
-    const files = Array.isArray(rec.files) ? rec.files.slice() : [];
-    const idx = files.findIndex((f) => f.path === targetPath);
-    const original = idx >= 0 ? String(files[idx].content || '') : '';
-    let nextContent;
-    try {
-      nextContent = applyUnifiedDiff(original, payload.diff);
-    } catch (e) {
-      return { ok: false, error: 'patch_failed', detail: e?.message || String(e) };
-    }
-    if (idx >= 0) files[idx] = { ...files[idx], content: nextContent };
-    else files.push({ path: targetPath, content: nextContent });
-    const saved = await saveWorkspaceRecord(setId, files, { ...rec.meta });
-    return { ok: true, path: targetPath, applied: true, etag: saved.etag };
-  },
-});
-
-// Server-side sandbox allowlist helpers
-async function readAllowlistForCtx(ctx) {
-  try {
-    const setId = deriveSetId(ctx, {});
-    const rec = await getWorkspaceRecord(setId);
-    const files = Array.isArray(rec?.files) ? rec.files : [];
-    const item = files.find((f) => f.path === '/workspace/config/ai-actions-allowlist.json');
-    if (!item || !item.content) return { sandbox_exec: { cmds: [] } };
-    try {
-      const obj = JSON.parse(String(item.content));
-      return obj && typeof obj === 'object' ? obj : { sandbox_exec: { cmds: [] } };
-    } catch {
-      return { sandbox_exec: { cmds: [] } };
-    }
-  } catch {
-    return { sandbox_exec: { cmds: [] } };
-  }
-}
-
-async function ensureSandboxAllowed(ctx, cmd) {
-  try {
-    const allow = await readAllowlistForCtx(ctx);
-    const list = Array.isArray(allow?.sandbox_exec?.cmds) ? allow.sandbox_exec.cmds : [];
-    return list.includes(cmd);
+    await fs.access(p);
+    return true;
   } catch {
     return false;
   }
 }
 
-registerAction('sandbox_exec', {
-  schema: z.object({ cmd: z.string(), cwd: z.string().optional(), timeout_ms: z.number().optional() }).optional(),
-  handler: async (ctx, payload = {}) => {
-    const enabled = process.env.SANDBOX_EXEC_ENABLE === '1';
-    if (!enabled) return { ok: false, error: 'sandbox_disabled' };
-    const cmd = String(payload?.cmd || '').trim();
-    if (!cmd) return { ok: false, error: 'invalid_cmd' };
-    // Allowlist enforcement
-    const allowed = await ensureSandboxAllowed(ctx, cmd);
-    if (!allowed) return { ok: false, error: 'not_allowed' };
-    // Basic guardrails (no chaining/redirection/subshells)
-    const banned = /(\|\||&&|;|\||>|<|`|\$\(|\$\{)/;
-    if (banned.test(cmd)) return { ok: false, error: 'cmd_not_allowed' };
-    const maxLen = 200;
-    if (cmd.length > maxLen) return { ok: false, error: 'cmd_too_long' };
-    const timeout = Math.min(Math.max(1000, Number(payload?.timeout_ms || 5000)), 15000);
-    try {
-      const execOpts = { cwd: process.cwd(), timeout };
-      const { stdout, stderr } = await exec(cmd, execOpts);
-      const cap = (s) => (s || '').toString().slice(0, 10000);
-      return { ok: true, cmd, exitCode: 0, stdout: cap(stdout), stderr: cap(stderr) };
-    } catch (e) {
-      return { ok: false, error: 'exec_failed', detail: e?.message || String(e) };
-    }
-  },
-});
-
-registerAction('delete_file', {
-  schema: z.object({ path: z.string() }),
-  handler: async (ctx, payload = {}) => {
-    const setId = deriveSetId(ctx, payload);
-    const rec = await getWorkspaceRecord(setId);
-    const path = normalizePath(payload?.path);
-    if (!rec || !path) return { ok: false, error: 'not_found' };
-    const nextFiles = (rec.files || []).filter((f) => f.path !== path);
-    const next = await saveWorkspaceRecord(setId, nextFiles, { ...rec.meta });
-    return { ok: true, path, etag: next.etag };
-  },
-});
-
-registerAction('move_file', {
-  schema: z.object({ from: z.string(), to: z.string() }),
-  handler: async (ctx, payload = {}) => {
-    const setId = deriveSetId(ctx, payload);
-    const rec = await getWorkspaceRecord(setId);
-    const from = normalizePath(payload?.from);
-    const to = normalizePath(payload?.to);
-    if (!rec || !from || !to) return { ok: false, error: 'invalid_path' };
-    const files = Array.isArray(rec.files) ? rec.files.slice() : [];
-    const idx = files.findIndex((f) => f.path === from);
-    if (idx < 0) return { ok: false, error: 'not_found' };
-    const existsIdx = files.findIndex((f) => f.path === to);
-    const updated = { ...files[idx], path: to };
-    if (existsIdx >= 0) files[existsIdx] = updated; else files[idx] = updated;
-    const next = await saveWorkspaceRecord(setId, files, { ...rec.meta });
-    return { ok: true, from, to, etag: next.etag };
-  },
-});
-
-registerAction('mkdirs', {
-  schema: z.object({ path: z.string() }),
-  handler: async (ctx, payload = {}) => {
-    const setId = deriveSetId(ctx, payload);
-    const rec = (await getWorkspaceRecord(setId)) || (await saveWorkspaceRecord(setId, [], {}));
-    const dirPath = normalizePath(payload?.path);
-    if (!dirPath) return { ok: false, error: 'invalid_path' };
-    const files = Array.isArray(rec.files) ? rec.files.slice() : [];
-    const exists = files.some((f) => f.path === dirPath && f.dir === true);
-    if (!exists) files.push({ path: dirPath, dir: true, content: '' });
-    const next = await saveWorkspaceRecord(setId, files, { ...rec.meta });
-    return { ok: true, path: dirPath, etag: next.etag };
-  },
-});
-
-registerAction('search_text', {
-  schema: z.object({ query: z.string(), path: z.string().optional(), max_results: z.number().int().min(1).max(200).optional() }),
-  handler: async (ctx, payload = {}) => {
-    const setId = deriveSetId(ctx, payload);
-    const rec = (await getWorkspaceRecord(setId)) || { id: setId, files: [] };
-    const q = String(payload?.query || '').trim();
-    if (!q) return { ok: false, error: 'empty_query' };
-    const prefix = normalizePath(payload?.path || '/');
-    const max = Number.isFinite(payload?.max_results) ? payload.max_results : 100;
-    const items = [];
-    for (const f of rec.files || []) {
-      if (!f?.path || !f?.content) continue;
-      if (prefix !== '/' && !f.path.startsWith(prefix)) continue;
-      const lines = String(f.content).split(/\r?\n/);
-      for (let i = 0; i < lines.length && items.length < max; i++) {
-        if (lines[i].includes(q)) {
-          items.push({ path: f.path, line: i + 1, text: lines[i] });
-        }
-      }
-      if (items.length >= max) break;
-    }
-    return { ok: true, items };
-  },
-});
-
-registerAction('read_file_range', {
-  schema: z.object({ path: z.string(), start: z.number().int().min(1).optional(), end: z.number().int().min(1).optional() }),
-  handler: async (ctx, payload = {}) => {
-    const setId = deriveSetId(ctx, payload);
-    const rec = await getWorkspaceRecord(setId);
-    const path = normalizePath(payload?.path);
-    if (!rec || !path) return { ok: false, error: 'not_found' };
-    const f = (rec.files || []).find((x) => x.path === path);
-    if (!f) return { ok: false, error: 'not_found' };
-    const lines = String(f.content || '').split(/\r?\n/);
-    const start = Math.max(1, Number(payload?.start || 1));
-    const end = Math.min(lines.length, Number(payload?.end || start + 199));
-    const slice = lines.slice(start - 1, end).join('\n');
-    return { ok: true, path, start, end, content: slice };
-  },
-});
-
-registerAction('stat_file', {
-  schema: z.object({ path: z.string() }),
-  handler: async (ctx, payload = {}) => {
-    const setId = deriveSetId(ctx, payload);
-    const rec = (await getWorkspaceRecord(setId)) || { id: setId, files: [] };
-    const path = normalizePath(payload?.path);
-    if (!path) return { ok: false, error: 'invalid_path' };
-    const f = (rec.files || []).find((x) => x.path === path || (x.dir && path.startsWith(x.path + '/')));
-    if (!f) return { ok: false, error: 'not_found' };
-    const size = f.dir ? 0 : Buffer.from(String(f.content || ''), 'utf8').length;
-    return { ok: true, path, dir: !!f.dir, size };
-  },
-});
-
-registerAction('delete_dir', {
-  schema: z.object({ path: z.string() }),
-  handler: async (ctx, payload = {}) => {
-    const setId = deriveSetId(ctx, payload);
-    const rec = await getWorkspaceRecord(setId);
-    const path = normalizePath(payload?.path);
-    if (!rec || !path) return { ok: false, error: 'not_found' };
-    const prefix = path.endsWith('/') ? path.slice(0, -1) : path;
-    const nextFiles = (rec.files || []).filter((f) => !(f.path === prefix || f.path.startsWith(prefix + '/')));
-    const next = await saveWorkspaceRecord(setId, nextFiles, { ...rec.meta });
-    return { ok: true, path, etag: next.etag };
-  },
-});
-
-registerAction('copy_file', {
-  schema: z.object({ from: z.string(), to: z.string() }),
-  handler: async (ctx, payload = {}) => {
-    const setId = deriveSetId(ctx, payload);
-    const rec = await getWorkspaceRecord(setId);
-    const from = normalizePath(payload?.from);
-    const to = normalizePath(payload?.to);
-    if (!rec || !from || !to) return { ok: false, error: 'invalid_path' };
-    const src = (rec.files || []).find((f) => f.path === from);
-    if (!src) return { ok: false, error: 'not_found' };
-    const files = Array.isArray(rec.files) ? rec.files.slice() : [];
-    const idx = files.findIndex((f) => f.path === to);
-    const clone = { ...src, path: to };
-    if (idx >= 0) files[idx] = clone; else files.push(clone);
-    const next = await saveWorkspaceRecord(setId, files, { ...rec.meta });
-    return { ok: true, from, to, etag: next.etag };
-  },
-});
-
-// Batch actions: execute multiple actions in one request
-registerAction('batch', {
-  schema: z.object({
-    actions: z.array(z.object({ action: z.string(), payload: z.any().optional(), session_id: z.string().optional(), game_id: z.string().optional(), idempotencyKey: z.string().optional() })),
-    sequential: z.boolean().optional(),
-  }),
-  handler: async (ctx, payload = {}) => {
-    const list = Array.isArray(payload.actions) ? payload.actions : [];
-    const sequential = payload.sequential !== false; // default sequential
-    const results = [];
-    if (sequential) {
-      for (const item of list) {
-        const r = await dispatchAction({
-          name: item.action,
-          user: ctx.user,
-          sessionId: item.session_id || ctx.sessionId,
-          gameId: item.game_id || ctx.gameId,
-          payload: item.payload || {},
-          idempotencyKey: item.idempotencyKey || null,
-        });
-        results.push(r);
-      }
-    } else {
-      const tasks = list.map(item =>
-        dispatchAction({
-          name: item.action,
-          user: ctx.user,
-          sessionId: item.session_id || ctx.sessionId,
-          gameId: item.game_id || ctx.gameId,
-          payload: item.payload || {},
-          idempotencyKey: item.idempotencyKey || null,
-        })
-      );
-      const settled = await Promise.allSettled(tasks);
-      settled.forEach(s => results.push(s.status === 'fulfilled' ? s.value : { ok: false, error: 'batch_item_failed' }));
-    }
-    return { ok: true, results };
-  },
-});
-
-// Convenience runners (delegate to sandbox with allowed presets)
-function resolvePresetCmd(kind, preset) {
-  const p = String(preset || '').toLowerCase();
-  const byKind = {
-    test: ['npm test', 'npm run test', 'npm run test:unit'],
-    lint: ['npm run lint', 'eslint . --format unix'],
-    build: ['npm run build', 'next build'],
-  };
-  const arr = byKind[kind] || [];
-  if (!p) return arr[0] || null;
-  if (kind === 'test' && p === 'e2e') return 'npm run test:e2e';
-  if (kind === 'test' && (p === 'unit' || p === 'u')) return 'npm run test:unit';
-  if (kind === 'lint' && (p === 'fix' || p === 'f')) return 'npm run lint:fix';
-  if (kind === 'build' && (p === 'prod' || p === 'release')) return 'npm run build';
-  return arr.find((c) => c.toLowerCase().includes(p)) || arr[0] || null;
+async function ensureDir(dir) {
+  await fs.mkdir(dir, { recursive: true });
 }
 
-async function runPreset(kind, payload = {}) {
-  const enabled = process.env.SANDBOX_EXEC_ENABLE === '1';
-  if (!enabled) return { ok: false, error: 'sandbox_disabled' };
-  const cmd = payload?.cmd || resolvePresetCmd(kind, payload?.preset);
-  if (!cmd) return { ok: false, error: 'invalid_cmd' };
-  const banned = /(\|\||&&|;|\||>|<|`|\$\(|\$\{)/;
-  if (banned.test(cmd)) return { ok: false, error: 'cmd_not_allowed' };
-  const timeout = Math.min(Math.max(1000, Number(payload?.timeout_ms || 15000)), 60000);
+async function listDir(dir, recursive = false) {
+  const out = [];
+  const stack = [dir];
+  while (stack.length) {
+    const cur = stack.pop();
+    const entries = await fs.readdir(cur, { withFileTypes: true });
+    for (const ent of entries) {
+      if (ent.name === '.git' || ent.name === 'node_modules') continue;
+      const full = path.join(cur, ent.name);
+      const rel = path.relative(BASE_ROOT, full);
+      const stat = await fs.lstat(full);
+      out.push({
+        name: ent.name,
+        path: rel,
+        type: ent.isDirectory() ? 'dir' : 'file',
+        size: ent.isDirectory() ? 0 : stat.size,
+        mtimeMs: stat.mtimeMs,
+      });
+      if (recursive && ent.isDirectory()) stack.push(full);
+    }
+  }
+  return out;
+}
+
+function runCommand(cmd, { cwd = BASE_ROOT, timeoutMs = 20000 } = {}) {
+  return new Promise((resolve) => {
+    const child = spawn(cmd, {
+      cwd,
+      shell: true,
+      env: process.env,
+      windowsHide: true,
+    });
+    let stdout = '';
+    let stderr = '';
+    const t = setTimeout(() => {
+      try { child.kill('SIGKILL'); } catch {}
+      resolve({ ok: false, code: 124, stdout, stderr: stderr + '\nTIMEOUT' });
+    }, timeoutMs);
+    child.stdout?.on('data', (d) => (stdout += d.toString()))
+    child.stderr?.on('data', (d) => (stderr += d.toString()))
+    child.on('error', (err) => {
+      clearTimeout(t);
+      resolve({ ok: false, code: -1, stdout, stderr: String(err?.message || err) });
+    });
+    child.on('close', (code) => {
+      clearTimeout(t);
+      resolve({ ok: code === 0, code, stdout, stderr });
+    });
+  });
+}
+
+async function isCommandAllowed(cmdPreview) {
   try {
-    const { stdout, stderr } = await exec(cmd, { cwd: process.cwd(), timeout });
-    const cap = (s) => (s || '').toString().slice(0, 20000);
-    return { ok: true, cmd, exitCode: 0, stdout: cap(stdout), stderr: cap(stderr) };
-  } catch (e) {
-    return { ok: false, error: 'exec_failed', detail: e?.message || String(e) };
+    const allowPath = resolveSafe('ai-roomchat/workspace/config/ai-actions-allowlist.json');
+    const buf = await fs.readFile(allowPath, 'utf8').catch(() => '');
+    if (!buf) return false; // default: deny if configured file exists but unreadable
+    const conf = JSON.parse(buf);
+    const allow = Array.isArray(conf.allow) ? conf.allow : [];
+    // Simple startsWith matching for preview string
+    return allow.some((s) => typeof s === 'string' && cmdPreview.startsWith(s));
+  } catch {
+    // If no file, be conservative unless explicitly enabled
+    return false;
   }
 }
 
-registerAction('test_run', {
-  schema: z.object({ preset: z.string().optional(), cmd: z.string().optional(), timeout_ms: z.number().optional() }).optional(),
-  handler: async (ctx, payload = {}) => {
-    const cmd = payload?.cmd || resolvePresetCmd('test', payload?.preset);
-    if (!(await ensureSandboxAllowed(ctx, String(cmd || 'test_run')))) return { ok: false, error: 'not_allowed' };
-    return runPreset('test', { ...payload, cmd });
-  },
-});
+async function action_list_files(payload) {
+  const dir = resolveSafe(payload?.path || '.');
+  const recursive = !!payload?.recursive;
+  const items = await listDir(dir, recursive);
+  return { ok: true, result: { items } };
+}
 
-registerAction('lint_run', {
-  schema: z.object({ preset: z.string().optional(), cmd: z.string().optional(), timeout_ms: z.number().optional() }).optional(),
-  handler: async (ctx, payload = {}) => {
-    const cmd = payload?.cmd || resolvePresetCmd('lint', payload?.preset);
-    if (!(await ensureSandboxAllowed(ctx, String(cmd || 'lint_run')))) return { ok: false, error: 'not_allowed' };
-    return runPreset('lint', { ...payload, cmd });
-  },
-});
+async function action_read_file(payload) {
+  const file = resolveSafe(payload?.path);
+  const stat = await fs.lstat(file);
+  if (stat.size > MAX_FILE_BYTES) return { ok: false, error: 'file_too_large' };
+  const buf = await fs.readFile(file);
+  if (isBinaryBuffer(buf)) return { ok: true, result: { encoding: 'base64', content: buf.toString('base64') } };
+  return { ok: true, result: { encoding: 'utf8', content: buf.toString('utf8') } };
+}
 
-registerAction('build_run', {
-  schema: z.object({ preset: z.string().optional(), cmd: z.string().optional(), timeout_ms: z.number().optional() }).optional(),
-  handler: async (ctx, payload = {}) => {
-    const cmd = payload?.cmd || resolvePresetCmd('build', payload?.preset);
-    if (!(await ensureSandboxAllowed(ctx, String(cmd || 'build_run')))) return { ok: false, error: 'not_allowed' };
-    return runPreset('build', { ...payload, cmd });
-  },
-});
+async function action_read_file_range(payload) {
+  const file = resolveSafe(payload?.path);
+  const start = Number(payload?.start ?? 0);
+  const end = Number(payload?.end ?? start + 250);
+  const txt = await fs.readFile(file, 'utf8');
+  const lines = txt.split(/\r?\n/);
+  const s = Math.max(0, start);
+  const e = Math.min(lines.length, Math.max(s, end));
+  const slice = lines.slice(s, e).join('\n');
+  return { ok: true, result: { start: s, end: e, content: slice } };
+}
 
-export default { registerAction, dispatchAction };
+async function action_write_file(payload) {
+  const file = resolveSafe(payload?.path);
+  const content = typeof payload?.content === 'string' ? payload.content : '';
+  await ensureDir(path.dirname(file));
+  await fs.writeFile(file, content, 'utf8');
+  return { ok: true };
+}
+
+async function action_delete_file(payload) {
+  const file = resolveSafe(payload?.path);
+  await fs.rm(file, { force: true });
+  return { ok: true };
+}
+
+async function action_delete_dir(payload) {
+  const dir = resolveSafe(payload?.path);
+  const recursive = payload?.recursive !== false; // default true
+  await fs.rm(dir, { recursive, force: true });
+  return { ok: true };
+}
+
+async function action_move_file(payload) {
+  const src = resolveSafe(payload?.src);
+  const dest = resolveSafe(payload?.dest);
+  await ensureDir(path.dirname(dest));
+  await fs.rename(src, dest);
+  return { ok: true };
+}
+
+async function action_copy_file(payload) {
+  const src = resolveSafe(payload?.src);
+  const dest = resolveSafe(payload?.dest);
+  await ensureDir(path.dirname(dest));
+  await fs.copyFile(src, dest);
+  return { ok: true };
+}
+
+async function action_mkdirs(payload) {
+  const dir = resolveSafe(payload?.path);
+  await fs.mkdir(dir, { recursive: true });
+  return { ok: true };
+}
+
+async function action_stat_file(payload) {
+  const p = resolveSafe(payload?.path);
+  const s = await fs.lstat(p);
+  return { ok: true, result: { isDir: s.isDirectory(), size: s.size, mtimeMs: s.mtimeMs } };
+}
+
+async function action_search_text(payload) {
+  const root = resolveSafe(payload?.path || '.');
+  const query = String(payload?.query || '').trim();
+  if (!query) return { ok: false, error: 'missing_query' };
+  const maxResults = Number(payload?.max_results || SEARCH_MAX_RESULTS_DEFAULT);
+  const results = [];
+
+  async function scanDir(d) {
+    const entries = await fs.readdir(d, { withFileTypes: true });
+    for (const ent of entries) {
+      if (results.length >= maxResults) return;
+      if (ent.name === '.git' || ent.name === 'node_modules') continue;
+      const full = path.join(d, ent.name);
+      if (ent.isDirectory()) {
+        await scanDir(full);
+      } else {
+        try {
+          const stat = await fs.lstat(full);
+          if (stat.size > MAX_FILE_BYTES) continue;
+          const buf = await fs.readFile(full);
+          if (isBinaryBuffer(buf)) continue;
+          const text = buf.toString('utf8');
+          const lines = text.split(/\r?\n/);
+          for (let i = 0; i < lines.length; i++) {
+            if (lines[i].includes(query)) {
+              results.push({ path: path.relative(BASE_ROOT, full), line: i + 1, preview: lines[i] });
+              if (results.length >= maxResults) break;
+            }
+          }
+        } catch {}
+      }
+    }
+  }
+  await scanDir(root);
+  return { ok: true, result: { results } };
+}
+
+async function action_edit_patch(payload) {
+  // Try git apply first if available; fallback to error unless newContent provided
+  const diff = String(payload?.diff || payload?.patch || '').trim();
+  const cwd = BASE_ROOT;
+  if (!diff) return { ok: false, error: 'missing_patch' };
+
+  // Write temp file with patch
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'patch-'));
+  const patchPath = path.join(tmp, 'patch.diff');
+  await fs.writeFile(patchPath, diff, 'utf8');
+  const cmd = `git apply --unsafe-paths --reject --whitespace=nowarn "${patchPath.replace(/"/g, '\"')}"`;
+  const { ok, code, stdout, stderr } = await runCommand(cmd, { cwd, timeoutMs: 20000 });
+  try { await fs.rm(tmp, { recursive: true, force: true }); } catch {}
+  if (!ok) return { ok: false, error: 'patch_failed', detail: { code, stdout, stderr } };
+  return { ok: true };
+}
+
+async function action_sandbox_exec(payload) {
+  if (!process.env.SANDBOX_EXEC_ENABLE) return { ok: false, error: 'sandbox_disabled' };
+  const cmd = String(payload?.cmd || '').trim();
+  if (!cmd) return { ok: false, error: 'missing_cmd' };
+  const allowed = await isCommandAllowed(cmd);
+  if (!allowed) return { ok: false, error: 'sandbox_blocked' };
+  const cwd = payload?.cwd ? resolveSafe(payload.cwd) : BASE_ROOT;
+  const timeoutMs = Number(payload?.timeout_ms || 20000);
+  const r = await runCommand(cmd, { cwd, timeoutMs });
+  return { ok: r.ok, result: { code: r.code, stdout: r.stdout, stderr: r.stderr } };
+}
+
+async function action_test_run(payload) {
+  return action_sandbox_exec({ cmd: 'npm test --silent', cwd: payload?.cwd, timeout_ms: payload?.timeout_ms });
+}
+async function action_lint_run(payload) {
+  return action_sandbox_exec({ cmd: 'npm run lint --silent', cwd: payload?.cwd, timeout_ms: payload?.timeout_ms });
+}
+async function action_build_run(payload) {
+  return action_sandbox_exec({ cmd: 'npm run build --silent', cwd: payload?.cwd, timeout_ms: payload?.timeout_ms });
+}
+
+const registry = {
+  list_files: action_list_files,
+  read_file: action_read_file,
+  read_file_range: action_read_file_range,
+  write_file: action_write_file,
+  delete_file: action_delete_file,
+  delete_dir: action_delete_dir,
+  move_file: action_move_file,
+  copy_file: action_copy_file,
+  mkdirs: action_mkdirs,
+  stat_file: action_stat_file,
+  search_text: action_search_text,
+  edit_patch: action_edit_patch,
+  sandbox_exec: action_sandbox_exec,
+  test_run: action_test_run,
+  lint_run: action_lint_run,
+  build_run: action_build_run,
+};
+
+export function isReadOnly(action) {
+  return DEFAULT_READONLY_EXEMPT.has(action);
+}
+
+export async function performAction(action, payload) {
+  const fn = registry[action];
+  if (!fn) return { ok: false, error: 'unknown_action' };
+  return fn(payload || {});
+}
+
+export async function performBatch(payload) {
+  const actions = Array.isArray(payload?.actions) ? payload.actions : [];
+  const results = [];
+  for (const a of actions) {
+    if (!a || typeof a !== 'object') { results.push({ ok: false, error: 'invalid_action' }); continue; }
+    const type = a.action || a.type || a.name;
+    if (type === 'batch') { results.push({ ok: false, error: 'nested_batch_not_allowed' }); continue; }
+    const r = await performAction(type, a.payload || {});
+    results.push(r);
+  }
+  return { ok: true, result: { results } };
+}
+
+export function getBaseRoot() {
+  return BASE_ROOT;
+}
+
