@@ -5,10 +5,9 @@ class MyDocument extends Document {
     return (
       <Html>
         <Head>
-          {/* Define a global guard for legacy references to prevent ReferenceError */}
           <script
             dangerouslySetInnerHTML={{
-              __html: `try{if(typeof extensionsOpen==='undefined'){var extensionsOpen=false;}}catch(e){}`,
+              __html: `try{if(typeof globalThis!=='undefined'){if(typeof globalThis.__EXT_OPEN__==='undefined'){globalThis.__EXT_OPEN__=false;}if(typeof globalThis.extensionsOpen==='undefined'){globalThis.extensionsOpen=globalThis.__EXT_OPEN__}}}catch(e){}`,
             }}
           />
         </Head>

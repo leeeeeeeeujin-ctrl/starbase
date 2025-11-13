@@ -1,5 +1,3 @@
-// Ensure a global guard exists in both SSR and browser to prevent
-// ReferenceError from legacy `extensionsOpen` references.
 try {
   if (typeof globalThis !== 'undefined') {
     if (typeof globalThis.__EXT_OPEN__ === 'undefined') globalThis.__EXT_OPEN__ = false;
@@ -17,3 +15,4 @@ export default function MyApp({ Component, pageProps }) {
     </>
   );
 }
+
