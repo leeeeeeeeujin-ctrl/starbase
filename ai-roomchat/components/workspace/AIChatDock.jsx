@@ -784,6 +784,16 @@ export default function AIChatDock({ onClose }) {
           />
         )}
 
+        {prefs.mode !== 'fullscreen' && (
+          <div
+            role="separator"
+            aria-label="창 크기 조절"
+            title="크기 조절"
+            style={styles.resizeHandle}
+            onPointerDown={(e) => beginPointerInteraction(e, 'resize')}
+          />
+        )}
+
         {instructionsOpen && (
           <InstructionsModal
             initialValue={prefs.userInstructions}
@@ -1755,6 +1765,19 @@ const styles = {
     touchAction: 'none',
     overflow: 'hidden',
   },
+  resizeHandle: {
+    position: 'absolute',
+    right: 6,
+    bottom: 6,
+    width: 16,
+    height: 16,
+    borderRadius: 4,
+    border: '1px solid #273449',
+    background: '#050d1c',
+    boxShadow: 'inset 0 0 0 2px rgba(148,163,184,0.1)',
+    cursor: 'nwse-resize',
+    zIndex: 2050,
+  },
   panelFullscreen: {
     pointerEvents: 'auto',
     width: 'calc(100vw - 48px)',
@@ -2449,8 +2472,6 @@ const styles = {
     color: '#9fb3df',
   },
 };
-
-
 
 
 
