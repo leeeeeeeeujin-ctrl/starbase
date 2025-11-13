@@ -1853,6 +1853,7 @@ const styles = {
     padding: '10px 14px',
     flex: 1,
     minHeight: 0,
+    overflowX: 'hidden',
   },
   chatColumn: {
     flex: 1,
@@ -1860,6 +1861,7 @@ const styles = {
     flexDirection: 'column',
     gap: 10,
     minHeight: 0,
+    overflowX: 'hidden',
   },
   statusRow: {
     marginTop: 4,
@@ -2472,6 +2474,5 @@ const styles = {
     color: '#9fb3df',
   },
 };
-
 
 
