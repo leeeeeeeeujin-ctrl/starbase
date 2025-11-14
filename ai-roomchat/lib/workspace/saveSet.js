@@ -63,10 +63,20 @@ export async function saveSet(id, filesMap = {}, etag) {
 
   // First attempt
   let pr = await putWith(currentEtag);
-  // If precondition/etag issues, fetch latest etag and retry once
+  // If precondition/etag issues, try to recover:
+  // 1) fetch latest etag and retry once
+  // 2) as a last resort, drop If-Match and overwrite (single-user / dev-friendly)
   if (pr.status === 412 || pr.status === 428) {
     currentEtag = await getEtag();
     pr = await putWith(currentEtag);
+    if (pr.status === 412 || pr.status === 428) {
+      // eslint-disable-next-line no-console
+      console.warn('[workspace.saveSet] forcing overwrite after repeated etag mismatch', {
+        id,
+        status: pr.status,
+      });
+      pr = await putWith(null);
+    }
   }
   const pj = await pr.json().catch(()=>({}));
   if (!pr.ok) {
