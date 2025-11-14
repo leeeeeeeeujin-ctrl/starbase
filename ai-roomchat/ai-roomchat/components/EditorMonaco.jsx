@@ -26,7 +26,7 @@ async function ensureMonaco() {
     try {
       const done = () => {
         try {
-          if (!w.require || typeof w.require !== 'function') {
+          if (!w.require || typeof w.require.config !== 'function') {
             throw new Error('Monaco AMD loader not available');
           }
           try {
@@ -41,19 +41,18 @@ async function ensureMonaco() {
           }, reject);
         } catch (e) {
           reject(e);
-        }
+          }
       };
-
-      // If AMD loader is already present, skip script injection.
-      if (w.require && typeof w.require === 'function') {
-        done();
-        return;
-      }
 
       const existing = document.getElementById('monaco-amd-loader');
       if (existing) {
-        existing.addEventListener('load', () => done(), { once: true });
-        existing.addEventListener('error', reject, { once: true });
+        // If loader script is already loaded and AMD loader is ready, run immediately.
+        if (w.require && typeof w.require.config === 'function') {
+          done();
+        } else {
+          existing.addEventListener('load', () => done(), { once: true });
+          existing.addEventListener('error', reject, { once: true });
+        }
         return;
       }
 
