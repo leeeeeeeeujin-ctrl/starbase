@@ -27,6 +27,18 @@ class OfflineGameEngine {
   async registerServiceWorker() {
     if ('serviceWorker' in navigator) {
       try {
+        // Avoid duplicate registration: check existing registration for our SW
+        const existing = await navigator.serviceWorker.getRegistration();
+        if (
+          existing &&
+          existing.active &&
+          existing.active.scriptURL &&
+          existing.active.scriptURL.includes('sw.js')
+        ) {
+          console.log('🔧 Service Worker 이미 등록되어 있습니다:', existing.scope);
+          return existing;
+        }
+
         const registration = await navigator.serviceWorker.register('/sw.js', {
           scope: '/',
         });
@@ -41,8 +53,12 @@ class OfflineGameEngine {
 
         // 백그라운드 동기화 등록
         if ('sync' in window.ServiceWorkerRegistration.prototype) {
-          await registration.sync.register('sync-game-data');
-          console.log('🔄 백그라운드 동기화 등록됨');
+          try {
+            await registration.sync.register('sync-game-data');
+            console.log('🔄 백그라운드 동기화 등록됨');
+          } catch (e) {
+            console.warn('백그라운드 동기화 등록 실패:', e);
+          }
         }
       } catch (error) {
         console.error('Service Worker 등록 실패:', error);

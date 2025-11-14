@@ -55,29 +55,13 @@ export default function App({ Component, pageProps }) {
     } catch {}
   }, []);
 
-  useEffect(() => {
-    // Register service worker for PWA (if supported)
-    try {
-      if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-        const onLoad = () => {
-          navigator.serviceWorker.register('/sw.js').catch(() => {});
-        };
-        window.addEventListener('load', onLoad);
-        return () => window.removeEventListener('load', onLoad);
-      }
-    } catch {}
-  }, []);
+  // Service worker registration moved to OfflineGameEngine to avoid duplicates.
 
   return (
     <GameIntegrationProvider>
       <Head>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="manifest" href="/manifest.json" />
         <link rel="icon" href="/icon.png" />
-        <link rel="apple-touch-icon" href="/icon.png" />
-        <meta name="theme-color" content="#0b1220" />
-        <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
       </Head>
       <OverlayAwareShell>
         <ClientErrorReporter />
