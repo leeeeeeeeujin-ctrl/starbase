@@ -9,7 +9,7 @@ const styles = {
     color: '#e2e8f0',
     display: 'flex',
     justifyContent: 'flex-start',
-    padding: 0,
+    padding: '24px 12px 40px',
     boxSizing: 'border-box',
   },
   wrapper: {
