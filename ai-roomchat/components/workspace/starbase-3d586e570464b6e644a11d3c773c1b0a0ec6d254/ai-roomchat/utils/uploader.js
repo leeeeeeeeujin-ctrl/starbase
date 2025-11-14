@@ -70,8 +70,10 @@ export async function uploadAsset(file, { gameId, setId, key, signal, contentEnc
   // 2) upload-url
   const name = file.name || `file_${Date.now()}`;
   const ext = name.includes('.') ? name.split('.').pop() : 'bin';
-  const setPart = setId ? `${String(setId).trim().replace(/[^a-zA-Z0-9_-]/g,'')}/` : '';
-  const defKey = `games/${gameId||'common'}/${setPart}${sha256}.${ext}`;
+  const safeSetId = (setId
+    ? String(setId).trim().replace(/[^a-zA-Z0-9_-]/g, '')
+    : 'common') || 'common';
+  const defKey = `games/${gameId || 'common'}/${safeSetId}/${sha256}.${ext}`;
   const finalKey = (typeof key === 'string' && key) ? key : defKey;
   r = await fetch('/api/assets/upload-url', { method:'POST', headers: { 'content-type':'application/json', ...(auth?{Authorization:auth}:{}) }, body: JSON.stringify({ key: finalKey, contentType, size, sha256, contentEncoding }), signal });
   j = await r.json();
