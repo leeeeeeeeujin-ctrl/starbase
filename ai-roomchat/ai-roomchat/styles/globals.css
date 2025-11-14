@@ -10,10 +10,10 @@ html, body, #__next {
   min-height: 100svh;
   margin: 0;
   padding: 0;
+  background-color: #040507;
 }
 body {
   font-family: 'Noto Sans KR', sans-serif;
-  background-color: #040507;
   color: #ffffff;
 }
 

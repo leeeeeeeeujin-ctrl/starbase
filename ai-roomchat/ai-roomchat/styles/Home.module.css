@@ -4,7 +4,9 @@
   flex-direction: column;
   justify-content: center;
   align-items: center;
+  /* Fill mobile safe viewport without shrinking when browser UI toggles */
   min-height: 100vh;
+  min-height: 100svh;
   padding: 72px 24px 96px;
   --hero-background-media: none;
   background-image:

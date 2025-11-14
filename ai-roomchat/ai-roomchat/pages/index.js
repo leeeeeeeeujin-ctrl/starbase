@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 
 import AuthButton from '../components/AuthButton';
 import { supabase } from '../lib/supabase';
+import { isStandaloneDisplay, minutesLeftForBypass } from '../lib/pwa/installGate';
 import {
   clearRankAuthSession,
   persistRankAuthSession,
@@ -198,6 +199,23 @@ export default function Home() {
     return base.sort(comparator);
   }, [sortMode, nextActions]);
   const hasNextActions = sortedNextActions.length > 0;
+
+  // If PWA가 설치되지 않았고 임시 허용도 없는 경우,
+  // 전용 설치 안내 페이지로 유도한다.
+  useEffect(() => {
+    try {
+      const standalone = isStandaloneDisplay();
+      const bypassLeft = minutesLeftForBypass();
+      if (!standalone && bypassLeft <= 0) {
+        const path = window.location.pathname + window.location.search;
+        const next = path || '/';
+        router.replace(`/pwa/install?next=${encodeURIComponent(next)}`);
+      }
+    } catch {
+      // ignore PWA gating errors on landing
+    }
+  }, [router]);
+
   useEffect(() => {
     if (!hasNextActions && sortMode !== 'order') {
       setSortMode('order');
