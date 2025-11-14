@@ -200,22 +200,6 @@ export default function Home() {
   }, [sortMode, nextActions]);
   const hasNextActions = sortedNextActions.length > 0;
 
-  // If PWA가 설치되지 않았고 임시 허용도 없는 경우,
-  // 전용 설치 안내 페이지로 유도한다.
-  useEffect(() => {
-    try {
-      const standalone = isStandaloneDisplay();
-      const bypassLeft = minutesLeftForBypass();
-      if (!standalone && bypassLeft <= 0) {
-        const path = window.location.pathname + window.location.search;
-        const next = path || '/';
-        router.replace(`/pwa/install?next=${encodeURIComponent(next)}`);
-      }
-    } catch {
-      // ignore PWA gating errors on landing
-    }
-  }, [router]);
-
   useEffect(() => {
     if (!hasNextActions && sortMode !== 'order') {
       setSortMode('order');
@@ -250,12 +234,28 @@ export default function Home() {
 
     async function ensureSession() {
       try {
+        // PWA gate: 타이틀은 기본적으로 PWA(standalone)에서만 열리게 하고,
+        // 임시 허용(ALLOW_BROWSER_TEMP)이 있을 때만 브라우저 모드 허용.
+        const standalone = isStandaloneDisplay();
+        const bypassLeft = minutesLeftForBypass();
+        if (!standalone && bypassLeft <= 0) {
+          const path = window.location.pathname + window.location.search;
+          const next = path || '/';
+          router.replace(`/pwa/install?next=${encodeURIComponent(next)}`);
+          return;
+        }
+
         const { data } = await supabase.auth.getSession();
         if (cancelled) return;
         if (data?.session?.user) {
           persistRankAuthSession(data.session);
           persistRankAuthUser(data.session.user);
-          router.replace('/roster');
+          const next = '/roster';
+          if (!standalone && bypassLeft <= 0) {
+            router.replace(`/pwa/install?next=${encodeURIComponent(next)}`);
+          } else {
+            router.replace(next);
+          }
         }
       } catch (error) {
         console.error('Failed to resolve auth session on landing:', error);
@@ -269,7 +269,18 @@ export default function Home() {
       if (session?.user) {
         persistRankAuthSession(session);
         persistRankAuthUser(session.user);
-        router.replace('/roster');
+        try {
+          const standalone = isStandaloneDisplay();
+          const bypassLeft = minutesLeftForBypass();
+          const next = '/roster';
+          if (!standalone && bypassLeft <= 0) {
+            router.replace(`/pwa/install?next=${encodeURIComponent(next)}`);
+          } else {
+            router.replace(next);
+          }
+        } catch {
+          router.replace('/roster');
+        }
       }
       if (event === 'SIGNED_OUT') {
         clearRankAuthSession();
