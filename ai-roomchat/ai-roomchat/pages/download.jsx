@@ -54,7 +54,7 @@ export default function DownloadGate() {
         <>
           <p>안드로이드:</p>
           <ul>
-            <li>크롬 메뉴에서 "홈 화면에 추가"로 PWA 설치 가능</li>
+            <li>크롬 메뉴에서 &quot;홈 화면에 추가&quot;로 PWA 설치 가능</li>
             <li>또는 Google Play(링크)로 설치 (현재 정책에 따라 비활성화될 수 있음)</li>
           </ul>
           {store.android && <div style={{ marginTop: 8 }}><a href={store.android} target="_blank" rel="noreferrer">Google Play 바로가기</a></div>}
@@ -64,7 +64,7 @@ export default function DownloadGate() {
         <>
           <p>iOS(PWA 권장):</p>
           <ul>
-            <li>사파리에서 공유 아이콘 → "홈 화면에 추가"를 선택하세요.</li>
+            <li>사파리에서 공유 아이콘 → &quot;홈 화면에 추가&quot;를 선택하세요.</li>
             <li>이 방식은 App Store 없이도 설치되며, 웹앱이 자동으로 최신 상태를 유지합니다.</li>
           </ul>
         </>

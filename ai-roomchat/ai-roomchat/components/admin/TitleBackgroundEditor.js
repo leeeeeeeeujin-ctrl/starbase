@@ -203,7 +203,7 @@ export default function TitleBackgroundEditor() {
           <p className={styles.calloutBody}>
             <code>slug text primary key</code>, <code>background_url text</code>,{' '}
             <code>update_note text</code>,<code>updated_at timestamptz default now()</code> 컬럼을
-            가진 테이블을 생성하고 기본 행으로 <code>slug='main'</code>을 준비해주세요.
+            가진 테이블을 생성하고 기본 행으로 <code>slug=&apos;main&apos;</code>을 준비해주세요.
           </p>
         </div>
       )}

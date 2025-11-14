@@ -55,7 +55,7 @@ export default function PwaInstallPage(){
         홈 화면에 추가(설치)하면 오프라인 자원 캐시, 더 빠른 로딩, 그리고 네이티브 전환 경로가 활성화됩니다.
       </p>
       <ol style={{ paddingLeft:'1.25rem', margin:'0 0 1rem' }}>
-        <li>모바일 브라우저 메뉴에서 "홈 화면에 추가" 또는 "앱 설치" 선택</li>
+        <li>모바일 브라우저 메뉴에서 &quot;홈 화면에 추가&quot; 또는 &quot;앱 설치&quot; 선택</li>
         <li>아이콘 생성 후 다시 실행하면 전체 기능이 열립니다.</li>
       </ol>
       <section style={{ background:'#182135', padding:'0.75rem 1rem', borderRadius:8, marginBottom:'1rem', color:'#e5ebf5' }}>
