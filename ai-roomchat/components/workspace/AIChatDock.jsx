@@ -81,8 +81,8 @@ const REMOTE_MEMORY_ENABLED = process.env.NEXT_PUBLIC_REMOTE_MEMORY === '1';
 const AUTOINIT_ENABLED = process.env.NEXT_PUBLIC_WORKSPACE_AUTOINIT === '1';
 const DEFAULT_DOCK_PREFS = {
   mode: 'mini',
-  position: { x: 32, y: 64 },
-  size: { width: 440, height: 580 },
+  position: { x: 24, y: 48 },
+  size: { width: 360, height: 480 },
   historyOpen: false,
   trustEnabled: false,
   trustLimit: 5,
@@ -93,8 +93,8 @@ const DEFAULT_DOCK_PREFS = {
   testerPolicy: 'prompt',
 };
 
-const MIN_WIDTH = 360;
-const MIN_HEIGHT = 320;
+const MIN_WIDTH = 320;
+const MIN_HEIGHT = 280;
 const MAX_ATTACHMENTS = 4;
 const MAX_ATTACHMENT_BYTES = 2 * 1024 * 1024;
 const HISTORY_SLICE = 12;
