@@ -1,4 +1,4 @@
-// Centralized PWA install-gate helpers and configuration
+// Centralized PWA install-gate helpers and configuration (title/roster gate entry)
 
 export const restrictedPrefixes = [
   '/game/play',
