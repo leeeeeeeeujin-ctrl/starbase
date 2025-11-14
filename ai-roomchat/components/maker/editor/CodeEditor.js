@@ -4,6 +4,7 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
+import EditorMonaco from '../../EditorMonaco.jsx';
 
 // 지원 언어 정의
 const SUPPORTED_LANGUAGES = {
@@ -504,24 +505,22 @@ return solvePuzzle(grid, moves)`,
             📝 코드 입력
           </div>
 
-          <textarea
-            ref={textareaRef}
-            value={code}
-            onChange={e => setCode(e.target.value)}
-            placeholder="여기에 JavaScript 코드를 입력하세요..."
+          <div
             style={{
               flex: 1,
-              padding: 16,
               border: 'none',
               background: '#0f172a',
-              color: '#f8fafc',
-              fontSize: 14,
-              fontFamily: 'Consolas, Monaco, "Courier New", monospace',
-              resize: 'none',
-              outline: 'none',
-              lineHeight: 1.5,
             }}
-          />
+          >
+            <EditorMonaco
+              value={code}
+              onChange={setCode}
+              language="javascript"
+              theme="vs-dark"
+              height="100%"
+              width="100%"
+            />
+          </div>
         </div>
 
         {/* 출력 영역 */}
