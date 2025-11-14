@@ -11,6 +11,14 @@ let monacoInitPromise = null;
 async function ensureMonaco() {
   if (typeof window === 'undefined') return null;
   const w = window;
+  // Minimal process shim for libraries that expect Node-style globals in browser
+  try {
+    if (!w.process) {
+      w.process = { env: {} };
+    } else if (!w.process.env) {
+      w.process.env = {};
+    }
+  } catch {}
   if (w.monaco && w.monaco.editor) return w.monaco;
   if (monacoInitPromise) return monacoInitPromise;
 
