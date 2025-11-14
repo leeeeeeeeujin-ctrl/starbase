@@ -101,19 +101,15 @@ export async function uploadAsset(file, { gameId, setId, key, signal, contentEnc
   }
   const putUrl = j.url; const headers = j.headers || { 'Content-Type': contentType };
 
-  // 3) PUT file (direct to R2). If CORS blocks, fall back to proxy upload.
+  // 3) (Disabled) Direct PUT to R2 – always use proxy upload to avoid CORS / environment drift.
+  // We keep presign for validation/quota, but route bytes via our API.
   let putOk = false;
-  try {
-    const put = await fetch(putUrl, { method:'PUT', headers, body: file, signal });
-    putOk = put.ok;
-  } catch (e) {
-    putOk = false;
-  }
+
   if (!putOk) {
-    // Fallback: proxy upload via our API to bypass CORS
+    // Proxy upload via our API to bypass CORS and centralize R2 access.
     const buf = await file.arrayBuffer();
     const b64 = base64FromArrayBuffer(buf);
-  const proxy = await fetch('/api/assets/upload', { method:'POST', headers: { 'content-type':'application/json', ...(auth?{Authorization:auth}:{}) }, body: JSON.stringify({ name: file.name, contentType, dataBase64: b64, gameId, sha256, key: finalKey }), signal });
+    const proxy = await fetch('/api/assets/upload', { method:'POST', headers: { 'content-type':'application/json', ...(auth?{Authorization:auth}:{}) }, body: JSON.stringify({ name: file.name, contentType, dataBase64: b64, gameId, sha256, key: finalKey }), signal });
     let pj = null;
     try {
       pj = await proxy.json();
