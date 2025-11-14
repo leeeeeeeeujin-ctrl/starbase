@@ -1,70 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from 'react';
+import loader from '@monaco-editor/loader';
 
-const MONACO_PATH = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs';
-let monacoInitPromise = null;
-
-async function ensureMonaco() {
-  if (typeof window === 'undefined') return null;
-  const w = window;
-  // Minimal process shim for browser environments where some libs expect it
+// Configure Monaco via CDN paths (prevents Next from bundling monaco's CSS)
+if (typeof window !== 'undefined' && loader && typeof loader.config === 'function') {
   try {
-    if (!w.process) {
-      w.process = { env: {} };
-    } else if (!w.process.env) {
-      w.process.env = {};
-    }
+    loader.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
   } catch {}
-  if (w.monaco && w.monaco.editor) return w.monaco;
-  if (monacoInitPromise) return monacoInitPromise;
-
-  monacoInitPromise = new Promise((resolve, reject) => {
-    try {
-      const done = () => {
-        try {
-          if (!w.require || typeof w.require.config !== 'function') {
-            throw new Error('Monaco AMD loader not available');
-          }
-          try {
-            w.require.config({ paths: { vs: MONACO_PATH } });
-          } catch {}
-          w.require(['vs/editor/editor.main'], () => {
-            if (w.monaco && w.monaco.editor) {
-              resolve(w.monaco);
-            } else {
-              reject(new Error('Monaco editor namespace missing'));
-            }
-          }, reject);
-        } catch (e) {
-          reject(e);
-          }
-      };
-
-      const existing = document.getElementById('monaco-amd-loader');
-      if (existing) {
-        if (w.require && typeof w.require.config === 'function') {
-          done();
-        } else {
-          existing.addEventListener('load', () => done(), { once: true });
-          existing.addEventListener('error', reject, { once: true });
-        }
-        return;
-      }
-
-      const script = document.createElement('script');
-      script.id = 'monaco-amd-loader';
-      script.src = `${MONACO_PATH}/loader.js`;
-      script.async = true;
-      script.onload = () => done();
-      script.onerror = () => reject(new Error('Failed to load Monaco loader script'));
-      document.head.appendChild(script);
-    } catch (error) {
-      reject(error);
-    }
-  });
-
-  return monacoInitPromise;
 }
 
 export default function CodeEditor({ value, onChange, debounceMs = 250 }) {
@@ -75,17 +18,19 @@ export default function CodeEditor({ value, onChange, debounceMs = 250 }) {
 
   useEffect(() => {
     let disposed = false;
+    let monacoInstance;
     const init = async () => {
       if (disposed || !containerRef.current) return;
       try {
-        const monaco = await ensureMonaco();
+        const monaco = await loader.init();
+        monacoInstance = monaco;
         if (!monaco || !monaco.editor) throw new Error('Monaco not available');
       } catch (e) {
         setFallback(true);
         return;
       }
       if (disposed || !containerRef.current) return;
-      const editor = window.monaco.editor.create(containerRef.current, {
+      const editor = monacoInstance.editor.create(containerRef.current, {
         value: value ?? '{\n  "name": "template"\n}',
         language: 'json',
         automaticLayout: true,
