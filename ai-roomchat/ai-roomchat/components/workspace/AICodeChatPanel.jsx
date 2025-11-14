@@ -97,6 +97,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
       const now = Date.now();
       if (now - (lastFsToggleRef.current || 0) < 220) return; // debounce 220ms
       lastFsToggleRef.current = now;
+      setIsFullscreenUi(v => !v);
       if (typeof onToggleFullscreen === 'function') onToggleFullscreen();
     } catch {}
   };
@@ -962,14 +963,9 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
   const onHeaderTouchEnd = () => {
     const now = Date.now();
     if (now - (lastTapRef.current || 0) < 320) {
-      if (onToggleFullscreen) onToggleFullscreen();
-      setIsFullscreenUi(v=>!v);
+      handleToggleFullscreen();
     }
     lastTapRef.current = now;
-  };
-  const handleToggleFullscreen = () => {
-    if (onToggleFullscreen) onToggleFullscreen();
-    setIsFullscreenUi(v=>!v);
   };
 
   // Close popovers when clicking outside their area for convenience
