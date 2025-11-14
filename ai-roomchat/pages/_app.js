@@ -8,6 +8,7 @@ try {
 } catch (_) {}
 
 import ExtensionsHost from '../components/workspace/ExtensionsHost';
+import '../styles/globals.css';
 
 export default function MyApp({ Component, pageProps }) {
   return (
