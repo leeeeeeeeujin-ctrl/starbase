@@ -76,8 +76,26 @@ export async function uploadAsset(file, { gameId, setId, key, signal, contentEnc
   const defKey = `games/${gameId || 'common'}/${safeSetId}/${sha256}.${ext}`;
   const finalKey = (typeof key === 'string' && key) ? key : defKey;
   r = await fetch('/api/assets/upload-url', { method:'POST', headers: { 'content-type':'application/json', ...(auth?{Authorization:auth}:{}) }, body: JSON.stringify({ key: finalKey, contentType, size, sha256, contentEncoding }), signal });
-  j = await r.json();
+  try {
+    j = await r.json();
+  } catch {
+    j = null;
+  }
   if (!r.ok) {
+    if (typeof window !== 'undefined') {
+      // Surface enough context in the console to debug key/validation issues in production.
+      // Includes key/gameId/setId/size/contentType plus raw body.
+      // eslint-disable-next-line no-console
+      console.error('[assets] upload-url failed', {
+        status: r.status,
+        key: finalKey,
+        gameId,
+        setId,
+        size,
+        contentType,
+        body: j,
+      });
+    }
     maybeShowQuota(j, r.status);
     throw new Error(j?.error || 'upload-url failed');
   }
