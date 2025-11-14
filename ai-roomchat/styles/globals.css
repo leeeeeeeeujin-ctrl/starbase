@@ -3,6 +3,14 @@
 * {
   box-sizing: border-box;
 }
+html,
+body,
+#__next {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+}
 body {
   margin: 0;
   font-family: 'Noto Sans KR', sans-serif;
@@ -10,6 +18,16 @@ body {
   color: #ffffff;
   /* Prevent horizontal scrollbars when using full-bleed sections (100vw with negative margins) */
   overflow-x: hidden;
+  position: relative;
+}
+/* Slight global overscan so translucent shells don't expose outer chrome edges */
+body::before {
+  content: '';
+  position: fixed;
+  inset: -4vh;
+  background: #040507;
+  pointer-events: none;
+  z-index: -1;
 }
 a {
   color: #2563eb;
