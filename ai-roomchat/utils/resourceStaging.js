@@ -56,8 +56,9 @@ export async function commitStaged({ getTemplateText, setTemplateText, setId = n
   // Optional pre-compressors
   let compressors = null;
   try { compressors = await import('@/lib/client/media/compress'); } catch {}
-  const baseFolder = 'studio/resources';
-  const folder = setId ? `${baseFolder}/${setId}` : baseFolder;
+  // Ensure keys follow games/{gameId}/{setId}/filename pattern
+  const baseFolder = 'games/studio/resources';
+  const folder = setId ? `${baseFolder}/${setId}` : `${baseFolder}/common`;
 
   for (const it of staged) {
     const key = STAGING_PREFIX + it.id;

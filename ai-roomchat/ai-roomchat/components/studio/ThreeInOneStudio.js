@@ -160,7 +160,9 @@ export default function ThreeInOneStudio() {
             const blob = new Blob([text], { type: 'application/json' });
             const file = new File([blob], 'template.json', { type: 'application/json' });
             const { uploadAsset } = await import('@/utils/uploader');
-            const res = await uploadAsset(file, { gameId: 'studio', key: `games/templates/${Date.now()}-template.json` });
+            // Ensure key matches games/{gameId}/{setId}/filename pattern
+            const key = `games/studio/templates/${Date.now()}-template.json`;
+            const res = await uploadAsset(file, { gameId: 'studio', key });
             console.info('[publish] template uploaded', res);
             let msg = `퍼블리시 완료\nKey: ${res.key}\nURL: ${res.url}`;
             try {

@@ -96,9 +96,11 @@ const ATTACHMENT_ICONS = {
 };
 
 // R2 uploader wrapper for chat attachments/backgrounds
-async function r2Upload(file, { folder = 'chat', name, contentEncoding } = {}) {
+// Keys must follow games/{gameId}/{setId}/filename pattern to satisfy server validation.
+async function r2Upload(file, { folder = 'general', name, contentEncoding } = {}) {
+  const safeSetId = (folder || 'general').replace(/[^a-zA-Z0-9_-]/g, '_') || 'general';
   const safeName = (name || file?.name || 'file').replace(/[^a-zA-Z0-9_.-]/g, '_');
-  const key = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2,8)}-${safeName}`;
+  const key = `games/chat/${safeSetId}/${Date.now()}-${Math.random().toString(36).slice(2,8)}-${safeName}`;
   const res = await uploadAsset(file, { gameId: 'chat', key, contentEncoding });
   return { url: res.url, key: res.key, hash: res.hash };
 }
@@ -530,7 +532,7 @@ async function uploadBackgroundImage({ file, roomId = null, ownerToken = null })
   }
 
   // R2로 업로드 및 공개 URL 반환
-  const up = await r2Upload(file, { folder: 'chat/backgrounds', name: file?.name });
+  const up = await r2Upload(file, { folder: 'backgrounds', name: file?.name });
   return up.url;
 }
 
@@ -1508,7 +1510,7 @@ async function uploadAttachmentDraft({ blob, name, encoding, contentType }) {
   const finalName = `${stem}.${desiredExt}`;
   // Keep original contentType; store gzip via Content-Encoding so clients can auto-decompress
   const fileWrap = new File([blob], finalName, { type: contentType || 'application/octet-stream' });
-  const up = await r2Upload(fileWrap, { folder: 'chat/attachments', name: finalName, contentEncoding: encoding && encoding !== 'none' ? encoding : undefined });
+  const up = await r2Upload(fileWrap, { folder: 'attachments', name: finalName, contentEncoding: encoding && encoding !== 'none' ? encoding : undefined });
 
   return {
     bucket: 'r2',
