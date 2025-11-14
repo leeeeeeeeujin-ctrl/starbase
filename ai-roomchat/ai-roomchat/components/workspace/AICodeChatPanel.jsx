@@ -26,7 +26,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
       }
     } catch {}
   }, []);
-  if (isDebugEditor()) { try { console.count('[AIChat] render'); dbg('[AIChat] state', { pos }); } catch {} }
+  if (isDebugEditor()) { try { console.count('[AIChat] render'); dbg('[AIChat] state', {}); } catch {} }
   if (blocked) return null;
   const { files, activePath, createFile, writeFile, remove, rename } = useWorkspace();
   const getLocalAiKey = () => {
@@ -99,48 +99,6 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
       lastFsToggleRef.current = now;
       if (typeof onToggleFullscreen === 'function') onToggleFullscreen();
     } catch {}
-  };
-  // Drag/position (throttled with rAF to avoid layout thrash/flash)
-  const [pos, setPos] = useState({ x: 24, y: 24 });
-  const draggingRef = useRef(false);
-  const dragStartRef = useRef({ x: 0, y: 0, ox: 0, oy: 0 });
-  const rafMoveRef = useRef(null);
-  const getPoint = (e) => {
-    const ev = e.touches && e.touches[0] ? e.touches[0] : e.changedTouches && e.changedTouches[0] ? e.changedTouches[0] : e;
-    return { x: ev.clientX ?? 0, y: ev.clientY ?? 0, pointerId: ev.pointerId };
-  };
-  const onDragHandleDown = (e) => {
-    try { e.preventDefault(); } catch {}
-    const p = getPoint(e);
-    draggingRef.current = true;
-    dragStartRef.current = { x: p.x, y: p.y, ox: pos.x, oy: pos.y };
-    try { e.currentTarget?.setPointerCapture?.(p.pointerId); } catch {}
-    const onMove = (ev) => {
-      if (!draggingRef.current) return;
-      const q = getPoint(ev);
-      const dx = q.x - dragStartRef.current.x;
-      const dy = q.y - dragStartRef.current.y;
-      if (rafMoveRef.current) return;
-      rafMoveRef.current = requestAnimationFrame(() => {
-        rafMoveRef.current = null;
-        setPos({ x: Math.max(0, dragStartRef.current.ox + dx), y: Math.max(0, dragStartRef.current.oy + dy) });
-      });
-      try { ev.preventDefault(); } catch {}
-    };
-    const onUp = (ev) => {
-      draggingRef.current = false;
-      try { document.removeEventListener('pointermove', onMove, true); } catch {}
-      try { document.removeEventListener('pointerup', onUp, true); } catch {}
-      try { document.removeEventListener('touchmove', onMove, { capture: true }); } catch {}
-      try { document.removeEventListener('touchend', onUp, { capture: true }); } catch {}
-      try { cancelAnimationFrame(rafMoveRef.current); rafMoveRef.current = null; } catch {}
-      try { e.currentTarget?.releasePointerCapture?.(p.pointerId); } catch {}
-    };
-    document.addEventListener('pointermove', onMove, true);
-    document.addEventListener('pointerup', onUp, true);
-    // touch fallback
-    document.addEventListener('touchmove', onMove, { passive: false, capture: true });
-    document.addEventListener('touchend', onUp, { passive: false, capture: true });
   };
   // cached system prompt derived from workspace code context
   const systemRef = useRef(null);
@@ -1099,7 +1057,7 @@ export default function AICodeChatPanel({ onClose, onDragHandleDown, onToggleFul
   // (removed) URL 기반 이미지 추가는 지원하지 않습니다. AI 첨부 기반으로만 동작합니다.
 
   return (
-  <div ref={rootRef} style={{ position:'fixed', top:0, left:0, transform:`translate3d(${pos.x}px, ${pos.y}px, 0)`, willChange:'transform', backfaceVisibility:'hidden', height:'100%', border:'1px solid #334155', background:'#0b1220', borderRadius:12, overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 24px 64px rgba(0,0,0,0.6)', zIndex: 50 }}>
+  <div ref={rootRef} style={{ position:'relative', height:'100%', width:'100%', border:'1px solid #334155', background:'#0b1220', borderRadius:12, overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 24px 64px rgba(0,0,0,0.6)' }}>
       <div onPointerDown={onDragHandleDown} onDoubleClick={handleToggleFullscreen} style={{ padding:'8px 10px', color:'#e2e8f0', fontWeight:600, display:'flex', alignItems:'center', justifyContent:'space-between', background:'linear-gradient(180deg, rgba(2,6,23,0.8) 0%, rgba(2,6,23,0.6) 100%)', position:'relative', cursor:'move', touchAction:'none' }}>
         <span>AI 코드 채팅{autoApply ? (autoBudget>0 ? ` · 자동 ${autoBudget}` : ' · 자동 진행') : ''}</span>
         <div style={{ display:'flex', gap:6, alignItems:'center' }}>
