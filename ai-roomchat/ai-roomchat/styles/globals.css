@@ -16,7 +16,18 @@ body {
   font-family: 'Noto Sans KR', sans-serif;
   /* Prevent horizontal over-scroll from exposing browser default background */
   overflow-x: hidden;
+  position: relative;
   color: #ffffff;
+}
+
+/* Slight global overscan so translucent shells don't expose outer chrome edges */
+body::before {
+  content: '';
+  position: fixed;
+  inset: -4vh;
+  background: #040507;
+  pointer-events: none;
+  z-index: -1;
 }
 
 /* Prefer safe-area padding for devices with notches */
