@@ -6,11 +6,20 @@ import { useWorkspace } from './CodeWorkspaceProvider.jsx';
 function InnerSync({ text, setText }){
   const { files, writeFile } = useWorkspace();
   const current = files['/template.json']?.content ?? '';
-  const guard = useRef({ toVfs:false, toText:false });
+  const prevRef = useRef({ text, current });
+
   useEffect(() => {
+    const prev = prevRef.current;
+    const textChanged = text !== prev.text;
+    const currentChanged = current !== prev.current;
+    prevRef.current = { text, current };
+
     try {
-      if (typeof text === 'string' && text !== current && !guard.current.toText) {
-        guard.current.toVfs = true;
+      // 변경이 없으면 아무 것도 하지 않음
+      if (!textChanged && !currentChanged) return;
+
+      // 템플릿(text)만 바뀐 경우: Studio/Maker 쪽에서 수정 → VFS로 반영
+      if (textChanged && !currentChanged && typeof text === 'string') {
         writeFile('/template.json', text);
         try {
           const obj = JSON.parse(text || '{}');
@@ -20,21 +29,24 @@ function InnerSync({ text, setText }){
             nodes: nodes.map(n => ({ id: n.id, type: n.type || 'prompt', label: n.data?.name || n.label || '' })),
             edges: edges.map(e => ({ id: e.id, source: e.source, target: e.target, label: e.label || '' })),
           };
-          writeFile('/graph/prompt-graph.json', JSON.stringify(g, null, 2)+'\n');
-        } catch {}
-        setTimeout(()=>{ guard.current.toVfs = false; },0);
+          writeFile('/graph/prompt-graph.json', JSON.stringify(g, null, 2) + '\n');
+        } catch {
+          // 템플릿이 JSON이 아니어도 에디터는 계속 동작해야 하므로 무시
+        }
+        return;
       }
-    } catch {}
-  }, [text, current, writeFile]);
-  useEffect(() => {
-    try {
-      if (typeof current === 'string' && typeof setText === 'function' && current !== text && !guard.current.toVfs) {
-        guard.current.toText = true;
+
+      // VFS(current)만 바뀐 경우: 워크스페이스(모나코)에서 수정 → 템플릿으로 반영
+      if (currentChanged && !textChanged && typeof current === 'string' && typeof setText === 'function') {
         setText(current);
-        setTimeout(()=>{ guard.current.toText = false; },0);
+        return;
       }
-    } catch {}
-  }, [current, text, setText]);
+
+      // 둘 다 동시에 바뀐 경우에는 보수적으로 아무 것도 하지 않음
+    } catch {
+      // 동기화 실패는 편집 자체를 막지 않도록 무시
+    }
+  }, [text, current, writeFile, setText]);
   return null;
 }
 
