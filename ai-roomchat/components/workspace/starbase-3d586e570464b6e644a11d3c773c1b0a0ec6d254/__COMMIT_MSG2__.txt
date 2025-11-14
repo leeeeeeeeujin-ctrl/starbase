@@ -1,1 +1,0 @@
-workspace: remove snap toggles; fix menu wrapping; AI chat improvements; maker: minimap smaller, canvas taller  

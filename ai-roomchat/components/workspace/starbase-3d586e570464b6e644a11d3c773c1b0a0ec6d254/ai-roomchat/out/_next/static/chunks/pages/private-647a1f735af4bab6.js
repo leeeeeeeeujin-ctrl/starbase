@@ -1,2 +1,0 @@
-(self.webpackChunk_N_E=self.webpackChunk_N_E||[]).push([[2549],{2072:function(n,u,i){(window.__NEXT_P=window.__NEXT_P||[]).push(["/private",function(){return i(5616)}])},5616:function(n,u,i){"use strict";i.r(u),i.d(u,{default:function(){return e}});var t=i(5893);function e(){return(0,t.jsxs)("div",{style:{padding:24},children:[(0,t.jsx)("h2",{children:"사설"}),(0,t.jsx)("p",{children:"프라이빗 룸/이벤트로 이동 예정."})]})}}},function(n){n.O(0,[2888,9774,179],function(){return n(n.s=2072)}),_N_E=n.O()}]);
-//# sourceMappingURL=private-647a1f735af4bab6.js.map

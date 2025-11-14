@@ -1,1 +1,0 @@
-const fs=require('fs'); const s=fs.readFileSync('ai-roomchat/starbase/ai-roomchat/lib/rank/matching.js','utf8'); const bt=(s.match(/`/g)||[]).length; const blockOpen=(s.match(/\/\*/g)||[]).length; const blockClose=(s.match(/\*\//g)||[]).length; console.log('backticks',bt,'blockOpen',blockOpen,'blockClose',blockClose);

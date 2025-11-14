@@ -1,1 +1,0 @@
-workspace: AI chat can attach active file content to prompt (toggle, truncation)  
