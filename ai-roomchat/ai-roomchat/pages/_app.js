@@ -55,7 +55,32 @@ export default function App({ Component, pageProps }) {
     } catch {}
   }, []);
 
-  // Service worker registration moved to OfflineGameEngine to avoid duplicates.
+  // Register PWA service worker once on the client (for installability/offline support)
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof navigator === 'undefined') return;
+    if (!('serviceWorker' in navigator)) return;
+    if (window.__PWA_SW_REGISTERED) return;
+
+    const register = async () => {
+      try {
+        const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+        window.__PWA_SW_REGISTERED = true;
+
+        try {
+          if ('ServiceWorkerRegistration' in window && 'sync' in ServiceWorkerRegistration.prototype) {
+            await registration.sync?.register?.('sync-game-data');
+          }
+        } catch {
+          // ignore background sync errors
+        }
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('[pwa] service worker registration failed', err);
+      }
+    };
+
+    register();
+  }, []);
 
   return (
     <GameIntegrationProvider>

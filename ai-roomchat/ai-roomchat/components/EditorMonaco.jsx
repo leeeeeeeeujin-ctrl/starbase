@@ -20,11 +20,14 @@ export default function EditorMonaco({ value, onChange, language = 'json', theme
     let disposed = false;
     let monacoInstance;
     const init = async () => {
+      if (disposed || !ref.current) return;
       try {
         const monaco = await loader.init();
         monacoInstance = monaco;
         if (!monaco || !monaco.editor) throw new Error('Monaco not available');
       } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error('[monaco] EditorMonaco loader.init failed', e);
         setFallback(true);
         return;
       }
