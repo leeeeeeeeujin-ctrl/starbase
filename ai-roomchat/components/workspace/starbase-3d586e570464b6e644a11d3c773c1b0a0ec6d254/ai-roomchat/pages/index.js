@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 
 import AuthButton from '../components/AuthButton';
 import { supabase } from '../lib/supabase';
+import { isStandaloneDisplay, minutesLeftForBypass } from '../lib/pwa/installGate';
 import {
   clearRankAuthSession,
   persistRankAuthSession,
@@ -232,12 +233,28 @@ export default function Home() {
 
     async function ensureSession() {
       try {
+        // PWA gate: 타이틀은 기본적으로 PWA(standalone)에서만 열리게 하고,
+        // 임시 허용(ALLOW_BROWSER_TEMP)이 있을 때만 브라우저 모드 허용.
+        const standalone = isStandaloneDisplay();
+        const bypassLeft = minutesLeftForBypass();
+        if (!standalone && bypassLeft <= 0) {
+          const path = window.location.pathname + window.location.search;
+          const next = path || '/';
+          router.replace(`/pwa/install?next=${encodeURIComponent(next)}`);
+          return;
+        }
+
         const { data } = await supabase.auth.getSession();
         if (cancelled) return;
         if (data?.session?.user) {
           persistRankAuthSession(data.session);
           persistRankAuthUser(data.session.user);
-          router.replace('/roster');
+          const next = '/roster';
+          if (!standalone && bypassLeft <= 0) {
+            router.replace(`/pwa/install?next=${encodeURIComponent(next)}`);
+          } else {
+            router.replace(next);
+          }
         }
       } catch (error) {
         console.error('Failed to resolve auth session on landing:', error);
@@ -251,7 +268,18 @@ export default function Home() {
       if (session?.user) {
         persistRankAuthSession(session);
         persistRankAuthUser(session.user);
-        router.replace('/roster');
+        try {
+          const standalone = isStandaloneDisplay();
+          const bypassLeft = minutesLeftForBypass();
+          const next = '/roster';
+          if (!standalone && bypassLeft <= 0) {
+            router.replace(`/pwa/install?next=${encodeURIComponent(next)}`);
+          } else {
+            router.replace(next);
+          }
+        } catch {
+          router.replace('/roster');
+        }
       }
       if (event === 'SIGNED_OUT') {
         clearRankAuthSession();
