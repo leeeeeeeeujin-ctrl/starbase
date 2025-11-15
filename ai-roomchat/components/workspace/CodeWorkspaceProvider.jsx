@@ -485,6 +485,9 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
   // Drafts localStorage key (namespaced per workspace id)
   const DRAFT_KEY = ns ? `workspace.drafts.v1@${ns}` : 'workspace.drafts.v1';
 
+  // UI state (openPaths, activePath, root, entryPath) localStorage key
+  const UI_KEY = ns ? `workspace.ui.v1@${ns}` : 'workspace.ui.v1';
+
   // Load drafts from localStorage once per namespace
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -511,6 +514,45 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
       // ignore storage errors
     }
   }, [drafts, DRAFT_KEY]);
+
+  // Load UI state from localStorage once per namespace after files are hydrated
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!files || !Object.keys(files).length) return;
+    try {
+      const raw = window.localStorage.getItem(UI_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return;
+      const { root: r, activePath: ap, openPaths: op, entryPath: ep } = parsed;
+      if (typeof r === 'string') setRoot(r);
+      if (typeof ap === 'string' && files[ap]) setActivePath(ap);
+      if (Array.isArray(op) && op.length) {
+        const filtered = op.filter((p) => typeof p === 'string' && files[p]);
+        if (filtered.length) setOpenPaths(filtered);
+      }
+      if (typeof ep === 'string' && files[ep]) setEntryPath(ep);
+    } catch {
+      // ignore parse/storage errors
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [UI_KEY, files && Object.keys(files).length]);
+
+  // Persist UI state so 탭/파일트리 구성이 세션 간에도 유지된다
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const payload = {
+        root,
+        activePath,
+        openPaths,
+        entryPath,
+      };
+      window.localStorage.setItem(UI_KEY, JSON.stringify(payload));
+    } catch {
+      // ignore storage errors
+    }
+  }, [root, activePath, openPaths, entryPath, UI_KEY]);
 
   // Removed localStorage autosave: saving is owned by parent flows (prompt editor saves)
 
