@@ -945,7 +945,19 @@ export default function AIChatDock({ onClose }) {
             <button
               type="button"
               style={styles.toolbarButton}
-              onClick={() => setExtensionsOpen(true)}
+              onClick={() => {
+                try {
+                  if (typeof window !== 'undefined') {
+                    if (typeof window.starbaseOpenExtensions === 'function') {
+                      window.starbaseOpenExtensions();
+                    } else {
+                      window.dispatchEvent(new Event('ai:open-extensions'));
+                    }
+                  }
+                } catch {
+                  // ignore
+                }
+              }}
               title="확장 프로그램"
               aria-label="확장 프로그램"
             >
