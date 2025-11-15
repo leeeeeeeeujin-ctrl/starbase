@@ -20,7 +20,6 @@ export default function EditorMonaco(props) {
 
   const containerRef = useRef(null);
   const editorRef = useRef(null);
-  const lastPositionRef = useRef(null);
   const [fallback, setFallback] = useState(false);
 
   useEffect(() => {
@@ -44,7 +43,6 @@ export default function EditorMonaco(props) {
         });
 
         editorRef.current = editor;
-        lastPositionRef.current = editor.getPosition();
 
         // Ensure editor actually receives keyboard focus on mount.
         try {
@@ -56,37 +54,6 @@ export default function EditorMonaco(props) {
         } catch {
           // ignore focus errors
         }
-
-        let restoringPosition = false;
-
-        editor.onDidChangeCursorPosition((event) => {
-          const position = event?.position;
-          if (!position) return;
-
-          if (restoringPosition) {
-            restoringPosition = false;
-            lastPositionRef.current = position;
-            return;
-          }
-
-          const last = lastPositionRef.current;
-          if (
-            last &&
-            position.lineNumber === 1 &&
-            position.column === 1 &&
-            (last.lineNumber !== 1 || last.column !== 1)
-          ) {
-            restoringPosition = true;
-            try {
-              editor.setPosition(last);
-            } catch {
-              // ignore cursor restore errors
-            }
-            return;
-          }
-
-          lastPositionRef.current = position;
-        });
 
         editor.onDidChangeModelContent(() => {
           const nextValue = editor.getValue();
