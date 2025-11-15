@@ -464,24 +464,54 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
           return;
         }
         // empty initialFiles → defaults only
-        setFiles(defaultFiles);
-        const sigs = {};
-        Object.entries(defaultFiles).forEach(([p, meta]) => { sigs[p] = contentSignature(meta); });
-        setSavedSig(sigs);
-        setDirty({});
-        setDrafts({});
-        return;
+         setFiles(defaultFiles);
+         const sigs = {};
+         Object.entries(defaultFiles).forEach(([p, meta]) => { sigs[p] = contentSignature(meta); });
+         setSavedSig(sigs);
+         setDirty({});
+         setDrafts({});
+         return;
       }
       // initialFiles missing → configuration error in all environments
       throw new Error('[Workspace] initialFiles is required (server-first).');
     } catch {
-      setFiles(defaultFiles);
-      const sigs = {};
-      Object.entries(defaultFiles).forEach(([p, meta]) => { sigs[p] = contentSignature(meta); });
-      setSavedSig(sigs);
-      setDirty({});
+       setFiles(defaultFiles);
+       const sigs = {};
+       Object.entries(defaultFiles).forEach(([p, meta]) => { sigs[p] = contentSignature(meta); });
+       setSavedSig(sigs);
+       setDirty({});
+     }
+   }, [initialFiles]);
+
+  // Drafts localStorage key (namespaced per workspace id)
+  const DRAFT_KEY = ns ? `workspace.drafts.v1@${ns}` : 'workspace.drafts.v1';
+
+  // Load drafts from localStorage once per namespace
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = window.localStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        setDrafts(parsed);
+      }
+    } catch {
+      // ignore parse/storage errors
     }
-  }, [initialFiles]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [DRAFT_KEY]);
+
+  // Persist drafts to localStorage so 서비스워커/새로고침 후에도 복원 가능
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const payload = drafts && typeof drafts === 'object' ? drafts : {};
+      window.localStorage.setItem(DRAFT_KEY, JSON.stringify(payload));
+    } catch {
+      // ignore storage errors
+    }
+  }, [drafts, DRAFT_KEY]);
 
   // Removed localStorage autosave: saving is owned by parent flows (prompt editor saves)
 
