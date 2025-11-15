@@ -1,12 +1,41 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
-export default function ExtensionInstallModal({ open, onClose }) {
+const BUILTIN_EXTENSIONS = [
+  {
+    id: 'codex-web',
+    name: 'OpenAI Codex Web',
+    kind: 'codex',
+    description:
+      '브라우저에서 OpenAI Codex 웹 IDE를 열고, 워크스페이스와 연계할 준비를 합니다. (현재는 단순 실행용 자리표시자입니다.)',
+  },
+  {
+    id: 'github-sync',
+    name: 'GitHub Sync (샘플)',
+    kind: 'github',
+    description:
+      '현재 세트를 GitHub 레포와 동기화하는 샘플 확장입니다. (토큰/레포 정보는 브라우저 로컬에만 저장됩니다.)',
+  },
+];
+
+export default function ExtensionInstallModal({
+  open,
+  onClose,
+  workspaceId,
+  extensions = [],
+  loading = false,
+  saving = false,
+  error = null,
+  onChangeExtensions,
+}) {
   const [ghToken, setGhToken] = useState('');
   const [owner, setOwner] = useState('');
   const [repo, setRepo] = useState('');
   const [branch, setBranch] = useState('main');
   const [connected, setConnected] = useState(false);
   const [events, setEvents] = useState([]);
+  const [githubUser, setGithubUser] = useState(null);
+  const [checkingUser, setCheckingUser] = useState(false);
+  const [userError, setUserError] = useState(null);
 
   useEffect(() => {
     if (!open) return;
@@ -19,7 +48,15 @@ export default function ExtensionInstallModal({ open, onClose }) {
         setRepo(link.repo || '');
         setBranch(link.branch || 'main');
       }
-    } catch {}
+      const savedUser = JSON.parse(localStorage.getItem('gh.user') || 'null');
+      if (savedUser && savedUser.login) {
+        setGithubUser(savedUser);
+      } else {
+        setGithubUser(null);
+      }
+    } catch {
+      // ignore localStorage errors
+    }
   }, [open]);
 
   function saveToken() {
@@ -29,6 +66,49 @@ export default function ExtensionInstallModal({ open, onClose }) {
     } catch {}
   }
 
+  async function verifyToken() {
+    const token = ghToken.trim();
+    if (!token) {
+      setUserError('토큰을 먼저 입력해 주세요.');
+      return;
+    }
+    setCheckingUser(true);
+    setUserError(null);
+    try {
+      const res = await fetch('https://api.github.com/user', {
+        headers: {
+          Authorization: `token ${token}`,
+          Accept: 'application/vnd.github+json',
+        },
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        const msg = body?.message || `GitHub 인증 실패 (HTTP ${res.status})`;
+        setUserError(msg);
+        setGithubUser(null);
+        return;
+      }
+      const data = await res.json();
+      const user = {
+        login: data.login,
+        avatar_url: data.avatar_url,
+        html_url: data.html_url,
+        name: data.name,
+      };
+      setGithubUser(user);
+      try {
+        localStorage.setItem('gh.user', JSON.stringify(user));
+      } catch {
+        // ignore storage errors
+      }
+    } catch (err) {
+      setUserError(err?.message || 'GitHub 사용자 정보를 가져오지 못했습니다.');
+      setGithubUser(null);
+    } finally {
+      setCheckingUser(false);
+    }
+  }
+
   function saveRepo() {
     try {
       localStorage.setItem('gh.repo', JSON.stringify({ owner: owner.trim(), repo: repo.trim(), branch: branch.trim() }));
@@ -36,22 +116,40 @@ export default function ExtensionInstallModal({ open, onClose }) {
     } catch {}
   }
 
-  function installSampleExtension() {
-    const id = `sample-gh-sync`;
-    const ext = {
-      id,
-      name: 'GitHub Sync (샘플)',
-      kind: 'github',
-      config: { owner, repo, branch },
-      enabled: true,
-      installedAt: Date.now(),
-    };
+  const [query, setQuery] = useState('');
+
+  const filteredExtensions = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return BUILTIN_EXTENSIONS;
+    return BUILTIN_EXTENSIONS.filter((ext) => {
+      const haystack = `${ext.name} ${ext.id} ${ext.description || ''}`.toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [query]);
+
+  async function toggleExtension(ext, installed) {
+    if (typeof onChangeExtensions !== 'function') return;
+    const prev = Array.isArray(extensions) ? extensions : [];
+    let next;
+    if (installed) {
+      next = prev.filter((e) => e.id !== ext.id);
+    } else {
+      const base = {
+        id: ext.id,
+        name: ext.name,
+        kind: ext.kind,
+        config: { owner: owner.trim(), repo: repo.trim(), branch: branch.trim() },
+        enabled: true,
+        installedAt: Date.now(),
+      };
+      next = [base, ...prev.filter((e) => e.id !== ext.id)];
+    }
     try {
-      const list = JSON.parse(localStorage.getItem('extensions') || '[]');
-      const next = [ext, ...list.filter((e) => e.id !== id)];
-      localStorage.setItem('extensions', JSON.stringify(next));
-      alert('샘플 확장 프로그램 설치 완료(로컬).');
-    } catch {}
+      await onChangeExtensions(next);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[extensions] failed to update config', err);
+    }
   }
 
   function connectEvents() {
@@ -86,14 +184,36 @@ export default function ExtensionInstallModal({ open, onClose }) {
 
         <div style={styles.section}>
           <div style={styles.sectionTitle}>1) GitHub 로그인(로컬 저장)</div>
-          <input
-            type="password"
-            placeholder="Personal Access Token (repo 권한)"
-            value={ghToken}
-            onChange={(e) => setGhToken(e.target.value)}
-            style={styles.input}
-          />
-          <button style={styles.btn} onClick={saveToken}>토큰 저장</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <input
+              type="password"
+              placeholder="Personal Access Token (repo 권한)"
+              value={ghToken}
+              onChange={(e) => setGhToken(e.target.value)}
+              style={{ ...styles.input, marginRight: 0, flex: 1 }}
+            />
+            <button style={styles.btn} onClick={saveToken}>토큰 저장</button>
+            <button
+              style={styles.btn}
+              onClick={verifyToken}
+              disabled={checkingUser}
+            >
+              {checkingUser ? '확인 중…' : '로그인 확인'}
+            </button>
+          </div>
+          <div style={{ fontSize: 12, color: '#9ca3af' }}>
+            {githubUser ? (
+              <>
+                GitHub 로그인: <strong>@{githubUser.login}</strong>
+                {githubUser.name ? ` (${githubUser.name})` : ''}
+              </>
+            ) : (
+              '아직 GitHub 로그인 정보가 확인되지 않았습니다.'
+            )}
+          </div>
+          {userError ? (
+            <div style={{ marginTop: 4, fontSize: 12, color: '#f97316' }}>{userError}</div>
+          ) : null}
         </div>
 
         <div style={styles.section}>
@@ -109,7 +229,68 @@ export default function ExtensionInstallModal({ open, onClose }) {
 
         <div style={styles.section}>
           <div style={styles.sectionTitle}>3) 확장 설치</div>
-          <button style={styles.primaryBtn} onClick={installSampleExtension}>GitHub Sync (샘플) 설치</button>
+          <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 6 }}>
+            세트별로 사용할 확장 프로그램을 선택합니다. (현재 워크스페이스:
+            {' '}
+            <span style={{ fontFamily: 'monospace' }}>{workspaceId || '알 수 없음'}</span>
+            )
+          </div>
+          <input
+            type="text"
+            placeholder="확장 프로그램 검색…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            style={{ ...styles.input, width: '100%', marginRight: 0, marginBottom: 8 }}
+          />
+          {loading ? (
+            <div style={{ fontSize: 13, color: '#9ca3af' }}>확장 설정을 불러오는 중…</div>
+          ) : (
+            <div>
+              {filteredExtensions.map((ext) => {
+                const installed = Array.isArray(extensions)
+                  ? extensions.some((e) => e.id === ext.id && e.enabled !== false)
+                  : false;
+                return (
+                  <div
+                    key={ext.id}
+                    style={{
+                      borderRadius: 8,
+                      border: '1px solid #1f2937',
+                      padding: 8,
+                      marginBottom: 8,
+                      background: '#020617',
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        marginBottom: 4,
+                      }}
+                    >
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>{ext.name}</div>
+                      <button
+                        type="button"
+                        style={installed ? styles.secondaryBtn : styles.primaryBtn}
+                        disabled={saving}
+                        onClick={() => toggleExtension(ext, installed)}
+                      >
+                        {installed ? '언인스톨' : '인스톨'}
+                      </button>
+                    </div>
+                    <div style={{ fontSize: 12, color: '#9ca3af' }}>{ext.description}</div>
+                  </div>
+                );
+              })}
+              {filteredExtensions.length === 0 && (
+                <div style={{ fontSize: 13, color: '#9ca3af' }}>일치하는 확장 프로그램이 없습니다.</div>
+              )}
+            </div>
+          )}
+          {error ? (
+            <div style={{ marginTop: 6, fontSize: 12, color: '#f97316' }}>{error}</div>
+          ) : null}
         </div>
 
         <div style={styles.section}>
@@ -144,10 +325,10 @@ const styles = {
   sectionTitle: { fontWeight: 600, marginBottom: 6 },
   input: { background: '#0b1220', color: '#ddd', border: '1px solid #334155', borderRadius: 8, padding: '8px 10px', marginRight: 8 },
   btn: { background: '#111827', color: '#ddd', border: '1px solid #334155', padding: '6px 10px', borderRadius: 8, cursor: 'pointer', marginRight: 8 },
-  primaryBtn: { background: '#1d4ed8', color: '#fff', border: '1px solid #1d4ed8', padding: '8px 12px', borderRadius: 8, cursor: 'pointer' },
+  primaryBtn: { background: '#1d4ed8', color: '#fff', border: '1px solid #1d4ed8', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 12 },
+  secondaryBtn: { background: '#111827', color: '#e5e7eb', border: '1px solid #4b5563', padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 12 },
   row: { display: 'flex', gap: 8 },
   events: { border: '1px solid #334155', borderRadius: 8, padding: 8, maxHeight: 240, overflow: 'auto' },
   eventItem: { borderBottom: '1px solid rgba(51,65,85,0.5)', padding: '6px 0' },
   pre: { whiteSpace: 'pre-wrap', margin: 0, fontSize: 12 }
 };
-

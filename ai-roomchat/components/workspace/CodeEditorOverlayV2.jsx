@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { unifiedSave } from '../../lib/workspace/unifiedSave.js';
+import { loadExtensionsMeta } from '../../lib/workspace/extensionsMeta.js';
 import { useWorkspace } from './CodeWorkspaceProvider.jsx';
 import FileTree from './FileTree.jsx';
 import EditorMonaco from '../EditorMonaco.jsx';
@@ -412,8 +413,47 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
   const Toolbar = () => {
     const router = useRouter();
     const { id } = router.query || {};
-    const { root, normalizeDir, open, createFile, createFolder, rename, remove, files, activePath, writeFile, entryPath, setEntryPath, openPaths, isDirty, saveAll } = useWorkspace();
+    const { root, normalizeDir, open, createFile, createFolder, rename, remove, files, activePath, writeFile, entryPath, setEntryPath, openPaths, isDirty, saveAll, storageNamespace } = useWorkspace();
     const [saving, setSaving] = useState(false);
+    const [installedExtensions, setInstalledExtensions] = useState([]);
+
+    useEffect(() => {
+      if (!storageNamespace) return;
+      let cancelled = false;
+      (async () => {
+        try {
+          const out = await loadExtensionsMeta(storageNamespace);
+          if (cancelled) return;
+          const list = Array.isArray(out?.extensions) ? out.extensions : [];
+          setInstalledExtensions(list);
+        } catch {
+          // Extensions are optional; ignore load errors here.
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [storageNamespace]);
+
+    useEffect(() => {
+      if (typeof window === 'undefined') return undefined;
+      const handler = (ev) => {
+        try {
+          const detail = ev?.detail || {};
+          if (!detail || !detail.workspaceId) return;
+          if (detail.workspaceId !== storageNamespace) return;
+          if (Array.isArray(detail.extensions)) {
+            setInstalledExtensions(detail.extensions);
+          }
+        } catch {
+          // ignore malformed events
+        }
+      };
+      window.addEventListener('workspace:extensions-updated', handler);
+      return () => {
+        window.removeEventListener('workspace:extensions-updated', handler);
+      };
+    }, [storageNamespace]);
     const onSaveServer = async () => {
       if (!id || saving) return;
       try { setSaving(true); await unifiedSave(String(id), files); alert('Saved'); }
@@ -479,10 +519,125 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
             )}
           </div>
           <div ref={aiMenuRef} style={{ position:'relative' }}>
-            <ToolbarButton onClick={() => setAiMenuOpen(v=>{ const next=!v; if (next) { setFileMenuOpen(false); if (overlayTree) setShowTree(false); } return next; })} active={aiMenuOpen} title="AI 코딩">AI 코딩</ToolbarButton>
+            <ToolbarButton
+              onClick={() =>
+                setAiMenuOpen((v) => {
+                  const next = !v;
+                  if (next) {
+                    setFileMenuOpen(false);
+                    if (overlayTree) setShowTree(false);
+                  }
+                  return next;
+                })
+              }
+              active={aiMenuOpen}
+              title="확장"
+            >
+              확장
+            </ToolbarButton>
             {aiMenuOpen && (
-              <div style={{ position:'absolute', zIndex: 20, background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, display:'grid', gap:6, minWidth:180 }}>
-                <button onClick={() => { setShowCodeChat(v=>!v); setAiMenuOpen(false); }} style={menuItem}>{showCodeChat?'AI 코드채팅 끄기':'AI 코드채팅 켜기'}</button>
+              <div
+                style={{
+                  position: 'absolute',
+                  zIndex: 20,
+                  background: '#0b1220',
+                  border: '1px solid #334155',
+                  borderRadius: 8,
+                  padding: 6,
+                  display: 'grid',
+                  gap: 6,
+                  minWidth: 200,
+                }}
+              >
+                <button
+                  onClick={() => {
+                    setShowCodeChat((v) => !v);
+                    setAiMenuOpen(false);
+                  }}
+                  style={menuItem}
+                >
+                  {showCodeChat ? 'AI 코드채팅 끄기' : 'AI 코드채팅 켜기'}
+                </button>
+                {installedExtensions && installedExtensions.length > 0 && (
+                  <>
+                    {installedExtensions.map((ext) => (
+                      <button
+                        key={ext.id}
+                        type="button"
+                        onClick={() => {
+                          try {
+                            if (typeof window !== 'undefined') {
+                              if (ext.id === 'codex-web') {
+                                const cfg = ext.config || {};
+                                const owner = cfg.owner || '';
+                                const repo = cfg.repo || '';
+                                const branch = cfg.branch || 'main';
+                                let url = 'https://platform.openai.com/codex';
+                                try {
+                                  const u = new URL(url);
+                                  if (owner && repo) {
+                                    u.searchParams.set('repo', `${owner}/${repo}`);
+                                  }
+                                  if (branch) {
+                                    u.searchParams.set('branch', branch);
+                                  }
+                                  if (storageNamespace) {
+                                    u.searchParams.set('workspaceId', storageNamespace);
+                                  }
+                                  url = u.toString();
+                                } catch {
+                                  // ignore URL errors, fall back to base URL
+                                }
+                                window.open(url, '_blank', 'noopener,noreferrer');
+                              } else {
+                                window.dispatchEvent(
+                                  new CustomEvent('workspace:extension-launch', {
+                                    detail: { workspaceId: storageNamespace || null, extension: ext },
+                                  }),
+                                );
+                              }
+                            }
+                          } catch {
+                            // ignore launch errors
+                          }
+                          setAiMenuOpen(false);
+                        }}
+                        style={menuItem}
+                      >
+                        {ext.name || ext.id}
+                      </button>
+                    ))}
+                  </>
+                )}
+                <div
+                  style={{
+                    height: 1,
+                    background: 'rgba(148,163,184,0.2)',
+                    margin: '4px 2px',
+                  }}
+                />
+                <button
+                  onClick={() => {
+                    try {
+                      if (typeof window !== 'undefined') {
+                        const payload = storageNamespace ? { workspaceId: storageNamespace } : undefined;
+                        if (typeof window.starbaseOpenExtensions === 'function') {
+                          window.starbaseOpenExtensions(payload);
+                        } else if (typeof window.dispatchEvent === 'function') {
+                          window.dispatchEvent(
+                            new CustomEvent('ai:open-extensions', { detail: payload }),
+                          );
+                        }
+                      }
+                    } catch {
+                      // ignore
+                    }
+                    setAiMenuOpen(false);
+                  }}
+                  style={menuItem}
+                >
+                  확장 프로그램 추가…
+                </button>
               </div>
             )}
           </div>

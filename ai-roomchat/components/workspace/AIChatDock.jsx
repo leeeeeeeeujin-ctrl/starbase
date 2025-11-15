@@ -945,27 +945,6 @@ export default function AIChatDock({ onClose }) {
             <button
               type="button"
               style={styles.toolbarButton}
-              onClick={() => {
-                try {
-                  if (typeof window !== 'undefined') {
-                    if (typeof window.starbaseOpenExtensions === 'function') {
-                      window.starbaseOpenExtensions();
-                    } else {
-                      window.dispatchEvent(new Event('ai:open-extensions'));
-                    }
-                  }
-                } catch {
-                  // ignore
-                }
-              }}
-              title="확장 프로그램"
-              aria-label="확장 프로그램"
-            >
-              확장
-            </button>
-            <button
-              type="button"
-              style={styles.toolbarButton}
               onClick={handleToggleMode}
               data-stop-drag="true"
               title={prefs.mode === 'fullscreen' ? '창 모드로 전환' : '전체 화면으로 전환'}
@@ -1165,9 +1144,6 @@ export default function AIChatDock({ onClose }) {
             onRemove={removeKey}
             submitting={keyringSubmitting}
           />
-        )}
-        {extensionsOpen && (
-          <ExtensionInstallModal onClose={() => setExtensionsOpen(false)} />
         )}
         <input
           ref={fileInputRef}
