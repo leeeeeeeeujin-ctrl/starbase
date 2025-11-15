@@ -18,11 +18,13 @@ export default function EditorMonaco(props) {
     height = '100%',
     width = '100%',
     onSave,
+    currentPath,
   } = props;
 
   const containerRef = useRef(null);
   const editorRef = useRef(null);
   const [fallback, setFallback] = useState(false);
+  const lastPathRef = useRef(currentPath || null);
 
   useEffect(() => {
     let cancelled = false;
@@ -105,16 +107,23 @@ export default function EditorMonaco(props) {
   }, []);
 
   // 외부 value 변경 -> 에디터 내용 동기화
+  // 단, 같은 파일(currentPath)에서의 실시간 편집은 Monaco 내부 상태를 신뢰하고
+  // 파일 전환 시에만 setValue를 호출해 커서 점프를 방지한다.
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
     if (typeof value !== 'string') return;
 
-    const current = editor.getValue();
-    if (current !== value) {
-      editor.setValue(value);
+    const path = currentPath || null;
+    if (path && path !== lastPathRef.current) {
+      const next = value;
+      const current = editor.getValue();
+      if (current !== next) {
+        editor.setValue(next);
+      }
+      lastPathRef.current = path;
     }
-  }, [value]);
+  }, [value, currentPath]);
 
   if (fallback) {
     return (
