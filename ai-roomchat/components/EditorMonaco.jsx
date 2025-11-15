@@ -21,6 +21,7 @@ export default function EditorMonaco(props) {
   const containerRef = useRef(null);
   const editorRef = useRef(null);
   const lastPositionRef = useRef(null);
+  const glitchCountRef = useRef(0);
   const [fallback, setFallback] = useState(false);
 
   useEffect(() => {
@@ -92,6 +93,27 @@ export default function EditorMonaco(props) {
           const nextValue = editor.getValue();
           if (onChange) {
             onChange(nextValue);
+          }
+          try {
+            const pos = editor.getPosition();
+            if (pos && pos.lineNumber === 1 && pos.column === 1) {
+              glitchCountRef.current = (glitchCountRef.current || 0) + 1;
+            } else {
+              glitchCountRef.current = 0;
+            }
+            if (glitchCountRef.current >= 3) {
+              // Detected repeated unexpected caret reset: fall back to textarea editor.
+              console.warn?.('[monaco] caret glitch detected, switching to fallback editor');
+              setFallback(true);
+              try {
+                editor.dispose();
+              } catch {
+                // ignore dispose errors
+              }
+              editorRef.current = null;
+            }
+          } catch {
+            // ignore detection errors
           }
         });
       } catch (error) {
