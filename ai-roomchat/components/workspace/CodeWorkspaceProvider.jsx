@@ -459,7 +459,6 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
           const nextSig = {};
           Object.entries(merged || {}).forEach(([p, meta]) => { nextSig[p] = contentSignature(meta); });
           setDirty({});
-          setDrafts({});
           setSavedSig(nextSig);
           return;
         }
