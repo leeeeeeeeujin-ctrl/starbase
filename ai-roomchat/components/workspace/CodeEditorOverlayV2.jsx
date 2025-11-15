@@ -163,19 +163,16 @@ function EditorPane() {
   const doSave = async () => {
     try {
       if (file.readonly) return;
-      // writeFile는 onChange에서 이미 최신 buf를 반영하므로 여기서는 저장 메타만 갱신
+      // 현재 버퍼 내용을 워크스페이스 VFS에 한 번에 반영하고 저장합니다.
+      writeFile(activePath, buf);
       saveFile(activePath);
       const id = storageNamespace || '';
       if (id) await saveFileAndPush(id, activePath);
     } catch {}
   };
   const handleChange = (val) => {
+    // 실시간으로 워크스페이스 VFS를 변경하지 않고, 로컬 버퍼에만 반영합니다.
     setBuf(val);
-    try {
-      writeFile(activePath, val);
-    } catch {
-      // ignore write errors in change handler; save will surface issues
-    }
   };
   return (
     <div style={{ position: 'relative', height: '100%', width: '100%' }}>
