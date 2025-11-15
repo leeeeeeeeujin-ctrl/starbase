@@ -2,7 +2,7 @@ import { useRouter } from 'next/router';
 import { useEffect, useRef, useState } from 'react';
 import PromptEditor from '../../../components/PromptEditor';
 import AICodeChatPanel from '../../../components/workspace/AICodeChatPanel.jsx';
-import { CodeWorkspaceProvider, useWorkspace } from '../../../components/workspace/CodeWorkspaceProvider.jsx';
+import { useWorkspace } from '../../../components/workspace/CodeWorkspaceProvider.jsx';
 import createPrompt from '../../../lib/prompts/createPrompt.js';
 import { applySupabaseAccessToken, requireSupabaseAccessToken } from '../../../lib/api/authHeaders';
 
@@ -21,16 +21,6 @@ function mapToVisibleRoot(files) {
 }
 import Link from 'next/link';
 import { applyMainUiPresetObject, getMainUiModules } from '../../../utils/uiPresets';
-
-// Ensure VFS scope is set before Provider mounts (parsed from URL)
-if (typeof window !== 'undefined') {
-  try {
-    const m = window.location.pathname.match(/\/prompts\/([^/]+)\/edit/);
-    const initialScope = m && m[1];
-    window.__VFS_SCOPED_PATCH__ = window.__VFS_SCOPED_PATCH__ || {};
-    window.__VFS_SCOPED_PATCH__.scope = initialScope || null;
-  } catch {}
-}
 function ToolsDropdown({ onOpenUiSettings }) {
   return (
     <select
@@ -230,7 +220,7 @@ function UiSettingsPanel({ onClose }) {
   );
 }
 
-function PromptEditInner({ etag, setEtag, frameId }) {
+function PromptEditInner() {
   const router = useRouter();
   const { id } = router.query;
   const [prompt, setPrompt] = useState({ id: id || 'new', name: '', body: '' });
@@ -272,9 +262,7 @@ function PromptEditInner({ etag, setEtag, frameId }) {
   }, [prompt.body]);
 
   // Remove autosave; saving will occur in handleSave (prompt editor save action)
-  const { files } = useWorkspace();
-  const etagRef = useRef(etag || null);
-  useEffect(() => { etagRef.current = etag || null; }, [etag]);
+  const { saveAllAndPush } = useWorkspace();
 
   useEffect(() => {
     if (!id) return;
@@ -328,33 +316,12 @@ function PromptEditInner({ etag, setEtag, frameId }) {
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || 'update failed');
         setPrompt(p => ({ ...p, body: json.body || body, name: json.name || p.name }));
-        // After prompt saved, persist workspace files snapshot once (server-first)
+        // After prompt saved, persist workspace files snapshot once
         try {
-          const list = Object.entries(files || {}).map(([path, meta]) => ({ path, content: String(meta?.content ?? ''), readonly: !!meta?.readonly, dir: !!meta?.dir }));
-          // attempt PUT first
-          let put = await fetch(`/api/workspace/sets/${encodeURIComponent(id)}`, {
-            method: 'PUT',
-            headers: authHeaders({ 'Content-Type': 'application/json', ...(etagRef.current ? { 'If-Match': etagRef.current } : {}) }),
-            body: JSON.stringify({ files: list, meta: {} }),
-          });
-          // If precondition required (no set yet) or not found, create then retry
-          if (put.status === 428 || put.status === 404) {
-            const gen = (p) => { try { return p + (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)); } catch { return p + Math.random().toString(36).slice(2); } };
-            const reqId = gen('req_');
-            await fetch('/api/workspace/sets', {
-              method: 'POST',
-              headers: authHeaders({ 'Content-Type': 'application/json', 'X-Request-Id': reqId }),
-              body: JSON.stringify({ id }),
-            }).catch(()=>{});
-            put = await fetch(`/api/workspace/sets/${encodeURIComponent(id)}`, {
-              method: 'PUT',
-              headers: authHeaders({ 'Content-Type': 'application/json', ...(etagRef.current ? { 'If-Match': etagRef.current } : {}) }),
-              body: JSON.stringify({ files: list, meta: {} }),
-            });
-          }
-          const pj = await put.json().catch(()=>({}));
-          if (put.status === 200 && pj?.etag) setEtag && setEtag(pj.etag);
-        } catch {}
+          await saveAllAndPush(String(id || ''));
+        } catch (e) {
+          try { console.warn('[PromptEdit] workspace save failed', e); } catch {}
+        }
         alert('Saved');
       }
     } catch (err) {
@@ -456,9 +423,7 @@ export default function PromptEditPage(){
   if (!id || typeof id !== 'string') return <div style={{ padding: 20 }}>세트 ID 확인 중…</div>;
   return (
     <WorkspaceFrame id={id}>
-      {({ etag, setEtag, id: frameId }) => (
-        <PromptEditInner etag={etag} setEtag={setEtag} frameId={frameId} />
-      )}
+      <PromptEditInner />
     </WorkspaceFrame>
   );
 }
