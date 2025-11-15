@@ -39,18 +39,11 @@ export default function WorkspaceFrame({ id, children, onReady = () => {} }) {
 
   useEffect(() => {
     if (!id) return;
-    if (sessionLoading) return;
     let ignore = false;
     setLoadState({ status: 'loading', message: null });
     setInitFiles(null);
     setEtag(null);
-    if (!sessionToken) {
-      setLoadState({
-        status: 'error',
-        message: '로그인 후 워크스페이스를 사용할 수 있습니다.',
-      });
-      return;
-    }
+
     (async () => {
       try {
         const headers = applySupabaseAccessToken({}, sessionToken);
@@ -60,8 +53,8 @@ export default function WorkspaceFrame({ id, children, onReady = () => {} }) {
           const json = await r.json();
           let files = Array.isArray(json?.files) ? json.files : [];
           if (!files.length && process.env.NEXT_PUBLIC_WORKSPACE_AUTOINIT === '1') {
-             try {
-               const sp = await fetch('/api/workspace/starter-pack');
+            try {
+              const sp = await fetch('/api/workspace/starter-pack');
               if (sp.ok) {
                 const sj = await sp.json();
                 const sfiles = Array.isArray(sj?.files) ? sj.files : [];
@@ -108,10 +101,14 @@ export default function WorkspaceFrame({ id, children, onReady = () => {} }) {
         });
       }
     })();
+
     return () => {
       ignore = true;
     };
-  }, [id, reloadKey, sessionToken, sessionLoading]);
+    // 의도적으로 sessionToken/sessionLoading을 의존성에서 제외하여
+    // 워크스페이스가 매 키 입력마다 다시 로드되는 것을 방지합니다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, reloadKey]);
 
   if (!id) return null;
 
