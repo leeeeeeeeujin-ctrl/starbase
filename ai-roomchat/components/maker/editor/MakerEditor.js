@@ -231,8 +231,8 @@ export default function MakerEditor() {
   } = variables;
 
   const { busy, saveAll, deletePrompt, addPromptNode, goToSetList, goToLobby } = persistence;
-  // Unify saves: after Maker DB save, also persist workspace VFS files for this set
-  const { files: wsFiles, saveAll: markWorkspaceSaved } = useWorkspace();
+  // Unify saves: after Maker DB save, also persist workspace VFS files (including drafts) for this set
+  const { filesForSave: wsFiles, saveAll: markWorkspaceSaved } = useWorkspace();
   const unifiedSaveAll = useCallback(async () => {
     try {
       await saveAll();

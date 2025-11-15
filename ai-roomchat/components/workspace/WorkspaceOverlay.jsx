@@ -26,7 +26,7 @@ import { readRankKeyringSnapshot, RANK_KEYRING_STORAGE_EVENT } from '@/lib/rank/
         writeFile(activePath, buf);
         saveFile(activePath);
         const id = storageNamespace || '';
-        if (id) await saveFileAndPush(id, activePath);
+        if (id) await saveFileAndPush(id, activePath, buf);
       } catch {}
     };
     return (

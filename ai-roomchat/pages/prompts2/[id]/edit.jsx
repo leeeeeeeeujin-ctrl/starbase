@@ -2,10 +2,9 @@ import React, { useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import WorkspaceFrame from '../../../components/workspace/WorkspaceFrame.jsx';
 import { useWorkspace } from '../../../components/workspace/CodeWorkspaceProvider.jsx';
-import { saveSet } from '../../../lib/workspace/saveSet.js';
 
 export function SimpleEditor({ id }) {
-  const { api, files, activePath } = useWorkspace();
+  const { files, activePath, open, writeFile, saveAllAndPush } = useWorkspace();
   const [status, setStatus] = useState('');
   const etagRef = useRef(null);
 
@@ -14,10 +13,8 @@ export function SimpleEditor({ id }) {
   const onSave = async () => {
     try {
       setStatus('saving...');
-      // Save current workspace files; saveSet accepts a files map or list
-      const newEtag = await saveSet(id, files, etagRef.current || undefined);
-      etagRef.current = newEtag || etagRef.current;
-      setStatus(newEtag ? 'saved' : 'saved');
+      await saveAllAndPush(String(id));
+      setStatus('saved');
       setTimeout(() => setStatus(''), 1000);
     } catch (err) {
       console.error('[prompts2/edit] save error', err);
@@ -37,7 +34,11 @@ export function SimpleEditor({ id }) {
         <div style={{ padding: 12, fontWeight: 700 }}>Files</div>
         <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
           {paths.map(p => (
-            <li key={p} style={{ padding: '4px 12px', cursor:'pointer', background: p===activePath? '#19202e':'transparent' }} onClick={() => api.setActivePath(p)}>
+            <li
+              key={p}
+              style={{ padding: '4px 12px', cursor:'pointer', background: p===activePath? '#19202e':'transparent' }}
+              onClick={() => open(p)}
+            >
               {p}
             </li>
           ))}
@@ -52,7 +53,7 @@ export function SimpleEditor({ id }) {
         <div style={{ flex:1, position:'relative' }}>
           <textarea
             value={(files[activePath]?.content ?? '')}
-            onChange={(e) => api.writeFile(activePath || '/untitled.txt', e.target.value)}
+            onChange={(e) => writeFile(activePath || '/untitled.txt', e.target.value)}
             style={{ width:'100%', height:'100%', border:'none', outline:'none', fontFamily:'monospace', fontSize:14, background:'#0b1220', color:'#e2e8f0', padding:12 }}
           />
         </div>

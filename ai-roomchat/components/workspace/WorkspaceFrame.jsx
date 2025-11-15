@@ -39,6 +39,8 @@ export default function WorkspaceFrame({ id, children, onReady = () => {} }) {
 
   useEffect(() => {
     if (!id) return;
+    // Supabase 세션 로딩이 끝난 뒤에만 첫 GET을 시도한다.
+    if (sessionLoading) return;
     let ignore = false;
     setLoadState({ status: 'loading', message: null });
     setInitFiles(null);
@@ -105,10 +107,10 @@ export default function WorkspaceFrame({ id, children, onReady = () => {} }) {
     return () => {
       ignore = true;
     };
-    // 의도적으로 sessionToken/sessionLoading을 의존성에서 제외하여
-    // 워크스페이스가 매 키 입력마다 다시 로드되는 것을 방지합니다.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, reloadKey]);
+    // 의도적으로 sessionToken 을 의존성에서 제외하여
+    // 워크스페이스가 토큰 갱신마다 다시 로드되는 것을 방지한다.
+    // sessionLoading 이 false 로 전환될 때 한 번은 실행되어야 하므로 포함한다.
+  }, [id, reloadKey, sessionLoading]);
 
   if (!id) return null;
 

@@ -615,9 +615,21 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
       if (ext === "sql") return "sql";
       return "plaintext";
     };
+    const filesWithDrafts = () => {
+      const base = { ...(files || {}) };
+      Object.entries(drafts || {}).forEach(([p, content]) => {
+        const c = canon(p);
+        const f = base[c] || { readonly: false };
+        if (f.readonly) return;
+        base[c] = { ...f, content: String(content ?? ''), compressed: false, data: undefined };
+      });
+      return base;
+    };
+    const filesForSave = filesWithDrafts();
     return {
       storageNamespace: ns,
       files,
+      filesForSave,
       root,
       activePath,
       openPaths,
@@ -646,23 +658,39 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
         });
       },
       // Save a single file locally then push full set to server
-      saveFileAndPush: async (setId, path) => {
+      saveFileAndPush: async (setId, path, overrideContent) => {
         try {
-          const meta = files[path];
+          const id = String(setId || storageNamespace || "").trim();
+          if (!id) return { ok: false, error: 'missing_set_id' };
+          const snapshot = filesWithDrafts();
+          const c = canon(path);
+          if (typeof overrideContent !== 'undefined') {
+            const current = snapshot[c] || { readonly: false };
+            if (!current.readonly) {
+              snapshot[c] = { ...current, content: String(overrideContent ?? ''), compressed: false, data: undefined };
+            }
+          }
+          const meta = snapshot[c];
           const sig = contentSignature(meta);
           setSavedSig((m) => ({ ...m, [path]: sig }));
           setDirty((m) => ({ ...m, [path]: false }));
-          const id = String(setId || storageNamespace || "").trim();
-          if (!id) return { ok: false, error: 'missing_set_id' };
-          const et = await saveSet(id, files, serverEtagRef.current);
+          setDrafts((m) => {
+            if (!m || !m[path]) return m || {};
+            const next = { ...m };
+            delete next[path];
+            return next;
+          });
+          const et = await saveSet(id, snapshot, serverEtagRef.current);
           if (et) serverEtagRef.current = et;
           return { ok: true };
         } catch (e) { return { ok: false, error: e?.message || 'save_failed' }; }
       },
        saveAll: () => {
+        const snapshot = filesWithDrafts();
+        setFiles(snapshot);
         setSavedSig((m) => {
           const next = { ...m };
-          Object.entries(files).forEach(([p, meta]) => {
+          Object.entries(snapshot).forEach(([p, meta]) => {
             next[p] = contentSignature(meta);
           });
           return next;
@@ -677,15 +705,16 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
       // Save all locally then push full set to server
        saveAllAndPush: async (setId) => {
         try {
-          // local save-all
+          const snapshot = filesWithDrafts();
+          setFiles(snapshot);
           const nextSigs = {};
-          Object.entries(files).forEach(([p, meta]) => { nextSigs[p] = contentSignature(meta); });
+          Object.entries(snapshot).forEach(([p, meta]) => { nextSigs[p] = contentSignature(meta); });
           setSavedSig((m) => ({ ...m, ...nextSigs }));
            setDirty({});
            setDrafts({});
           const id = String(setId || storageNamespace || "").trim();
           if (!id) return { ok: false, error: 'missing_set_id' };
-          const et = await saveSet(id, files, serverEtagRef.current);
+          const et = await saveSet(id, snapshot, serverEtagRef.current);
           if (et) serverEtagRef.current = et;
           return { ok: true };
         } catch (e) { return { ok: false, error: e?.message || 'save_failed' }; }
@@ -713,23 +742,8 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
       },
       close: (path) => {
         const c = canon(path);
-        const isDirty = !!dirty[c];
-        if (isDirty) {
-          try {
-            const yn = window.confirm('변경사항을 저장하고 닫을까요? (취소하면 닫지 않습니다)');
-            if (yn) {
-              // best-effort save + push
-              const id = storageNamespace || '';
-              const meta = files[c];
-              const sig = contentSignature(meta);
-              setSavedSig((m) => ({ ...m, [c]: sig }));
-              setDirty((m) => ({ ...m, [c]: false }));
-              if (id) saveSet(id, files, serverEtagRef.current).then((et) => { if (et) serverEtagRef.current = et; }).catch(()=>{});
-            } else {
-              // user chose not to save; proceed closing but keep unsaved changes in memory
-            }
-          } catch {}
-        }
+        // Tab/overlay UI는 자체 확인 다이얼로그를 사용하므로 여기서는
+        // 단순히 탭 목록에서 제거만 수행한다.
         setOpenPaths((arr) => arr.filter((p) => p !== c));
       },
       createFile: (path, content = "") =>
@@ -877,7 +891,7 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
         });
       },
     };
-  }, [files, root, activePath, openPaths, entryPath, savedSig]);
+  }, [files, root, activePath, openPaths, entryPath, savedSig, drafts, dirty]);
 
   // NOTE: removed external "workspace:add-files" event listener to avoid hidden injection flows.
 

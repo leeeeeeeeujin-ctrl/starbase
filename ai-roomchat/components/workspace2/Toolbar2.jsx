@@ -2,16 +2,15 @@
 
 import { useState } from 'react';
 import { useWorkspace } from '../workspace/CodeWorkspaceProvider.jsx';
-import { saveSet } from '../../lib/workspace/saveSet.js';
 
 export default function Toolbar2({ id, title = 'Maker' }) {
-  const { files } = useWorkspace();
+  const { saveAllAndPush } = useWorkspace();
   const [saving, setSaving] = useState(false);
   async function onSave() {
     if (!id || saving) return;
     try {
       setSaving(true);
-      await saveSet(String(id), files);
+      await saveAllAndPush(String(id));
       try { alert('Saved'); } catch {}
     } catch (e) {
       try { alert('Save failed: ' + String(e?.message || e)); } catch {}
@@ -32,4 +31,3 @@ export default function Toolbar2({ id, title = 'Maker' }) {
     </div>
   );
 }
-

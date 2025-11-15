@@ -166,9 +166,11 @@ function EditorPane() {
       if (file.readonly) return;
       // 현재 버퍼 내용을 워크스페이스 VFS에 한 번에 반영하고 저장합니다.
       writeFile(activePath, buf);
-      saveFile(activePath);
       const id = storageNamespace || '';
-      if (id) await saveFileAndPush(id, activePath);
+      // saveFile은 로컬 시그니처/드래프트 정리만 담당하고,
+      // 서버 전송에는 현재 버퍼 내용을 명시적으로 넘긴다.
+      saveFile(activePath);
+      if (id) await saveFileAndPush(id, activePath, buf);
     } catch {}
   };
   const handleChange = (val) => {
@@ -378,7 +380,7 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
   );
 
   const TabsBar = () => {
-    const { openPaths, activePath, open, close, isDirty, saveFile } = useWorkspace();
+    const { openPaths, activePath, open, close, isDirty, saveFile, saveFileAndPush, storageNamespace } = useWorkspace();
     const [confirm, setConfirm] = useState(null); // { path }
     const containerRef = useRef(null);
     useEffect(() => {
@@ -407,7 +409,25 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
           );
         })}
         {confirm && (
-          <ConfirmCloseOne path={confirm.path} onSave={() => { saveFile(confirm.path); close(confirm.path); setConfirm(null); }} onDiscard={() => { close(confirm.path); setConfirm(null); }} onCancel={() => setConfirm(null)} />
+          <ConfirmCloseOne
+            path={confirm.path}
+            onSave={async () => {
+              try {
+                // saveFile는 로컬 시그니처/드래프트 정리만 담당하고,
+                // 실제 서버 저장은 saveFileAndPush가 맡는다.
+                saveFile(confirm.path);
+                const id = storageNamespace || '';
+                if (id) {
+                  await saveFileAndPush(id, confirm.path);
+                }
+              } finally {
+                close(confirm.path);
+                setConfirm(null);
+              }
+            }}
+            onDiscard={() => { close(confirm.path); setConfirm(null); }}
+            onCancel={() => setConfirm(null)}
+          />
         )}
       </div>
     );
@@ -416,7 +436,7 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
   const Toolbar = () => {
     const router = useRouter();
     const { id } = router.query || {};
-    const { root, normalizeDir, open, createFile, createFolder, rename, remove, files, activePath, writeFile, entryPath, setEntryPath, openPaths, isDirty, saveAll, storageNamespace } = useWorkspace();
+    const { root, normalizeDir, open, createFile, createFolder, rename, remove, filesForSave, activePath, writeFile, entryPath, setEntryPath, openPaths, isDirty, saveAll, storageNamespace } = useWorkspace();
     const [saving, setSaving] = useState(false);
     const [installedExtensions, setInstalledExtensions] = useState([]);
 
@@ -459,7 +479,7 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
     }, [storageNamespace]);
     const onSaveServer = async () => {
       if (!id || saving) return;
-      try { setSaving(true); await unifiedSave(String(id), files); alert('Saved'); }
+      try { setSaving(true); await unifiedSave(String(id), filesForSave); alert('Saved'); }
       catch(e){ alert('Save failed: ' + String(e?.message||e)); }
       finally { setSaving(false); }
     };
@@ -800,13 +820,13 @@ function ConfirmCloseOne({ path, onSave, onDiscard, onCancel }){
 
 function ConfirmCloseMany({ paths, onAfterSaveAll, onDiscard, onCancel }){
   // Access workspace context at component top-level (valid hook usage)
-  const { saveAll, files } = useWorkspace();
+  const { saveAll, filesForSave } = useWorkspace();
   const router = useRouter();
   const { id } = router.query || {};
   const handleSaveAll = async () => {
     try {
       // Persist both Maker (if present) and workspace files
-      if (id) await unifiedSave(String(id), files);
+      if (id) await unifiedSave(String(id), filesForSave);
       // Mark workspace clean locally
       try { saveAll(); } catch {}
     } catch (e) {
