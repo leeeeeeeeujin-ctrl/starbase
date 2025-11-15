@@ -162,18 +162,26 @@ function EditorPane() {
   const doSave = async () => {
     try {
       if (file.readonly) return;
-      writeFile(activePath, buf);
+      // writeFile는 onChange에서 이미 최신 buf를 반영하므로 여기서는 저장 메타만 갱신
       saveFile(activePath);
       const id = storageNamespace || '';
       if (id) await saveFileAndPush(id, activePath);
     } catch {}
+  };
+  const handleChange = (val) => {
+    setBuf(val);
+    try {
+      writeFile(activePath, val);
+    } catch {
+      // ignore write errors in change handler; save will surface issues
+    }
   };
   return (
     <div style={{ position: 'relative', height: '100%', width: '100%' }}>
       <div style={{ position: 'absolute', inset: 0 }}>
         <EditorMonaco
           value={buf}
-          onChange={(val) => setBuf(val)}
+          onChange={handleChange}
           onSave={doSave}
           language={lang}
           theme="vs-dark"
