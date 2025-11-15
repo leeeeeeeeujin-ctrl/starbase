@@ -44,6 +44,17 @@ export default function EditorMonaco(props) {
 
         editorRef.current = editor;
 
+        // Ensure editor actually receives keyboard focus on mount.
+        try {
+          editor.focus();
+          // Expose for ad-hoc debugging in devtools if needed.
+          if (typeof window !== 'undefined') {
+            window.__lastMonacoEditor = editor;
+          }
+        } catch {
+          // ignore focus errors
+        }
+
         editor.onDidChangeModelContent(() => {
           const nextValue = editor.getValue();
           if (onChange) {
@@ -118,4 +129,3 @@ export default function EditorMonaco(props) {
     />
   );
 }
-
