@@ -126,6 +126,7 @@ export default function EditorMonaco(props) {
         width,
         height,
       }}
+      className="nokey"
     />
   );
 }
