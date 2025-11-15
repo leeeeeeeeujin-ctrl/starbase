@@ -2526,8 +2526,9 @@ styles = {
     background: 'rgba(2, 6, 23, 0.85)',
     display: 'flex',
     justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
+    alignItems: 'stretch',
+    padding: 16,
+    overflowY: 'auto',
     zIndex: 2000,
   },
   panelWindow: {
@@ -2562,8 +2563,8 @@ styles = {
   },
   panelFullscreen: {
     pointerEvents: 'auto',
-    width: 'calc(100vw - 48px)',
-    height: 'calc(100vh - 48px)',
+    width: 'min(960px, 100vw - 32px)',
+    maxHeight: 'calc(100svh - 32px)',
     background: '#040b18',
     border: '1px solid #1e293b',
     borderRadius: 18,
@@ -2571,6 +2572,7 @@ styles = {
     flexDirection: 'column',
     boxShadow: '0 20px 40px rgba(0,0,0,0.45)',
     position: 'relative',
+    margin: 'auto',
   },
   header: {
     display: 'flex',
