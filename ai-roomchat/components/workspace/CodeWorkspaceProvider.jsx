@@ -553,12 +553,14 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
       entryPath,
       dirty,
       isDirty: (path) => {
-        const meta = files[path];
+        const p = canon(path);
+        if (drafts && typeof drafts[p] === 'string') return true;
+        const meta = files[p];
         if (!meta) return false;
         const curSig = contentSignature(meta);
-        const sig = savedSig[path];
-        if (sig && sig === curSig) return false;
-        return !!dirty[path];
+        const sig = savedSig[p];
+        if (sig && sig === curSig) return !!dirty[p];
+        return true;
       },
        saveFile: (path) => {
         const meta = files[path];
