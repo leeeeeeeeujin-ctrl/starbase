@@ -428,6 +428,7 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
   const [openPaths, setOpenPaths] = useState(["/template.json"]);
   const [entryPath, setEntryPath] = useState("/template.json");
   const [dirty, setDirty] = useState({}); // { [path]: true }
+  const [drafts, setDrafts] = useState({}); // { [path]: string }
   // Track last saved content signature to avoid marking unchanged files dirty just by opening
   const [savedSig, setSavedSig] = useState({}); // { [path]: string(hash) }
 
@@ -458,6 +459,7 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
           const nextSig = {};
           Object.entries(merged || {}).forEach(([p, meta]) => { nextSig[p] = contentSignature(meta); });
           setDirty({});
+          setDrafts({});
           setSavedSig(nextSig);
           return;
         }
@@ -467,6 +469,7 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
         Object.entries(defaultFiles).forEach(([p, meta]) => { sigs[p] = contentSignature(meta); });
         setSavedSig(sigs);
         setDirty({});
+        setDrafts({});
         return;
       }
       // initialFiles missing → configuration error in all environments
@@ -557,11 +560,17 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
         if (sig && sig === curSig) return false;
         return !!dirty[path];
       },
-      saveFile: (path) => {
+       saveFile: (path) => {
         const meta = files[path];
         const sig = contentSignature(meta);
         setSavedSig((m) => ({ ...m, [path]: sig }));
         setDirty((m) => ({ ...m, [path]: false }));
+        setDrafts((m) => {
+          if (!m || !m[path]) return m || {};
+          const next = { ...m };
+          delete next[path];
+          return next;
+        });
       },
       // Save a single file locally then push full set to server
       saveFileAndPush: async (setId, path) => {
@@ -577,7 +586,7 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
           return { ok: true };
         } catch (e) { return { ok: false, error: e?.message || 'save_failed' }; }
       },
-      saveAll: () => {
+       saveAll: () => {
         setSavedSig((m) => {
           const next = { ...m };
           Object.entries(files).forEach(([p, meta]) => {
@@ -585,20 +594,22 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
           });
           return next;
         });
-        setDirty((m) => {
+         setDirty((m) => {
           const next = { ...m };
           Object.keys(next).forEach((k) => { next[k] = false; });
           return next;
         });
+        setDrafts({});
       },
       // Save all locally then push full set to server
-      saveAllAndPush: async (setId) => {
+       saveAllAndPush: async (setId) => {
         try {
           // local save-all
           const nextSigs = {};
           Object.entries(files).forEach(([p, meta]) => { nextSigs[p] = contentSignature(meta); });
           setSavedSig((m) => ({ ...m, ...nextSigs }));
-          setDirty({});
+           setDirty({});
+           setDrafts({});
           const id = String(setId || storageNamespace || "").trim();
           if (!id) return { ok: false, error: 'missing_set_id' };
           const et = await saveSet(id, files, serverEtagRef.current);
@@ -606,11 +617,17 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
           return { ok: true };
         } catch (e) { return { ok: false, error: e?.message || 'save_failed' }; }
       },
-      setEntryPath,
+       setEntryPath,
       setRoot,
       isDir,
       normalizeDir,
-      inferLang,
+       inferLang,
+       drafts,
+       setDraft: (path, content) => {
+         const p = canon(path);
+         setDrafts((m) => ({ ...(m || {}), [p]: String(content ?? '') }));
+         setDirty((m) => ({ ...(m || {}), [p]: true }));
+       },
       open: (path) => {
         if (isDir(path)) {
           setRoot(normalizeDir(path));

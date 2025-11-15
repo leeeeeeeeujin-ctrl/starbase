@@ -154,11 +154,12 @@ function PlayOverlayContent({ templateBinding }) {
 }
 
 function EditorPane() {
-  const { files, activePath, inferLang, writeFile, saveFile, saveFileAndPush, storageNamespace } = useWorkspace();
+  const { files, drafts, setDraft, activePath, inferLang, writeFile, saveFile, saveFileAndPush, storageNamespace } = useWorkspace();
   const file = files[activePath];
   const lang = useMemo(() => inferLang(activePath), [activePath, inferLang]);
-  const [buf, setBuf] = useState(() => (file?.content ?? ''));
-  useEffect(() => { setBuf(file?.content ?? ''); }, [activePath]);
+  const initialBuf = drafts?.[activePath] ?? (file?.content ?? '');
+  const [buf, setBuf] = useState(() => initialBuf);
+  useEffect(() => { setBuf(drafts?.[activePath] ?? (file?.content ?? '')); }, [activePath, drafts, file]);
   if (!file) return <div style={{ padding: 16, color: '#e2e8f0' }}>파일을 선택하세요.</div>;
   const doSave = async () => {
     try {
@@ -173,6 +174,11 @@ function EditorPane() {
   const handleChange = (val) => {
     // 실시간으로 워크스페이스 VFS를 변경하지 않고, 로컬 버퍼에만 반영합니다.
     setBuf(val);
+    try {
+      setDraft(activePath, val);
+    } catch {
+      // ignore draft errors
+    }
   };
   return (
     <div style={{ position: 'relative', height: '100%', width: '100%' }}>
