@@ -289,6 +289,17 @@ function EditorPane() {
 }
 
 export default function CodeEditorOverlayV2({ templateBinding, onRequestClose }){
+  // Trace overlay-level remounts
+  useEffect(() => {
+    if (isWorkspaceDebug()) {
+      try { console.log('[CodeEditorOverlay] mount'); } catch {}
+    }
+    return () => {
+      if (isWorkspaceDebug()) {
+        try { console.log('[CodeEditorOverlay] unmount'); } catch {}
+      }
+    };
+  }, []);
   const [showTree, setShowTree] = useState(true);
   const [toolbarCollapsed, setToolbarCollapsed] = useState(true);
   const [fileMenuOpen, setFileMenuOpen] = useState(false);

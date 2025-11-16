@@ -10,6 +10,7 @@ import EditorMonaco from '../EditorMonaco.jsx';
 import dynamic from 'next/dynamic';
 import SyncTemplateToVfs from './SyncTemplateToVfs.jsx';
 import AICodeChatPanel from './AICodeChatPanel.jsx';
+import { isWorkspaceDebug } from '../../lib/workspace/debugFlags.js';
 
 const MainGameMobileUI = dynamic(() => import('../game/MainGameMobileUI.jsx'), {
   ssr: false,
@@ -132,6 +133,17 @@ function EditorPane() {
 }
 
 export default function CodeEditorOverlayV2({ templateBinding, onRequestClose }){
+  // Trace overlay-level remounts (flattened copy)
+  useEffect(() => {
+    if (isWorkspaceDebug()) {
+      try { console.log('[CodeEditorOverlay(flat)] mount'); } catch {}
+    }
+    return () => {
+      if (isWorkspaceDebug()) {
+        try { console.log('[CodeEditorOverlay(flat)] unmount'); } catch {}
+      }
+    };
+  }, []);
   const [showTree, setShowTree] = useState(true);
   const [toolbarCollapsed, setToolbarCollapsed] = useState(true);
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
