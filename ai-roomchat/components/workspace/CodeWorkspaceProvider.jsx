@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, useRef } from "react";
 import { compressString, decompressToString } from "../../utils/compress.js";
 import { injectFilesWithFallback } from "../../lib/workspace/injectFilesFallback.js";
+import { contentSignature } from "../../lib/workspace/documentStore.js";
 // snapshot/local cache disabled in server-first mode
 
 const BASE_KEY = "workspace.vfs.v1";
@@ -894,34 +895,6 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
   }, [files, root, activePath, openPaths, entryPath, savedSig, drafts, dirty]);
 
   // NOTE: removed external "workspace:add-files" event listener to avoid hidden injection flows.
-
-  // Simple stable hash (djb2) for content
-  function stableHash(str){
-    try {
-      let h = 5381; for (let i=0;i<str.length;i++){ h = ((h<<5)+h) + str.charCodeAt(i); }
-      return 'h'+(h>>>0).toString(16);
-    } catch { return 'h0'; }
-  }
-
-  // Unified content signature (supports compressed entries)
-  function contentSignature(meta){
-    try {
-      if (!meta) return 'h0';
-      if (meta.compressed && meta.data && typeof meta.rawLen === 'number') {
-        // combine lengths + first/last chars for stability without full decompression
-        const d = String(meta.data||'');
-        const sample = d.slice(0,16)+d.slice(-16);
-        return stableHash(sample + '|' + meta.rawLen + '|' + meta.compLen);
-      }
-      if (meta.meta && (meta.meta.algo || meta.meta.data)) {
-        const d = String(meta.meta.data||'');
-        const sample = d.slice(0,16)+d.slice(-16);
-        return stableHash(sample + '|' + meta.meta.algo + '|' + meta.meta.rawLen);
-      }
-      if (typeof meta.content === 'string') return stableHash(meta.content);
-      return 'h0';
-    } catch { return 'h0'; }
-  }
 
   // Expose a debug inspector on window when debug mode enabled so E2E tests can drive the workspace.
   useEffect(() => {

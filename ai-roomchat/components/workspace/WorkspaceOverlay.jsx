@@ -11,40 +11,46 @@ import AIChatDock from './AIChatDock.jsx';
 import { usePersistentState } from './hooks/usePersistentState';
 import { readRankKeyringSnapshot, RANK_KEYRING_STORAGE_EVENT } from '@/lib/rank/keyringStorage';
 
-  function EditorPane() {
-    const { files, activePath, inferLang, saveFileAndPush, saveFile, storageNamespace, writeFile } = useWorkspace();
-    const file = files[activePath];
-    const lang = useMemo(() => inferLang(activePath), [activePath, inferLang]);
-    const [buf, setBuf] = useState(() => (file?.content ?? ''));
-    // When switching files, load content into buffer
-    useEffect(() => { setBuf(file?.content ?? ''); }, [activePath]);
-    if (!file) return <div style={{ padding: 16, color: "#e2e8f0" }}>?뚯씪???좏깮?섏꽭??</div>;
-    const doSave = async () => {
-      try {
-        if (file.readonly) return;
-        // Commit buffer to VFS then push to server
-        writeFile(activePath, buf);
-        saveFile(activePath);
-        const id = storageNamespace || '';
-        if (id) await saveFileAndPush(id, activePath, buf);
-      } catch {}
-    };
-    return (
-      <div style={{ position:'relative', height:'100%', width:'100%' }}>
-        <div style={{ position:'absolute', inset:0 }}>
-          <EditorMonaco
-            value={buf}
-            onChange={(val) => setBuf(val)}
-            onSave={doSave}
-            language={lang}
-            theme="vs-dark"
-            height="100%"
-            currentPath={activePath}
-          />
-        </div>
+function EditorPane() {
+  const { files, drafts, setDraft, activePath, inferLang, saveFileAndPush, saveFile, storageNamespace, writeFile } = useWorkspace();
+  const file = files[activePath];
+  const lang = useMemo(() => inferLang(activePath), [activePath, inferLang]);
+  const initialBuf = drafts?.[activePath] ?? (file?.content ?? '');
+  const [buf, setBuf] = useState(() => initialBuf);
+  // When switching files or drafts, load content into buffer
+  useEffect(() => { setBuf(drafts?.[activePath] ?? (file?.content ?? '')); }, [activePath, drafts, file]);
+  if (!file) return <div style={{ padding: 16, color: "#e2e8f0" }}>파일을 선택하세요.</div>;
+  const doSave = async () => {
+    try {
+      if (file.readonly) return;
+      // Commit buffer to VFS then push to server
+      writeFile(activePath, buf);
+      saveFile(activePath);
+      const id = storageNamespace || '';
+      if (id) await saveFileAndPush(id, activePath, buf);
+    } catch {}
+  };
+  const handleChange = (val) => {
+    setBuf(val);
+    if (file.readonly) return;
+    try { setDraft(activePath, val); } catch {}
+  };
+  return (
+    <div style={{ position:'relative', height:'100%', width:'100%' }}>
+      <div style={{ position:'absolute', inset:0 }}>
+        <EditorMonaco
+          value={buf}
+          onChange={handleChange}
+          onSave={doSave}
+          language={lang}
+          theme="vs-dark"
+          height="100%"
+          currentPath={activePath}
+        />
       </div>
-    );
-  }
+    </div>
+  );
+}
 
 export default function WorkspaceOverlay({ gameData, templateBinding }) {
   // 肄붾뱶 ?먮뵒???꾨㈃ ?뚮젅???ㅻ쾭?덉씠

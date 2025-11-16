@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { isDebugEditor, dbg } from '@/lib/debug/debugFlag';
 import { useRouter } from 'next/router';
-import { saveSet } from '../../lib/workspace/saveSet.js';
+import { unifiedSave } from '../../lib/workspace/unifiedSave.js';
 import { useWorkspace } from './CodeWorkspaceProvider.jsx';
 import FileTree from './FileTree.jsx';
 import EditorMonaco from '../EditorMonaco.jsx';
@@ -80,17 +80,47 @@ function PlayOverlayContent({ templateBinding }) {
 }
 
 function EditorPane() {
-  const { files, activePath, writeFile, inferLang } = useWorkspace();
+  const { files, drafts, setDraft, activePath, inferLang, writeFile, saveFile } = useWorkspace();
   const file = files[activePath];
   const lang = useMemo(() => inferLang(activePath), [activePath, inferLang]);
-  if (!file) return <div style={{ padding: 16, color: '#e2e8f0' }}>파일을 선택하세요.</div>;
-  const onChangeMemo = React.useCallback((val) => { if (!file.readonly) writeFile(activePath, val); }, [file?.readonly, activePath, writeFile]);
+  const initialBuf = drafts?.[activePath] ?? (file?.content ?? '');
+  const [buf, setBuf] = useState(() => initialBuf);
+
+  useEffect(() => {
+    setBuf(drafts?.[activePath] ?? (file?.content ?? ''));
+  }, [activePath, drafts, file]);
+
+  if (!file) {
+    return <div style={{ padding: 16, color: '#e2e8f0' }}>파일을 선택하세요.</div>;
+  }
+
+  const handleChange = (val) => {
+    setBuf(val);
+    if (file.readonly) return;
+    try {
+      setDraft(activePath, val);
+    } catch {
+      // ignore draft errors
+    }
+  };
+
+  const handleSave = () => {
+    try {
+      if (file.readonly) return;
+      writeFile(activePath, buf);
+      saveFile(activePath);
+    } catch {
+      // ignore save errors
+    }
+  };
+
   return (
     <div style={{ position: 'relative', height: '100%', width: '100%' }}>
       <div style={{ position: 'absolute', inset: 0 }}>
         <EditorMonaco
-          value={file.content}
-          onChange={onChangeMemo}
+          value={buf}
+          onChange={handleChange}
+          onSave={handleSave}
           language={lang}
           theme="vs-dark"
           height="100%"
@@ -341,14 +371,14 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
   const Toolbar = () => {
     const router = useRouter();
     const { id } = router.query || {};
-    const { root, normalizeDir, open, createFile, createFolder, rename, remove, files, activePath, writeFile, entryPath, setEntryPath, openPaths, isDirty, saveAll } = useWorkspace();
+    const { root, normalizeDir, open, createFile, createFolder, rename, remove, filesForSave, activePath, writeFile, entryPath, setEntryPath, openPaths, isDirty, saveAll } = useWorkspace();
     const [saving, setSaving] = useState(false);
     const onSaveServer = async () => {
       if (!id || saving) return;
       try {
         setSaving(true);
-        if (isDebugEditor()) dbg('[Overlay] save:server:start', { id, fileCount: Object.keys(files||{}).length });
-        await saveSet(String(id), files);
+        if (isDebugEditor()) dbg('[Overlay] save:server:start', { id, fileCount: Object.keys(filesForSave||{}).length });
+        await unifiedSave(String(id), filesForSave);
         try { window.dispatchEvent(new CustomEvent('toast:show', { detail: { text: '서버에 저장 완료', type: 'success' } })); } catch {}
       } catch(e) {
         try { window.dispatchEvent(new CustomEvent('toast:show', { detail: { text: `서버 저장 실패: ${String(e?.message||e)}`, type: 'error' } })); } catch {}
@@ -413,10 +443,23 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
             )}
           </div>
           <div ref={aiMenuRef} style={{ position:'relative' }}>
-            <ToolbarButton onClick={() => setAiMenuOpen(v=>{ const next=!v; if (next) { setFileMenuOpen(false); if (overlayTree) setShowTree(false); } return next; })} active={aiMenuOpen} title="AI 코딩">AI 코딩</ToolbarButton>
+            <ToolbarButton onClick={() => setAiMenuOpen(v=>{ const next=!v; if (next) { setFileMenuOpen(false); if (overlayTree) setShowTree(false); } return next; })} active={aiMenuOpen} title="AI 코딩 / 확장">AI 코딩</ToolbarButton>
             {aiMenuOpen && (
-              <div style={{ position:'absolute', zIndex: 20, background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, display:'grid', gap:6, minWidth:180 }}>
+              <div style={{ position:'absolute', zIndex: 20, background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, display:'grid', gap:6, minWidth:200 }}>
                 <button onClick={() => { setShowCodeChat(v=>!v); setAiMenuOpen(false); }} style={menuItem}>{showCodeChat?'AI 코드채팅 끄기':'AI 코드채팅 켜기'}</button>
+                <button
+                  onClick={() => {
+                    try {
+                      if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+                        window.dispatchEvent(new Event('capabilities:open'));
+                      }
+                    } catch {}
+                    setAiMenuOpen(false);
+                  }}
+                  style={menuItem}
+                >
+                  게임 Capabilities 보기…
+                </button>
               </div>
             )}
           </div>

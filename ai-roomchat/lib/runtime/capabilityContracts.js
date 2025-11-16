@@ -1,186 +1,132 @@
-// Capability-oriented runtime contracts
-// Each capability describes: purpose, required files/hooks, optional adapters, and reference links.
+// Capability contracts describe what a workspace set must provide
+// in order to use a particular gameplay / runtime feature.
+//
+// This is intentionally static for now; it mirrors the high‑level
+// shape documented in `ai-roomchat/docs/CAPABILITY_CONTRACTS.md`.
 
-export const CapabilityContracts = [
+/**
+ * @typedef {Object} CapabilityContract
+ * @property {string} id                Stable capability id (e.g. "core.graph").
+ * @property {string} label             Short human‑readable name.
+ * @property {string} category          Grouping key ("core", "ui", "world", "network", "persistence", ...).
+ * @property {string} purpose           One‑line description of what this enables.
+ * @property {string[]} files           Workspace files that participate in this capability.
+ * @property {string[]} hooks           Hook functions / entrypoints implemented by the workspace.
+ * @property {string[]} adapters        Adapters / runtime modules on the host side.
+ * @property {string[]} references      Reference engines / repos in `reference_data/**` or `/docs/**`.
+ */
+
+/** @type {CapabilityContract[]} */
+const capabilityContracts = [
   {
     id: 'core.graph',
-    label: 'Prompt Graph Core',
-    purpose: 'Define game flow as nodes and edges.',
+    label: 'Core: Prompt Graph',
+    category: 'core',
+    purpose: 'Node/edge graph that defines the main game or prompt flow.',
     files: ['/graph/prompt-graph.json'],
     hooks: [],
-    adapters: [],
+    adapters: ['runtime.core.graphRunner'],
     references: [
-      { title: 'State machines (machina)', href: '/api/refroot/machina.js-master/machina.js-master/README.md' },
-      { title: 'javascript-state-machine', href: '/api/refroot/javascript-state-machine-master%20(2)/javascript-state-machine-master/README.md' },
+      'docs/STATE_AND_TURNS.md',
+      'reference_data/prompt-graph/**',
     ],
-  },
-  {
-    id: 'matchmaking.openmatch',
-    label: 'Matchmaking (OpenMatch)',
-    purpose: 'Define match specs and flow, integrate with external matcher.',
-    files: [],
-    hooks: ['onUserAction'],
-    adapters: ['net.matchmaking'],
-    references: [ { title: 'Open Match', href: '/api/refroot/open-match2-main/README.md' } ],
-  },
-  {
-    id: 'templating.liquid',
-    label: 'Liquid Templating',
-    purpose: 'Preprocess prompts/labels using Liquid templates within hooks.',
-    files: [],
-    hooks: ['transformPrompt'],
-    adapters: [],
-    references: [ { title: 'liquid', href: '/api/refroot/liquid-main/README.md' } ],
-  },
-  {
-    id: 'core.hooks',
-    label: 'Hook Runtime',
-    purpose: 'Inject logic via exported functions from /game/hooks/automation.js.',
-    files: ['/game/hooks/automation.js'],
-    hooks: ['transformPrompt', 'onUserAction', 'selectNext'],
-    adapters: [],
-    references: [],
   },
   {
     id: 'core.runtimeConfig',
-    label: 'Runtime Config',
-    purpose: 'Entry node, roles, timers, and mode flags.',
+    label: 'Core: Runtime Config',
+    category: 'core',
+    purpose: 'Entry node, turn sequencing, and role configuration.',
     files: ['/game/runtime.config.json'],
     hooks: [],
-    adapters: [],
-    references: [],
+    adapters: ['runtime.core.configLoader'],
+    references: [
+      'docs/STATE_AND_TURNS.md',
+      'docs/match-mode-structure.md',
+      'docs/matchmaking-schema-reference.md',
+    ],
+  },
+  {
+    id: 'core.hooks',
+    label: 'Core: Game Hooks',
+    category: 'core',
+    purpose: 'Custom logic hooks for transforming prompts, reacting to actions, and selecting next states.',
+    files: ['/game/hooks/automation.js'],
+    hooks: [
+      'transformPrompt(prompt, ctx)',
+      'onUserAction(action, ctx)',
+      'selectNext(state, ctx)',
+    ],
+    adapters: ['runtime.core.hooksBridge'],
+    references: ['reference_data/**/hooks/**'],
   },
   {
     id: 'ui.text',
-    label: 'Text UI',
-    purpose: 'Render prompts and choices as text; map user input to actions.',
-    files: [],
-    hooks: ['transformPrompt', 'onUserAction', 'selectNext'],
-    adapters: [],
-    references: [
-      { title: 'ROT.js (for roguelike text UIs)', href: '/api/refroot/rot.js-master/README.md' },
-    ],
+    label: 'UI: Text / Chat',
+    category: 'ui',
+    purpose: 'Simple text / turn‑based UI rendered inside the main game shell.',
+    files: ['/game/ui/text.config.json'],
+    hooks: [],
+    adapters: ['ui.text.overlay'],
+    references: ['reference_data/text-ui/**'],
   },
   {
     id: 'ui.canvas2d',
-    label: 'Canvas 2D UI',
-    purpose: 'Draw simple scenes/tiles on <canvas> 2D.',
-    files: ['/game/pages/ui/main.json?optional'],
-    hooks: ['onUserAction'],
-    adapters: ['renderer.canvas2d'],
-    references: [
-      { title: 'PixiJS', href: '/api/refroot/pixijs-dev/README.md' },
-    ],
+    label: 'UI: Canvas 2D',
+    category: 'ui',
+    purpose: '2D canvas‑based rendering surface for board / arcade‑style games.',
+    files: ['/game/ui/canvas2d.config.json'],
+    hooks: ['renderFrame(ctx)', 'handleInput(event, ctx)'],
+    adapters: ['ui.canvas2d.engine'],
+    references: ['reference_data/canvas2d/**'],
   },
   {
-    id: 'ui.webgl3d',
-    label: 'WebGL 3D UI',
-    purpose: 'Render 3D scenes and camera control.',
-    files: ['/game/pages/ui/main.json?optional'],
-    hooks: ['onUserAction'],
-    adapters: ['renderer.webgl'],
-    references: [ { title: 'Three.js', href: '/api/refroot/three.js-dev/README.md' } ],
+    id: 'world.grid.tilemap',
+    label: 'World: Grid / Tilemap',
+    category: 'world',
+    purpose: 'Grid‑based worlds defined by tilemaps (roguelike, tactics, puzzle, etc).',
+    files: ['/world/tilemap.json', '/world/entities.json'],
+    hooks: ['stepSimulation(dt, ctx)', 'applyAction(action, ctx)'],
+    adapters: ['world.grid.engine'],
+    references: ['reference_data/tilemap/**'],
   },
   {
-    id: 'input.keyboard',
-    label: 'Keyboard Input',
-    purpose: 'Map keyboard events into user actions.',
-    files: [],
-    hooks: ['onUserAction'],
-    adapters: ['input.keyboard'],
-    references: [ { title: 'kibo-keyboard', href: '/api/refroot/kibo-keyboard-master/README.md' } ],
-  },
-  {
-    id: 'input.gamepad',
-    label: 'Gamepad Input',
-    purpose: 'Map gamepad to actions or keyboard.',
-    files: [],
-    hooks: ['onUserAction'],
-    adapters: ['input.gamepad'],
-    references: [ { title: 'gamepad-to-keyboard-mapper', href: '/api/refroot/gamepad-to-keyboard-mapper-master/README.md' } ],
-  },
-  {
-    id: 'grid.tilemap',
-    label: 'Tilemap/Grid',
-    purpose: 'Grid logic and tile-based movement.',
-    files: [],
-    hooks: ['onUserAction', 'selectNext'],
-    adapters: [],
-    references: [ { title: 'easystar.js', href: '/api/refroot/easystarjs-master/README.md' } ],
-  },
-  {
-    id: 'ai.pathfinding',
-    label: 'Pathfinding',
-    purpose: 'Find routes on grid or navmesh.',
-    files: [],
-    hooks: ['onUserAction'],
-    adapters: [],
-    references: [ { title: 'yuka', href: '/api/refroot/yuka-master/README.md' } ],
-  },
-  {
-    id: 'physics.basic',
-    label: 'Basic Physics',
-    purpose: 'Collision and gravity support via renderer adapter.',
-    files: ['/game/pages/ui/main.json?optional'],
-    hooks: ['onUserAction'],
-    adapters: ['renderer.canvas2d|webgl+physics'],
-    references: [ { title: 'Phaser', href: '/api/refroot/phaser-master/README.md' } ],
-  },
-  {
-    id: 'network.socketio',
-    label: 'Networking (Socket.IO)',
-    purpose: 'Rooms, events, real-time messaging.',
-    files: [],
-    hooks: ['onUserAction'],
-    adapters: ['net.socketio'],
-    references: [ { title: 'socket.io', href: '/api/refroot/socket.io-main/README.md' } ],
-  },
-  {
-    id: 'network.colyseus',
-    label: 'Networking (Colyseus)',
-    purpose: 'Authoritative rooms/patches.',
-    files: [],
-    hooks: ['onUserAction'],
-    adapters: ['net.colyseus'],
-    references: [ { title: 'colyseus', href: '/api/refroot/colyseus-master/README.md' } ],
+    id: 'network.realtime',
+    label: 'Network: Realtime / Rooms',
+    category: 'network',
+    purpose: 'Room / lobby + realtime state sync for multi‑player games.',
+    files: ['/game/network.config.json'],
+    hooks: ['onRoomJoin(player, ctx)', 'onRoomLeave(player, ctx)'],
+    adapters: ['network.socketio', 'network.supabase.realtime'],
+    references: ['reference_data/realtime/**'],
   },
   {
     id: 'crdt.yjs',
-    label: 'CRDT Sync (Yjs)',
-    purpose: 'Shared state and presence.',
-    files: [],
-    hooks: ['onUserAction'],
-    adapters: ['sync.yjs'],
-    references: [ { title: 'yjs', href: '/api/refroot/yjs-main/README.md' } ],
-  },
-  {
-    id: 'worker.offthread',
-    label: 'Worker Off-thread',
-    purpose: 'Move heavy compute to Worker with RPC.',
-    files: [],
-    hooks: ['onUserAction'],
-    adapters: ['worker.rpc'],
-    references: [
-      { title: 'worker-rpc', href: '/api/refroot/worker-rpc-master/README.md' },
-      { title: 'webcontainer-core', href: '/api/refroot/webcontainer-core-main/README.md' },
-    ],
-  },
-  {
-    id: 'timing.turns',
-    label: 'Turns/Timeouts',
-    purpose: 'Turn durations, step timers, auto-advance.',
-    files: ['/game/runtime.config.json'],
-    hooks: ['selectNext'],
-    adapters: [],
-    references: [],
-  },
-  {
-    id: 'storage.snapshot',
-    label: 'Snapshot/Save',
-    purpose: 'Persist variables/history per set.',
-    files: [],
+    label: 'State: CRDT / Yjs',
+    category: 'state',
+    purpose: 'Conflict‑free shared state using Yjs documents.',
+    files: ['/state/shared.yjs.json'],
     hooks: [],
-    adapters: ['storage.snapshot'],
-    references: [],
+    adapters: ['state.yjs.bridge'],
+    references: ['reference_data/yjs/**'],
+  },
+  {
+    id: 'persistence.supabase',
+    label: 'Persistence: Supabase',
+    category: 'persistence',
+    purpose: 'Persist game state and match history to Supabase tables.',
+    files: ['/game/persistence.supabase.json'],
+    hooks: ['mapStateToRow(state)', 'mapRowToState(row)'],
+    adapters: ['persistence.supabase.client'],
+    references: ['docs/matchmaking-schema-reference.md'],
   },
 ];
+
+function getCapabilityContracts() {
+  return capabilityContracts;
+}
+
+module.exports = {
+  capabilityContracts,
+  getCapabilityContracts,
+};
+

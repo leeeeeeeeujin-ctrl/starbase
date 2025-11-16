@@ -2,10 +2,10 @@ import React, { useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import WorkspaceFrame from '../../../components/workspace/WorkspaceFrame.jsx';
 import { useWorkspace } from '../../../components/workspace/CodeWorkspaceProvider.jsx';
-import { saveSet } from '../../../lib/workspace/saveSet.js';
+import { unifiedSave } from '../../../lib/workspace/unifiedSave.js';
 
 export function SimpleEditor({ id }) {
-  const { api, files, activePath } = useWorkspace();
+  const { api, filesForSave, activePath } = useWorkspace();
   const [status, setStatus] = useState('');
   const etagRef = useRef(null);
 
@@ -14,9 +14,8 @@ export function SimpleEditor({ id }) {
   const onSave = async () => {
     try {
       setStatus('saving...');
-      const exported = api.exportFiles();
-      const newEtag = await saveSet(id, exported, etagRef);
-      setStatus(newEtag ? 'saved' : 'saved');
+      await unifiedSave(id, filesForSave);
+      setStatus('saved');
       setTimeout(() => setStatus(''), 1000);
     } catch (err) {
       console.error('[prompts2/edit] save error', err);

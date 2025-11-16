@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { validateCapabilities } from '../../lib/workspace/validateCapabilities.js';
+import { loadCapabilitiesMeta, saveCapabilitiesMeta } from '../../lib/workspace/capabilitiesMeta.js';
 
 const BUILTIN_EXTENSIONS = [
   {
@@ -36,6 +38,79 @@ export default function ExtensionInstallModal({
   const [githubUser, setGithubUser] = useState(null);
   const [checkingUser, setCheckingUser] = useState(false);
   const [userError, setUserError] = useState(null);
+  const [capabilities, setCapabilities] = useState([]);
+  const [selectedCaps, setSelectedCaps] = useState([]);
+  const [capIssues, setCapIssues] = useState(null);
+
+  // Load capabilities contracts (static) once per modal lifetime
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const r = await fetch('/api/runtime/capability-contracts');
+        if (!alive) return;
+        if (!r.ok) return;
+        const j = await r.json().catch(() => ({}));
+        const list = Array.isArray(j?.capabilities) ? j.capabilities : (Array.isArray(j?.contracts) ? j.contracts : []);
+        setCapabilities(list);
+      } catch {
+        // ignore capability load errors for now
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  // Load per-set capability selection when modal opens
+  useEffect(() => {
+    if (!open || !workspaceId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const out = await loadCapabilitiesMeta(workspaceId);
+        if (cancelled) return;
+        const list = Array.isArray(out?.capabilities) ? out.capabilities : [];
+        // Normalize to simple id array for now
+        const ids = list.map((c) => (typeof c === 'string' ? c : c?.id)).filter(Boolean);
+        setSelectedCaps(ids);
+        setCapIssues(null);
+      } catch {
+        // ignore load errors
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [open, workspaceId]);
+
+  // Auto-validate capabilities whenever selection changes while modal is open
+  useEffect(() => {
+    if (!open || !workspaceId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        setCapIssues(null);
+        const [setRes, capRes] = await Promise.all([
+          fetch(`/api/workspace/sets/${encodeURIComponent(workspaceId)}`).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+          fetch('/api/runtime/capability-contracts').then((r) => (r.ok ? r.json() : null)).catch(() => null),
+        ]);
+        if (cancelled) return;
+        if (!setRes || !capRes) {
+          setCapIssues([]);
+          return;
+        }
+        const contracts = Array.isArray(capRes.capabilities)
+          ? capRes.capabilities
+          : (Array.isArray(capRes.contracts) ? capRes.contracts : []);
+        const issues = validateCapabilities({
+          files: setRes.files || [],
+          contracts,
+          selectedIds: selectedCaps,
+        });
+        setCapIssues(issues || []);
+      } catch {
+        if (!cancelled) setCapIssues([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [open, workspaceId, selectedCaps]);
 
   useEffect(() => {
     if (!open) return;
@@ -126,6 +201,23 @@ export default function ExtensionInstallModal({
       return haystack.includes(q);
     });
   }, [query]);
+
+  async function toggleCapability(id) {
+    if (!workspaceId || !id) return;
+    setSelectedCaps((prev) => {
+      const has = prev.includes(id);
+      const next = has ? prev.filter((x) => x !== id) : [...prev, id];
+      // Fire-and-forget save; errors are swallowed for now
+      (async () => {
+        try {
+          await saveCapabilitiesMeta(workspaceId, next);
+        } catch {
+          // TODO: surface toast/error if needed
+        }
+      })();
+      return next;
+    });
+  }
 
   async function toggleExtension(ext, installed) {
     if (typeof onChangeExtensions !== 'function') return;
@@ -291,6 +383,74 @@ export default function ExtensionInstallModal({
           {error ? (
             <div style={{ marginTop: 6, fontSize: 12, color: '#f97316' }}>{error}</div>
           ) : null}
+        </div>
+
+        <div style={styles.section}>
+          <div style={styles.sectionTitle}>4) 게임 Capabilities</div>
+          <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 6 }}>
+            이 세트가 런타임에서 사용할 기능들을 선택합니다. (core / ui / world / network 등)
+          </div>
+          {capabilities.length === 0 ? (
+            <div style={{ fontSize: 13, color: '#9ca3af' }}>capability 계약 정보를 불러오는 중이거나, 정의된 capability가 없습니다.</div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8 }}>
+              {capabilities.map((cap) => {
+                const id = cap.id;
+                const checked = selectedCaps.includes(id);
+                return (
+                  <label
+                    key={id}
+                    style={{
+                      borderRadius: 8,
+                      border: checked ? '1px solid #2563eb' : '1px solid #1f2937',
+                      padding: 8,
+                      background: checked ? 'rgba(37,99,235,0.12)' : '#020617',
+                      cursor: 'pointer',
+                      display: 'block',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleCapability(id)}
+                        style={{ margin: 0 }}
+                      />
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>{cap.label || cap.id}</div>
+                        <div style={{ fontSize: 11, color: '#9ca3af' }}>{cap.category}</div>
+                      </div>
+                    </div>
+                    {cap.purpose ? (
+                      <div style={{ fontSize: 12, color: '#9ca3af' }}>{cap.purpose}</div>
+                    ) : null}
+                  </label>
+                );
+              })}
+            </div>
+          )}
+          {Array.isArray(capIssues) && (
+            <div style={{ marginTop: 8, fontSize: 12 }}>
+              {capIssues.length === 0 ? (
+                <span style={{ color: '#4ade80' }}>선택된 capabilities에 필요한 파일이 모두 준비되어 있습니다.</span>
+              ) : (
+                <div style={{ color: '#f97316' }}>
+                  <div style={{ marginBottom: 4 }}>검사 결과:</div>
+                  <ul style={{ margin: 0, paddingLeft: 16 }}>
+                    {capIssues.map((issue, i) => (
+                      <li key={i}>
+                        {issue.type === 'missing_file'
+                          ? `[${issue.capabilityId}] 파일 없음: ${issue.path}`
+                          : issue.type === 'unknown_capability'
+                            ? `알 수 없는 capability id: ${issue.capabilityId}`
+                            : issue.message || `문제가 있습니다: ${issue.capabilityId}`}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div style={styles.section}>

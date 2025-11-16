@@ -17,7 +17,8 @@ export default function CapabilitiesHelpPanel({ onClose }) {
         if (!alive) return;
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const j = await r.json();
-        setCaps(Array.isArray(j?.capabilities) ? j.capabilities : []);
+        const list = Array.isArray(j?.capabilities) ? j.capabilities : (Array.isArray(j?.contracts) ? j.contracts : []);
+        setCaps(list);
       } catch (e) {
         if (!alive) return;
         setError(String(e?.message || e));
@@ -93,4 +94,3 @@ export default function CapabilitiesHelpPanel({ onClose }) {
     </div>
   );
 }
-

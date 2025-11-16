@@ -4,6 +4,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { unifiedSave } from '../../lib/workspace/unifiedSave.js';
 import { loadExtensionsMeta } from '../../lib/workspace/extensionsMeta.js';
+import { loadCapabilitiesMeta } from '../../lib/workspace/capabilitiesMeta.js';
+import { validateCapabilities } from '../../lib/workspace/validateCapabilities.js';
 import { useWorkspace } from './CodeWorkspaceProvider.jsx';
 import FileTree from './FileTree.jsx';
 import EditorMonaco from '../EditorMonaco.jsx';
@@ -458,6 +460,40 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
       };
     }, [storageNamespace]);
 
+    const handleValidateCapabilities = async () => {
+      try {
+        if (!storageNamespace) {
+          alert('워크스페이스 id가 없어 Capabilities를 검사할 수 없습니다.');
+          return;
+        }
+        const [meta, resp] = await Promise.all([
+          loadCapabilitiesMeta(storageNamespace).catch(() => ({ capabilities: [] })),
+          fetch('/api/runtime/capability-contracts').then((r) => (r.ok ? r.json() : null)).catch(() => null),
+        ]);
+        const contracts = resp
+          ? (Array.isArray(resp.capabilities) ? resp.capabilities : (Array.isArray(resp.contracts) ? resp.contracts : []))
+          : [];
+        const selectedIds = Array.isArray(meta?.capabilities) ? meta.capabilities : [];
+        const issues = validateCapabilities({ files: filesForSave, contracts, selectedIds });
+        if (!issues || issues.length === 0) {
+          alert('선택된 capabilities에 필요한 파일이 모두 준비되어 있습니다.');
+          return;
+        }
+        const lines = issues.map((issue) => {
+          if (issue.type === 'missing_file') {
+            return `- [${issue.capabilityId}] 파일 없음: ${issue.path}`;
+          }
+          if (issue.type === 'unknown_capability') {
+            return `- 알 수 없는 capability id: ${issue.capabilityId}`;
+          }
+          return `- ${issue.capabilityId}: ${issue.message || '문제가 있습니다.'}`;
+        });
+        alert(`Capabilities 검사 결과:\n${lines.join('\n')}`);
+      } catch (e) {
+        alert('Capabilities 검증 중 오류가 발생했습니다: ' + String(e?.message || e));
+      }
+    };
+
     useEffect(() => {
       if (typeof window === 'undefined') return undefined;
       const handler = (ev) => {
@@ -569,7 +605,7 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
                   padding: 6,
                   display: 'grid',
                   gap: 6,
-                  minWidth: 200,
+                  minWidth: 220,
                 }}
               >
                 <button
@@ -660,6 +696,30 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
                   style={menuItem}
                 >
                   확장 프로그램 추가…
+                </button>
+                <button
+                  onClick={() => {
+                    try {
+                      if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+                        window.dispatchEvent(new Event('capabilities:open'));
+                      }
+                    } catch {
+                      // ignore
+                    }
+                    setAiMenuOpen(false);
+                  }}
+                  style={menuItem}
+                >
+                  게임 Capabilities 보기…
+                </button>
+                <button
+                  onClick={() => {
+                    handleValidateCapabilities();
+                    setAiMenuOpen(false);
+                  }}
+                  style={menuItem}
+                >
+                  게임 Capabilities 검사…
                 </button>
               </div>
             )}

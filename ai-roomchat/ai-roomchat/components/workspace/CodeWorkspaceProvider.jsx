@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { compressString, decompressToString } from "../../utils/compress.js";
 import { injectFilesWithFallback } from "../../lib/workspace/injectFilesFallback.js";
+import { contentSignature } from "../../lib/workspace/documentStore.js";
 // snapshot/local cache disabled in server-first mode
 
 const BASE_KEY = "workspace.vfs.v1";
@@ -579,6 +580,7 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
   const [openPaths, setOpenPaths] = useState(["/template.json"]);
   const [entryPath, setEntryPath] = useState("/template.json");
   const [dirty, setDirty] = useState({}); // { [path]: true }
+  const [drafts, setDrafts] = useState({}); // { [path]: string }
   // Track last saved content signature to avoid marking unchanged files dirty just by opening
   const [savedSig, setSavedSig] = useState({}); // { [path]: string(hash) }
 
@@ -609,6 +611,7 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
           const nextSig = {};
           Object.entries(merged || {}).forEach(([p, meta]) => { nextSig[p] = contentSignature(meta); });
           setDirty({});
+          setDrafts({});
           setSavedSig(nextSig);
           return;
         }
@@ -618,18 +621,23 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
         Object.entries(defaultFiles).forEach(([p, meta]) => { sigs[p] = contentSignature(meta); });
         setSavedSig(sigs);
         setDirty({});
+        setDrafts({});
         return;
       }
       // initialFiles missing → configuration error in all environments
       throw new Error('[Workspace] initialFiles is required (server-first).');
     } catch {
-      setFiles(defaultFiles);
-      const sigs = {};
-      Object.entries(defaultFiles).forEach(([p, meta]) => { sigs[p] = contentSignature(meta); });
-      setSavedSig(sigs);
-      setDirty({});
-    }
-  }, [initialFiles]);
+       setFiles(defaultFiles);
+       const sigs = {};
+       Object.entries(defaultFiles).forEach(([p, meta]) => { sigs[p] = contentSignature(meta); });
+       setSavedSig(sigs);
+       setDirty({});
+       setDrafts({});
+     }
+   }, [initialFiles]);
+
+  // Drafts local state only (no persistence in this flattened copy yet)
+  // so that editor panes can keep a working copy separate from files.
 
   // Removed localStorage autosave: saving is owned by parent flows (prompt editor saves)
 
@@ -691,26 +699,48 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
       if (ext === "sql") return "sql";
       return "plaintext";
     };
+    const filesWithDrafts = () => {
+      const base = { ...(files || {}) };
+      Object.entries(drafts || {}).forEach(([p, content]) => {
+        const c = canon(p);
+        const f = base[c] || { readonly: false };
+        if (f.readonly) return;
+        base[c] = { ...f, content: String(content ?? ''), compressed: false, data: undefined };
+      });
+      return base;
+    };
+    const filesForSave = filesWithDrafts();
     return {
       files,
+      filesForSave,
       root,
       activePath,
       openPaths,
       entryPath,
       dirty,
+      drafts,
       isDirty: (path) => {
-        const meta = files[path];
+        const p = canon(path);
+        if (drafts && typeof drafts[p] === 'string') return true;
+        const meta = files[p];
         if (!meta) return false;
         const curSig = contentSignature(meta);
-        const sig = savedSig[path];
-        if (sig && sig === curSig) return false;
-        return !!dirty[path];
+        const sig = savedSig[p];
+        if (sig && sig === curSig) return !!dirty[p];
+        return true;
       },
       saveFile: (path) => {
-        const meta = files[path];
+        const p = canon(path);
+        const meta = files[p];
         const sig = contentSignature(meta);
-        setSavedSig((m) => ({ ...m, [path]: sig }));
-        setDirty((m) => ({ ...m, [path]: false }));
+        setSavedSig((m) => ({ ...m, [p]: sig }));
+        setDirty((m) => ({ ...m, [p]: false }));
+        setDrafts((m) => {
+          if (!m || !m[p]) return m || {};
+          const next = { ...m };
+          delete next[p];
+          return next;
+        });
       },
       saveAll: () => {
         setSavedSig((m) => {
@@ -731,6 +761,11 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
       isDir,
       normalizeDir,
       inferLang,
+      setDraft: (path, content) => {
+        const p = canon(path);
+        setDrafts((m) => ({ ...(m || {}), [p]: String(content ?? '') }));
+        setDirty((m) => ({ ...(m || {}), [p]: true }));
+      },
       open: (path) => {
         if (isDir(path)) {
           setRoot(normalizeDir(path));
@@ -888,37 +923,9 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
         });
       },
     };
-  }, [files, root, activePath, openPaths, entryPath, savedSig]);
+  }, [files, root, activePath, openPaths, entryPath, savedSig, drafts]);
 
   // NOTE: removed external "workspace:add-files" event listener to avoid hidden injection flows.
-
-  // Simple stable hash (djb2) for content
-  function stableHash(str){
-    try {
-      let h = 5381; for (let i=0;i<str.length;i++){ h = ((h<<5)+h) + str.charCodeAt(i); }
-      return 'h'+(h>>>0).toString(16);
-    } catch { return 'h0'; }
-  }
-
-  // Unified content signature (supports compressed entries)
-  function contentSignature(meta){
-    try {
-      if (!meta) return 'h0';
-      if (meta.compressed && meta.data && typeof meta.rawLen === 'number') {
-        // combine lengths + first/last chars for stability without full decompression
-        const d = String(meta.data||'');
-        const sample = d.slice(0,16)+d.slice(-16);
-        return stableHash(sample + '|' + meta.rawLen + '|' + meta.compLen);
-      }
-      if (meta.meta && (meta.meta.algo || meta.meta.data)) {
-        const d = String(meta.meta.data||'');
-        const sample = d.slice(0,16)+d.slice(-16);
-        return stableHash(sample + '|' + meta.meta.algo + '|' + meta.meta.rawLen);
-      }
-      if (typeof meta.content === 'string') return stableHash(meta.content);
-      return 'h0';
-    } catch { return 'h0'; }
-  }
 
   // Expose a debug inspector on window when debug mode enabled so E2E tests can drive the workspace.
   useEffect(() => {

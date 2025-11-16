@@ -1,31 +1,44 @@
-// Prevent 500s by serving a stable capabilities list.
-// If runtime modules exist, we can attempt to load minimal metadata on the server.
-// Otherwise, respond with an empty list (client can handle absence).
+// Next.js API route: returns the static capability contracts that
+// describe how workspace sets plug into the runtime.
+//
+// This is intentionally light‑weight and purely read‑only for now.
 
-export const config = { api: { bodyParser: false } };
+const {
+  getCapabilityContracts,
+} = require('../../../lib/runtime/capabilityContracts');
 
-function json(res, status, data) {
-  res.status(status).setHeader('Content-Type', 'application/json');
-  res.end(JSON.stringify(data));
-}
-
-export default async function handler(req, res) {
+/**
+ * @param {import('next').NextApiRequest} req
+ * @param {import('next').NextApiResponse} res
+ */
+module.exports = function handler(req, res) {
   if (req.method !== 'GET') {
     res.setHeader('Allow', 'GET');
-    return json(res, 405, { error: 'Method Not Allowed' });
+    return res.status(405).json({ error: 'Method Not Allowed' });
   }
-  try {
-    // Try to import a metadata module if present; keep optional.
-    let contracts = [];
-    try {
-      const mod = await import('../../../lib/runtime/capabilityContracts.js');
-      contracts = Array.isArray(mod?.contracts) ? mod.contracts : (mod?.default || []);
-    } catch {
-      contracts = [];
-    }
-    return json(res, 200, { items: contracts });
-  } catch (e) {
-    return json(res, 200, { items: [] });
-  }
-}
 
+  const raw = getCapabilityContracts() || [];
+  const capabilities = raw.map((c) => {
+    const refs = Array.isArray(c.references) ? c.references : [];
+    return {
+      ...c,
+      references: refs.map((r) => {
+        if (!r) return null;
+        if (typeof r === 'string') {
+          return { href: r, title: r };
+        }
+        if (typeof r === 'object') {
+          return {
+            href: r.href || r.url || '#',
+            title: r.title || r.label || r.href || r.url || '#',
+          };
+        }
+        return null;
+      }).filter(Boolean),
+    };
+  });
+  res.status(200).json({
+    capabilities,
+    count: capabilities.length,
+  });
+};

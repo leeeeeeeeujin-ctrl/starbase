@@ -101,5 +101,6 @@
     "Invoke-Expression": false,
     "iex": false
   },
-  "CodeGPT.apiKey": "Anthropic"
+  "CodeGPT.apiKey": "Anthropic",
+  "chatgpt.openOnStartup": true
 }
