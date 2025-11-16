@@ -233,10 +233,19 @@ function PlayOverlayContent({ templateBinding }) {
 
 function EditorPane() {
   const { files, drafts, setDraft, activePath, inferLang, writeFile, saveFile, saveFileAndPush, storageNamespace } = useWorkspace();
+  const instanceRef = useRef(null);
+  if (instanceRef.current == null) {
+    instanceRef.current = Math.random().toString(36).slice(2, 8);
+  }
   const file = files[activePath];
   const lang = useMemo(() => inferLang(activePath), [activePath, inferLang]);
   const initialBuf = drafts?.[activePath] ?? (file?.content ?? '');
   const [buf, setBuf] = useState(() => initialBuf);
+  if (isWorkspaceDebug()) {
+    try {
+      console.log('[EditorPane] render', { path: activePath, instance: instanceRef.current });
+    } catch {}
+  }
   useEffect(() => {
     if (isWorkspaceDebug()) {
       try { console.log('[EditorPane] mount', { path: activePath }); } catch {}

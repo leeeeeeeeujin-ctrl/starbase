@@ -27,6 +27,10 @@ export default function EditorMonaco(props) {
   const [fallback, setFallback] = useState(false);
   const lastPathRef = useRef(currentPath || null);
   const cursorByPathRef = useRef({});
+  const instanceRef = useRef(null);
+  if (instanceRef.current == null) {
+    instanceRef.current = Math.random().toString(36).slice(2, 8);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -139,7 +143,7 @@ export default function EditorMonaco(props) {
       try {
         // Initial mount log to correlate with dispose/rollback events.
         // currentPath is captured from initial props.
-        console.log('[EditorMonaco] mount', { path: currentPath || null });
+        console.log('[EditorMonaco] mount', { path: currentPath || null, instance: instanceRef.current });
       } catch {
         // ignore log errors
       }
@@ -151,7 +155,7 @@ export default function EditorMonaco(props) {
       cancelled = true;
       if (isWorkspaceDebug()) {
         try {
-          console.log('[EditorMonaco] unmount', { path: currentPath || null });
+          console.log('[EditorMonaco] unmount', { path: currentPath || null, instance: instanceRef.current });
         } catch {
           // ignore log errors
         }
@@ -173,6 +177,17 @@ export default function EditorMonaco(props) {
   // 단, 같은 파일(currentPath)에서의 실시간 편집은 Monaco 내부 상태를 신뢰하고
   // 파일 전환 시에만 setValue를 호출해 커서 점프를 방지한다.
   useEffect(() => {
+    if (isWorkspaceDebug()) {
+      try {
+        console.log('[EditorMonaco] render/effect', {
+          path: currentPath || null,
+          instance: instanceRef.current,
+          valueLength: typeof value === 'string' ? value.length : null,
+        });
+      } catch {
+        // ignore
+      }
+    }
     const editor = editorRef.current;
     if (!editor) return;
     if (typeof value !== 'string') return;
