@@ -231,6 +231,24 @@ function PlayOverlayContent({ templateBinding }) {
   }
 }
 
+function EditorHost({ path, language, value, onChange, onSave }) {
+  return (
+    <div style={{ position: 'relative', height: '100%', width: '100%' }}>
+      <div style={{ position: 'absolute', inset: 0 }}>
+        <EditorMonaco
+          value={value}
+          onChange={onChange}
+          onSave={onSave}
+          language={language}
+          theme="vs-dark"
+          height="100%"
+          currentPath={path}
+        />
+      </div>
+    </div>
+  );
+}
+
 function EditorPane() {
   const { files, drafts, setDraft, activePath, inferLang, writeFile, saveFile, saveFileAndPush, storageNamespace } = useWorkspace();
   const instanceRef = useRef(null);
@@ -291,19 +309,13 @@ function EditorPane() {
     }
   };
   return (
-    <div style={{ position: 'relative', height: '100%', width: '100%' }}>
-      <div style={{ position: 'absolute', inset: 0 }}>
-        <EditorMonaco
-          value={buf}
-          onChange={handleChange}
-          onSave={doSave}
-          language={lang}
-          theme="vs-dark"
-          height="100%"
-          currentPath={activePath}
-        />
-      </div>
-    </div>
+    <EditorHost
+      path={activePath}
+      language={lang}
+      value={buf}
+      onChange={handleChange}
+      onSave={doSave}
+    />
   );
 }
 
@@ -894,37 +906,6 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
   };
 
   const [closeConfirm, setCloseConfirm] = useState(null); // { paths: [] }
-
-  class WorkspaceBoundary extends React.Component {
-    constructor(p){
-      super(p);
-      this.state = { hasError: false };
-    }
-    static getDerivedStateFromError(error){
-      return { hasError: true, error };
-    }
-    componentDidCatch(error, info){
-      try {
-        console.warn('[WorkspaceBoundary] workspace context error', {
-          message: error?.message || String(error),
-          stack: error?.stack || null,
-          componentStack: info?.componentStack || null,
-        });
-      } catch {
-        // ignore log errors
-      }
-    }
-    render(){
-      if (this.state.hasError) {
-        return (
-          <div style={{ padding:16, color:'#94a3b8' }}>
-            작업공간 컨텍스트가 없어 코드를 표시할 수 없습니다.
-          </div>
-        );
-      }
-      return this.props.children;
-    }
-  }
 
   return (
     <WorkspaceBoundary>
