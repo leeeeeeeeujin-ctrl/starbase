@@ -896,12 +896,34 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
   const [closeConfirm, setCloseConfirm] = useState(null); // { paths: [] }
 
   class WorkspaceBoundary extends React.Component {
-    constructor(p){ super(p); this.state={ hasError:false }; }
-    static getDerivedStateFromError(){ return { hasError:true }; }
-    componentDidCatch(err){ try{ console.warn('[CodeEditorOverlayV2] workspace unavailable', err?.message||err); }catch{} }
-    render(){ return this.state.hasError ? (
-      <div style={{ padding:16, color:'#94a3b8' }}>작업공간 컨텍스트가 없어 코드를 표시할 수 없습니다.</div>
-    ) : this.props.children; }
+    constructor(p){
+      super(p);
+      this.state = { hasError: false };
+    }
+    static getDerivedStateFromError(error){
+      return { hasError: true, error };
+    }
+    componentDidCatch(error, info){
+      try {
+        console.warn('[WorkspaceBoundary] workspace context error', {
+          message: error?.message || String(error),
+          stack: error?.stack || null,
+          componentStack: info?.componentStack || null,
+        });
+      } catch {
+        // ignore log errors
+      }
+    }
+    render(){
+      if (this.state.hasError) {
+        return (
+          <div style={{ padding:16, color:'#94a3b8' }}>
+            작업공간 컨텍스트가 없어 코드를 표시할 수 없습니다.
+          </div>
+        );
+      }
+      return this.props.children;
+    }
   }
 
   return (
