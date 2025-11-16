@@ -4,6 +4,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 import { unifiedSave } from '../../lib/workspace/unifiedSave.js';
 import { loadExtensionsMeta } from '../../lib/workspace/extensionsMeta.js';
+import { createCoreRuntime } from '../../lib/runtime/coreRuntime.js';
+import { loadHooksFromSource } from '../../lib/runtime/safeEvalHookModule.js';
 import { loadCapabilitiesMeta } from '../../lib/workspace/capabilitiesMeta.js';
 import { validateCapabilities } from '../../lib/workspace/validateCapabilities.js';
 import { useWorkspace } from './CodeWorkspaceProvider.jsx';
@@ -85,6 +87,79 @@ function PlayOverlayContent({ templateBinding }) {
     try { cfg = JSON.parse(cfgText || '{}'); } catch {}
     const engine = String(cfg?.engine || 'builtin').toLowerCase();
     const mode = String(cfg?.mode || (cfg?.durations ? 'turn' : 'realtime')).toLowerCase();
+
+    // Minimal builtin core runtime: drive node progression for core.graph + hooks
+    React.useEffect(() => {
+      if (engine !== 'builtin') return;
+      let stopped = false;
+      let runtime = null;
+      try {
+        const graphText = files?.['/graph/prompt-graph.json']?.content || '';
+        if (!graphText) return;
+        let graph = null;
+        try {
+          graph = JSON.parse(graphText || '{}');
+        } catch {
+          return;
+        }
+        let hooks = null;
+        try {
+          const hookSrc = files?.['/game/hooks/automation.js']?.content || '';
+          if (hookSrc) hooks = loadHooksFromSource(hookSrc);
+        } catch {
+          // ignore hook load errors; runtime will fall back to graph edges only
+        }
+        runtime = createCoreRuntime({ graph, config: cfg, hooks, files });
+      } catch {
+        return;
+      }
+
+      const publishNode = (node) => {
+        if (stopped) return;
+        try {
+          if (!node) {
+            bus.emit('system:message', '게임이 종료되었습니다.');
+            return;
+          }
+          const txt = String(node.label || node.id || '');
+          bus.emit('system:message', txt);
+        } catch {
+          // ignore bus errors
+        }
+      };
+
+      try {
+        const cur = runtime.getCurrentNode();
+        if (cur) publishNode(cur);
+      } catch {}
+
+      const offTurn = bus.on('turn:next', async () => {
+        try {
+          const res = await runtime.step({ reason: 'auto' });
+          publishNode(res.current);
+        } catch (e) {
+          try { bus.emit('system:message', String(e?.message || e)); } catch {}
+        }
+      });
+
+      const offChat = bus.on('player:chat', async (payload) => {
+        try {
+          const text = payload && typeof payload.text === 'string' ? payload.text : '';
+          const res = await runtime.step({ reason: 'user_action', input: text });
+          publishNode(res.current);
+        } catch (e) {
+          try { bus.emit('system:message', String(e?.message || e)); } catch {}
+        }
+      });
+
+      return () => {
+        stopped = true;
+        try {
+          offTurn && offTurn();
+          offChat && offChat();
+        } catch {}
+      };
+    }, [engine, cfgText, JSON.stringify(files), bus]);
 
     // Best-effort invoke Runtime/runner.js when engine === builtin (behind flag)
     React.useEffect(() => {

@@ -239,6 +239,15 @@ The long‑term goal is:
   - which adapter modules to activate.
 - The editor validates and guides the user so that a set with selected capabilities is **runnable** in the main game.
 
+In this copy, a minimal core runtime (`ai-roomchat/lib/runtime/coreRuntime.js`) is wired into
+`PlayOverlayContent` for the builtin engine:
+
+- Reads `/graph/prompt-graph.json` + `runtime.config` + `/game/hooks/automation.js` and steps through nodes.
+- Publishes node labels as `system:message` events on `runtimeBus`, which `MainGameMobileUI`
+  displays in the “AI 게임 채팅” panel.
+  - `turn:next` → `reason: 'auto'` 전진.
+  - `player:chat` → `reason: 'user_action'`, `onUserAction/ selectNext` 훅을 이용해 전진.
+
 ---
 
 ## 6. Philosophy / guardrails
@@ -257,3 +266,40 @@ The long‑term goal is:
 
 4. **Make it possible to build “almost any game”.**  
    Capabilities are the contract surface: combinable building blocks that any engine/test can rely on.
+
+---
+
+## 7. Git main push flow (이 환경 기준)
+
+이 Codex 작업환경에서 워크스페이스/런타임 관련 변경을 `main`에 반영할 때 쓴 기본 플로우를 정리해 둡니다.
+
+1. **현재 작업 브랜치 상태 확인**
+   - `git status -sb`
+   - `git branch -vv`
+   - `git remote -v`
+   - `git branch -r`
+
+2. **작업 브랜치에서 변경사항 커밋**  
+   예: `chore/airoomchat-owner-compat` 에서
+   - `git status`
+   - `git add .`
+   - `git commit -m "docs(workspace): update editor runtime notes"`  
+     (메시지는 실제 변경 요약에 맞게 작성)
+   - (필요 시) `git push origin chore/airoomchat-owner-compat`
+
+3. **메인 브랜치 최신 상태로 맞추기**
+   - `git switch main`
+   - `git pull --rebase origin main`
+
+4. **작업 브랜치를 main에 머지**
+   - `git merge chore/airoomchat-owner-compat`
+
+5. **로컬 main을 원격 main으로 푸시**
+   - `git push origin main`
+
+중간에 Git이 `.git/index.lock` 관련 에러를 내는 경우:
+
+- 다른 터미널/IDE에서 Git 명령이 실행 중인지 먼저 확인하고 종료합니다.
+- 여전히 문제가 지속되면, **이 리포를 사용하는 프로세스가 모두 종료된 상태**에서
+  - `.git/index.lock` 파일을 삭제한 뒤,
+  - 위 3~5단계를 다시 실행합니다.
