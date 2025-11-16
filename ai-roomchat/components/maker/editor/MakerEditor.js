@@ -887,40 +887,48 @@ export default function MakerEditor() {
       {/* Floating prompt add button (bottom-left) */}
   <AddPromptFab onAdd={(t,templ) => addPromptNode(t, templ)} />
 
-      {/* Fullscreen overlay Code Editor (covers all overlays) */}
-      {showMultiLanguageEditor && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setShowMultiLanguageEditor(false)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.65)', zIndex: 1600, display: 'flex', alignItems: 'stretch', justifyContent: 'stretch', padding: 0 }}
-        >
-      {/* 메인게임 UI 플레이 오버레이 */}
-      {showPlayOverlay && (
-        <div style={{ position: 'fixed', inset: 0, background: '#0b1220', zIndex: 1700 }}>
-          <div style={{ position: 'absolute', top: 'calc(env(safe-area-inset-top) + 10px)', right: 'calc(env(safe-area-inset-right) + 10px)', zIndex: 1200, display: 'flex', gap: 8 }}>
-            <button onClick={() => setShowPlayOverlay(false)} style={{ padding: '8px 12px', borderRadius: 10, border: '1px solid rgba(148,163,184,.35)', background: 'rgba(239, 68, 68, 0.95)', color: '#fff', fontWeight: 700 }}>닫기</button>
+      {/* Fullscreen overlay Code Editor (kept mounted; visibility toggled to avoid remount jitter) */}
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-hidden={showMultiLanguageEditor ? 'false' : 'true'}
+        onClick={showMultiLanguageEditor ? () => setShowMultiLanguageEditor(false) : undefined}
+        style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(2,6,23,0.65)',
+          zIndex: 1600,
+          display: showMultiLanguageEditor ? 'flex' : 'none',
+          alignItems: 'stretch',
+          justifyContent: 'stretch',
+          padding: 0,
+        }}
+      >
+        {/* 메인게임 UI 플레이 오버레이 */}
+        {showPlayOverlay && (
+          <div style={{ position: 'fixed', inset: 0, background: '#0b1220', zIndex: 1700 }}>
+            <div style={{ position: 'absolute', top: 'calc(env(safe-area-inset-top) + 10px)', right: 'calc(env(safe-area-inset-right) + 10px)', zIndex: 1200, display: 'flex', gap: 8 }}>
+              <button onClick={() => setShowPlayOverlay(false)} style={{ padding: '8px 12px', borderRadius: 10, border: '1px solid rgba(148,163,184,.35)', background: 'rgba(239, 68, 68, 0.95)', color: '#fff', fontWeight: 700 }}>닫기</button>
+            </div>
+            <div style={{ position: 'absolute', left:0, top:0, right:0, bottom:0, paddingTop:'env(safe-area-inset-top)', paddingBottom:'env(safe-area-inset-bottom)', paddingLeft:'env(safe-area-inset-left)', paddingRight:'env(safe-area-inset-right)' }}>
+              {(() => {
+                try {
+                  const obj = JSON.parse(templateText || '{}');
+                  return <MainGameMobileUI template={obj} />;
+                } catch {
+                  return <MainGameMobileUI template={{}} />;
+                }
+              })()}
+            </div>
           </div>
-          <div style={{ position: 'absolute', left:0, top:0, right:0, bottom:0, paddingTop:'env(safe-area-inset-top)', paddingBottom:'env(safe-area-inset-bottom)', paddingLeft:'env(safe-area-inset-left)', paddingRight:'env(safe-area-inset-right)' }}>
-            {(() => {
-              try {
-                const obj = JSON.parse(templateText || '{}');
-                return <MainGameMobileUI template={obj} />;
-              } catch {
-                return <MainGameMobileUI template={{}} />;
-              }
-            })()}
-          </div>
+        )}
+        <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', inset: 0 }}>
+          <CodeEditorOverlayV2
+            templateBinding={{ text: templateText, setText: setTemplateText }}
+            onRequestClose={() => setShowMultiLanguageEditor(false)}
+          />
         </div>
-      )}
-          <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', inset: 0 }}>
-            <CodeEditorOverlayV2
-              templateBinding={{ text: templateText, setText: setTemplateText }}
-              onRequestClose={() => setShowMultiLanguageEditor(false)}
-            />
-          </div>
-        </div>
-      )}
+      </div>
 
       {/* 하단 우측 변수 오버레이 버튼은 중복이므로 제거 (패널/헤더에서 접근) */}
       <VariableDrawer
