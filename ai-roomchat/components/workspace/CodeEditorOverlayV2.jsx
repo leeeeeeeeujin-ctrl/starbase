@@ -259,9 +259,14 @@ function EditorPane() {
         } catch {}
       }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  useEffect(() => { setBuf(drafts?.[activePath] ?? (file?.content ?? '')); }, [activePath, drafts, file]);
+
+  // 파일 전환이나 외부에서 파일 내용이 갱신될 때만 버퍼를 재동기화한다.
+  // drafts 변경(키 입력)은 여기서 다시 적용하지 않는다.
+  useEffect(() => {
+    setBuf(drafts?.[activePath] ?? (file?.content ?? ''));
+  }, [activePath, file]);
   if (!file) return <div style={{ padding: 16, color: '#e2e8f0' }}>파일을 선택하세요.</div>;
   const doSave = async () => {
     try {
@@ -276,9 +281,14 @@ function EditorPane() {
     } catch {}
   };
   const handleChange = (val) => {
-    // 워크스페이스 VFS(drafts)를 매 키 입력마다 갱신하지 않고,
-    // 로컬 버퍼에만 반영한다. 실제 VFS 반영은 저장 시점에만 수행.
+    // 로컬 버퍼를 갱신하고, drafts 에도 기록해
+    // saveAll(filesForSave) 같은 경로에서 최신 내용을 사용할 수 있게 한다.
     setBuf(val);
+    try {
+      setDraft(activePath, val);
+    } catch {
+      // ignore draft errors
+    }
   };
   return (
     <div style={{ position: 'relative', height: '100%', width: '100%' }}>
