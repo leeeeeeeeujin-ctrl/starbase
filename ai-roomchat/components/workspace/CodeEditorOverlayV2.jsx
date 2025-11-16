@@ -276,13 +276,9 @@ function EditorPane() {
     } catch {}
   };
   const handleChange = (val) => {
-    // 실시간으로 워크스페이스 VFS를 변경하지 않고, 로컬 버퍼에만 반영합니다.
+    // 워크스페이스 VFS(drafts)를 매 키 입력마다 갱신하지 않고,
+    // 로컬 버퍼에만 반영한다. 실제 VFS 반영은 저장 시점에만 수행.
     setBuf(val);
-    try {
-      setDraft(activePath, val);
-    } catch {
-      // ignore draft errors
-    }
   };
   return (
     <div style={{ position: 'relative', height: '100%', width: '100%' }}>
