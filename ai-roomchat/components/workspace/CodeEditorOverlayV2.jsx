@@ -26,6 +26,38 @@ const MainGameMobileUI = dynamic(() => import('../game/MainGameMobileUI.jsx'), {
   ),
 });
 
+// Workspace context error boundary used to guard the editor subtree.
+class WorkspaceBoundary extends React.Component {
+  constructor(props){
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error){
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, info){
+    try {
+      console.warn('[WorkspaceBoundary] workspace context error', {
+        message: error?.message || String(error),
+        stack: error?.stack || null,
+        componentStack: info?.componentStack || null,
+      });
+    } catch {
+      // ignore log errors
+    }
+  }
+  render(){
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding:16, color:'#94a3b8' }}>
+          작업공간 컨텍스트가 없어 코드를 표시할 수 없습니다.
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 class ErrorBoundary extends React.Component {
   constructor(props){
     super(props);
