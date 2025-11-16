@@ -248,11 +248,15 @@ function EditorPane() {
   }
   useEffect(() => {
     if (isWorkspaceDebug()) {
-      try { console.log('[EditorPane] mount', { path: activePath }); } catch {}
+      try {
+        console.log('[EditorPane] mount', { path: activePath, instance: instanceRef.current });
+      } catch {}
     }
     return () => {
       if (isWorkspaceDebug()) {
-        try { console.log('[EditorPane] unmount', { path: activePath }); } catch {}
+        try {
+          console.log('[EditorPane] unmount', { path: activePath, instance: instanceRef.current });
+        } catch {}
       }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
