@@ -265,6 +265,16 @@ export default function ExtensionInstallModal({
     }
   }
 
+  function openGithubLoginPage() {
+    try {
+      if (typeof window !== 'undefined') {
+        window.open('https://github.com/login', '_blank', 'noopener,noreferrer');
+      }
+    } catch {
+      // ignore open errors
+    }
+  }
+
   if (!open) return null;
   return (
     <div style={styles.backdrop} onClick={onClose}>
@@ -275,7 +285,11 @@ export default function ExtensionInstallModal({
         </div>
 
         <div style={styles.section}>
-          <div style={styles.sectionTitle}>1) GitHub 로그인(로컬 저장)</div>
+          <div style={styles.sectionTitle}>1) GitHub 연결 (웹 로그인 권장)</div>
+          <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 6 }}>
+            일반적으로는 아래 확장 설치만 사용해도 됩니다. 필요하다면 GitHub 웹에서 먼저 로그인하고,
+            고급 옵션으로 PAT를 입력해 레포와 연동할 수 있습니다.
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
             <input
               type="password"
@@ -291,6 +305,13 @@ export default function ExtensionInstallModal({
               disabled={checkingUser}
             >
               {checkingUser ? '확인 중…' : '로그인 확인'}
+            </button>
+            <button
+              style={styles.btn}
+              type="button"
+              onClick={openGithubLoginPage}
+            >
+              GitHub 웹 열기
             </button>
           </div>
           <div style={{ fontSize: 12, color: '#9ca3af' }}>

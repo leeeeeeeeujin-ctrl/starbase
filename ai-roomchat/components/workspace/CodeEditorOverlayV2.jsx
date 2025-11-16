@@ -879,30 +879,34 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
                 >
                   확장 프로그램 추가…
                 </button>
-                <button
-                  onClick={() => {
-                    try {
-                      if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
-                        window.dispatchEvent(new Event('capabilities:open'));
-                      }
-                    } catch {
-                      // ignore
-                    }
-                    setAiMenuOpen(false);
-                  }}
-                  style={menuItem}
-                >
-                  게임 Capabilities 보기…
-                </button>
-                <button
-                  onClick={() => {
-                    handleValidateCapabilities();
-                    setAiMenuOpen(false);
-                  }}
-                  style={menuItem}
-                >
-                  게임 Capabilities 검사…
-                </button>
+                {isWorkspaceDebug() && (
+                  <>
+                    <button
+                      onClick={() => {
+                        try {
+                          if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+                            window.dispatchEvent(new Event('capabilities:open'));
+                          }
+                        } catch {
+                          // ignore
+                        }
+                        setAiMenuOpen(false);
+                      }}
+                      style={menuItem}
+                    >
+                      게임 Capabilities 보기…
+                    </button>
+                    <button
+                      onClick={() => {
+                        handleValidateCapabilities();
+                        setAiMenuOpen(false);
+                      }}
+                      style={menuItem}
+                    >
+                      게임 Capabilities 검사…
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </div>
