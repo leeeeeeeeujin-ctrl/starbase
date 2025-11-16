@@ -7,6 +7,7 @@ import { loadExtensionsMeta } from '../../lib/workspace/extensionsMeta.js';
 import { loadCapabilitiesMeta } from '../../lib/workspace/capabilitiesMeta.js';
 import { validateCapabilities } from '../../lib/workspace/validateCapabilities.js';
 import { useWorkspace } from './CodeWorkspaceProvider.jsx';
+import { CodeWorkspaceProvider, useWorkspace } from './CodeWorkspaceProvider.jsx';
 import FileTree from './FileTree.jsx';
 import EditorMonaco from '../EditorMonaco.jsx';
 import dynamic from 'next/dynamic';
@@ -147,6 +148,9 @@ function PlayOverlayContent({ templateBinding }) {
         {banner}
         <ErrorBoundary onRetry={() => { try { window.dispatchEvent(new Event('play:retry')); } catch {} }}>
           <MainGameMobileUI template={tpl} runtimeConfig={cfg} runtimeBus={bus} />
+      <div style={{ height:'100%', width:'100%' }}>
+        <ErrorBoundary onRetry={() => { try { window.dispatchEvent(new Event('play:retry')); } catch {} }}>
+          <MainGameMobileUI template={tpl} />
         </ErrorBoundary>
       </div>
     );
