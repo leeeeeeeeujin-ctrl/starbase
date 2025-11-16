@@ -19,6 +19,7 @@ import CodeEditorOverlayV2 from '../../workspace/CodeEditorOverlayV2.jsx';
 import GameSimulator from './GameSimulator';
 import dynamic from 'next/dynamic';
 import AutoUpdateListener from '../../infra/AutoUpdateListener.jsx';
+import { isWorkspaceDebug } from '../../../lib/workspace/debugFlags.js';
 const ImageToUIGenerator = dynamic(() => import('../ui/ImageToUIGenerator'), { ssr: false });
 const MainGameMobileUI = dynamic(() => import('../../game/MainGameMobileUI.jsx'), { ssr: false });
 import { applyMainUiPresetObject, getMainUiModules } from '../../../utils/uiPresets';
@@ -27,14 +28,19 @@ import { promptSetsRepository } from '../../../lib/maker/promptSets';
 export default function MakerEditor() {
   const isMobile = useIsMobile(820);
 
+  const editorInstanceRef = useRef(null);
+  if (editorInstanceRef.current == null) {
+    editorInstanceRef.current = Math.random().toString(36).slice(2, 8);
+  }
+
   // Debug mount/unmount to trace remount causes
   useEffect(() => {
     try {
-      console.log('[MakerEditor] mount');
+      console.log('[MakerEditor] mount', { instance: editorInstanceRef.current });
     } catch {}
     return () => {
       try {
-        console.log('[MakerEditor] unmount');
+        console.log('[MakerEditor] unmount', { instance: editorInstanceRef.current });
       } catch {}
     };
   }, []);
@@ -59,6 +65,17 @@ export default function MakerEditor() {
   }
 
   const { isReady, loading, setInfo } = status;
+
+  if (isWorkspaceDebug()) {
+    try {
+      console.log('[MakerEditor] render', {
+        instance: editorInstanceRef.current,
+        isMobile,
+      });
+    } catch {
+      // ignore debug log errors
+    }
+  }
 
   useEffect(() => {
     // Hide the header toggle button ("펼치기") and any stray duplicate AI openers in header
@@ -97,6 +114,18 @@ export default function MakerEditor() {
   // panels visibility states must be declared before effects that use them
   const [showMultiLanguageEditor, setShowMultiLanguageEditor] = useState(false);
   const [gameSimulatorOpen, setGameSimulatorOpen] = useState(false);
+
+  if (isWorkspaceDebug()) {
+    try {
+      console.log('[MakerEditor] ui-state', {
+        instance: editorInstanceRef.current,
+        showMultiLanguageEditor,
+        gameSimulatorOpen,
+      });
+    } catch {
+      // ignore debug log errors
+    }
+  }
 
   const toTemplateObject = useCallback(() => {
     const tpl = (() => { try { return JSON.parse(templateText || '{}'); } catch { return {}; } })();

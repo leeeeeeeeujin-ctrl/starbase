@@ -302,14 +302,22 @@ function EditorPane() {
 }
 
 export default function CodeEditorOverlayV2({ templateBinding, onRequestClose }){
+  const overlayInstanceRef = useRef(null);
+  if (overlayInstanceRef.current == null) {
+    overlayInstanceRef.current = Math.random().toString(36).slice(2, 8);
+  }
   // Trace overlay-level remounts
   useEffect(() => {
     if (isWorkspaceDebug()) {
-      try { console.log('[CodeEditorOverlay] mount'); } catch {}
+      try {
+        console.log('[CodeEditorOverlay] mount', { instance: overlayInstanceRef.current });
+      } catch {}
     }
     return () => {
       if (isWorkspaceDebug()) {
-        try { console.log('[CodeEditorOverlay] unmount'); } catch {}
+        try {
+          console.log('[CodeEditorOverlay] unmount', { instance: overlayInstanceRef.current });
+        } catch {}
       }
     };
   }, []);
@@ -333,6 +341,19 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
   const dragLastRef = useRef(null);
   const resizeLastRef = useRef(null);
   const [playKey, setPlayKey] = useState(0);
+
+  if (isWorkspaceDebug()) {
+    try {
+      console.log('[CodeEditorOverlay] render', {
+        instance: overlayInstanceRef.current,
+        showTree,
+        showPlay,
+        showCodeChat,
+      });
+    } catch {
+      // ignore debug log errors
+    }
+  }
 
   const LS_CHAT_POS = 'workspace:aiChat:pos';
   const LS_CHAT_SIZE = 'workspace:aiChat:size';
