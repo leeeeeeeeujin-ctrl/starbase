@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import loader from '@monaco-editor/loader';
+import { isWorkspaceDebug } from '../lib/workspace/debugFlags.js';
 
 /**
  * Monaco 기반 코드 에디터 래퍼.
@@ -89,10 +90,27 @@ export default function EditorMonaco(props) {
       }
     }
 
+    if (isWorkspaceDebug()) {
+      try {
+        // Initial mount log to correlate with dispose/rollback events.
+        // currentPath is captured from initial props.
+        console.log('[EditorMonaco] mount', { path: currentPath || null });
+      } catch {
+        // ignore log errors
+      }
+    }
+
     init();
 
     return () => {
       cancelled = true;
+      if (isWorkspaceDebug()) {
+        try {
+          console.log('[EditorMonaco] unmount', { path: currentPath || null });
+        } catch {
+          // ignore log errors
+        }
+      }
       if (editorRef.current) {
         try {
           editorRef.current.dispose();
@@ -119,6 +137,18 @@ export default function EditorMonaco(props) {
       const next = value;
       const current = editor.getValue();
       if (current !== next) {
+        if (isWorkspaceDebug()) {
+          try {
+            console.log('[EditorMonaco] external setValue', {
+              fromPath: lastPathRef.current || null,
+              toPath: path,
+              beforeLength: current.length,
+              afterLength: next.length,
+            });
+          } catch {
+            // ignore
+          }
+        }
         editor.setValue(next);
       }
       lastPathRef.current = path;

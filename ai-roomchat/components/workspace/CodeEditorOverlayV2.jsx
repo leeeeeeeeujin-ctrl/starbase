@@ -8,6 +8,7 @@ import { createCoreRuntime } from '../../lib/runtime/coreRuntime.js';
 import { loadHooksFromSource } from '../../lib/runtime/safeEvalHookModule.js';
 import { loadCapabilitiesMeta } from '../../lib/workspace/capabilitiesMeta.js';
 import { validateCapabilities } from '../../lib/workspace/validateCapabilities.js';
+import { isWorkspaceDebug } from '../../lib/workspace/debugFlags.js';
 import { useWorkspace } from './CodeWorkspaceProvider.jsx';
 import FileTree from './FileTree.jsx';
 import EditorMonaco from '../EditorMonaco.jsx';
@@ -236,6 +237,17 @@ function EditorPane() {
   const lang = useMemo(() => inferLang(activePath), [activePath, inferLang]);
   const initialBuf = drafts?.[activePath] ?? (file?.content ?? '');
   const [buf, setBuf] = useState(() => initialBuf);
+  useEffect(() => {
+    if (isWorkspaceDebug()) {
+      try { console.log('[EditorPane] mount', { path: activePath }); } catch {}
+    }
+    return () => {
+      if (isWorkspaceDebug()) {
+        try { console.log('[EditorPane] unmount', { path: activePath }); } catch {}
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => { setBuf(drafts?.[activePath] ?? (file?.content ?? '')); }, [activePath, drafts, file]);
   if (!file) return <div style={{ padding: 16, color: '#e2e8f0' }}>파일을 선택하세요.</div>;
   const doSave = async () => {

@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { compressString, decompressToString } from "../../utils/compress.js";
 import { injectFilesWithFallback } from "../../lib/workspace/injectFilesFallback.js";
 import { contentSignature } from "../../lib/workspace/documentStore.js";
+import { isWorkspaceDebug } from "../../lib/workspace/debugFlags.js";
 // snapshot/local cache disabled in server-first mode
 
 const BASE_KEY = "workspace.vfs.v1";
@@ -930,16 +931,26 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
   // Expose a debug inspector on window when debug mode enabled so E2E tests can drive the workspace.
   useEffect(() => {
     try {
-      if (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_WORKSPACE_DEBUG === '1') {
-        try { window.__WORKSPACE_INSPECTOR__ = { ns, api }; } catch {}
+      if (typeof window !== 'undefined' && isWorkspaceDebug()) {
+        try {
+          window.__WORKSPACE_INSPECTOR__ = { ns, api };
+          console.log('[Workspace(flat)] mount', { ns, filesCount: Object.keys(files || {}).length });
+        } catch {}
       }
     } catch {}
-  }, [ns, api]);
+    return () => {
+      try {
+        if (typeof window !== 'undefined' && isWorkspaceDebug()) {
+          console.log('[Workspace(flat)] unmount', { ns });
+        }
+      } catch {}
+    };
+  }, [ns, api, files]);
 
   return (
     <WorkspaceCtx.Provider value={api}>
       {children}
-      {typeof window !== 'undefined' && process.env.NEXT_PUBLIC_WORKSPACE_DEBUG === '1' ? (
+      {typeof window !== 'undefined' && isWorkspaceDebug() ? (
         // Lazy load badge to avoid adding runtime deps into non-debug flows
         (() => {
           const Badge = require('./WorkspaceDebugBadge.jsx').default;

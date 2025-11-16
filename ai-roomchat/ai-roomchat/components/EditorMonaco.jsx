@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import loader from '@monaco-editor/loader';
+import { isWorkspaceDebug } from '../lib/workspace/debugFlags.js';
 
 // Configure Monaco via CDN AMD loader to avoid bundling CSS from node_modules
 if (typeof window !== 'undefined' && loader && typeof loader.config === 'function') {
@@ -19,6 +20,15 @@ export default function EditorMonaco({ value, onChange, language = 'json', theme
   useEffect(() => {
     let disposed = false;
     let monacoInstance;
+
+    if (isWorkspaceDebug()) {
+      try {
+        console.log('[EditorMonaco(flat)] mount', { path: currentPath || null });
+      } catch {
+        // ignore
+      }
+    }
+
     const init = async () => {
       if (disposed || !ref.current) return;
       try {
@@ -64,6 +74,13 @@ export default function EditorMonaco({ value, onChange, language = 'json', theme
     init();
     return () => {
       disposed = true;
+      if (isWorkspaceDebug()) {
+        try {
+          console.log('[EditorMonaco(flat)] unmount', { path: currentPath || null });
+        } catch {
+          // ignore
+        }
+      }
       try { editorRef.current?.dispose(); } catch {}
     };
   }, []);
@@ -80,6 +97,17 @@ export default function EditorMonaco({ value, onChange, language = 'json', theme
         const cur = model ? model.getValue() : '';
         if (model && next !== cur) {
           const prevSel = editor.getSelection();
+          if (isWorkspaceDebug()) {
+            try {
+              console.log('[EditorMonaco(flat)] external apply', {
+                path: currentPath || null,
+                beforeLength: cur.length,
+                afterLength: next.length,
+              });
+            } catch {
+              // ignore
+            }
+          }
           // 최소 차이 패치: 공통 접두/접미를 제외한 중앙만 치환
           let start = 0;
           const a = cur.length, b = next.length;
@@ -99,7 +127,7 @@ export default function EditorMonaco({ value, onChange, language = 'json', theme
       } catch {}
     }, 150);
     return () => { if (applyTimer.current) clearTimeout(applyTimer.current); };
-  }, [value]);
+  }, [value, currentPath]);
 
   if (fallback) {
     return (

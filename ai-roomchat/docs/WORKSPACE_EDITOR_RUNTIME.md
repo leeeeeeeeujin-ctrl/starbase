@@ -303,3 +303,111 @@ In this copy, a minimal core runtime (`ai-roomchat/lib/runtime/coreRuntime.js`) 
 - 여전히 문제가 지속되면, **이 리포를 사용하는 프로세스가 모두 종료된 상태**에서
   - `.git/index.lock` 파일을 삭제한 뒤,
   - 위 3~5단계를 다시 실행합니다.
+
+---
+
+## 8. Debugging remount / cursor jump / rollback
+
+에디터 입력이 사라지거나, 저장 후 초기 상태로 롤백되는 문제를 추적하기 위해
+워크스페이스/에디터에 디버그 로깅을 심어두었습니다.
+
+### 8.1 디버그 모드 켜는 방법
+
+클라이언트에서 다음 조건 중 하나라도 만족하면 디버그 모드가 켜집니다.
+
+- 빌드 타임 환경 변수: `NEXT_PUBLIC_WORKSPACE_DEBUG=1`
+- 런타임 플래그: `window.__WORKSPACE_DEBUG__ === true`
+- URL 쿼리: `?wsdebug=1` 이 포함된 URL
+- `localStorage['workspace:debug']` 가 `'1'` 또는 `'true'`
+
+실제 사용 예 (브라우저 콘솔에서 한 번 실행):
+
+```js
+// 1) 현재 탭에서 디버그 모드 활성화 + 이후에도 유지
+window.__WORKSPACE_DEBUG__ = true;
+localStorage.setItem('workspace:debug', '1');
+location.reload();
+```
+
+이후 같은 브라우저/도메인에서 워크스페이스를 열면 디버그 로그가 자동으로 찍힙니다.
+
+### 8.2 어떤 로그가 찍히는지
+
+디버그 모드가 켜져 있을 때, 주요 컴포넌트에서 다음 로그가 나옵니다.
+
+- 워크스페이스 스토어 (Maker / main 둘 다)
+  - `[Workspace] mount` / `[Workspace] unmount`
+  - `[Workspace(flat)] mount` / `[Workspace(flat)] unmount`
+  - 각 로그에는 `ns`(storageNamespace)와 현재 파일 개수(`filesCount`)가 함께 찍힘.
+
+- 에디터 프레임
+  - `[EditorPane] mount` / `[EditorPane] unmount`
+  - 어느 파일(`path`)을 편집 중이었는지 같이 찍힘.
+
+- Monaco 래퍼 (Maker 측)
+  - `[EditorMonaco] mount` / `[EditorMonaco] unmount`
+  - `[EditorMonaco] external setValue`  
+    - 파일 전환 등으로 `editor.setValue(...)`가 호출될 때,
+      이전/현재 path, 텍스트 길이(before/after)를 함께 로깅.
+
+- Monaco 래퍼 (main / flattened copy)
+  - `[EditorMonaco(flat)] mount` / `[EditorMonaco(flat)] unmount`
+  - `[EditorMonaco(flat)] external apply`  
+    - 외부 `value` 변경을 `executeEdits`로 적용할 때,
+      path와 텍스트 길이(before/after)를 로깅.
+
+- 통합 저장
+  - `[unifiedSave] workspace save`  
+    - 어떤 `setId`로 몇 개의 파일을 서버 측 `saveSet`에 넘겼는지 로깅.
+
+### 8.3 재현 시 무엇을 봐야 하는지
+
+1. **브라우저 콘솔을 켠 상태에서 워크스페이스 페이지를 새로고침.**
+   - 페이지 최초 로드 시:
+     - `[Workspace] mount` 또는 `[Workspace(flat)] mount` 가 1회 찍히는지 확인.
+     - `EditorPane` / `EditorMonaco` 계열도 각각 1회씩만 mount 되는 것이 정상.
+
+2. **문제 없는 일반 타이핑 시나리오를 한 번 확인.**
+   - 같은 파일에서 몇 글자 타이핑해도:
+     - `mount/unmount` 로그가 반복해서 나오지 않아야 함.
+     - `external setValue` / `external apply` 로그는
+       **파일을 바꿀 때나, 진짜 외부 값이 내려올 때만** 가끔 나타나는 것이 정상.
+
+3. **커서가 1행 1열로 튀거나, 저장 후 초기 상태로 롤백되는 순간을 재현.**
+   - 그 바로 직전에/이후에 콘솔에서 다음을 확인:
+     - `EditorPane` 또는 `EditorMonaco(flat)`의 `unmount → mount` 페어가
+       짧은 시간 안에 연속해서 찍혔는지?
+       - 찍혔다면, 해당 순간에 **컴포넌트 리마운트**가 실제로 일어난 것.
+     - `external apply` / `external setValue` 로그가
+       **타이핑/저장 직후에 갑자기 많아졌는지?**
+       - 많다면, 외부 `value`가 (초기 스냅샷 등으로) 다시 내려와
+         현재 모델을 덮어쓰고 있다는 의미.
+
+4. **버그 직후 워크스페이스 내부 상태 확인.**
+   - 콘솔에서:
+     - `window.__WORKSPACE_INSPECTOR__` 가 있는지 확인.
+       - 없다면 디버그 모드가 제대로 켜졌는지 다시 확인.
+   - 예시:
+   ```js
+   const ws = window.__WORKSPACE_INSPECTOR__;
+   ws.api.activePath;         // 현재 편집 중이었던 path
+   ws.api.files[ws.api.activePath];   // 스냅샷(content, readonly, ...)
+   ws.api.drafts[ws.api.activePath];  // 드래프트(있다면)
+   ```
+   - 이 때,
+     - `drafts[path]`는 최신 타이핑 내용인지,
+     - `files[path].content`는 초기 상태인지 / 최신인지 비교해 보면
+       “어디에서 롤백이 일어났는지” (드래프트 단계 vs 서버 리로드 단계)를 좁힐 수 있다.
+
+5. **저장 버튼을 눌렀을 때의 흐름 확인.**
+   - 저장 시 콘솔에서:
+     - `[unifiedSave] workspace save` 로그가 찍히는지,
+     - 그 직전/직후에 `Workspace`/`EditorPane`의 `unmount/mount`가 일어나는지,
+     - `EditorMonaco(flat)` 쪽의 `external apply`가 “초기 스냅샷 길이”로 되돌리는 패턴인지
+       (beforeLength/afterLength를 보고 판단) 확인해 달라.
+
+이 로그들을 기반으로,
+- **“언제 리마운트가 발생하는지”** (auth 토큰 갱신, 오버레이 토글, 저장 후 재로드 등),
+- **“어느 계층에서 값이 옛날 것으로 되돌아가는지”** (drafts vs files vs 서버 응답)
+를 단계별로 좁혀갈 수 있다.  
+재현 로그/관찰 결과를 그대로 전달해주면, 그 다음 턴에서 해당 지점을 직접 수정해 나갈 수 있다.
