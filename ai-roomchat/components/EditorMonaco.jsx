@@ -26,6 +26,7 @@ export default function EditorMonaco(props) {
   const editorRef = useRef(null);
   const [fallback, setFallback] = useState(false);
   const lastPathRef = useRef(currentPath || null);
+  const cursorByPathRef = useRef({});
 
   useEffect(() => {
     let cancelled = false;
@@ -59,6 +60,20 @@ export default function EditorMonaco(props) {
           // ignore focus errors
         }
 
+        // 이전 커서 위치가 있으면 복원
+        try {
+          const path = currentPath || null;
+          if (path) {
+            const byPath = cursorByPathRef.current || {};
+            const sel = byPath[path];
+            if (sel && typeof sel === 'object') {
+              editor.setSelection(sel);
+            }
+          }
+        } catch {
+          // ignore selection errors
+        }
+
         // Ctrl/Cmd + S -> onSave 콜백
         if (onSave) {
           try {
@@ -83,6 +98,36 @@ export default function EditorMonaco(props) {
             onChange(nextValue);
           }
         });
+
+        // 커서/선택 영역 변경 시 전역 및 경로별로 기록
+        try {
+          editor.onDidChangeCursorSelection(() => {
+            try {
+              const sel = editor.getSelection();
+              const model = editor.getModel();
+              const text = sel && model ? model.getValueInRange(sel) || '' : '';
+              const path = currentPath || null;
+              if (path) {
+                cursorByPathRef.current = {
+                  ...(cursorByPathRef.current || {}),
+                  [path]: sel,
+                };
+              }
+              if (typeof window !== 'undefined') {
+                window.__VFS_ACTIVE_SELECTION__ = {
+                  path,
+                  selection: sel,
+                  text,
+                  ts: Date.now(),
+                };
+              }
+            } catch {
+              // ignore cursor capture errors
+            }
+          });
+        } catch {
+          // ignore registration errors
+        }
       } catch (error) {
         // eslint-disable-next-line no-console
         console.error('[monaco] EditorMonaco loader.init failed', error);
