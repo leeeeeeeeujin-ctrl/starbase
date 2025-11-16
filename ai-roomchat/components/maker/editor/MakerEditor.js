@@ -26,6 +26,18 @@ import { promptSetsRepository } from '../../../lib/maker/promptSets';
 
 export default function MakerEditor() {
   const isMobile = useIsMobile(820);
+
+  // Debug mount/unmount to trace remount causes
+  useEffect(() => {
+    try {
+      console.log('[MakerEditor] mount');
+    } catch {}
+    return () => {
+      try {
+        console.log('[MakerEditor] unmount');
+      } catch {}
+    };
+  }, []);
   const snapBtn = {
     padding: '6px 10px',
     borderRadius: 8,

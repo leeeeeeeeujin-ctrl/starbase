@@ -28,6 +28,18 @@ export default function MakerEditorPage() {
     setWorkspaceReady(false);
   }, [id]);
 
+  // Debug mount/unmount for the page wrapper
+  useEffect(() => {
+    try {
+      console.log('[MakerEditorPage] mount', { id });
+    } catch {}
+    return () => {
+      try {
+        console.log('[MakerEditorPage] unmount', { id });
+      } catch {}
+    };
+  }, [id]);
+
   if (!id || typeof id !== 'string') return <div style={{ padding: 20 }}>Checking workspace id...</div>;
 
   const renderWorkbench = workspaceReady
