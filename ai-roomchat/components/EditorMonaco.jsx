@@ -67,7 +67,13 @@ export default function EditorMonaco(props) {
         // 이전 커서 위치가 있으면 복원
         try {
           const path = currentPath || null;
-          if (path) {
+          if (typeof window !== 'undefined') {
+            const globalSel = window.__VFS_ACTIVE_SELECTION__ || null;
+            if (globalSel && globalSel.path === path && globalSel.selection) {
+              editor.setSelection(globalSel.selection);
+            }
+          }
+          if (path && !editor.getSelection()) {
             const byPath = cursorByPathRef.current || {};
             const sel = byPath[path];
             if (sel && typeof sel === 'object') {
