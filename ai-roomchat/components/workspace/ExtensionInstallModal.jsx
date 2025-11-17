@@ -32,6 +32,7 @@ export default function ExtensionInstallModal({
   const [owner, setOwner] = useState('');
   const [repo, setRepo] = useState('');
   const [branch, setBranch] = useState('main');
+   const [githubUser, setGithubUser] = useState(null);
   const [connected, setConnected] = useState(false);
   const [events, setEvents] = useState([]);
   const [capabilities, setCapabilities] = useState([]);
@@ -122,6 +123,58 @@ export default function ExtensionInstallModal({
     }
   }, [open]);
 
+  // GitHub OAuth: load current user when modal opens
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/github/me');
+        if (!res.ok) {
+          if (!cancelled) setGithubUser(null);
+          return;
+        }
+        const data = await res.json().catch(() => null);
+        if (!cancelled) {
+          setGithubUser(data?.user || null);
+        }
+      } catch {
+        if (!cancelled) setGithubUser(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  // Listen for OAuth completion messages from popup window
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const handler = (event) => {
+      const msg = event?.data;
+      if (!msg || typeof msg !== 'object') return;
+      if (msg.type !== 'github-connected') return;
+      // Refresh GitHub user info after OAuth completes
+      (async () => {
+        try {
+          const res = await fetch('/api/github/me');
+          if (!res.ok) {
+            setGithubUser(null);
+            return;
+          }
+          const data = await res.json().catch(() => null);
+          setGithubUser(data?.user || null);
+        } catch {
+          setGithubUser(null);
+        }
+      })();
+    };
+    window.addEventListener('message', handler);
+    return () => {
+      window.removeEventListener('message', handler);
+    };
+  }, []);
+
   function saveRepo() {
     try {
       localStorage.setItem('gh.repo', JSON.stringify({ owner: owner.trim(), repo: repo.trim(), branch: branch.trim() }));
@@ -203,13 +256,129 @@ export default function ExtensionInstallModal({
     }
   }
 
-  function openGithubLoginPage() {
+  function openGithubConnectWindow() {
     try {
       if (typeof window !== 'undefined') {
-        window.open('https://github.com/login', '_blank', 'noopener,noreferrer');
+        window.open('/api/github/oauth/start', 'github-oauth', 'width=600,height=700,noopener,noreferrer');
       }
     } catch {
       // ignore open errors
+    }
+  }
+
+  async function logoutGithub() {
+    try {
+      await fetch('/api/github/logout', { method: 'POST' });
+    } catch {
+      // ignore logout errors
+    }
+    setGithubUser(null);
+  }
+
+  async function handleCreateAndLinkRepo() {
+    if (!githubUser) {
+      // eslint-disable-next-line no-alert
+      alert('먼저 GitHub 계정을 연결해주세요.');
+      return;
+    }
+    // eslint-disable-next-line no-alert
+    const name = window.prompt('생성할 GitHub 레포 이름을 입력하세요.');
+    if (!name || !name.trim()) return;
+    try {
+      const res = await fetch('/api/github/create-repo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.trim() }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok) {
+        // eslint-disable-next-line no-alert
+        alert(`레포 생성에 실패했습니다: ${data?.error || res.status}`);
+        return;
+      }
+      setOwner(data.owner || '');
+      setRepo(data.repo || '');
+      setBranch(data.branch || 'main');
+      try {
+        localStorage.setItem(
+          'gh.repo',
+          JSON.stringify({
+            owner: data.owner || '',
+            repo: data.repo || '',
+            branch: data.branch || 'main',
+          }),
+        );
+      } catch {
+        // ignore localStorage errors
+      }
+      if (data.htmlUrl) {
+        // eslint-disable-next-line no-alert
+        if (window.confirm('레포가 생성되었습니다. GitHub에서 열어볼까요?')) {
+          try {
+            window.open(data.htmlUrl, '_blank', 'noopener,noreferrer');
+          } catch {
+            // ignore
+          }
+        }
+      }
+    } catch {
+      // eslint-disable-next-line no-alert
+      alert('레포 생성에 실패했습니다.');
+    }
+  }
+
+  async function handlePickExistingRepo() {
+    if (!githubUser) {
+      // eslint-disable-next-line no-alert
+      alert('먼저 GitHub 계정을 연결해주세요.');
+      return;
+    }
+    try {
+      const res = await fetch('/api/github/list-repos');
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok || !Array.isArray(data.repos)) {
+        // eslint-disable-next-line no-alert
+        alert('레포 목록을 가져오지 못했습니다.');
+        return;
+      }
+      if (!data.repos.length) {
+        // eslint-disable-next-line no-alert
+        alert('연동 가능한 레포가 없습니다. 먼저 GitHub에서 레포를 하나 만들어주세요.');
+        return;
+      }
+      const listText = data.repos
+        .map((r, idx) => `${idx + 1}) ${r.fullName} (${r.branch})`)
+        .join('\n');
+      // eslint-disable-next-line no-alert
+      const input = window.prompt(
+        `연동할 레포 번호를 입력하세요:\n${listText}`,
+      );
+      if (!input) return;
+      const index = Number(input) - 1;
+      if (Number.isNaN(index) || index < 0 || index >= data.repos.length) {
+        // eslint-disable-next-line no-alert
+        alert('잘못된 번호입니다.');
+        return;
+      }
+      const chosen = data.repos[index];
+      setOwner(chosen.owner || '');
+      setRepo(chosen.repo || '');
+      setBranch(chosen.branch || 'main');
+      try {
+        localStorage.setItem(
+          'gh.repo',
+          JSON.stringify({
+            owner: chosen.owner || '',
+            repo: chosen.repo || '',
+            branch: chosen.branch || 'main',
+          }),
+        );
+      } catch {
+        // ignore
+      }
+    } catch {
+      // eslint-disable-next-line no-alert
+      alert('레포 목록을 가져오지 못했습니다.');
     }
   }
 
@@ -232,7 +401,7 @@ export default function ExtensionInstallModal({
             <button
               style={styles.btn}
               type="button"
-              onClick={openGithubLoginPage}
+              onClick={openGithubConnectWindow}
             >
               GitHub 웹 열기
             </button>
