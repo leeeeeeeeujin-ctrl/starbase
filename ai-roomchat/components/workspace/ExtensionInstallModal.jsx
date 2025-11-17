@@ -175,6 +175,35 @@ export default function ExtensionInstallModal({
     };
   }, []);
 
+  // When GitHub is connected and the modal is open, try to auto-load
+  // repositories once. If an owner/repo is already set (from localStorage),
+  // this effect does not override it.
+  useEffect(() => {
+    if (!open) return;
+    if (!githubUser) return;
+    if (owner || repo) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/github/list-repos');
+        const data = await res.json().catch(() => null);
+        if (cancelled) return;
+        if (!res.ok || !data?.ok || !Array.isArray(data.repos) || !data.repos.length) {
+          return;
+        }
+        const first = data.repos[0];
+        setOwner(first.owner || '');
+        setRepo(first.repo || '');
+        setBranch(first.branch || 'main');
+      } catch {
+        // ignore auto-load errors
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, githubUser, owner, repo]);
+
   function saveRepo() {
     try {
       localStorage.setItem('gh.repo', JSON.stringify({ owner: owner.trim(), repo: repo.trim(), branch: branch.trim() }));
