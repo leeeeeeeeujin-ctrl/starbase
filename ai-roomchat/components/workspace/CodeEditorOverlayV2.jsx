@@ -8,6 +8,7 @@ import { createCoreRuntime } from '../../lib/runtime/coreRuntime.js';
 import { loadHooksFromSource } from '../../lib/runtime/safeEvalHookModule.js';
 import { loadCapabilitiesMeta } from '../../lib/workspace/capabilitiesMeta.js';
 import { validateCapabilities } from '../../lib/workspace/validateCapabilities.js';
+import { selectRuntimeFeatures } from '../../lib/runtime/runtimeFeatures.js';
 import { isWorkspaceDebug } from '../../lib/workspace/debugFlags.js';
 import { useWorkspace } from './CodeWorkspaceProvider.jsx';
 import FileTree from './FileTree.jsx';
@@ -103,6 +104,7 @@ function PlayOverlayContent({ templateBinding }) {
   const [runnerInfo, setRunnerInfo] = React.useState(null);
   const [runnerErr, setRunnerErr] = React.useState(null);
   const [netAdapters, setNetAdapters] = React.useState(null);
+  const [runtimeFeatures, setRuntimeFeatures] = React.useState([]);
   const bus = React.useMemo(() => {
     const listeners = new Map();
     return {
@@ -132,8 +134,13 @@ function PlayOverlayContent({ templateBinding }) {
           // Load selected capabilities for this set
           const meta = await loadCapabilitiesMeta(String(setId)).catch(() => ({ capabilities: [] }));
           const caps = Array.isArray(meta?.capabilities) ? meta.capabilities : [];
-          const hasRealtime = caps.includes('network.realtime');
-          const hasYjs = caps.includes('crdt.yjs');
+          const { features, flags } = selectRuntimeFeatures({ capabilities: caps, files, config: cfg });
+          if (!disposed) {
+            setRuntimeFeatures(features);
+          }
+
+          const hasRealtime = flags.wantsRealtimeNetwork;
+          const hasYjs = flags.wantsSharedCrdt;
           if (!hasRealtime && !hasYjs) return;
 
           // Build networking config from /game/network.config.json when present

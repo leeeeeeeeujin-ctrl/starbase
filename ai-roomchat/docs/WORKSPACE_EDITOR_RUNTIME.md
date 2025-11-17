@@ -1,7 +1,7 @@
 # Workspace Editor & Runtime Overview
 
-This document is the **ground truth guide** for how the Maker workspace editor talks to the runtime and main game.  
-It’s written so that we can keep the structure stable even while we iterate on features and fix bugs.
+This document is the **authoritative guide** for how the Maker workspace editor talks to the runtime and main game.  
+It exists so we can keep the structure stable even while we iterate on features and fix bugs.
 
 ---
 
@@ -9,10 +9,10 @@ It’s written so that we can keep the structure stable even while we iterate on
 
 ### 1.1 Snapshots, drafts, filesForSave
 
-The workspace uses a VSCode‑style three‑layer model:
+The workspace uses a VSCode-style three-layer model:
 
 - `files` – last saved snapshot (server / VFS view).
-- `drafts` – current in‑memory working copies, per path.
+- `drafts` – current in-memory working copies, per path.
 - `filesForSave()` – derived snapshot used when sending a save to the server (`files` merged with `drafts`).
 
 The core logic lives in `ai-roomchat/lib/workspace/documentStore.js`:
@@ -33,7 +33,7 @@ All React/Monaco code should treat this store as the **single source of truth** 
 
 `ai-roomchat/components/workspace/CodeWorkspaceProvider.jsx` wraps the document store and adds:
 
-- Workspace‑level state:
+- Workspace-level state:
   - `root`, `activePath`, `openPaths`, `entryPath`.
   - `storageNamespace` (workspace / set id).
 - Persistence:
@@ -48,7 +48,7 @@ All consumers should access workspace state via `useWorkspace()`:
 
 - Reading:
   - `files` – snapshot (do *not* mutate directly).
-  - `drafts` – text drafts (usually read via helper: `getText(path)` style helpers).
+  - `drafts` – text drafts (usually read via helpers like `getText(path)`).
   - `activePath`, `openPaths`, `entryPath`.
 - Writing:
   - `setDraft(path, content)` – update working copy.
@@ -75,8 +75,8 @@ Over time, `CodeWorkspaceProvider` should be reduced to “React wrapper around 
   - Exposes last selection for debugging via `window.__VFS_ACTIVE_SELECTION__`.
 
 **Rule of thumb**  
-Monaco’s model is the in‑editor source of truth; React state mirrors it.  
-Do **not** call `editor.setValue` every render or keypress.
+Monaco’s model is the in-editor source of truth; React state mirrors it.  
+Do **not** call `editor.setValue` on every render or keypress.
 
 ### 2.2 CodeEditorOverlayV2 (editor frame)
 
@@ -84,13 +84,13 @@ Do **not** call `editor.setValue` every render or keypress.
 
 - Shows:
   - Top tabs bar (open files, dirty markers, close buttons).
-  - Toolbar (AI 코드채팅, 확장, capabilities, play overlay, etc).
+  - Toolbar (AI code chat, “Extensions”, capabilities, play overlay, etc.).
   - Main editor pane (`EditorMonaco` for the active file).
 - For each file:
   - Local buffer starts from `drafts[path] ?? files[path].content ?? ''`.
   - `onChange` → `setDraft(path, value)`; no server writes on keypress.
   - `onSave`:
-    - `markSaved` / `saveFile(path)` inside workspace store.
+    - `markSaved` / `saveFile(path)` inside the workspace store.
     - `saveFileAndPush(setId, path, latestBuffer)`.
 
 Tabs and close behavior:
@@ -122,12 +122,12 @@ Tabs and close behavior:
   - Validates Supabase user + ownership.
   - Handles `GET` / `PUT` with optimistic locking using `ETag` + `If-Match`.
 - `ai-roomchat/lib/workspace/setsStore.js`:
-  - Current implementation is dev‑only, process‑local `Map`.
+  - Current implementation is dev-only, process-local `Map`.
   - Persists `files` + `meta` in memory only (no DB yet).
 
 So **in this repo copy**, workspace saves are not persisted to a DB; they live only in:
 
-- In‑memory `setsStore` on the server (until the process restarts).
+- In-memory `setsStore` on the server (until the process restarts).
 - Local drafts in `localStorage` on the client.
 
 Persisting sets to a real DB (Supabase tables) is planned, but intentionally deferred.
@@ -140,7 +140,7 @@ Persisting sets to a real DB (Supabase tables) is planned, but intentionally def
 
 Capabilities describe “what this set can do” and which files/hook points it provides.
 
-- Server‑side contracts:
+- Server-side contracts:
   - `ai-roomchat/lib/runtime/capabilityContracts.js`
     - Static `capabilityContracts: CapabilityContract[]`.
     - `getCapabilityContracts()` helper.
@@ -220,7 +220,7 @@ In this repo copy, most adapters are **thin wrappers around reference_data engin
   - links to reference data.
 - Can be toggled via query (`caps=1`) or keyboard shortcut.
 
-Later, capabilities will also be **per‑set config** (e.g. `meta.capabilities` or `/workspace/capabilities.json`) so that:
+Later, capabilities will also be **per-set config** (e.g. `meta.capabilities` or `/workspace/capabilities.json`) so that:
 
 - The main game knows which adapters to load for a set.
 - The editor can validate required files/hooks for the chosen capabilities.
@@ -232,8 +232,8 @@ Later, capabilities will also be **per‑set config** (e.g. `meta.capabilities` 
 - Managed by:
   - `ai-roomchat/lib/workspace/extensionsMeta.js` (load/save helpers).
   - `ExtensionsHost` / `ExtensionInstallModal`:
-    - Drive the “확장” dropdown and modal.
-    - Keep extension list in sync with `meta.extensions`.
+    - Drive the “Extensions” dropdown and modal.
+    - Keep the extension list in sync with `meta.extensions`.
 
 Extensions and capabilities are related but distinct:
 
@@ -248,7 +248,7 @@ Extensions and capabilities are related but distinct:
     - `loadCapabilitiesMeta(id)` → `{ capabilities }`.
     - `saveCapabilitiesMeta(id, capabilities)` → PATCH `meta.capabilities` only.
 - UI:
-  - `ExtensionInstallModal` includes a “게임 Capabilities” section:
+  - `ExtensionInstallModal` includes a “Game Capabilities” section:
     - Lists contracts from `GET /api/runtime/capability-contracts`.
     - Lets authors toggle capability ids (core/ui/world/network/state/persistence).
     - Saves selections immediately into `meta.capabilities` for the current set.
@@ -262,7 +262,7 @@ Extensions and capabilities are related but distinct:
       - unknown capability ids,
       - missing required files per capability.
 - This is intended for:
-  - Editor-side checks (“이 capability를 쓰려면 어떤 파일이 더 필요하다” 경고),
+  - Editor-side checks (“To use this capability, you also need these files” warnings),
   - Future CI/lint-style validation of workspace sets.
 
 ---
@@ -284,7 +284,7 @@ Implementation lives roughly in:
 - `ai-roomchat/components/workspace/OverlayHost.jsx`
 - `ai-roomchat/components/workspace/PlayOverlayContent.jsx` (or similarly named file)
 
-The long‑term goal is:
+The long-term goal is:
 
 - For each capability id, the runtime knows:
   - which files to read,
@@ -298,39 +298,41 @@ In this copy, a minimal core runtime (`ai-roomchat/lib/runtime/coreRuntime.js`) 
 - Reads `/graph/prompt-graph.json` + `runtime.config` + `/game/hooks/automation.js` and steps through nodes
   using `createCoreRuntime({ graph, config, hooks, files })`.
 - For each active node:
-  - Builds a `HookContext` with shared `variables` and calls `hooks.transformPrompt(ctx)` when 정의되어 있으면,
-    반환값의 `prompt` 문자열을 사용하고, 없으면 노드의 `label / id`를 사용합니다.
-  - 그 텍스트를 `system:message` 이벤트로 `runtimeBus`에 발행하고, `MainGameMobileUI`가
-    “AI 게임 채팅” 패널에 표시합니다.
-  - `turn:next` → `reason: 'auto'` 전진.
-  - `player:chat` → `reason: 'user_action'`, `input`으로 플레이어 입력 텍스트를 넘기고
-    `onUserAction / selectNext` 훅을 이용해 전진.
+  - Builds a `HookContext` with shared `variables` and calls `hooks.transformPrompt(ctx)` when it is defined.
+    If that hook returns a value with a `prompt` field, the runtime uses that `prompt` string.
+    If there is no `transformPrompt` hook, it falls back to the node’s `label` or `id`.
+  - That text is then published as a `system:message` event to `runtimeBus`, and `MainGameMobileUI`
+    displays it in the “AI Game Chat” panel.
+  - `turn:next` → advances via `reason: 'auto'`.
+  - `player:chat` → advances via `reason: 'user_action'`, passing the player's input text as `input`
+    and using `onUserAction / selectNext` hooks to choose the next node.
 
-Optional adapters (networking / CRDT sync) are selected **capability 기반**으로 초기화된다:
+Optional adapters (networking / CRDT sync) are initialized based on the selected capabilities:
 
 - `network.realtime` + `/game/network.config.json`:
-  - `PlayOverlayContent`에서:
-    - 현재 워크스페이스 id (`storageNamespace` 또는 router `[id]`)로 `loadCapabilitiesMeta(id)`를 호출해
-      `meta.capabilities`를 가져온다.
-    - 선택된 capabilities에 `network.realtime`가 포함되어 있고,
-      `/game/network.config.json`이 존재하면:
-      - `engine/id` 필드를 `"socketio"` 또는 `"colyseus"`로 해석해 `networking` 설정을 만든다.
-      - `import('../../lib/runtime/adapterManager.js').initAdapters({ networking }, onEvent)`를 호출해
-        네트워킹 어댑터를 초기화한다.
-      - 네트워크에서 수신된 이벤트는 `onEvent(evt)` 콜백을 통해
-        `runtimeBus.emit('net:event', evt)` 형태로 Play overlay에 전달된다.
+  - In `PlayOverlayContent`:
+    - It calls `loadCapabilitiesMeta(id)` with the current workspace id (`storageNamespace` or router `[id]`)
+      to load `meta.capabilities`.
+    - If the selected capabilities include `network.realtime` **and**
+      `/game/network.config.json` exists:
+      - It reads the `engine/id` field (`"socketio"` or `"colyseus"`) and builds a `networking` config.
+      - It calls `import('../../lib/runtime/adapterManager.js').then(m => m.initAdapters({ networking }, onEvent))`
+        to initialize the networking adapter.
+      - Events received from the network are forwarded via `onEvent(evt)` as
+        `runtimeBus.emit('net:event', evt)` into the Play overlay.
 - `crdt.yjs`:
-  - `meta.capabilities`에 `crdt.yjs`가 포함되어 있으면:
-    - `initAdapters({ sync: { id: 'yjs' } }, onEvent)`를 호출해 Y.Doc을 생성(`syncYjs.createYDoc`).
-    - 반환된 `adapters.sync.doc`은 향후 world/ui/runtime에서 shared state로 사용할 수 있는 위치에 노출된다
-      (1단계에서는 도큐먼트가 생성/수명관리만 되고, 구체적인 필드/업데이트 경로는 이후 단계에서 추가).
+  - If `meta.capabilities` includes `crdt.yjs`:
+    - It calls `initAdapters({ sync: { id: 'yjs' } }, onEvent)` to create a Y.Doc
+      via the `syncYjs` adapter.
+    - The returned `adapters.sync.doc` is exposed at a location where world/ui/runtime
+      code can later use it as shared state. In this first stage, the document is just
+      created and its lifecycle is managed; concrete fields/update flows will be added later.
 
-이렇게 해서 Play overlay는:
+With this setup, the Play overlay:
 
-- `meta.capabilities` + 워크스페이스 파일(`/game/network.config.json`, `/state/shared.yjs.json` 등)을 기반으로
-  어떤 runtime adapters를 활성화할지 결정하고,
-- core runtime(`core.*`)과 UI(`ui.text`, `ui.canvas2d` 등) 위에  
-  network/sync 계층을 단계적으로 얹어갈 수 있는 구조를 갖는다.
+- Uses `meta.capabilities` plus workspace files (e.g. `/game/network.config.json`, `/state/shared.yjs.json`, etc.)
+  to decide which runtime adapters to activate, and
+- Builds network/sync layers gradually on top of the core runtime (`core.*`) and UI (`ui.text`, `ui.canvas2d`, etc.).
 
 ---
 
@@ -341,7 +343,7 @@ Optional adapters (networking / CRDT sync) are selected **capability 기반**으
 
 2. **One source of truth per concern.**
    - Text state → document store.
-   - UI state (tabs, entryPath) → workspace provider.
+   - UI state (tabs, `entryPath`) → workspace provider.
    - Capabilities / extensions → workspace meta.
    - Runtime behavior → capability adapters.
 
@@ -358,11 +360,11 @@ Optional adapters (networking / CRDT sync) are selected **capability 기반**으
 This repo copy has the following pieces already wired:
 
 - Workspace / editor
-  - VSCode‑style `files` + `drafts` + `filesForSave` model is implemented via `documentStore` and `CodeWorkspaceProvider`.
+  - VSCode-style `files` + `drafts` + `filesForSave` model is implemented via `documentStore` and `CodeWorkspaceProvider`.
   - Monaco wrapper (`EditorMonaco`) is configured not to remount or reset on each keypress; it only applies external `value` when real external changes occur.
-  - Maker editor keeps the code overlay mounted and uses display toggles instead of re‑creating the editor subtree.
+  - The Maker editor keeps the code overlay mounted and uses display toggles instead of re-creating the editor subtree.
 - Runtime / Play overlay
-  - Builtin core runtime (`core.graph` + `core.runtimeConfig` + `core.hooks`) is connected to `PlayOverlayContent` and `MainGameMobileUI`:
+  - The builtin core runtime (`core.graph` + `core.runtimeConfig` + `core.hooks`) is connected to `PlayOverlayContent` and `MainGameMobileUI`:
     - Reads `/graph/prompt-graph.json`, `/game/runtime.config.json`, `/game/hooks/automation.js`.
     - Uses `transformPrompt(ctx)` (if provided) to compute text, publishes it as `system:message` to the runtime bus.
     - `turn:next` / `player:chat` events drive `step({ reason:'auto'|'user_action', input })`.
@@ -379,145 +381,337 @@ This means the structural contract (store → provider → editor → runtime �
 
 ---
 
-## 8. Git main push flow (이 환경 기준)
+## 8. Git main push flow (for this environment)
 
-이 Codex 작업환경에서 워크스페이스/런타임 관련 변경을 `main`에 반영할 때 쓴 기본 플로우를 정리해 둡니다.
+This section documents the default flow used in this Codex workspace when pushing workspace/runtime changes to `main`.
 
-1. **현재 작업 브랜치 상태 확인**
+1. **Check current working branch state**
    - `git status -sb`
    - `git branch -vv`
    - `git remote -v`
    - `git branch -r`
 
-2. **작업 브랜치에서 변경사항 커밋**  
-   예: `chore/airoomchat-owner-compat` 에서
+2. **Commit changes on the working branch**  
+   Example: on `chore/airoomchat-owner-compat`:
    - `git status`
    - `git add .`
    - `git commit -m "docs(workspace): update editor runtime notes"`  
-     (메시지는 실제 변경 요약에 맞게 작성)
-   - (필요 시) `git push origin chore/airoomchat-owner-compat`
+     (Adjust the commit message to actually summarize the change.)
+   - (If needed) `git push origin chore/airoomchat-owner-compat`
 
-3. **메인 브랜치 최신 상태로 맞추기**
+3. **Sync `main` to the latest remote state**
    - `git switch main`
    - `git pull --rebase origin main`
 
-4. **작업 브랜치를 main에 머지**
+4. **Merge the working branch into main**
    - `git merge chore/airoomchat-owner-compat`
 
-5. **로컬 main을 원격 main으로 푸시**
+5. **Push local main to remote main**
    - `git push origin main`
 
-중간에 Git이 `.git/index.lock` 관련 에러를 내는 경우:
+If Git prints an error related to `.git/index.lock`:
 
-- 다른 터미널/IDE에서 Git 명령이 실행 중인지 먼저 확인하고 종료합니다.
-- 여전히 문제가 지속되면, **이 리포를 사용하는 프로세스가 모두 종료된 상태**에서
-  - `.git/index.lock` 파일을 삭제한 뒤,
-  - 위 3~5단계를 다시 실행합니다.
+- First check whether any other terminal/IDE is currently running Git commands and close them.
+- If the issue persists, **make sure all processes using this repo are stopped**, then:
+  - Delete the `.git/index.lock` file, and
+  - Re-run steps 3–5 above.
 
 ---
 
 ## 9. Debugging remount / cursor jump / rollback
 
-에디터 입력이 사라지거나, 저장 후 초기 상태로 롤백되는 문제를 추적하기 위해
-워크스페이스/에디터에 디버그 로깅을 심어두었습니다.
+To track down issues where editor input disappears, the cursor jumps to the beginning, or state rolls back after saving, we added debug logging to the workspace/editor.
 
-### 8.1 디버그 모드 켜는 방법
+### 8.1 How to enable debug mode
 
-클라이언트에서 다음 조건 중 하나라도 만족하면 디버그 모드가 켜집니다.
+On the client, debug mode is enabled if **any** of the following is true:
 
-- 빌드 타임 환경 변수: `NEXT_PUBLIC_WORKSPACE_DEBUG=1`
-- 런타임 플래그: `window.__WORKSPACE_DEBUG__ === true`
-- URL 쿼리: `?wsdebug=1` 이 포함된 URL
-- `localStorage['workspace:debug']` 가 `'1'` 또는 `'true'`
+- Build-time env var: `NEXT_PUBLIC_WORKSPACE_DEBUG=1`
+- Runtime flag: `window.__WORKSPACE_DEBUG__ === true`
+- URL query: `?wsdebug=1` is present in the URL
+- `localStorage['workspace:debug']` is `'1'` or `'true'`
 
-실제 사용 예 (브라우저 콘솔에서 한 번 실행):
+Example usage (run once in the browser console):
 
 ```js
-// 1) 현재 탭에서 디버그 모드 활성화 + 이후에도 유지
+// 1) Enable debug mode for the current tab and persist it for future loads
 window.__WORKSPACE_DEBUG__ = true;
 localStorage.setItem('workspace:debug', '1');
 location.reload();
-```
+After this, opening the workspace under the same browser/domain will automatically produce debug logs.
 
-이후 같은 브라우저/도메인에서 워크스페이스를 열면 디버그 로그가 자동으로 찍힙니다.
+8.2 What logs are emitted
 
-### 8.2 어떤 로그가 찍히는지
+When debug mode is on, the following logs appear from the key components:
 
-디버그 모드가 켜져 있을 때, 주요 컴포넌트에서 다음 로그가 나옵니다.
+Workspace store (both Maker and main)
 
-- 워크스페이스 스토어 (Maker / main 둘 다)
-  - `[Workspace] mount` / `[Workspace] unmount`
-  - `[Workspace(flat)] mount` / `[Workspace(flat)] unmount`
-  - 각 로그에는 `ns`(storageNamespace)와 현재 파일 개수(`filesCount`)가 함께 찍힘.
+[Workspace] mount / [Workspace] unmount
 
-- 에디터 프레임
-  - `[EditorPane] mount` / `[EditorPane] unmount`
-  - 어느 파일(`path`)을 편집 중이었는지 같이 찍힘.
+[Workspace(flat)] mount / [Workspace(flat)] unmount
 
-- Monaco 래퍼 (Maker 측)
-  - `[EditorMonaco] mount` / `[EditorMonaco] unmount`
-  - `[EditorMonaco] external setValue`  
-    - 파일 전환 등으로 `editor.setValue(...)`가 호출될 때,
-      이전/현재 path, 텍스트 길이(before/after)를 함께 로깅.
+Each log includes ns (storageNamespace) and current file count (filesCount).
 
-- Monaco 래퍼 (main / flattened copy)
-  - `[EditorMonaco(flat)] mount` / `[EditorMonaco(flat)] unmount`
-  - `[EditorMonaco(flat)] external apply`  
-    - 외부 `value` 변경을 `executeEdits`로 적용할 때,
-      path와 텍스트 길이(before/after)를 로깅.
+Editor frame
 
-- 통합 저장
-  - `[unifiedSave] workspace save`  
-    - 어떤 `setId`로 몇 개의 파일을 서버 측 `saveSet`에 넘겼는지 로깅.
+[EditorPane] mount / [EditorPane] unmount
 
-### 8.3 재현 시 무엇을 봐야 하는지
+Logs which file (path) was being edited.
 
-1. **브라우저 콘솔을 켠 상태에서 워크스페이스 페이지를 새로고침.**
-   - 페이지 최초 로드 시:
-     - `[Workspace] mount` 또는 `[Workspace(flat)] mount` 가 1회 찍히는지 확인.
-     - `EditorPane` / `EditorMonaco` 계열도 각각 1회씩만 mount 되는 것이 정상.
+Monaco wrapper (Maker side)
 
-2. **문제 없는 일반 타이핑 시나리오를 한 번 확인.**
-   - 같은 파일에서 몇 글자 타이핑해도:
-     - `mount/unmount` 로그가 반복해서 나오지 않아야 함.
-     - `external setValue` / `external apply` 로그는
-       **파일을 바꿀 때나, 진짜 외부 값이 내려올 때만** 가끔 나타나는 것이 정상.
+[EditorMonaco] mount / [EditorMonaco] unmount
 
-3. **커서가 1행 1열로 튀거나, 저장 후 초기 상태로 롤백되는 순간을 재현.**
-   - 그 바로 직전에/이후에 콘솔에서 다음을 확인:
-     - `EditorPane` 또는 `EditorMonaco(flat)`의 `unmount → mount` 페어가
-       짧은 시간 안에 연속해서 찍혔는지?
-       - 찍혔다면, 해당 순간에 **컴포넌트 리마운트**가 실제로 일어난 것.
-     - `external apply` / `external setValue` 로그가
-       **타이핑/저장 직후에 갑자기 많아졌는지?**
-       - 많다면, 외부 `value`가 (초기 스냅샷 등으로) 다시 내려와
-         현재 모델을 덮어쓰고 있다는 의미.
+[EditorMonaco] external setValue
 
-4. **버그 직후 워크스페이스 내부 상태 확인.**
-   - 콘솔에서:
-     - `window.__WORKSPACE_INSPECTOR__` 가 있는지 확인.
-       - 없다면 디버그 모드가 제대로 켜졌는지 다시 확인.
-   - 예시:
-   ```js
-   const ws = window.__WORKSPACE_INSPECTOR__;
-   ws.api.activePath;         // 현재 편집 중이었던 path
-   ws.api.files[ws.api.activePath];   // 스냅샷(content, readonly, ...)
-   ws.api.drafts[ws.api.activePath];  // 드래프트(있다면)
-   ```
-   - 이 때,
-     - `drafts[path]`는 최신 타이핑 내용인지,
-     - `files[path].content`는 초기 상태인지 / 최신인지 비교해 보면
-       “어디에서 롤백이 일어났는지” (드래프트 단계 vs 서버 리로드 단계)를 좁힐 수 있다.
+When editor.setValue(...) is called due to file switches or similar,
+it logs the previous/current path and text length (before/after).
 
-5. **저장 버튼을 눌렀을 때의 흐름 확인.**
-   - 저장 시 콘솔에서:
-     - `[unifiedSave] workspace save` 로그가 찍히는지,
-     - 그 직전/직후에 `Workspace`/`EditorPane`의 `unmount/mount`가 일어나는지,
-     - `EditorMonaco(flat)` 쪽의 `external apply`가 “초기 스냅샷 길이”로 되돌리는 패턴인지
-       (beforeLength/afterLength를 보고 판단) 확인해 달라.
+Monaco wrapper (main / flattened copy)
 
-이 로그들을 기반으로,
-- **“언제 리마운트가 발생하는지”** (auth 토큰 갱신, 오버레이 토글, 저장 후 재로드 등),
-- **“어느 계층에서 값이 옛날 것으로 되돌아가는지”** (drafts vs files vs 서버 응답)
-를 단계별로 좁혀갈 수 있다.  
-재현 로그/관찰 결과를 그대로 전달해주면, 그 다음 턴에서 해당 지점을 직접 수정해 나갈 수 있다.
+[EditorMonaco(flat)] mount / [EditorMonaco(flat)] unmount
+
+[EditorMonaco(flat)] external apply
+
+When an external value change is applied via executeEdits,
+it logs the path and text length (before/after).
+
+Unified save
+
+[unifiedSave] workspace save
+
+Logs which setId and how many files were passed into the server-side saveSet.
+
+8.3 What to look for when reproducing issues
+
+Open the browser console and reload the workspace page.
+
+On initial load:
+
+Confirm that [Workspace] mount or [Workspace(flat)] mount appears exactly once.
+
+EditorPane / EditorMonaco should also mount once each. Multiple mount/unmount cycles on page load are a smell.
+
+Verify a normal typing scenario once.
+
+While typing in the same file:
+
+There should be no repeated mount/unmount logs for workspace or editor components.
+
+external setValue / external apply logs should only appear when switching files
+or when genuinely receiving an external update.
+
+Reproduce the moment when the cursor jumps or the content rolls back after save.
+
+At that moment, inspect the console for:
+
+EditorPane or EditorMonaco(flat) unmount → mount pairs in a short timespan.
+
+If they appear, a component remount actually happened then.
+
+A sudden burst of external apply / external setValue logs
+right after typing or pressing save.
+
+If so, an external value (possibly an old snapshot) is being pushed
+into the editor and overwriting the current model.
+
+Inspect internal workspace state right after the bug.
+
+In the console:
+
+Check if window.__WORKSPACE_INSPECTOR__ exists.
+
+If not, debug mode might not be active; confirm step 8.1 again.
+
+Example:
+
+const ws = window.__WORKSPACE_INSPECTOR__;
+ws.api.activePath;                    // The path that was active
+ws.api.files[ws.api.activePath];      // Snapshot (content, readonly, ...)
+ws.api.drafts[ws.api.activePath];     // Draft (if any)
+
+
+Compare:
+
+Is drafts[path] holding the latest typed content?
+
+Is files[path].content still at the initial or some older state?
+
+From this, you can tell where the rollback is happening:
+
+Only in the editor model (draft is fine, snapshot is fine),
+
+Or when drafts are replaced,
+
+Or after a server reload (rehydrateFromServer).
+
+Check the flow when hitting the save button.
+
+On save, confirm in the console:
+
+[unifiedSave] workspace save is logged.
+
+Whether Workspace/EditorPane unmount/mount events happen immediately before/after that.
+
+Whether EditorMonaco(flat) external apply logs show text lengths
+that match “initial snapshot length” (indicating that old content is overwriting the buffer).
+
+Using these logs, we can narrow down:
+
+“When is the remount happening?” (auth token refresh, overlay toggle, post-save reload, etc.)
+
+“Which layer is rolling state back?” (draft vs snapshot vs server response)
+
+If you capture a reproduction plus the logs/inspections above and share them, we can then directly patch the specific layer that is causing the rollback/remount behavior.
+
+---
+
+## 10. Capabilities → Play overlay mapping
+
+This section connects abstract capabilities to what the Maker Play overlay actually does today.
+
+### 10.1 Core text runtime (`core.graph` + `core.runtimeConfig` + `core.hooks` + `ui.text`)
+
+Files and roles:
+- `/template.json`
+  - High-level layout and slots, passed as `template` into `MainGameMobileUI`.
+- `/graph/prompt-graph.json`
+  - `core.graph` entry; loaded in `PlayOverlayContent` and passed into `createCoreRuntime({ graph, config, hooks, files })`.
+- `/game/runtime.config.json`
+  - `core.runtimeConfig` entry; parsed into `cfg` and passed both to `createCoreRuntime` and `MainGameMobileUI` as `runtimeConfig`.
+  - Fields such as `engine`, `mode`, `durations`, `hookTimeoutMs` control how the core runtime steps and whether it is considered turn-based or realtime.
+- `/game/hooks/automation.js`
+  - `core.hooks` entry; loaded via `loadHooksFromSource` into a hooks module for `createCoreRuntime`.
+
+Runtime wiring:
+- `PlayOverlayContent` constructs a minimal runtime bus:
+  - UI → runtime:
+    - `player:chat { text }` → `runtime.step({ reason: 'user_action', input: text })`.
+    - `turn:next {}` → `runtime.step({ reason: 'auto' })`.
+  - Runtime → UI:
+    - `createCoreRuntime` returns `{ current, prompt, ui, variables }`.
+    - `PlayOverlayContent` converts this into a `system:message` string and emits it on the bus.
+    - `MainGameMobileUI` subscribes to `system:message` and renders it as the main text chat/game feed.
+- `coreRuntime` uses:
+  - `onUserAction(ctx, input)` and `selectNext(ctx, neighbors)` (when present) to control graph traversal.
+  - `transformPrompt(ctx)` (when present) to build the final `prompt` string that the UI shows to the player.
+
+### 10.2 Networking (`network.realtime`)
+
+Files and roles:
+- `/game/network.config.json`
+  - Parsed when the set declares `network.realtime` in `meta.capabilities`.
+  - Fields:
+    - `engine` / `id`: adapter id hint (e.g. `"socket"`, `"socketio"`, `"colyseus"`).
+    - `url`: WebSocket / HTTP endpoint for the room server.
+    - `token`: optional auth token.
+
+Capability gating and adapter selection:
+- `PlayOverlayContent` reads `meta.capabilities` using `loadCapabilitiesMeta(storageNamespace || id)`:
+  - If `meta.capabilities` contains `network.realtime`, it tries to build a `networking` adapter config:
+    - If `engine` looks like Socket.IO → `{ id: 'socketio', url, token }`.
+    - If `engine` looks like Colyseus → `{ id: 'colyseus', url, token }`.
+  - It calls `initAdapters({ networking }, onEvent)` from `lib/runtime/adapterManager.js`.
+  - The returned `adapters.network` instance is stored in component state (`netAdapters`).
+
+Runtime bus integration:
+- For every incoming networking event:
+  - `initAdapters` calls the callback `onEvent(evt)`.
+  - The Play overlay bridges this into the runtime bus: `bus.emit('net:event', evt)`.
+- Downstream, the main game UI and/or future world adapters can subscribe to `net:event` to:
+  - Update shared state.
+  - Show room/player status (for example, who joined, whose turn it is).
+
+Fallback behaviour:
+- If a workspace does **not** opt into `network.realtime` via capabilities:
+  - The Play overlay does **not** load networking adapters, even if `/game/network.config.json` exists.
+  - This keeps the default single-player behaviour stable and makes realtime explicit/opt-in.
+
+### 10.3 CRDT / shared state (`crdt.yjs`)
+
+Files and roles:
+- No mandatory file yet; the capability is treated as “this set wants shared document state”.
+- Future versions may formalize `/state/shared.yjs.json` (or similar) as the meta-descriptor.
+
+Capability gating and adapter selection:
+- When `meta.capabilities` contains `crdt.yjs`:
+  - `PlayOverlayContent` constructs `sync = { id: 'yjs' }`.
+  - Calls `initAdapters({ sync }, onEvent)`.
+  - Receives an adapter with a `doc` (Y.Doc) instance for use by game code.
+
+Runtime / UI usage:
+- The shared doc is not yet fully wired into `MainGameMobileUI`, but the adapter is created and stored in `netAdapters`.
+- Next steps (not yet implemented in this copy):
+  - Map portions of runtime `variables` or world state into CRDT documents.
+  - Use `net.realtime` + `crdt.yjs` together to keep multiple clients' views consistent.
+
+### 10.4 Capability priority and legacy behaviour
+
+- When `meta.capabilities` is **present and non-empty**:
+  - The Play overlay should prefer capabilities to decide which adapters and UI behaviours to enable.
+  - Example: `network.realtime` must be set to load networking, even if `/game/network.config.json` exists.
+- When `meta.capabilities` is **absent or empty**:
+  - Legacy sets rely on file presence and config defaults:
+    - `core.graph` / `core.runtimeConfig` / `core.hooks` inferred from file paths.
+    - Networking/CRDT adapters remain **off** unless explicitly opted into later.
+- This keeps older workspaces working "as is", while new ones can opt into richer behaviour via capabilities.
+
+In future refactors, the goal is:
+- Make capability selection the **canonical** source of truth for Play behaviour.
+- Keep file-based detection only as a fallback for older sets and reference packs.
+
+### 10.5 core.text-runtime minimal set
+
+The core text runtime can be treated as a single installable feature composed of:
+
+- `core.graph`
+- `core.runtimeConfig`
+- `core.hooks`
+- `ui.text`
+
+#### Required files
+
+- `/template.json`
+  - Minimal layout for a text game/chat UI (output area + input box).
+  - Passed unchanged into `MainGameMobileUI` via the `template` prop.
+
+- `/graph/prompt-graph.json`
+  - Prompt-graph entry with a clear entry node (for example `start`).
+  - A minimal example might be a two or three node graph: `start → choice → end`.
+
+- `/game/runtime.config.json`
+  - Declares that the engine is builtin and that this is a turn-based text runtime. Example:
+    ```json
+    {
+      "engine": "builtin",
+      "mode": "turn",
+      "entry": "start",
+      "hookTimeoutMs": 2000
+    }
+    ```
+  - This config is passed as `config` into `createCoreRuntime` and as `runtimeConfig` into `MainGameMobileUI`.
+
+- `/game/hooks/automation.js`
+  - Provides the hooks used by the core runtime. At minimum, it can export:
+    - `export async function onUserAction(ctx, input) { ... }`
+    - `export async function selectNext(ctx, neighbors) { ... }`
+    - `export async function transformPrompt(ctx) { ... }`
+  - In a text game, `transformPrompt(ctx)` is usually the most important:
+    - It receives `{ current, variables, turn, files }` in `ctx`.
+    - It returns either a string or `{ prompt, ui }`.
+    - The `prompt` field becomes the text shown via `system:message` in the UI.
+
+#### Runtime flow (core.text-runtime)
+
+- `PlayOverlayContent`:
+  - Loads `/graph/prompt-graph.json`, `/game/runtime.config.json`, and `/game/hooks/automation.js`.
+  - Calls `createCoreRuntime({ graph, config: cfg, hooks, files })`.
+  - On initial mount, calls `runtime.getCurrentWithPrompt()` and publishes the resulting `prompt` as `system:message`.
+  - On `turn:next`, calls `runtime.step({ reason: "auto" })` and publishes the resulting `prompt`.
+  - On `player:chat { text }`, calls `runtime.step({ reason: "user_action", input: text })` and publishes the resulting `prompt`.
+
+- `MainGameMobileUI`:
+  - Subscribes to `system:message` on the runtime bus.
+  - Renders each message into the text game/chat area, using the template to place the log and input controls.
+
+With this minimal set present and the capabilities above selected, a workspace set can act as a “pure text game runtime” with no additional adapters required.
