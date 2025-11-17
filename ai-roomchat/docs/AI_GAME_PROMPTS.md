@@ -35,3 +35,23 @@ Character vars
 Testing in Main Game
 - Place `GameCanvasSlot` in a slot and run with sample reference data.
 
+---
+
+## Workspace runtime features (for AI assistants)
+
+When the AI is helping inside the Maker workspace editor, it should treat “runtime features” as **installable/removable units**, not arbitrary file edits.
+
+- Feature catalog lives in workspace docs:
+  - Contracts: `ai-roomchat/docs/WORKSPACE_EDITOR_RUNTIME.md`
+  - Per‑capability details: `ai-roomchat/docs/capabilities/*.md`
+- Examples of features:
+  - `core.text-runtime` → `core.graph` + `core.runtimeConfig` + `core.hooks` + `ui.text` wired to `MainGameMobileUI`.
+  - `world.grid-basic` → `world.grid.tilemap` + `ui.canvas2d` scaffolding.
+  - `net.realtime-basic` → `network.realtime` + minimal `/game/network.config.json`.
+- AI must always:
+  1. Explain which feature(s) it wants to install/remove and which files will change.
+  2. Ask for explicit user confirmation before applying changes.
+  3. Prefer using existing contracts (capabilities) instead of inventing new layouts.
+  4. Record chosen capabilities under `meta.capabilities` via the workspace API, not by writing ad‑hoc JSON files.
+
+This keeps AI‑driven changes aligned with the workspace/runtime contracts and makes it easy to inspect or roll back feature installations.

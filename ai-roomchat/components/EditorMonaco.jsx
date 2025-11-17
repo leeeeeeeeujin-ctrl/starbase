@@ -180,8 +180,10 @@ export default function EditorMonaco(props) {
   }, []);
 
   // 외부 value 변경 -> 에디터 내용 동기화
-  // 단, 같은 파일(currentPath)에서의 실시간 편집은 Monaco 내부 상태를 신뢰하고
-  // 파일 전환 시에만 setValue를 호출해 커서 점프를 방지한다.
+  // - 사용자가 직접 타이핑한 경우(editor.getValue()와 value가 동일)에는 setValue를 건너뛰어
+  //   커서/undo 스택을 보존한다.
+  // - 파일 전환이나 템플릿/서버에서 내용이 바뀐 경우(editor.getValue()와 value가 달라짐)에만
+  //   setValue를 호출해 내용을 교체한다.
   useEffect(() => {
     if (isWorkspaceDebug()) {
       try {
@@ -198,27 +200,28 @@ export default function EditorMonaco(props) {
     if (!editor) return;
     if (typeof value !== 'string') return;
 
-    const path = currentPath || null;
-    if (path && path !== lastPathRef.current) {
-      const next = value;
-      const current = editor.getValue();
-      if (current !== next) {
-        if (isWorkspaceDebug()) {
-          try {
-            console.log('[EditorMonaco] external setValue', {
-              fromPath: lastPathRef.current || null,
-              toPath: path,
-              beforeLength: current.length,
-              afterLength: next.length,
-            });
-          } catch {
-            // ignore
-          }
-        }
-        editor.setValue(next);
-      }
-      lastPathRef.current = path;
+    const next = value;
+    const current = editor.getValue();
+    if (current === next) {
+      // 동일한 내용이면(타이핑 등) Monaco 내부 상태를 그대로 신뢰한다.
+      lastPathRef.current = currentPath || lastPathRef.current;
+      return;
     }
+
+    if (isWorkspaceDebug()) {
+      try {
+        console.log('[EditorMonaco] external setValue', {
+          fromPath: lastPathRef.current || null,
+          toPath: currentPath || null,
+          beforeLength: current.length,
+          afterLength: next.length,
+        });
+      } catch {
+        // ignore
+      }
+    }
+    editor.setValue(next);
+    lastPathRef.current = currentPath || null;
   }, [value, currentPath]);
 
   if (fallback) {

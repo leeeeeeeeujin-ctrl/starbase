@@ -155,6 +155,59 @@ Capabilities describe “what this set can do” and which files/hook points it 
   - `adapters` – runtime modules on the host side (main game / engine).
   - `references` – where to look under `reference_data/**` and `/docs/**`.
 
+In this repo copy, most adapters are **thin wrappers around reference_data engines/libraries**:
+
+- `core.*`
+  - `core.graph` / `core.runtimeConfig` / `core.hooks`
+    - Runtime core: `ai-roomchat/lib/runtime/coreRuntime.js`
+    - Hook loader + timeout guard: `ai-roomchat/lib/runtime/safeEvalHookModule.js`
+    - Prompt graph helpers: `ai-roomchat/lib/runtime/promptRunner.js`
+    - References:
+      - `reference_data/javascript-state-machine-master*/` – state machine patterns
+      - `reference_data/jssm-master/`, `reference_data/stateless.js-master/`
+- `ui.text`
+  - Adapter surface: `ui.text.overlay` (MainGameMobileUI)
+    - Implementation: `ai-roomchat/components/game/MainGameMobileUI.jsx`
+    - Feeds on `system:message` events from the core runtime via `runtimeBus`.
+    - References:
+      - `reference_data/chat-master/` – text/chat UI patterns
+      - `docs/STATE_AND_TURNS.md` – text turn flow
+- `ui.canvas2d`
+  - Adapter module: `ai-roomchat/lib/runtime/adapters/rendererCanvas2D.js`
+    - `attachCanvas2D(canvas, options)` → `{ draw(state), resize(w,h), dispose() }`
+    - Intended to be the shared 2D “surface” for capabilities like `world.grid.tilemap`.
+    - References (rendering engines):
+      - `reference_data/phaser-master/`
+      - `reference_data/pixijs-dev/`
+      - `reference_data/three.js-dev/` (for future `ui.webgl3d`)
+- `world.grid.tilemap`
+  - Planned adapter: `world.grid.engine`
+    - Will combine:
+      - A grid / FOV / roguelike engine (e.g. `reference_data/rot.js-master/`)
+      - Entity / steering helpers (e.g. `reference_data/yuka-master/`)
+      - Optional pathfinding (`ai-roomchat/lib/runtime/adapters/pathfindingEasystar.js`)
+    - Files on the workspace side:
+      - `/world/tilemap.json`, `/world/entities.json`
+- `network.realtime`
+  - Adapter manager: `ai-roomchat/lib/runtime/adapterManager.js`
+    - Networking:
+      - `netSocketIO` → `ai-roomchat/lib/runtime/adapters/netSocketIO.js` (references `reference_data/socket.io-main/`)
+      - `netColyseus` → `ai-roomchat/lib/runtime/adapters/netColyseus.js` (references `reference_data/colyseus-master/`)
+    - Matchmaking / room management (planned):
+      - References: `reference_data/open-match2-main/`, `docs/matchmaking-schema-reference.md`
+- `crdt.yjs`
+  - Adapter module: `ai-roomchat/lib/runtime/adapters/syncYjs.js`
+    - Wraps a Yjs document for shared state.
+    - References:
+      - `reference_data/yjs-main/`
+      - `reference_data/automerge-main/` (alternative CRDT patterns)
+- `persistence.supabase`
+  - Planned adapter: `persistence.supabase.client`
+    - Will map runtime state ↔ Supabase rows.
+    - References:
+      - `ai-roomchat/lib/workspace/dbWorkspaceSets.js`
+      - `docs/matchmaking-schema-reference.md`
+
 ### 4.2 Capabilities UI
 
 `ai-roomchat/components/workspace/CapabilitiesMount.jsx` & `CapabilitiesHelpPanel.jsx`:
@@ -242,11 +295,42 @@ The long‑term goal is:
 In this copy, a minimal core runtime (`ai-roomchat/lib/runtime/coreRuntime.js`) is wired into
 `PlayOverlayContent` for the builtin engine:
 
-- Reads `/graph/prompt-graph.json` + `runtime.config` + `/game/hooks/automation.js` and steps through nodes.
-- Publishes node labels as `system:message` events on `runtimeBus`, which `MainGameMobileUI`
-  displays in the “AI 게임 채팅” panel.
+- Reads `/graph/prompt-graph.json` + `runtime.config` + `/game/hooks/automation.js` and steps through nodes
+  using `createCoreRuntime({ graph, config, hooks, files })`.
+- For each active node:
+  - Builds a `HookContext` with shared `variables` and calls `hooks.transformPrompt(ctx)` when 정의되어 있으면,
+    반환값의 `prompt` 문자열을 사용하고, 없으면 노드의 `label / id`를 사용합니다.
+  - 그 텍스트를 `system:message` 이벤트로 `runtimeBus`에 발행하고, `MainGameMobileUI`가
+    “AI 게임 채팅” 패널에 표시합니다.
   - `turn:next` → `reason: 'auto'` 전진.
-  - `player:chat` → `reason: 'user_action'`, `onUserAction/ selectNext` 훅을 이용해 전진.
+  - `player:chat` → `reason: 'user_action'`, `input`으로 플레이어 입력 텍스트를 넘기고
+    `onUserAction / selectNext` 훅을 이용해 전진.
+
+Optional adapters (networking / CRDT sync) are selected **capability 기반**으로 초기화된다:
+
+- `network.realtime` + `/game/network.config.json`:
+  - `PlayOverlayContent`에서:
+    - 현재 워크스페이스 id (`storageNamespace` 또는 router `[id]`)로 `loadCapabilitiesMeta(id)`를 호출해
+      `meta.capabilities`를 가져온다.
+    - 선택된 capabilities에 `network.realtime`가 포함되어 있고,
+      `/game/network.config.json`이 존재하면:
+      - `engine/id` 필드를 `"socketio"` 또는 `"colyseus"`로 해석해 `networking` 설정을 만든다.
+      - `import('../../lib/runtime/adapterManager.js').initAdapters({ networking }, onEvent)`를 호출해
+        네트워킹 어댑터를 초기화한다.
+      - 네트워크에서 수신된 이벤트는 `onEvent(evt)` 콜백을 통해
+        `runtimeBus.emit('net:event', evt)` 형태로 Play overlay에 전달된다.
+- `crdt.yjs`:
+  - `meta.capabilities`에 `crdt.yjs`가 포함되어 있으면:
+    - `initAdapters({ sync: { id: 'yjs' } }, onEvent)`를 호출해 Y.Doc을 생성(`syncYjs.createYDoc`).
+    - 반환된 `adapters.sync.doc`은 향후 world/ui/runtime에서 shared state로 사용할 수 있는 위치에 노출된다
+      (1단계에서는 도큐먼트가 생성/수명관리만 되고, 구체적인 필드/업데이트 경로는 이후 단계에서 추가).
+
+이렇게 해서 Play overlay는:
+
+- `meta.capabilities` + 워크스페이스 파일(`/game/network.config.json`, `/state/shared.yjs.json` 등)을 기반으로
+  어떤 runtime adapters를 활성화할지 결정하고,
+- core runtime(`core.*`)과 UI(`ui.text`, `ui.canvas2d` 등) 위에  
+  network/sync 계층을 단계적으로 얹어갈 수 있는 구조를 갖는다.
 
 ---
 

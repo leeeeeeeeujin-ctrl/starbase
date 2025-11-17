@@ -98,10 +98,11 @@ class ErrorBoundary extends React.Component {
 }
 
 function PlayOverlayContent({ templateBinding }) {
-  const { files } = useWorkspace();
+  const { files, storageNamespace } = useWorkspace();
   const router = useRouter();
   const [runnerInfo, setRunnerInfo] = React.useState(null);
   const [runnerErr, setRunnerErr] = React.useState(null);
+  const [netAdapters, setNetAdapters] = React.useState(null);
   const bus = React.useMemo(() => {
     const listeners = new Map();
     return {
@@ -120,6 +121,78 @@ function PlayOverlayContent({ templateBinding }) {
     try { cfg = JSON.parse(cfgText || '{}'); } catch {}
     const engine = String(cfg?.engine || 'builtin').toLowerCase();
     const mode = String(cfg?.mode || (cfg?.durations ? 'turn' : 'realtime')).toLowerCase();
+
+    // Initialize optional adapters (networking, CRDT sync) based on capabilities + config.
+    React.useEffect(() => {
+      let disposed = false;
+      (async () => {
+        try {
+          const setId = storageNamespace || router?.query?.id || null;
+          if (!setId) return;
+          // Load selected capabilities for this set
+          const meta = await loadCapabilitiesMeta(String(setId)).catch(() => ({ capabilities: [] }));
+          const caps = Array.isArray(meta?.capabilities) ? meta.capabilities : [];
+          const hasRealtime = caps.includes('network.realtime');
+          const hasYjs = caps.includes('crdt.yjs');
+          if (!hasRealtime && !hasYjs) return;
+
+          // Build networking config from /game/network.config.json when present
+          let networking = null;
+          try {
+            const netText = files?.['/game/network.config.json']?.content || '';
+            if (netText) {
+              const netCfg = JSON.parse(netText || '{}');
+              const rawEngine = String(netCfg.engine || netCfg.id || '').toLowerCase();
+              let id = null;
+              if (/socket/i.test(rawEngine)) id = 'socketio';
+              else if (/colyseus/i.test(rawEngine)) id = 'colyseus';
+              if (id && netCfg.url) {
+                networking = {
+                  id,
+                  url: netCfg.url,
+                  token: netCfg.token || null,
+                };
+              }
+            }
+          } catch {
+            // ignore malformed network.config
+          }
+
+          const sync = hasYjs ? { id: 'yjs' } : null;
+          if (!networking && !sync) return;
+
+          const cfgAdapters = {};
+          if (networking) cfgAdapters.networking = networking;
+          if (sync) cfgAdapters.sync = sync;
+
+          const { initAdapters } = await import('../../lib/runtime/adapterManager.js');
+          const adapters = await initAdapters(cfgAdapters, (evt) => {
+            try {
+              // bridge generic net events into runtime bus
+              bus.emit('net:event', evt);
+            } catch {
+              // ignore bus errors
+            }
+          });
+          if (disposed) {
+            try { adapters.dispose?.(); } catch {}
+            return;
+          }
+          setNetAdapters(adapters);
+        } catch (e) {
+          if (isWorkspaceDebug()) {
+            try {
+              console.warn('[PlayOverlay] adapter init failed', e);
+            } catch {}
+          }
+        }
+      })();
+      return () => {
+        disposed = true;
+        setNetAdapters(null);
+      };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [storageNamespace, JSON.stringify(files)]);
 
     // Minimal builtin core runtime: drive node progression for core.graph + hooks
     React.useEffect(() => {
@@ -147,14 +220,18 @@ function PlayOverlayContent({ templateBinding }) {
         return;
       }
 
-      const publishNode = (node) => {
+      const publishResult = (result) => {
         if (stopped) return;
         try {
+          const node = result && result.current ? result.current : null;
           if (!node) {
             bus.emit('system:message', '게임이 종료되었습니다.');
             return;
           }
-          const txt = String(node.label || node.id || '');
+          const fromPrompt = result && typeof result.prompt === 'string' && result.prompt.length
+            ? result.prompt
+            : null;
+          const txt = fromPrompt != null ? fromPrompt : String(node.label || node.id || '');
           bus.emit('system:message', txt);
         } catch {
           // ignore bus errors
@@ -162,14 +239,20 @@ function PlayOverlayContent({ templateBinding }) {
       };
 
       try {
-        const cur = runtime.getCurrentNode();
-        if (cur) publishNode(cur);
+        if (runtime && typeof runtime.getCurrentWithPrompt === 'function') {
+          runtime.getCurrentWithPrompt().then((res) => {
+            if (!stopped && res && res.current) publishResult(res);
+          }).catch(() => {});
+        } else if (runtime && typeof runtime.getCurrentNode === 'function') {
+          const cur = runtime.getCurrentNode();
+          if (cur) publishResult({ current: cur });
+        }
       } catch {}
 
       const offTurn = bus.on('turn:next', async () => {
         try {
           const res = await runtime.step({ reason: 'auto' });
-          publishNode(res.current);
+          publishResult(res);
         } catch (e) {
           try { bus.emit('system:message', String(e?.message || e)); } catch {}
         }
@@ -179,7 +262,7 @@ function PlayOverlayContent({ templateBinding }) {
         try {
           const text = payload && typeof payload.text === 'string' ? payload.text : '';
           const res = await runtime.step({ reason: 'user_action', input: text });
-          publishNode(res.current);
+          publishResult(res);
         } catch (e) {
           try { bus.emit('system:message', String(e?.message || e)); } catch {}
         }
