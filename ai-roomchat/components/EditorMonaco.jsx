@@ -27,10 +27,18 @@ export default function EditorMonaco(props) {
   const [fallback, setFallback] = useState(false);
   const lastPathRef = useRef(currentPath || null);
   const cursorByPathRef = useRef({});
+  const onChangeRef = useRef(onChange);
   const instanceRef = useRef(null);
   if (instanceRef.current == null) {
     instanceRef.current = Math.random().toString(36).slice(2, 8);
   }
+
+  // Always keep latest onChange handler in a ref so Monaco's
+  // model-content listener does not call a stale closure when
+  // activePath/file changes.
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
 
   useEffect(() => {
     let cancelled = false;
@@ -104,8 +112,9 @@ export default function EditorMonaco(props) {
 
         editor.onDidChangeModelContent(() => {
           const nextValue = editor.getValue();
-          if (onChange) {
-            onChange(nextValue);
+          const cb = onChangeRef.current;
+          if (cb) {
+            cb(nextValue);
           }
         });
 

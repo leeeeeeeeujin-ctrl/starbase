@@ -353,7 +353,33 @@ Optional adapters (networking / CRDT sync) are selected **capability 기반**으
 
 ---
 
-## 7. Git main push flow (이 환경 기준)
+## 7. Current implementation status (this repo copy)
+
+This repo copy has the following pieces already wired:
+
+- Workspace / editor
+  - VSCode‑style `files` + `drafts` + `filesForSave` model is implemented via `documentStore` and `CodeWorkspaceProvider`.
+  - Monaco wrapper (`EditorMonaco`) is configured not to remount or reset on each keypress; it only applies external `value` when real external changes occur.
+  - Maker editor keeps the code overlay mounted and uses display toggles instead of re‑creating the editor subtree.
+- Runtime / Play overlay
+  - Builtin core runtime (`core.graph` + `core.runtimeConfig` + `core.hooks`) is connected to `PlayOverlayContent` and `MainGameMobileUI`:
+    - Reads `/graph/prompt-graph.json`, `/game/runtime.config.json`, `/game/hooks/automation.js`.
+    - Uses `transformPrompt(ctx)` (if provided) to compute text, publishes it as `system:message` to the runtime bus.
+    - `turn:next` / `player:chat` events drive `step({ reason:'auto'|'user_action', input })`.
+  - Optional adapters are selected based on `meta.capabilities`:
+    - `network.realtime` + `/game/network.config.json` → `adapterManager.initAdapters({ networking }, onEvent)` initializes `net` (Socket.IO / Colyseus skeleton).
+    - `crdt.yjs` → `initAdapters({ sync: { id: 'yjs' } }, onEvent)` attaches a shared `Y.Doc` via the sync adapter.
+- Capabilities / docs
+  - All core capabilities (`core.graph`, `core.runtimeConfig`, `core.hooks`, `ui.text`, `ui.canvas2d`, `world.grid.tilemap`, `network.realtime`, `crdt.yjs`, `persistence.supabase`) have:
+    - A static contract in `lib/runtime/capabilityContracts.js`.
+    - A detailed spec under `docs/capabilities/*.md` with workspace files, hooks, adapter names, and `reference_data/**` mappings.
+  - `AI_GAME_PROMPTS.md` includes guidance for AI assistants to treat these as installable “features” (via `meta.capabilities`), not arbitrary file edits.
+
+This means the structural contract (store → provider → editor → runtime → adapters) is in place, and new features can be added by defining a capability + adapter + example set rather than changing the foundations.
+
+---
+
+## 8. Git main push flow (이 환경 기준)
 
 이 Codex 작업환경에서 워크스페이스/런타임 관련 변경을 `main`에 반영할 때 쓴 기본 플로우를 정리해 둡니다.
 
@@ -390,7 +416,7 @@ Optional adapters (networking / CRDT sync) are selected **capability 기반**으
 
 ---
 
-## 8. Debugging remount / cursor jump / rollback
+## 9. Debugging remount / cursor jump / rollback
 
 에디터 입력이 사라지거나, 저장 후 초기 상태로 롤백되는 문제를 추적하기 위해
 워크스페이스/에디터에 디버그 로깅을 심어두었습니다.
