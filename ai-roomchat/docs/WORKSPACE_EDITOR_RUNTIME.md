@@ -11,21 +11,21 @@ It exists so we can keep the structure stable even while we iterate on features 
 
 The workspace uses a VSCode-style three-layer model:
 
-- `files` – last saved snapshot (server / VFS view).
-- `drafts` – current in-memory working copies, per path.
-- `filesForSave()` – derived snapshot used when sending a save to the server (`files` merged with `drafts`).
+- `files` - last saved snapshot (server / VFS view).
+- `drafts` - current in-memory working copies, per path.
+- `filesForSave()` - derived snapshot used when sending a save to the server (`files` merged with `drafts`).
 
 The core logic lives in `ai-roomchat/lib/workspace/documentStore.js`:
 
-- `createDocumentStore(initialFiles)` → returns a plain JS store:
-  - `getSnapshot(path)` – raw `files[path]` (no drafts).
-  - `getWorkingCopy(path)` – `drafts[path] ?? files[path].content ?? ''`.
-  - `applyDraft(path, content)` – update `drafts` + mark dirty.
-  - `discardDraft(path)` – drop a draft + dirty flag.
-  - `markSaved(path, content)` – copy content into `files[path]`, recompute signature, clear draft.
-  - `isDirty(path)` – whether a path has unsaved work.
-  - `filesForSave()` – `{ [path]: FileMeta }` including draft content.
-  - `rehydrateFromServer(nextFiles)` – replace `files` with new snapshot but keep drafts and dirty flags.
+- `createDocumentStore(initialFiles)` - returns a plain JS store:
+  - `getSnapshot(path)` - raw `files[path]` (no drafts).
+  - `getWorkingCopy(path)` - `drafts[path] ?? files[path].content ?? ''`.
+  - `applyDraft(path, content)` - update `drafts` + mark dirty.
+  - `discardDraft(path)` - drop a draft + dirty flag.
+  - `markSaved(path, content)` - copy content into `files[path]`, recompute signature, clear draft.
+  - `isDirty(path)` - whether a path has unsaved work.
+  - `filesForSave()` - `{ [path]: FileMeta }` including draft content.
+  - `rehydrateFromServer(nextFiles)` - replace `files` with new snapshot but keep drafts and dirty flags.
 
 All React/Monaco code should treat this store as the **single source of truth** for workspace text/state.
 
@@ -40,22 +40,22 @@ All React/Monaco code should treat this store as the **single source of truth** 
   - Drafts in `localStorage` under `workspace.drafts.v1@{ns}`.
   - UI state in `workspace.ui.v1@{ns}`.
 - Network / API wiring:
-  - `saveFile(path)` – update store + clear draft locally.
-  - `saveFileAndPush(setId, path, overrideContent?)` – PUT `filesForSave()` to `/api/workspace/sets/:id`.
+  - `saveFile(path)` - update store + clear draft locally.
+  - `saveFileAndPush(setId, path, overrideContent?)` - PUT `filesForSave()` to `/api/workspace/sets/:id`.
   - `saveAll()` / `saveAllAndPush(setId)`.
 
 All consumers should access workspace state via `useWorkspace()`:
 
 - Reading:
-  - `files` – snapshot (do *not* mutate directly).
-  - `drafts` – text drafts (usually read via helpers like `getText(path)`).
+  - `files` - snapshot (do *not* mutate directly).
+  - `drafts` - text drafts (usually read via helpers like `getText(path)`).
   - `activePath`, `openPaths`, `entryPath`.
 - Writing:
-  - `setDraft(path, content)` – update working copy.
-  - `writeFile(path, content)` – update snapshot (`files`) when we explicitly want to.
+  - `setDraft(path, content)` - update working copy.
+  - `writeFile(path, content)` - update snapshot (`files`) when we explicitly want to.
   - `saveFile`, `saveFileAndPush`, `saveAll`, `saveAllAndPush`.
 
-Over time, `CodeWorkspaceProvider` should be reduced to “React wrapper around `documentStore` + persistence + API calls” and nothing else.
+Over time, `CodeWorkspaceProvider` should be reduced to "React wrapper around `documentStore` + persistence + API calls" and nothing else.
 
 ---
 
@@ -66,16 +66,16 @@ Over time, `CodeWorkspaceProvider` should be reduced to “React wrapper around 
 `ai-roomchat/ai-roomchat/components/EditorMonaco.jsx` wraps Monaco using the AMD loader:
 
 - Props:
-  - `value: string` – external text (usually from drafts / working copy).
-  - `onChange(value: string)` – called on content changes.
+  - `value: string` - external text (usually from drafts / working copy).
+  - `onChange(value: string)` - called on content changes.
   - `language`, `theme`, `height`, `width`.
-  - `onSave()` – bound to `Ctrl/Cmd+S`.
+  - `onSave()` - bound to `Ctrl/Cmd+S`.
 - Behavior:
   - Only applies external `value` changes when they are **real external updates** (file switch, remote patch), using `editor.executeEdits` so cursor/undo are preserved.
   - Exposes last selection for debugging via `window.__VFS_ACTIVE_SELECTION__`.
 
 **Rule of thumb**  
-Monaco’s model is the in-editor source of truth; React state mirrors it.  
+Monaco's model is the in-editor source of truth; React state mirrors it.  
 Do **not** call `editor.setValue` on every render or keypress.
 
 ### 2.2 CodeEditorOverlayV2 (editor frame)
@@ -84,22 +84,22 @@ Do **not** call `editor.setValue` on every render or keypress.
 
 - Shows:
   - Top tabs bar (open files, dirty markers, close buttons).
-  - Toolbar (AI code chat, “Extensions”, capabilities, play overlay, etc.).
+  - Toolbar (AI code chat, "Extensions", capabilities, play overlay, etc.).
   - Main editor pane (`EditorMonaco` for the active file).
 - For each file:
   - Local buffer starts from `drafts[path] ?? files[path].content ?? ''`.
-  - `onChange` → `setDraft(path, value)`; no server writes on keypress.
+  - `onChange` - `setDraft(path, value)`; no server writes on keypress.
   - `onSave`:
     - `markSaved` / `saveFile(path)` inside the workspace store.
     - `saveFileAndPush(setId, path, latestBuffer)`.
 
 Tabs and close behavior:
 
-- `isDirty(path)` uses the store’s dirty logic (draft present or snapshot vs saved signature mismatch).
+- `isDirty(path)` uses the store's dirty logic (draft present or snapshot vs saved signature mismatch).
 - Closing a dirty tab:
   - Shows a confirm dialog: Save / Discard / Cancel.
-  - Save → `saveFileAndPush`.
-  - Discard → `discardDraft` + close tab.
+  - Save - `saveFileAndPush`.
+  - Discard - `discardDraft` + close tab.
 
 ---
 
@@ -138,22 +138,22 @@ Persisting sets to a real DB (Supabase tables) is planned, but intentionally def
 
 ### 4.1 Capability contracts
 
-Capabilities describe “what this set can do” and which files/hook points it provides.
+Capabilities describe "what this set can do" and which files/hook points it provides.
 
 - Server-side contracts:
   - `ai-roomchat/lib/runtime/capabilityContracts.js`
     - Static `capabilityContracts: CapabilityContract[]`.
     - `getCapabilityContracts()` helper.
   - `ai-roomchat/pages/api/runtime/capability-contracts.js`
-    - `GET /api/runtime/capability-contracts` → `{ contracts, count }`.
+    - `GET /api/runtime/capability-contracts` - `{ contracts, count }`.
 - Each contract has:
-  - `id` – stable capability id (e.g. `core.graph`, `ui.canvas2d`).
-  - `category` – `core`, `ui`, `world`, `network`, `state`, `persistence`, ….
-  - `purpose` – short description.
-  - `files` – VFS files that participate.
-  - `hooks` – expected exported functions on the workspace side.
-  - `adapters` – runtime modules on the host side (main game / engine).
-  - `references` – where to look under `reference_data/**` and `/docs/**`.
+  - `id` - stable capability id (e.g. `core.graph`, `ui.canvas2d`).
+  - `category` - `core`, `ui`, `world`, `network`, `state`, `persistence`, ….
+  - `purpose` - short description.
+  - `files` - VFS files that participate.
+  - `hooks` - expected exported functions on the workspace side.
+  - `adapters` - runtime modules on the host side (main game / engine).
+  - `references` - where to look under `reference_data/**` and `/docs/**`.
 
 In this repo copy, most adapters are **thin wrappers around reference_data engines/libraries**:
 
@@ -163,19 +163,19 @@ In this repo copy, most adapters are **thin wrappers around reference_data engin
     - Hook loader + timeout guard: `ai-roomchat/lib/runtime/safeEvalHookModule.js`
     - Prompt graph helpers: `ai-roomchat/lib/runtime/promptRunner.js`
     - References:
-      - `reference_data/javascript-state-machine-master*/` – state machine patterns
+      - `reference_data/javascript-state-machine-master*/` - state machine patterns
       - `reference_data/jssm-master/`, `reference_data/stateless.js-master/`
 - `ui.text`
   - Adapter surface: `ui.text.overlay` (MainGameMobileUI)
     - Implementation: `ai-roomchat/components/game/MainGameMobileUI.jsx`
     - Feeds on `system:message` events from the core runtime via `runtimeBus`.
     - References:
-      - `reference_data/chat-master/` – text/chat UI patterns
-      - `docs/STATE_AND_TURNS.md` – text turn flow
+      - `reference_data/chat-master/` - text/chat UI patterns
+      - `docs/STATE_AND_TURNS.md` - text turn flow
 - `ui.canvas2d`
   - Adapter module: `ai-roomchat/lib/runtime/adapters/rendererCanvas2D.js`
-    - `attachCanvas2D(canvas, options)` → `{ draw(state), resize(w,h), dispose() }`
-    - Intended to be the shared 2D “surface” for capabilities like `world.grid.tilemap`.
+    - `attachCanvas2D(canvas, options)` - `{ draw(state), resize(w,h), dispose() }`
+    - Intended to be the shared 2D "surface" for capabilities like `world.grid.tilemap`.
     - References (rendering engines):
       - `reference_data/phaser-master/`
       - `reference_data/pixijs-dev/`
@@ -191,8 +191,8 @@ In this repo copy, most adapters are **thin wrappers around reference_data engin
 - `network.realtime`
   - Adapter manager: `ai-roomchat/lib/runtime/adapterManager.js`
     - Networking:
-      - `netSocketIO` → `ai-roomchat/lib/runtime/adapters/netSocketIO.js` (references `reference_data/socket.io-main/`)
-      - `netColyseus` → `ai-roomchat/lib/runtime/adapters/netColyseus.js` (references `reference_data/colyseus-master/`)
+      - `netSocketIO` - `ai-roomchat/lib/runtime/adapters/netSocketIO.js` (references `reference_data/socket.io-main/`)
+      - `netColyseus` - `ai-roomchat/lib/runtime/adapters/netColyseus.js` (references `reference_data/colyseus-master/`)
     - Matchmaking / room management (planned):
       - References: `reference_data/open-match2-main/`, `docs/matchmaking-schema-reference.md`
 - `crdt.yjs`
@@ -227,28 +227,28 @@ Later, capabilities will also be **per-set config** (e.g. `meta.capabilities` or
 
 ### 4.3 Extensions
 
-- Extensions are “optional editor helpers” (AI tools, utilities).
+- Extensions are "optional editor helpers" (AI tools, utilities).
 - Stored under `meta.extensions` on the workspace set.
 - Managed by:
   - `ai-roomchat/lib/workspace/extensionsMeta.js` (load/save helpers).
   - `ExtensionsHost` / `ExtensionInstallModal`:
-    - Drive the “Extensions” dropdown and modal.
+    - Drive the "Extensions" dropdown and modal.
     - Keep the extension list in sync with `meta.extensions`.
 
 Extensions and capabilities are related but distinct:
 
-- Capabilities → **what the set can do at runtime**.
-- Extensions → **what tools the editor provides while authoring the set**.
+- Capabilities - **what the set can do at runtime**.
+- Extensions - **what tools the editor provides while authoring the set**.
 
 ### 4.4 Per-set capabilities meta
 
 - Selected capabilities for a set are stored under `meta.capabilities`.
 - Helpers:
   - `ai-roomchat/lib/workspace/capabilitiesMeta.js`
-    - `loadCapabilitiesMeta(id)` → `{ capabilities }`.
-    - `saveCapabilitiesMeta(id, capabilities)` → PATCH `meta.capabilities` only.
+    - `loadCapabilitiesMeta(id)` - `{ capabilities }`.
+    - `saveCapabilitiesMeta(id, capabilities)` - PATCH `meta.capabilities` only.
 - UI:
-  - `ExtensionInstallModal` includes a “Game Capabilities” section:
+  - `ExtensionInstallModal` includes a "Game Capabilities" section:
     - Lists contracts from `GET /api/runtime/capability-contracts`.
     - Lets authors toggle capability ids (core/ui/world/network/state/persistence).
     - Saves selections immediately into `meta.capabilities` for the current set.
@@ -257,12 +257,12 @@ Extensions and capabilities are related but distinct:
 
 - File-based validation helper:
   - `ai-roomchat/lib/workspace/validateCapabilities.js`
-    - `buildFilesIndex(files)` – normalizes array/map into path → meta map.
-    - `validateCapabilities({ files, contracts, selectedIds })` – returns issues for:
+    - `buildFilesIndex(files)` - normalizes array/map into path - meta map.
+    - `validateCapabilities({ files, contracts, selectedIds })` - returns issues for:
       - unknown capability ids,
       - missing required files per capability.
 - This is intended for:
-  - Editor-side checks (“To use this capability, you also need these files” warnings),
+  - Editor-side checks ("To use this capability, you also need these files" warnings),
   - Future CI/lint-style validation of workspace sets.
 
 ---
@@ -273,10 +273,10 @@ The Play overlay takes the current workspace files and runs a game instance.
 
 Conceptually it uses:
 
-- `core.graph` (`/graph/prompt-graph.json`) – the flow.
-- `core.runtimeConfig` (`/game/runtime.config.json`) – entry, roles, turn logic.
-- `core.hooks` (`/game/hooks/automation.js`) – custom logic hooks.
-- UI capabilities (`ui.text`, `ui.canvas2d`, etc.) – how to render.
+- `core.graph` (`/graph/prompt-graph.json`) - the flow.
+- `core.runtimeConfig` (`/game/runtime.config.json`) - entry, roles, turn logic.
+- `core.hooks` (`/game/hooks/automation.js`) - custom logic hooks.
+- UI capabilities (`ui.text`, `ui.canvas2d`, etc.) - how to render.
 - Optional world / network / persistence capabilities.
 
 Implementation lives roughly in:
@@ -300,11 +300,11 @@ In this copy, a minimal core runtime (`ai-roomchat/lib/runtime/coreRuntime.js`) 
 - For each active node:
   - Builds a `HookContext` with shared `variables` and calls `hooks.transformPrompt(ctx)` when it is defined.
     If that hook returns a value with a `prompt` field, the runtime uses that `prompt` string.
-    If there is no `transformPrompt` hook, it falls back to the node’s `label` or `id`.
+    If there is no `transformPrompt` hook, it falls back to the node's `label` or `id`.
   - That text is then published as a `system:message` event to `runtimeBus`, and `MainGameMobileUI`
-    displays it in the “AI Game Chat” panel.
-  - `turn:next` → advances via `reason: 'auto'`.
-  - `player:chat` → advances via `reason: 'user_action'`, passing the player's input text as `input`
+    displays it in the "AI Game Chat" panel.
+  - `turn:next` - advances via `reason: 'auto'`.
+  - `player:chat` - advances via `reason: 'user_action'`, passing the player's input text as `input`
     and using `onUserAction / selectNext` hooks to choose the next node.
 
 Optional adapters (networking / CRDT sync) are initialized based on the selected capabilities:
@@ -339,18 +339,18 @@ With this setup, the Play overlay:
 ## 6. Philosophy / guardrails
 
 1. **Structure first, bugfix second.**  
-   When behavior is wrong, fix it by aligning to this model (store → provider → editor → runtime), not by sprinkling local patches.
+   When behavior is wrong, fix it by aligning to this model (store - provider - editor - runtime), not by sprinkling local patches.
 
 2. **One source of truth per concern.**
-   - Text state → document store.
-   - UI state (tabs, `entryPath`) → workspace provider.
-   - Capabilities / extensions → workspace meta.
-   - Runtime behavior → capability adapters.
+   - Text state - document store.
+   - UI state (tabs, `entryPath`) - workspace provider.
+   - Capabilities / extensions - workspace meta.
+   - Runtime behavior - capability adapters.
 
 3. **Explicit sync boundaries.**
    - Realtime / template sync / service worker reloads must flow through the document store API (`rehydrateFromServer`, etc.), never bypass it.
 
-4. **Make it possible to build “almost any game”.**  
+4. **Make it possible to build "almost any game".**  
    Capabilities are the contract surface: combinable building blocks that any engine/test can rely on.
 
 ---
@@ -369,15 +369,15 @@ This repo copy has the following pieces already wired:
     - Uses `transformPrompt(ctx)` (if provided) to compute text, publishes it as `system:message` to the runtime bus.
     - `turn:next` / `player:chat` events drive `step({ reason:'auto'|'user_action', input })`.
   - Optional adapters are selected based on `meta.capabilities`:
-    - `network.realtime` + `/game/network.config.json` → `adapterManager.initAdapters({ networking }, onEvent)` initializes `net` (Socket.IO / Colyseus skeleton).
-    - `crdt.yjs` → `initAdapters({ sync: { id: 'yjs' } }, onEvent)` attaches a shared `Y.Doc` via the sync adapter.
+    - `network.realtime` + `/game/network.config.json` - `adapterManager.initAdapters({ networking }, onEvent)` initializes `net` (Socket.IO / Colyseus skeleton).
+    - `crdt.yjs` - `initAdapters({ sync: { id: 'yjs' } }, onEvent)` attaches a shared `Y.Doc` via the sync adapter.
 - Capabilities / docs
   - All core capabilities (`core.graph`, `core.runtimeConfig`, `core.hooks`, `ui.text`, `ui.canvas2d`, `world.grid.tilemap`, `network.realtime`, `crdt.yjs`, `persistence.supabase`) have:
     - A static contract in `lib/runtime/capabilityContracts.js`.
     - A detailed spec under `docs/capabilities/*.md` with workspace files, hooks, adapter names, and `reference_data/**` mappings.
-  - `AI_GAME_PROMPTS.md` includes guidance for AI assistants to treat these as installable “features” (via `meta.capabilities`), not arbitrary file edits.
+  - `AI_GAME_PROMPTS.md` includes guidance for AI assistants to treat these as installable "features" (via `meta.capabilities`), not arbitrary file edits.
 
-This means the structural contract (store → provider → editor → runtime → adapters) is in place, and new features can be added by defining a capability + adapter + example set rather than changing the foundations.
+This means the structural contract (store - provider - editor - runtime - adapters) is in place, and new features can be added by defining a capability + adapter + example set rather than changing the foundations.
 
 ---
 
@@ -414,7 +414,7 @@ If Git prints an error related to `.git/index.lock`:
 - First check whether any other terminal/IDE is currently running Git commands and close them.
 - If the issue persists, **make sure all processes using this repo are stopped**, then:
   - Delete the `.git/index.lock` file, and
-  - Re-run steps 3–5 above.
+  - Re-run steps 3-5 above.
 
 ---
 
@@ -505,7 +505,7 @@ Reproduce the moment when the cursor jumps or the content rolls back after save.
 
 At that moment, inspect the console for:
 
-EditorPane or EditorMonaco(flat) unmount → mount pairs in a short timespan.
+EditorPane or EditorMonaco(flat) unmount - mount pairs in a short timespan.
 
 If they appear, a component remount actually happened then.
 
@@ -554,19 +554,19 @@ On save, confirm in the console:
 Whether Workspace/EditorPane unmount/mount events happen immediately before/after that.
 
 Whether EditorMonaco(flat) external apply logs show text lengths
-that match “initial snapshot length” (indicating that old content is overwriting the buffer).
+that match "initial snapshot length" (indicating that old content is overwriting the buffer).
 
 Using these logs, we can narrow down:
 
-“When is the remount happening?” (auth token refresh, overlay toggle, post-save reload, etc.)
+"When is the remount happening?" (auth token refresh, overlay toggle, post-save reload, etc.)
 
-“Which layer is rolling state back?” (draft vs snapshot vs server response)
+"Which layer is rolling state back?" (draft vs snapshot vs server response)
 
 If you capture a reproduction plus the logs/inspections above and share them, we can then directly patch the specific layer that is causing the rollback/remount behavior.
 
 ---
 
-## 10. Capabilities → Play overlay mapping
+## 10. Capabilities - Play overlay mapping
 
 This section connects abstract capabilities to what the Maker Play overlay actually does today.
 
@@ -585,10 +585,10 @@ Files and roles:
 
 Runtime wiring:
 - `PlayOverlayContent` constructs a minimal runtime bus:
-  - UI → runtime:
-    - `player:chat { text }` → `runtime.step({ reason: 'user_action', input: text })`.
-    - `turn:next {}` → `runtime.step({ reason: 'auto' })`.
-  - Runtime → UI:
+  - UI - runtime:
+    - `player:chat { text }` - `runtime.step({ reason: 'user_action', input: text })`.
+    - `turn:next {}` - `runtime.step({ reason: 'auto' })`.
+  - Runtime - UI:
     - `createCoreRuntime` returns `{ current, prompt, ui, variables }`.
     - `PlayOverlayContent` converts this into a `system:message` string and emits it on the bus.
     - `MainGameMobileUI` subscribes to `system:message` and renders it as the main text chat/game feed.
@@ -609,8 +609,8 @@ Files and roles:
 Capability gating and adapter selection:
 - `PlayOverlayContent` reads `meta.capabilities` using `loadCapabilitiesMeta(storageNamespace || id)`:
   - If `meta.capabilities` contains `network.realtime`, it tries to build a `networking` adapter config:
-    - If `engine` looks like Socket.IO → `{ id: 'socketio', url, token }`.
-    - If `engine` looks like Colyseus → `{ id: 'colyseus', url, token }`.
+    - If `engine` looks like Socket.IO - `{ id: 'socketio', url, token }`.
+    - If `engine` looks like Colyseus - `{ id: 'colyseus', url, token }`.
   - It calls `initAdapters({ networking }, onEvent)` from `lib/runtime/adapterManager.js`.
   - The returned `adapters.network` instance is stored in component state (`netAdapters`).
 
@@ -630,7 +630,7 @@ Fallback behaviour:
 ### 10.3 CRDT / shared state (`crdt.yjs`)
 
 Files and roles:
-- No mandatory file yet; the capability is treated as “this set wants shared document state”.
+- No mandatory file yet; the capability is treated as "this set wants shared document state".
 - Future versions may formalize `/state/shared.yjs.json` (or similar) as the meta-descriptor.
 
 Capability gating and adapter selection:
@@ -677,7 +677,7 @@ The core text runtime can be treated as a single installable feature composed of
 
 - `/graph/prompt-graph.json`
   - Prompt-graph entry with a clear entry node (for example `start`).
-  - A minimal example might be a two or three node graph: `start → choice → end`.
+  - A minimal example might be a two or three node graph: `start - choice - end`.
 
 - `/game/runtime.config.json`
   - Declares that the engine is builtin and that this is a turn-based text runtime. Example:
@@ -714,4 +714,72 @@ The core text runtime can be treated as a single installable feature composed of
   - Subscribes to `system:message` on the runtime bus.
   - Renders each message into the text game/chat area, using the template to place the log and input controls.
 
-With this minimal set present and the capabilities above selected, a workspace set can act as a “pure text game runtime” with no additional adapters required.
+With this minimal set present and the capabilities above selected, a workspace set can act as a "pure text game runtime" with no additional adapters required.
+
+---
+
+## 11. Extensions: planned GitHub sync and AI web helpers
+
+This section outlines planned work around extensions that live on top of the workspace/runtime contracts.
+
+### 11.1 GitHub sync panel (`github-sync`)
+
+- Goal:
+  - Keep "save" (workspace_sets) and "Git commit/push" clearly separated.
+  - Make Git operations a conscious action inside the GitHub extension, not an implicit side effect of saving.
+
+- Location:
+  - Implemented as a panel under the `github-sync` extension.
+  - Triggered from the Extensions dropdown when `github-sync` is installed.
+
+- Behaviour:
+  - Reads the linked repository from metadata:
+    - Initially, `gh.repo` in `localStorage` stores `{ owner, repo, branch }`.
+    - Future work: promote this into `meta.github = { owner, repo, branch }` on the workspace set, so it persists across browsers/sessions.
+  - The panel shows:
+    - Current GitHub repo/branch (`owner/repo:branch`).
+    - A textarea for commit message.
+    - A `Commit & Push` button.
+  - When `Commit & Push` is clicked:
+    - Fetches the current workspace files snapshot (`filesForSave` via `CodeWorkspaceProvider`).
+    - Calls a dedicated GitHub commit API endpoint (planned: `/api/github/commit`) which:
+      - Creates/updates files in the linked repo/branch.
+      - Creates a Git commit with the provided message.
+      - Returns commit metadata (for example SHA and HTML URL).
+    - The panel then shows a short result:
+      - "Committed to owner/repo@branch" plus a "View on GitHub" link.
+
+- Notes:
+  - Errors from GitHub (permissions, branch protection, conflicts) are surfaced in the GitHub panel, not as generic editor errors.
+  - This keeps the main editor UX focused on workspace saves, while Git operations stay scoped to the `github-sync` extension.
+
+### 11.2 AI web helpers (`codex-web`, `copilot-web`)
+
+- Built-in extensions:
+  - `codex-web`:
+    - Adds a button in the editor Extensions dropdown or AI code chat panel.
+    - When clicked, opens Codex Web in a new tab, using the current workspace context:
+      - Base URL: `https://platform.openai.com/codex` (or similar).
+      - Query params:
+        - `repo`: `${owner}/${repo}` (if linked).
+        - `branch`: current branch (if known).
+        - `workspaceId`: current workspace set id (`storageNamespace`).
+  - `copilot-web`:
+    - Mirrors the same pattern for GitHub Copilot or similar web assistants.
+    - Opens the provider's web UI in a new tab with minimal context.
+
+- Installation and config:
+  - Managed via `ExtensionInstallModal` like other extensions.
+  - Stored under `meta.extensions` with optional config:
+    - Provider preference.
+    - Per-workspace defaults (for example, which repo/branch to treat as primary).
+
+- Behaviour:
+  - These extensions do not write files directly.
+  - They act as external web helpers that:
+    - Receive context (repo/branch/workspace id),
+    - Help the user generate or review code,
+    - Optionally feed results back into the workspace via AI code chat or manual copy/paste.
+  - Future work may allow them to propose structured changes that the AI code chat executes via actions (for example, an `apply_patch` action generated by Codex Web).
+
+These planned extensions sit on top of the existing workspace/runtime/editor contracts, so they can evolve independently without changing the core model.

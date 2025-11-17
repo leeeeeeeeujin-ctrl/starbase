@@ -340,9 +340,170 @@ function PlayOverlayContent({ templateBinding }) {
         ) : null}
       </div>
     ) : null;
+    const handleGitSyncClose = () => {
+      setShowGitSync(false);
+      setGitSyncStatus('');
+      setGitSyncRunning(false);
+    };
+
+    const handleGitSyncCommit = async () => {
+      if (!gitSyncExtension || gitSyncRunning) return;
+      const cfgExt = gitSyncExtension.config || {};
+      const owner = cfgExt.owner || '';
+      const repo = cfgExt.repo || '';
+      const branch = cfgExt.branch || 'main';
+      if (!owner || !repo) {
+        alert('GitHub 레포 정보(owner/repo)가 설정되지 않았습니다. 확장 설정에서 먼저 연결해 주세요.');
+        return;
+      }
+      const message = (gitSyncMessage || '').trim() || 'Update from Starbase workspace';
+      const workspaceId = storageNamespace || (router?.query?.id ? String(router.query.id) : '');
+      if (!workspaceId) {
+        alert('워크스페이스 id를 알 수 없어 Git Sync를 실행할 수 없습니다.');
+        return;
+      }
+      const fileList = Object.entries(filesForSave || {}).map(([path, meta]) => ({
+        path,
+        content: String(meta?.content ?? ''),
+      }));
+      setGitSyncRunning(true);
+      setGitSyncStatus('');
+      try {
+        const res = await fetch('/api/github/commit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            owner,
+            repo,
+            branch,
+            message,
+            workspaceId,
+            files: fileList,
+          }),
+        });
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data?.ok) {
+          const errMsg = data?.error || res.statusText || String(res.status);
+          setGitSyncStatus(`Commit failed: ${errMsg}`);
+          alert(`GitHub Commit & Push 실패: ${errMsg}`);
+          return;
+        }
+        const infoParts = [];
+        if (data.commitSha) infoParts.push(`commit ${data.commitSha}`);
+        if (data.htmlUrl) infoParts.push(data.htmlUrl);
+        const msg = infoParts.length
+          ? `Committed to ${owner}/${repo}@${branch} (${infoParts.join(' ')})`
+          : `Committed to ${owner}/${repo}@${branch}`;
+        setGitSyncStatus(msg);
+        alert(msg);
+      } catch (e) {
+        const errMsg = String(e?.message || e);
+        setGitSyncStatus(`Commit failed: ${errMsg}`);
+        alert(`GitHub Commit & Push 실패: ${errMsg}`);
+      } finally {
+        setGitSyncRunning(false);
+      }
+    };
+
     return (
       <div style={{ position:'relative', height:'100%', width:'100%' }}>
         {banner}
+        {showGitSync && gitSyncExtension ? (
+          <div
+            style={{
+              position: 'absolute',
+              top: 16,
+              right: 16,
+              width: 320,
+              maxHeight: '80%',
+              overflow: 'auto',
+              borderRadius: 12,
+              border: '1px solid #1f2937',
+              background: '#020617',
+              padding: 12,
+              zIndex: 40,
+              boxShadow: '0 16px 40px rgba(0,0,0,0.6)',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 8,
+              }}
+            >
+              <div style={{ fontWeight: 600, fontSize: 14, color: '#e5e7eb' }}>GitHub Sync</div>
+              <button
+                type="button"
+                onClick={handleGitSyncClose}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  color: '#9ca3af',
+                  cursor: 'pointer',
+                  fontSize: 16,
+                }}
+              >
+                ×
+              </button>
+            </div>
+            <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 6 }}>
+              {(() => {
+                const cfgExt = gitSyncExtension.config || {};
+                const owner = cfgExt.owner || '';
+                const repo = cfgExt.repo || '';
+                const branch = cfgExt.branch || 'main';
+                if (!owner || !repo) return '확장 설정에서 GitHub 레포를 먼저 연결해 주세요.';
+                return `Target: ${owner}/${repo}@${branch}`;
+              })()}
+            </div>
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 12, color: '#e5e7eb', marginBottom: 4 }}>Commit message</div>
+              <textarea
+                value={gitSyncMessage}
+                onChange={(e) => setGitSyncMessage(e.target.value)}
+                rows={3}
+                style={{
+                  width: '100%',
+                  borderRadius: 8,
+                  border: '1px solid #334155',
+                  background: '#020617',
+                  color: '#e5e7eb',
+                  fontSize: 12,
+                  padding: 6,
+                  resize: 'vertical',
+                }}
+                placeholder="예: Fix prompt graph for level 1"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={handleGitSyncCommit}
+              disabled={gitSyncRunning}
+              style={{
+                width: '100%',
+                borderRadius: 8,
+                border: '1px solid #2563eb',
+                background: gitSyncRunning ? '#1d4ed8' : '#1d4ed8',
+                color: '#e5e7eb',
+                padding: '6px 10px',
+                fontSize: 13,
+                cursor: gitSyncRunning ? 'default' : 'pointer',
+                marginBottom: 6,
+              }}
+            >
+              {gitSyncRunning ? 'Committing...' : 'Commit & Push'}
+            </button>
+            {gitSyncStatus ? (
+              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>{gitSyncStatus}</div>
+            ) : (
+              <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>
+                현재 워크스페이스 파일을 선택된 GitHub 레포/브랜치에 하나의 스냅샷으로 커밋합니다.
+              </div>
+            )}
+          </div>
+        ) : null}
         <ErrorBoundary onRetry={() => { try { window.dispatchEvent(new Event('play:retry')); } catch {} }}>
           <MainGameMobileUI template={tpl} runtimeConfig={cfg} runtimeBus={bus} />
         </ErrorBoundary>
@@ -713,6 +874,11 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
     const { root, normalizeDir, open, createFile, createFolder, rename, remove, filesForSave, activePath, writeFile, entryPath, setEntryPath, openPaths, isDirty, saveAll, storageNamespace } = useWorkspace();
     const [saving, setSaving] = useState(false);
     const [installedExtensions, setInstalledExtensions] = useState([]);
+    const [showGitSync, setShowGitSync] = useState(false);
+    const [gitSyncExtension, setGitSyncExtension] = useState(null);
+    const [gitSyncMessage, setGitSyncMessage] = useState('');
+    const [gitSyncStatus, setGitSyncStatus] = useState('');
+    const [gitSyncRunning, setGitSyncRunning] = useState(false);
 
     useEffect(() => {
       if (!storageNamespace) return;
@@ -915,18 +1081,21 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
                                   if (storageNamespace) {
                                     u.searchParams.set('workspaceId', storageNamespace);
                                   }
-                                  url = u.toString();
-                                } catch {
-                                  // ignore URL errors, fall back to base URL
-                                }
-                                window.open(url, '_blank', 'noopener,noreferrer');
-                              } else {
-                                window.dispatchEvent(
-                                  new CustomEvent('workspace:extension-launch', {
-                                    detail: { workspaceId: storageNamespace || null, extension: ext },
-                                  }),
-                                );
-                              }
+                                   url = u.toString();
+                                 } catch {
+                                   // ignore URL errors, fall back to base URL
+                                 }
+                                 window.open(url, '_blank', 'noopener,noreferrer');
+                               } else if (ext.id === 'github-sync') {
+                                 setGitSyncExtension(ext);
+                                 setShowGitSync(true);
+                               } else {
+                                 window.dispatchEvent(
+                                   new CustomEvent('workspace:extension-launch', {
+                                     detail: { workspaceId: storageNamespace || null, extension: ext },
+                                   }),
+                                 );
+                               }
                             }
                           } catch {
                             // ignore launch errors
