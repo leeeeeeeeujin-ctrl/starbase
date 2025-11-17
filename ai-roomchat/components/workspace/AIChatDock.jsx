@@ -725,10 +725,37 @@ export default function AIChatDock({ onClose }) {
 
       const rawText = extractGeminiText(data.data) || '';
       const structured = parseStructuredResponse(rawText);
+      const parseMode = structured?._parseMode || 'none';
       const assistantText = structured?.message || rawText || '(empty response)';
       const assistantEntry = { role: 'assistant', msg: assistantText };
       workingLogs.push(assistantEntry);
       append('assistant', assistantText);
+
+      // 파싱 결과가 스키마와 완전히 맞지 않는 경우에는
+      // 작업을 자동 실행하지 않고 경고만 남깁니다.
+      if (parseMode === 'salvaged') {
+        const salvagedCount = Array.isArray(structured?.actions) ? structured.actions.length : 0;
+        const warning =
+          salvagedCount > 0
+            ? 'AI 응답에서 JSON 블록을 일부 복구했지만, 지정된 스키마와 완전히 일치하지 않아 자동 실행하지 않았습니다. ' +
+              '응답에 포함된 작업 내용을 검토한 뒤 필요하면 직접 실행해 주세요.'
+            : 'AI 응답이 JSON 형식에 가깝지만 지정된 스키마와 맞지 않아 작업을 실행하지 않았습니다. ' +
+              '필요하면 올바른 JSON 한 개만 다시 보내 주세요.';
+        workingLogs.push({ role: 'system', msg: warning });
+        append('system', warning);
+        return;
+      }
+
+      if (!Array.isArray(structured?.actions) || !structured.actions.length) {
+        if (parseMode === 'none') {
+          const warning =
+            'AI 응답이 지정된 JSON 스키마에 맞지 않아 작업(action)을 실행하지 않았습니다. ' +
+            '필요하면 응답 내용을 확인한 뒤, 올바른 JSON 한 개만 다시 보내 주세요.';
+          workingLogs.push({ role: 'system', msg: warning });
+          append('system', warning);
+        }
+        return;
+      }
 
       const normalizedActions = Array.isArray(structured?.actions) ? structured.actions : [];
       const canAutoRun = allowActions && chatOptions.trustEnabled && actionBudget > 0;
@@ -2174,13 +2201,61 @@ function extractGeminiText(payload) {
 function parseStructuredResponse(text) {
   if (!text) return null;
   const trimmed = text.trim();
-  const match = trimmed.match(/```(?:json)?([\s\S]+?)```/i);
-  const target = match ? match[1] : trimmed;
-  try {
-    return JSON.parse(target);
-  } catch {
-    return { message: trimmed };
+
+  const tryParse = (candidate, mode) => {
+    if (!candidate) return null;
+    try {
+      const parsed = JSON.parse(candidate);
+      if (!parsed || typeof parsed !== 'object') {
+        return null;
+      }
+      const result = {
+        _parseMode: mode,
+      };
+      if (typeof parsed.message === 'string') {
+        result.message = parsed.message;
+      }
+      if (Array.isArray(parsed.actions)) {
+        result.actions = parsed.actions;
+      }
+      if (typeof parsed.followup === 'string') {
+        result.followup = parsed.followup;
+      }
+      if (!result.message) {
+        result.message = trimmed;
+      }
+      return result;
+    } catch {
+      return null;
+    }
+  };
+
+  // 1) 전체 문자열이 순수 JSON인 경우 먼저 시도
+  const strict = tryParse(trimmed, 'strict');
+  if (strict) return strict;
+
+  // 2) ```json ... ``` 코드 블록 안에서 JSON 추출
+  const blockMatch = trimmed.match(/```(?:json)?([\s\S]+?)```/i);
+  if (blockMatch) {
+    const inner = blockMatch[1]?.trim();
+    const fromBlock = tryParse(inner, 'code-block');
+    if (fromBlock) return fromBlock;
   }
+
+  // 3) 텍스트 안에서 { ... } 블록 하나를 찾아 복구 시도
+  const firstBrace = trimmed.indexOf('{');
+  const lastBrace = trimmed.lastIndexOf('}');
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    const candidate = trimmed.slice(firstBrace, lastBrace + 1);
+    const salvaged = tryParse(candidate, 'salvaged');
+    if (salvaged) return salvaged;
+  }
+
+  // 4) 어떤 형태로든 JSON을 뽑아내지 못한 경우: 순수 메시지로 취급
+  return {
+    message: trimmed,
+    _parseMode: 'none',
+  };
 }
 
 // --- Memory helpers ---

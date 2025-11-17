@@ -53,5 +53,6 @@ When the AI is helping inside the Maker workspace editor, it should treat “run
   2. Ask for explicit user confirmation before applying changes.
   3. Prefer using existing contracts (capabilities) instead of inventing new layouts.
   4. Record chosen capabilities under `meta.capabilities` via the workspace API, not by writing ad‑hoc JSON files.
+  5. Return a single JSON object that matches the requested schema; if the response is not valid JSON, the system treats it as plain text and will not execute any actions.
 
 This keeps AI‑driven changes aligned with the workspace/runtime contracts and makes it easy to inspect or roll back feature installations.
