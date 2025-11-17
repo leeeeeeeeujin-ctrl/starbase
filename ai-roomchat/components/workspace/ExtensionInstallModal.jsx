@@ -29,15 +29,11 @@ export default function ExtensionInstallModal({
   error = null,
   onChangeExtensions,
 }) {
-  const [ghToken, setGhToken] = useState('');
   const [owner, setOwner] = useState('');
   const [repo, setRepo] = useState('');
   const [branch, setBranch] = useState('main');
   const [connected, setConnected] = useState(false);
   const [events, setEvents] = useState([]);
-  const [githubUser, setGithubUser] = useState(null);
-  const [checkingUser, setCheckingUser] = useState(false);
-  const [userError, setUserError] = useState(null);
   const [capabilities, setCapabilities] = useState([]);
   const [selectedCaps, setSelectedCaps] = useState([]);
   const [capIssues, setCapIssues] = useState(null);
@@ -115,74 +111,16 @@ export default function ExtensionInstallModal({
   useEffect(() => {
     if (!open) return;
     try {
-      const t = localStorage.getItem('gh.token') || '';
-      setGhToken(t);
       const link = JSON.parse(localStorage.getItem('gh.repo') || 'null');
       if (link) {
         setOwner(link.owner || '');
         setRepo(link.repo || '');
         setBranch(link.branch || 'main');
       }
-      const savedUser = JSON.parse(localStorage.getItem('gh.user') || 'null');
-      if (savedUser && savedUser.login) {
-        setGithubUser(savedUser);
-      } else {
-        setGithubUser(null);
-      }
     } catch {
       // ignore localStorage errors
     }
   }, [open]);
-
-  function saveToken() {
-    try {
-      localStorage.setItem('gh.token', ghToken.trim());
-      alert('GitHub 토큰이 로컬에 저장되었습니다.');
-    } catch {}
-  }
-
-  async function verifyToken() {
-    const token = ghToken.trim();
-    if (!token) {
-      setUserError('토큰을 먼저 입력해 주세요.');
-      return;
-    }
-    setCheckingUser(true);
-    setUserError(null);
-    try {
-      const res = await fetch('https://api.github.com/user', {
-        headers: {
-          Authorization: `token ${token}`,
-          Accept: 'application/vnd.github+json',
-        },
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        const msg = body?.message || `GitHub 인증 실패 (HTTP ${res.status})`;
-        setUserError(msg);
-        setGithubUser(null);
-        return;
-      }
-      const data = await res.json();
-      const user = {
-        login: data.login,
-        avatar_url: data.avatar_url,
-        html_url: data.html_url,
-        name: data.name,
-      };
-      setGithubUser(user);
-      try {
-        localStorage.setItem('gh.user', JSON.stringify(user));
-      } catch {
-        // ignore storage errors
-      }
-    } catch (err) {
-      setUserError(err?.message || 'GitHub 사용자 정보를 가져오지 못했습니다.');
-      setGithubUser(null);
-    } finally {
-      setCheckingUser(false);
-    }
-  }
 
   function saveRepo() {
     try {
@@ -287,25 +225,10 @@ export default function ExtensionInstallModal({
         <div style={styles.section}>
           <div style={styles.sectionTitle}>1) GitHub 연결 (웹 로그인 권장)</div>
           <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 6 }}>
-            일반적으로는 아래 확장 설치만 사용해도 됩니다. 필요하다면 GitHub 웹에서 먼저 로그인하고,
-            고급 옵션으로 PAT를 입력해 레포와 연동할 수 있습니다.
+            일반적으로는 아래 확장 설치만 사용해도 됩니다. 필요하다면 GitHub 웹에서 먼저 로그인한 뒤,
+            이 워크스페이스에서 사용할 레포(owner/repo/branch)만 지정해 주세요.
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <input
-              type="password"
-              placeholder="Personal Access Token (repo 권한)"
-              value={ghToken}
-              onChange={(e) => setGhToken(e.target.value)}
-              style={{ ...styles.input, marginRight: 0, flex: 1 }}
-            />
-            <button style={styles.btn} onClick={saveToken}>토큰 저장</button>
-            <button
-              style={styles.btn}
-              onClick={verifyToken}
-              disabled={checkingUser}
-            >
-              {checkingUser ? '확인 중…' : '로그인 확인'}
-            </button>
             <button
               style={styles.btn}
               type="button"
@@ -314,19 +237,6 @@ export default function ExtensionInstallModal({
               GitHub 웹 열기
             </button>
           </div>
-          <div style={{ fontSize: 12, color: '#9ca3af' }}>
-            {githubUser ? (
-              <>
-                GitHub 로그인: <strong>@{githubUser.login}</strong>
-                {githubUser.name ? ` (${githubUser.name})` : ''}
-              </>
-            ) : (
-              '아직 GitHub 로그인 정보가 확인되지 않았습니다.'
-            )}
-          </div>
-          {userError ? (
-            <div style={{ marginTop: 4, fontSize: 12, color: '#f97316' }}>{userError}</div>
-          ) : null}
         </div>
 
         <div style={styles.section}>
