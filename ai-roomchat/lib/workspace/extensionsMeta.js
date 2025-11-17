@@ -52,3 +52,40 @@ export async function saveExtensionsMeta(id, extensions) {
   return body;
 }
 
+/**
+ * Persist GitHub repository link metadata for a given workspace set id.
+ * Stored under `meta.github = { owner, repo, branch }`.
+ * Uses PATCH to merge into existing `meta` without touching files.
+ */
+export async function saveGithubMeta(id, github) {
+  if (!id) throw new Error('saveGithubMeta: missing workspace id');
+
+  const token = await requireSupabaseAccessToken();
+  const headers = applySupabaseAccessToken({ 'Content-Type': 'application/json' }, token);
+
+  const safe = github || {};
+  const payload = {
+    meta: {
+      github: {
+        owner: String(safe.owner || '').trim(),
+        repo: String(safe.repo || '').trim(),
+        branch: String(safe.branch || 'main').trim(),
+      },
+    },
+  };
+
+  const res = await fetch(`/api/workspace/sets/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(body?.error || `saveGithubMeta failed (${res.status})`);
+    err.status = res.status;
+    throw err;
+  }
+
+  return body;
+}

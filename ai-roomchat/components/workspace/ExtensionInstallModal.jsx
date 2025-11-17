@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { validateCapabilities } from '../../lib/workspace/validateCapabilities.js';
 import { loadCapabilitiesMeta, saveCapabilitiesMeta } from '../../lib/workspace/capabilitiesMeta.js';
+import { saveGithubMeta } from '../../lib/workspace/extensionsMeta.js';
 
 const BUILTIN_EXTENSIONS = [
   {
@@ -32,7 +33,7 @@ export default function ExtensionInstallModal({
   const [owner, setOwner] = useState('');
   const [repo, setRepo] = useState('');
   const [branch, setBranch] = useState('main');
-   const [githubUser, setGithubUser] = useState(null);
+  const [githubUser, setGithubUser] = useState(null);
   const [connected, setConnected] = useState(false);
   const [events, setEvents] = useState([]);
   const [capabilities, setCapabilities] = useState([]);
@@ -325,20 +326,34 @@ export default function ExtensionInstallModal({
         alert(`레포 생성에 실패했습니다: ${data?.error || res.status}`);
         return;
       }
-      setOwner(data.owner || '');
-      setRepo(data.repo || '');
-      setBranch(data.branch || 'main');
+      const nextOwner = data.owner || '';
+      const nextRepo = data.repo || '';
+      const nextBranch = data.branch || 'main';
+      setOwner(nextOwner);
+      setRepo(nextRepo);
+      setBranch(nextBranch);
       try {
         localStorage.setItem(
           'gh.repo',
           JSON.stringify({
-            owner: data.owner || '',
-            repo: data.repo || '',
-            branch: data.branch || 'main',
+            owner: nextOwner,
+            repo: nextRepo,
+            branch: nextBranch,
           }),
         );
       } catch {
         // ignore localStorage errors
+      }
+      if (workspaceId) {
+        try {
+          await saveGithubMeta(workspaceId, {
+            owner: nextOwner,
+            repo: nextRepo,
+            branch: nextBranch,
+          });
+        } catch {
+          // ignore meta save errors here; user can retry via explicit save
+        }
       }
       if (data.htmlUrl) {
         // eslint-disable-next-line no-alert
@@ -390,20 +405,34 @@ export default function ExtensionInstallModal({
         return;
       }
       const chosen = data.repos[index];
-      setOwner(chosen.owner || '');
-      setRepo(chosen.repo || '');
-      setBranch(chosen.branch || 'main');
+      const nextOwner = chosen.owner || '';
+      const nextRepo = chosen.repo || '';
+      const nextBranch = chosen.branch || 'main';
+      setOwner(nextOwner);
+      setRepo(nextRepo);
+      setBranch(nextBranch);
       try {
         localStorage.setItem(
           'gh.repo',
           JSON.stringify({
-            owner: chosen.owner || '',
-            repo: chosen.repo || '',
-            branch: chosen.branch || 'main',
+            owner: nextOwner,
+            repo: nextRepo,
+            branch: nextBranch,
           }),
         );
       } catch {
         // ignore
+      }
+      if (workspaceId) {
+        try {
+          await saveGithubMeta(workspaceId, {
+            owner: nextOwner,
+            repo: nextRepo,
+            branch: nextBranch,
+          });
+        } catch {
+          // ignore meta save errors here; user can retry via explicit save
+        }
       }
     } catch {
       // eslint-disable-next-line no-alert
