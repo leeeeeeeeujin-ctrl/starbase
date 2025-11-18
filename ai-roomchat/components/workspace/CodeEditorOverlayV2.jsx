@@ -720,6 +720,7 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
     const [gitSyncMessage, setGitSyncMessage] = useState('');
     const [gitSyncStatus, setGitSyncStatus] = useState('');
     const [gitSyncRunning, setGitSyncRunning] = useState(false);
+    const [capCount, setCapCount] = useState(null);
     const sortedExtensions = useMemo(() => {
       if (!Array.isArray(installedExtensions)) return [];
       const copy = [...installedExtensions];
@@ -772,6 +773,27 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
           }
         } catch {
           // Extensions are optional; ignore load errors here.
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [storageNamespace]);
+
+    useEffect(() => {
+      if (!storageNamespace) {
+        setCapCount(null);
+        return;
+      }
+      let cancelled = false;
+      (async () => {
+        try {
+          const meta = await loadCapabilitiesMeta(storageNamespace).catch(() => null);
+          if (cancelled) return;
+          const caps = Array.isArray(meta?.capabilities) ? meta.capabilities : [];
+          setCapCount(caps.length);
+        } catch {
+          if (!cancelled) setCapCount(null);
         }
       })();
       return () => {
@@ -1148,6 +1170,11 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
           <ToolbarButton onClick={onSaveServer} title="저장" disabled={!id || saving}>{saving?'저장중…':'저장'}</ToolbarButton>
           <ToolbarButton onClick={requestClose} title="닫기">닫기</ToolbarButton>
           <div style={{ marginLeft:'auto', display:'flex', gap:8 }}>
+            {typeof capCount === 'number' && (
+              <span style={{ alignSelf:'center', fontSize:11, color:'#9ca3af' }}>
+                Caps: {capCount > 0 ? `${capCount}개 선택` : '선택 없음'}
+              </span>
+            )}
             <ToolbarButton onClick={() => setToolbarCollapsed(v=>!v)} active={toolbarCollapsed} title={toolbarCollapsed?'펼치기':'접기'}>{toolbarCollapsed?'펼치기':'접기'}</ToolbarButton>
           </div>
         </div>
