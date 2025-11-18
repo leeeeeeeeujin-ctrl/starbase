@@ -973,3 +973,45 @@ The AI code chat dock (`AIChatDock`) is functional but still has several UX item
     - Ensure scrollable regions inside the dock never initiate drag, even on small pointer movements.
 
 These items are tracked here as planned work so that AI/extension behaviour stays aligned with the workspace/editor contracts as the dock evolves.
+
+---
+
+## 14. Host app vs user workspace (planned architecture split)
+
+Longer term, the goal is to clearly separate:
+
+- **Host app / engine code**
+  - The `ai-roomchat/` source tree (editor, runtime, extensions, API routes, etc.).
+  - Deployed as a normal app; users do not edit this directly via AI actions.
+- **User workspace / sets**
+  - Workspace VFS (Supabase-backed `workspace_sets`, per‑set files such as `/template.json`, `/graph/prompt-graph.json`, `/game/**/*.json`, `/world/**/*.json`).
+  - AI actions (`read_file`, `write_file`, etc.) should primarily operate here.
+
+Current state (this repo copy):
+
+- AI action runner:
+  - Uses `lib/rank/actions.js` with a `BASE_ROOT` that defaults to the `ai-roomchat/` subdirectory when `WORKSPACE_ROOT` is not set.
+  - This is acceptable for development (engine + workspace in a single repo), but not ideal for a multi‑tenant production environment.
+- Workspace/editor/runtime:
+  - All live under `ai-roomchat/` and are designed to be host‑side code; they are not intended to be directly modified by end users in production.
+
+Planned changes:
+
+- Tighten the default sandbox:
+  - For production, set `WORKSPACE_ROOT` to a per‑user/per‑workspace VFS root (for example, a mounted workspace directory or a separate storage layer), not the app source tree.
+  - Add a path allowlist for read‑only access to a small set of host files:
+    - `ai-roomchat/docs/WORKSPACE_EDITOR_RUNTIME.md`
+    - `ai-roomchat/docs/capabilities/*.md`
+    - `ai-roomchat/docs/AI_GAME_PROMPTS.md`
+    - `ai-roomchat/lib/runtime/capabilityContracts.js` (and similar small “contract” modules)
+- Keep engine/host code out of AI write scope:
+  - Ensure `write_file`, `edit_patch`, `delete_file` and related actions cannot touch the host app source in production.
+  - Reserve host‑app edits for traditional Git workflows and trusted maintainers.
+
+Impact:
+
+- Most of the work done so far (editor, workspace provider, runtime core, capability contracts, extensions, AI dock) remains valid and reusable.
+- The architecture split mainly affects:
+  - Where AI actions are allowed to read/write.
+  - How the host app and user workspace storage are wired in deployment.
+- Estimated refactor scope is limited to the sandbox/action runner + boundary wiring, not a rewrite of the editor/runtime itself.
