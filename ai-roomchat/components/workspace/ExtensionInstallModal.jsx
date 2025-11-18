@@ -481,6 +481,8 @@ export default function ExtensionInstallModal({
             <input placeholder="branch" value={branch} onChange={(e) => setBranch(e.target.value)} style={styles.input} />
           </div>
           <button style={styles.btn} onClick={saveRepo}>연결 정보 저장</button>
+          <button style={styles.btn} onClick={handleCreateAndLinkRepo}>새 레포 생성 + 연동</button>
+          <button style={styles.btn} onClick={handlePickExistingRepo}>기존 레포 선택</button>
           <button style={styles.btn} onClick={connectEvents} disabled={connected}>SSE 연결(웹훅 수신)</button>
         </div>
 
