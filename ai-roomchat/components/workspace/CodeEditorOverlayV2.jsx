@@ -736,12 +736,35 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
     useEffect(() => {
       if (!storageNamespace) return;
       let cancelled = false;
+
+      // Fast path: use in-memory cache if present so the dropdown
+      // does not feel "empty" while the network request is in flight.
+      try {
+        if (typeof window !== 'undefined') {
+          const map = window.__workspaceExtensions || {};
+          const cached = map[storageNamespace];
+          if (Array.isArray(cached) && cached.length) {
+            setInstalledExtensions(cached);
+          }
+        }
+      } catch {
+        // ignore cache errors
+      }
+
       (async () => {
         try {
           const out = await loadExtensionsMeta(storageNamespace);
           if (cancelled) return;
           const list = Array.isArray(out?.extensions) ? out.extensions : [];
           setInstalledExtensions(list);
+          try {
+            if (typeof window !== 'undefined') {
+              const map = (window.__workspaceExtensions = window.__workspaceExtensions || {});
+              map[storageNamespace] = list;
+            }
+          } catch {
+            // ignore cache errors
+          }
           if (out && out.github && typeof out.github === 'object') {
             setGithubMeta(out.github);
           } else {
