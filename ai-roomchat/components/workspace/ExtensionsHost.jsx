@@ -95,6 +95,13 @@ export default function ExtensionsHost() {
     setError(null);
     try {
       await saveExtensionsMeta(workspaceId, nextList);
+    } catch (err) {
+      setError(err?.message || '확장 설정 저장에 실패했습니다.');
+      // keep local state but surface error; caller may choose to retry
+    } finally {
+      // Even if the server save fails, keep the client-side snapshot and
+      // notify other components so the toolbar can reflect the latest
+      // installed extensions in this session.
       try {
         if (typeof window !== 'undefined') {
           const map = (window.__workspaceExtensions = window.__workspaceExtensions || {});
@@ -109,10 +116,6 @@ export default function ExtensionsHost() {
       } catch {
         // ignore cross-window errors
       }
-    } catch (err) {
-      setError(err?.message || '확장 설정 저장에 실패했습니다.');
-      // keep local state but surface error; caller may choose to retry
-    } finally {
       setSaving(false);
     }
   }
@@ -133,4 +136,3 @@ export default function ExtensionsHost() {
     />
   );
 }
-
