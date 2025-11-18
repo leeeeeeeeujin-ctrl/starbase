@@ -501,55 +501,54 @@ export default function ExtensionInstallModal({
             onChange={(e) => setQuery(e.target.value)}
             style={{ ...styles.input, width: '100%', marginRight: 0, marginBottom: 8 }}
           />
-          {loading ? (
-            <div style={{ fontSize: 13, color: '#9ca3af' }}>확장 설정을 불러오는 중…</div>
-          ) : (
-            <div>
-              {filteredExtensions.map((ext) => {
-                const installed = Array.isArray(extensions)
-                  ? extensions.some((e) => e.id === ext.id && e.enabled !== false)
-                  : false;
-                return (
-                  <div
-                    key={ext.id}
-                    style={{
-                      borderRadius: 8,
-                      border: '1px solid #1f2937',
-                      padding: 8,
-                      marginBottom: 8,
-                      background: '#020617',
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        marginBottom: 4,
-                      }}
-                    >
-                      <div style={{ fontWeight: 600, fontSize: 13 }}>{ext.name}</div>
-                      <button
-                        type="button"
-                        style={installed ? styles.secondaryBtn : styles.primaryBtn}
-                        disabled={saving}
-                        onClick={() => toggleExtension(ext, installed)}
-                      >
-                        {installed ? '언인스톨' : '인스톨'}
-                      </button>
-                    </div>
-                    <div style={{ fontSize: 12, color: '#9ca3af' }}>{ext.description}</div>
-                  </div>
-                );
-              })}
-              {filteredExtensions.length === 0 && (
-                <div style={{ fontSize: 13, color: '#9ca3af' }}>일치하는 확장 프로그램이 없습니다.</div>
-              )}
-            </div>
+          {loading && (
+            <div style={{ fontSize: 13, color: '#9ca3af', marginBottom: 4 }}>확장 설정을 불러오는 중…</div>
           )}
           {error ? (
-            <div style={{ marginTop: 6, fontSize: 12, color: '#f97316' }}>{error}</div>
+            <div style={{ marginBottom: 4, fontSize: 12, color: '#f97316' }}>{error}</div>
           ) : null}
+          <div>
+            {filteredExtensions.map((ext) => {
+              const installed = Array.isArray(extensions)
+                ? extensions.some((e) => e.id === ext.id && e.enabled !== false)
+                : false;
+              return (
+                <div
+                  key={ext.id}
+                  style={{
+                    borderRadius: 8,
+                    border: '1px solid #1f2937',
+                    padding: 8,
+                    marginBottom: 8,
+                    background: '#020617',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: 4,
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{ext.name}</div>
+                    <button
+                      type="button"
+                      style={installed ? styles.secondaryBtn : styles.primaryBtn}
+                      disabled={saving}
+                      onClick={() => toggleExtension(ext, installed)}
+                    >
+                      {installed ? '언인스톨' : '인스톨'}
+                    </button>
+                  </div>
+                  <div style={{ fontSize: 12, color: '#9ca3af' }}>{ext.description}</div>
+                </div>
+              );
+            })}
+            {filteredExtensions.length === 0 && (
+              <div style={{ fontSize: 13, color: '#9ca3af' }}>일치하는 확장 프로그램이 없습니다.</div>
+            )}
+          </div>
         </div>
 
         <div style={styles.section}>
