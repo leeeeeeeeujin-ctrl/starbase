@@ -1129,7 +1129,7 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
               border: '1px solid #1f2937',
               background: '#020617',
               padding: 12,
-              zIndex: 40,
+              zIndex: 1700,
               boxShadow: '0 16px 40px rgba(0,0,0,0.6)',
             }}
           >
