@@ -98,7 +98,39 @@ export default function MainGameMobileUI({ template, user = null, onNext = () =>
     setLayout({ ...layout, order });
   }, [layout]);
 
-  const gridState = useMemo(() => readGridState(files), [files]);
+  const gridInitial = useMemo(() => readGridState(files), [files]);
+  const [gridState, setGridState] = useState(() => gridInitial);
+
+  useEffect(() => {
+    setGridState(gridInitial);
+  }, [gridInitial]);
+
+  // Simple grid movement: respond to player:chat events when grid is present.
+  useEffect(() => {
+    if (!runtimeBus || !gridState) return undefined;
+    const handler = (payload) => {
+      try {
+        const text = String(payload?.text || '').toLowerCase();
+        let dir = null;
+        if (text.includes('위') || text.includes('up')) dir = 'up';
+        else if (text.includes('아래') || text.includes('down')) dir = 'down';
+        else if (text.includes('왼') || text.includes('left')) dir = 'left';
+        else if (text.includes('오른') || text.includes('right')) dir = 'right';
+        if (!dir) return;
+        setGridState((prev) => movePlayerOnGrid(prev, dir));
+      } catch {
+        // ignore movement errors
+      }
+    };
+    const off = runtimeBus.on?.('player:chat', handler);
+    return () => {
+      try {
+        off && off();
+      } catch {
+        // ignore
+      }
+    };
+  }, [runtimeBus, !!gridState]);
 
   const modules = useMemo(() => {
     const widgetFlags = readWidgetFlags(template);
@@ -371,4 +403,33 @@ function GridCanvas({ grid }) {
       <canvas ref={canvasRef} style={{ width:'100%', height:'100%', display:'block' }} />
     </div>
   );
+}
+
+function movePlayerOnGrid(grid, dir) {
+  if (!grid) return grid;
+  const width = grid.width || 0;
+  const height = grid.height || 0;
+  const layers = Array.isArray(grid.layers) ? grid.layers : [];
+  const layer = layers[0] && Array.isArray(layers[0].data) ? layers[0].data : [];
+  const tileset = grid.tileset || {};
+  const entities = Array.isArray(grid.entities) ? grid.entities.map((e) => ({ ...e })) : [];
+  const playerIndex = entities.findIndex((e) => e.kind === 'player' || e.id === 'player');
+  if (playerIndex < 0) return grid;
+  const player = entities[playerIndex];
+  const dx = dir === 'left' ? -1 : dir === 'right' ? 1 : 0;
+  const dy = dir === 'up' ? -1 : dir === 'down' ? 1 : 0;
+  const nx = player.x + dx;
+  const ny = player.y + dy;
+  if (nx < 0 || ny < 0 || nx >= width || ny >= height) return grid;
+  const row = layer[ny] || [];
+  const t = row[nx] ?? 0;
+  const tile = tileset[t] || {};
+  const walkable = tile.walkable !== false;
+  if (!walkable) return grid;
+  player.x = nx;
+  player.y = ny;
+  return {
+    ...grid,
+    entities,
+  };
 }
