@@ -63,6 +63,14 @@ const PROMPT_HEADER = [
   '- memory_todo_clear {} — TODO 모두 비우기.',
   '- memory_todo_list {} — TODO 목록 조회.',
   '',
+  '워크스페이스 이해 방법:',
+  '- 레포 전체를 스캔하려 하지 말고, 먼저 사용자가 언급한 경로나 핵심 문서 몇 개만 읽으세요.',
+  '- 특히 workspace/ai-roomchat와 관련된 작업에서는 필요 시 다음 문서부터 참고합니다:',
+  '  • ai-roomchat/docs/WORKSPACE_EDITOR_RUNTIME.md',
+  '  • ai-roomchat/docs/capabilities/*.md',
+  '  • ai-roomchat/docs/AI_GAME_PROMPTS.md',
+  '- 같은 파일을 여러 번 반복해서 읽지 말고, 한 번 읽은 내용은 memory_* 액션으로 요약/기억해 두세요.',
+  '',
   '주의사항:',
   '- runCommand, readFile 같은 다른 이름은 사용하지 마세요. 위의 정확한 이름만 사용하세요.',
   '- 여러 단계를 합칠 수 있으면 batch로 묶어 순차 실행하세요(또는 actions 배열에 여러 개를 제시).',
@@ -763,7 +771,9 @@ export default function AIChatDock({ onClose }) {
         return;
       }
       if (!canAutoRun) {
-        const warning = `AI가 ${normalizedActions.length}개의 작업을 요청했지만 신뢰 모드가 꺼져 있습니다.`;
+        const warning =
+          `AI가 ${normalizedActions.length}개의 작업을 요청했지만 자동 실행이 꺼져 있습니다. ` +
+          '상단 … 메뉴에서 "자동 실행 횟수"를 2 이상으로 올린 뒤 다시 시도해 주세요.';
         workingLogs.push({ role: 'system', msg: warning });
         append('system', warning);
         return;
