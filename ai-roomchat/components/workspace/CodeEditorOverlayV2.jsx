@@ -720,6 +720,18 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
     const [gitSyncMessage, setGitSyncMessage] = useState('');
     const [gitSyncStatus, setGitSyncStatus] = useState('');
     const [gitSyncRunning, setGitSyncRunning] = useState(false);
+    const sortedExtensions = useMemo(() => {
+      if (!Array.isArray(installedExtensions)) return [];
+      const copy = [...installedExtensions];
+      copy.sort((a, b) => {
+        const an = String(a?.name || a?.id || '').toLowerCase();
+        const bn = String(b?.name || b?.id || '').toLowerCase();
+        if (an < bn) return -1;
+        if (an > bn) return 1;
+        return 0;
+      });
+      return copy;
+    }, [installedExtensions]);
 
     useEffect(() => {
       if (!storageNamespace) return;
@@ -967,9 +979,9 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
                 >
                   {showCodeChat ? 'AI 코드채팅 끄기' : 'AI 코드채팅 켜기'}
                 </button>
-                {installedExtensions && installedExtensions.length > 0 && (
+                {sortedExtensions && sortedExtensions.length > 0 && (
                   <>
-                    {installedExtensions.map((ext) => (
+                    {sortedExtensions.map((ext) => (
                       <button
                         key={ext.id}
                         type="button"
