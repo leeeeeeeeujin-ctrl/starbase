@@ -456,38 +456,41 @@ export default function ExtensionInstallModal({
           <button style={styles.closeBtn} onClick={onClose}>×</button>
         </div>
 
-        <div style={styles.section}>
-          <div style={styles.sectionTitle}>1) GitHub 연결 (웹 로그인 권장)</div>
-          <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 6 }}>
-            일반적으로는 아래 확장 설치만 사용해도 됩니다. 필요하다면 GitHub 웹에서 먼저 로그인한 뒤,
-            이 워크스페이스에서 사용할 레포(owner/repo/branch)만 지정해 주세요.
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <button
-              style={styles.btn}
-              type="button"
-              onClick={openGithubConnectWindow}
-            >
-              GitHub 웹 열기
-            </button>
+        <div style={{ ...styles.section, paddingBottom: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button
+                style={{ ...styles.btn, padding: '4px 8px', fontSize: 12 }}
+                type="button"
+                onClick={githubUser ? logoutGithub : openGithubConnectWindow}
+              >
+                {githubUser ? `GitHub: ${githubUser.login} (로그아웃)` : 'GitHub 로그인'}
+              </button>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, justifyContent: 'flex-end', minWidth: 0 }}>
+              <div style={{ fontSize: 12, color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {owner && repo ? `${owner}/${repo}@${branch || 'main'}` : '연결된 레포 없음'}
+              </div>
+              <button
+                style={{ ...styles.btn, padding: '4px 8px', fontSize: 12 }}
+                type="button"
+                onClick={handleCreateAndLinkRepo}
+              >
+                새 레포
+              </button>
+              <button
+                style={{ ...styles.btn, padding: '4px 8px', fontSize: 12 }}
+                type="button"
+                onClick={handlePickExistingRepo}
+              >
+                레포 선택
+              </button>
+            </div>
           </div>
         </div>
 
         <div style={styles.section}>
-          <div style={styles.sectionTitle}>2) 레포 연결</div>
-          <div style={styles.row}>
-            <input placeholder="owner" value={owner} onChange={(e) => setOwner(e.target.value)} style={styles.input} />
-            <input placeholder="repo" value={repo} onChange={(e) => setRepo(e.target.value)} style={styles.input} />
-            <input placeholder="branch" value={branch} onChange={(e) => setBranch(e.target.value)} style={styles.input} />
-          </div>
-          <button style={styles.btn} onClick={saveRepo}>연결 정보 저장</button>
-          <button style={styles.btn} onClick={handleCreateAndLinkRepo}>새 레포 생성 + 연동</button>
-          <button style={styles.btn} onClick={handlePickExistingRepo}>기존 레포 선택</button>
-          <button style={styles.btn} onClick={connectEvents} disabled={connected}>SSE 연결(웹훅 수신)</button>
-        </div>
-
-        <div style={styles.section}>
-          <div style={styles.sectionTitle}>3) 확장 설치</div>
+          <div style={styles.sectionTitle}>1) 확장 설치</div>
           <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 6 }}>
             세트별로 사용할 확장 프로그램을 선택합니다. (현재 워크스페이스:
             {' '}
@@ -552,7 +555,7 @@ export default function ExtensionInstallModal({
         </div>
 
         <div style={styles.section}>
-          <div style={styles.sectionTitle}>4) 게임 Capabilities</div>
+          <div style={styles.sectionTitle}>2) 게임 Capabilities</div>
           <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 6 }}>
             이 세트가 런타임에서 사용할 기능들을 선택합니다. (core / ui / world / network 등)
           </div>
