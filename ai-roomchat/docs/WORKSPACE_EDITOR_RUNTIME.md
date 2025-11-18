@@ -924,3 +924,43 @@ Supabase is already the primary backend for this app (auth, workspace_sets, chat
     - Heavy migrations should continue to live under `docs/sql` and run via existing migration scripts.
 
 In future iterations, `persistence.supabase` and the SQL helper extension will allow a workspace to fully describe both its runtime capabilities and its long-term data model without leaving the Maker editor.
+
+---
+
+## 13. AI code chat dock (planned UX improvements)
+
+The AI code chat dock (`AIChatDock`) is functional but still has several UX items that will be addressed in later iterations.
+
+- Prompt and guidance
+  - The dock now includes workspace-specific guidance in its system prompt:
+    - Prefer reading `ai-roomchat/docs/WORKSPACE_EDITOR_RUNTIME.md`, `ai-roomchat/docs/capabilities/*.md`, and `ai-roomchat/docs/AI_GAME_PROMPTS.md` instead of scanning the entire repo.
+    - Avoid re-reading the same file repeatedly; summarize into memory with `memory_*` actions when needed.
+  - Future work:
+    - Add a short, user-visible summary explaining this behaviour so users know why the AI sometimes reads docs first.
+
+- Auto-run / trust behaviour
+  - Auto-run is controlled solely by the "자동 실행 횟수" slider:
+    - `trustLimit ≤ 1` → auto-run effectively off.
+    - `trustLimit > 1` → auto-run on, up to `trustLimit` actions per chain.
+  - The assistant message has been updated to refer to this as "자동 실행" rather than a separate "신뢰 모드".
+
+- Log / TODO presentation (planned)
+  - Current behaviour:
+    - Each action is logged as a single-line row (`role: action`) to reduce visual noise.
+    - System/user/assistant messages still use full chat bubbles.
+  - Planned improvements:
+    - Collapsible task groups:
+      - Group related action logs under a single summary line (for example, "- 파일 수정 3건 완료").
+      - Tapping the summary toggles expansion to show full details.
+    - TODO folding:
+      - Allow the TODO list to be folded/unfolded more aggressively so long task lists do not dominate the dock.
+
+- Drag vs scroll interaction (known issue)
+  - The dock is draggable via its header, with `data-stop-drag="true"` on interactive sub-areas to prevent accidental moves.
+  - Known issue:
+    - On touch devices, vertical scrolling inside the chat/TODO area can sometimes conflict with the drag handler, causing the panel to "snap back" or jitter.
+  - Planned fix:
+    - Restrict drag start to a smaller, explicit handle in the header.
+    - Ensure scrollable regions inside the dock never initiate drag, even on small pointer movements.
+
+These items are tracked here as planned work so that AI/extension behaviour stays aligned with the workspace/editor contracts as the dock evolves.
