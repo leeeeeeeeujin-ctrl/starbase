@@ -795,7 +795,7 @@ This section outlines planned work around extensions that live on top of the wor
     - A `Commit & Push` button.
   - When `Commit & Push` is clicked:
     - Fetches the current workspace files snapshot (`filesForSave` via `CodeWorkspaceProvider`).
-    - Calls a dedicated GitHub commit API endpoint (planned: `/api/github/commit`) which:
+    - Calls a dedicated GitHub commit API endpoint (`/api/github/commit`) which:
       - Creates/updates files in the linked repo/branch.
       - Creates a Git commit with the provided message.
       - Returns commit metadata (for example SHA and HTML URL).
@@ -805,6 +805,14 @@ This section outlines planned work around extensions that live on top of the wor
 - Notes:
   - Errors from GitHub (permissions, branch protection, conflicts) are surfaced in the GitHub panel, not as generic editor errors.
   - This keeps the main editor UX focused on workspace saves, while Git operations stay scoped to the `github-sync` extension.
+  - Current status (this copy):
+    - The extension can:
+      - Store GitHub repo link in `meta.github` (per set).
+      - Open a Git Sync panel from the editor toolbar and call `/api/github/commit`.
+    - Limitations:
+      - If `/api/workspace/sets/:id` returns `401` (no Supabase session), server-side `meta.extensions` / `meta.github` writes fail and install state falls back to client-only.
+      - Capability contracts API (`/api/runtime/capability-contracts`) is currently used only for validation; its failures do not block Git Sync but should be fixed separately.
+      - The UX is still WIP: missing server auth or misconfiguration can result in "silent no-op" behaviour (no errors in the UI) until error reporting is tightened.
 
 ### 11.2 AI web helpers (`codex-web`, `copilot-web`)
 
