@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useIsMobile from '@/utils/useIsMobile';
 import { useWorkspace } from '../workspace/CodeWorkspaceProvider.jsx';
 import DynamicSlot from './slots/DynamicSlot.jsx';
+import { attachCanvas2D } from '../../lib/runtime/adapters/rendererCanvas2D.js';
 
 // Shared style tokens
 const btn = { padding:'6px 10px', border:'1px solid #334155', background:'#1e293b', color:'#e2e8f0', borderRadius:8 };
@@ -97,9 +98,11 @@ export default function MainGameMobileUI({ template, user = null, onNext = () =>
     setLayout({ ...layout, order });
   }, [layout]);
 
+  const gridState = useMemo(() => readGridState(files), [files]);
+
   const modules = useMemo(() => {
     const widgetFlags = readWidgetFlags(template);
-    const playWidgets = buildDefaultWidgets(template, widgetFlags);
+    const playWidgets = buildDefaultWidgets(template, widgetFlags, gridState);
     const defs = {
       header: <DynamicSlot key="header" slotId="play.header" files={files} resolveAsset={(x)=>x} defaultRender={() => <Header userLabel={userLabel} edit={edit} setEdit={setEdit} />} />,
       gameChat: <DynamicSlot key="gameChat" slotId="play.gameChat" files={files} resolveAsset={(x)=>x} defaultRender={() => <GameChat items={Array.isArray(runtimeFeed) ? runtimeFeed.map(m => ({ role: (m.roleScope==='system'?'system':'ai'), text: m.text })) : gameChat} />} />,
@@ -109,7 +112,7 @@ export default function MainGameMobileUI({ template, user = null, onNext = () =>
       character: <DynamicSlot key="character" slotId="play.character" files={files} resolveAsset={(x)=>x} defaultRender={() => <CharacterCard name={character?.name||'캐릭터'} image={imageUrl} desc={character?.desc||'설명'} stats={character?.stats||[10,10,10,10]} cycle={uiConfig?.character?.behavior?.tapCycle || ['desc','abilities','score','image']} viewIdx={charViewIdx} setViewIdx={setCharViewIdx} />} />,
     };
     return layout.order.map(id => defs[id]).filter(Boolean);
-  }, [layout.order, userLabel, edit, gameChat, runtimeFeed, triggerNext, chat, chatText, template, character, imageUrl, sendChat, onForceNext, runtimeSecondsLeft, uiConfig, charViewIdx, files, secondsLeft]);
+  }, [layout.order, userLabel, edit, gameChat, runtimeFeed, triggerNext, chat, chatText, template, character, imageUrl, sendChat, onForceNext, runtimeSecondsLeft, uiConfig, charViewIdx, files, secondsLeft, gridState]);
 
   return (
     <div style={{ position:'fixed', inset:0, background:'#0b1220', color:'#e2e8f0', display:'flex', flexDirection:'column' }}>
@@ -266,7 +269,7 @@ function readUiConfig(template){
   return {};
 }
 
-function buildDefaultWidgets(template, flags){
+function buildDefaultWidgets(template, flags, gridState){
   const list = [];
   // Resource preview (only if explicitly enabled)
   if (flags?.resourcePreviewEnabled) {
@@ -276,6 +279,9 @@ function buildDefaultWidgets(template, flags){
   // Code runner placeholder (only if explicitly enabled)
   if (flags?.codeRunnerEnabled) {
     list.push({ title: '사용자 지정 코드', body: <div style={{ fontSize:12, color:'#94a3b8' }}>코드 실행 위젯 (연결 예정)</div> });
+  }
+  if (gridState) {
+    list.push({ title: '그리드 월드', body: <GridCanvas grid={gridState} /> });
   }
   return list;
 }
@@ -307,4 +313,62 @@ function loadLayout(){
 function saveLayout(layout){
   try { localStorage.setItem('mainGame:layout', JSON.stringify(layout)); } catch {}
 }
-// (Removed duplicate component implementation added by patch error.)
+
+function readGridState(files){
+  try{
+    const t = files?.['/world/tilemap.json']?.content;
+    const e = files?.['/world/entities.json']?.content;
+    if (!t || !e) return null;
+    const tilemap = JSON.parse(t);
+    const entitiesObj = JSON.parse(e);
+    const entities = Object.values(entitiesObj || {}).map((ent) => ({
+      id: ent.id || '',
+      x: ent.x ?? 0,
+      y: ent.y ?? 0,
+      kind: ent.kind || 'entity',
+    }));
+    const layers = Array.isArray(tilemap.layers) ? tilemap.layers : [];
+    const tileset = tilemap.tileset && typeof tilemap.tileset === 'object' ? tilemap.tileset : {};
+    return {
+      width: tilemap.width || 0,
+      height: tilemap.height || 0,
+      tileSize: tilemap.tileSize || 24,
+      layers,
+      tileset,
+      entities,
+    };
+  }catch{}
+  return null;
+}
+
+function GridCanvas({ grid }) {
+  const canvasRef = useRef(null);
+  const rendererRef = useRef(null);
+
+  useEffect(() => {
+    if (!canvasRef.current) return undefined;
+    rendererRef.current = attachCanvas2D(canvasRef.current, {});
+    return () => {
+      try {
+        rendererRef.current?.dispose?.();
+      } catch {
+        // ignore
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!rendererRef.current) return;
+    try {
+      rendererRef.current.draw({ grid });
+    } catch {
+      // ignore draw errors
+    }
+  }, [grid]);
+
+  return (
+    <div style={{ width:'100%', height:180, border:'1px solid #1f2937', borderRadius:8, background:'#020617', overflow:'hidden' }}>
+      <canvas ref={canvasRef} style={{ width:'100%', height:'100%', display:'block' }} />
+    </div>
+  );
+}
