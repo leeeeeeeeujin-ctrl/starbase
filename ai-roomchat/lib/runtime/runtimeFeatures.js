@@ -29,19 +29,12 @@ export const RUNTIME_FEATURES = [
       '/game/hooks/automation.js',
     ],
   },
-  // Future examples:
-  // {
-  //   id: 'world.grid-basic',
-  //   label: 'World grid (basic)',
-  //   capabilities: ['world.grid.tilemap', 'ui.canvas2d'],
-  //   requiredFiles: ['/world/tilemap.json', '/world/entities.json'],
-  // },
-  // {
-  //   id: 'net.realtime-basic',
-  //   label: 'Realtime networking (basic)',
-  //   capabilities: ['network.realtime'],
-  //   requiredFiles: ['/game/network.config.json'],
-  // },
+  {
+    id: 'net.realtime-basic',
+    label: 'Realtime networking (basic)',
+    capabilities: ['network.realtime'],
+    requiredFiles: ['/game/network.config.json'],
+  },
 ];
 
 /**
@@ -83,6 +76,12 @@ export function selectRuntimeFeatures(params = {}) {
     }
   }
 
+  // Basic realtime feature: only when capability is selected and config file exists.
+  const netRealtimeDef = RUNTIME_FEATURES.find((f) => f.id === 'net.realtime-basic');
+  if (netRealtimeDef && hasAllCaps(netRealtimeDef.capabilities) && hasAllFiles(netRealtimeDef.requiredFiles)) {
+    features.push(netRealtimeDef);
+  }
+
   // Derived flags used by Play overlay today.
   const flags = {
     wantsCoreTextRuntime: wantsCoreText,
@@ -92,4 +91,3 @@ export function selectRuntimeFeatures(params = {}) {
 
   return { features, flags };
 }
-

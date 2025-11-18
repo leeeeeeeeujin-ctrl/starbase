@@ -349,9 +349,10 @@ function PlayOverlayContent({ templateBinding }) {
     const handleGitSyncCommit = async () => {
       if (!gitSyncExtension || gitSyncRunning) return;
       const cfgExt = gitSyncExtension.config || {};
-      const owner = cfgExt.owner || '';
-      const repo = cfgExt.repo || '';
-      const branch = cfgExt.branch || 'main';
+      const meta = githubMeta || {};
+      const owner = meta.owner || cfgExt.owner || '';
+      const repo = meta.repo || cfgExt.repo || '';
+      const branch = meta.branch || cfgExt.branch || 'main';
       if (!owner || !repo) {
         alert('GitHub 레포 정보(owner/repo)가 설정되지 않았습니다. 확장 설정에서 먼저 연결해 주세요.');
         return;
@@ -451,10 +452,11 @@ function PlayOverlayContent({ templateBinding }) {
             <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 6 }}>
               {(() => {
                 const cfgExt = gitSyncExtension.config || {};
-                const owner = cfgExt.owner || '';
-                const repo = cfgExt.repo || '';
-                const branch = cfgExt.branch || 'main';
-                if (!owner || !repo) return '확장 설정에서 GitHub 레포를 먼저 연결해 주세요.';
+                const meta = githubMeta || {};
+                const owner = meta.owner || cfgExt.owner || '';
+                const repo = meta.repo || cfgExt.repo || '';
+                const branch = meta.branch || cfgExt.branch || 'main';
+                if (!owner || !repo) return 'GitHub 레포 연결 정보(owner/repo)를 먼저 설정해 주세요.';
                 return `Target: ${owner}/${repo}@${branch}`;
               })()}
             </div>
@@ -874,6 +876,7 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
     const { root, normalizeDir, open, createFile, createFolder, rename, remove, filesForSave, activePath, writeFile, entryPath, setEntryPath, openPaths, isDirty, saveAll, storageNamespace } = useWorkspace();
     const [saving, setSaving] = useState(false);
     const [installedExtensions, setInstalledExtensions] = useState([]);
+    const [githubMeta, setGithubMeta] = useState(null);
     const [showGitSync, setShowGitSync] = useState(false);
     const [gitSyncExtension, setGitSyncExtension] = useState(null);
     const [gitSyncMessage, setGitSyncMessage] = useState('');
@@ -889,6 +892,11 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
           if (cancelled) return;
           const list = Array.isArray(out?.extensions) ? out.extensions : [];
           setInstalledExtensions(list);
+          if (out && out.github && typeof out.github === 'object') {
+            setGithubMeta(out.github);
+          } else {
+            setGithubMeta(null);
+          }
         } catch {
           // Extensions are optional; ignore load errors here.
         }
@@ -1066,24 +1074,52 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
                             if (typeof window !== 'undefined') {
                               if (ext.id === 'codex-web') {
                                 const cfg = ext.config || {};
-                                const owner = cfg.owner || '';
-                                const repo = cfg.repo || '';
-                                const branch = cfg.branch || 'main';
+                                const extOwner = cfg.owner || '';
+                                const extRepo = cfg.repo || '';
+                                const extBranch = cfg.branch || 'main';
+                                const owner = (githubMeta && githubMeta.owner) || extOwner;
+                                const repo = (githubMeta && githubMeta.repo) || extRepo;
+                                const branch = (githubMeta && githubMeta.branch) || extBranch;
                                 let url = 'https://platform.openai.com/codex';
                                 try {
                                   const u = new URL(url);
-                                  if (owner && repo) {
-                                    u.searchParams.set('repo', `${owner}/${repo}`);
-                                  }
-                                  if (branch) {
-                                    u.searchParams.set('branch', branch);
-                                  }
-                                  if (storageNamespace) {
-                                    u.searchParams.set('workspaceId', storageNamespace);
-                                  }
+                                   if (owner && repo) {
+                                     u.searchParams.set('repo', `${owner}/${repo}`);
+                                   }
+                                   if (branch) {
+                                     u.searchParams.set('branch', branch);
+                                   }
+                                   if (storageNamespace) {
+                                     u.searchParams.set('workspaceId', storageNamespace);
+                                   }
                                    url = u.toString();
                                  } catch {
                                    // ignore URL errors, fall back to base URL
+                                 }
+                                 window.open(url, '_blank', 'noopener,noreferrer');
+                               } else if (ext.id === 'copilot-web') {
+                                 const cfg = ext.config || {};
+                                 const extOwner = cfg.owner || '';
+                                 const extRepo = cfg.repo || '';
+                                 const extBranch = cfg.branch || 'main';
+                                 const owner = (githubMeta && githubMeta.owner) || extOwner;
+                                 const repo = (githubMeta && githubMeta.repo) || extRepo;
+                                 const branch = (githubMeta && githubMeta.branch) || extBranch;
+                                 let url = 'https://github.com/features/copilot';
+                                 try {
+                                   const u = new URL(url);
+                                   if (owner && repo) {
+                                     u.searchParams.set('repo', `${owner}/${repo}`);
+                                   }
+                                   if (branch) {
+                                     u.searchParams.set('branch', branch);
+                                   }
+                                   if (storageNamespace) {
+                                     u.searchParams.set('workspaceId', storageNamespace);
+                                   }
+                                   url = u.toString();
+                                 } catch {
+                                   // ignore URL errors
                                  }
                                  window.open(url, '_blank', 'noopener,noreferrer');
                                } else if (ext.id === 'github-sync') {

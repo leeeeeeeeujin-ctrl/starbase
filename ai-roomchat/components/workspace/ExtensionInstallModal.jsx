@@ -9,14 +9,21 @@ const BUILTIN_EXTENSIONS = [
     name: 'OpenAI Codex Web',
     kind: 'codex',
     description:
-      '브라우저에서 OpenAI Codex 웹 IDE를 열고, 워크스페이스와 연계할 준비를 합니다. (현재는 단순 실행용 자리표시자입니다.)',
+      '브라우저에서 OpenAI Codex 웹 IDE를 열어, 이 워크스페이스와 연결된 GitHub 레포/브랜치를 컨텍스트로 사용할 수 있게 합니다.',
+  },
+  {
+    id: 'copilot-web',
+    name: 'GitHub Copilot Web',
+    kind: 'github',
+    description:
+      'GitHub Copilot Web 페이지를 열고, 연결된 레포/브랜치 정보를 넘겨 코드 리뷰·생성에 활용할 수 있게 합니다.',
   },
   {
     id: 'github-sync',
-    name: 'GitHub Sync (샘플)',
+    name: 'GitHub Sync',
     kind: 'github',
     description:
-      '현재 세트를 GitHub 레포와 동기화하는 샘플 확장입니다. (토큰/레포 정보는 브라우저 로컬에만 저장됩니다.)',
+      '현재 워크스페이스 세트를 GitHub 레포의 스냅샷 파일(workspace/{workspaceId}.json)로 커밋·푸시하는 Git 동기화 확장입니다.',
   },
 ];
 

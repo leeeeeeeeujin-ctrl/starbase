@@ -23,7 +23,8 @@ export async function loadExtensionsMeta(id) {
 
   const meta = body?.meta || {};
   const extensions = Array.isArray(meta.extensions) ? meta.extensions : [];
-  return { extensions };
+  const github = meta.github && typeof meta.github === 'object' ? meta.github : null;
+  return { extensions, github };
 }
 
 /**
