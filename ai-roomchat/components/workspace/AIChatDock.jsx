@@ -1788,16 +1788,36 @@ function ChatLog({ logs }) {
     return <div style={styles.emptyState}>아직 메시지가 없습니다.</div>;
   }
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
       {logs.map((entry, index) => (
-        <LogBubble key={entry.t || index} entry={entry} />
+        <LogRow key={entry.t || index} entry={entry} />
       ))}
     </div>
   );
 }
 
-function LogBubble({ entry }) {
+function LogRow({ entry }) {
   const { role, msg } = entry;
+
+  // Compact, line-style rendering for internal action/system logs
+  if (role === 'action') {
+    const summary = (() => {
+      if (msg?.action) {
+        const t = msg.action.type || msg.action.name || 'unknown';
+        const p = msg.action.payload?.path || msg.action.path || '';
+        const r = msg.result?.ok ? 'ok' : `error: ${msg.result?.error || 'failed'}`;
+        return `• ${t}${p ? ` (${p})` : ''} • ${r}`;
+      }
+      if (typeof msg === 'string') return `• ${msg}`;
+      return `• ${JSON.stringify(msg)}`;
+    })();
+    return (
+      <div style={{ ...styles.logBubble, padding: '4px 6px', background: 'transparent', border: 'none', color: '#a5f3fc', fontSize: 12 }}>
+        {summary}
+      </div>
+    );
+  }
+
   const bubbleStyle = {
     ...styles.logBubble,
     ...(role === 'assistant'
