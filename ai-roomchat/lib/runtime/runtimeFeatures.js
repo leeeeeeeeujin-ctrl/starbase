@@ -35,6 +35,12 @@ export const RUNTIME_FEATURES = [
     capabilities: ['network.realtime'],
     requiredFiles: ['/game/network.config.json'],
   },
+  {
+    id: 'world.grid-basic',
+    label: 'World grid (basic)',
+    capabilities: ['world.grid.tilemap', 'ui.canvas2d'],
+    requiredFiles: ['/world/tilemap.json', '/world/entities.json'],
+  },
 ];
 
 /**
@@ -80,6 +86,12 @@ export function selectRuntimeFeatures(params = {}) {
   const netRealtimeDef = RUNTIME_FEATURES.find((f) => f.id === 'net.realtime-basic');
   if (netRealtimeDef && hasAllCaps(netRealtimeDef.capabilities) && hasAllFiles(netRealtimeDef.requiredFiles)) {
     features.push(netRealtimeDef);
+  }
+
+  // Basic world grid feature: only when capabilities + files are present.
+  const worldGridDef = RUNTIME_FEATURES.find((f) => f.id === 'world.grid-basic');
+  if (worldGridDef && hasAllCaps(worldGridDef.capabilities) && hasAllFiles(worldGridDef.requiredFiles)) {
+    features.push(worldGridDef);
   }
 
   // Derived flags used by Play overlay today.

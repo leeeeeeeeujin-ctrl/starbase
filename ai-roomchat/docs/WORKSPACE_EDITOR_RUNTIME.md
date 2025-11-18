@@ -769,6 +769,35 @@ Current usage:
   - Gate additional UI (for example, room status/latency indicators).
   - Configure sensible defaults for multi-client play flows.
 
+### 10.7 `world.grid-basic` runtime feature
+
+This feature groups the world/grid and canvas capabilities into a single unit:
+
+- Feature id: `world.grid-basic`
+- Defined in: `ai-roomchat/lib/runtime/runtimeFeatures.js`
+- Composition:
+  - Capabilities: `['world.grid.tilemap', 'ui.canvas2d']`
+  - Required files: `['/world/tilemap.json', '/world/entities.json']`
+
+Selection rules:
+
+- `selectRuntimeFeatures({ capabilities, files, config })`:
+  - Adds `world.grid-basic` when:
+    - Both `world.grid.tilemap` and `ui.canvas2d` are selected in `meta.capabilities`, **and**
+    - `/world/tilemap.json` and `/world/entities.json` exist in `files`.
+- As with `net.realtime-basic`, the resulting feature list is stored in `runtimeFeatures` state inside `PlayOverlayContent`.
+
+Current usage:
+
+- In this repo copy, `world.grid-basic` is primarily a **capability grouping and diagnostic flag**:
+  - It makes it easy to see, at runtime, whether a set has opted into grid/tilemap + canvas2d.
+  - The actual rendering and simulation are still controlled by:
+    - `ui.canvas2d` adapter (`rendererCanvas2D`) and
+    - the planned `world.grid.engine` adapter for tilemaps/entities (see 4. Capabilities & extensions).
+- As the grid engine is implemented, `world.grid-basic` will become the feature flag that:
+  - Enables the grid view in Play overlay.
+  - Wires tilemap state updates into the main game UI (for example, as a canvas widget or dedicated section).
+
 ---
 
 ## 11. Extensions: planned GitHub sync and AI web helpers
