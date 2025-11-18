@@ -789,14 +789,23 @@ Selection rules:
 
 Current usage:
 
-- In this repo copy, `world.grid-basic` is primarily a **capability grouping and diagnostic flag**:
-  - It makes it easy to see, at runtime, whether a set has opted into grid/tilemap + canvas2d.
-  - The actual rendering and simulation are still controlled by:
-    - `ui.canvas2d` adapter (`rendererCanvas2D`) and
-    - the planned `world.grid.engine` adapter for tilemaps/entities (see 4. Capabilities & extensions).
-- As the grid engine is implemented, `world.grid-basic` will become the feature flag that:
-  - Enables the grid view in Play overlay.
-  - Wires tilemap state updates into the main game UI (for example, as a canvas widget or dedicated section).
+- In this repo copy:
+  - Rendering:
+    - `MainGameMobileUI` reads `/world/tilemap.json` and `/world/entities.json` and passes a derived `gridState` into a `GridCanvas` widget.
+    - `rendererCanvas2D` renders a simple tilemap:
+      - Walkable tiles and walls in different colours.
+      - Entities (player, mobs) as coloured circles on top of the grid.
+  - Movement:
+    - When a player sends chat containing 방향 키워드 (`위/아래/왼/오른쪽` or `up/down/left/right`), `MainGameMobileUI` listens to `runtimeBus` `player:chat` events and:
+      - Finds the first `entities` entry with `kind: "player"` (or `id: "player"`).
+      - Computes the next tile based on the direction.
+      - Moves the player if the target tile is inside bounds and either has no tileset entry or `walkable !== false`.
+    - The result is a minimal, local grid “엔진” that:
+      - Starts from the JSON files as initial state.
+      - Keeps subsequent movement purely in memory (does not write back to files yet).
+  - Feature flag:
+    - `world.grid-basic` remains the feature flag that groups `world.grid.tilemap` + `ui.canvas2d`.
+    - In future, this flag will also be used to gate more advanced simulation (`world.grid.engine`) and persistence.
 
 ---
 
