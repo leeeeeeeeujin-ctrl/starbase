@@ -139,7 +139,14 @@ function PlayOverlayContent({ templateBinding }) {
     } catch {
       debugConfig = null;
     }
-    const debugPromptEnabled = !!(debugConfig && debugConfig.promptInspector);
+    const hasCoreTextFeature =
+      Array.isArray(runtimeFeatures) &&
+      runtimeFeatures.some((f) => f && f.id === 'core.text-runtime');
+    // 텍스트 베틀(core.text-runtime) 세트에서는 /debug/play.json이 없어도
+    // 기본적으로 프롬프트 인스펙터를 켠 상태로 취급한다.
+    const debugPromptEnabled = debugConfig
+      ? !!debugConfig.promptInspector
+      : hasCoreTextFeature;
 
     // Initialize optional adapters (networking, CRDT sync) based on capabilities + config.
     React.useEffect(() => {
@@ -500,8 +507,8 @@ function PlayOverlayContent({ templateBinding }) {
       </div>
     ) : null;
 
-    const hasDebugConfig = !!debugConfig;
-    const debugPanel = hasDebugConfig ? (
+    const enableDebugUi = !!(debugConfig || hasCoreTextFeature);
+    const debugPanel = enableDebugUi ? (
       <div
         style={{
           position: 'absolute',

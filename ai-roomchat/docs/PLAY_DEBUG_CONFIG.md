@@ -1,6 +1,7 @@
 # Play Overlay Debug Config (planned)
 
 이 문서는 **Play 오버레이 전용 디버그 설정**을 정리한 설계 메모다.  
+기본 타깃은 텍스트 베틀(runtime `core.text-runtime`) 시스템이고,  
 목표는 “메인 게임 UI는 그대로 두고, 코드 에디터의 Play 화면에서만 켜는 디버그 도구”를 제공하는 것이다.
 
 ---
@@ -48,6 +49,13 @@
 ```
 
 이 스키마는 **디버그/에디터 전용**이며, 메인 게임 UI나 프로덕션 런타임 로직은 이 파일을 직접 참조하지 않는다.
+
+텍스트 베틀 세트(`core.text-runtime` 활성)에서는:
+
+- `/debug/play.json`이 아예 없더라도,
+  - Play 오버레이는 `promptInspector`를 **기본적으로 켜진 상태(true)**로 취급한다.
+- 파일이 존재하는 경우에는:
+  - 여기 적힌 값이 우선이며, `promptInspector: false`로 명시하면 프롬프트 인스펙터를 끌 수 있다.
 
 ---
 
@@ -124,4 +132,3 @@
   - 프로덕션 빌드에서도 남길 수는 있지만, 기본값은 `promptInspector/logAiCalls` 등을 `false`로 두어야 한다.
 
 이 문서는 설계 초안이며, 실제 구현은 `CodeEditorOverlayV2`와 관련 훅/컴포넌트에서 단계적으로 진행된다.
-
