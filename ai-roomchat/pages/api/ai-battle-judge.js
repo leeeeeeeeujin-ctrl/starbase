@@ -5,6 +5,9 @@
  * 게임의 핵심이 되는 AI 심판 로직입니다.
  */
 
+import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
+import { toTextBattleTurnRow } from '../../lib/runtime/textBattlePersistence.js';
+
 export default async function handler(req, res) {
   // CORS 헤더 추가
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -84,6 +87,42 @@ async function processUnifiedGamePrompt(context) {
     //   parseAIResponse를 재사용해 구조화된 결과도 함께 돌려준다.
     const parsed = parseAIResponse(aiResponse);
     const timestamp = new Date().toISOString();
+
+    // Optional: best-effort turn logging into text_battle_turns when
+    // gameState carries a session identifier. Failures are ignored so
+    // that judgement latency is not affected.
+    (async () => {
+      try {
+        const sessionId = gameState && gameState.sessionId;
+        if (!sessionId) return;
+        if (!supabaseAdmin || typeof supabaseAdmin.from !== 'function') return;
+        const ctx = {
+          node: {
+            id: gameState.nodeId || null,
+            label: gameState.nodeLabel || null,
+          },
+          variables: {
+            battleLast: parsed,
+            battleScore: gameState.battleScore || null,
+            lastPrompt: prompt,
+          },
+        };
+        const turnIndex = Number.isFinite(Number(gameState.turn))
+          ? Number(gameState.turn)
+          : 0;
+        const row = toTextBattleTurnRow({
+          sessionId,
+          turnIndex,
+          ctx,
+          durationMs: gameState.durationMs || null,
+          heroId: gameState.heroId || null,
+          rivalId: gameState.rivalId || null,
+        });
+        await supabaseAdmin.from('text_battle_turns').insert(row);
+      } catch {
+        // ignore logging failures
+      }
+    })();
 
     return {
       // 사람이 바로 볼 수 있는 요약/내러티브
