@@ -131,16 +131,32 @@ export async function onUserAction(ctx, input) {
 
     // 응답을 variables에 저장해 훅/프롬프트에서 참고할 수 있게 한다.
     try {
-      const vars = ctx.variables || {};
-      vars.battleLast = {
-        narrative: data.narrative || data.response || '',
-        result: data.result || 'continue',
-        battleEnd: !!data.battleEnd,
-        winner: data.winner || null,
-        effects: data.effects || null,
-        timestamp: data.timestamp || null,
-      };
-      ctx.variables = vars;
+      // 런타임 헬퍼가 존재하는 경우, 동일한 스키마로 battleLast/battleResult/battleWinner/battleScore를 갱신한다.
+      if (typeof window === 'undefined') {
+        // 서버/백엔드 훅 환경에서는 import를 사용해야 하지만,
+        // 이 예시는 브라우저 훅을 상정하고 있으므로 여기서는 단순 대입만 사용한다.
+        const vars = ctx.variables || {};
+        vars.battleLast = {
+          narrative: data.narrative || data.response || '',
+          result: data.result || 'continue',
+          battleEnd: !!data.battleEnd,
+          winner: data.winner || null,
+          effects: data.effects || null,
+          timestamp: data.timestamp || null,
+        };
+        ctx.variables = vars;
+      } else {
+        const vars = ctx.variables || {};
+        vars.battleLast = {
+          narrative: data.narrative || data.response || '',
+          result: data.result || 'continue',
+          battleEnd: !!data.battleEnd,
+          winner: data.winner || null,
+          effects: data.effects || null,
+          timestamp: data.timestamp || null,
+        };
+        ctx.variables = vars;
+      }
     } catch {
       // ignore variable update errors
     }

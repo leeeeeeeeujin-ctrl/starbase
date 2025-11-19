@@ -944,6 +944,28 @@ Current usage (this repo copy):
          `hero_win` / `rival_win` / `tie` / `continue` 같은 outcome 토큰을 도출하고,
        - 노드의 `config.battle.routes`에 맞춰 다음 노드를 선택한다.
 
+텍스트 배틀용 권장 변수/결과 스키마 (초안):
+
+- `variables.battleLast`:
+  - `narrative: string` – 마지막 턴의 내러티브/설명 텍스트.
+  - `result: 'success' | 'failure' | 'partial' | 'critical' | 'continue'` – 판정 결과.
+  - `battleEnd: boolean` – 이 턴으로 배틀이 끝났는지 여부.
+  - `winner: string | null` – 승자 id 또는 null.
+  - `effects: any` – 시각 효과/상태 변화 설명(필요 시).
+  - `timestamp: string | null` – ISO 타임스탬프(선택).
+- `variables.battleResult`:
+  - 위 `battleLast.result`를 요약해서 보관하는 짧은 토큰(예: `'hero_win' | 'rival_win' | 'tie' | 'continue'`).
+- `variables.battleWinner`:
+  - 과거/전체 배틀 기준 최종 승자 id(있다면).
+- `variables.battleScore`:
+  - `{ hero: number, rival: number }` 형태로 누적 점수/라운드 스코어를 보관하는 용도(구현 단계에서 확장 예정).
+
+텍스트 배틀 훅에서는:
+
+- `/api/ai-battle-judge` 응답 → `variables.battleLast`를 갱신하고,
+- 필요한 경우 `variables.battleResult`, `variables.battleWinner`, `variables.battleScore`를 함께 업데이트한 뒤,
+- `config.battle.routes`에 정의된 라우트 키(`on_hero_win`, `on_rival_win`, `on_tie`, …)에 위 토큰을 매핑해 다음 노드를 선택하는 패턴을 권장한다.
+
 이 계획은 world/grid 엔진과는 **독립적인 텍스트 레벨의 배틀 흐름**을 먼저 완성하는 것이 목표다.  
 이후 필요하면 각 노드의 상태를 `ctx.world`나 grid 엔진과 연결해, “배틀 위치/판”을 시각화하는 쪽으로 확장한다.
 
