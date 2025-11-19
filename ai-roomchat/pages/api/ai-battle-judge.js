@@ -6,7 +6,26 @@
  */
 
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
-import { toTextBattleTurnRow } from '../../lib/runtime/textBattlePersistence.js';
+import {
+  toTextBattleTurnRow,
+  toTextBattleSessionRow,
+} from '../../lib/runtime/textBattlePersistence.js';
+
+function computeBattleScoreSnapshot(existingScore, parsed) {
+  const base =
+    existingScore && typeof existingScore === 'object'
+      ? existingScore
+      : { hero: 0, rival: 0 };
+  const score = {
+    hero: Number(base.hero || 0),
+    rival: Number(base.rival || 0),
+  };
+  if (parsed && parsed.battleEnd && parsed.winner) {
+    if (parsed.winner === 'hero') score.hero += 1;
+    else if (parsed.winner === 'rival') score.rival += 1;
+  }
+  return score;
+}
 
 export default async function handler(req, res) {
   // CORS 헤더 추가
@@ -87,30 +106,45 @@ async function processUnifiedGamePrompt(context) {
     //   parseAIResponse를 재사용해 구조화된 결과도 함께 돌려준다.
     const parsed = parseAIResponse(aiResponse);
     const timestamp = new Date().toISOString();
+    const battleLastPayload = { ...parsed, timestamp };
 
-    // Optional: best-effort turn logging into text_battle_turns when
-    // gameState carries a session identifier. Failures are ignored so
-    // that judgement latency is not affected.
+    // 기존 스코어는 gameState.battleScore 또는 gameState.variables.battleScore에서 찾는다.
+    const existingScore =
+      (gameState && gameState.battleScore) ||
+      (gameState && gameState.variables && gameState.variables.battleScore) ||
+      null;
+    const updatedScore = computeBattleScoreSnapshot(existingScore, parsed);
+
+    // Optional: best-effort logging when gameState carries a session identifier.
+    // Failures are ignored so judgement latency is not affected.
     (async () => {
       try {
         const sessionId = gameState && gameState.sessionId;
         if (!sessionId) return;
         if (!supabaseAdmin || typeof supabaseAdmin.from !== 'function') return;
+
+        // 1) 턴 로그(text_battle_turns)
         const ctx = {
           node: {
             id: gameState.nodeId || null,
             label: gameState.nodeLabel || null,
           },
           variables: {
-            battleLast: parsed,
-            battleScore: gameState.battleScore || null,
+            // NOTE:
+            // - battleLast: 구조화된 판정 결과 + timestamp
+            // - battleScore: 이 턴 이후 스코어 스냅샷
+            // - lastPrompt: 이 턴에 사용된 전체 프롬프트 텍스트
+            // - aiResponseRaw: LLM이 반환한 전체 응답 텍스트
+            battleLast: battleLastPayload,
+            battleScore: updatedScore,
             lastPrompt: prompt,
+            aiResponseRaw: aiResponse,
           },
         };
         const turnIndex = Number.isFinite(Number(gameState.turn))
           ? Number(gameState.turn)
           : 0;
-        const row = toTextBattleTurnRow({
+        const turnRow = toTextBattleTurnRow({
           sessionId,
           turnIndex,
           ctx,
@@ -118,7 +152,27 @@ async function processUnifiedGamePrompt(context) {
           heroId: gameState.heroId || null,
           rivalId: gameState.rivalId || null,
         });
-        await supabaseAdmin.from('text_battle_turns').insert(row);
+        await supabaseAdmin.from('text_battle_turns').insert(turnRow);
+
+        // 2) 배틀 종료 시 세션 요약(text_battle_sessions)
+        if (parsed.battleEnd && parsed.winner) {
+          const summaryVars = {
+            battleWinner: parsed.winner || null,
+            battleScore: updatedScore,
+          };
+          const sessionRow = toTextBattleSessionRow({
+            variables: summaryVars,
+          });
+          const patch = {
+            status: sessionRow.status,
+            winner: sessionRow.winner,
+            final_score: sessionRow.final_score,
+          };
+          await supabaseAdmin
+            .from('text_battle_sessions')
+            .update(patch)
+            .eq('id', sessionId);
+        }
       } catch {
         // ignore logging failures
       }
@@ -127,7 +181,7 @@ async function processUnifiedGamePrompt(context) {
     return {
       // 사람이 바로 볼 수 있는 요약/내러티브
       narrative: parsed.narrative || aiResponse,
-      // 원본 응답 텍스트
+      // 원본 응답 텍스트 (전체)
       response: aiResponse,
       // 구조화된 판정 결과 (텍스트 배틀 엔진에서 outcome 토큰으로 매핑 가능)
       result: parsed.result,

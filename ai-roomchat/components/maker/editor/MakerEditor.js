@@ -20,6 +20,7 @@ import GameSimulator from './GameSimulator';
 import dynamic from 'next/dynamic';
 import AutoUpdateListener from '../../infra/AutoUpdateListener.jsx';
 import { isWorkspaceDebug } from '../../../lib/workspace/debugFlags.js';
+import RolesRankEditor from '../settings/RolesRankEditor';
 const ImageToUIGenerator = dynamic(() => import('../ui/ImageToUIGenerator'), { ssr: false });
 const MainGameMobileUI = dynamic(() => import('../../game/MainGameMobileUI.jsx'), { ssr: false });
 import { applyMainUiPresetObject, getMainUiModules } from '../../../utils/uiPresets';
@@ -317,6 +318,7 @@ export default function MakerEditor() {
   const [showImageToUI, setShowImageToUI] = useState(false);
   const [showResourceEditor, setShowResourceEditor] = useState(false);
   const [showUiSettings, setShowUiSettings] = useState(false);
+  const [showRolesConfig, setShowRolesConfig] = useState(false);
   const [showPlayOverlay, setShowPlayOverlay] = useState(false);
   // Lock background scroll when code editor overlay is open
   useEffect(() => {
@@ -718,8 +720,8 @@ export default function MakerEditor() {
         onOpenCode={() => { try { if (typeof window !== 'undefined') window.__INLINE_CODE_IN_PANEL__ = true; } catch {}; setShowMultiLanguageEditor(true); }}
         onOpenTemplate={() => setShowTemplateLibrary(true)}
         onOpenUiSettings={() => setShowUiSettings(true)}
-        
         onOpenResource={() => setShowResourceEditor(true)}
+        onOpenRolesConfig={() => setShowRolesConfig(true)}
           onCreateWithAI={handleCreateWithAI}
           onOpenCodeEditor={openCodeEditor}
           onOpenMultiLanguageEditor={() => setShowMultiLanguageEditor(true)}
@@ -1195,7 +1197,11 @@ export default function MakerEditor() {
         </div>
       )}
       {showUiSettings && (
-        <UiSettingsPanelMaker onClose={() => setShowUiSettings(false)} templateText={templateText} setTemplateText={setTemplateText} />
+        <UiSettingsPanelMaker
+          onClose={() => setShowUiSettings(false)}
+          templateText={templateText}
+          setTemplateText={setTemplateText}
+        />
       )}
       {showResourceEditor && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 260 }} onClick={() => setShowResourceEditor(false)}>
@@ -1203,6 +1209,9 @@ export default function MakerEditor() {
             <GameResourceEditor onClose={() => setShowResourceEditor(false)} gameData={{}} onGameUpdate={() => {}} />
           </div>
         </div>
+      )}
+      {showRolesConfig && (
+        <RolesRankEditor visible={showRolesConfig} onClose={() => setShowRolesConfig(false)} />
       )}
       
     </div>

@@ -109,7 +109,7 @@ function PlayOverlayContent({ templateBinding }) {
   const runtimeRef = React.useRef(null);
   const runtimeHooksRef = React.useRef(null);
   const [debugCollapsed, setDebugCollapsed] = React.useState(true);
-  const [debugState, setDebugState] = React.useState({ lastPrompt: null });
+  const [debugState, setDebugState] = React.useState({ lastPrompt: null, calls: [] });
   const bus = React.useMemo(() => {
     const listeners = new Map();
     return {
@@ -147,6 +147,7 @@ function PlayOverlayContent({ templateBinding }) {
     const debugPromptEnabled = debugConfig
       ? !!debugConfig.promptInspector
       : hasCoreTextFeature;
+    const debugLogCallsEnabled = !!(debugConfig && debugConfig.logAiCalls);
 
     // Initialize optional adapters (networking, CRDT sync) based on capabilities + config.
     React.useEffect(() => {

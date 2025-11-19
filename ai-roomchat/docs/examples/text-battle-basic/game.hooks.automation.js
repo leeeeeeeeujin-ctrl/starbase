@@ -18,6 +18,94 @@ function safeRoutes(battle) {
   return r && typeof r === 'object' ? r : {};
 }
 
+// NOTE: 훅 코드 안에서는 런타임 헬퍼(`ai-roomchat/lib/runtime/battleResult.js`)를
+// 직접 import 할 수 없으므로, 여기에서 필요한 부분만 가볍게 복제해 둔다.
+// `/api/ai-battle-judge` 응답을 받아:
+// - variables.battleLast
+// - variables.battleResult
+// - variables.battleWinner
+// - variables.battleScore
+// - variables.battleHistory
+// 를 일관된 형태로 갱신하는 역할을 한다.
+function applyBattleOutcomeLocal(ctx, params) {
+  if (!ctx || typeof ctx !== 'object') return null;
+
+  const vars =
+    ctx.variables && typeof ctx.variables === 'object'
+      ? ctx.variables
+      : (ctx.variables = {});
+
+  const narrative = params.narrative || params.response || '';
+  const rawResult = (params.result || '').toLowerCase();
+  const result = rawResult || 'continue';
+  const battleEnd = !!params.battleEnd;
+  const winner = params.winner || null;
+  const effects = params.effects || null;
+  const timestamp = params.timestamp || null;
+
+  vars.battleLast = {
+    narrative,
+    result,
+    battleEnd,
+    winner,
+    effects,
+    timestamp,
+  };
+
+  // battleResult: 그래프/라우팅에서 쓰기 좋은 짧은 토큰으로 축약
+  let outcomeToken = 'continue';
+  if (winner && result === 'success') {
+    if (winner === 'hero') outcomeToken = 'hero_win';
+    else if (winner === 'rival') outcomeToken = 'rival_win';
+    else outcomeToken = `winner_${winner}`;
+  } else if (result === 'failure' && winner === 'rival') {
+    outcomeToken = 'rival_win';
+  } else if (result === 'partial' || result === 'continue') {
+    outcomeToken = 'tie';
+  }
+  vars.battleResult = outcomeToken;
+
+  if (battleEnd && winner) {
+    vars.battleWinner = winner;
+  }
+
+  // 매우 단순한 스코어 예시: battleEnd 시 승자 쪽 점수 +1
+  const prevScore =
+    vars.battleScore && typeof vars.battleScore === 'object'
+      ? vars.battleScore
+      : { hero: 0, rival: 0 };
+  const score = {
+    hero: Number(prevScore.hero || 0),
+    rival: Number(prevScore.rival || 0),
+  };
+  if (battleEnd && winner) {
+    if (winner === 'hero') score.hero += 1;
+    else if (winner === 'rival') score.rival += 1;
+  }
+  vars.battleScore = score;
+
+  // 간단한 히스토리: 최근 N 턴을 누적해 transformPrompt에서 참조
+  const history = Array.isArray(vars.battleHistory)
+    ? vars.battleHistory.slice(-9)
+    : [];
+  history.push({
+    node: ctx.node && ctx.node.id,
+    text: narrative,
+    winner,
+    result,
+  });
+  vars.battleHistory = history;
+
+  ctx.variables = vars;
+
+  return {
+    battleLast: vars.battleLast,
+    battleResult: vars.battleResult,
+    battleWinner: vars.battleWinner,
+    battleScore: vars.battleScore,
+  };
+}
+
 export function transformPrompt(ctx) {
   const node = ctx?.node || {};
   const battle = getBattleConfig(ctx);
@@ -82,12 +170,36 @@ export function transformPrompt(ctx) {
 
 async function callBattleJudge(prompt, ctx) {
   try {
+    const battle = getBattleConfig(ctx);
+    const sides = Array.isArray(battle.sides) ? battle.sides : [];
+    const vars = (ctx && ctx.variables) || {};
+
+    // 세션/플레이어 정보는 우선 ctx.variables에서 찾고,
+    // 없으면 battle.sides를 간단히 매핑해 사용한다.
+    const sessionId = vars.battleSessionId || null;
+    const heroSide = sides[0] || null;
+    const rivalSide = sides[1] || null;
+    const heroId =
+      vars.battleHeroId ||
+      (heroSide && (heroSide.playerId || heroSide.id || heroSide.characterRef)) ||
+      null;
+    const rivalId =
+      vars.battleRivalId ||
+      (rivalSide && (rivalSide.playerId || rivalSide.id || rivalSide.characterRef)) ||
+      null;
+    const battleScore = vars.battleScore || null;
+
     const body = {
       prompt,
       gameState: {
         nodeId: ctx?.node?.id || null,
+        nodeLabel: ctx?.node?.label || null,
         turn: ctx?.turn ?? null,
-        variables: ctx?.variables || {},
+        variables: vars,
+        sessionId,
+        heroId,
+        rivalId,
+        battleScore,
       },
       character: null,
     };
@@ -130,47 +242,25 @@ export async function onUserAction(ctx, input) {
     const data = result.data;
 
     // 응답을 variables에 저장해 훅/프롬프트에서 참고할 수 있게 한다.
-    try {
-      // 런타임 헬퍼가 존재하는 경우, 동일한 스키마로 battleLast/battleResult/battleWinner/battleScore를 갱신한다.
-      if (typeof window === 'undefined') {
-        // 서버/백엔드 훅 환경에서는 import를 사용해야 하지만,
-        // 이 예시는 브라우저 훅을 상정하고 있으므로 여기서는 단순 대입만 사용한다.
-        const vars = ctx.variables || {};
-        vars.battleLast = {
-          narrative: data.narrative || data.response || '',
-          result: data.result || 'continue',
-          battleEnd: !!data.battleEnd,
-          winner: data.winner || null,
-          effects: data.effects || null,
-          timestamp: data.timestamp || null,
-        };
-        ctx.variables = vars;
-      } else {
-        const vars = ctx.variables || {};
-        vars.battleLast = {
-          narrative: data.narrative || data.response || '',
-          result: data.result || 'continue',
-          battleEnd: !!data.battleEnd,
-          winner: data.winner || null,
-          effects: data.effects || null,
-          timestamp: data.timestamp || null,
-        };
-        ctx.variables = vars;
-      }
-    } catch {
-      // ignore variable update errors
-    }
+    // (applyBattleOutcomeLocal은 battleLast/battleResult/battleWinner/battleScore/battleHistory를
+    //  한 번에 갱신해 준다.)
+    const outcome = applyBattleOutcomeLocal(ctx, {
+      narrative: data.narrative || data.response || '',
+      result: data.result,
+      battleEnd: data.battleEnd,
+      winner: data.winner,
+      effects: data.effects,
+      timestamp: data.timestamp,
+    });
 
-    // 매우 단순한 매핑 예시:
-    // - result === 'success' → hero가 우세 → on_hero_win
-    // - result === 'failure' → rival이 우세 → on_rival_win
-    // - 그 외에는 on_tie 또는 기본 엣지를 사용
-    const outcome = (data.result || '').toLowerCase();
-    if (outcome === 'success' && routes.on_hero_win) return routes.on_hero_win;
-    if (outcome === 'failure' && routes.on_rival_win) return routes.on_rival_win;
-    if ((outcome === 'partial' || outcome === 'continue') && routes.on_tie) {
-      return routes.on_tie;
-    }
+    // battleResult 토큰을 라우트 키에 매핑:
+    // - 'hero_win'  → routes.on_hero_win
+    // - 'rival_win' → routes.on_rival_win
+    // - 'tie'       → routes.on_tie
+    const token = outcome && outcome.battleResult;
+    if (token === 'hero_win' && routes.on_hero_win) return routes.on_hero_win;
+    if (token === 'rival_win' && routes.on_rival_win) return routes.on_rival_win;
+    if (token === 'tie' && routes.on_tie) return routes.on_tie;
 
     return null;
   }

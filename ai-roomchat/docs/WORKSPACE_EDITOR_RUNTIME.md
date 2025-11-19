@@ -977,8 +977,24 @@ DB 매핑(초안):
       - `variables.battleWinner`, `variables.battleScore`를 사용해 `text_battle_sessions`에 INSERT/UPDATE할 row 객체를 만든다.
     - `toTextBattleTurnRow({ sessionId, turnIndex, ctx, durationMs, heroId, rivalId })`:
       - `ctx.node`, `ctx.variables.battleLast`, `ctx.variables.battleScore`를 사용해 `text_battle_turns` row 객체를 만든다.
+      - 특히:
+        - `prompt` 컬럼 ← `ctx.variables.lastPrompt` (이 턴에 사용된 **전체 프롬프트 텍스트**).
+        - `ai_response` 컬럼 ← `ctx.variables.aiResponseRaw` (LLM **원본 응답 전체 텍스트**)가 있으면 그 값을, 없으면 `battleLast.narrative`를 사용한다.
 - 실제 INSERT/UPDATE는:
   - Supabase service role을 사용하는 백엔드 코드(예: rank 액션 또는 별도 RPC)에서 이 객체를 받아 `supabase.from('text_battle_sessions')` / `supabase.from('text_battle_turns')`로 실행하는 식으로 구현한다.
+
+다음 단계(우선순위, 이 레포 기준):
+
+1. **세션/플레이어 쓰레드 연결**  *(이 레포 예시에서는 기본 형태 구현 완료)*  
+   - `gameState.sessionId`, `heroId`, `rivalId`, `battleScore` 등을 프론트 → 훅 → `/api/ai-battle-judge`까지 전달해, `text_battle_turns` 로그가 “어느 판/어느 참가자 조합인지”를 식별할 수 있게 만든다.  
+   - 예시 구현: `docs/examples/text-battle-basic/game.hooks.automation.js`의 `callBattleJudge`에서 `ctx.variables.battleSessionId / battleHeroId / battleRivalId / battleScore`를 읽어 `gameState`에 싣는다.
+2. **세션 요약 row 쓰기 (`text_battle_sessions`)**  *(통합 프롬프트 경로에서 초안 구현)*  
+   - 한 배틀이 끝날 때(`battleEnd && winner`), `/api/ai-battle-judge.js`의 `processUnifiedGamePrompt`에서:  
+     - 기존 스코어 + 판정 결과를 이용해 최종 스코어 스냅샷을 만들고,  
+     - `toTextBattleSessionRow({ variables: { battleWinner, battleScore } })`로 `status / winner / final_score`를 계산한 뒤,  
+     - `supabaseAdmin.from('text_battle_sessions').update({ status, winner, final_score }).eq('id', sessionId)`로 요약 row를 **best-effort 업데이트**한다. (행이 없거나 FK 구성이 다르면 조용히 실패)
+3. **역할/점수폭 설정 파일 연결 (`/game/roles.rank.json`)**  
+   - 기존 랭크/게임 등록 UI에서 입력하던 역할/점수폭을 워크스페이스 파일(`/game/roles.rank.json`) 기반으로 읽어, `register_rank_game` 계열 RPC의 `p_roles` 인자로 넘기도록 등록 플로우를 정리한다.
 
 ---
 
@@ -998,6 +1014,9 @@ DB 매핑(초안):
       ]
     }
     ```
+- Maker / 에디터 통합:
+  - 프롬프트‑노드 에디터 상단의 도구 드롭다운에 있는 **“역할 / 점수 설정”** 패널에서 이 파일을 편집할 수 있다.
+  - 코드 에디터(멀티 언어 에디터, 런타임 훅, 등록 스크립트)는 동일한 파일을 직접 읽어 세부 로직에 활용한다.
 - 런타임 헬퍼:
   - `ai-roomchat/lib/rank/rolesConfig.js`:
     - `loadRolesConfig(files, path = '/game/roles.rank.json')`:
@@ -1012,8 +1031,47 @@ DB 매핑(초안):
   - Maker/프롬프트 에디터 쪽에서는:
     - “역할/점수 설정” 도구를 추가해, 이 파일을 편집하는 편의 UI를 제공하는 것을 목표로 한다.
 
-이 계획은 world/grid 엔진과는 **독립적인 텍스트 레벨의 배틀 흐름**을 먼저 완성하는 것이 목표다.  
+차후 작업(등록 플로우 · 점수 반영 연동):
+
+- `/game/roles.rank.json` → 랭크 등록:
+  - `ai-roomchat/ai-roomchat/pages/api/rank/register-game.js`에서:
+    - 폼으로 들어온 `roles`를 그대로 사용하는 대신,
+    - 가능하면 워크스페이스의 `/game/roles.rank.json`을 읽어 `loadRolesConfig` → `toRegisterRankRolesPayload`를 거친 결과를 `p_roles`로 넘기는 방향으로 점진적 리팩터링을 진행한다.
+- 점수 계산 흐름(개념 구조, planned):
+  1. **워크스페이스 런타임/훅**  
+     - `/game/hooks/automation.js`나 별도 헬퍼에서:
+       - `variables.battleScore` · `variables.rankScoreDelta` 등으로 “이번 판에서 누구에게 몇 점을 줄지”를 계산한다.
+       - 필요하면 `/game/roles.rank.json`을 참고해 역할별 가중치/범위를 코드로 구현한다.
+  2. **텍스트 배틀 로그/세션(`text_battle_*` 테이블)**  
+     - `/api/ai-battle-judge` 경로에서 이미 구현된 것처럼:
+       - 턴별 `battleLast`·`battleScore`·`lastPrompt`·`aiResponseRaw`를 `text_battle_turns`에 기록하고,
+       - 배틀 종료 시 `text_battle_sessions`에 `battleWinner`·`final_score`를 best-effort로 반영한다.
+     - 향후 `rankScoreDelta` 같은 필드를 추가해, “이 판의 제안 점수 변화량”을 함께 남길 수 있다.
+  3. **랭크 백엔드(공식 점수 반영)**  
+     - 별도의 Supabase RPC(예: `finalize_rank_match`)에서:
+       - `text_battle_sessions`/턴 로그에서 읽은 `battleWinner`·`final_score`·`rankScoreDelta`를 기반으로,
+       - `/game/roles.rank.json`의 최소/최대 점수폭 안에서 클램프/검증한 뒤,
+       - 최종 랭크/레이트 테이블에 반영한다.  
+     - 이때 “최종 쓰기 권한”은 항상 백엔드 서비스 롤이 갖고, 워크스페이스 코드는 점수 **제안자** 역할만 한다.
+
+이 계획은 world/grid 엔진과는 **독립적인 텍스트 레벨의 배틀/랭크 흐름**을 먼저 완성하는 것이 목표다.  
 이후 필요하면 각 노드의 상태를 `ctx.world`나 grid 엔진과 연결해, “배틀 위치/판”을 시각화하는 쪽으로 확장한다.
+
+실행 순서(요약, 이 레포 기준):
+
+1. **워크스페이스 역할/점수 설정 고정**  
+   - `/game/roles.rank.json` 스키마를 유지하면서, Maker 도구(“역할 / 점수 설정” 패널)로 이 파일을 편집·저장하는 흐름을 사용한다.  
+   - 코드 에디터/훅에서는 이 파일만을 역할/점수폭의 단일 소스로 삼는다.
+2. **텍스트 배틀 → 로그/세션까지 마무리**  
+   - `/api/ai-battle-judge` 경로를 통해 `text_battle_turns` · `text_battle_sessions`에 프롬프트/응답/판정/스코어를 모두 남기는 현재 구조를 유지·안정화한다.  
+   - 필요 시 `variables.rankScoreDelta` 등 추가 변수를 도입해 “점수 제안값”까지 함께 기록한다.
+3. **랭크 등록 플로우 리팩터링**  
+   - `register-game` API에서 `/game/roles.rank.json`을 읽어 `loadRolesConfig` → `toRegisterRankRolesPayload` 결과를 `p_roles`로 넘기도록 점진적으로 이관한다(폼 기반 roles는 fallback 또는 보조 역할로 제한).  
+4. **매치 종료 → 공식 점수 반영 RPC 추가**  
+   - Supabase 쪽에 `finalize_rank_match`(가칭) RPC를 추가해,  
+     - `text_battle_sessions`·turn 로그와 `/game/roles.rank.json`을 함께 참고해,  
+     - 제안 점수(`rankScoreDelta`)를 검증·클램프 후 최종 랭크/레이트 테이블에 반영한다.  
+   - 이 단계까지 구현되면: “게임 제작 → 텍스트 배틀 진행 → 승자/점수 로그 → 공식 랭크 반영”까지의 최소 루프가 완성된다.
 
 ---
 

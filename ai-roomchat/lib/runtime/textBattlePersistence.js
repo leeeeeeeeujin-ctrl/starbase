@@ -66,9 +66,12 @@ export function toTextBattleTurnRow(params = {}) {
   const score = vars?.battleScore || null;
 
   // prompt / ai_response는 호출 플로우에서 별도로 전달할 수 있지만,
-  // 기본값으로는 last.narrative를 응답으로 사용한다.
+  // 기본값으로는:
+  // - prompt: 이 턴에 사용된 전체 프롬프트 텍스트 (lastPrompt)
+  // - ai_response: LLM 원본 응답 전체 텍스트 (aiResponseRaw) 또는 요약 내러티브(narrative)
   const prompt = vars?.lastPrompt || null;
-  const aiResponse = last.narrative || null;
+  const aiResponseRaw = vars?.aiResponseRaw || null;
+  const aiResponse = aiResponseRaw || last.narrative || null;
 
   return {
     session_id: sessionId,
@@ -87,4 +90,3 @@ export function toTextBattleTurnRow(params = {}) {
     duration_ms: durationMs,
   };
 }
-

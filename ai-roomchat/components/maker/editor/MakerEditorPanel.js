@@ -38,12 +38,12 @@ export default function MakerEditorPanel({
   return (
     <section
       style={{
-        background: '#ffffff',
+        background: '#020617',
         borderRadius: 18,
-        padding: '10px 14px',
-        boxShadow: '0 14px 34px -30px rgba(15, 23, 42, 0.4)',
+        padding: '10px 12px',
+        boxShadow: '0 14px 34px -30px rgba(15, 23, 42, 0.8)',
         display: 'grid',
-        gap: 10,
+        gap: 8,
         width: '100%',
       }}
     >
@@ -224,7 +224,7 @@ export default function MakerEditorPanel({
                   <label style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
                     프롬프트 내용
                   </label>
-                  <div style={{ height: 220, border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
+                  <div style={{ height: 180, border: '1px solid #1f2937', borderRadius: 10, overflow: 'hidden', background:'#020617' }}>
                     <EditorMonaco
                       value={nodeData.template || ''}
                       onChange={val => {
@@ -247,7 +247,7 @@ export default function MakerEditorPanel({
                         }
                       }}
                       language="markdown"
-                      theme="vs-light"
+                      theme="vs-dark"
                       height="100%"
                     />
                   </div>
