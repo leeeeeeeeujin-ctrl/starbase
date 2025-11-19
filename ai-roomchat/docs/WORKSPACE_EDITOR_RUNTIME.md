@@ -966,6 +966,20 @@ Current usage (this repo copy):
 - 필요한 경우 `variables.battleResult`, `variables.battleWinner`, `variables.battleScore`를 함께 업데이트한 뒤,
 - `config.battle.routes`에 정의된 라우트 키(`on_hero_win`, `on_rival_win`, `on_tie`, …)에 위 토큰을 매핑해 다음 노드를 선택하는 패턴을 권장한다.
 
+DB 매핑(초안):
+
+- 테이블 정의는 `ai-roomchat/docs/sql/text-battle-sessions.sql`에 정리되어 있다:
+  - `text_battle_sessions` – 한 배틀 전체 요약(최종 승자, 최종 점수 등).
+  - `text_battle_turns` – 각 턴의 프롬프트/응답/판정/스코어 스냅샷.
+- 런타임 → DB로의 매핑을 돕기 위한 헬퍼:
+  - `ai-roomchat/lib/runtime/textBattlePersistence.js`:
+    - `toTextBattleSessionRow({ externalId, ownerId, promptSetId, gameName, variables })`:
+      - `variables.battleWinner`, `variables.battleScore`를 사용해 `text_battle_sessions`에 INSERT/UPDATE할 row 객체를 만든다.
+    - `toTextBattleTurnRow({ sessionId, turnIndex, ctx, durationMs, heroId, rivalId })`:
+      - `ctx.node`, `ctx.variables.battleLast`, `ctx.variables.battleScore`를 사용해 `text_battle_turns` row 객체를 만든다.
+- 실제 INSERT/UPDATE는:
+  - Supabase service role을 사용하는 백엔드 코드(예: rank 액션 또는 별도 RPC)에서 이 객체를 받아 `supabase.from('text_battle_sessions')` / `supabase.from('text_battle_turns')`로 실행하는 식으로 구현한다.
+
 이 계획은 world/grid 엔진과는 **독립적인 텍스트 레벨의 배틀 흐름**을 먼저 완성하는 것이 목표다.  
 이후 필요하면 각 노드의 상태를 `ctx.world`나 grid 엔진과 연결해, “배틀 위치/판”을 시각화하는 쪽으로 확장한다.
 
