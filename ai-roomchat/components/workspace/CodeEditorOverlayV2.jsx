@@ -108,6 +108,8 @@ function PlayOverlayContent({ templateBinding }) {
   const gridEngineRef = React.useRef(null);
   const runtimeRef = React.useRef(null);
   const runtimeHooksRef = React.useRef(null);
+  const [debugCollapsed, setDebugCollapsed] = React.useState(true);
+  const [debugState, setDebugState] = React.useState({ lastPrompt: null });
   const bus = React.useMemo(() => {
     const listeners = new Map();
     return {
@@ -126,6 +128,18 @@ function PlayOverlayContent({ templateBinding }) {
     try { cfg = JSON.parse(cfgText || '{}'); } catch {}
     const engine = String(cfg?.engine || 'builtin').toLowerCase();
     const mode = String(cfg?.mode || (cfg?.durations ? 'turn' : 'realtime')).toLowerCase();
+
+    // Optional play overlay debug config: /debug/play.json (workspace VFS)
+    let debugConfig = null;
+    try {
+      const dbgText = files?.['/debug/play.json']?.content;
+      if (dbgText) {
+        debugConfig = JSON.parse(dbgText || '{}');
+      }
+    } catch {
+      debugConfig = null;
+    }
+    const debugPromptEnabled = !!(debugConfig && debugConfig.promptInspector);
 
     // Initialize optional adapters (networking, CRDT sync) based on capabilities + config.
     React.useEffect(() => {
@@ -344,6 +358,13 @@ function PlayOverlayContent({ templateBinding }) {
             : null;
           const txt = fromPrompt != null ? fromPrompt : String(node.label || node.id || '');
           bus.emit('system:message', txt);
+          if (debugPromptEnabled) {
+            try {
+              setDebugState((prev) => ({ ...prev, lastPrompt: txt }));
+            } catch {
+              // ignore debug state errors
+            }
+          }
         } catch {
           // ignore bus errors
         }
@@ -415,7 +436,7 @@ function PlayOverlayContent({ templateBinding }) {
           offChat && offChat();
         } catch {}
       };
-    }, [engine, cfgText, JSON.stringify(files), bus]);
+    }, [engine, cfgText, JSON.stringify(files), bus, debugPromptEnabled]);
 
     // Best-effort invoke Runtime/runner.js when engine === builtin (behind flag)
     React.useEffect(() => {
@@ -479,9 +500,69 @@ function PlayOverlayContent({ templateBinding }) {
       </div>
     ) : null;
 
+    const hasDebugConfig = !!debugConfig;
+    const debugPanel = hasDebugConfig ? (
+      <div
+        style={{
+          position: 'absolute',
+          left: '50%',
+          top: 6,
+          transform: 'translateX(-50%)',
+          zIndex: 20,
+          pointerEvents: 'auto',
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setDebugCollapsed((v) => !v)}
+          title="플레이 디버그 패널 열기/닫기"
+          style={{
+            padding: '3px 10px',
+            borderRadius: 999,
+            border: '1px solid #334155',
+            background: 'rgba(15,23,42,0.9)',
+            color: '#e5e7eb',
+            fontSize: 11,
+          }}
+        >
+          {debugCollapsed ? '▼ 디버그' : '▲ 디버그'}
+        </button>
+        {!debugCollapsed && debugPromptEnabled && debugState.lastPrompt && (
+          <div
+            style={{
+              marginTop: 6,
+              maxWidth: 420,
+              maxHeight: 160,
+              overflow: 'auto',
+              padding: 8,
+              borderRadius: 10,
+              border: '1px solid #1f2937',
+              background: 'rgba(15,23,42,0.96)',
+              color: '#e5e7eb',
+              fontSize: 11,
+              boxShadow: '0 16px 40px rgba(0,0,0,0.65)',
+            }}
+          >
+            <div style={{ fontWeight: 600, marginBottom: 4, color: '#93c5fd' }}>현재 턴 프롬프트</div>
+            <pre
+              style={{
+                margin: 0,
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+              }}
+            >
+              {debugState.lastPrompt}
+            </pre>
+          </div>
+        )}
+      </div>
+    ) : null;
+
     return (
       <div style={{ position:'relative', height:'100%', width:'100%' }}>
         {banner}
+        {debugPanel}
         <ErrorBoundary onRetry={() => { try { window.dispatchEvent(new Event('play:retry')); } catch {} }}>
           <MainGameMobileUI template={tpl} runtimeConfig={cfg} runtimeBus={bus} runtimeFeatures={runtimeFeatures} />
         </ErrorBoundary>

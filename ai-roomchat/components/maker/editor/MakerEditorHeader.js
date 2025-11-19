@@ -71,7 +71,13 @@ export default function MakerEditorHeader({
   const startXRef = useRef(0);
   const deltaXRef = useRef(0);
   const draggingRef = useRef(false);
-  const MODES = ['prompt', 'blocks', 'code', 'test'];
+  // Workbench modes:
+  // - 'prompt'  : graph/prompt editing
+  // - 'blocks'  : visual node editor
+  // - 'code'    : multi-language code editor
+  // NOTE: 이전에는 'test' 모드에서 GameSimulator를 열었지만,
+  //       실제 런타임/플레이는 코드 에디터 상단 PlayOverlay로 통일하기 위해 제거했다.
+  const MODES = ['prompt', 'blocks', 'code'];
 
   useEffect(() => {
     setActiveMode(workbenchMode || 'prompt');
@@ -85,8 +91,6 @@ export default function MakerEditorHeader({
         setShowVisualNodeEditor(true);
       } else if (mode === 'code') {
         onOpenMultiLanguageEditor?.();
-      } else if (mode === 'test') {
-        onStartSimulation?.();
       }
     },
     [onChangeWorkbenchMode, onOpenMultiLanguageEditor, onStartSimulation]
