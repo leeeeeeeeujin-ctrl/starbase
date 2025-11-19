@@ -1,0 +1,94 @@
+-- ========================================
+-- Text Battle ↔ Rank Matchmaking RPC Notes (draft)
+-- ----------------------------------------
+-- 이 파일은 텍스트 배틀 세션(text_battle_sessions / text_battle_turns)과
+-- 랭크 매칭/세션 테이블을 연결하기 위한 RPC 설계 메모입니다.
+-- 실제 PL/pgSQL 구현은 별도 파일에서 다루고, 여기서는 함수 시그니처와
+-- 기대 동작만 정의합니다.
+-- ========================================
+
+-- 1) 후보 매칭용: public.find_text_battle_pair(...)
+--
+-- 목적:
+--   - 특정 게임/모드에 대해 `rank_match_queue`에서 적절한 상대를 찾아
+--     1회용 매칭 계획을 생성한다.
+--   - 매칭이 성사되면:
+--     - `rank_rooms` / `rank_room_slots` / `rank_sessions`에 최소한의 상태를 기록한다.
+--     - 호출자에게 어떤 user/hero가 어떤 슬롯/역할로 배정되었는지 요약을 반환한다.
+--   - 매칭이 성사되지 않으면:
+--     - 호출자를 `rank_match_queue`에 `status = 'waiting'` 상태로 남긴다.
+--
+-- 제안 시그니처(초안):
+--   create or replace function public.find_text_battle_pair(
+--     p_game_id      uuid,
+--     p_mode         text,
+--     p_user_id      uuid,
+--     p_hero_id      uuid,
+--     p_role         text,
+--     p_score        integer,
+--     p_debug        jsonb default '{}'::jsonb
+--   )
+--   returns jsonb
+--   language plpgsql
+--   as $$
+--   declare
+--     -- TODO: 큐 조회, 역할/슬롯 배치, 룸/세션 생성 로직
+--   begin
+--     raise exception 'find_text_battle_pair is not implemented yet';
+--   end;
+--   $$;
+--
+-- 반환 형식(예시):
+--   {
+--     "matched": true,
+--     "room_id": "...",
+--     "session_id": "...",
+--     "assignments": [
+--       { "slot_index": 0, "role": "공격", "user_id": "...", "hero_id": "..." },
+--       { "slot_index": 1, "role": "수비", "user_id": "...", "hero_id": "..." }
+--     ],
+--     "debug": { ... 선택 }
+--   }
+--
+-- JS 측에서는:
+--   - `lib/rank/simpleMatchEngine.runSimpleMatch(...)`로 동일한 입력을 재현해
+--     매칭 알고리즘을 디버그/실험하고,
+--   - Supabase RPC는 최종 확정/저장용으로만 사용한다.
+
+
+-- 2) 정산용: public.finalize_text_battle_rank(...)
+--
+-- 목적:
+--   - 한 번의 텍스트 배틀 세션이 끝났을 때(`text_battle_sessions.status = 'completed'`)
+--     그 결과를 랭크 세션/참가자 점수에 반영한다.
+--
+-- 제안 시그니처(초안):
+--   create or replace function public.finalize_text_battle_rank(
+--     p_rank_session_id   uuid,
+--     p_text_session_id   uuid,
+--     p_summary           jsonb default '{}'::jsonb
+--   )
+--   returns void
+--   language plpgsql
+--   as $$
+--   declare
+--     -- TODO:
+--     --   - text_battle_sessions에서 winner / final_score 조회
+--     --   - `/game/roles.rank.json` 또는 rank_game_roles 스냅샷 기반 점수 정책 적용
+--     --   - finalize_rank_session_outcome(...) 호출 또는 유사 로직 직접 구현
+--   begin
+--     raise exception 'finalize_text_battle_rank is not implemented yet';
+--   end;
+--   $$;
+--
+-- 이 함수는:
+--   - "매칭" (누구와 누구를 한 방에 넣을지) 단계와
+--   - "정산" (승패/점수를 랭크 시스템에 반영하는) 단계를 명확히 분리하기 위한
+--   기준선 역할을 한다.
+--
+-- 실제 구현 시에는:
+--   - 이 파일의 시그니처/설계 메모를 참고해 별도 SQL 파일에 완전한 함수를 작성하고,
+--   - Supabase SQL 에디터 또는 `supabase db execute`로 적용한 뒤,
+--   - JS 코드에서 `rpc('find_text_battle_pair', ...)` /
+--     `rpc('finalize_text_battle_rank', ...)`를 호출하는 흐름을 구성한다.
+

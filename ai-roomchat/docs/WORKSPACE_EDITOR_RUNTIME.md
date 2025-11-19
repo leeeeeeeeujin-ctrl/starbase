@@ -1073,6 +1073,86 @@ DB 매핑(초안):
      - 제안 점수(`rankScoreDelta`)를 검증·클램프 후 최종 랭크/레이트 테이블에 반영한다.  
    - 이 단계까지 구현되면: “게임 제작 → 텍스트 배틀 진행 → 승자/점수 로그 → 공식 랭크 반영”까지의 최소 루프가 완성된다.
 
+Supabase/SQL 작업 협업 메모:
+
+- 이 레포에서는 Supabase DDL/쿼리 작업을 사람·에이전트가 같이 할 수 있도록 `ai-roomchat/SPPP_FI` 파일을 사용한다.
+  - SQL 작업이 필요할 때:
+    - Codex/Copilot 쪽에서 `SPPP_FI`에 “요청서(어떤 쿼리를 실행하고, 결과를 어디에 써 둘지)”를 적는다.
+    - 사람이 Supabase 콘솔/CLI/`tools/run_sql*.py`로 실제 쿼리를 실행한 뒤,
+      - 결과를 `assistant-sql/results_*.json`이나 별도 응답 파일(예: `ai-roomchat/SPPP_FO`)에 남긴다.
+  - 이후 Codex는 `SPPP_FI`/`SPPP_FO`와 `assistant-sql/results_*.json`을 읽어,
+    - 실제 DB 상태를 기준으로 런타임/매칭/랭크 로직을 계속 설계·구현한다.
+
+---
+
+### 10.10 매칭 파이프라인 개요 (planned)
+
+텍스트 배틀/랭크 게임의 “누구와 누구를 한 판에 묶을지”는, 하나의 거대한 알고리즘이 아니라 몇 개의 모듈을 조합해서 처리하는 파이프라인으로 바라본다.
+
+- 후보 선택 모듈 (`match.candidates`)  
+  - 입력: `game_id`, `mode`, 큐 테이블(`rank_match_queue`) 상태.  
+  - 역할: 같은 게임/모드에서 상태가 `waiting`인 엔트리를 모아, 인원 수/기본 필터(예: 최소 인원, 최대 12인)를 만족하는 후보 그룹을 만든다.
+- 역할/슬롯 배치 모듈 (`match.assignRoles`)  
+  - 입력: 후보 리스트 + `rank_game_roles` + `rank_game_slots` + `/game/roles.rank.json`.  
+  - 역할: 슬롯 그리드(공격/수비/지원 등)에 각 참가자를 배치해 `{ slot_index, role, user_id, hero_id }[]` 형태의 로스터를 만든다.
+- 점수 윈도우 모듈 (`match.scoreWindow`)  
+  - 입력: 후보들의 점수(레이팅/스코어) + 게임별 매칭 설정(기본/최대 점수 폭 등).  
+  - 역할: 이 조합을 허용할지, 일부 후보를 제외하고 재시도할지 결정한다(실시간/비실시간에 따라 윈도우/대기시간 정책만 다르게 적용).
+- 난입 모듈 (`match.dropIn`)  
+  - 입력: 이미 진행 중인 매치의 빈 슬롯(`rank_rooms` / `rank_room_slots`) + 새 큐 엔트리.  
+  - 역할: 기존 로스터에 영향을 최소화하면서 빈 슬롯만 채우는 별도 파이프라인을 제공한다(기본 `assignRoles` 로직을 재사용).
+
+향후에는:
+
+- 게임별 설정 파일 또는 DB 설정(예: `/game/matchmaking.config.json` 또는 `rank_games`의 확장 필드)을 통해  
+  - 어떤 모듈 조합을 쓸지,  
+  - 최대 인원, 허용 점수 폭, 난입 허용 여부 등을 선언하고,  
+- 매칭 서버/RPC는 위 선언에 따라 모듈을 순차적으로 적용해 매칭을 수행하는 구조를 목표로 한다.
+
+현재 이 레포에서는:
+
+- 큐/역할/슬롯/룸/세션 테이블은 `supabase.sql` 및 `docs/sql/*matchmaking*.sql`에 정의되어 있고,  
+- 매칭 알고리즘은 위 모듈 구조를 참고해 텍스트 배틀 1세대(단순 2인 매칭)부터 점진적으로 리팩터링하는 것을 계획하고 있다.
+
+실제 구현 순서(현재 계획):
+
+1. **텍스트 배틀 세션/턴 로그 안정화 (진행 중)**  
+   - `/api/ai-battle-judge`에서 `text_battle_turns`/`text_battle_sessions`에 베이직 로그를 남긴다.  
+   - `pages/text-battle/session/[id].jsx`로 “결과/턴 로그”를 확인할 수 있게 만든다.  
+   - 이 단계에서는 아직 랭크 점수와 직접 연결하지 않는다.
+2. **간단한 JS 매칭 엔진 도입 (진행 중, 장르 공용)**  
+   - `lib/rank/simpleMatchEngine.js`:
+     - DB에 의존하지 않는 순수 함수로  
+       - 후보 선택,  
+       - 역할/슬롯 배치(예: 1:1 텍스트 배틀용 공격/수비 2슬롯),  
+       - 점수 윈도우 적용  
+       을 `matchRankParticipants` 위에 얇게 래핑한다.  
+     - 작은 샘플 데이터나 Supabase에서 읽어온 큐/역할 데이터를 그대로 넣어  
+       Node/브라우저에서 직접 호출·검증할 수 있다.
+    - `pages/api/rank/match/preview.js`:
+      - `gameId`(+선택적인 `mode`)를 받아  
+        `rank_game_roles` / `rank_match_queue`를 Supabase에서 읽어온 뒤,  
+        `runSimpleMatch(...)`를 호출해 1회 매칭 계획과 디버그 요약을 JSON으로 돌려주는
+        **개발/디버그용 프리뷰 API**를 제공한다.
+      - 텍스트 배틀 뿐 아니라, 같은 랭크 스키마를 사용하는 어떤 장르에서도 재사용 가능하다.
+    - `pages/api/rank/match/join.js`:
+      - POST 바디의 `{ gameId, mode, ownerId, heroId, role, score }`를 받아  
+        1) 호출자를 `rank_match_queue`에 `status='waiting'`으로 upsert 한 뒤,  
+        2) 동일 `gameId/mode` 큐를 `runSimpleMatch(...)`에 넣어 1회 매칭을 수행하고,  
+        3) 이 ownerId가 포함된 `ready=true` 매치가 있으면:
+           - `rank_rooms` / `rank_room_slots` / `rank_sessions`에 단순 방/슬롯/세션을 생성하고,  
+           - 사용된 큐 엔트리의 `status`를 `matched`, `match_code`를 방 코드로 업데이트한다.  
+        4) 아직 준비되지 않은 경우에는 `matched: false` 상태와 매칭 프리뷰를 반환한다.
+      - 이 API 또한 장르에 독립적인 “공용 랭크 매칭 조인 엔드포인트”로 설계되어 있으며,  
+        텍스트 배틀 런타임은 이 엔드포인트 위에 얹어 쓰는 소비자 역할만 맡는다.
+3. **Supabase 매칭 RPC와 브리지 (다음 단계)**  
+   - Supabase 쿼리/함수는 `SPPP_FI` + `assistant-sql/results_*.json` 루프를 통해 협업으로 적용한다.  
+   - JS 매칭 엔진에 맞춘 형태로 `rank_match_queue`/`rank_rooms`/`rank_sessions`를 읽고 쓰는 RPC를 설계한다  
+     (예: `find_text_battle_pair(...)`, `finalize_text_battle_rank(...)` 등).  
+4. **멀티플레이/난입/모드별 정책 확장 (후속)**  
+   - 위 1~3단계가 안정된 뒤, `match.dropIn`, 12인 슬롯 구성, 모드별 정책(실시간/비실시간, 난입 허용 등)을  
+     동일한 모듈 구조 위에서 확장한다.
+
 ---
 
 ## 11. Extensions: planned GitHub sync and AI web helpers

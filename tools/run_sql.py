@@ -101,6 +101,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     p.add_argument("--out", default=DEFAULT_OUTPUT, help="Output JSON file (default: assistant-sql/results.json)")
     p.add_argument("--db-host", help="Override DB host (useful when using SSH tunnel, e.g. localhost)")
     p.add_argument("--db-port", type=int, help="Override DB port (useful when using SSH tunnel, e.g. 5433)")
+    p.add_argument("--db-user", help="Override DB user (e.g. postgres.jvopmawzszamguydylwu)")
+    p.add_argument("--db-name", help="Override DB name (default: postgres)")
     args = p.parse_args(argv)
 
     try:
@@ -114,6 +116,10 @@ def main(argv: Optional[list[str]] = None) -> int:
         conn_info['host'] = args.db_host
     if args.db_port:
         conn_info['port'] = args.db_port
+    if getattr(args, 'db_user', None):
+        conn_info['user'] = args.db_user
+    if getattr(args, 'db_name', None):
+        conn_info['dbname'] = args.db_name
 
     if args.file:
         if not os.path.exists(args.file):

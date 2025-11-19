@@ -2395,409 +2395,206 @@ export default function CharacterPlayPanel({ hero, playData }) {
     };
   }, [handleProceedMatching, matchingState.open, matchingState.phase, matchingState.queueMode]);
 
-  const runAsyncMatchFlow = useCallback(
-    async (hostPayload = null) => {
-      if (!selectedGameId) {
-        throw new Error('게임 정보를 찾을 수 없습니다.');
-      }
-
-      appendDebug('async:request', {
-        gameId: selectedGameId,
-        host: hostPayload ? { role: hostPayload.role, heroId: hostPayload.heroId } : null,
-      });
-
-      let response;
-      try {
-        response = await fetch(ASYNC_MATCH_ENDPOINT, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            gameId: selectedGameId,
-            mode: 'rank',
-            host: hostPayload || undefined,
-          }),
+  const runAutoMatch = useCallback(
+    async () => {
+      if (hasBlockingActiveSession) {
+        appendDebug('queue:block-active-session', {
+          status: activeSessionInfo?.rawStatus || null,
+          gameId: activeSessionInfo?.gameId || null,
         });
-      } catch (error) {
-        appendDebug('async:network-error', { error: error?.message || String(error) });
-        throw new Error('매칭 요청을 보낼 수 없습니다. 네트워크 상태를 확인해 주세요.');
-      }
-
-      let payload = null;
-      try {
-        payload = await response.json();
-      } catch (error) {
-        appendDebug('async:parse-error', { error: error?.message || String(error) });
-      }
-
-      appendDebug('async:response', {
-        status: response.status,
-        ok: response.ok,
-        payload,
-      });
-
-      if (!response.ok) {
-        const detail =
-          (payload && (payload.detail || payload.error || payload.message)) ||
-          '매칭 요청에 실패했습니다. 잠시 후 다시 시도해 주세요.';
-        throw new Error(detail);
-      }
-
-      return payload || {};
-    },
-    [appendDebug, selectedGameId]
-  );
-
-  const runAutoMatch = useCallback(async () => {
-    if (hasBlockingActiveSession) {
-      appendDebug('queue:block-active-session', {
-        status: activeSessionInfo?.rawStatus || null,
-        gameId: activeSessionInfo?.gameId || null,
-      });
-      setMatchingState(prev => ({
-        ...prev,
-        open: true,
-        phase: 'error',
-        progress: 0,
-        message: '',
-        error:
-          activeSessionBlockMessage ||
-          '진행 중인 전투가 있어 새로운 매칭을 시작할 수 없습니다. 현재 전투를 마친 뒤 다시 시도해 주세요.',
-        ticketId: null,
-        ticketStatus: null,
-        sessionId: null,
-        readyExpiresAt: null,
-        matchCode: null,
-      }));
-      return;
-    }
-
-    if (!selectedGameId) {
-      if (typeof window !== 'undefined') {
-        window.alert('먼저 게임을 선택하세요.');
-      }
-      return;
-    }
-    if (!hero?.id) {
-      if (typeof window !== 'undefined') {
-        window.alert('캐릭터 정보를 찾을 수 없습니다.');
-      }
-      return;
-    }
-    const ownerId = hero?.owner_id || null;
-    const roleLabel =
-      typeof selectedEntry?.role === 'string' && selectedEntry.role.trim()
-        ? selectedEntry.role.trim()
-        : 'flex';
-
-    const realtimeMode = normalizeRealtimeMode(selectedGame?.realtime_match);
-    const realtimeEnabled = isRealtimeEnabled(realtimeMode);
-    const queueMessage = realtimeEnabled
-      ? '실시간 매칭 대기열에 참가했습니다.'
-      : '비실시간 매칭 준비를 시작했어요.';
-
-    const initialPhase = realtimeEnabled ? 'queue' : 'sampling';
-    const initialProgress = realtimeEnabled ? 8 : 12;
-
-    appendDebug('queue:start', {
-      heroId: hero.id,
-      gameId: selectedGameId,
-      role: roleLabel,
-      realtime: realtimeEnabled,
-    });
-
-    clearQueueWatch();
-    setMatchingState({
-      open: true,
-      phase: initialPhase,
-      progress: initialProgress,
-      message: queueMessage,
-      error: '',
-      ticketId: null,
-      ticketStatus: null,
-      sessionId: null,
-      readyExpiresAt: null,
-      queueMode: realtimeEnabled ? 'realtime' : 'async',
-      matchCode: null,
-      countdown: null,
-    });
-
-    matchTaskRef.current = { cancelled: false };
-
-    if (!realtimeEnabled) {
-      const hostPayload = {
-        heroId: hero.id,
-        ownerId,
-        role: roleLabel,
-      };
-      if (Number.isFinite(Number(selectedEntry?.score))) {
-        hostPayload.score = Number(selectedEntry.score);
-      }
-      if (Number.isFinite(Number(selectedEntry?.rating))) {
-        hostPayload.rating = Number(selectedEntry.rating);
-      }
-      if (Number.isFinite(Number(selectedEntry?.win_rate))) {
-        hostPayload.winRate = Number(selectedEntry.win_rate);
-      }
-      if (Number.isFinite(Number(selectedEntry?.sessionCount))) {
-        hostPayload.sessions = Number(selectedEntry.sessionCount);
-      }
-      try {
         setMatchingState(prev => ({
           ...prev,
-          phase: 'assembling',
-          progress: Math.max(prev.progress, 42),
-          message: '전투 구성을 계산하는 중입니다…',
-          error: '',
-          countdown: null,
-        }));
-
-        const result = await runAsyncMatchFlow(hostPayload);
-
-        if (!result?.ready) {
-          const friendly =
-            result?.error ||
-            (result?.sampleMeta?.message
-              ? result.sampleMeta.message
-              : '매칭을 완성하지 못했습니다. 잠시 후 다시 시도해 주세요.');
-
-          setMatchingState(prev => ({
-            ...prev,
-            phase: 'error',
-            progress: 0,
-            message: '',
-            error: friendly,
-            ticketId: null,
-            ticketStatus: null,
-            sessionId: null,
-            readyExpiresAt: null,
-            matchCode: null,
-            countdown: null,
-          }));
-          appendDebug('async:not-ready', { friendly, meta: result?.sampleMeta || null });
-        } else {
-          const matchCode = result.matchCode || null;
-          const readyMessage = matchCode
-            ? `매치 코드 ${matchCode}가 준비됐습니다. 곧 전투가 시작됩니다.`
-            : '전투가 준비되었습니다. 곧 시작될 거예요.';
-
-          setMatchingState(prev => ({
-            ...prev,
-            phase: 'ready',
-            progress: 100,
-            message: readyMessage,
-            error: '',
-            ticketId: null,
-            ticketStatus: null,
-            sessionId: matchCode,
-            readyExpiresAt: null,
-            matchCode,
-            countdown: null,
-          }));
-
-          appendDebug('async:ready', {
-            matchCode,
-            assignments: result?.assignments || null,
-            sampleMeta: result?.sampleMeta || null,
-          });
-
-          try {
-            const payload = buildAsyncMatchStorePayload({
-              result,
-              hero,
-              heroOwnerId,
-              heroName,
-              selectedEntry,
-              selectedGame,
-            });
-            applyMatchSnapshot(selectedGameId, payload.storePayload);
-
-            const fallbackParticipant = buildFallbackParticipant({
-              heroName,
-              role: roleLabel,
-              heroImage: hero?.image_url || hero?.portrait_url || hero?.avatar_url || null,
-            });
-
-            if (startCountdownLaunchRef.current) {
-              startCountdownLaunchRef.current({
-                gameId: selectedGameId,
-                queueMode: 'async',
-                sessionId: null,
-                matchCode,
-                participants: payload.participants,
-                fallbackParticipant,
-                initialSeconds: 5,
-                assignments: result?.assignments || [],
-              });
-            }
-          } catch (setupError) {
-            appendDebug('async:store-error', {
-              error: setupError?.message || String(setupError),
-            });
-          }
-
-          if (typeof refreshParticipations === 'function') {
-            try {
-              await refreshParticipations();
-            } catch (refreshError) {
-              console.warn(
-                '[CharacterPlayPanel] 비실시간 매칭 후 참가 정보를 새로고침하지 못했습니다:',
-                refreshError
-              );
-            }
-          }
-        }
-      } catch (error) {
-        const friendly =
-          error?.message || '매칭 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.';
-        appendDebug('async:error', { error: friendly });
-        setMatchingState(prev => ({
-          ...prev,
+          open: true,
           phase: 'error',
           progress: 0,
           message: '',
-          error: friendly,
+          error:
+            activeSessionBlockMessage ||
+            '진행 중인 전투가 있어 새로운 매칭을 시작할 수 없습니다. 현재 전투를 마친 뒤 다시 시도해 주세요.',
           ticketId: null,
           ticketStatus: null,
           sessionId: null,
           readyExpiresAt: null,
           matchCode: null,
+        }));
+        return;
+      }
+
+      if (!selectedGameId) {
+        if (typeof window !== 'undefined') {
+          window.alert('먼저 게임을 선택하세요.');
+        }
+        return;
+      }
+      if (!hero?.id || !hero?.owner_id) {
+        if (typeof window !== 'undefined') {
+          window.alert('캐릭터 정보를 찾을 수 없습니다.');
+        }
+        return;
+      }
+
+      const ownerId = hero.owner_id;
+      const roleLabel =
+        typeof selectedEntry?.role === 'string' && selectedEntry.role.trim()
+          ? selectedEntry.role.trim()
+          : 'flex';
+
+      // 점수는 랭킹 패널에 노출되는 값들 중 하나를 사용한다.
+      let score = null;
+      if (Number.isFinite(Number(selectedEntry?.rating))) {
+        score = Number(selectedEntry.rating);
+      } else if (Number.isFinite(Number(selectedEntry?.score))) {
+        score = Number(selectedEntry.score);
+      }
+
+      appendDebug('simple-match:start', {
+        heroId: hero.id,
+        ownerId,
+        gameId: selectedGameId,
+        role: roleLabel,
+        score,
+      });
+
+      clearQueueWatch();
+      setMatchingState({
+        open: true,
+        phase: 'queue',
+        progress: 8,
+        message: '매칭 대기열에 참가했습니다.',
+        error: '',
+        ticketId: null,
+        ticketStatus: null,
+        sessionId: null,
+        readyExpiresAt: null,
+        queueMode: 'simple',
+        matchCode: null,
+        countdown: null,
+      });
+
+      matchTaskRef.current = { cancelled: false };
+
+      try {
+        const maxAttempts = QUEUE_POLL_LIMIT;
+        for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+          if (!matchTaskRef.current || matchTaskRef.current.cancelled) {
+            appendDebug('simple-match:cancelled');
+            return;
+          }
+
+          try {
+            const res = await fetch('/api/rank/match/join', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                gameId: selectedGameId,
+                ownerId,
+                heroId: hero.id,
+                role: roleLabel,
+                score,
+              }),
+            });
+
+            const json = await res.json().catch(() => null);
+
+            if (!res.ok || !json || json.ok === false) {
+              const detail =
+                json?.detail ||
+                json?.error ||
+                res.statusText ||
+                '매칭 요청 중 오류가 발생했습니다.';
+              appendDebug('simple-match:error', { attempt, detail });
+              setMatchingState(prev => ({
+                ...prev,
+                phase: 'error',
+                progress: 0,
+                message: '',
+                error: detail,
+              }));
+              return;
+            }
+
+            if (json.matched) {
+              const sessionId = json.session?.id || null;
+              const matchCode = json.room?.code || null;
+
+              appendDebug('simple-match:matched', {
+                attempt,
+                sessionId,
+                matchCode,
+              });
+
+              setMatchingState(prev => ({
+                ...prev,
+                phase: 'ready',
+                progress: 100,
+                message: '매칭이 완료되었습니다. 전투 화면으로 이동합니다…',
+                error: '',
+                sessionId,
+                matchCode,
+                countdown: null,
+              }));
+
+              const query = sessionId
+                ? `?session=${encodeURIComponent(sessionId)}`
+                : '';
+              router.push(`/rank/${selectedGameId}/start${query}`);
+              return;
+            }
+
+            // 아직 매칭이 준비되지 않은 경우: 진행률만 조금 올리고 재시도
+            setMatchingState(prev => ({
+              ...prev,
+              phase: 'queue',
+              progress: Math.min(96, Math.max(prev.progress, 8) + 4),
+              message: '상대를 기다리는 중입니다…',
+            }));
+            await new Promise(resolve => setTimeout(resolve, QUEUE_POLL_INTERVAL_MS));
+          } catch (error) {
+            const friendly =
+              error?.message ||
+              '매칭 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.';
+            appendDebug('simple-match:exception', { attempt, error: friendly });
+            setMatchingState(prev => ({
+              ...prev,
+              phase: 'error',
+              progress: 0,
+              message: '',
+              error: friendly,
+              countdown: null,
+            }));
+            return;
+          }
+        }
+
+        appendDebug('simple-match:timeout', { attempts: QUEUE_POLL_LIMIT });
+        setMatchingState(prev => ({
+          ...prev,
+          phase: 'error',
+          progress: 0,
+          message: '',
+          error: '지금은 매칭 상대를 찾지 못했습니다. 잠시 후 다시 시도해 주세요.',
           countdown: null,
         }));
       } finally {
         matchTaskRef.current = null;
       }
-      return;
-    }
-
-    try {
-      const payload = {
-        hero_id: hero.id,
-        hero_name: heroName,
-        owner_id: ownerId,
-        game_id: selectedGameId,
-        role: roleLabel,
-        mode: 'rank',
-        queue_mode: 'rank',
-        queue_mode_detail: realtimeEnabled ? 'realtime' : 'async',
-        ready_vote: {
-          ready: true,
-          hero_id: hero.id,
-          owner_id: ownerId,
-          role: roleLabel,
-          realtime_mode: realtimeMode,
-        },
-        async_fill_meta: {
-          preferred_role: roleLabel,
-          requested_at: new Date().toISOString(),
-          hero_id: hero.id,
-          realtime_mode: realtimeMode,
-        },
-        match_preferences: {
-          realtime_mode: realtimeMode,
-          mode: realtimeEnabled ? 'realtime' : 'async',
-        },
-      };
-
-      const properties = {};
-      if (Number.isFinite(Number(selectedEntry?.sessionCount))) {
-        properties.sessions_played = Number(selectedEntry.sessionCount);
-      }
-      if (selectedEntry?.primaryMode) {
-        properties.favourite_mode = selectedEntry.primaryMode;
-      }
-      if (Number.isFinite(Number(selectedEntry?.slot_no))) {
-        properties.hero_slot_no = Number(selectedEntry.slot_no);
-      }
-      if (Number.isFinite(Number(selectedEntry?.score))) {
-        properties.hero_score = Number(selectedEntry.score);
-      }
-      if (Number.isFinite(Number(selectedEntry?.rating))) {
-        properties.hero_rating = Number(selectedEntry.rating);
-      }
-      if (Number.isFinite(Number(selectedEntry?.win_rate))) {
-        properties.hero_win_rate = Number(selectedEntry.win_rate);
-      }
-      if (selectedGame?.realtime_match != null) {
-        properties.selected_game_realtime_mode = realtimeMode;
-      }
-      if (Object.keys(properties).length) {
-        payload.properties = properties;
-      }
-
-      appendDebug('rpc:join_rank_queue', {
-        queueId: QUEUE_ID,
-        heroId: hero.id,
-        gameId: selectedGameId,
-        role: roleLabel,
-        realtimeMode,
-        queueMode: realtimeEnabled ? 'realtime' : 'async',
-      });
-      const ticket = await ensureRpc('join_rank_queue', { queue_id: QUEUE_ID, payload });
-      const normalizedTicket = normalizeQueueTicket(ticket);
-      if (!normalizedTicket?.id) {
-        throw new Error('큐 티켓을 확보하지 못했습니다.');
-      }
-
-      latestTicketRef.current = normalizedTicket;
-      appendDebug('queue:ticket-acquired', {
-        ticketId: normalizedTicket.id,
-        status: normalizedTicket.status || null,
-        roomId: normalizedTicket.roomId || null,
-      });
-      setMatchingState(prev => ({
-        ...prev,
-        phase:
-          normalizedTicket.status === 'staging' && !normalizedTicket.roomId
-            ? 'awaiting-room'
-            : 'queue',
-        progress: Math.max(prev.progress, normalizedTicket.roomId ? 55 : 18),
-        message: prev.message || queueMessage,
-        ticketId: normalizedTicket.id,
-        ticketStatus: normalizedTicket.status || null,
-      }));
-
-      startQueueRealtime(normalizedTicket.queueId || QUEUE_ID, normalizedTicket.id);
-      processTicketUpdate(normalizedTicket);
-    } catch (error) {
-      const friendlyError =
-        error?.message ||
-        error?.details ||
-        (typeof error === 'string' ? error : '매칭 중 오류가 발생했습니다.');
-      appendDebug('queue:error', { stage: 'join', error: friendlyError });
-      setMatchingState(prev => ({
-        ...prev,
-        open: true,
-        phase: 'error',
-        progress: 0,
-        message: '',
-        error: friendlyError,
-        ticketId: null,
-        ticketStatus: null,
-        sessionId: null,
-        readyExpiresAt: null,
-        matchCode: null,
-        countdown: null,
-      }));
-    } finally {
-      matchTaskRef.current = null;
-    }
-  }, [
-    appendDebug,
-    clearQueueWatch,
-    hero?.id,
-    hero?.owner_id,
-    heroName,
-    processTicketUpdate,
-    selectedEntry,
-    selectedGame?.realtime_match,
-    selectedGameId,
-    startQueueRealtime,
-    runAsyncMatchFlow,
-    refreshParticipations,
-    hasBlockingActiveSession,
-    activeSessionInfo,
-    activeSessionBlockMessage,
-  ]);
+    },
+    [
+      appendDebug,
+      clearQueueWatch,
+      hero?.id,
+      hero?.owner_id,
+      router,
+      selectedEntry?.rating,
+      selectedEntry?.role,
+      selectedEntry?.score,
+      selectedGameId,
+      hasBlockingActiveSession,
+      activeSessionBlockMessage,
+      activeSessionInfo?.gameId,
+      activeSessionInfo?.rawStatus,
+    ]
+  );
 
   const visibleBattleRows = useMemo(
     () => battleDetails.slice(0, visibleBattles || battleDetails.length),
