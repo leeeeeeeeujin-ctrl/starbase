@@ -3,6 +3,26 @@
 This document is the **authoritative guide** for how the Maker workspace editor talks to the runtime and main game.  
 It exists so we can keep the structure stable even while we iterate on features and fix bugs.
 
+Conceptually, this stack behaves like a small but modern **general‑purpose game engine** for AI‑driven games:  
+the default preset looks like an “AI 텍스트 배틀”, but the same workspace model + graph + hooks + capabilities are meant to scale up so that **거의 대부분의 장르/형태의 게임이나 도구**를 만들 수 있는 수준을 목표로 한다.
+
+Implementation status & ordering notes
+
+- Section numbers (1, 2, 3, ...) are **topical only**; they do not necessarily match the historical implementation order.
+- Features are implemented in a **priority-based order** (for now: security/sandbox → runtime features - AI dock UX - Supabase helpers), and this document is updated as they land.
+- Each major section may include a short `Status: done / in progress / planned` note that reflects the current codebase, not a future goal.
+
+Current high-level status (this repo copy)
+
+- Security / sandbox (AI actions): **in progress**
+  - Host app vs workspace 경계 확립, 파일 액션 범위 축소, sandbox_exec 허용 리스트 적용.
+- Runtime features (`core.text-runtime`, `world.grid-basic`): **in progress**
+  - Text runtime는 실사용 가능 수준, grid-basic은 프리뷰 + 간단 엔진까지 연결.
+- AI code chat dock (UX / actions): **in progress**
+  - JSON 액션 파싱/게이팅, 자동 실행 슬라이더, 로그 표현 개선 일부 반영.
+- Supabase persistence + SQL helpers: **planned**
+  - Capability/확장 스펙만 정의되어 있고, 실제 어댑터/패널 구현은 이후 단계.
+
 ---
 
 ## 1. Workspace model
@@ -720,7 +740,7 @@ The core text runtime can be treated as a single installable feature composed of
     - `export async function selectNext(ctx, neighbors) { ... }`
     - `export async function transformPrompt(ctx) { ... }`
   - In a text game, `transformPrompt(ctx)` is usually the most important:
-    - It receives `{ current, variables, turn, files }` in `ctx`.
+    - It receives `{ current, variables, turn, files, world }` in `ctx`.
     - It returns either a string or `{ prompt, ui }`.
     - The `prompt` field becomes the text shown via `system:message` in the UI.
 
@@ -737,7 +757,7 @@ The core text runtime can be treated as a single installable feature composed of
   - Subscribes to `system:message` on the runtime bus.
   - Renders each message into the text game/chat area, using the template to place the log and input controls.
 
-With this minimal set present and the capabilities above selected, a workspace set can act as a "pure text game runtime" with no additional adapters required.
+With this minimal set present and the capabilities above selected, a workspace set can act as a "pure text game runtime" with no additional adapters required. When a workspace also defines `world.grid.tilemap`, the `world` field in `ctx` will include a derived grid view so hooks can render or summarise world state without re-parsing files.
 
 ### 10.6 `net.realtime-basic` runtime feature
 
@@ -778,6 +798,8 @@ This feature groups the world/grid and canvas capabilities into a single unit:
 - Composition:
   - Capabilities: `['world.grid.tilemap', 'ui.canvas2d']`
   - Required files: `['/world/tilemap.json', '/world/entities.json']`
+  - Adapter module (host-side engine, initial implementation done):
+    - `ai-roomchat/lib/runtime/adapters/worldGridEngine.js`
 
 Selection rules:
 
@@ -787,25 +809,143 @@ Selection rules:
     - `/world/tilemap.json` and `/world/entities.json` exist in `files`.
 - As with `net.realtime-basic`, the resulting feature list is stored in `runtimeFeatures` state inside `PlayOverlayContent`.
 
-Current usage:
+Current usage (this repo copy):
 
-- In this repo copy:
-  - Rendering:
-    - `MainGameMobileUI` reads `/world/tilemap.json` and `/world/entities.json` and passes a derived `gridState` into a `GridCanvas` widget.
-    - `rendererCanvas2D` renders a simple tilemap:
-      - Walkable tiles and walls in different colours.
-      - Entities (player, mobs) as coloured circles on top of the grid.
-  - Movement:
-    - When a player sends chat containing 방향 키워드 (`위/아래/왼/오른쪽` or `up/down/left/right`), `MainGameMobileUI` listens to `runtimeBus` `player:chat` events and:
-      - Finds the first `entities` entry with `kind: "player"` (or `id: "player"`).
-      - Computes the next tile based on the direction.
-      - Moves the player if the target tile is inside bounds and either has no tileset entry or `walkable !== false`.
-    - The result is a minimal, local grid “엔진” that:
-      - Starts from the JSON files as initial state.
-      - Keeps subsequent movement purely in memory (does not write back to files yet).
-  - Feature flag:
-    - `world.grid-basic` remains the feature flag that groups `world.grid.tilemap` + `ui.canvas2d`.
-    - In future, this flag will also be used to gate more advanced simulation (`world.grid.engine`) and persistence.
+- Engine + runtime bridging:
+  - `PlayOverlayContent`:
+    - When `runtimeFeatures` contains `world.grid-basic`, lazily imports `worldGridEngine.js` and creates:
+      - `engine = createWorldGridEngine({ files, bus, hooks })`
+        - `files`: 현재 워크스페이스 VFS 스냅샷.
+        - `bus`: 텍스트 런타임과 공유하는 런타임 이벤트 버스.
+        - `hooks`: `/game/hooks/automation.js`에서 로드한 훅 객체(`stepSimulation`, `applyAction` 포함 가능).
+    - 이 엔진을 `gridEngineRef.current`에 저장한다.
+    - 빌트인 core runtime가 활성화된 경우:
+      - `runtime.setWorldEngine(engine)`을 호출해:
+        - 훅에서 사용하는 `ctx.world`가 항상 `engine.getGrid()` 기준의 최신 상태를 보도록 만든다.
+      - `engine.setHooks(hooks)`를 호출해:
+        - `engine.applyAction` / `engine.step`이 존재할 경우 `hooks.applyAction` / `hooks.stepSimulation`에 위임할 수 있게 한다.
+  - `createCoreRuntime`:
+    - `setWorldEngine(engine)`과 `getContextSnapshot(reason, input)`을 노출한다.
+    - 월드 엔진이 연결된 경우:
+      - `ctx.world`는 매 접근 시마다 `engine.getGrid()`를 기반으로 다시 만들어지며(캐시 없음), grid 상태가 드리프트 하지 않는다.
+      - `getContextSnapshot`은 호스트 코드가 grid 훅으로 넘길 전체 `ctx`를 만들 때 사용한다.
+
+- Rendering:
+  - `MainGameMobileUI`:
+    - `runtimeFeatures`에 `world.grid-basic`이 포함된 경우에만 grid 위젯을 활성화한다.
+    - 런타임 버스의 `world:grid:state` 이벤트를 구독해 `{ grid }` 페이로드를 `gridState`로 보관한다.
+    - `gridState`가 존재하면 `GridCanvas` 위젯을 추가로 렌더한다.
+  - `rendererCanvas2D`:
+    - `gridState`를 기반으로 타일맵과 엔티티를 단순하게 그린다.
+      - width/height/tileSize/layers/tileset를 사용한 타일맵 렌더링.
+      - 플레이어/몬스터 엔티티는 색이 다른 원(circle)으로 표시.
+
+- Movement / simulation:
+  - 플레이어 입력:
+    - 플레이어가 방향 키워드가 포함된 채팅 (`위/아래/왼/오른쪽` 또는 `up/down/left/right`)을 보내면, `PlayOverlayContent`는:
+      - 먼저 `runtime.step({ reason: "user_action", input: text })`을 호출해 텍스트 런타임을 진행시키고,
+      - 이어서 grid 엔진이 존재하면:
+        - `const ctx = runtime.getContextSnapshot?.("user_action", text)`로 훅 컨텍스트를 만들고,
+        - `gridEngine.applyAction({ type: "chat", text }, ctx)`를 비동기로 호출한다.
+    - `createWorldGridEngine`:
+      - `hooks.applyAction`이 정의되어 있으면 이를 먼저 호출하고, 반환값의 `grid` 또는 `entities`로 상태를 갱신한다.
+      - 훅이 없거나 아무 것도 반환하지 않으면, `action.dir / direction` 또는 `action.text`에서 방향을 추론해 내부적으로 `movePlayerOnGrid`를 호출한다.
+  - 턴/틱:
+    - `turn:next` 이벤트가 발생하면:
+      - `runtime.step({ reason: "auto" })`로 텍스트 런타임을 한 턴 진행시키고 메시지를 발행한다.
+      - grid 엔진이 존재하면:
+        - `const ctx = runtime.getContextSnapshot?.("auto")`를 만든 뒤,
+        - `gridEngine.step(1, ctx)`를 비동기로 호출해 `hooks.stepSimulation`이 있을 경우 이를 통해 시뮬레이션을 한 스텝 진행시킨다.
+      - `step` 역시 반환값의 `grid`/`entities`를 사용해 상태를 갱신하고 `world:grid:state`를 브로드캐스트한다.
+
+- Feature flag:
+  - `world.grid-basic`는 이제 다음을 동시에 의미한다:
+    - `world.grid.tilemap` + `ui.canvas2d`를 묶는 선언적 feature flag.
+    - `PlayOverlayContent` 안에서:
+      - world grid 엔진 생성,
+      - grid 상태를 런타임 버스로 브로드캐스트,
+    - `MainGameMobileUI` 안에서:
+      - grid 위젯 렌더링을 켜는 스위치.
+  - 향후 이 플래그 아래에서 더 발전된 시뮬레이션(`world.grid.engine`), 네트워킹, 퍼시스턴스를 단계적으로 추가할 수 있다.
+
+### 10.8 프롬프트 노드를 “장소/아레나”로 쓰는 텍스트 배틀 (planned)
+
+목표: 프롬프트 그래프의 각 노드를 “장소/상황(아레나)”처럼 쓰고,  
+턴마다 각 캐릭터/진영이 **노드에 적힌 조건에 따라 이동**하면서 승패/진행을 결정하는 텍스트 배틀 엔진을 올리는 것.
+
+핵심 아이디어
+
+- 노드 = “배틀 상의 한 상태/장소”:
+  - 예: `Opening`, `Cornered`, `Finisher`, `JudgeDecision` 등.
+  - 각 노드는 “이 노드에서 어떤 캐릭터/진영이 어떤 프롬프트/정보를 받고,  
+    결과에 따라 어느 노드로 흘러가는지”를 정의한다.
+- 턴 구조:
+  - 한 턴은 대략 다음과 같이 진행된다(문서 수준 설계):
+    1. 현재 노드와 그 노드의 설정(battle config)을 읽는다.
+    2. 각 캐릭터/진영에 대해, 이번 턴에 사용할 프롬프트를 만든다.
+    3. 지정된 API/모델(예: 서로 다른 LLM, 또는 같은 LLM에 다른 시스템 프롬프트)을 호출한다.
+    4. 응답/점수/조건에 따라:
+       - 누가 유리해졌는지, 승패가 났는지,
+       - 다음에 어떤 노드로 이동할지(같은 노드 유지, 분기, 종료)를 정한다.
+    5. `coreRuntime`의 `selectNext` / `onUserAction`가 이 결정을 받아서 실제 다음 노드 id를 선택한다.
+
+설계 스케치 (스키마/훅)
+
+- 노드 쪽(프롬프트 그래프)에서 가질 수 있는 설정 예:
+  - `node.config.battle` (예시):
+    - `sides`: 각 진영/캐릭터 정의
+      - 예: `[{ id: "playerA", characterRef: "hero1" }, { id: "playerB", characterRef: "hero2" }]`
+    - `routes`: 노드에서 가능한 이동 규칙
+      - 예: `"on_win" → "Finisher"`, `"on_lose" → "Retry"`, `"on_timeout" → "JudgeDecision"`.
+    - `promptProfile`: 이 노드에서 프롬프트를 어떻게 조립할지에 대한 힌트
+      - 예: 어떤 캐릭터 정보/이전 턴 로그/스코어를 포함할지.
+- 훅 쪽(`/game/hooks/automation.js`)에서는:
+  - `transformPrompt(ctx)`:
+    - `ctx.node.config.battle`와 `ctx.variables`(점수, 턴 수, 각 진영 상태)를 사용해,
+    - 이번 턴에 특정 캐릭터/진영에게 보낼 프롬프트를 구성한다.
+  - `selectNext(ctx, neighbors)`:
+    - 직전 턴의 결과(예: `ctx.variables.score`, `ctx.variables.winner`)와
+      `node.config.battle.routes`를 사용해, 다음 노드 id를 결정한다.
+  - 선택적으로 `onUserAction(ctx, input)`:
+    - 유저가 직접 입력한 텍스트(특수 명령, 룰 변경 등)를 받아  
+      전개를 강제로 조정하거나(예: 리매치, surrender) 특정 노드로 점프하는 용도로 사용.
+
+구현 계획 (단계별)
+
+1. **프롬프트 그래프 스키마 확장 (문서 + 예시 파일)**
+   - `prompt-graph.json` 예시 노드에 `config.battle` 블록을 추가해,
+     - sides,
+     - routes,
+     - promptProfile
+     같은 필드를 쓰는 방식을 먼저 문서와 샘플 JSON으로 고정한다.
+   - 이 단계에서는 coreRuntime 코드는 거의 건드리지 않고, 스키마/컨벤션만 정리한다.
+
+2. **훅 레벨에서 “프롬프트별 이동” 규칙 구현**
+   - `/game/hooks/automation.js` 예시 세트에:
+     - `transformPrompt(ctx)`에서 `config.battle`을 읽어 캐릭터별/노드별 프롬프트를 조립하는 예제를 구현.
+     - `selectNext(ctx, neighbors)`에서 `routes`와 점수/조건을 사용해 다음 노드를 고르는 예제를 구현.
+   - 이 단계까지 완료되면, 격자/월드 없이도 **순수 텍스트만으로 노드 간 이동이 잘 동작하는 “배틀 루트”**를 만들 수 있다.
+
+3. **“텍스트 배틀 샘플 세트” 완성**
+   - `template.json + prompt-graph.json + game/runtime.config.json + game/hooks/automation.js` 네 개로:
+     - 캐릭터 A vs B,
+     - 몇 개의 핵심 노드(오프닝, 중반, 피니시, 판정),
+     - 승패/분기 조건,
+     - 간단한 점수/플래그
+     를 모두 포함하는 예제를 만든 뒤, 문서에서 “첫 번째 완전한 텍스트 배틀 예시”로 삼는다.
+
+4. **백엔드 AI 판정 API와 연결 (planned, see AI_ORCHESTRATION)**
+   - 프론트/런타임:
+     - `transformPrompt(ctx)`가 만든 프롬프트를 `/api/ai-battle-judge` 통합 모드에 전달한다.
+     - 응답에서 `result` / `battleEnd` / `winner`를 읽어 `variables.battleResult`, `variables.battleWinner` 등에 저장한다.
+   - 훅:
+     - `onUserAction(ctx, input)` 또는 `selectNext(ctx, neighbors)`에서:
+       - `variables.battleResult` / `variables.battleWinner`를 기반으로
+         `hero_win` / `rival_win` / `tie` / `continue` 같은 outcome 토큰을 도출하고,
+       - 노드의 `config.battle.routes`에 맞춰 다음 노드를 선택한다.
+
+이 계획은 world/grid 엔진과는 **독립적인 텍스트 레벨의 배틀 흐름**을 먼저 완성하는 것이 목표다.  
+이후 필요하면 각 노드의 상태를 `ctx.world`나 grid 엔진과 연결해, “배틀 위치/판”을 시각화하는 쪽으로 확장한다.
 
 ---
 
@@ -882,6 +1022,34 @@ This section outlines planned work around extensions that live on top of the wor
   - Future work may allow them to propose structured changes that the AI code chat executes via actions (for example, an `apply_patch` action generated by Codex Web).
 
 These planned extensions sit on top of the existing workspace/runtime/editor contracts, so they can evolve independently without changing the core model.
+
+---
+
+### 11.3 UI sandbox agent extension (`ui-sandbox`)
+
+- Built-in extension: `ui-sandbox`
+  - Purpose:
+    - Integrate a locally running UI sandbox agent (`ui-sandbox-agent/`) into the Maker editor.
+    - Make it easy to open the agent’s dashboard from the editor, and to let AI code chat dispatch `ui_sandbox_step` actions.
+  - Installation:
+    - Exposed in the “확장 프로그램 설치” modal as `UI Sandbox Agent`.
+    - Does not store heavy config; presence simply marks that the current workspace wants to use the sandbox.
+  - Behaviour:
+    - Toolbar “확장” 메뉴에서 `UI Sandbox Agent`를 선택하면:
+      - The editor opens the agent dashboard in a new tab:
+        - URL resolution order:
+          - `ext.config.agentUrl` (if set in future),
+          - `process.env.NEXT_PUBLIC_UI_SANDBOX_AGENT_URL`,
+          - Fallback: `http://127.0.0.1:7010`.
+      - This dashboard lets humans:
+        - Create/select sessions.
+        - Trigger `open/click/type/wait/snapshot` steps.
+        - See logs, DOM summaries, and screenshots for debugging.
+    - When `UI_SANDBOX_AGENT_URL` / `NEXT_PUBLIC_UI_SANDBOX_AGENT_URL` is configured and the agent is running, AI code chat can:
+      - Call `ui_sandbox_step` actions to drive the same agent.
+      - Receive `{ sessionId, state: { logs, domSummary, screenshotId? } }` and use that state for code+UI debugging.
+
+These extensions live on top of the workspace/runtime/editor contracts, so they can evolve independently without changing the core model.
 
 ---
 
@@ -995,17 +1163,28 @@ Current state (this repo copy):
 - Workspace/editor/runtime:
   - All live under `ai-roomchat/` and are designed to be host‑side code; they are not intended to be directly modified by end users in production.
 
-Planned changes:
+Planned changes and current status:
 
-- Tighten the default sandbox:
-  - For production, set `WORKSPACE_ROOT` to a per‑user/per‑workspace VFS root (for example, a mounted workspace directory or a separate storage layer), not the app source tree.
-  - Add a path allowlist for read‑only access to a small set of host files:
-    - `ai-roomchat/docs/WORKSPACE_EDITOR_RUNTIME.md`
-    - `ai-roomchat/docs/capabilities/*.md`
-    - `ai-roomchat/docs/AI_GAME_PROMPTS.md`
-    - `ai-roomchat/lib/runtime/capabilityContracts.js` (and similar small “contract” modules)
-- Keep engine/host code out of AI write scope:
-  - Ensure `write_file`, `edit_patch`, `delete_file` and related actions cannot touch the host app source in production.
+- Default sandbox tightening (in progress):
+  - In this repo copy, `lib/rank/actions.js` now:
+    - Sets `BASE_ROOT` to the `ai-roomchat/` subdirectory by default (unless `WORKSPACE_ROOT` is set).
+    - Restricts write actions (`write_file`, `delete_file`, `delete_dir`, `move_file`, `copy_file`, `mkdirs`, `edit_patch`) to the `workspace/**` subtree under `BASE_ROOT`.
+    - Restricts read actions (`read_file`, `read_file_range`, `list_files`, `stat_file`, `search_text`) to:
+      - `workspace/**`
+      - Docs allowlist under `BASE_ROOT`:
+        - `docs/WORKSPACE_EDITOR_RUNTIME.md`
+        - `docs/AI_GAME_PROMPTS.md`
+        - `docs/capabilities/**`
+    - Path normalisation:
+      - User-facing paths like `/game/runtime.config.json` or `/world/tilemap.json` are internally mapped to `workspace/game/runtime.config.json`, `workspace/world/tilemap.json` so that AI actions only touch the workspace subtree, not the host app source tree.
+    - CLI-style sandbox commands:
+      - `sandbox_exec` is disabled unless `SANDBOX_EXEC_ENABLE` is set.
+      - When enabled, commands are:
+        - Allowed only if they match `workspace/config/ai-actions-allowlist.json`.
+        - Executed with a working directory under the workspace subtree when possible (falling back to `BASE_ROOT` only as a dev-time escape hatch).
+  - For production, `WORKSPACE_ROOT` should point to a per‑user/per‑workspace VFS root (for example, a mounted workspace directory or a separate storage layer), not the app source tree; the same path rules apply relative to that root.
+- Keep engine/host code out of AI write scope (goal):
+  - Host app source under `ai-roomchat/` should remain read‑only for end users; AI actions should edit only workspace storage.
   - Reserve host‑app edits for traditional Git workflows and trusted maintainers.
 
 Impact:
@@ -1015,3 +1194,180 @@ Impact:
   - Where AI actions are allowed to read/write.
   - How the host app and user workspace storage are wired in deployment.
 - Estimated refactor scope is limited to the sandbox/action runner + boundary wiring, not a rewrite of the editor/runtime itself.
+
+---
+
+## 15. External UI test sandbox (planned)
+
+Status: planned (separate tool, this repo integrates as a client)
+
+The host app itself does not try to drive a real browser for UI testing. Instead, a future “UI sandbox agent” will run as a separate program/extension that both humans and the AI can use.
+
+- Goal:
+  - Allow scripted UI tests (click, type, navigate) to run in a real browser with:
+    - Per-step console logs.
+    - Optional screenshots.
+    - A compact DOM/ARIA/text summary.
+  - Keep heavy browser control and local machine permissions outside the main web app.
+- Shape:
+  - Separate project/repo (for example, `ui-sandbox-agent/`) that:
+    - Uses Playwright/Puppeteer or the Chrome DevTools Protocol to control a browser.
+    - Exposes a narrow JSON API over HTTP/WebSocket, for example:
+      - `POST /session` → `{ sessionId }`
+      - `POST /session/:id/step` with `{ action: 'click' | 'type' | 'navigate' | 'drag' | 'wait', ... }`
+      - `GET /session/:id/state` → latest `{ logs, domSummary, screenshotId? }`
+    - Returns structured results:
+      - `{ ok, state: { logs, domSummary, screenshotId? } }` per step.
+      - `logs`: recent console/network log lines.
+      - `domSummary`: compact description of visible text, key buttons/inputs, and error banners.
+      - `screenshotId`: handle that maps to a locally stored image (for humans to open).
+    - Stores screenshots and traces locally per session so both humans and the AI can inspect them.
+  - ai-roomchat integrates this as a “remote tool”, not as part of the runtime:
+    - Capability/extension id (planned): `ui.test-sandbox`.
+    - The editor/AI dock can call into the agent when this extension is installed and configured.
+    - AI code chat would treat UI steps as just another action family (“ui_click”, “ui_type”, “ui_drag”, “ui_wait”) that proxies to the agent.
+- Security and separation:
+  - The agent runs on the user’s machine (or a dedicated runner), with its own install/update lifecycle.
+  - Host app (`ai-roomchat/`) only sees:
+    - Structured action requests/responses.
+    - No direct access to local browser/devtools permissions.
+  - Production deployments can choose to:
+    - Enable UI sandbox integration only for trusted environments.
+    - Treat it exactly like other external helpers (`github-sync`, `codex-web`), not as a mandatory dependency.
+- Environment / portability:
+  - The agent’s base URL and API token (if any) are provided via environment/config, so any compatible agent implementation can be plugged in.
+  - Other apps (not just ai-roomchat) can reuse the same agent by speaking the same JSON protocol.
+
+This keeps the Maker workspace/editor/runtime focused on workspace files and game runtime, while still giving us a path to “AI-driven UI testing” via a dedicated, opt‑in external tool.
+
+### 15.2 Local run (dev) — example setup
+
+For local development in this repo, the `ui-sandbox-agent/` folder contains a minimal Playwright-based agent that matches the API described above.
+
+- Manual start (recommended, current tested path):
+  ```bash
+  cd c:\Users\yujin\Documents\234423\starbase\ui-sandbox-agent
+  npm install
+  npx playwright install chromium
+  set UI_SANDBOX_AGENT_PORT=7010
+  node server.mjs
+  ```
+  - Once running, the agent listens on `http://127.0.0.1:7010` and exposes:
+    - `POST /session` → `{ ok, sessionId }`
+    - `POST /session/:id/step` → `{ ok, state }`
+    - `GET /session/:id/state` → `{ ok, state }`
+    - `GET /screenshots/:id` → PNG screenshot.
+    - `GET /` → small HTML dashboard for manual inspection (sessions, logs, DOM summary, screenshot).
+- ai-roomchat integration:
+  - Set `UI_SANDBOX_AGENT_URL=http://127.0.0.1:7010` in the ai-roomchat environment.
+  - The `ui_sandbox_step` action in `lib/rank/actions.js` / `ai-roomchat/lib/rank/actions.js` will:
+    - Create a session if needed (`POST /session`),
+    - Forward `{ action, params }` to `/session/:id/step`,
+    - Return `{ ok, result: { sessionId, state } }` to AI code chat.
+  - This is intended for **local/dev** use only; cloud deployments (for example, Vercel) cannot reach a user’s `localhost`, so `UI_SANDBOX_AGENT_URL` / `NEXT_PUBLIC_UI_SANDBOX_AGENT_URL` should generally be left unset there.
+
+### 15.3 Hub install and environment detection (planned)
+
+Longer term, the UI sandbox agent is one instance of a broader “Starbase Hub” concept: a native helper that runs on the user’s device and exposes capabilities (UI testing, local Git, etc.) to web/PWA apps.
+
+- Environments:
+  - Desktop (Windows/macOS/Linux):
+    - Preferred: a native “Starbase Hub” app that:
+      - Starts on login (background).
+      - Hosts the same HTTP/WS API as `ui-sandbox-agent` (including `/health`).
+      - May include a small tray UI for status and logs.
+  - Android:
+    - Planned: an Android app exposing the same API on `localhost` (where permitted).
+  - iOS:
+    - Due to platform restrictions, most hub features will not be available directly.
+    - iOS clients may instead connect to a remote hub (desktop/VM) in future designs.
+- PWA / web behaviour (conceptual):
+  - When a user attempts to enable a hub-dependent feature (such as `ui-sandbox`):
+    - Detect platform via `navigator.userAgent` / `navigator.userAgentData`:
+      - Desktop → show “Install Desktop Hub” CTA (link to installer) if `/health` fails.
+      - Android → link to the Android Hub app (Play Store / APK) if `/health` fails.
+      - iOS → show a clear “This feature is not available on iOS yet” message.
+    - On success:
+      - The app stores the hub endpoint (for example, `UI_SANDBOX_AGENT_URL` / `NEXT_PUBLIC_UI_SANDBOX_AGENT_URL`) and treats hub-backed actions (like `ui_sandbox_step`) as available.
+- Integration contract:
+  - ai-roomchat and other apps are only aware of:
+    - A base URL for the hub.
+    - A small set of JSON actions (`ui_sandbox_step`, future `git_local_step`, etc.).
+  - The hub is responsible for:
+    - Managing browser instances and local resources.
+    - Returning structured, text-friendly summaries (logs, DOM, statuses) so the AI can debug and act without direct access to device APIs.
+
+This lets the Maker/PWA side remain purely web-based while still opting into richer, device-level features when a hub is installed and reachable.
+
+### 15.1 AI-centric debugging workflow (how the agent is used)
+
+From the AI’s point of view, the UI sandbox agent should feel like a simple “remote REPL” for the browser:
+
+- Minimal actions:
+  - `ui_sandbox_step` (exposed as an action in AI code chat) with payload:
+    - `sessionId?: string` – omitted on first call, the agent creates one.
+    - `action: "open" | "click" | "type" | "drag" | "wait" | "snapshot"`.
+    - `params: { ... }` – for example:
+      - `open`: `{ url }`
+      - `click`: `{ selector }`
+      - `type`: `{ selector, text, pressEnter?: boolean }`
+      - `drag`: `{ fromSelector, toSelector }`
+      - `wait`: `{ ms?: number, selector?: string }`
+      - `snapshot`: `{}` (no-op step that just returns current state).
+  - Each step returns:
+    - `{ ok, sessionId, state: { logs, domSummary, screenshotId? } }`.
+    - AI code chat keeps `sessionId` in its own memory and includes it in subsequent steps.
+    - Screenshots are not sent directly in-text; the host/orchestrator can:
+      - Map `screenshotId` → a local file or URL, and
+      - Attach one or more images from that set to the next model call as image inputs, so the AI can literally “see” the UI reaction without the human manually uploading files every turn.
+- Typical debugging loop:
+  - 1) `ui_sandbox_step { action: "open", params: { url: "https://.../dev" } }`
+  - 2) Inspect `domSummary` / `logs` in the next model turn, decide what to click.
+  - 3) `ui_sandbox_step { sessionId, action: "click", params: { selector: "button.play" } }`
+  - 4) Repeat with `type`, `drag`, `wait`, occasionally `snapshot` to get a fresh screenshot/log bundle.
+  - 5) When done, the agent may optionally support `action: "close"` to free resources.
+- Presentation in the host app:
+  - AI gets the full JSON state on every step, but the user UI can show:
+    - A short text summary (“UI step #3: click button.play, 2 console errors, 1 warning”).
+    - A link/thumbnail for `screenshotId` that humans can click to open the full image.
+  - This makes the tool usable both as:
+    - A low-friction debugging helper for developers, and
+    - A durable test surface for the AI code chat without exposing raw browser control to the web app.
+
+Dom summary shape (current agent implementation):
+
+- `state.domSummary` is an object:
+  - `elements: ElementSummary[]`
+  - `errors: ElementSummary[]` (subset of `elements` with `kind: "error"`)
+- `ElementSummary`:
+  - `kind`: `"element" | "error" | "dialog"` – basic classification (normal element, error banner, dialog/modal).
+  - `tag`: lowercased tag name (`button`, `a`, `input`, etc.).
+  - `role`: ARIA role when present.
+  - `region`: high-level layout region inferred from ancestors (`header`, `main`, `footer`, `nav`, `aside`, or `null`).
+  - `text`: visible text content (whitespace collapsed).
+  - `name`: best-effort accessible name (`aria-label`, `alt`, `title`, `placeholder`, ...).
+  - `attrs`: selected attributes:
+    - `href` (for links),
+    - `type`, `value` (for inputs/buttons),
+    - `testId` (from `data-testid` / `data-test-id` when present).
+  - `state`:
+    - `disabled`, `hidden`, `checked`, `selected`, `focused`, `invalid` (boolean flags).
+
+This makes `domSummary` closer to a compact, text-friendly “Elements panel” snapshot: the AI sees which interactive elements and error banners are visible, how they are labelled, and what state they are in, without needing the raw screenshot pixels.
+
+#### 15.1.1 Real environment vs dedicated sandbox
+
+- The UI sandbox agent is intended to drive a **real browser** (for example, Chrome) against:
+  - A staging or preview deployment of the app (recommended), or
+  - A local dev server, depending on configuration.
+- The agent itself is an **external program** the user installs:
+  - It knows how to launch/attach to a browser and open the target URL.
+  - It keeps its own profile/data directory so tests do not interfere with the user’s normal browsing.
+- The host app (`ai-roomchat/`) only needs:
+  - The agent base URL (for example, `UI_SANDBOX_AGENT_URL`) and optional token.
+  - A small mapping layer between `ui_sandbox_step` actions and the agent’s HTTP/WebSocket API.
+
+With this split, the AI can:
+- Issue multiple `ui_sandbox_step` calls in a single reasoning turn.
+- Receive logs + DOM summary + one or more screenshots as context.
+- Use that context to decide the next steps, without the human manually pasting images every time.

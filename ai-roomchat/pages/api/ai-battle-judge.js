@@ -79,11 +79,27 @@ async function processUnifiedGamePrompt(context) {
   try {
     const aiResponse = await callAIJudge(prompt);
 
+    // NOTE:
+    // - 통합 모드에서는 텍스트 배틀/런타임과 바로 연결할 수 있도록
+    //   parseAIResponse를 재사용해 구조화된 결과도 함께 돌려준다.
+    const parsed = parseAIResponse(aiResponse);
+    const timestamp = new Date().toISOString();
+
     return {
-      narrative: aiResponse,
+      // 사람이 바로 볼 수 있는 요약/내러티브
+      narrative: parsed.narrative || aiResponse,
+      // 원본 응답 텍스트
       response: aiResponse,
+      // 구조화된 판정 결과 (텍스트 배틀 엔진에서 outcome 토큰으로 매핑 가능)
+      result: parsed.result,
+      battleEnd: parsed.battleEnd,
+      winner: parsed.winner,
+      effects: parsed.effects || null,
+      // 통합 게임 런타임이 사용할 수 있는 메타 정보
       success: true,
-      timestamp: new Date().toISOString(),
+      timestamp,
+      // gameState는 호출자가 관리하므로 여기서는 그대로 에코만 한다.
+      gameState,
     };
   } catch (error) {
     console.error('통합 게임 프롬프트 처리 오류:', error);

@@ -25,6 +25,13 @@ const BUILTIN_EXTENSIONS = [
     description:
       '현재 워크스페이스 세트를 GitHub 레포의 스냅샷 파일(workspace/{workspaceId}.json)로 커밋·푸시하는 Git 동기화 확장입니다.',
   },
+  {
+    id: 'ui-sandbox',
+    name: 'UI Sandbox Agent',
+    kind: 'ui',
+    description:
+      '로컬에 설치된 UI 샌드박스 에이전트(ui-sandbox-agent)를 통해 실제 브라우저 화면을 단계별로 열고, 클릭/입력/로그/DOM 요약을 확인하는 디버깅용 확장입니다. 에이전트 실행이 필요합니다.',
+  },
 ];
 
 export default function ExtensionInstallModal({

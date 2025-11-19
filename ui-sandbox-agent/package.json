@@ -1,0 +1,15 @@
+{
+  "name": "ui-sandbox-agent",
+  "version": "0.1.0",
+  "description": "Minimal HTTP agent that drives a real browser (via Playwright/Puppeteer) for AI-driven UI testing.",
+  "private": true,
+  "main": "server.mjs",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.48.0"
+  }
+}
+

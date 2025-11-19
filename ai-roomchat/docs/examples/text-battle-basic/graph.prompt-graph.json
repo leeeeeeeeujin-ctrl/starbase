@@ -1,0 +1,113 @@
+{
+  "nodes": [
+    {
+      "id": "opening",
+      "label": "오프닝",
+      "type": "battle",
+      "config": {
+        "battle": {
+          "sides": [
+            { "id": "hero", "characterRef": "hero" },
+            { "id": "rival", "characterRef": "rival" }
+          ],
+          "routes": {
+            "on_hero_win": "end",
+            "on_rival_win": "end",
+            "on_tie": "rematch"
+          },
+          "promptProfile": {
+            "stage": "opening",
+            "tone": "introduce_characters",
+            "includePreviousTurns": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "mid_round",
+      "label": "본 라운드",
+      "type": "battle",
+      "config": {
+        "battle": {
+          "sides": [
+            { "id": "hero", "characterRef": "hero" },
+            { "id": "rival", "characterRef": "rival" }
+          ],
+          "routes": {
+            "on_hero_win": "end",
+            "on_rival_win": "end",
+            "on_tie": "judge"
+          },
+          "promptProfile": {
+            "stage": "mid_round",
+            "tone": "competitive_but_fun",
+            "includePreviousTurns": 2
+          }
+        }
+      }
+    },
+    {
+      "id": "judge",
+      "label": "판정",
+      "type": "battle",
+      "config": {
+        "battle": {
+          "sides": [
+            { "id": "hero", "characterRef": "hero" },
+            { "id": "rival", "characterRef": "rival" }
+          ],
+          "routes": {
+            "on_hero_win": "end",
+            "on_rival_win": "end",
+            "on_tie": "rematch"
+          },
+          "promptProfile": {
+            "stage": "judge",
+            "tone": "fair_judge",
+            "includePreviousTurns": 4
+          }
+        }
+      }
+    },
+    {
+      "id": "rematch",
+      "label": "리매치 여부",
+      "type": "control",
+      "config": {
+        "battle": {
+          "routes": {
+            "on_rematch": "opening",
+            "on_end": "end"
+          },
+          "promptProfile": {
+            "stage": "rematch",
+            "tone": "ask_rematch",
+            "includePreviousTurns": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "end",
+      "label": "배틀 종료",
+      "type": "end",
+      "config": {
+        "battle": {
+          "promptProfile": {
+            "stage": "end",
+            "tone": "wrap_up",
+            "includePreviousTurns": 4
+          }
+        }
+      }
+    }
+  ],
+  "edges": [
+    { "source": "opening", "target": "mid_round", "label": "본 라운드로" },
+    { "source": "mid_round", "target": "judge", "label": "판정으로" },
+    { "source": "judge", "target": "rematch", "label": "리매치 여부" },
+    { "source": "rematch", "target": "opening", "label": "리매치" },
+    { "source": "rematch", "target": "end", "label": "종료" }
+  ]
+}
+

@@ -1,0 +1,31 @@
+{
+  "title": "기본 텍스트 배틀 예시",
+  "description": "두 캐릭터가 프롬프트 노드(장소)를 오가며 대결하는 최소 예시입니다.",
+  "resources": {
+    "characters": [
+      {
+        "id": "hero",
+        "name": "도전자 히어로",
+        "role": "hero",
+        "desc": "정면승부를 좋아하는 도전자. 스타일과 임팩트를 중시한다.",
+        "stats": {
+          "power": 7,
+          "wit": 6,
+          "style": 8
+        }
+      },
+      {
+        "id": "rival",
+        "name": "라이벌",
+        "role": "rival",
+        "desc": "빈틈을 노리는 라이벌. 날카로운 말빨과 트릭에 강하다.",
+        "stats": {
+          "power": 6,
+          "wit": 8,
+          "style": 7
+        }
+      }
+    ]
+  }
+}
+

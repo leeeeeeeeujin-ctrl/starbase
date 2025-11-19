@@ -5,6 +5,7 @@
 
 import { buildIndex } from './promptRunner.js';
 import { callHookWithTimeout } from './safeEvalHookModule.js';
+import { buildInitialGridState } from './adapters/worldGridEngine.js';
 
 export function createCoreRuntime({ graph, config, hooks, files }) {
   const { nodesById, outEdges } = buildIndex(graph || {});
@@ -12,6 +13,58 @@ export function createCoreRuntime({ graph, config, hooks, files }) {
   let currentId = cfg.entryNode || null;
   let turn = 0;
   const variables = {};
+
+  // Optional world/grid engine that can provide a live grid state.
+  // When present, ctx.world will reflect the engine's current grid state.
+  let worldEngine = null;
+
+  // Lazy world/grid context, derived either from the world engine (when set)
+  // or from workspace files as a fallback. This is read-only from the
+  // runtime's point of view; hooks are expected to treat it as a snapshot.
+  let worldCtx = null;
+  let worldInitialized = false;
+
+  function getWorldContext() {
+    try {
+      let grid = null;
+      if (worldEngine && typeof worldEngine.getGrid === 'function') {
+        // When a live world engine is attached, always read the latest grid
+        // state instead of caching, so ctx.world stays in sync with gameplay.
+        grid = worldEngine.getGrid();
+      } else {
+        if (worldInitialized) return worldCtx;
+        worldInitialized = true;
+        grid = buildInitialGridState(files || {});
+      }
+      if (!grid) {
+        worldCtx = null;
+        return worldCtx;
+      }
+      const tilemap = {
+        width: grid.width,
+        height: grid.height,
+        tileSize: grid.tileSize,
+        layers: grid.layers,
+        tileset: grid.tileset,
+      };
+      const entities = Array.isArray(grid.entities) ? grid.entities : [];
+      worldCtx = {
+        grid,
+        tilemap,
+        entities,
+      };
+    } catch {
+      worldCtx = null;
+    }
+    return worldCtx;
+  }
+
+  function setWorldEngine(engine) {
+    worldEngine = engine || null;
+    // Invalidate any cached snapshot so the next read reflects the new source.
+    worldCtx = null;
+    worldInitialized = false;
+  }
 
   function getCurrentNode() {
     return currentId ? nodesById.get(currentId) || null : null;
@@ -24,6 +77,7 @@ export function createCoreRuntime({ graph, config, hooks, files }) {
       variables,
       node: getCurrentNode(),
       files: files || {},
+      world: getWorldContext(),
       reason,
       input,
     };
@@ -146,9 +200,15 @@ export function createCoreRuntime({ graph, config, hooks, files }) {
     };
   }
 
+  function getContextSnapshot(reason = 'inspect', input) {
+    return buildContext(reason, input);
+  }
+
   return {
     getCurrentNode,
     step,
     getCurrentWithPrompt,
+    setWorldEngine,
+    getContextSnapshot,
   };
 }

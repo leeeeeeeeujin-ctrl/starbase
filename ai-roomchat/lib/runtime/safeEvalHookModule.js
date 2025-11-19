@@ -18,6 +18,9 @@ export function loadHooksFromSource(source) {
     selectNext: pickFn(out, 'selectNext'),
     onEnterNode: pickFn(out, 'onEnterNode'),
     onLeaveNode: pickFn(out, 'onLeaveNode'),
+    // World/grid-related hooks (optional; used by worldGridEngine when present)
+    stepSimulation: pickFn(out, 'stepSimulation'),
+    applyAction: pickFn(out, 'applyAction'),
   };
 }
 

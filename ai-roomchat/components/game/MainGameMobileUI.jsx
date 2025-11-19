@@ -5,6 +5,10 @@ import useIsMobile from '@/utils/useIsMobile';
 import { useWorkspace } from '../workspace/CodeWorkspaceProvider.jsx';
 import DynamicSlot from './slots/DynamicSlot.jsx';
 import { attachCanvas2D } from '../../lib/runtime/adapters/rendererCanvas2D.js';
+import {
+  buildInitialGridState,
+  movePlayerOnGrid,
+} from '../../lib/runtime/adapters/worldGridEngine.js';
 
 // Shared style tokens
 const btn = { padding:'6px 10px', border:'1px solid #334155', background:'#1e293b', color:'#e2e8f0', borderRadius:8 };
@@ -13,7 +17,17 @@ const btnPrimary = { padding:'8px 14px', border:'1px solid #2563eb', background:
 const input = { flex:1, minWidth:0, padding:'8px 10px', background:'#0f172a', color:'#e2e8f0', border:'1px solid #334155', borderRadius:8, outline:'none' };
 const ctl = { padding:'4px 8px', border:'1px solid #334155', background:'#0f172a', color:'#cbd5e1', borderRadius:6 };
 
-export default function MainGameMobileUI({ template, user = null, onNext = () => {}, runtimeFeed = null, runtimeSecondsLeft = null, onForceNext = null, onPlayerChat = null, runtimeBus = null }) {
+export default function MainGameMobileUI({
+  template,
+  user = null,
+  onNext = () => {},
+  runtimeFeed = null,
+  runtimeSecondsLeft = null,
+  onForceNext = null,
+  onPlayerChat = null,
+  runtimeBus = null,
+  runtimeFeatures = [],
+}) {
   const isMobile = useIsMobile(820); // currently unused but reserved for responsive adjustments
   const [layout, setLayout] = useState(() => loadLayout());
   const [edit, setEdit] = useState(false);
@@ -98,31 +112,34 @@ export default function MainGameMobileUI({ template, user = null, onNext = () =>
     setLayout({ ...layout, order });
   }, [layout]);
 
-  const gridInitial = useMemo(() => readGridState(files), [files]);
+  const hasWorldGridFeature = useMemo(
+    () => Array.isArray(runtimeFeatures) && runtimeFeatures.some((f) => f && f.id === 'world.grid-basic'),
+    [runtimeFeatures],
+  );
+
+  const gridInitial = useMemo(
+    () => (hasWorldGridFeature ? buildInitialGridState(files) : null),
+    [files, hasWorldGridFeature],
+  );
   const [gridState, setGridState] = useState(() => gridInitial);
 
   useEffect(() => {
     setGridState(gridInitial);
   }, [gridInitial]);
 
-  // Simple grid movement: respond to player:chat events when grid is present.
+  // Subscribe to world:grid:state events from the grid engine.
   useEffect(() => {
-    if (!runtimeBus || !gridState) return undefined;
+    if (!runtimeBus) return undefined;
     const handler = (payload) => {
       try {
-        const text = String(payload?.text || '').toLowerCase();
-        let dir = null;
-        if (text.includes('위') || text.includes('up')) dir = 'up';
-        else if (text.includes('아래') || text.includes('down')) dir = 'down';
-        else if (text.includes('왼') || text.includes('left')) dir = 'left';
-        else if (text.includes('오른') || text.includes('right')) dir = 'right';
-        if (!dir) return;
-        setGridState((prev) => movePlayerOnGrid(prev, dir));
+        if (payload && payload.grid) {
+          setGridState(payload.grid);
+        }
       } catch {
-        // ignore movement errors
+        // ignore malformed payloads
       }
     };
-    const off = runtimeBus.on?.('player:chat', handler);
+    const off = runtimeBus.on?.('world:grid:state', handler);
     return () => {
       try {
         off && off();
@@ -130,7 +147,7 @@ export default function MainGameMobileUI({ template, user = null, onNext = () =>
         // ignore
       }
     };
-  }, [runtimeBus, !!gridState]);
+  }, [runtimeBus]);
 
   const modules = useMemo(() => {
     const widgetFlags = readWidgetFlags(template);
@@ -346,33 +363,6 @@ function saveLayout(layout){
   try { localStorage.setItem('mainGame:layout', JSON.stringify(layout)); } catch {}
 }
 
-function readGridState(files){
-  try{
-    const t = files?.['/world/tilemap.json']?.content;
-    const e = files?.['/world/entities.json']?.content;
-    if (!t || !e) return null;
-    const tilemap = JSON.parse(t);
-    const entitiesObj = JSON.parse(e);
-    const entities = Object.values(entitiesObj || {}).map((ent) => ({
-      id: ent.id || '',
-      x: ent.x ?? 0,
-      y: ent.y ?? 0,
-      kind: ent.kind || 'entity',
-    }));
-    const layers = Array.isArray(tilemap.layers) ? tilemap.layers : [];
-    const tileset = tilemap.tileset && typeof tilemap.tileset === 'object' ? tilemap.tileset : {};
-    return {
-      width: tilemap.width || 0,
-      height: tilemap.height || 0,
-      tileSize: tilemap.tileSize || 24,
-      layers,
-      tileset,
-      entities,
-    };
-  }catch{}
-  return null;
-}
-
 function GridCanvas({ grid }) {
   const canvasRef = useRef(null);
   const rendererRef = useRef(null);
@@ -403,33 +393,4 @@ function GridCanvas({ grid }) {
       <canvas ref={canvasRef} style={{ width:'100%', height:'100%', display:'block' }} />
     </div>
   );
-}
-
-function movePlayerOnGrid(grid, dir) {
-  if (!grid) return grid;
-  const width = grid.width || 0;
-  const height = grid.height || 0;
-  const layers = Array.isArray(grid.layers) ? grid.layers : [];
-  const layer = layers[0] && Array.isArray(layers[0].data) ? layers[0].data : [];
-  const tileset = grid.tileset || {};
-  const entities = Array.isArray(grid.entities) ? grid.entities.map((e) => ({ ...e })) : [];
-  const playerIndex = entities.findIndex((e) => e.kind === 'player' || e.id === 'player');
-  if (playerIndex < 0) return grid;
-  const player = entities[playerIndex];
-  const dx = dir === 'left' ? -1 : dir === 'right' ? 1 : 0;
-  const dy = dir === 'up' ? -1 : dir === 'down' ? 1 : 0;
-  const nx = player.x + dx;
-  const ny = player.y + dy;
-  if (nx < 0 || ny < 0 || nx >= width || ny >= height) return grid;
-  const row = layer[ny] || [];
-  const t = row[nx] ?? 0;
-  const tile = tileset[t] || {};
-  const walkable = tile.walkable !== false;
-  if (!walkable) return grid;
-  player.x = nx;
-  player.y = ny;
-  return {
-    ...grid,
-    entities,
-  };
 }

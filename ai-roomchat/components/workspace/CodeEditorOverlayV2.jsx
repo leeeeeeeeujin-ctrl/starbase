@@ -105,6 +105,9 @@ function PlayOverlayContent({ templateBinding }) {
   const [runnerErr, setRunnerErr] = React.useState(null);
   const [netAdapters, setNetAdapters] = React.useState(null);
   const [runtimeFeatures, setRuntimeFeatures] = React.useState([]);
+  const gridEngineRef = React.useRef(null);
+  const runtimeRef = React.useRef(null);
+  const runtimeHooksRef = React.useRef(null);
   const bus = React.useMemo(() => {
     const listeners = new Map();
     return {
@@ -201,6 +204,92 @@ function PlayOverlayContent({ templateBinding }) {
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [storageNamespace, JSON.stringify(files)]);
 
+    // World grid engine: enable only when world.grid-basic feature is active.
+    React.useEffect(() => {
+      const hasGridFeature = Array.isArray(runtimeFeatures)
+        && runtimeFeatures.some((f) => f && f.id === 'world.grid-basic');
+      if (!hasGridFeature) {
+        gridEngineRef.current = null;
+        return undefined;
+      }
+      let disposed = false;
+      try {
+        // Lazy require to avoid issues if the adapter is not bundled in some environments.
+        // eslint-disable-next-line global-require, import/no-dynamic-require
+        const { createWorldGridEngine } = require('../../lib/runtime/adapters/worldGridEngine.js');
+        const gridEngine = createWorldGridEngine({
+          files,
+          bus,
+          hooks: runtimeHooksRef.current || null,
+        });
+        gridEngineRef.current = gridEngine;
+        // Link the engine to the current core runtime (if any) so ctx.world
+        // sees the live grid state.
+        try {
+          const rt = runtimeRef.current;
+          if (rt && typeof rt.setWorldEngine === 'function') {
+            rt.setWorldEngine(gridEngine);
+          }
+        } catch {
+          // ignore linkage errors
+        }
+        // Ensure the engine also sees the latest hooks if they are already loaded.
+        try {
+          const hooks = runtimeHooksRef.current || null;
+          if (hooks && typeof gridEngine.setHooks === 'function') {
+            gridEngine.setHooks(hooks);
+          }
+        } catch {
+          // ignore hook linkage errors
+        }
+        try {
+          const initial = gridEngine.getGrid();
+          if (initial) {
+            bus.emit('world:grid:state', { grid: initial });
+          }
+        } catch {
+          // ignore publish errors
+        }
+        // When the core runtime is not using the builtin engine, keep a
+        // minimal fallback so grid movement (via chat) still works by
+        // delegating directly to the grid engine.
+        const off = bus.on('player:chat', (payload) => {
+          if (disposed || !gridEngineRef.current) return;
+          if (engine === 'builtin') return; // builtin path uses coreRuntime handler instead
+          try {
+            const text = String(payload?.text || '');
+            const action = { type: 'chat', text };
+            const current = gridEngineRef.current;
+            if (current && typeof current.applyAction === 'function') {
+              Promise.resolve(current.applyAction(action, null)).catch(() => {});
+            }
+          } catch {
+            // ignore movement errors
+          }
+        });
+        return () => {
+          disposed = true;
+          try {
+            const rt = runtimeRef.current;
+            if (rt && typeof rt.setWorldEngine === 'function') {
+              rt.setWorldEngine(null);
+            }
+          } catch {
+            // ignore detach errors
+          }
+          gridEngineRef.current = null;
+          try {
+            off && off();
+          } catch {
+            // ignore detach errors
+          }
+        };
+      } catch {
+        gridEngineRef.current = null;
+        return undefined;
+      }
+    }, [JSON.stringify(files), runtimeFeatures, bus]);
+
     // Minimal builtin core runtime: drive node progression for core.graph + hooks
     React.useEffect(() => {
       if (engine !== 'builtin') return;
@@ -223,6 +312,21 @@ function PlayOverlayContent({ templateBinding }) {
           // ignore hook load errors; runtime will fall back to graph edges only
         }
         runtime = createCoreRuntime({ graph, config: cfg, hooks, files });
+        runtimeRef.current = runtime;
+        runtimeHooksRef.current = hooks;
+        // Link grid engine (if present) to this runtime and hooks so ctx.world
+        // stays in sync with the grid engine and grid hooks can run.
+        try {
+          const gridEngine = gridEngineRef.current;
+          if (gridEngine && typeof runtime.setWorldEngine === 'function') {
+            runtime.setWorldEngine(gridEngine);
+          }
+          if (gridEngine && hooks && typeof gridEngine.setHooks === 'function') {
+            gridEngine.setHooks(hooks);
+          }
+        } catch {
+          // ignore linkage errors
+        }
       } catch {
         return;
       }
@@ -260,6 +364,13 @@ function PlayOverlayContent({ templateBinding }) {
         try {
           const res = await runtime.step({ reason: 'auto' });
           publishResult(res);
+          const gridEngine = gridEngineRef.current;
+          if (gridEngine && typeof gridEngine.step === 'function') {
+            const ctx = typeof runtime.getContextSnapshot === 'function'
+              ? runtime.getContextSnapshot('auto', undefined)
+              : null;
+            Promise.resolve(gridEngine.step(1, ctx)).catch(() => {});
+          }
         } catch (e) {
           try { bus.emit('system:message', String(e?.message || e)); } catch {}
         }
@@ -270,6 +381,14 @@ function PlayOverlayContent({ templateBinding }) {
           const text = payload && typeof payload.text === 'string' ? payload.text : '';
           const res = await runtime.step({ reason: 'user_action', input: text });
           publishResult(res);
+          const gridEngine = gridEngineRef.current;
+          if (gridEngine && typeof gridEngine.applyAction === 'function') {
+            const ctx = typeof runtime.getContextSnapshot === 'function'
+              ? runtime.getContextSnapshot('user_action', text)
+              : null;
+            const action = { type: 'chat', text };
+            Promise.resolve(gridEngine.applyAction(action, ctx)).catch(() => {});
+          }
         } catch (e) {
           try { bus.emit('system:message', String(e?.message || e)); } catch {}
         }
@@ -277,6 +396,20 @@ function PlayOverlayContent({ templateBinding }) {
 
       return () => {
         stopped = true;
+        try {
+          const rt = runtimeRef.current;
+          const gridEngine = gridEngineRef.current;
+          if (rt && typeof rt.setWorldEngine === 'function') {
+            rt.setWorldEngine(null);
+          }
+          if (gridEngine && typeof gridEngine.setHooks === 'function') {
+            gridEngine.setHooks(null);
+          }
+        } catch {
+          // ignore detach errors
+        }
+        runtimeRef.current = null;
+        runtimeHooksRef.current = null;
         try {
           offTurn && offTurn();
           offChat && offChat();
@@ -338,6 +471,11 @@ function PlayOverlayContent({ templateBinding }) {
         {runnerErr ? (
           <span style={{ marginLeft:8, color:'#fca5a5' }} title="Runner error">runner error</span>
         ) : null}
+        {Array.isArray(runtimeFeatures) && runtimeFeatures.length > 0 ? (
+          <span style={{ marginLeft:8, color:'#a5b4fc' }} title="Active runtime features">
+            features: {runtimeFeatures.map((f) => f.id).join(', ')}
+          </span>
+        ) : null}
       </div>
     ) : null;
 
@@ -345,7 +483,7 @@ function PlayOverlayContent({ templateBinding }) {
       <div style={{ position:'relative', height:'100%', width:'100%' }}>
         {banner}
         <ErrorBoundary onRetry={() => { try { window.dispatchEvent(new Event('play:retry')); } catch {} }}>
-          <MainGameMobileUI template={tpl} runtimeConfig={cfg} runtimeBus={bus} />
+          <MainGameMobileUI template={tpl} runtimeConfig={cfg} runtimeBus={bus} runtimeFeatures={runtimeFeatures} />
         </ErrorBoundary>
       </div>
     );
@@ -1064,6 +1202,16 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
                                } else if (ext.id === 'github-sync') {
                                  setGitSyncExtension(ext);
                                  setShowGitSync(true);
+                               } else if (ext.id === 'ui-sandbox') {
+                                 let url = (ext.config && ext.config.agentUrl) || process.env.NEXT_PUBLIC_UI_SANDBOX_AGENT_URL || 'http://127.0.0.1:7010';
+                                 try {
+                                   const u = new URL(url);
+                                   url = u.toString();
+                                 } catch {
+                                   // ignore URL errors, fall back to default
+                                   url = 'http://127.0.0.1:7010';
+                                 }
+                                 window.open(url, '_blank', 'noopener,noreferrer');
                                } else {
                                  window.dispatchEvent(
                                    new CustomEvent('workspace:extension-launch', {

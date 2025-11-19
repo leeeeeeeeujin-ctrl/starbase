@@ -1,0 +1,6 @@
+{
+  "entryNode": "opening",
+  "hookTimeoutMs": 1200,
+  "roles": ["system", "assistant", "user"]
+}
+
