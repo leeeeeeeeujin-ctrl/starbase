@@ -980,6 +980,38 @@ DB 매핑(초안):
 - 실제 INSERT/UPDATE는:
   - Supabase service role을 사용하는 백엔드 코드(예: rank 액션 또는 별도 RPC)에서 이 객체를 받아 `supabase.from('text_battle_sessions')` / `supabase.from('text_battle_turns')`로 실행하는 식으로 구현한다.
 
+---
+
+### 10.9 역할별 점수폭 설정 (`/game/roles.rank.json`) (planned)
+
+기존 랭크/게임 등록 플로우에서는 UI에서 역할/점수폭을 직접 입력해 `register_rank_game` RPC의 `p_roles` 인자로 넘겼다.  
+텍스트 배틀 / Maker 중심 워크플로우에서는 이를 **워크스페이스 파일 + 프롬프트/코드 에디터 도구**로 이관한다.
+
+- 워크스페이스 파일:
+  - 권장 경로: `/game/roles.rank.json`
+  - 권장 스키마:
+    ```json
+    {
+      "roles": [
+        { "name": "공격수", "slotCount": 1, "scoreDeltaMin": -20, "scoreDeltaMax": 40, "active": true },
+        { "name": "지원가", "slotCount": 1, "scoreDeltaMin": -10, "scoreDeltaMax": 25, "active": true }
+      ]
+    }
+    ```
+- 런타임 헬퍼:
+  - `ai-roomchat/lib/rank/rolesConfig.js`:
+    - `loadRolesConfig(files, path = '/game/roles.rank.json')`:
+      - VFS `files`에서 역할 설정을 읽어 `{ roles: [...] }` 형태로 반환한다.
+    - `toRegisterRankRolesPayload(cfg)`:
+      - 위 `roles` 배열을 `register_rank_game` RPC에서 기대하는 payload로 변환한다:
+        - `{ name, slot_count, score_delta_min, score_delta_max, active }[]`
+- 향후 통합 방향 (planned):
+  - 게임 등록 페이지 / rank 등록 코드에서:
+    - 선택된 워크스페이스의 `/game/roles.rank.json`을 읽어,
+    - `loadRolesConfig` → `toRegisterRankRolesPayload`를 거쳐 RPC `p_roles` 인자에 전달한다.
+  - Maker/프롬프트 에디터 쪽에서는:
+    - “역할/점수 설정” 도구를 추가해, 이 파일을 편집하는 편의 UI를 제공하는 것을 목표로 한다.
+
 이 계획은 world/grid 엔진과는 **독립적인 텍스트 레벨의 배틀 흐름**을 먼저 완성하는 것이 목표다.  
 이후 필요하면 각 노드의 상태를 `ctx.world`나 grid 엔진과 연결해, “배틀 위치/판”을 시각화하는 쪽으로 확장한다.
 
