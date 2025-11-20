@@ -1293,6 +1293,17 @@ on public.rank_match_queue (game_id, mode, owner_id, status);
 
 alter table public.rank_rooms enable row level security;
 
+-- Ensure the status CHECK allows the runtime-used 'active' value.
+-- The live DB already has 'active' added; keep the repo in sync by
+-- replacing any existing constraint with a version that includes 'active'.
+alter table public.rank_rooms
+  drop constraint if exists rank_rooms_status_check;
+
+alter table public.rank_rooms
+  add constraint rank_rooms_status_check check (
+    status = ANY (ARRAY['open'::text, 'in_progress'::text, 'active'::text, 'closed'::text])
+  );
+
 drop policy if exists rank_rooms_select on public.rank_rooms;
 create policy rank_rooms_select
 on public.rank_rooms for select using (true);
