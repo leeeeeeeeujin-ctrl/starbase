@@ -452,8 +452,11 @@ To keep behaviour predictable, we standardise on a small set of commands that ma
   - `git commit -m "message"`  
   - `git push`
 - File and directory inspection (assistant side)  
-  - The CLI sandbox is Windows-based, so under the hood the assistant uses `cmd /C` wrappers such as `cmd /C dir` and `cmd /C cd` instead of `ls` / `pwd`.  
-  - For reading files it uses `cmd /C type path\\to\\file` rather than `cat`.
+  - 이 환경의 CLI 샌드박스는 **Windows 기반**이므로, 도우미가 직접 `ls`, `pwd`, `cd` 등을 호출하면 `program not found` 류 오류가 날 수 있다.  
+  - 대신 항상 `cmd /C "..."` 래퍼를 사용해 명령을 실행한다. 예:  
+    - `cmd /C "cd /D C:\\Users\\...\\starbase && dir"` (리포지토리 루트에서 `dir`)  
+    - `cmd /C "cd /D C:\\Users\\...\\starbase && type ai-roomchat\\docs\\WORKSPACE_EDITOR_RUNTIME.md"` (파일 읽기)  
+  - 요약하면: **모든 셸 명령은 `cmd /C` 안에서 전체 명령 문자열을 작성하는 것을 기본 규칙으로 한다.**
 - Search / navigation  
   - `rg "pattern" -n` to search code.  
   - `rg --files | rg "name-fragment"` to locate files by name.

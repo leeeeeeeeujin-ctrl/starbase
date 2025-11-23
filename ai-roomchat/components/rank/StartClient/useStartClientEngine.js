@@ -641,6 +641,7 @@ function hydrateParticipantsWithRoster(participants = [], roster = []) {
 
 export function useStartClientEngine(gameId, options = {}) {
   const hostOwnerIdOption = options?.hostOwnerId ?? '';
+  const sessionIdOption = options?.sessionId ?? '';
   const normalizedHostOwnerId = useMemo(() => {
     if (hostOwnerIdOption === null || hostOwnerIdOption === undefined) {
       return '';
@@ -648,6 +649,13 @@ export function useStartClientEngine(gameId, options = {}) {
     const trimmed = String(hostOwnerIdOption).trim();
     return trimmed;
   }, [hostOwnerIdOption]);
+  const normalizedSessionId = useMemo(() => {
+    if (sessionIdOption === null || sessionIdOption === undefined) {
+      return '';
+    }
+    const trimmed = String(sessionIdOption).trim();
+    return trimmed;
+  }, [sessionIdOption]);
   const storedStartConfig =
     typeof window === 'undefined'
       ? {}
@@ -1634,16 +1642,31 @@ export function useStartClientEngine(gameId, options = {}) {
     remoteSessionFetchRef.current.running = true;
     (async () => {
       try {
-        let sessionRow = await fetchLatestSessionRow(supabase, gameId, {
-          ownerId: normalizedHostOwnerId || null,
-        });
+        let sessionRow = null;
 
-        if (cancelled) {
-          return;
+        // 1) If a specific sessionId was provided via URL (?session=...), try that first.
+        if (normalizedSessionId) {
+          const { data: directRow, error: directError } = await withTable(
+            supabase,
+            'rank_sessions',
+            table =>
+              supabase
+                .from(table)
+                .select('*')
+                .eq('id', normalizedSessionId)
+                .maybeSingle()
+          );
+
+          if (!directError && directRow) {
+            sessionRow = directRow;
+          }
         }
 
-        if (!sessionRow && normalizedHostOwnerId) {
-          sessionRow = await fetchLatestSessionRow(supabase, gameId);
+        // 2) Fallback to "latest active session for this game/owner" RPC when no direct hit.
+        if (!sessionRow) {
+          sessionRow = await fetchLatestSessionRow(supabase, gameId, {
+            ownerId: normalizedHostOwnerId || null,
+          });
         }
 
         if (cancelled) {
@@ -1668,6 +1691,7 @@ export function useStartClientEngine(gameId, options = {}) {
     };
   }, [
     gameId,
+    normalizedSessionId,
     sessionInfo?.id,
     preflight,
     startingSession,

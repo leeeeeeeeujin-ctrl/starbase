@@ -241,6 +241,15 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     return unsubscribe;
   }, [gameId]);
 
+  const sessionIdFromQuery = useMemo(() => {
+    if (!router.isReady) return '';
+    const raw = router.query.session;
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    if (value === null || value === undefined) return '';
+    const trimmed = String(value).trim();
+    return trimmed;
+  }, [router.isReady, router.query.session]);
+
   const hostOwnerId = useMemo(() => {
     const roomOwner = matchState?.room?.ownerId;
     if (roomOwner !== null && roomOwner !== undefined) {
@@ -259,7 +268,7 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     return '';
   }, [matchState?.room?.ownerId, matchState?.sessionMeta?.asyncFill?.hostOwnerId]);
 
-  const engine = useStartClientEngine(gameId, { hostOwnerId });
+  const engine = useStartClientEngine(gameId, { hostOwnerId, sessionId: sessionIdFromQuery });
   const {
     loading: engineLoading,
     error: engineError,
