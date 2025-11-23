@@ -1642,9 +1642,7 @@ export function useStartClientEngine(gameId, options = {}) {
     remoteSessionFetchRef.current.running = true;
     (async () => {
       try {
-        let sessionRow = null;
-
-        // 1) If a specific sessionId was provided via URL (?session=...), try that first.
+        // 1) URL로 넘어온 sessionId가 있다면 우선 직접 조회해 본다.
         if (normalizedSessionId) {
           const { data: directRow, error: directError } = await withTable(
             supabase,
@@ -1658,16 +1656,20 @@ export function useStartClientEngine(gameId, options = {}) {
           );
 
           if (!directError && directRow) {
-            sessionRow = directRow;
+            if (!cancelled) {
+              adoptRemoteSession(directRow);
+            }
           }
         }
 
-        // 2) Fallback to "latest active session for this game/owner" RPC when no direct hit.
-        if (!sessionRow) {
-          sessionRow = await fetchLatestSessionRow(supabase, gameId, {
-            ownerId: normalizedHostOwnerId || null,
-          });
+        if (cancelled) {
+          return;
         }
+
+        // 2) 항상 게임/호스트 기준 최신 세션 RPC도 조회해서 호스트 세션을 채택한다.
+        let sessionRow = await fetchLatestSessionRow(supabase, gameId, {
+          ownerId: normalizedHostOwnerId || null,
+        });
 
         if (cancelled) {
           return;
