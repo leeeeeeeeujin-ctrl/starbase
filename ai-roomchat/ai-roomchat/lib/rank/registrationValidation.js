@@ -140,12 +140,22 @@ export function prepareRegistrationPayload(raw) {
       ? raw.rules_prefix.trim()
       : null;
 
+  // 매칭 소스는 현재 UI에서 별도 필드는 없고,
+  // realtime_match 값에 따라 기본값을 유도한다.
+  let matchSource = null;
+  if (realtime === REALTIME_MODES.OFF) {
+    matchSource = 'offline';
+  } else if (realtime === REALTIME_MODES.STANDARD || realtime === REALTIME_MODES.PULSE) {
+    matchSource = 'realtime';
+  }
+
   const gameInsert = {
     name: trimmedName || '새 게임',
     description: trimmedDescription || '',
     image_url: imageUrl,
     prompt_set_id: promptSetId,
     realtime_match: realtime,
+    match_source: matchSource,
     roles: roleNameOrder.length ? roleNameOrder : null,
     rules: sanitizedRules?.value ?? null,
     rules_prefix: rulesPrefix,
