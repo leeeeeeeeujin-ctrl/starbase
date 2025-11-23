@@ -2531,8 +2531,32 @@ export default function CharacterPlayPanel({ hero, playData }) {
             }
 
             if (json.matched) {
-              const sessionId = json.session?.id || null;
+              let sessionId = json.session?.id || null;
               const matchCode = json.room?.code || null;
+
+              // 세션/매치 스냅샷을 미리 가져와 StartClient가 바로 인식할 수 있게 한다.
+              try {
+                const snapshot = await fetchAndStoreMatchSnapshot(selectedGameId, {
+                  attempts: 5,
+                  delayMs: 600,
+                });
+                if (!sessionId) {
+                  sessionId =
+                    snapshot?.sessionId ||
+                    snapshot?.session?.id ||
+                    null;
+                }
+                appendDebug('simple-match:snapshot-attached', {
+                  attempt,
+                  sessionId,
+                  matchCode,
+                });
+              } catch (snapshotError) {
+                appendDebug('simple-match:snapshot-error', {
+                  attempt,
+                  error: snapshotError?.message || String(snapshotError),
+                });
+              }
 
               appendDebug('simple-match:matched', {
                 attempt,
