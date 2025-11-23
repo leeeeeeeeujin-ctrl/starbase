@@ -62,6 +62,7 @@ import { buildHistorySeedEntries } from '@/lib/rank/historySeeds';
 import { runClientAction } from '@/lib/rank/clientActions';
 import { runMatchWithFallback } from '@/lib/client/offload/ruleSim';
 import { fetchCached } from '@/lib/client/cache/fetchCached';
+import { normalizeRealtimeMode, isRealtimeEnabled } from '@/lib/rank/realtimeModes';
 import { useHistoryBuffer } from './hooks/useHistoryBuffer';
 import { useStartSessionLifecycle } from './hooks/useStartSessionLifecycle';
 import { useStartApiKeyManager } from './hooks/useStartApiKeyManager';

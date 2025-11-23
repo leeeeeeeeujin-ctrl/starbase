@@ -289,7 +289,9 @@ export default async function handler(req, res) {
         code: roomCode,
         mode: queueMode,
         realtime_mode: 'standard',
-        status: 'active',
+        // rank_rooms.status CHECK 제약은 'open' | 'in_progress' | 'closed'만 허용하므로
+        // 초기 상태는 'open'으로 등록한다.
+        status: 'open',
         slot_count: slotCount,
         filled_count: filledCount,
         ready_count: readyCount,
@@ -420,4 +422,3 @@ export default async function handler(req, res) {
     });
   }
 }
-
