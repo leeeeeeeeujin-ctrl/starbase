@@ -1442,6 +1442,8 @@ export default function CharacterPlayPanel({ hero, playData }) {
     matchCode: null,
     countdown: null,
     debugHold: null,
+    realtimeMode: null,
+    realtimeEnabled: null,
   });
   const matchTaskRef = useRef(null);
   const queuePollRef = useRef(null);
@@ -2466,9 +2468,11 @@ export default function CharacterPlayPanel({ hero, playData }) {
         ticketStatus: null,
         sessionId: null,
         readyExpiresAt: null,
-        queueMode: 'simple',
+        queueMode: null,
         matchCode: null,
         countdown: null,
+        realtimeMode: null,
+        realtimeEnabled: null,
       });
 
       matchTaskRef.current = { cancelled: false };
@@ -2511,6 +2515,19 @@ export default function CharacterPlayPanel({ hero, playData }) {
                 error: detail,
               }));
               return;
+            }
+
+            // 서버에서 넘겨준 실시간/비실시간/난입 토글을 상태에 반영
+            const realtimeMode = json?.realtimeMode || null;
+            const realtimeEnabled =
+              typeof json?.realtimeEnabled === 'boolean' ? json.realtimeEnabled : null;
+            if (realtimeMode || realtimeEnabled !== null) {
+              setMatchingState(prev => ({
+                ...prev,
+                queueMode: realtimeEnabled ? 'realtime' : 'offline',
+                realtimeMode,
+                realtimeEnabled,
+              }));
             }
 
             if (json.matched) {
