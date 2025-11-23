@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../../../lib/supabaseAdmin.js';
 import { runSimpleMatch } from '../../../lib/rank/simpleMatchEngine.js';
+import { extractMatchingToggles } from '../../../lib/rank/matchingPipeline.js';
 
 /**
  * 텍스트 배틀용 매칭 조인 + 커밋 API (단순 버전)
@@ -68,6 +69,35 @@ export default async function handler(req, res) {
     : 1000;
 
   try {
+    // 0) 게임 설정(실시간/비실시간, 난입 룰) 로드
+    const { data: gameRow, error: gameError } = await supabaseAdmin
+      .from('rank_games')
+      .select('id, realtime_match, match_source, rules')
+      .eq('id', gameId)
+      .single();
+
+    if (gameError) {
+      return res.status(500).json({
+        ok: false,
+        error: 'game_query_failed',
+        detail: gameError.message || null,
+      });
+    }
+
+    const rules = (() => {
+      try {
+        const raw = gameRow?.rules;
+        if (!raw) return {};
+        if (typeof raw === 'string') return JSON.parse(raw);
+        if (typeof raw === 'object') return raw;
+        return {};
+      } catch {
+        return {};
+      }
+    })();
+
+    const toggles = extractMatchingToggles(gameRow, rules);
+
     // 1) 게임 역할 구성 로드
     const { data: roleRows, error: rolesError } = await supabaseAdmin
       .from('rank_game_roles')
@@ -192,83 +222,127 @@ export default async function handler(req, res) {
       });
     }
 
-    // 3) 현재 게임/모드의 전체 waiting 큐 로드
-    const { data: queueRows, error: queueError } = await supabaseAdmin
-      .from('rank_match_queue')
-      .select(
-        'id, game_id, mode, owner_id, hero_id, role, score, joined_at, status'
-      )
-      .eq('game_id', gameId)
-      .eq('mode', queueMode)
-      .eq('status', 'waiting')
-      .order('joined_at', { ascending: true });
+    // 3) 비실시간(OFF) 게임인 경우: 혼자여도 즉시 매치 성립
+    let myReadyAssignment = null;
+    let matchedQueueIds = [];
+    let matchResult = null;
 
-    if (queueError) {
-      return res.status(500).json({
-        ok: false,
-        error: 'queue_query_failed',
-        detail: queueError.message || null,
+    if (!toggles.realtimeEnabled) {
+      myReadyAssignment = {
+        role: chosenRole,
+        slots: 1,
+        filledSlots: 1,
+        missingSlots: 0,
+        ready: true,
+        roleSlots: [
+          {
+            role: chosenRole,
+            slotIndex: 0,
+            localIndex: 0,
+            occupied: true,
+            members: [
+              {
+                entry: queueEntry,
+                owner_id: ownerId,
+                hero_id: heroId,
+              },
+            ],
+            member: {
+              entry: queueEntry,
+              owner_id: ownerId,
+              hero_id: heroId,
+            },
+            groupKey: null,
+            partyKey: null,
+          },
+        ],
+        members: [],
+        groups: [],
+        anchorScore: score,
+        maxWindow: 0,
+      };
+      matchedQueueIds = queueEntry?.id ? [queueEntry.id] : [];
+    } else {
+      // 3-rt) 실시간 게임: 현재 게임/모드의 전체 waiting 큐 로드
+      const { data: queueRows, error: queueError } = await supabaseAdmin
+        .from('rank_match_queue')
+        .select(
+          'id, game_id, mode, owner_id, hero_id, role, score, joined_at, status'
+        )
+        .eq('game_id', gameId)
+        .eq('mode', queueMode)
+        .eq('status', 'waiting')
+        .order('joined_at', { ascending: true });
+
+      if (queueError) {
+        return res.status(500).json({
+          ok: false,
+          error: 'queue_query_failed',
+          detail: queueError.message || null,
+        });
+      }
+
+      // 4) JS 매칭 엔진으로 1회 매칭 계획 계산
+      matchResult = runSimpleMatch({
+        roles: activeRoles,
+        queue: queueRows || [],
       });
-    }
 
-    // 4) JS 매칭 엔진으로 1회 매칭 계획 계산
-    const matchResult = runSimpleMatch({
-      roles: activeRoles,
-      queue: queueRows || [],
-    });
-
-    // 이 요청자의 ownerId가 포함된 ready assignment 찾기
-    const myAssignments = Array.isArray(matchResult.assignments)
-      ? matchResult.assignments.filter(a => {
-          if (!a || !Array.isArray(a.roleSlots)) return false;
-          return a.roleSlots.some(slot => {
-            if (!slot || !Array.isArray(slot.members)) return false;
-            return slot.members.some(member => {
-              if (!member) return false;
-              const mOwner =
-                member.owner_id ??
-                member.ownerId ??
-                member.entry?.owner_id ??
-                member.entry?.ownerId;
-              return mOwner && String(mOwner) === String(ownerId);
+      // 이 요청자의 ownerId가 포함된 ready assignment 찾기
+      const myAssignments = Array.isArray(matchResult.assignments)
+        ? matchResult.assignments.filter(a => {
+            if (!a || !Array.isArray(a.roleSlots)) return false;
+            return a.roleSlots.some(slot => {
+              if (!slot || !Array.isArray(slot.members)) return false;
+              return slot.members.some(member => {
+                if (!member) return false;
+                const mOwner =
+                  member.owner_id ??
+                  member.ownerId ??
+                  member.entry?.owner_id ??
+                  member.entry?.ownerId;
+                return mOwner && String(mOwner) === String(ownerId);
+              });
             });
-          });
-        })
-      : [];
+          })
+        : [];
 
-    const myReadyAssignment =
-      myAssignments.find(a => a.ready) || null;
+      myReadyAssignment = myAssignments.find(a => a.ready) || null;
 
-    if (!myReadyAssignment) {
-      // 아직 이 유저가 포함된 완성된 방이 없다 → 대기 상태만 반환
-      return res.status(200).json({
-        ok: true,
-        matched: false,
-        gameId,
-        mode: queueMode,
-        queueEntry,
-        matchPreview: matchResult,
+      if (!myReadyAssignment) {
+        // 아직 이 유저가 포함된 완성된 방이 없다 → 대기 상태만 반환
+        return res.status(200).json({
+          ok: true,
+          matched: false,
+          gameId,
+          mode: queueMode,
+          queueEntry,
+          matchPreview: matchResult,
+          realtimeMode: toggles.realtimeMode,
+          realtimeEnabled: toggles.realtimeEnabled,
+          dropInEnabled: toggles.dropInEnabled,
+        });
+      }
+
+      // 매칭에 포함된 queue id 목록 추출
+      matchedQueueIds = [];
+      myReadyAssignment.roleSlots.forEach(slot => {
+        if (!slot || !Array.isArray(slot.members)) return;
+        slot.members.forEach(member => {
+          if (!member) return;
+          const qid =
+            member.entry?.id ??
+            member.entry?.queue_id ??
+            member.id ??
+            null;
+          if (qid && !matchedQueueIds.includes(qid)) {
+            matchedQueueIds.push(qid);
+          }
+        });
       });
     }
 
     // 5) 방/슬롯/세션 생성 및 큐 소비
-    // 매칭에 포함된 queue id 목록 추출
-    const matchedQueueIds = [];
-    myReadyAssignment.roleSlots.forEach(slot => {
-      if (!slot || !Array.isArray(slot.members)) return;
-      slot.members.forEach(member => {
-        if (!member) return;
-        const qid =
-          member.entry?.id ??
-          member.entry?.queue_id ??
-          member.id ??
-          null;
-        if (qid && !matchedQueueIds.includes(qid)) {
-          matchedQueueIds.push(qid);
-        }
-      });
-    });
-
     // 간단한 방 코드 생성
     const roomCode =
       'TB-' +
@@ -288,7 +362,8 @@ export default async function handler(req, res) {
         owner_id: ownerId,
         code: roomCode,
         mode: queueMode,
-        realtime_mode: 'standard',
+        // 게임 설정과 동일하게 realtime_mode를 기록한다.
+        realtime_mode: toggles.realtimeMode || 'off',
         // rank_rooms.status CHECK 제약은 'open' | 'in_progress' | 'closed'만 허용하므로
         // 초기 상태는 'open'으로 등록한다.
         status: 'open',
@@ -413,6 +488,9 @@ export default async function handler(req, res) {
       session,
       matchedQueueIds,
       assignment: myReadyAssignment,
+      realtimeMode: toggles.realtimeMode,
+      realtimeEnabled: toggles.realtimeEnabled,
+      dropInEnabled: toggles.dropInEnabled,
     });
   } catch (e) {
     return res.status(500).json({
