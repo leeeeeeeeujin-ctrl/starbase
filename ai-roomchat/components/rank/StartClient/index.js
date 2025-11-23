@@ -765,7 +765,9 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     );
   }
 
-  if (!gameId || !matchState?.snapshot) {
+  // 매치 스냅샷이 없더라도 game 정보가 있으면 본게임을 띄우고,
+  // gameId 자체가 없을 때만 "활성 매치 없음" 화면을 보여준다.
+  if (!gameId && !matchState?.snapshot) {
     return (
       <div className={styles.page} style={pageStyle}>
         <div className={styles.shell}>
