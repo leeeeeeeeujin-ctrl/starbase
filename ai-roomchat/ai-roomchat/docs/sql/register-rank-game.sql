@@ -49,6 +49,7 @@ begin
     image_url,
     prompt_set_id,
     realtime_match,
+    match_source,
     roles,
     rules,
     rules_prefix,
@@ -56,11 +57,12 @@ begin
     updated_at
   ) values (
     p_owner_id,
-    nullif(trim(p_game->>'name'), ''),
-    nullif(p_game->>'description', ''),
+    coalesce(nullif(trim(p_game->>'name'), ''), '새 게임'),
+    coalesce(nullif(p_game->>'description', ''), ''),
     nullif(p_game->>'image_url', ''),
     nullif(p_game->>'prompt_set_id', '')::uuid,
     nullif(lower(trim(p_game->>'realtime_match')), ''),
+    nullif(trim(p_game->>'match_source'), ''),
     (
       select jsonb_agg(to_jsonb(role_name))
       from (
