@@ -17,11 +17,10 @@ import dynamic from 'next/dynamic';
 import SyncTemplateToVfs from './SyncTemplateToVfs.jsx';
 import AICodeChatPanel from './AICodeChatPanel.jsx';
 
-const MainGameMobileUI = dynamic(() => import('../game/MainGameMobileUI.jsx'), {
+const GameShell = dynamic(() => import('../game/GameShell.jsx'), {
   ssr: false,
-  // Loading fallback to avoid blank screen during chunk fetch
   loading: () => (
-    <div style={{ display:'grid', placeItems:'center', height:'100%', color:'#94a3b8' }}>
+    <div style={{ display: 'grid', placeItems: 'center', height: '100%', color: '#94a3b8' }}>
       <div>플레이 화면 로딩 중…</div>
     </div>
   ),
@@ -585,7 +584,23 @@ function PlayOverlayContent({ templateBinding }) {
         {banner}
         {debugPanel}
         <ErrorBoundary onRetry={() => { try { window.dispatchEvent(new Event('play:retry')); } catch {} }}>
-          <MainGameMobileUI template={tpl} runtimeConfig={cfg} runtimeBus={bus} runtimeFeatures={runtimeFeatures} />
+          <GameShell
+            template={tpl}
+            runtimeBus={bus}
+            runtimeFeatures={runtimeFeatures}
+            shellConfig={
+              files?.['/game/ui.shell.json']
+                ? (() => {
+                    try {
+                      return JSON.parse(files['/game/ui.shell.json'].content || '{}');
+                    } catch {
+                      return null;
+                    }
+                  })()
+                : null
+            }
+            mode="play"
+          />
         </ErrorBoundary>
       </div>
     );

@@ -21,7 +21,7 @@ import { useStartClientEngine } from './useStartClientEngine';
 import { supabase } from '../../../lib/supabase';
 import { buildSessionMetaRequest, postSessionMeta } from '../../../lib/rank/sessionMetaClient';
 import { CodeWorkspaceProvider } from '@/components/workspace/CodeWorkspaceProvider.jsx';
-import MainGameMobileUI from '@/components/game/MainGameMobileUI.jsx';
+import GameShell from '@/components/game/GameShell.jsx';
 import { createCoreRuntime } from '@/lib/runtime/coreRuntime';
 import { loadHooksFromSource } from '@/lib/runtime/safeEvalHookModule';
 
@@ -1217,7 +1217,7 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
                       : []
                 }
               >
-                <MainGameMobileUI
+                <GameShell
                   template={
                     gameWorkspace && gameWorkspace.template
                       ? gameWorkspace.template
@@ -1225,6 +1225,8 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
                   }
                   runtimeBus={runtimeBus}
                   runtimeFeatures={[]}
+                  shellConfig={null}
+                  mode="rank"
                 />
               </CodeWorkspaceProvider>
             ) : (

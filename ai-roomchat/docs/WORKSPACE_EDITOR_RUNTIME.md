@@ -1392,7 +1392,78 @@ Supabase/SQL 작업 협업 메모:
   - Play 디버그 패널(현재 턴 프롬프트, AI 호출 로그)와 StartClient의 로그/요약 뷰를  
     같은 정보 소스(coreRuntime · rankContext · Supabase 로그)에 맞춰 재정비한다.
 
----
+### 11.9 GameShell 통합 UI (planned)
+
+- 목표:
+  - “플레이”와 “메인게임(StartClient)”가 **엔진뿐 아니라 UI 레벨에서도 가능한 한 동일한 구조**를 공유하도록 한다.
+  - 특히 상단 타이틀, 좌우 카드, 로그 패널 같은 **게임 셸 UI**를:
+    - 호스트 앱에 박힌 고정 레이아웃이 아니라,
+    - 엔진/워크스페이스가 선언하는 기능을 소비하는 공용 컨테이너(`GameShell`)로 재구성하는 것이 목표다.
+- 현재 상태:
+  - 엔진/파일:
+    - `/template.json`, `/graph/prompt-graph.json`, `/game/runtime.config.json`, `/game/hooks/automation.js` → `coreRuntime` 구성은 Play/StartClient 모두 공유한다.
+    - 텍스트 런타임 게임의 메인 턴 진행/프롬프트/승패는 `coreRuntime + /game/hooks/automation.js`만 사용한다.
+  - UI:
+    - Play 오버레이:
+      - `MainGameMobileUI`를 감싼 개발용 오버레이(에디터, AI 채팅, 디버그 바)가 존재한다.
+    - StartClient:
+      - 텍스트 런타임 게임의 플레이 컬럼은 `MainGameMobileUI`를 사용하지만,
+      - 상단 타이틀/좌우 카드/로그 패널 등 랭크용 셸이 별도의 레이아웃으로 둘러싸고 있는 상태다.
+- GameShell 설계(초안):
+  - 컴포넌트:
+    - `components/game/GameShell.jsx` (가칭):
+      - 내부에 `MainGameMobileUI`를 포함하고,
+      - 외곽에 다음 영역을 가진다:
+        - `header` – 게임 제목/상태/모드 요약.
+        - `leftPanels` / `rightPanels` – 참가자/점수/로그/디버그 패널 슬롯.
+        - `footer` – 턴 진행/메시지 입력 등 “공통 컨트롤 바”.
+      - 각 영역에 어떤 패널을 띄울지는 **props + 워크스페이스 설정**으로 제어한다.
+  - 설정 파일 (워크스페이스에서 제어 가능한 부분):
+    - 권장 경로: `/game/ui.shell.json`
+    - 예시 스키마(초안):
+      ```json
+      {
+        "layoutPreset": "standard",
+        "panels": {
+          "header": { "enabled": true, "showTitle": true, "showMode": true },
+          "rankSummary": { "enabled": true, "region": "left" },
+          "participants": { "enabled": true, "region": "left" },
+          "turnLog": { "enabled": true, "region": "right" },
+          "debugPrompt": { "enabled": false, "region": "right" }
+        }
+      }
+      ```
+    - 이 파일은 “어떤 패널을 쓸 수 있는지”를 선언하지는 않고,
+      - 호스트가 제공하는 패널 타입(`rankSummary`, `participants`, `turnLog`, `debugPrompt` 등) 중
+      - 어떤 것을 어디에, 켜고/끄고 싶을지만 지정한다.
+  - 호스트 책임(변경 불가한 최소 셸):
+    - 세션 종료/떠나기 버튼, 치명적인 오류 표시, 보안/권한 관련 경고는 **항상 호스트에서만 제어**하며,
+      워크스페이스/템플릿에서는 끄거나 대체할 수 없다.
+    - 그 외의 UI(상단 타이틀, 좌우 카드, 로그 패널)는 GameShell의 패널 슬롯을 통해 제어 가능해야 한다.
+- Play / StartClient 통합 사용 패턴:
+  - 공통:
+    - 두 환경 모두 `GameShell`을 사용하고, 내부 엔진으로 `coreRuntime + MainGameMobileUI`를 사용한다.
+    - 워크스페이스에 `/game/ui.shell.json`이 있으면 이를 우선 사용하고, 없으면 디폴트 레이아웃을 쓴다.
+  - Play 오버레이:
+    - 기본적으로:
+      - `panels.rank*`는 꺼 두고,
+      - `panels.debug*`는 켜 두는 레이아웃을 사용한다.
+    - 개발자가 `/game/ui.shell.json`에서 패널 구성을 바꾸면, Play에서도 즉시 반영된다.
+  - StartClient:
+    - 랭크 모드에서는:
+      - `rankSummary`/`participants` 패널을 기본 on,
+      - 디버그 패널은 off, 또는 별도 개발자 전용 플래그로만 on.
+    - 워크스페이스에서 해당 패널을 끄면(예: 완전 미니멀 텍스트 게임을 만들고 싶을 때),
+      - 랭크 셸의 카드/로그도 자연스럽게 사라지고,
+      - Host가 보장해야 하는 최소 UI(나가기 버튼 등)만 남는다.
+
+이 설계의 의도는:
+- “게임 엔진 + 메인 게임 UI”뿐 아니라,
+- 상단/좌우/로그 같은 셸까지 **기능 단위로 동기화/제거 가능**하게 해 두어서,
+  - 워크스페이스에서 새로운 패널/레이아웃을 추가하면 Play/StartClient 양쪽이 같은 GameShell을 통해 소비하고,
+  - 필요할 경우 셸 요소를 완전히 끄고 “게임 화면만” 남기는 것도 가능하게 만드는 것이다.
+
+--- 
 
 ## 12. Extensions: planned GitHub sync and AI web helpers
 
