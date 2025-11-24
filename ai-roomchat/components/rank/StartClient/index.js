@@ -1179,16 +1179,6 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
 
         <div className={styles.bodyGrid}>
           <div className={styles.playColumn}>
-            <TurnSummaryPanel
-              sessionMeta={matchState?.sessionMeta || null}
-              turn={turn}
-              turnTimerSeconds={turnTimerSeconds}
-              timeRemaining={timeRemaining}
-              turnDeadline={turnDeadline}
-              turnTimerSnapshot={turnTimerSnapshot}
-              lastDropInTurn={lastDropInTurn}
-            />
-
             {textRuntimeEnabled ? (
               <CodeWorkspaceProvider
                 storageNamespace={`rank:${gameId || ''}`}
@@ -1228,13 +1218,26 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
                 }
               >
                 <MainGameMobileUI
-                  template={{}}
+                  template={
+                    gameWorkspace && gameWorkspace.template
+                      ? gameWorkspace.template
+                      : null
+                  }
                   runtimeBus={runtimeBus}
                   runtimeFeatures={[]}
                 />
               </CodeWorkspaceProvider>
             ) : (
               <div className={styles.engineRow}>
+                <TurnSummaryPanel
+                  sessionMeta={matchState?.sessionMeta || null}
+                  turn={turn}
+                  turnTimerSeconds={turnTimerSeconds}
+                  timeRemaining={timeRemaining}
+                  turnDeadline={turnDeadline}
+                  turnTimerSnapshot={turnTimerSnapshot}
+                  lastDropInTurn={lastDropInTurn}
+                />
                 <TurnInfoPanel
                   turn={turn}
                   currentNode={currentNode}
