@@ -20,6 +20,10 @@ import { normalizeRoleName } from '../../../lib/rank/roleLayoutLoader';
 import { useStartClientEngine } from './useStartClientEngine';
 import { supabase } from '../../../lib/supabase';
 import { buildSessionMetaRequest, postSessionMeta } from '../../../lib/rank/sessionMetaClient';
+import { CodeWorkspaceProvider } from '@/components/workspace/CodeWorkspaceProvider.jsx';
+import MainGameMobileUI from '@/components/game/MainGameMobileUI.jsx';
+import { createCoreRuntime } from '@/lib/runtime/coreRuntime';
+import { loadHooksFromSource } from '@/lib/runtime/safeEvalHookModule';
 
 function toTrimmedId(value) {
   if (value === null || value === undefined) return null;
@@ -207,6 +211,41 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
   const [gameId, setGameId] = useState(trimmedPropId);
   const [matchState, setMatchState] = useState(() => createEmptyMatchFlowState());
   const [ready, setReady] = useState(false);
+  const [gameWorkspace, setGameWorkspace] = useState(null);
+  const runtimeBus = useMemo(() => {
+    const listeners = new Map();
+    return {
+      on(event, fn) {
+        const arr = listeners.get(event) || [];
+        listeners.set(event, [...arr, fn]);
+        return () => {
+          const cur = listeners.get(event) || [];
+          listeners.set(
+            event,
+            cur.filter(f => f !== fn)
+          );
+        };
+      },
+      off(event, fn) {
+        const arr = listeners.get(event) || [];
+        listeners.set(
+          event,
+          arr.filter(f => f !== fn)
+        );
+      },
+      emit(event, payload) {
+        const arr = listeners.get(event) || [];
+        arr.forEach(fn => {
+          try {
+            fn(payload);
+          } catch (e) {
+            console.warn('[StartClient] runtimeBus handler error', e);
+          }
+        });
+      },
+    };
+  }, []);
+  const runtimeRef = useRef(null);
 
   useEffect(() => {
     if (usePropGameId) {
@@ -273,6 +312,8 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     loading: engineLoading,
     error: engineError,
     game,
+    slotLayout,
+    graph,
     participants,
     currentNode,
     preflight,
@@ -320,7 +361,181 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     turnTimerSnapshot,
     activeBackdropUrls,
     activeActorNames,
+    rankContext,
+    textRuntimeEnabled,
   } = engine;
+
+  useEffect(() => {
+    if (!gameId) {
+      setGameWorkspace(null);
+      return;
+    }
+    let alive = true;
+    (async () => {
+      try {
+        const resp = await fetch(`/api/rank/game-workspace?gameId=${encodeURIComponent(gameId)}`);
+        if (!alive) return;
+        if (!resp.ok) {
+          setGameWorkspace(null);
+          return;
+        }
+        const payload = await resp.json();
+        if (!alive) return;
+        if (payload && payload.ok && payload.workspace) {
+          setGameWorkspace(payload.workspace);
+        } else {
+          setGameWorkspace(null);
+        }
+      } catch {
+        if (alive) setGameWorkspace(null);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [gameId]);
+
+  useEffect(() => {
+    if (
+      !textRuntimeEnabled ||
+      !graph ||
+      !Array.isArray(graph.nodes) ||
+      graph.nodes.length === 0
+    ) {
+      runtimeRef.current = null;
+      return;
+    }
+
+    let stopped = false;
+    let runtime = null;
+
+    const first = graph.nodes[0] || {};
+    const baseEntryNode = first.id || first.slotId || null;
+    if (!baseEntryNode) return;
+
+    const workspaceGraph =
+      gameWorkspace && gameWorkspace.graph && typeof gameWorkspace.graph === 'object'
+        ? gameWorkspace.graph
+        : graph;
+    const runtimeConfig =
+      gameWorkspace && gameWorkspace.runtime_config && typeof gameWorkspace.runtime_config === 'object'
+        ? gameWorkspace.runtime_config
+        : {};
+    const hooksSource =
+      typeof gameWorkspace?.hooks_source === 'string' ? gameWorkspace.hooks_source : '';
+
+    let hooks = null;
+    if (hooksSource.trim()) {
+      try {
+        hooks = loadHooksFromSource(hooksSource);
+      } catch (err) {
+        console.warn('[StartClient] hooks 로드 실패:', err);
+        hooks = null;
+      }
+    }
+
+    const cfg = {
+      ...(runtimeConfig || {}),
+    };
+    if (!cfg.entryNode) {
+      cfg.entryNode = baseEntryNode;
+    }
+
+    try {
+      runtime = createCoreRuntime({
+        graph: workspaceGraph,
+        config: cfg,
+        hooks,
+        files: {
+          '/template.json': {
+            content:
+              gameWorkspace && gameWorkspace.template
+                ? JSON.stringify(gameWorkspace.template, null, 2) + '\n'
+                : '{}\n',
+          },
+          '/graph/prompt-graph.json': {
+            content: JSON.stringify(workspaceGraph, null, 2) + '\n',
+          },
+          '/game/runtime.config.json': {
+            content: JSON.stringify(cfg, null, 2) + '\n',
+          },
+          '/game/hooks/automation.js': {
+            content: hooksSource,
+          },
+        },
+        initialVariables: { rank: rankContext || {} },
+      });
+      runtimeRef.current = runtime;
+    } catch (e) {
+      console.warn('[StartClient] coreRuntime 초기화 실패:', e);
+      runtimeRef.current = null;
+      return;
+    }
+
+    const publishResult = result => {
+      if (stopped || !result) return;
+      try {
+        const node = result.current || null;
+        if (!node) {
+          runtimeBus.emit('system:message', '게임이 종료되었습니다.');
+          return;
+        }
+        const fromPrompt =
+          typeof result.prompt === 'string' && result.prompt.length ? result.prompt : null;
+        const txt = fromPrompt != null ? fromPrompt : String(node.label || node.id || '');
+        runtimeBus.emit('system:message', txt);
+      } catch (err) {
+        console.warn('[StartClient] publishResult 실패:', err);
+      }
+    };
+
+    try {
+      if (runtime && typeof runtime.getCurrentWithPrompt === 'function') {
+        runtime
+          .getCurrentWithPrompt()
+          .then(res => {
+            if (!stopped && res && res.current) publishResult(res);
+          })
+          .catch(() => {});
+      } else if (runtime && typeof runtime.getCurrentNode === 'function') {
+        const cur = runtime.getCurrentNode();
+        if (cur) publishResult({ current: cur });
+      }
+    } catch (err) {
+      console.warn('[StartClient] 초기 프롬프트 계산 실패:', err);
+    }
+
+    const offTurn = runtimeBus.on('turn:next', async () => {
+      if (!runtimeRef.current) return;
+      try {
+        const res = await runtimeRef.current.step({ reason: 'auto' });
+        publishResult(res);
+      } catch (err) {
+        runtimeBus.emit('system:message', String(err?.message || err));
+      }
+    });
+
+    const offChat = runtimeBus.on('player:chat', async payload => {
+      if (!runtimeRef.current) return;
+      try {
+        const text = payload && typeof payload.text === 'string' ? payload.text : '';
+        const res = await runtimeRef.current.step({ reason: 'user_action', input: text });
+        publishResult(res);
+      } catch (err) {
+        runtimeBus.emit('system:message', String(err?.message || err));
+      }
+    });
+
+    return () => {
+      stopped = true;
+      try {
+        offTurn && offTurn();
+        offChat && offChat();
+      } catch (err) {
+        console.warn('[StartClient] runtimeBus unsubscribe 실패:', err);
+      }
+    };
+  }, [textRuntimeEnabled, graph, rankContext, runtimeBus, gameWorkspace]);
 
   const sessionMetaSignatureRef = useRef('');
   const turnStateSignatureRef = useRef('');
@@ -974,43 +1189,89 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
               lastDropInTurn={lastDropInTurn}
             />
 
-            <div className={styles.engineRow}>
-              <TurnInfoPanel
-                turn={turn}
-                currentNode={currentNode}
-                activeGlobal={activeGlobal}
-                activeLocal={activeLocal}
-                apiKey={apiKey}
-                onApiKeyChange={setApiKey}
-                apiVersion={apiVersion}
-                onApiVersionChange={setApiVersion}
-                geminiMode={geminiMode}
-                onGeminiModeChange={setGeminiMode}
-                geminiModel={geminiModel}
-                onGeminiModelChange={setGeminiModel}
-                geminiModelOptions={geminiModelOptions}
-                geminiModelLoading={geminiModelLoading}
-                geminiModelError={geminiModelError}
-                onReloadGeminiModels={reloadGeminiModels}
-                realtimeLockNotice={realtimeLockNotice}
-                apiKeyNotice={apiKeyCooldown?.active ? apiKeyWarning : ''}
-                currentActor={currentActor}
-                timeRemaining={timeRemaining}
-                turnTimerSeconds={turnTimerSeconds}
-              />
+            {textRuntimeEnabled ? (
+              <CodeWorkspaceProvider
+                storageNamespace={`rank:${gameId || ''}`}
+                initialFiles={
+                  gameWorkspace
+                    ? [
+                        gameWorkspace.template && {
+                          path: '/template.json',
+                          content: JSON.stringify(gameWorkspace.template, null, 2) + '\n',
+                          readonly: true,
+                        },
+                        gameWorkspace.graph && {
+                          path: '/graph/prompt-graph.json',
+                          content: JSON.stringify(gameWorkspace.graph, null, 2) + '\n',
+                          readonly: true,
+                        },
+                        gameWorkspace.runtime_config && {
+                          path: '/game/runtime.config.json',
+                          content: JSON.stringify(gameWorkspace.runtime_config, null, 2) + '\n',
+                          readonly: true,
+                        },
+                        typeof gameWorkspace.hooks_source === 'string' && {
+                          path: '/game/hooks/automation.js',
+                          content: gameWorkspace.hooks_source,
+                          readonly: true,
+                        },
+                      ].filter(Boolean)
+                    : graph && Array.isArray(graph.nodes)
+                      ? [
+                          {
+                            path: '/graph/prompt-graph.json',
+                            content: JSON.stringify(graph, null, 2) + '\n',
+                            readonly: true,
+                          },
+                        ]
+                      : []
+                }
+              >
+                <MainGameMobileUI
+                  template={{}}
+                  runtimeBus={runtimeBus}
+                  runtimeFeatures={[]}
+                />
+              </CodeWorkspaceProvider>
+            ) : (
+              <div className={styles.engineRow}>
+                <TurnInfoPanel
+                  turn={turn}
+                  currentNode={currentNode}
+                  activeGlobal={activeGlobal}
+                  activeLocal={activeLocal}
+                  apiKey={apiKey}
+                  onApiKeyChange={setApiKey}
+                  apiVersion={apiVersion}
+                  onApiVersionChange={setApiVersion}
+                  geminiMode={geminiMode}
+                  onGeminiModeChange={setGeminiMode}
+                  geminiModel={geminiModel}
+                  onGeminiModelChange={setGeminiModel}
+                  geminiModelOptions={geminiModelOptions}
+                  geminiModelLoading={geminiModelLoading}
+                  geminiModelError={geminiModelError}
+                  onReloadGeminiModels={reloadGeminiModels}
+                  realtimeLockNotice={realtimeLockNotice}
+                  apiKeyNotice={apiKeyCooldown?.active ? apiKeyWarning : ''}
+                  currentActor={currentActor}
+                  timeRemaining={timeRemaining}
+                  turnTimerSeconds={turnTimerSeconds}
+                />
 
-              <ManualResponsePanel
-                manualResponse={manualResponse}
-                onChange={setManualResponse}
-                onManualAdvance={advanceWithManual}
-                onAiAdvance={advanceWithAi}
-                isAdvancing={isAdvancing}
-                disabled={manualDisabled}
-                disabledReason={manualDisabled ? manualDisabledReason : ''}
-                timeRemaining={timeRemaining}
-                turnTimerSeconds={turnTimerSeconds}
-              />
-            </div>
+                <ManualResponsePanel
+                  manualResponse={manualResponse}
+                  onChange={setManualResponse}
+                  onManualAdvance={advanceWithManual}
+                  onAiAdvance={advanceWithAi}
+                  isAdvancing={isAdvancing}
+                  disabled={manualDisabled}
+                  disabledReason={manualDisabled ? manualDisabledReason : ''}
+                  timeRemaining={timeRemaining}
+                  turnTimerSeconds={turnTimerSeconds}
+                />
+              </div>
+            )}
           </div>
 
           <aside className={styles.sideColumn}>

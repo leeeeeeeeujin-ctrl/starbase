@@ -333,7 +333,20 @@ function PlayOverlayContent({ templateBinding }) {
         } catch {
           // ignore hook load errors; runtime will fall back to graph edges only
         }
-        runtime = createCoreRuntime({ graph, config: cfg, hooks, files });
+        const rankDefaults = {
+          sessionId: null,
+          gameMode: 'offline',
+          realtimeEnabled: false,
+          dropInEnabled: false,
+          players: [],
+        };
+        runtime = createCoreRuntime({
+          graph,
+          config: cfg,
+          hooks,
+          files,
+          initialVariables: { rank: rankDefaults },
+        });
         runtimeRef.current = runtime;
         runtimeHooksRef.current = hooks;
         // Link grid engine (if present) to this runtime and hooks so ctx.world

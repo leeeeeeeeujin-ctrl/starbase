@@ -76,6 +76,8 @@ import {
   setGameMatchSessionMeta,
 } from '../../../modules/rank/matchDataStore';
 import { fetchLatestSessionRow } from '@/modules/rank/matchRealtimeSync';
+import { buildRankContext } from '@/lib/rank/rankContext';
+import { createCoreRuntime } from '@/lib/runtime/coreRuntime';
 import {
   START_SESSION_KEYS,
   readStartSessionValue,
@@ -837,6 +839,9 @@ export function useStartClientEngine(gameId, options = {}) {
     timeRemaining,
     activeHeroAssets,
     activeActorNames,
+    // rank / text-runtime bridge (injected from loadGameBundle)
+    rankContext,
+    textRuntimeEnabled,
   } = engineState;
   const [startingSession, setStartingSession] = useState(false);
   const [gameVoided, setGameVoided] = useState(false);
@@ -1924,11 +1929,20 @@ export function useStartClientEngine(gameId, options = {}) {
         const finalSlotLayout =
           mergedSlotLayout.length > 0 ? mergedSlotLayout : slotLayoutFromBundle;
 
+        const rankContext = buildRankContext({
+          game: bundle.game,
+          session: sessionInfo || null,
+          participants: hydratedParticipants,
+          room: matchState?.room || null,
+        });
+
         patchEngineState({
           game: bundle.game,
           participants: hydratedParticipants,
           slotLayout: finalSlotLayout,
           graph: bundle.graph,
+          rankContext,
+          textRuntimeEnabled: true,
         });
         if (Array.isArray(bundle.warnings) && bundle.warnings.length) {
           bundle.warnings.forEach(warning => {
@@ -3185,6 +3199,11 @@ export function useStartClientEngine(gameId, options = {}) {
 
   const advanceTurn = useCallback(
     async (overrideResponse = null, options = {}) => {
+      // 텍스트 런타임(coreRuntime + MainGameMobileUI) 모드에서는
+      // 레거시 엔진의 advanceTurn을 사용하지 않는다.
+      if (textRuntimeEnabled) {
+        return;
+      }
       if (preflight) {
         setStatusMessage('먼저 "게임 시작"을 눌러 주세요.');
         return;
@@ -4129,8 +4148,9 @@ export function useStartClientEngine(gameId, options = {}) {
       normalizedGeminiMode,
       normalizedGeminiModel,
       applyRealtimeSnapshot,
-      recordTurnState,
-    ]
+    recordTurnState,
+    textRuntimeEnabled,
+  ]
   );
 
   const advanceWithManual = useCallback(() => {
@@ -4412,6 +4432,8 @@ export function useStartClientEngine(gameId, options = {}) {
     error,
     game,
     participants,
+    slotLayout,
+    graph,
     currentNode,
     preflight,
     turn,
@@ -4476,5 +4498,9 @@ export function useStartClientEngine(gameId, options = {}) {
       threshold: consensusState?.threshold ?? Math.max(1, Math.ceil(eligibleOwnerIds.length * 0.8)),
       reached: Boolean(consensusState?.hasReachedThreshold),
     },
+    // Expose rank / text-runtime bridge so StartClient can host
+    // a shared "Play engine" box driven by coreRuntime.
+    rankContext,
+    textRuntimeEnabled,
   };
 }

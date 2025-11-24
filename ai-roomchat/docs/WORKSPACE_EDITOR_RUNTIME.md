@@ -3,8 +3,13 @@
 This document is the **authoritative guide** for how the Maker workspace editor talks to the runtime and main game.  
 It exists so we can keep the structure stable even while we iterate on features and fix bugs.
 
-Conceptually, this stack behaves like a small but modern **general‑purpose game engine** for AI‑driven games:  
-the default preset looks like an “AI 텍스트 배틀”, but the same workspace model + graph + hooks + capabilities are meant to scale up so that **거의 대부분의 장르/형태의 게임이나 도구**를 만들 수 있는 수준을 목표로 한다.
+Conceptually, this stack behaves like a small but modern **general‑purpose game engine** for AI‑driven games:
+
+- 기본 예시는 “AI 텍스트 배틀”이지만, 이는 **첫 번째 장르 프리셋**일 뿐이다.  
+- 실제 엔진(`coreRuntime` + `/graph` + `/game/runtime.config.json` + `/game/hooks/automation.js`)은  
+  특정 장르에 묶여 있지 않고, **거의 대부분의 장르/형태의 게임이나 도구**를 표현할 수 있는 수준을 목표로 한다.
+- 랭크/매칭 시스템(`rank_*` 테이블, `match-join` API 등)은  
+  “게임 규칙”을 모르고 **역할/슬롯/점수/세션**만 다루며, 어떤 장르든 동일한 스키마를 공유하도록 설계되어 있다.
 
 Implementation status & ordering notes
 
@@ -178,8 +183,9 @@ Capabilities describe "what this set can do" and which files/hook points it prov
 In this repo copy, most adapters are **thin wrappers around reference_data engines/libraries**:
 
 - `core.*`
-  - `core.graph` / `core.runtimeConfig` / `core.hooks`
-    - Runtime core: `ai-roomchat/lib/runtime/coreRuntime.js`
+- `core.graph` / `core.runtimeConfig` / `core.hooks`
+  - Runtime core: `ai-roomchat/lib/runtime/coreRuntime.js`
+    - `createCoreRuntime({ graph, config, hooks, files, initialVariables? })`
     - Hook loader + timeout guard: `ai-roomchat/lib/runtime/safeEvalHookModule.js`
     - Prompt graph helpers: `ai-roomchat/lib/runtime/promptRunner.js`
     - References:
@@ -1158,11 +1164,241 @@ Supabase/SQL 작업 협업 메모:
 
 ---
 
-## 11. Extensions: planned GitHub sync and AI web helpers
+## 11. Rank 메인게임(StartClient) vs Play 오버레이
+
+### 11.1 단일 게임 런타임 원칙
+
+- 워크스페이스 기반 게임은 **단 하나의 런타임 엔진**을 기준으로 한다.
+  - 엔진: `coreRuntime` + `/graph/prompt-graph.json` + `/game/runtime.config.json` + `/game/hooks/automation.js`
+  - 월드/캔버스/네트워크 등은 이 엔진 위에 올라가는 어댑터/캡ability로 취급한다.
+- UI는 여러 개일 수 있다.
+  - Play 오버레이: 개발/디버그용 미니 게임 화면 (에디터 위).
+  - Rank StartClient: 매칭/세션에 붙는 메인 게임 화면.
+- 두 UI 모두 **같은 런타임/같은 훅/같은 파일 세트를 사용해야 한다.**
+  - 차이는 “참여자가 실제 사람인지”, “매칭/세션 컨텍스트가 붙어 있는지” 정도로 제한한다.
+
+### 11.2 현재 상태 (이 레포 사본)
+
+- Play 오버레이:
+  - 이미 `core.text-runtime` 흐름을 그대로 사용한다.
+  - `/graph` + `/game/runtime.config.json` + `/game/hooks/automation.js` + (선택) `worldGridEngine`를 읽어  
+    `createCoreRuntime({ graph, config, hooks, files })` + `MainGameMobileUI`를 구동한다.
+- Rank StartClient:
+  - 별도 엔진(`matchFlow` + `preflight` + `timeline` 등)을 가지고 있고,
+  - Supabase `rank_*` 테이블에서 읽은 슬롯/참가자/턴 이벤트를 바탕으로 **독자적인 전투 상태 머신**을 돌리고 있다.
+  - 최근 작업으로:
+    - 매칭(`match-join`) → `rank_sessions` → StartClient 입장 흐름이 연결되었고,
+    - `matchDataStore`를 통해 일부 매치 스냅샷/세션 메타를 공유하지만,
+  - 실제 게임 진행/프롬프트/훅 호출은 아직 Play 오버레이 엔진과 완전히 같지 않다.
+
+### 11.3 목표 구조 (정렬 계획)
+
+- 엔진:
+  - `coreRuntime` + 워크스페이스 훅(`/game/hooks/automation.js`)이 **유일한 게임 규칙/턴 엔진**이다.
+  - Rank StartClient는 이 엔진을 “세션 컨텍스트 위에 올려서” 실행한다.
+- 컨텍스트:
+  - 랭크/매칭 정보는 **엔진 바깥 컨텍스트**로만 제공한다.
+    - 예: `sessionId`, `roomId`, 슬롯/참가자, 점수/레이팅, 드롭인 상태, 턴 제한 등.
+    - 런타임에서는 `ctx.variables.rank` 아래에만 랭크/매칭 관련 변수를 둔다. 예:
+      - `ctx.variables.rank.sessionId` – 현재 랭크 세션 id (또는 null).
+      - `ctx.variables.rank.gameMode` – `'rank_shared'` 등 랭크 모드 토큰.
+      - `ctx.variables.rank.realtimeEnabled` / `ctx.variables.rank.dropInEnabled`.
+      - `ctx.variables.rank.players[]` – `{ ownerId, heroId, heroName, role, score, rating }` 형태의 참가자 목록.
+  - 이 컨텍스트는:
+    - 엔진 생성 시 `createCoreRuntime({ ..., initialVariables: { rank: {...} } })`로 주입되거나,
+    - UI(Play/StartClient)가 디버그/요약용으로만 읽는다.
+- UI:
+  - Play 오버레이:
+    - 개발/디버그용이지만, 실제 게임 규칙/프롬프트/훅은 메인게임과 **완전히 동일**해야 한다.
+  - Rank StartClient:
+    - “플레이 엔진 모드”를 갖추고, 텍스트 배틀 장르에서는  
+      `MainGameMobileUI` 또는 그 변형을 그대로 사용해 동일한 런타임 결과를 보여준다.
+    - 슬롯/참가자/점수/정산/투표 뷰는 **엔진 위의 추가 패널**로만 취급한다.
+
+### 11.4 구현 순서 (요약)
+
+1. 문서 정렬 (이 섹션):
+   - “엔진은 하나, UI는 둘” 원칙을 명시하고, Rank StartClient가 런타임 소비자임을 못 박는다.
+2. Rank StartClient에 플레이 엔진 탑재:
+   - 텍스트 베틀/`core.text-runtime`인 경우:
+     - `MainGameMobileUI + coreRuntime` 흐름을 StartClient 안에서 그대로 구동하는 모드를 추가한다.
+   - 기존 `matchFlow` 기반 엔진은 텍스트 베틀에선 점진적으로 축소/제거한다.
+3. 랭크 컨텍스트 주입:
+   - `sessionId`/`roomId`/슬롯/참가자/점수/드롭인 상태를:
+     - 런타임 훅 컨텍스트(ctx.variables/meta)와,
+     - StartClient의 보조 패널(참가자, 정산, 점수 요약)에만 사용하도록 정리한다.
+4. 레거시 엔진 정리:
+   - 텍스트 베틀 장르에서 `matchFlow`/`preflight`가 담당하던 영역을  
+     `coreRuntime` + 워크스페이스 훅 + 랭크 컨텍스트로 대체하고,
+   - 향후 다른 장르도 같은 패턴(단일 런타임 + 랭크 컨텍스트)으로 정렬한다.
+
+상태:
+
+- Play 오버레이 / 워크스페이스 런타임: **in progress → stable에 근접**  
+- Rank StartClient와의 런타임 정렬:  
+  - `buildRankContext`로 랭크 컨텍스트를 만들고,  
+  - `useStartClientEngine`에서 `textRuntimeEnabled` 플래그와 함께 노출하며,  
+  - `StartClient`의 플레이 영역은  
+    - `textRuntimeEnabled === true`인 게임에 대해서는 `MainGameMobileUI + coreRuntime` 조합을 **메인 화면으로 사용**하고,  
+    - 그 외 레거시 게임에 대해서만 기존 `TurnInfoPanel + ManualResponsePanel` 엔진을 사용한다.  
+- 이후 코드 리팩터는 이 섹션을 기준으로 진행한다.
+
+### 11.5 Rank 컨텍스트 헬퍼 (`buildRankContext`)
+
+- 위치: `ai-roomchat/lib/rank/rankContext.js`
+- 함수: `buildRankContext({ game, session, participants, room })`
+  - 입력:
+    - `game`: `rank_games` 행 (`id`, `rules`, `realtime_match`, `match_source` 등).
+    - `session`: `rank_sessions` 행 (또는 `{ id, mode, status, room_id, ... }` 형태의 스냅샷).
+    - `participants`: 현재 세션/룸 참가자 배열:
+      - 최소 `{ owner_id/ownerId, hero_id/heroId, hero: { id, name }, role, score, rating }` 필드를 포함.
+    - `room`: `rank_rooms` 행(선택) – `mode` / `realtime_mode` 등.
+  - 출력(`rankContext`):
+    - `sessionId`: `session.id` (또는 `session.session_id`) 정규화.
+    - `gameMode`: `session.mode` / `room.mode` / 기본 `'rank_shared'`.
+    - `realtimeEnabled`: `extractMatchingToggles(game, rules).realtimeEnabled` 기반 boolean.
+    - `dropInEnabled`: 동일 토글 기반 boolean.
+    - `players`: `{ ownerId, heroId, heroName, role, score, rating }[]`.
+
+### 11.6 StartClient의 메인 런타임(플레이 엔진 탑재)
+
+- 위치:
+  - 훅: `components/rank/StartClient/useStartClientEngine.js`
+    - `loadGameBundle(...)` 결과로 `graph` + `participants` + `slotLayout`을 불러온 뒤,
+    - `buildRankContext({ game, session, participants, room })`로 `rankContext`를 생성하고,
+    - `engineState`에 `rankContext`, `textRuntimeEnabled: true`를 함께 저장한다.
+    - 훅의 반환값으로 `graph`, `slotLayout`, `rankContext`, `textRuntimeEnabled`를 노출한다.
+  - UI: `components/rank/StartClient/index.js`
+    - `textRuntimeEnabled === true`인 게임에 대해서:
+      - 플레이 컬럼 전체를 `MainGameMobileUI + coreRuntime` 조합으로 사용하고,
+      - 기존 `TurnInfoPanel + ManualResponsePanel` 엔진은 레거시 게임(비 텍스트‑런타임)에만 사용한다.
+- 동작 개요:
+  - StartClient는 랭크 세션 입장 시:
+    1. `rank_game_workspaces`에서 해당 `game_id`의 워크스페이스 스냅샷을 조회한다:
+       - `template`  → `/template.json`
+       - `graph`     → `/graph/prompt-graph.json`
+       - `runtime_config` → `/game/runtime.config.json`
+       - `hooks_source`  → `/game/hooks/automation.js`
+    2. 스냅샷이 있으면 이를 기준으로 coreRuntime를 구성한다:
+       - `graph`: 스냅샷 `graph` 또는 `loadGameBundle`의 `graph`.
+       - `config`: 스냅샷 `runtime_config` (없으면 `{}`) + `entryNode` 보정:
+         - `entryNode`가 비어 있으면, 그래프 첫 노드 id로 채운다.
+       - `hooks`: `hooks_source`를 `loadHooksFromSource`로 로드한 훅 모듈(없으면 `null`).
+       - `files`: 위 네 파일을 모두 포함한 VFS 스냅샷 (`ctx.files`에서 그대로 보인다).
+       - `initialVariables: { rank: rankContext }`.
+    3. 스냅샷이 없으면:
+       - Supabase에서 구성한 `graph`만 `/graph/prompt-graph.json`으로 쓰고,
+       - 나머지 파일은 `CodeWorkspaceProvider`의 기본값을 사용한다.
+    4. `runtimeBus`:
+       - `turn:next` → `runtime.step({ reason: 'auto' })`,
+       - `player:chat` → `runtime.step({ reason: 'user_action', input: text })`,
+       - 결과 프롬프트를 `system:message` 이벤트로 `MainGameMobileUI`에 전달한다.
+  - 플레이 UI:
+    - `MainGameMobileUI`는 `CodeWorkspaceProvider`로 감싸져 있고:
+      - StartClient에서 로드한 워크스페이스 스냅샷이 있으면 그 내용을 `initialFiles`로 받는다.
+      - 따라서 코드 에디터/프롬프트‑노드 에디터에서 저장한 템플릿/그래프/런타임 설정/훅이  
+        랭크 메인게임에도 동일하게 반영된다.
+
+- 사용처(계획):
+  - Rank 기반 실행 시:
+    - Supabase에서 `game` / `session` / `participants` / `room`를 읽고,
+    - `const rank = buildRankContext({ game, session, participants, room });`
+    - `createCoreRuntime({ graph, config, hooks, files, initialVariables: { rank } })`로 엔진 생성.
+  - 훅에서는 언제나 `ctx.variables.rank`로 랭크 정보를 읽고, 장르에 무관하게 동일 구조를 사용한다.
+
+### 11.7 Rank 게임 워크스페이스 스냅샷 (`rank_game_workspaces`)
+
+- 테이블 / RPC:
+  - SQL: `ai-roomchat/ai-roomchat/docs/sql/rank-game-workspace-snapshot.sql`
+    - `public.rank_game_workspaces`:
+      - `game_id uuid primary key references public.rank_games(id) on delete cascade`
+      - `template jsonb` — `/template.json` 파싱 결과
+      - `graph jsonb` — `/graph/prompt-graph.json`
+      - `runtime_config jsonb` — `/game/runtime.config.json`
+      - `hooks_source text` — `/game/hooks/automation.js` 원본 소스
+      - `created_at`, `updated_at`
+    - `public.save_rank_game_workspace(p_game_id uuid, p_workspace jsonb)`:
+      - `p_workspace` 구조 예:
+        ```json
+        {
+          "template": { "nodes": [], "resources": {} },
+          "graph": { "nodes": [...], "edges": [...] },
+          "runtime_config": { "version": 1, "entryNode": "start", "roles": ["players"] },
+          "hooks_source": "export function onUserAction(ctx,input){...}"
+        }
+        ```
+      - `game_id` 기준으로 upsert (없으면 insert, 있으면 update).
+  - API:
+    - `GET /api/rank/game-workspace?gameId=...`
+      - 구현: `ai-roomchat/ai-roomchat/pages/api/rank/game-workspace.js`
+      - 응답: `{ ok: true, workspace: { template, graph, runtime_config, hooks_source, ... } | null }`
+    - `POST /api/rank/save-game-workspace`
+      - 구현: `ai-roomchat/ai-roomchat/pages/api/rank/save-game-workspace.js`
+      - 요청: `Authorization: Bearer <token>`, body:
+        ```json
+        {
+          "gameId": "<rank_games.id>",
+          "workspace": {
+            "template": { ... },
+            "graph": { ... },
+            "runtime_config": { ... },
+            "hooks_source": "export function ..."
+          }
+        }
+        ```
+      - 동작:
+        - 토큰으로 유저 확인 (`supabase.auth.getUser`).
+        - `rank_games.owner_id === user.id` 인지 권한 체크.
+        - 우선 `save_rank_game_workspace` RPC 호출, 미배포 환경에서는 `rank_game_workspaces`에 직접 upsert.
+- 플로우(의도):
+  1. Maker/코드 에디터에서 `/template.json`, `/graph/prompt-graph.json`, `/game/runtime.config.json`, `/game/hooks/automation.js`를 작성·저장한다.
+  2. 랭크 게임 등록:
+     - `/api/rank/register-game` → `gameId` 생성.
+     - 같은 세트/워크스페이스 컨텍스트에서 위 네 파일을 읽어 `/api/rank/save-game-workspace`로 전송한다.
+  3. 메인게임(StartClient) 입장:
+     - `GET /api/rank/game-workspace?gameId=...` → 스냅샷 로드.
+     - 스냅샷이 있으면, 이 내용을 coreRuntime + `CodeWorkspaceProvider.initialFiles`에 그대로 주입해  
+       플레이/메인게임이 동일한 파일/구성을 바라보도록 한다.
+
+### 11.8 남은 정렬 작업 (요약)
+
+- 워크스페이스 → 랭크 스냅샷 저장:
+  - (현재 레포 상태: **구현 완료**)  
+    - Rank 등록 UI(`RankNewClient`)에서 `/api/rank/register-game` 성공 후,  
+      현재 워크스페이스의 `/template.json`, `/graph/prompt-graph.json`, `/game/runtime.config.json`, `/game/hooks/automation.js`를 읽어  
+      `/api/rank/save-game-workspace`로 전송하는 흐름이 연결되어 있다.
+  - 이때 “어느 워크스페이스 세트의 파일을 읽을지”는 Maker/Rank 화면 간 공유 컨텍스트(예: set id)를 기준으로 결정한다.
+- 텍스트 런타임 게임에서 레거시 엔진 정리:
+  - `textRuntimeEnabled === true`인 게임:
+    - 메인 턴 진행/프롬프트/승패 로직은 오직 `coreRuntime + /game/hooks/automation.js`에서만 처리한다.
+    - (현재 레포 상태: StartClient UI와 레거시 `advanceTurn`에서 텍스트 런타임 게임에 대한 직접 진행은 막아둔 상태이며,  
+      `matchFlow`/타임라인 엔진은 로그/슬롯/투표 패널용 데이터만 유지하도록 단계적으로 축소 중이다.)
+- 훅에서 `ctx.variables.rank` 적극 사용:
+  - 예제 훅(`/game/hooks/automation.js`, 텍스트 배틀 예시)에서:
+    - `ctx.variables.rank.players`, `sessionId`, `gameMode`,  
+      `realtimeEnabled`, `dropInEnabled` 등을 실제로 읽어:
+      - 실시간/비실시간 분기,
+      - 난입 허용 여부,
+      - 참가자/역할별 프롬프트/점수 계산에 활용하는 패턴을 정착시킨다.
+- 세션 종료 → 랭크 점수 반영:
+  - 텍스트 배틀 세션 종료 시:
+    - `text_battle_sessions`/`text_battle_turns`와 `/game/roles.rank.json`을 함께 참고해  
+      최종 승자/점수 스냅샷을 만들고,
+    - `finalize_rank_session_outcome` 또는 이를 래핑한 RPC를 호출해 랭크/레이팅 테이블을 갱신하는 경로를 마련한다.
+- 매칭 모드/디버그 UX:
+  - `realtime_match`(`standard/off`)와 난입 옵션을:
+    - 매칭 큐 → `rankContext` → 훅 → UI까지 일관되게 전달하고,
+    - 실시간/비실시간/난입 여부에 따라 StartClient UI와 텍스트 런타임 훅이 동일한 규칙을 따르도록 정리한다.
+  - Play 디버그 패널(현재 턴 프롬프트, AI 호출 로그)와 StartClient의 로그/요약 뷰를  
+    같은 정보 소스(coreRuntime · rankContext · Supabase 로그)에 맞춰 재정비한다.
+
+---
+
+## 12. Extensions: planned GitHub sync and AI web helpers
 
 This section outlines planned work around extensions that live on top of the workspace/runtime contracts.
 
-### 11.1 GitHub sync panel (`github-sync`)
+### 12.1 GitHub sync panel (`github-sync`)
 
 - Goal:
   - Keep "save" (workspace_sets) and "Git commit/push" clearly separated.
@@ -1201,7 +1437,7 @@ This section outlines planned work around extensions that live on top of the wor
       - Capability contracts API (`/api/runtime/capability-contracts`) is currently used only for validation; its failures do not block Git Sync but should be fixed separately.
       - The UX is still WIP: missing server auth or misconfiguration can result in "silent no-op" behaviour (no errors in the UI) until error reporting is tightened.
 
-### 11.2 AI web helpers (`codex-web`, `copilot-web`)
+### 12.2 AI web helpers (`codex-web`, `copilot-web`)
 
 - Built-in extensions:
   - `codex-web`:
@@ -1580,3 +1816,6 @@ With this split, the AI can:
 - Issue multiple `ui_sandbox_step` calls in a single reasoning turn.
 - Receive logs + DOM summary + one or more screenshots as context.
 - Use that context to decide the next steps, without the human manually pasting images every time.
+
+
+Developer comment — The command will only work if you put it inside $ cmd /c '' or $ cmd /c "". You seem to forget this often, so keep it in mind. When the time comes to use Supabase SQL, try doing it yourself as well. If you need the required keys, ask the developer.

@@ -13,6 +13,17 @@ function getBattleConfig(ctx) {
   return cfg;
 }
 
+function getRankContext(ctx) {
+  try {
+    const vars = ctx && ctx.variables;
+    const rank = vars && vars.rank;
+    if (!rank || typeof rank !== 'object') return null;
+    return rank;
+  } catch {
+    return null;
+  }
+}
+
 function safeRoutes(battle) {
   const r = battle && battle.routes;
   return r && typeof r === 'object' ? r : {};
@@ -112,6 +123,7 @@ export function transformPrompt(ctx) {
   const routes = safeRoutes(battle);
   const profile = battle.promptProfile || {};
   const sides = Array.isArray(battle.sides) ? battle.sides : [];
+  const rank = getRankContext(ctx);
 
   const stage = profile.stage || node.id || 'battle_stage';
   const tone = profile.tone || 'competitive_but_fun';
@@ -127,6 +139,24 @@ export function transformPrompt(ctx) {
   const sideSummary = sides
     .map((s, idx) => `- side${idx + 1}: id=${s.id || '(unknown)'}, characterRef=${s.characterRef || '(none)'}`)
     .join('\n');
+
+  const rankSummary = rank
+    ? [
+        `세션 ID: ${rank.sessionId || '(none)'}`,
+        `모드: ${rank.gameMode || '(unknown)'}`,
+        `실시간: ${rank.realtimeEnabled ? '예' : '아니오'}, 난입: ${rank.dropInEnabled ? '예' : '아니오'}`,
+        `참가자: ${
+          Array.isArray(rank.players) && rank.players.length
+            ? rank.players
+                .map(
+                  (p, i) =>
+                    `p${i + 1}=${p.heroName || p.heroId || p.ownerId || '(unknown)'} (role=${p.role || '-'})`
+                )
+                .join(', ')
+            : '(없음)'
+        }`,
+      ].join('\n')
+    : '(랭크 컨텍스트 없음)';
 
   const historyText = recent.length
     ? recent.map((h, i) => `${i + 1}. [${h.node || '?'}] ${h.text || ''}`).join('\n')
@@ -152,6 +182,9 @@ export function transformPrompt(ctx) {
     `참여 중인 진영/캐릭터:`,
     sideSummary,
     ``,
+    `랭크/세션 컨텍스트(있다면):`,
+    rankSummary,
+    ``,
     `최근 턴 기록:`,
     historyText,
     ``,
@@ -173,20 +206,38 @@ async function callBattleJudge(prompt, ctx) {
     const battle = getBattleConfig(ctx);
     const sides = Array.isArray(battle.sides) ? battle.sides : [];
     const vars = (ctx && ctx.variables) || {};
+    const rank = getRankContext(ctx);
 
     // 세션/플레이어 정보는 우선 ctx.variables에서 찾고,
     // 없으면 battle.sides를 간단히 매핑해 사용한다.
-    const sessionId = vars.battleSessionId || null;
+    const sessionId =
+      vars.battleSessionId ||
+      (rank && rank.sessionId) ||
+      null;
     const heroSide = sides[0] || null;
     const rivalSide = sides[1] || null;
-    const heroId =
-      vars.battleHeroId ||
-      (heroSide && (heroSide.playerId || heroSide.id || heroSide.characterRef)) ||
-      null;
-    const rivalId =
-      vars.battleRivalId ||
-      (rivalSide && (rivalSide.playerId || rivalSide.id || rivalSide.characterRef)) ||
-      null;
+    // 우선 rank.players에서 hero/rival 매칭을 시도하고, 없으면 battle.sides 정보로 폴백한다.
+    let heroId = vars.battleHeroId || null;
+    let rivalId = vars.battleRivalId || null;
+
+    if ((!heroId || !rivalId) && rank && Array.isArray(rank.players)) {
+      const heroFromRank = rank.players.find(p => p.role === '공격' || p.role === 'hero');
+      const rivalFromRank = rank.players.find(p => p.role === '수비' || p.role === 'rival');
+      if (!heroId && heroFromRank) heroId = heroFromRank.heroId || heroFromRank.ownerId || null;
+      if (!rivalId && rivalFromRank) rivalId = rivalFromRank.heroId || rivalFromRank.ownerId || null;
+    }
+
+    if (!heroId) {
+      heroId =
+        (heroSide && (heroSide.playerId || heroSide.id || heroSide.characterRef)) ||
+        null;
+    }
+
+    if (!rivalId) {
+      rivalId =
+        (rivalSide && (rivalSide.playerId || rivalSide.id || rivalSide.characterRef)) ||
+        null;
+    }
     const battleScore = vars.battleScore || null;
 
     const body = {

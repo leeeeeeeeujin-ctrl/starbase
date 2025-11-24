@@ -28,6 +28,9 @@ export const initialMainGameState = {
   },
   activeActorNames: [],
   connectionRoster: [],
+  // rank / runtime bridge
+  rankContext: null,
+  textRuntimeEnabled: false,
 };
 
 const ACTIONS = {

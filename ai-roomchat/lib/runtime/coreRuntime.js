@@ -7,12 +7,15 @@ import { buildIndex } from './promptRunner.js';
 import { callHookWithTimeout } from './safeEvalHookModule.js';
 import { buildInitialGridState } from './adapters/worldGridEngine.js';
 
-export function createCoreRuntime({ graph, config, hooks, files }) {
+export function createCoreRuntime({ graph, config, hooks, files, initialVariables }) {
   const { nodesById, outEdges } = buildIndex(graph || {});
   const cfg = config || {};
   let currentId = cfg.entryNode || null;
   let turn = 0;
-  const variables = {};
+  const variables =
+    initialVariables && typeof initialVariables === 'object'
+      ? JSON.parse(JSON.stringify(initialVariables))
+      : {};
 
   // Optional world/grid engine that can provide a live grid state.
   // When present, ctx.world will reflect the engine's current grid state.

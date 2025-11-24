@@ -21,6 +21,7 @@ import {
   realtimeModeCopy,
 } from '../../data/rankRegistrationContent';
 import { prepareRegistrationPayload } from '../../lib/rank/registrationValidation';
+import { useWorkspace } from '../workspace/CodeWorkspaceProvider.jsx';
 import { MATCH_MODE_KEYS } from '../../lib/rank/matchModes';
 
 const MAX_IMAGE_SIZE_BYTES = 3 * 1024 * 1024;
@@ -128,6 +129,7 @@ export default function RankNewClient() {
     promptSetId: sharedPromptSetId,
     setPromptSetId: setSharedPromptSetId,
   } = useSharedPromptSetStorage();
+  const workspace = useWorkspace?.();
 
   useEffect(() => {
     let alive = true;
@@ -324,6 +326,45 @@ export default function RankNewClient() {
     }
 
     const gameId = res.gameId;
+
+    // 워크스페이스 스냅샷을 rank_game_workspaces에 저장한다 (best-effort).
+    try {
+      const {
+        data: { session: snapSession },
+      } = await supabase.auth.getSession();
+      const snapToken = snapSession?.access_token;
+
+      if (!snapToken) {
+        throw new Error('missing_token_for_workspace_snapshot');
+      }
+
+      const files = workspace?.files || {};
+      const templateText = files['/template.json']?.content || '{}';
+      const graphText = files['/graph/prompt-graph.json']?.content || '{}';
+      const runtimeConfigText = files['/game/runtime.config.json']?.content || '{}';
+      const hooksSource = files['/game/hooks/automation.js']?.content || '';
+
+      const workspacePayload = {
+        template: JSON.parse(templateText || '{}'),
+        graph: JSON.parse(graphText || '{}'),
+        runtime_config: JSON.parse(runtimeConfigText || '{}'),
+        hooks_source: hooksSource,
+      };
+
+      await fetch('/api/rank/save-game-workspace', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${snapToken}`,
+        },
+        body: JSON.stringify({
+          gameId,
+          workspace: workspacePayload,
+        }),
+      }).catch(() => {});
+    } catch {
+      // 스냅샷 저장 실패는 게임 등록 자체를 막지 않는다.
+    }
     const createdAt = new Date().toISOString();
     setLastCreatedGame({
       id: gameId,
