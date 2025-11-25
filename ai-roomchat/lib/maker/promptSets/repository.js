@@ -80,15 +80,24 @@ export const promptSetsRepository = {
       return failure(new Error('Please provide a non-empty prompt set name.'));
     }
 
-    const { error } = await withTableQuery(supabase, 'prompt_sets', (from) =>
-      from.update({ name: trimmed }).eq('id', id)
-    );
-
-    if (error) {
+    try {
+      const resp = await fetch('/api/maker/prompt-sets/rename', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id, name: trimmed }),
+      });
+      if (!resp.ok) {
+        const j = await resp.json().catch(() => ({}));
+        return failure(asError(j?.error || 'Failed to rename the prompt set.'));
+      }
+      const payload = await resp.json().catch(() => ({}));
+      const name = typeof payload?.name === 'string' && payload.name.trim()
+        ? payload.name.trim()
+        : trimmed;
+      return success(name);
+    } catch (error) {
       return failure(asError(error, 'Failed to rename the prompt set.'));
     }
-
-    return success(trimmed);
   },
 
   async remove(id) {
