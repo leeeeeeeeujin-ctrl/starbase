@@ -21,7 +21,7 @@ import {
   realtimeModeCopy,
 } from '../../data/rankRegistrationContent';
 import { prepareRegistrationPayload } from '../../lib/rank/registrationValidation';
-import { useWorkspace } from '../workspace/CodeWorkspaceProvider.jsx';
+import { useWorkspaceOptional } from '../workspace/CodeWorkspaceProvider.jsx';
 import { MATCH_MODE_KEYS } from '../../lib/rank/matchModes';
 
 const MAX_IMAGE_SIZE_BYTES = 3 * 1024 * 1024;
@@ -129,7 +129,7 @@ export default function RankNewClient() {
     promptSetId: sharedPromptSetId,
     setPromptSetId: setSharedPromptSetId,
   } = useSharedPromptSetStorage();
-  const workspace = useWorkspace?.();
+  const workspace = useWorkspaceOptional?.() || null;
 
   useEffect(() => {
     let alive = true;

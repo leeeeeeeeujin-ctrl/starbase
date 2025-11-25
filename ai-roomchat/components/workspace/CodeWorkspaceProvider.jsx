@@ -953,3 +953,7 @@ export function useWorkspace() {
   if (!ctx) throw new Error("useWorkspace must be used within CodeWorkspaceProvider");
   return ctx;
 }
+
+export function useWorkspaceOptional() {
+  return useContext(WorkspaceCtx);
+}
