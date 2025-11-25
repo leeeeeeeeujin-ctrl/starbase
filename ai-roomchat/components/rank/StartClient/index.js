@@ -365,6 +365,24 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     textRuntimeEnabled,
   } = engine;
 
+  const autoStartRef = useRef(false);
+
+  useEffect(() => {
+    if (!textRuntimeEnabled) return;
+    if (!ready) return;
+    if (!gameId) return;
+    if (autoStartRef.current) return;
+    if (isStarting) return;
+    if (sessionInfo && sessionInfo.id) return;
+
+    autoStartRef.current = true;
+    try {
+      handleStart();
+    } catch (error) {
+      console.warn('[StartClient] 자동 게임 시작 실패:', error);
+    }
+  }, [textRuntimeEnabled, ready, gameId, isStarting, sessionInfo, handleStart]);
+
   useEffect(() => {
     if (!gameId) {
       setGameWorkspace(null);
@@ -997,17 +1015,21 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     );
   }
 
+  const showLegacyShellUi = !textRuntimeEnabled;
+
   return (
     <div className={styles.page} style={pageStyle}>
       <div className={styles.shell}>
         <header className={styles.headerRow}>
-          <div className={styles.headerSummary}>
-            <div className={styles.headerLead}>{matchState?.matchMode || '랭크 매치'}</div>
-            <h1 className={styles.headerTitle}>{headerTitle}</h1>
-            {headerDescription ? (
-              <p className={styles.headerDescription}>{headerDescription}</p>
-            ) : null}
-          </div>
+          {showLegacyShellUi && (
+            <div className={styles.headerSummary}>
+              <div className={styles.headerLead}>{matchState?.matchMode || '랭크 매치'}</div>
+              <h1 className={styles.headerTitle}>{headerTitle}</h1>
+              {headerDescription ? (
+                <p className={styles.headerDescription}>{headerDescription}</p>
+              ) : null}
+            </div>
+          )}
           <div className={styles.headerControls}>
             <button type="button" className={styles.navButton} onClick={handleBackToRoom}>
               ← 로비로
@@ -1044,138 +1066,148 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
           </div>
         ) : null}
 
-        <section className={styles.summaryGrid}>
-          <article className={styles.summaryCard}>
-            <header className={styles.summaryHeader}>
-              <h2 className={styles.summaryTitle}>매치 정보</h2>
-              {matchState?.room?.code ? (
-                <span className={styles.matchCode}>코드 {matchState.room.code}</span>
-              ) : null}
-            </header>
-            {sessionMeta.length ? (
-              <ul className={styles.metaList}>
-                {sessionMeta.map(item => (
-                  <li key={item.label} className={styles.metaItem}>
-                    <span className={styles.metaLabel}>{item.label}</span>
-                    <span className={styles.metaValue}>{item.value}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className={styles.metaPlaceholder}>추가 매치 정보가 없습니다.</p>
-            )}
-          </article>
+        {showLegacyShellUi && (
+          <section className={styles.summaryGrid}>
+            <article className={styles.summaryCard}>
+              <header className={styles.summaryHeader}>
+                <h2 className={styles.summaryTitle}>매치 정보</h2>
+                {matchState?.room?.code ? (
+                  <span className={styles.matchCode}>코드 {matchState.room.code}</span>
+                ) : null}
+              </header>
+              {sessionMeta.length ? (
+                <ul className={styles.metaList}>
+                  {sessionMeta.map(item => (
+                    <li key={item.label} className={styles.metaItem}>
+                      <span className={styles.metaLabel}>{item.label}</span>
+                      <span className={styles.metaValue}>{item.value}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className={styles.metaPlaceholder}>추가 매치 정보가 없습니다.</p>
+              )}
+            </article>
 
-          <article className={`${styles.summaryCard} ${styles.viewerCard}`}>
-            <header className={styles.viewerHeader}>
-              <h2 className={styles.summaryTitle}>내 캐릭터</h2>
-              {viewerHeroProfile?.avatar_url ? (
-                <img
-                  src={viewerHeroProfile.avatar_url}
-                  alt={viewerHeroProfile?.name || '참가자'}
-                  className={styles.viewerAvatar}
-                />
-              ) : null}
-            </header>
-            <div className={styles.viewerBody}>
-              <div className={styles.viewerName}>{viewerHeroProfile?.name || '익명 참가자'}</div>
-              <div className={styles.viewerRole}>{matchState?.viewer?.role || '역할 미지정'}</div>
-              <dl className={styles.viewerMeta}>
-                {hostRoleName ? (
-                  <div className={styles.viewerMetaItem}>
-                    <dt className={styles.viewerMetaLabel}>호스트 역할</dt>
-                    <dd className={styles.viewerMetaValue}>{hostRoleName}</dd>
-                  </div>
+            <article className={`${styles.summaryCard} ${styles.viewerCard}`}>
+              <header className={styles.viewerHeader}>
+                <h2 className={styles.summaryTitle}>내 캐릭터</h2>
+                {viewerHeroProfile?.avatar_url ? (
+                  <img
+                    src={viewerHeroProfile.avatar_url}
+                    alt={viewerHeroProfile?.name || '참가자'}
+                    className={styles.viewerAvatar}
+                  />
                 ) : null}
-                {asyncMatchInstanceId ? (
-                  <div className={styles.viewerMetaItem}>
-                    <dt className={styles.viewerMetaLabel}>비실시간 매치</dt>
-                    <dd className={styles.viewerMetaValue}>{asyncMatchInstanceId}</dd>
-                  </div>
-                ) : null}
-                {sessionInfoMatchInstanceId ? (
-                  <div className={styles.viewerMetaItem}>
-                    <dt className={styles.viewerMetaLabel}>세션</dt>
-                    <dd className={styles.viewerMetaValue}>{sessionInfoMatchInstanceId}</dd>
-                  </div>
-                ) : null}
-                {extrasMatchInstanceId ? (
-                  <div className={styles.viewerMetaItem}>
-                    <dt className={styles.viewerMetaLabel}>연결 코드</dt>
-                    <dd className={styles.viewerMetaValue}>{extrasMatchInstanceId}</dd>
-                  </div>
-                ) : null}
-              </dl>
-            </div>
-          </article>
-
-          <article className={`${styles.summaryCard} ${styles.assignmentCard}`}>
-            <header className={styles.assignmentHeader}>
-              <div>
-                <h2 className={styles.summaryTitle}>매칭 편성</h2>
-                <p className={styles.assignmentHint}>슬롯 상태와 대역 충원 현황을 확인하세요.</p>
-              </div>
-              {roleSummaryText ? (
-                <span className={styles.roleSummaryText}>{roleSummaryText}</span>
-              ) : null}
-            </header>
-            {scoreboardRooms.length ? (
-              <div className={styles.roomGrid}>
-                {scoreboardRooms.map(room => (
-                  <div key={room.id} className={styles.roomCard}>
-                    <div className={styles.roomHeader}>
-                      <span className={styles.roomLabel}>{room.label}</span>
-                      {room.anchorScore != null ? (
-                        <span className={styles.roomStatus}>기준 점수 {room.anchorScore}</span>
-                      ) : null}
+              </header>
+              <div className={styles.viewerBody}>
+                <div className={styles.viewerName}>
+                  {viewerHeroProfile?.name || '익명 참가자'}
+                </div>
+                <div className={styles.viewerRole}>
+                  {matchState?.viewer?.role || '역할 미지정'}
+                </div>
+                <dl className={styles.viewerMeta}>
+                  {hostRoleName ? (
+                    <div className={styles.viewerMetaItem}>
+                      <dt className={styles.viewerMetaLabel}>호스트 역할</dt>
+                      <dd className={styles.viewerMetaValue}>{hostRoleName}</dd>
                     </div>
-                    <ul className={styles.slotList}>
-                      {room.slots.map((slot, index) => {
-                        const tag = formatSlotSource({
-                          standin: slot.standin,
-                          matchSource: slot.matchSource,
-                        });
-                        const statusClass = slot.ready
-                          ? styles.slotReady
-                          : slot.heroName === '빈 슬롯'
-                            ? styles.slotEmpty
-                            : styles.slotPending;
-                        return (
-                          <li key={`${room.id}-${index}`} className={styles.slotItem}>
-                            <div className={styles.slotRole}>{slot.role || '슬롯'}</div>
-                            <div className={`${styles.slotHero} ${statusClass}`}>
-                              {slot.heroName}
-                            </div>
-                            <div className={styles.slotTagRow}>
-                              {tag ? <span className={styles.slotTag}>{tag}</span> : null}
-                              {!slot.ready && slot.heroName !== '빈 슬롯' ? (
-                                <span className={styles.slotTag}>{'미확인'}</span>
-                              ) : null}
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
-                ))}
+                  ) : null}
+                  {asyncMatchInstanceId ? (
+                    <div className={styles.viewerMetaItem}>
+                      <dt className={styles.viewerMetaLabel}>비실시간 매치</dt>
+                      <dd className={styles.viewerMetaValue}>{asyncMatchInstanceId}</dd>
+                    </div>
+                  ) : null}
+                  {sessionInfoMatchInstanceId ? (
+                    <div className={styles.viewerMetaItem}>
+                      <dt className={styles.viewerMetaLabel}>세션</dt>
+                      <dd className={styles.viewerMetaValue}>{sessionInfoMatchInstanceId}</dd>
+                    </div>
+                  ) : null}
+                  {extrasMatchInstanceId ? (
+                    <div className={styles.viewerMetaItem}>
+                      <dt className={styles.viewerMetaLabel}>연결 코드</dt>
+                      <dd className={styles.viewerMetaValue}>{extrasMatchInstanceId}</dd>
+                    </div>
+                  ) : null}
+                </dl>
               </div>
-            ) : (
-              <p className={styles.metaPlaceholder}>편성 데이터를 찾지 못했습니다.</p>
-            )}
-            {hasRoleSummary ? (
-              <div className={styles.roleSummary}>
-                {roleBuckets.map((bucket, index) => (
-                  <span
-                    key={`${bucket.role}-${index}`}
-                    className={bucket.missing > 0 ? styles.roleBadgeMissing : styles.roleBadge}
-                  >
-                    {bucket.role} {bucket.filled}/{bucket.total}
-                  </span>
-                ))}
-              </div>
-            ) : null}
-          </article>
-        </section>
+            </article>
+
+            <article className={`${styles.summaryCard} ${styles.assignmentCard}`}>
+              <header className={styles.assignmentHeader}>
+                <div>
+                  <h2 className={styles.summaryTitle}>매칭 편성</h2>
+                  <p className={styles.assignmentHint}>
+                    슬롯 상태와 대역 충원 현황을 확인하세요.
+                  </p>
+                </div>
+                {roleSummaryText ? (
+                  <span className={styles.roleSummaryText}>{roleSummaryText}</span>
+                ) : null}
+              </header>
+              {scoreboardRooms.length ? (
+                <div className={styles.roomGrid}>
+                  {scoreboardRooms.map(room => (
+                    <div key={room.id} className={styles.roomCard}>
+                      <div className={styles.roomHeader}>
+                        <span className={styles.roomLabel}>{room.label}</span>
+                        {room.anchorScore != null ? (
+                          <span className={styles.roomStatus}>기준 점수 {room.anchorScore}</span>
+                        ) : null}
+                      </div>
+                      <ul className={styles.slotList}>
+                        {room.slots.map((slot, index) => {
+                          const tag = formatSlotSource({
+                            standin: slot.standin,
+                            matchSource: slot.matchSource,
+                          });
+                          const statusClass = slot.ready
+                            ? styles.slotReady
+                            : slot.heroName === '빈 슬롯'
+                              ? styles.slotEmpty
+                              : styles.slotPending;
+                          return (
+                            <li key={`${room.id}-${index}`} className={styles.slotItem}>
+                              <div className={styles.slotRole}>{slot.role || '슬롯'}</div>
+                              <div className={`${styles.slotHero} ${statusClass}`}>
+                                {slot.heroName}
+                              </div>
+                              <div className={styles.slotTagRow}>
+                                {tag ? <span className={styles.slotTag}>{tag}</span> : null}
+                                {!slot.ready && slot.heroName !== '빈 슬롯' ? (
+                                  <span className={styles.slotTag}>{'미확인'}</span>
+                                ) : null}
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className={styles.metaPlaceholder}>편성 데이터를 찾지 못했습니다.</p>
+              )}
+              {hasRoleSummary ? (
+                <div className={styles.roleSummary}>
+                  {roleBuckets.map((bucket, index) => (
+                    <span
+                      key={`${bucket.role}-${index}`}
+                      className={
+                        bucket.missing > 0 ? styles.roleBadgeMissing : styles.roleBadge
+                      }
+                    >
+                      {bucket.role} {bucket.filled}/{bucket.total}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+            </article>
+          </section>
+        )}
 
         <div className={styles.bodyGrid}>
           <div className={styles.playColumn}>
@@ -1225,7 +1257,11 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
                   }
                   runtimeBus={runtimeBus}
                   runtimeFeatures={[]}
-                  shellConfig={null}
+                  shellConfig={
+                    gameWorkspace && typeof gameWorkspace.ui_shell === 'object'
+                      ? gameWorkspace.ui_shell
+                      : null
+                  }
                   mode="rank"
                 />
               </CodeWorkspaceProvider>
@@ -1280,7 +1316,7 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
           </div>
 
           <aside className={styles.sideColumn}>
-            {restrictedContext ? (
+            {showLegacyShellUi && restrictedContext ? (
               <section className={`${styles.summaryCard} ${styles.visibilityCard}`}>
                 <div className={styles.visibilityHeader}>
                   <h2 className={styles.summaryTitle}>정보 가시성</h2>
@@ -1332,18 +1368,20 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
               </section>
             ) : null}
 
-            <div className={`${styles.summaryCard} ${styles.sideCard}`}>
-              <RosterPanel
-                participants={participants}
-                realtimePresence={realtimePresence}
-                dropInSnapshot={dropInSnapshot}
-                sessionOutcome={sessionOutcome}
-                showDetails={!restrictedContext || (showRosterDetails && viewerMaySeeFull)}
-                viewerOwnerId={viewerOwnerId}
-                normalizedHostRole={normalizedHostRole}
-                normalizedViewerRole={normalizedViewerRole}
-              />
-            </div>
+            {showLegacyShellUi && (
+              <div className={`${styles.summaryCard} ${styles.sideCard}`}>
+                <RosterPanel
+                  participants={participants}
+                  realtimePresence={realtimePresence}
+                  dropInSnapshot={dropInSnapshot}
+                  sessionOutcome={sessionOutcome}
+                  showDetails={!restrictedContext || (showRosterDetails && viewerMaySeeFull)}
+                  viewerOwnerId={viewerOwnerId}
+                  normalizedHostRole={normalizedHostRole}
+                  normalizedViewerRole={normalizedViewerRole}
+                />
+              </div>
+            )}
 
             <div className={`${styles.summaryCard} ${styles.sideCard}`}>
               <LogsPanel

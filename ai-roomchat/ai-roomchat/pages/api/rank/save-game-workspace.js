@@ -73,6 +73,7 @@ export default async function handler(req, res) {
     graph: workspace.graph ?? null,
     runtime_config: workspace.runtime_config ?? null,
     hooks_source: workspace.hooks_source ?? null,
+    ui_shell: workspace.ui_shell ?? null,
   };
 
   try {
@@ -116,6 +117,7 @@ export default async function handler(req, res) {
         graph: payload.graph,
         runtime_config: payload.runtime_config,
         hooks_source: payload.hooks_source,
+        ui_shell: payload.ui_shell,
       });
 
     if (upsertError) {
@@ -136,4 +138,3 @@ export default async function handler(req, res) {
       .json({ ok: false, error: 'unexpected_error', detail: err?.message || String(err) });
   }
 }
-

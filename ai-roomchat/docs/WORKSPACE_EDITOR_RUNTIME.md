@@ -1373,6 +1373,12 @@ Supabase/SQL 작업 협업 메모:
     - 메인 턴 진행/프롬프트/승패 로직은 오직 `coreRuntime + /game/hooks/automation.js`에서만 처리한다.
     - (현재 레포 상태: StartClient UI와 레거시 `advanceTurn`에서 텍스트 런타임 게임에 대한 직접 진행은 막아둔 상태이며,  
       `matchFlow`/타임라인 엔진은 로그/슬롯/투표 패널용 데이터만 유지하도록 단계적으로 축소 중이다.)
+    - **매칭 직후 자동 시작**:
+      - 텍스트 런타임 게임에서 랭크 매칭이 성공해 StartClient로 진입하면,
+        별도의 “게임 시작” 버튼을 누르지 않아도 `useStartClientEngine.handleStart()`가 자동으로 호출되어  
+        `/api/rank/start-session` → 랭크 세션 생성이 진행된다.
+      - 이 자동 시작은 StartClient가 `textRuntimeEnabled === true`이고,  
+        아직 `sessionInfo.id`가 없는 경우에만 1회 수행된다.
 - 훅에서 `ctx.variables.rank` 적극 사용:
   - 예제 훅(`/game/hooks/automation.js`, 텍스트 배틀 예시)에서:
     - `ctx.variables.rank.players`, `sessionId`, `gameMode`,  
@@ -1404,11 +1410,19 @@ Supabase/SQL 작업 협업 메모:
     - `/template.json`, `/graph/prompt-graph.json`, `/game/runtime.config.json`, `/game/hooks/automation.js` → `coreRuntime` 구성은 Play/StartClient 모두 공유한다.
     - 텍스트 런타임 게임의 메인 턴 진행/프롬프트/승패는 `coreRuntime + /game/hooks/automation.js`만 사용한다.
   - UI:
-    - Play 오버레이:
+  - Play 오버레이:
       - `MainGameMobileUI`를 감싼 개발용 오버레이(에디터, AI 채팅, 디버그 바)가 존재한다.
-    - StartClient:
+  - StartClient:
       - 텍스트 런타임 게임의 플레이 컬럼은 `MainGameMobileUI`를 사용하지만,
       - 상단 타이틀/좌우 카드/로그 패널 등 랭크용 셸이 별도의 레이아웃으로 둘러싸고 있는 상태다.
+      - (현재 레포 상태: 텍스트 런타임 게임에서는  
+        - 상단 “랭크 매치 / 메인 게임 / 참가자 0/0 …” 요약 영역,  
+        - `매치 정보 / 내 캐릭터 / 매칭 편성` 카드,  
+        - 오른쪽 `정보 가시성` 카드와 참가자 카드  
+        는 기본적으로 렌더링되지 않고,  
+        게임 화면 + **턴/히스토리 로그 패널**만 표시된다.  
+        추후 `/game/ui.shell.json`과 `rank_game_workspaces.ui_shell`를 통해  
+        이 패널들을 기능/설정 단위로 다시 노출할 예정이다.)
 - GameShell 설계(초안):
   - 컴포넌트:
     - `components/game/GameShell.jsx` (가칭):
@@ -1432,15 +1446,19 @@ Supabase/SQL 작업 협업 메모:
           "debugPrompt": { "enabled": false, "region": "right" }
         }
       }
-      ```
+       ```
     - 이 파일은 “어떤 패널을 쓸 수 있는지”를 선언하지는 않고,
       - 호스트가 제공하는 패널 타입(`rankSummary`, `participants`, `turnLog`, `debugPrompt` 등) 중
       - 어떤 것을 어디에, 켜고/끄고 싶을지만 지정한다.
+    - 반응형 동작:
+      - `layoutPreset`는 `standard`(기본, 데스크탑에서 오른쪽에 로그 패널), `stacked`(좁은 화면에서 게임 위/아래로 패널을 쌓는 모드) 등으로 확장될 수 있다.
+      - 구체적인 브레이크포인트/레이아웃은 GameShell 내부 CSS에서 처리하되,  
+        셸 설정은 “어떤 패널이 우선적으로 보이는지, 모바일에서는 무엇을 접을지” 정도만 선언한다.
   - 호스트 책임(변경 불가한 최소 셸):
     - 세션 종료/떠나기 버튼, 치명적인 오류 표시, 보안/권한 관련 경고는 **항상 호스트에서만 제어**하며,
       워크스페이스/템플릿에서는 끄거나 대체할 수 없다.
     - 그 외의 UI(상단 타이틀, 좌우 카드, 로그 패널)는 GameShell의 패널 슬롯을 통해 제어 가능해야 한다.
-- Play / StartClient 통합 사용 패턴:
+  - Play / StartClient 통합 사용 패턴:
   - 공통:
     - 두 환경 모두 `GameShell`을 사용하고, 내부 엔진으로 `coreRuntime + MainGameMobileUI`를 사용한다.
     - 워크스페이스에 `/game/ui.shell.json`이 있으면 이를 우선 사용하고, 없으면 디폴트 레이아웃을 쓴다.
@@ -1449,13 +1467,18 @@ Supabase/SQL 작업 협업 메모:
       - `panels.rank*`는 꺼 두고,
       - `panels.debug*`는 켜 두는 레이아웃을 사용한다.
     - 개발자가 `/game/ui.shell.json`에서 패널 구성을 바꾸면, Play에서도 즉시 반영된다.
-  - StartClient:
-    - 랭크 모드에서는:
-      - `rankSummary`/`participants` 패널을 기본 on,
-      - 디버그 패널은 off, 또는 별도 개발자 전용 플래그로만 on.
-    - 워크스페이스에서 해당 패널을 끄면(예: 완전 미니멀 텍스트 게임을 만들고 싶을 때),
-      - 랭크 셸의 카드/로그도 자연스럽게 사라지고,
-      - Host가 보장해야 하는 최소 UI(나가기 버튼 등)만 남는다.
+     - StartClient:
+      - 랭크 모드에서는:
+        - `rankSummary`/`participants` 패널을 기본 on,
+        - 디버그 패널은 off, 또는 별도 개발자 전용 플래그로만 on.
+      - 워크스페이스에서 해당 패널을 끄면(예: 완전 미니멀 텍스트 게임을 만들고 싶을 때),
+        - 랭크 셸의 카드/로그도 자연스럽게 사라지고,
+        - Host가 보장해야 하는 최소 UI(나가기 버튼 등)만 남는다.
+      - 스냅샷 저장:
+        - `RankNewClient`에서 게임 등록 후 워크스페이스 스냅샷을 저장할 때,
+          `/game/ui.shell.json`이 존재하면 이를 파싱해 `rank_game_workspaces.ui_shell`에 함께 저장한다.
+        - StartClient는 `GET /api/rank/game-workspace`로 이 스냅샷을 로드하고,  
+          `workspace.ui_shell`를 그대로 `GameShell`의 `shellConfig`로 넘겨 Play와 동일한 셸 구성을 사용한다.
 
 이 설계의 의도는:
 - “게임 엔진 + 메인 게임 UI”뿐 아니라,

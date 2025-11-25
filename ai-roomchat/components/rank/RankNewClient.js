@@ -342,6 +342,7 @@ export default function RankNewClient() {
       const templateText = files['/template.json']?.content || '{}';
       const graphText = files['/graph/prompt-graph.json']?.content || '{}';
       const runtimeConfigText = files['/game/runtime.config.json']?.content || '{}';
+      const uiShellText = files['/game/ui.shell.json']?.content || '';
       const hooksSource = files['/game/hooks/automation.js']?.content || '';
 
       const workspacePayload = {
@@ -349,6 +350,15 @@ export default function RankNewClient() {
         graph: JSON.parse(graphText || '{}'),
         runtime_config: JSON.parse(runtimeConfigText || '{}'),
         hooks_source: hooksSource,
+        ui_shell: uiShellText
+          ? (() => {
+              try {
+                return JSON.parse(uiShellText);
+              } catch {
+                return null;
+              }
+            })()
+          : null,
       };
 
       await fetch('/api/rank/save-game-workspace', {
