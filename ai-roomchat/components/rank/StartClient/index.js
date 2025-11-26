@@ -1263,6 +1263,16 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
                       : null
                   }
                   mode="rank"
+                  viewerHero={
+                    viewerHeroProfile
+                      ? {
+                          name: viewerHeroProfile.name,
+                          avatar_url: viewerHeroProfile.avatar_url,
+                          role: matchState?.viewer?.role || null,
+                          tagline: null,
+                        }
+                      : null
+                  }
                 />
               </CodeWorkspaceProvider>
             ) : (

@@ -20,12 +20,16 @@ export default function GameShell({
   runtimeFeatures = [],
   shellConfig = null,
   mode = 'play', // 'play' | 'rank' 등
+  viewerHero = null, // 선택: 랭크에서 현재 플레이어 캐릭터 요약
 }) {
   const cfg = useMemo(() => normalizeShellConfig(shellConfig), [shellConfig]);
   const layoutPreset = useMemo(() => resolveLayoutPreset(cfg), [cfg]);
 
   const headerEnabled =
     cfg?.panels?.header?.enabled !== false; // 기본 on, 명시적으로 false일 때만 비활성화
+
+  const viewerEnabled =
+    cfg?.panels?.viewer?.enabled !== false && viewerHero && typeof viewerHero === 'object';
 
   const title =
     (cfg?.header && cfg.header.title) ||
@@ -79,6 +83,61 @@ export default function GameShell({
             </div>
           </div>
         </header>
+      )}
+
+      {viewerEnabled && (
+        <section
+          style={{
+            padding: '10px 14px',
+            borderRadius: 12,
+            border: '1px solid rgba(148,163,184,0.4)',
+            background:
+              'linear-gradient(135deg, rgba(15,23,42,0.95) 0%, rgba(15,23,42,0.85) 60%, rgba(30,64,175,0.35) 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+          }}
+        >
+          {viewerHero.avatar_url ? (
+            <div
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: 999,
+                overflow: 'hidden',
+                flexShrink: 0,
+                border: '1px solid rgba(148,163,184,0.65)',
+              }}
+            >
+              <img
+                src={viewerHero.avatar_url}
+                alt={viewerHero.name || '캐릭터'}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+            </div>
+          ) : null}
+          <div style={{ display: 'grid', gap: 2, minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#e5e7eb', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {viewerHero.name || '이름 없는 영웅'}
+            </div>
+            {viewerHero.role ? (
+              <div style={{ fontSize: 12, color: '#93c5fd' }}>{viewerHero.role}</div>
+            ) : null}
+            {viewerHero.tagline ? (
+              <div
+                style={{
+                  fontSize: 11,
+                  color: '#9ca3af',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {viewerHero.tagline}
+              </div>
+            ) : null}
+          </div>
+        </section>
       )}
 
       <div
