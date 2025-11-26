@@ -149,7 +149,15 @@ export default function LogsPanel({
   aiMemory = [],
   playerHistories = [],
   realtimeEvents = [],
+  sections,
 }) {
+  const mergedSections = {
+    turnLog: true,
+    aiHistory: true,
+    playerHistory: true,
+    realtimeEvents: true,
+    ...(sections || {}),
+  };
   const normalizedLogs = useMemo(() => logs.map(normalizeLogEntry).filter(Boolean), [logs]);
 
   const normalizedMemory = useMemo(
@@ -382,7 +390,8 @@ export default function LogsPanel({
       </div>
 
       <div className={styles.columns}>
-        <div className={styles.primaryColumn}>
+        {mergedSections.turnLog && (
+          <div className={styles.primaryColumn}>
           <div className={styles.sectionHeader}>
             <div className={styles.sectionHeading}>
               <h3 className={styles.sectionTitle}>턴 로그</h3>
@@ -613,19 +622,23 @@ export default function LogsPanel({
               )}
             </>
           )}
-        </div>
+          </div>
+        )}
 
         <div className={styles.secondaryColumn}>
-          <TimelineSection
-            title="실시간 타임라인"
-            events={timelineEvents}
-            collapsed={collapsedSections.timeline}
-            onToggle={() => handleToggle('timeline')}
-            emptyMessage="아직 실시간 이벤트가 없습니다."
-            collapsedNotice="실시간 이벤트 타임라인을 숨겼습니다. 펼쳐서 최근 경고와 대역 전환을 확인하세요."
-            getOwnerLabel={getTimelineOwnerLabel}
-          />
+          {mergedSections.realtimeEvents && (
+            <TimelineSection
+              title="실시간 타임라인"
+              events={timelineEvents}
+              collapsed={collapsedSections.timeline}
+              onToggle={() => handleToggle('timeline')}
+              emptyMessage="아직 실시간 이벤트가 없습니다."
+              collapsedNotice="실시간 이벤트 타임라인을 숨겼습니다. 펼쳐서 최근 경고와 대역 전환을 확인하세요."
+              getOwnerLabel={getTimelineOwnerLabel}
+            />
+          )}
 
+          {mergedSections.aiHistory && (
           <div className={styles.card}>
             <div className={styles.cardHeader}>
               <div className={styles.cardHeading}>
@@ -668,7 +681,9 @@ export default function LogsPanel({
               <p className={styles.empty}>아직 기록된 히스토리가 없습니다.</p>
             )}
           </div>
+          )}
 
+          {mergedSections.playerHistory && (
           <div className={styles.card}>
             <div className={styles.cardHeader}>
               <div className={styles.cardHeading}>
@@ -729,6 +744,7 @@ export default function LogsPanel({
               <p className={styles.empty}>참가자가 없습니다.</p>
             )}
           </div>
+          )}
         </div>
       </div>
     </section>

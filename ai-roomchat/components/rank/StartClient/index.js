@@ -1399,6 +1399,12 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
                 aiMemory={aiMemory}
                 playerHistories={playerHistories}
                 realtimeEvents={realtimeEvents}
+                sections={{
+                  turnLog: true,
+                  aiHistory: true,
+                  playerHistory: true,
+                  realtimeEvents: true,
+                }}
               />
             </div>
           </aside>

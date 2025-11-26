@@ -1429,6 +1429,7 @@ Supabase/SQL 작업 협업 메모:
       - 내부에 `MainGameMobileUI`를 포함하고,
       - 외곽에 다음 영역을 가진다:
         - `header` – 게임 제목/상태/모드 요약.
+        - `viewer` – 현재 플레이어 캐릭터 카드(이름/아바타/역할 요약).
         - `leftPanels` / `rightPanels` – 참가자/점수/로그/디버그 패널 슬롯.
         - `footer` – 턴 진행/메시지 입력 등 “공통 컨트롤 바”.
       - 각 영역에 어떤 패널을 띄울지는 **props + 워크스페이스 설정**으로 제어한다.
@@ -1440,18 +1441,24 @@ Supabase/SQL 작업 협업 메모:
         "layoutPreset": "standard",
         "panels": {
           "header": { "enabled": true, "showTitle": true, "showMode": true },
+          "viewer": { "enabled": true },
           "rankSummary": { "enabled": true, "region": "left" },
           "participants": { "enabled": true, "region": "left" },
           "turnLog": { "enabled": true, "region": "right" },
+          "aiHistory": { "enabled": true, "region": "right" },
+          "playerHistory": { "enabled": true, "region": "right" },
+          "realtimeEvents": { "enabled": true, "region": "right" },
           "debugPrompt": { "enabled": false, "region": "right" }
         }
       }
-       ```
+      ```
     - 이 파일은 “어떤 패널을 쓸 수 있는지”를 선언하지는 않고,
       - 호스트가 제공하는 패널 타입(`rankSummary`, `participants`, `turnLog`, `debugPrompt` 등) 중
       - 어떤 것을 어디에, 켜고/끄고 싶을지만 지정한다.
     - 반응형 동작:
-      - `layoutPreset`는 `standard`(기본, 데스크탑에서 오른쪽에 로그 패널), `stacked`(좁은 화면에서 게임 위/아래로 패널을 쌓는 모드) 등으로 확장될 수 있다.
+      - `layoutPreset`는 현재 `standard` / `stacked` 두 가지를 지원한다.
+        - `standard`: 최대 폭 약 1080px, 데스크탑/와이드 화면에 맞춘 기본 레이아웃.
+        - `stacked`: 최대 폭 약 720px, 세로 비율이 긴 화면에서 위아래로 쌓아 두는 레이아웃.
       - 구체적인 브레이크포인트/레이아웃은 GameShell 내부 CSS에서 처리하되,  
         셸 설정은 “어떤 패널이 우선적으로 보이는지, 모바일에서는 무엇을 접을지” 정도만 선언한다.
   - 호스트 책임(변경 불가한 최소 셸):
@@ -1479,6 +1486,10 @@ Supabase/SQL 작업 협업 메모:
           `/game/ui.shell.json`이 존재하면 이를 파싱해 `rank_game_workspaces.ui_shell`에 함께 저장한다.
         - StartClient는 `GET /api/rank/game-workspace`로 이 스냅샷을 로드하고,  
           `workspace.ui_shell`를 그대로 `GameShell`의 `shellConfig`로 넘겨 Play와 동일한 셸 구성을 사용한다.
+       - 현재 구현 상태(이 레포 사본):
+         - `layoutPreset`(`standard` / `stacked`)를 해석해 GameShell 전체 폭/정렬을 제어한다.
+         - 랭크 모드에서는 `viewer` 패널을 통해 현재 플레이어 캐릭터(아바타, 이름, 역할 요약)를  
+           헤더 바로 아래에 공통 셸 UI로 표시한다. (플레이 모드에서는 기본적으로 꺼진 상태)
 
 이 설계의 의도는:
 - “게임 엔진 + 메인 게임 UI”뿐 아니라,
