@@ -8,6 +8,12 @@ function normalizeShellConfig(raw) {
   return raw;
 }
 
+function resolveLayoutPreset(cfg) {
+  const preset = cfg?.layoutPreset;
+  if (preset === 'stacked' || preset === 'standard') return preset;
+  return 'standard';
+}
+
 export default function GameShell({
   template,
   runtimeBus,
@@ -16,6 +22,7 @@ export default function GameShell({
   mode = 'play', // 'play' | 'rank' 등
 }) {
   const cfg = useMemo(() => normalizeShellConfig(shellConfig), [shellConfig]);
+  const layoutPreset = useMemo(() => resolveLayoutPreset(cfg), [cfg]);
 
   const headerEnabled =
     cfg?.panels?.header?.enabled !== false; // 기본 on, 명시적으로 false일 때만 비활성화
@@ -32,15 +39,17 @@ export default function GameShell({
     '';
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 12,
-        height: '100%',
-        width: '100%',
-      }}
-    >
+    <div style={{ height: '100%', width: '100%', display: 'flex', justifyContent: 'center' }}>
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 12,
+          height: '100%',
+          width: '100%',
+          maxWidth: layoutPreset === 'stacked' ? 720 : 1080,
+        }}
+      >
       {headerEnabled && (
         <header
           style={{
@@ -88,7 +97,7 @@ export default function GameShell({
           runtimeFeatures={runtimeFeatures}
         />
       </div>
+      </div>
     </div>
   );
 }
-
