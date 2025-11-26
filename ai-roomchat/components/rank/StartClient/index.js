@@ -365,6 +365,25 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     textRuntimeEnabled,
   } = engine;
 
+  const logSections = useMemo(() => {
+    const panels =
+      gameWorkspace && typeof gameWorkspace.ui_shell === 'object'
+        ? gameWorkspace.ui_shell.panels || {}
+        : {};
+    const resolve = key => {
+      const panel = panels[key];
+      if (!panel || typeof panel !== 'object') return true;
+      if (panel.enabled === false) return false;
+      return true;
+    };
+    return {
+      turnLog: resolve('turnLog'),
+      aiHistory: resolve('aiHistory'),
+      playerHistory: resolve('playerHistory'),
+      realtimeEvents: resolve('realtimeEvents'),
+    };
+  }, [gameWorkspace && gameWorkspace.ui_shell]);
+
   const autoStartRef = useRef(false);
 
   useEffect(() => {
@@ -1399,12 +1418,7 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
                 aiMemory={aiMemory}
                 playerHistories={playerHistories}
                 realtimeEvents={realtimeEvents}
-                sections={{
-                  turnLog: true,
-                  aiHistory: true,
-                  playerHistory: true,
-                  realtimeEvents: true,
-                }}
+                sections={logSections}
               />
             </div>
           </aside>
