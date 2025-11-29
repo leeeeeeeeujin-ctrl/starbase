@@ -1922,5 +1922,65 @@ With this split, the AI can:
 - Receive logs + DOM summary + one or more screenshots as context.
 - Use that context to decide the next steps, without the human manually pasting images every time.
 
+---
+
+## 17. Play ↔ Rank 동기화 현황 (중요 메모)
+
+Status: in progress
+
+이 섹션은 플래이(코드 에디터 Play)와 랭크 메인게임(StartClient)이 **같은 엔진/데이터를 어떻게 공유하고 있는지**, 그리고 아직 완전히 구현되지 않은 부분이 무엇인지 요약한다.
+
+### 17.1 현재까지 보장되는 것
+
+- 공통 엔진:
+  - 두 화면 모두 `createCoreRuntime({ graph, config, hooks, files, initialVariables })` 로 텍스트 런타임을 생성한다.
+  - 사용 파일:
+    - `/graph/prompt-graph.json`
+    - `/game/runtime.config.json`
+    - `/game/hooks/automation.js`
+  - 랭크 메인게임은 `initialVariables.rank = rankContext` 를 주입해 훅에서 매칭/세션 정보를 읽을 수 있다.
+- 워크스페이스 스냅샷:
+  - 게임 등록 시 `/api/rank/save-game-workspace` 를 통해
+    - `/template.json`, `/graph/prompt-graph.json`, `/game/runtime.config.json`,
+      `/game/hooks/automation.js`, `/game/ui.shell.json`
+    를 `rank_game_workspaces` 에 저장한다.
+  - 메인게임은 `/api/rank/game-workspace?gameId=...` 로 이 스냅샷을 읽어와
+    - `CodeWorkspaceProvider` (read‑only) + `GameShell` + `MainGameMobileUI` 를 구성한다.
+- 매칭/세션 컨텍스트:
+  - `useStartClientEngine` 이 Supabase에서 `rank_games`, `rank_rooms`, `rank_match_roster`, `rank_game_slots`, `rank_sessions` 를 읽어
+    - `participants[]`, `slotLayout[]`, `sessionInfo`, `room`, `game` 을 포함한 `rankContext` 를 만든다.
+  - 이 `rankContext` 는:
+    - 엔진 쪽에는 `ctx.variables.rank` 로,
+    - UI 쪽에는 GameShell `viewerHero` (현재 플레이어 카드) 정도로 부분 사용 중이다.
+
+### 17.2 아직 미완인 부분 (의도적으로 남겨둔 TODO)
+
+- 캐릭터/능력 표시:
+  - 현재 메인게임의 `MainGameMobileUI` 는 템플릿의 `resources.characters` 를 사용해
+    “샘플 캐릭터 카드”를 그리는 수준이다.
+  - 실제 매칭된 참가자(`rankContext.participants`)와 템플릿 리소스를 연결해:
+    - 역할/슬롯별 캐릭터 카드 리스트,
+    - 능력/스탯/점수 등 상세 정보를 플래이·메인게임 공통 UI로 보여주는 단계는 **아직 구현되지 않았다.**
+- 턴 로그 / 히스토리:
+  - LogsPanel 은 현재 랭크 StartClient 안에만 있고, coreRuntime 이벤트를 “임시 형태”로 받아 표현한다.
+  - 계획:
+    - 엔진 → 로그 스트림을 공식 계약(`transformLogs(ctx, events)`)으로 승격하고,
+    - GameShell 에 공통 로그 슬롯을 둔 뒤
+      플래이와 메인게임 모두에서 동일한 LogsPanel/구성을 사용할 것.
+- API 키 / 외부 호출:
+  - StartClient에는 `useStartApiKeyManager` 등을 통해 랭크 전용 API 키 관리가 있다.
+  - 텍스트 런타임 훅에서 “사용자 API 키를 안전하게 읽어 외부 API를 호출하는” 표준 계약은
+    아직 도입되지 않았고, 텍스트 배틀 judge API 등 일부 경로에서만 부분적으로 사용 중이다.
+- 난입/비실시간 정책과 UI:
+  - 매칭/세션 레이어는 `realtime_match`, `dropInEnabled`, `asyncFill` 등의 정책을 이미 처리한다.
+  - 그러나 메인게임 UI/엔진에서:
+    - 실시간 vs 비실시간에 따른 정보 가시성,
+    - 난입 허용 시 표시/제어 방식 등은 최소 수준으로만 연결되어 있고,
+    - 장르/게임에 따라 커스터마이즈 가능한 수준까지는 아직 올라오지 않았다.
+
+요약하면, **엔진과 매칭/세션의 뼈대는 이미 Play ↔ Rank 사이에 공유되고 있고**,  
+캐릭터 표시, 턴 히스토리, API 키, 난입 정책 등 “게임별 UI/경험을 풍부하게 만드는 계약”은  
+이후 단계에서 GameShell + coreRuntime ↔ `/game/*` 계층으로 차례대로 끌어올릴 예정이다.
+
 
 Developer comment — The command will only work if you put it inside $ cmd /c '' or $ cmd /c "". You seem to forget this often, so keep it in mind. When the time comes to use Supabase SQL, try doing it yourself as well. If you need the required keys, ask the developer.
