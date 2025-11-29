@@ -21,6 +21,7 @@ export default function GameShell({
   shellConfig = null,
   mode = 'play', // 'play' | 'rank' 등
   viewerHero = null, // 선택: 랭크에서 현재 플레이어 캐릭터 요약
+  rankContext = null, // 선택: 랭크 세션/참가자 컨텍스트
 }) {
   const cfg = useMemo(() => normalizeShellConfig(shellConfig), [shellConfig]);
   const layoutPreset = useMemo(() => resolveLayoutPreset(cfg), [cfg]);
@@ -154,6 +155,7 @@ export default function GameShell({
           template={template}
           runtimeBus={runtimeBus}
           runtimeFeatures={runtimeFeatures}
+          rankContext={rankContext}
         />
       </div>
       </div>

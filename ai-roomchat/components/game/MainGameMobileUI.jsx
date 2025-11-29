@@ -27,6 +27,7 @@ export default function MainGameMobileUI({
   onPlayerChat = null,
   runtimeBus = null,
   runtimeFeatures = [],
+  rankContext = null,
 }) {
   const isMobile = useIsMobile(820); // currently unused but reserved for responsive adjustments
   const [layout, setLayout] = useState(() => loadLayout());
@@ -151,7 +152,7 @@ export default function MainGameMobileUI({
 
   const modules = useMemo(() => {
     const widgetFlags = readWidgetFlags(template);
-    const playWidgets = buildDefaultWidgets(template, widgetFlags, gridState);
+    const playWidgets = buildDefaultWidgets(template, widgetFlags, gridState, rankContext);
     const defs = {
       header: (
         <DynamicSlot
@@ -188,6 +189,7 @@ export default function MainGameMobileUI({
     files,
     secondsLeft,
     gridState,
+    rankContext,
   ]);
 
   return (
@@ -337,7 +339,7 @@ function readUiConfig(template){
   return {};
 }
 
-function buildDefaultWidgets(template, flags, gridState){
+function buildDefaultWidgets(template, flags, gridState, rankContext){
   const list = [];
   // Resource preview (only if explicitly enabled)
   if (flags?.resourcePreviewEnabled) {
@@ -350,6 +352,66 @@ function buildDefaultWidgets(template, flags, gridState){
   }
   if (gridState) {
     list.push({ title: '그리드 월드', body: <GridCanvas grid={gridState} /> });
+  }
+  // Rank participants (if provided via rankContext)
+  const participants = Array.isArray(rankContext?.participants) ? rankContext.participants : [];
+  if (participants.length) {
+    list.push({
+      title: '참가자',
+      body: (
+        <div style={{ display: 'grid', gap: 6, fontSize: 12, color: '#e5e7eb' }}>
+          {participants.map((p, idx) => {
+            const heroName =
+              p?.hero?.name ||
+              p?.hero_name ||
+              p?.heroName ||
+              p?.display_name ||
+              p?.displayName ||
+              p?.owner_id ||
+              p?.ownerId ||
+              `참가자 ${idx + 1}`;
+            const role = p?.role || '';
+            const score =
+              typeof p?.score === 'number' && Number.isFinite(p.score) ? p.score : null;
+            return (
+              <div
+                key={p?.id || `${heroName}-${idx}`}
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '4px 6px',
+                  borderRadius: 6,
+                  background: 'rgba(15,23,42,0.85)',
+                  border: '1px solid rgba(51,65,85,0.7)',
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontWeight: 600,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    {heroName}
+                  </div>
+                  {role ? (
+                    <div style={{ fontSize: 11, color: '#93c5fd' }}>
+                      역할: <span style={{ color: '#e5e7eb' }}>{role}</span>
+                    </div>
+                  ) : null}
+                </div>
+                {score != null ? (
+                  <div style={{ fontSize: 11, color: '#fde68a', marginLeft: 8 }}>점수 {score}</div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ),
+    });
   }
   return list;
 }

@@ -1291,6 +1291,7 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
                         }
                       : null
                   }
+                  rankContext={rankContext}
                 />
               </CodeWorkspaceProvider>
             ) : (
