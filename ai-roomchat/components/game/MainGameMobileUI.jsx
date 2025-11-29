@@ -30,7 +30,6 @@ export default function MainGameMobileUI({
 }) {
   const isMobile = useIsMobile(820); // currently unused but reserved for responsive adjustments
   const [layout, setLayout] = useState(() => loadLayout());
-  const [edit, setEdit] = useState(false);
   const [gameChat, setGameChat] = useState(() => [{ role: 'system', text: '게임이 시작되었습니다.' }]);
   const [chat, setChat] = useState([]);
   const [chatText, setChatText] = useState('');
@@ -44,8 +43,10 @@ export default function MainGameMobileUI({
   const imageUrl = character?.image || pickFirstImage(template);
   const userLabel = useMemo(() => user?.name || user?.id || 'User #1234', [user]);
 
-  // Persist manual layout edits
-  useEffect(() => { saveLayout(layout); }, [layout]);
+  // Persist layout edits driven by template/runtime (no manual edit UI)
+  useEffect(() => {
+    saveLayout(layout);
+  }, [layout]);
   // Optional runtime bus listeners (no-op when not provided)
   useEffect(() => {
     if (!runtimeBus || typeof runtimeBus.on !== 'function') return;
@@ -61,7 +62,6 @@ export default function MainGameMobileUI({
   // Template-driven layout override (only when not manually editing)
   useEffect(() => {
     try {
-      if (edit) return; // respect manual edit mode
       const tplLayout = template?.ui?.play?.layout?.order;
       if (Array.isArray(tplLayout) && tplLayout.every(x => typeof x === 'string')) {
         const allowed = ['header','gameChat','nextBar','playerChat','character','widgets'];
@@ -153,7 +153,15 @@ export default function MainGameMobileUI({
     const widgetFlags = readWidgetFlags(template);
     const playWidgets = buildDefaultWidgets(template, widgetFlags, gridState);
     const defs = {
-      header: <DynamicSlot key="header" slotId="play.header" files={files} resolveAsset={(x)=>x} defaultRender={() => <Header userLabel={userLabel} edit={edit} setEdit={setEdit} />} />,
+      header: (
+        <DynamicSlot
+          key="header"
+          slotId="play.header"
+          files={files}
+          resolveAsset={x => x}
+          defaultRender={() => <Header userLabel={userLabel} />}
+        />
+      ),
       gameChat: <DynamicSlot key="gameChat" slotId="play.gameChat" files={files} resolveAsset={(x)=>x} defaultRender={() => <GameChat items={Array.isArray(runtimeFeed) ? runtimeFeed.map(m => ({ role: (m.roleScope==='system'?'system':'ai'), text: m.text })) : gameChat} />} />,
       nextBar: <DynamicSlot key="nextBar" slotId="play.nextBar" files={files} resolveAsset={(x)=>x} defaultRender={() => <NextBar onNext={triggerNext} secondsLeft={(onForceNext != null && typeof runtimeSecondsLeft === 'number') ? runtimeSecondsLeft : secondsLeft} />} />,
       playerChat: <DynamicSlot key="playerChat" slotId="play.playerChat" files={files} resolveAsset={(x)=>x} defaultRender={() => <PlayerChat items={chat} text={chatText} setText={setChatText} onSend={sendChat} />} />,
@@ -161,19 +169,32 @@ export default function MainGameMobileUI({
       character: <DynamicSlot key="character" slotId="play.character" files={files} resolveAsset={(x)=>x} defaultRender={() => <CharacterCard name={character?.name||'캐릭터'} image={imageUrl} desc={character?.desc||'설명'} stats={character?.stats||[10,10,10,10]} cycle={uiConfig?.character?.behavior?.tapCycle || ['desc','abilities','score','image']} viewIdx={charViewIdx} setViewIdx={setCharViewIdx} />} />,
     };
     return layout.order.map(id => defs[id]).filter(Boolean);
-  }, [layout.order, userLabel, edit, gameChat, runtimeFeed, triggerNext, chat, chatText, template, character, imageUrl, sendChat, onForceNext, runtimeSecondsLeft, uiConfig, charViewIdx, files, secondsLeft, gridState]);
+  }, [
+    layout.order,
+    userLabel,
+    gameChat,
+    runtimeFeed,
+    triggerNext,
+    chat,
+    chatText,
+    template,
+    character,
+    imageUrl,
+    sendChat,
+    onForceNext,
+    runtimeSecondsLeft,
+    uiConfig,
+    charViewIdx,
+    files,
+    secondsLeft,
+    gridState,
+  ]);
 
   return (
     <div style={{ position:'fixed', inset:0, background:'#0b1220', color:'#e2e8f0', display:'flex', flexDirection:'column' }}>
       <div style={{ display:'grid', gridTemplateRows:'auto 1fr auto auto auto', gap:8, padding: 'env(safe-area-inset-top) 8px calc(env(safe-area-inset-bottom) + 8px) 8px', minHeight:'100svh' }}>
         {modules.map((m, i) => (
-          <div key={i} style={{ position:'relative' }}>
-            {edit && (
-              <div style={{ position:'absolute', right:8, top:8, display:'flex', gap:6, zIndex:2 }}>
-                <button onClick={() => move(layout.order[i], 'up')} style={ctl}>▲</button>
-                <button onClick={() => move(layout.order[i], 'down')} style={ctl}>▼</button>
-              </div>
-            )}
+          <div key={i} style={{ position: 'relative' }}>
             {m}
           </div>
         ))}
@@ -182,16 +203,14 @@ export default function MainGameMobileUI({
   );
 }
 
-function Header({ userLabel, edit, setEdit }) {
+function Header({ userLabel }) {
   return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 10px', background:'#0f172a', border:'1px solid rgba(148,163,184,0.25)', borderRadius:12 }}>
       <div style={{ display:'flex', alignItems:'center', gap:10 }}>
         <div style={{ width:28, height:28, borderRadius:14, background:'#111827' }} />
         <strong style={{ fontSize:14 }}>{userLabel}</strong>
       </div>
-      <div style={{ display:'flex', gap:8 }}>
-        <button onClick={() => setEdit(v => !v)} style={btnGhost}>{edit ? '편집 종료' : '편집'}</button>
-      </div>
+      <div style={{ display: 'flex', gap: 8 }} />
     </div>
   );
 }
