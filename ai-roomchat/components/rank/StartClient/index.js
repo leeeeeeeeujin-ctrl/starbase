@@ -370,17 +370,20 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
       gameWorkspace && typeof gameWorkspace.ui_shell === 'object'
         ? gameWorkspace.ui_shell.panels || {}
         : {};
-    const resolve = key => {
+    const resolve = (key, defaultEnabled = true) => {
       const panel = panels[key];
-      if (!panel || typeof panel !== 'object') return true;
+      if (!panel || typeof panel !== 'object') return defaultEnabled;
       if (panel.enabled === false) return false;
-      return true;
+      if (panel.enabled === true) return true;
+      return defaultEnabled;
     };
     return {
-      turnLog: resolve('turnLog'),
-      aiHistory: resolve('aiHistory'),
-      playerHistory: resolve('playerHistory'),
-      realtimeEvents: resolve('realtimeEvents'),
+      // 랭크 메인게임에서는 기본적으로 턴 로그를 비가시 상태로 두고,
+      // 워크스페이스 ui.shell에서 명시적으로 켜도록 한다.
+      turnLog: resolve('turnLog', false),
+      aiHistory: resolve('aiHistory', true),
+      playerHistory: resolve('playerHistory', true),
+      realtimeEvents: resolve('realtimeEvents', true),
     };
   }, [gameWorkspace && gameWorkspace.ui_shell]);
 
