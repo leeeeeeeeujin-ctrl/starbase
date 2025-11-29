@@ -1933,7 +1933,9 @@ export function useStartClientEngine(gameId, options = {}) {
           game: bundle.game,
           session: sessionInfo || null,
           participants: hydratedParticipants,
-          room: matchState?.room || null,
+          // room 정보는 matchState에서 직접 참조하지 않고,
+          // 이후 단계에서 rankContext 확장 시에만 안전하게 연결한다.
+          room: null,
         });
 
         patchEngineState({
