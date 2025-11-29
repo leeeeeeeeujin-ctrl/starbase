@@ -59,7 +59,7 @@ export default function MainGameMobileUI({
     return () => { try { offLayout?.(); offSystem?.(); } catch {} };
   }, [runtimeBus]);
 
-  // Template-driven layout override (only when not manually editing)
+  // Template-driven layout override (manual edit UI 제거)
   useEffect(() => {
     try {
       const tplLayout = template?.ui?.play?.layout?.order;
@@ -69,7 +69,7 @@ export default function MainGameMobileUI({
         if (filtered.length) setLayout(cur => ({ ...cur, order: filtered }));
       }
     } catch {}
-  }, [template, edit]);
+  }, [template]);
 
   const sendChat = useCallback(() => {
     const t = (chatText || '').trim(); if (!t) return;
