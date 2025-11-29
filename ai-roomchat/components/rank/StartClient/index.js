@@ -5,10 +5,6 @@ import dynamic from 'next/dynamic';
 import { useRouter } from 'next/router';
 
 import styles from './StartClient.module.css';
-import RosterPanel from './RosterPanel';
-import TurnInfoPanel from './TurnInfoPanel';
-import TurnSummaryPanel from './TurnSummaryPanel';
-import ManualResponsePanel from './ManualResponsePanel';
 import StatusBanner from './StatusBanner';
 import {
   clearMatchFlow,
@@ -24,6 +20,10 @@ import { CodeWorkspaceProvider } from '@/components/workspace/CodeWorkspaceProvi
 import GameShell from '@/components/game/GameShell.jsx';
 import { createCoreRuntime } from '@/lib/runtime/coreRuntime';
 import { loadHooksFromSource } from '@/lib/runtime/safeEvalHookModule';
+
+// Ensure matchState is always defined in this module so
+// any legacy reads during render do not throw ReferenceError.
+let matchState = null;
 
 function toTrimmedId(value) {
   if (value === null || value === undefined) return null;
@@ -1034,7 +1034,9 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     );
   }
 
-  const showLegacyShellUi = !textRuntimeEnabled;
+  // 새 메인게임에서는 플래이와 동일한 엔진/쉘만 사용하고,
+  // 기존 StartClient 전용 요약 카드/패널은 모두 숨긴다.
+  const showLegacyShellUi = false;
 
   return (
     <div className={styles.page} style={pageStyle}>
@@ -1053,27 +1055,31 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
             <button type="button" className={styles.navButton} onClick={handleBackToRoom}>
               ← 로비로
             </button>
-            <div className={styles.headerButtons}>
-              <button
-                type="button"
-                onClick={handleStart}
-                className={styles.primaryButton}
-                disabled={startButtonDisabled}
-              >
-                {startLabel}
-              </button>
-              <button
-                type="button"
-                onClick={advanceWithAi}
-                className={styles.advanceButton}
-                disabled={isAdvancing || advanceDisabled}
-              >
-                {nextLabel}
-              </button>
-            </div>
-            {consensus?.active ? (
-              <span className={styles.consensusBadge}>{consensusStatus}</span>
-            ) : null}
+            {showLegacyShellUi && (
+              <>
+                <div className={styles.headerButtons}>
+                  <button
+                    type="button"
+                    onClick={handleStart}
+                    className={styles.primaryButton}
+                    disabled={startButtonDisabled}
+                  >
+                    {startLabel}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={advanceWithAi}
+                    className={styles.advanceButton}
+                    disabled={isAdvancing || advanceDisabled}
+                  >
+                    {nextLabel}
+                  </button>
+                </div>
+                {consensus?.active ? (
+                  <span className={styles.consensusBadge}>{consensusStatus}</span>
+                ) : null}
+              </>
+            )}
           </div>
         </header>
 
@@ -1230,7 +1236,7 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
 
         <div className={styles.bodyGrid}>
           <div className={styles.playColumn}>
-            {textRuntimeEnabled ? (
+            {textRuntimeEnabled && gameWorkspace ? (
               <CodeWorkspaceProvider
                 storageNamespace={`rank:${gameId || ''}`}
                 initialFiles={
@@ -1257,22 +1263,12 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
                           readonly: true,
                         },
                       ].filter(Boolean)
-                    : graph && Array.isArray(graph.nodes)
-                      ? [
-                          {
-                            path: '/graph/prompt-graph.json',
-                            content: JSON.stringify(graph, null, 2) + '\n',
-                            readonly: true,
-                          },
-                        ]
-                      : []
+                    : []
                 }
               >
                 <GameShell
                   template={
-                    gameWorkspace && gameWorkspace.template
-                      ? gameWorkspace.template
-                      : null
+                    gameWorkspace && gameWorkspace.template ? gameWorkspace.template : null
                   }
                   runtimeBus={runtimeBus}
                   runtimeFeatures={[]}
@@ -1296,50 +1292,14 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
               </CodeWorkspaceProvider>
             ) : (
               <div className={styles.engineRow}>
-                <TurnSummaryPanel
-                  sessionMeta={matchState?.sessionMeta || null}
-                  turn={turn}
-                  turnTimerSeconds={turnTimerSeconds}
-                  timeRemaining={timeRemaining}
-                  turnDeadline={turnDeadline}
-                  turnTimerSnapshot={turnTimerSnapshot}
-                  lastDropInTurn={lastDropInTurn}
-                />
-                <TurnInfoPanel
-                  turn={turn}
-                  currentNode={currentNode}
-                  activeGlobal={activeGlobal}
-                  activeLocal={activeLocal}
-                  apiKey={apiKey}
-                  onApiKeyChange={setApiKey}
-                  apiVersion={apiVersion}
-                  onApiVersionChange={setApiVersion}
-                  geminiMode={geminiMode}
-                  onGeminiModeChange={setGeminiMode}
-                  geminiModel={geminiModel}
-                  onGeminiModelChange={setGeminiModel}
-                  geminiModelOptions={geminiModelOptions}
-                  geminiModelLoading={geminiModelLoading}
-                  geminiModelError={geminiModelError}
-                  onReloadGeminiModels={reloadGeminiModels}
-                  realtimeLockNotice={realtimeLockNotice}
-                  apiKeyNotice={apiKeyCooldown?.active ? apiKeyWarning : ''}
-                  currentActor={currentActor}
-                  timeRemaining={timeRemaining}
-                  turnTimerSeconds={turnTimerSeconds}
-                />
-
-                <ManualResponsePanel
-                  manualResponse={manualResponse}
-                  onChange={setManualResponse}
-                  onManualAdvance={advanceWithManual}
-                  onAiAdvance={advanceWithAi}
-                  isAdvancing={isAdvancing}
-                  disabled={manualDisabled}
-                  disabledReason={manualDisabled ? manualDisabledReason : ''}
-                  timeRemaining={timeRemaining}
-                  turnTimerSeconds={turnTimerSeconds}
-                />
+                <div className={styles.summaryCard}>
+                  <div className={styles.summaryHeader}>
+                    <h2 className={styles.summaryTitle}>게임 준비 중</h2>
+                  </div>
+                  <p className={styles.metaPlaceholder}>
+                    워크스페이스 기반 텍스트 런타임이 활성화된 게임에서만 메인 게임 화면이 표시됩니다.
+                  </p>
+                </div>
               </div>
             )}
           </div>
