@@ -1946,12 +1946,18 @@ Status: in progress
     를 `rank_game_workspaces` 에 저장한다.
   - 메인게임은 `/api/rank/game-workspace?gameId=...` 로 이 스냅샷을 읽어와
     - `CodeWorkspaceProvider` (read‑only) + `GameShell` + `MainGameMobileUI` 를 구성한다.
-- 매칭/세션 컨텍스트:
+- 매칭/세션 컨텍스트 (`ctx.variables.rank`):
   - `useStartClientEngine` 이 Supabase에서 `rank_games`, `rank_rooms`, `rank_match_roster`, `rank_game_slots`, `rank_sessions` 를 읽어
-    - `participants[]`, `slotLayout[]`, `sessionInfo`, `room`, `game` 을 포함한 `rankContext` 를 만든다.
+    - `buildRankContext({ game, session, participants, room })` 를 호출한다.
+  - 현재 스키마(간단 버전):
+    - `rank.sessionId: string | null` – 현재 랭크 세션 id.
+    - `rank.gameMode: "rank_shared" | string` – 세션/방 모드.
+    - `rank.realtimeEnabled: boolean` – 실시간 매치인지 여부.
+    - `rank.dropInEnabled: boolean` – 난입 허용 여부.
+    - `rank.players: Array<{ ownerId, heroId, heroName, role, score?, rating? }>` – 매칭된 플레이어/캐릭터 요약.
   - 이 `rankContext` 는:
     - 엔진 쪽에는 `ctx.variables.rank` 로,
-    - UI 쪽에는 GameShell `viewerHero` (현재 플레이어 카드) 정도로 부분 사용 중이다.
+    - UI 쪽에는 GameShell `rankContext` prop으로 내려가 `MainGameMobileUI` 에서 필요할 때 참조할 수 있다.
 
 ### 17.2 아직 미완인 부분 (의도적으로 남겨둔 TODO)
 

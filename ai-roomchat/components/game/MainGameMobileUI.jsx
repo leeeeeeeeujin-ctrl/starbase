@@ -354,7 +354,7 @@ function buildDefaultWidgets(template, flags, gridState, rankContext){
     list.push({ title: '그리드 월드', body: <GridCanvas grid={gridState} /> });
   }
   // Rank participants (if provided via rankContext)
-  const participants = Array.isArray(rankContext?.participants) ? rankContext.participants : [];
+  const participants = Array.isArray(rankContext?.players) ? rankContext.players : [];
   if (participants.length) {
     list.push({
       title: '참가자',
