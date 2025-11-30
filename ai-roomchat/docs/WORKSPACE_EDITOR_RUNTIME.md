@@ -25,6 +25,8 @@ Current high-level status (this repo copy)
   - Text runtime는 실사용 가능 수준, grid-basic은 프리뷰 + 간단 엔진까지 연결.
 - AI code chat dock (UX / actions): **in progress**
   - JSON 액션 파싱/게이팅, 자동 실행 슬라이더, 로그 표현 개선 일부 반영.
+ - Standard data slots (`variables.stats / scene / effects / speaker`): **in progress**
+   - 장르에 무관한 공통 슬롯 계약을 `docs/standard-data-slots.md` 에 정의하고, 텍스트 배틀 예제를 통해 사용하는 중.
 - Supabase persistence + SQL helpers: **planned**
   - Capability/확장 스펙만 정의되어 있고, 실제 어댑터/패널 구현은 이후 단계.
 
@@ -296,6 +298,17 @@ Extensions and capabilities are related but distinct:
 ## 5. Runtime / Play overlay
 
 The Play overlay takes the current workspace files and runs a game instance.
+
+### 5.1 Play vs. 프롬프트‑노드 “테스트” (단일 실행 경로)
+
+- Maker에는 예전부터 프롬프트‑노드 에디터 안에 별도의 “테스트” 뷰가 있었다.
+- 하지만 코드 에디터와 프롬프트‑노드 에디터가 **같은 텍스트 런타임/파일 세트를 공유**하는 구조이므로,
+  실행/테스트용 UI도 하나만 두는 쪽이 디버깅·유지보수에 유리하다.
+- 앞으로는:
+  - 프롬프트‑노드 에디터 안의 레거시 “테스트”는 제거/폐기하고,
+  - **Play 오버레이(이 섹션의 엔진)** 를 프롬프트‑노드 에디터 상단에서도 그대로 호출하는 식으로 대체한다.
+- 즉, “테스트”라는 별도 엔진은 두지 않고,  
+  코드 에디터/프롬프트‑노드 에디터 모두 **동일한 Play 엔진 + GameShell UI** 를 공유하는 것을 원칙으로 한다.
 
 Conceptually it uses:
 
@@ -1007,10 +1020,17 @@ DB 매핑(초안):
 
 ---
 
-### 10.9 역할별 점수폭 설정 (`/game/roles.rank.json`) (planned)
+### 10.9 역할별 점수폭 설정 (`/game/roles.rank.json`) (in progress)
 
 기존 랭크/게임 등록 플로우에서는 UI에서 역할/점수폭을 직접 입력해 `register_rank_game` RPC의 `p_roles` 인자로 넘겼다.  
 텍스트 배틀 / Maker 중심 워크플로우에서는 이를 **워크스페이스 파일 + 프롬프트/코드 에디터 도구**로 이관한다.
+
+- 원칙:
+  - 역할/점수폭의 **단일 출처(single source of truth)** 는 워크스페이스 파일 `/game/roles.rank.json` 이다.
+  - 게임 등록 페이지에 남아 있는 역할/점수 입력 UI는 점진적으로:
+    - 이 파일을 보여주는 **뷰/보조 편집기** 역할만 하고,
+    - 별도의 값(폼 상태)을 저장하거나 RPC에 직접 `p_roles` 를 넣지 않도록 정리한다.
+
 
 - 워크스페이스 파일:
   - 권장 경로: `/game/roles.rank.json`
@@ -1035,6 +1055,12 @@ DB 매핑(초안):
         - `{ name, slot_count, score_delta_min, score_delta_max, active }[]`
 - 향후 통합 방향 (planned):
   - 게임 등록 페이지 / rank 등록 코드에서:
+  - 실제 구현 상태 (요약):
+    - `components/rank/RankNewClient.js` 에서 게임 등록 시,
+      먼저 워크스페이스의 `/game/roles.rank.json` 을 `loadRolesConfig` → `toRegisterRankRolesPayload` 로 읽어 `roles` payload 를 만든다.
+    - 해당 파일이 없거나 파싱에 실패하면 기존 폼(`RolesEditor`) 값을 기반으로 role payload 를 생성하는 폴백 경로를 유지한다.
+
+
     - 선택된 워크스페이스의 `/game/roles.rank.json`을 읽어,
     - `loadRolesConfig` → `toRegisterRankRolesPayload`를 거쳐 RPC `p_roles` 인자에 전달한다.
   - Maker/프롬프트 에디터 쪽에서는:
@@ -1246,7 +1272,7 @@ Supabase/SQL 작업 협업 메모:
 ### 11.5 Rank 컨텍스트 헬퍼 (`buildRankContext`)
 
 - 위치: `ai-roomchat/lib/rank/rankContext.js`
-- 함수: `buildRankContext({ game, session, participants, room })`
+- 함수: `buildRankContext({ game, session, participants, room, viewer })`
   - 입력:
     - `game`: `rank_games` 행 (`id`, `rules`, `realtime_match`, `match_source` 등).
     - `session`: `rank_sessions` 행 (또는 `{ id, mode, status, room_id, ... }` 형태의 스냅샷).
@@ -1396,6 +1422,11 @@ Supabase/SQL 작업 협업 메모:
     - 매칭 큐 → `rankContext` → 훅 → UI까지 일관되게 전달하고,
     - 실시간/비실시간/난입 여부에 따라 StartClient UI와 텍스트 런타임 훅이 동일한 규칙을 따르도록 정리한다.
   - Play 디버그 패널(현재 턴 프롬프트, AI 호출 로그)와 StartClient의 로그/요약 뷰를  
+    같은 정보 소스(coreRuntime · rankContext · Supabase 로그)에 맞춰 재정비한다.
+    - `/debug/play.json`의 `logAiCalls: true` 일 때, Play 오버레이 상단 디버그 패널은
+      `variables.debug.aiCalls` 값을 읽어 간단한 AI 호출 로그를 함께 보여준다.
+      (텍스트 배틀 예제 훅은 `/api/ai-battle-judge` 호출 후 이 배열에 호출 결과를 누적한다.)
+
     같은 정보 소스(coreRuntime · rankContext · Supabase 로그)에 맞춰 재정비한다.
 
 ### 11.9 GameShell 통합 UI (planned)
@@ -1948,13 +1979,16 @@ Status: in progress
     - `CodeWorkspaceProvider` (read‑only) + `GameShell` + `MainGameMobileUI` 를 구성한다.
 - 매칭/세션 컨텍스트 (`ctx.variables.rank`):
   - `useStartClientEngine` 이 Supabase에서 `rank_games`, `rank_rooms`, `rank_match_roster`, `rank_game_slots`, `rank_sessions` 를 읽어
-    - `buildRankContext({ game, session, participants, room })` 를 호출한다.
+    - `buildRankContext({ game, session, participants, room, viewer })` 를 호출한다.
+    - `viewer` 는 Supabase `auth.getUser()` 로 확인한 현재 사용자 id(`viewerId`)와
+      매칭된 참가자 목록(`participants`)을 기준으로 `{ ownerId, heroId, role }` 형태로 채워진다.
   - 현재 스키마(간단 버전):
     - `rank.sessionId: string | null` – 현재 랭크 세션 id.
     - `rank.gameMode: "rank_shared" | string` – 세션/방 모드.
     - `rank.realtimeEnabled: boolean` – 실시간 매치인지 여부.
     - `rank.dropInEnabled: boolean` – 난입 허용 여부.
     - `rank.players: Array<{ ownerId, heroId, heroName, role, score?, rating? }>` – 매칭된 플레이어/캐릭터 요약.
+    - `rank.viewer: { ownerId, heroId, role } | null` – 현재 뷰어(본인)에 대응되는 참가자 요약.
   - 이 `rankContext` 는:
     - 엔진 쪽에는 `ctx.variables.rank` 로,
     - UI 쪽에는 GameShell `rankContext` prop으로 내려가 `MainGameMobileUI` 에서 필요할 때 참조할 수 있다.
@@ -1967,6 +2001,14 @@ Status: in progress
   - 실제 매칭된 참가자(`rankContext.participants`)와 템플릿 리소스를 연결해:
     - 역할/슬롯별 캐릭터 카드 리스트,
     - 능력/스탯/점수 등 상세 정보를 플래이·메인게임 공통 UI로 보여주는 단계는 **아직 구현되지 않았다.**
+- 오디오/배경(브금, 배경 이미지):
+  - 템플릿 수준에서는 캐릭터/장면별로 이미지·배경·브금 메타데이터를 적을 수 있으나,
+  - 메인게임/플래이 공통 계약(`rankContext`, `ctx.variables`, `runtimeBus`)에서
+    `activeBgmUrl`, `activeBackdropUrls` 같은 필드를 공식적으로 노출하는 단계는 **아직 정의되지 않았다.**
+  - 이후 단계에서:
+    - `rankContext.audio` 또는 별도 `ctx.variables.scene` 구조로
+      “현재 장면/캐릭터에 대응하는 브금·배경·이미지 선택 결과”를 제공하고,
+    - Play/메인게임 UI가 동일한 규칙으로 배경/브금을 교체하도록 하는 계약을 추가할 예정이다.
 - 턴 로그 / 히스토리:
   - LogsPanel 은 현재 랭크 StartClient 안에만 있고, coreRuntime 이벤트를 “임시 형태”로 받아 표현한다.
   - 계획:
@@ -1984,9 +2026,541 @@ Status: in progress
     - 난입 허용 시 표시/제어 방식 등은 최소 수준으로만 연결되어 있고,
     - 장르/게임에 따라 커스터마이즈 가능한 수준까지는 아직 올라오지 않았다.
 
+### 17.3 공통 턴 로그 이벤트 계약 (runtime:turn-log)
+
+- 이벤트 이름:
+  - `runtimeBus.emit('runtime:turn-log', event)` 형태로 발행한다.
+  - Play(코드 에디터 Play 오버레이)와 랭크 메인게임(StartClient) 모두 **같은 형식**의 이벤트를 소비하는 것이 목표다.
+- 최소 이벤트 스키마(초기 버전):
+  - `event.turn: number | null` – 1부터 증가하는 턴 번호(없으면 null).
+  - `event.nodeId: string | null` – 현재 노드 id.
+  - `event.nodeLabel: string | null` – 노드 라벨(프롬프트 기본값).
+  - `event.reason: "auto" | "user_action" | "inspect" | string | null` – 호출 이유.
+  - `event.input: string | null` – `reason === "user_action"`일 때 사용자 입력 텍스트.
+  - `event.prompt: string` – 실제 LLM에 보낼 최종 프롬프트 텍스트.
+  - `event.ui: any` – `transformPrompt`가 돌려준 UI payload(있다면).
+  - `event.variables: any` – 해당 턴 수행 직후의 `ctx.variables` 스냅샷(얕은 복사).
+– 현재 구현 상태:
+  - Play:
+    - `CodeEditorOverlayV2.jsx`에서 `turn:next` / `player:chat` / 초기 `getCurrentWithPrompt` 호출 시
+      `runtime:turn-log` 이벤트를 위 스키마로 발행한다.
+    - 디버그 패널은 아직 “현재 턴 프롬프트”만 표시하지만, 이후 이 이벤트를 사용해
+      공통 LogsPanel 또는 비슷한 UI를 붙일 수 있다.
+  - 랭크 메인게임:
+    - `StartClient/index.js`에서 `engine.logs` 배열이 증가할 때마다
+      새 로그 항목을 `runtime:turn-log` 이벤트로 브리지해 `runtimeBus`로 흘려보낸다.
+    - `LogsPanel` 자체는 아직 Rank 전용 `logs`/`aiMemory` 구조를 사용하고 있으며,
+      차후 단계에서 `runtime:turn-log`를 직접 소비하는 공통 패널로 리팩터링할 예정이다.
+
+### 17.4 기본 턴 로그 UI (TurnLogBar)
+
+- 컴포넌트:
+  - `components/game/TurnLogBar.jsx`
+  - `GameShell` 안에서 `turnLogBarEnabled` 가 true일 때 렌더링된다.
+- 동작:
+  - `runtimeBus` 의 `runtime:turn-log` 이벤트를 구독해 최근 20개 턴 로그를 메모리에 유지한다.
+  - 기본 상태에서는 얇은 바 한 줄로:
+    - `턴 N · 첫 줄 요약` 형태의 텍스트를 보여준다.
+  - 바를 클릭하면 작은 2‑열 패널이 펼쳐진다.
+    - 왼쪽: 최근 턴 목록(턴 번호/이유/요약), 항목 클릭 시 선택.
+    - 오른쪽: 선택된 턴의 전체 프롬프트 전문을 `pre` 블록으로 표시.
+- 노출 정책:
+  - 기본값:
+    - 모든 모드에서 TurnLogBar는 **비활성화(off)** 상태다.
+    - 워크스페이스의 `/game/ui.shell.json`에서
+      `panels.turnLogBar.enabled: true` 를 설정했을 때만 표시된다.
+
 요약하면, **엔진과 매칭/세션의 뼈대는 이미 Play ↔ Rank 사이에 공유되고 있고**,  
 캐릭터 표시, 턴 히스토리, API 키, 난입 정책 등 “게임별 UI/경험을 풍부하게 만드는 계약”은  
 이후 단계에서 GameShell + coreRuntime ↔ `/game/*` 계층으로 차례대로 끌어올릴 예정이다.
 
+---
+
+## 18. UI Shell 패널 / 위젯 계약 (계획)
+
+Status: planned
+
+이 섹션은 “플레이/메인게임이 공통으로 사용하는 UI 쉘”을  
+**패널/슬롯/위젯 + 데이터 바인딩 계약**으로 정교하게 다듬기 위한 계획 메모다.
+
+### 18.1 패널 / 레이아웃 모델
+
+- 파일 위치 (초안):
+  - `/game/ui.shell.json`
+- 목표:
+  - React 코드를 직접 수정하지 않고도
+    - 어떤 패널을 사용할지,
+    - 어느 영역에 얼마나 큰 비율로 배치할지,
+    - Play / Rank 모드별 노출 여부를
+    워크스페이스에서 제어 가능하게 만든다.
+- 레퍼런스:
+  - Godot의 `Control` + `HBoxContainer` / `VBoxContainer` / `GridContainer` / `MarginContainer`
+    개념을 축소/재구성한 버전을 목표로 한다.
+- 스키마 개요(예시):
+  ```jsonc
+  {
+    "layout": {
+      "columns": 2,
+      "gutter": 12
+    },
+    "panels": {
+      "header": { "enabled": true },
+      "viewer": { "enabled": true },
+      "turnLogBar": { "enabled": true },          // 17.4 TurnLogBar
+      "leftMain": {
+        "slot": "main",
+        "span": 1
+      },
+      "rightSidebar": {
+        "slot": "sidebar",
+        "span": 1
+      }
+    }
+  }
+  ```
+- 구현 순서:
+  1. `ui.shell`을 단순 “패널 on/off + span 정도”만 가진 구조로 정의.
+  2. GameShell / MainGameMobileUI 에서 이 정보를 읽어,  
+     컬럼 수·패널 가시성·기본 폭 정도만 조정.
+  3. 이후에 세부 위치(align, order 등)는 추가 옵션으로 확장.
+
+### 18.2 위젯 타입 (kind) 계획
+
+- 기본 위젯 후보:
+  - `turnLogBar`: 17.4에서 구현한 얇은 턴 로그 바.
+  - `chatLog`: 턴 로그 이벤트를 요약해서 보여주는 간단한 로그 뷰.
+  - `heroCard`: 캐릭터/참가자 카드(이름/역할/점수 등 요약 정보).
+  - `statMeter`: 점수/체력/게이지 등 수치 표현용 바.
+  - `image`: 아바타/일러스트/아이콘 등 이미지를 표시하는 단순 이미지 뷰.
+  - `badge`: 역할/상태/태그 등을 한 줄짜리 칩(chip) 형태로 표시.
+  - `textBlock`: 짧은 설명/요약/공지 등을 제목+본문 블록으로 표시.
+  - `gridCanvas`: 타일/보드 렌더링용 캔버스(월드 그리드, 보드게임 등).
+  - `debugPanel`: 자유 텍스트/JSON 덤프 표시용.
+- 패널 → 위젯 예시:
+  ```jsonc
+  {
+    "panels": {
+      "main": {
+        "slot": "main",
+        "widgets": [
+          { "kind": "chatLog", "source": "turnLog" },
+          { "kind": "gridCanvas", "source": "world.grid" }
+        ]
+      },
+      "sidebar": {
+        "slot": "sidebar",
+        "widgets": [
+          { "kind": "heroCard", "source": "rank.viewer" },
+          { "kind": "heroCard", "source": "rank.players[0]" }
+        ]
+      }
+    }
+  }
+  ```
+- 구현 순서:
+  1. TurnLogBar 처럼, 각 kind 에 대응하는 React 컴포넌트를 작게 설계.
+  2. MainGameMobileUI 내에 “위젯 렌더러”를 두고 `kind`에 따라 컴포넌트 선택.
+  3. 초기에는 1~2개의 kind만 실제 구현, 나머지는 스펙과 타입만 먼저 정의.
+
+### 18.3 데이터 바인딩 규칙
+
+- 위젯의 `source` 필드는 아래처럼 제한된 경로만 허용:
+  - `rank.*` – `rankContext` (`game`, `session`, `viewer`, `players` 등).
+  - `variables.*` – `ctx.variables` (`battleLast`, `battleScore`, 커스텀 변수 등).
+  - `world.*` – `ctx.world` 또는 grid 엔진에서 제공하는 상태.
+  - `turnLog.*` – `runtime:turn-log` 스트림에서 가져온 요약/최근 항목.
+- 예시:
+  ```jsonc
+  { "kind": "heroCard", "source": "rank.viewer" }
+  { "kind": "statMeter", "source": "variables.battleScore.hero" }
+  { "kind": "chatLog",  "source": "turnLog" }
+   { "kind": "image",    "source": "rank.viewer.avatarUrl", "variant": "circle" }
+  ```
+- 구현 아이디어:
+  - 간단한 경로 해석기(`resolveBinding('rank.viewer', ctx)`)를 만들어
+    UI 코드에서 공통으로 사용.
+  - 잘못된 경로나 타입 오류는 UI에서 “데이터 없음” 정도로 안전하게 처리.
+
+### 18.4 조건부 표시 / 변형 (visibleWhen, variantWhen)
+
+- 패널/위젯 공통 옵션:
+  ```jsonc
+  {
+    "kind": "heroCard",
+    "source": "rank.viewer",
+    "visibleWhen": "rank.viewer != null && variables.turn > 1",
+    "variant": "compact"
+  }
+  ```
+- `visibleWhen`:
+  - 작은 표현식 언어를 문자열로 지정한다.
+  - 1차 구현에서는 다음 형태만 지원한다:
+    - 단일 경로 존재 여부: `"rank.viewer"`, `"variables.battleScore.hero"`, `"!rank.viewer"`
+    - AND / OR 결합: `"rank.viewer && variables.turn"`, `"rank.viewer || variables.turn"`
+  - 경로는 `rank.*` / `variables.*` / `turn.*` 로 제한되며,
+    내부적으로는 `resolveBindingFromRoot`를 사용해 값의 truthy 여부만 평가한다.
+- `variant` / `style`:
+  - `"compact" | "normal" | "detailed"` 등 미리 정의된 스킨을 선택.
+  - 색/여백/텍스트 크기 등은 변형마다 코드에 캡슐화.
+
+### 18.5 구현 순서 (요약)
+
+1. **1단계 – 레이아웃/패널 최소 계약**
+   - `ui.shell.layout` + `panels.*.enabled/slot/span` 정도만 도입.
+   - GameShell/MainGameMobileUI가 이 정보를 읽어 지금 있는 UI를 약간 유연하게 재배치.
+2. **2단계 – 위젯 렌더러 + TurnLogBar 통합**
+   - TurnLogBar를 첫 번째 “위젯 kind”로 삼아,
+     `widgets: [{ kind: "turnLogBar" }]` 형태의 스키마를 실제 소비.
+3. **3단계 – heroCard / chatLog / statMeter 기본 구현**
+   - `rank.viewer`, `rank.players`, `runtime:turn-log`, `variables.battle*` 를 사용하는
+     기본 위젯들을 소수 구현하고, 예제 워크스페이스에 반영.
+4. **4단계 – 데이터 바인딩 / visibleWhen**
+   - `source`/`visibleWhen` 해석기를 도입해,
+     위젯을 상황에 따라 보였다/숨겼다 하거나 변형을 선택할 수 있게 함.
+5. **5단계 – Maker / UI 편집 도구**
+   - Maker(프롬프트-노드/코드 에디터)에서
+     `/game/ui.shell.json`을 GUI로 편집할 수 있는 “UI 쉘 편집기” 추가.
+   - 대부분의 사용자는 이 도구 안에서 패널 추가·크기 조정·데이터 바인딩만 조작하도록 유도.
+
+### 18.6 Godot UI 개념과의 매핑 (참고)
+
+이 프로젝트의 UI 쉘/위젯 계약은 Godot 엔진의 UI 시스템을 완전히 복제하지는 않지만,  
+아래와 같은 1:1에 가까운 “마음속 대응표”를 두고 설계한다.  
+이렇게 하면 Godot 경험이 있는 사람이 쉽게 구조를 이해할 수 있고,  
+우리는 웹/React 환경에 맞는 축소판을 유지할 수 있다.
+
+- 레이아웃 컨테이너:
+  - Godot `HBoxContainer` ≒ `layout.type: "row"`
+  - Godot `VBoxContainer` ≒ `layout.type: "column"`
+  - Godot `GridContainer` ≒ `layout.type: "grid"` + `columns`
+  - Godot `MarginContainer` / anchor 설정 ≒ `layout.align`, `padding`, `span`
+- 패널/컨트롤:
+  - Godot `Panel` / `PanelContainer` ≒ `panel.kind: "container"` + `style.variant`
+  - Godot `Label` ≒ `widget.kind: "text"` / `"debugText"`
+  - Godot `TextureRect` ≒ `widget.kind: "image"`
+  - Godot `Button` ≒ `widget.kind: "button"` + `onClick` → `runtimeBus`/`step` 액션 계약
+- 테마/스킨:
+  - Godot `Theme` / `StyleBox*` ≒ `widget.variant` / `widget.style`
+    (예: `"compact"`, `"pill"`, `"card"`, `"chip"` 등 미리 정의된 변형 이름)
+
+실제 구현은 Godot의 모든 기능을 따라가진 않지만,  
+“행/열/그리드 컨테이너 + 패널 + 텍스트/이미지/버튼 위젯 + 테마/변형”이라는  
+큰 틀과 데이터 계약을 먼저 맞춰두고, 세부 기능은 필요할 때마다 단계적으로 추가해 나가는 것을 기본 원칙으로 한다.
+
+### 18.7 이미지 / 스프라이트 자원과 압축 (계획)
+
+- 저장 원칙:
+  - 워크스페이스 파일에는 **이미지 원본을 직접 포함하지 않는다.**
+  - 대신 `/resources/images.json`(예시)와 같이 “메타데이터만” 저장한다.
+    ```jsonc
+    {
+      "id": "slime_green",
+      "url": "https://cdn.example.com/assets/slime_green.webp",
+      "width": 48,
+      "height": 48,
+      "format": "webp"
+    }
+    ```
+  - 오브젝트/엔티티는 이 id를 `skin` 등의 필드로 참조한다.
+- 업로드 / 압축 파이프라인(서버 측, 추후 구현):
+  1. 클라이언트가 원본 이미지를 `/api/assets/upload-image`(가칭)에 업로드한다.
+  2. 서버에서 `sharp` 등의 라이브러리를 사용해
+     - 최대 해상도 제한(예: 가로/세로 1024px),
+     - WebP/AVIF/압축 PNG 등으로 변환,
+     - 품질(Q) 조정으로 용량 축소를 수행한다.
+  3. 최적화된 이미지를 Supabase Storage 또는 별도 CDN에 저장하고,
+     그 URL/크기/포맷 정보를 `/resources/images.json` 등 메타 파일에 기록한다.
+- 런타임 사용:
+  - 캔버스/렌더러(`rendererCanvas2D` 등)는 `skin` → `images.json` 의 매핑 결과를 사용해
+    실제 이미지를 그려도 되고, 현재처럼 색상/도형 기반 플레이스홀더로 표현해도 된다.
+  - 중요한 것은 “엔진/계약 레벨에서는 id/URL/크기/포맷 등 **압축된 메타 정보**만 의존한다”는 점이다.
+
+### 18.8 UI 레이아웃/위젯 설계 레퍼런스
+
+이 프로젝트의 UI Shell/위젯 시스템은 완전히 새로운 개념을 발명하기보다는,  
+기존 엔진/웹/디자인 시스템에서 검증된 패턴을 축소·조합해서 사용한다.
+
+#### 17.3.1 표준 데이터 슬롯 규약 (요약)
+
+- 자세한 슬롯 구조와 헬퍼는 `docs/standard-data-slots.md` 와 `lib/runtime/standardSlots.js`, `lib/runtime/rankStandardSlots.js` 를 참고한다.
+
+
+엔진/훅/위젯 사이의 결합도를 낮추기 위해, “어디에 무엇을 넣으면 어떤 UI가 그것을 소비하는지”를
+몇 가지 공통 슬롯으로 약속한다.
+
+- `event.variables.speaker`
+  - 훅/엔진이 `runtime:turn-log` 이벤트에 다음 형태로 채운다:
+    - `{ ownerId?, heroId?, role?, accentColor?, avatarUrl? }`
+  - 효과:
+    - `chatLog` 위젯(`ShellChatLogRich`)이 이를 발화자로 해석해
+      - 캐릭터 이름/역할,
+      - 아바타 이미지,
+      - 강조 색(accentColor)이 있으면 말풍선 테두리/배경 톤
+      을 함께 표시한다.
+- `rankContext.players[*]`
+
+#### 17.3.2 runtime:turn-log ↔ 랭크 턴 로그 매핑 (요약)
+
+랭크 세션에서 core.text-runtime 을 사용할 때, 턴 로그는 다음 두 단계로 저장된다.
+
+1. 클라이언트:
+   - 엔진(step 결과)을 기반으로 `runtime:turn-log` 이벤트를 발행한다:
+     - `{ turn, nodeId, nodeLabel, reason, input, prompt, ui, variables }`
+   - StartClient 엔진은 이 이벤트/기록을 `logTurnEntries({ entries, turnNumber })` 로 변환해
+     `/api/rank/log-turn` 에 전송한다.
+2. 서버(`/api/rank/log-turn`):
+   - `entries[*]` 를 정규화하면서, 전달된 `variables` 가 있으면
+     `buildTurnSummaryPayload({ ..., variables })` 에 넘겨,
+     `rank_turns.summary_payload.variables` 아래에:
+       - `speaker / stats / scene / effects` 를 저장한다.
+
+이 흐름을 통해:
+
+- UI Shell / 디버그 패널은 `runtime:turn-log` 를 직접 소비하고,
+- 랭크 세션/턴 기록은 `rank_turns.summary_payload` 를 통해 같은 정보를 조회할 수 있다.
+  - 매칭/세션 쪽에서 `{ ownerId, heroId, heroName, role, score, rating }` 외에
+    - `avatarUrl`, `backgrounds[]`, `bgmUrl`, `bgmDurationSeconds`, `audioProfile`
+    를 채워 넣을 수 있다.
+  - 효과:
+    - `heroCard` / `image` 위젯이 공통으로 이 필드를 사용해
+      캐릭터 카드/이미지, 배경/브금 등을 표현한다.
+
+추가 기능(예: `stats`, `scene`, `effects` 등)도 동일한 패턴으로,
+`variables.*` 또는 `rank.*` 아래에 슬롯을 정의하고,
+어떤 위젯이 그것을 소비하는지 이 문서에 “~를 ~에 채우면 ~가 동작한다” 형태로 확장해 나간다.
+
+#### 17.3.2 추가 데이터 슬롯 (stats / scene / effects)
+
+- `event.variables.stats`
+  - 훅/엔진이 턴 종료 시점에
+    - `stats.hp`, `stats.mp`, `stats.gauge`, `stats.score` 등 수치형 상태를 채운다.
+  - 효과:
+    - `statMeter` 위젯이 `source: "variables.stats.hp"` / `"variables.stats.gauge"` 같은 경로를 통해
+      체력/게이지/점수 등을 바로 시각화할 수 있다.
+- `event.variables.scene`
+  - 현재 장면/상황에 대한 요약 정보를 담는 슬롯:
+    - 예: `scene.summary`(짧은 설명), `scene.backgroundKey`, `scene.bgmKey`.
+  - 효과:
+    - `textBlock` 위젯이 `source: "variables.scene.summary"`를 읽어 “현재 장면 요약”을 보여줄 수 있고,
+    - 향후 배경/브금 위젯이 `backgroundKey` / `bgmKey`를 사용해 리소스를 선택하도록 확장할 수 있다.
+- `event.variables.effects`
+  - 버프/디버프/상태이상 등 턴 단위 효과의 리스트:
+    - 예: `effects.active[]` 안에 `{ id, label, kind, remainingTurns }` 구조를 넣는다.
+  - 효과:
+    - `badge` / `textBlock` 조합으로 `source: "variables.effects.active[0].label"`처럼
+      간단한 효과 표시를 할 수 있고,
+    - 나중에 전용 effects 위젯을 추가해도 동일 슬롯을 재사용한다.
+
+- 웹 레이아웃:
+  - HTML + CSS Flex/Grid의 개념을 그대로 차용한다.
+  - `row / column / grid / stack` 컨테이너와 spacing/padding/align 옵션은
+    Flex/Grid의 단순화된 버전으로 본다.
+- 디자인 시스템 / 헤드리스 컴포넌트:
+  - Tailwind + Headless UI, Radix UI, Chakra 등에서 사용하는
+    “컴포넌트 + variant + size + color” 패턴을
+    `kind + variant + style` 설계에 반영한다.
+- Godot UI:
+  - 18.6에서 정리한 대로 `Control` + 컨테이너 + Theme/StyleBox 개념을
+    패널/위젯/테마 모델의 기본 레퍼런스로 삼는다.
+- Unity UI Toolkit / Figma:
+  - UXML/USS, Auto Layout/Component 같은 선언적 UI 정의 방식을 참고해
+    `/game/ui.shell.json`이 “씬이 아닌 UI 스키마” 역할을 하도록 유지한다.
+
+요약하면, UI Shell은 “웹 레이아웃 + Godot/Unity UI + 현대 디자인 시스템”의  
+가장 작은 공통분모를 계약으로 정리한 뒤, 게임 장르에 맞게 필요한 만큼만 확장하는 것을 목표로 한다.
+
+---
+
+## 19. UI Shell 편집기 & 확장 로드맵 (요약)
+
+지금까지는 **데이터 슬롯(speaker / stats / scene / effects / rankContext.players) ↔ 위젯(chatLog / heroCard / statMeter / badge / textBlock / image / gridCanvas)** 축의 계약을 먼저 정리했다.  
+이제부터는 이를 Maker/랭크 메인게임/추가 장르에서 소비하는 방향으로 확장한다.
+
+### 19.1 Maker UI Shell 편집기 v0
+
+- 목표:
+  - `/game/ui.shell.json`을 손으로 편집하지 않고도,
+    Maker 화면에서 셸/위젯 구성을 직관적으로 바꿀 수 있게 한다.
+- 최소 기능:
+  - 패널 on/off 토글(header / playerChat / nextBar / widgets 등).
+  - 위젯 리스트 편집:
+    - kind 선택(chatLog / heroCard / statMeter / badge / textBlock / image / gridCanvas).
+    - `source` 슬롯 선택(예: `variables.speaker`, `variables.stats.hp`, `rank.players[0]`).
+    - 스타일 토큰 선택(padding / radius / tone / density 등).
+  - JSON 스키마는 여전히 `/game/ui.shell.json`이 단일 진실이며,
+    편집기는 이 스키마에 맞춰 읽고/쓰는 thin-layer 로 유지한다.
+
+### 19.2 위젯 보강 (프리미티브 확장)
+
+- 현재 프리미티브:
+  - 정보 위젯: `heroCard`, `badge`, `textBlock`, `image`.
+  - 로그 위젯: `chatLog`, `turnLogBar`(별도 컴포넌트).
+  - 수치/세계 위젯: `statMeter`, `gridCanvas`.
+- 추가 후보:
+  - 리스트/테이블형 위젯 (예: 효과 목록, 참가자 목록).
+  - 탭/섹션 전환 위젯 (여러 로그/패널을 교대로 보여줄 수 있도록).
+- 원칙:
+  - 새로운 기능을 위해 위젯 종류를 폭발시키기보다는,
+    기존 프리미티브 + 데이터 슬롯 조합으로 표현할 수 있는지 먼저 검토한다.
+
+### 19.3 텍스트 배틀 외 장르 준비
+
+- world/grid:
+  - `ctx.world` + `world.grid` + `GridCanvas` 를 이용해
+    보드게임/퍼즐/2D 맵을 표현하는 기본 틀을 다듬는다.
+  - 슬롯 예시:
+    - `variables.worldSelection` – 현재 선택된 칸/객체.
+    - `variables.worldHint` – 씬 힌트/규칙 요약.
+- 2D/3D 디스플레이:
+  - 장기적으로는 캔버스/웹GL/외부 엔진(Godot 등)과 연동하는 어댑터를 두되,
+    UI Shell 레이어에서는 “뷰포트 위젯” 정도의 추상만 유지한다.
+
+### 19.4 디버그/샌드박스 흐름
+
+- 플래이:
+  - API 키/매칭 없이도 슬롯(speaker / stats / scene / effects)에 더미 값을 흘려보내는
+    “샌드박스 모드”를 제공해, UI Shell/위젯 구성을 빠르게 확인할 수 있게 한다.
+- 메인게임:
+  - 매칭/세션이 안정되면, 실제 랭크 세션 하나를 샌드박스 세션처럼 돌려보며
+    플래이 ↔ 메인게임 UI가 동일하게 동작하는지 확인한다.
+
+### 19.2 랭크 게임 워크스페이스 스냅샷 (ui_shell 포함)
+
+- 목표
+  - 워크스페이스 파일 맵에서 텍스트 런타임에 필요한 핵심 파일들을 추려
+    `rank_game_workspaces` 테이블에 저장할 수 있는 스냅샷 구조로 변환한다.
+  - 이후 `/api/rank/save-game-workspace` 에서 이 스냅샷을 사용해
+    `/template.json`, `/graph/prompt-graph.json`, `/game/runtime.config.json`,
+    `/game/hooks/automation.js`, `/game/ui.shell.json` 내용을 함께 저장한다.
+
+- 코드 위치
+  - `lib/workspace/uiShellSnapshot.js`
+    - `extractUiShellFromFiles(files)`:
+      - 워크스페이스 `files` 맵에서 `/game/ui.shell.json`을 찾아 JSON 파싱.
+      - 존재하지 않거나 비어 있으면 `null` 반환.
+    - `buildRankGameWorkspaceSnapshot(files)`:
+      - 다음 키를 가진 객체를 반환:
+        - `template`       ← `/template.json` (jsonb)
+        - `graph`          ← `/graph/prompt-graph.json` (jsonb)
+        - `runtime_config` ← `/game/runtime.config.json` (jsonb)
+        - `hooks_source`   ← `/game/hooks/automation.js` (text)
+        - `ui_shell`       ← `/game/ui.shell.json` (jsonb, 선택)
+      - Supabase SQL `rank-game-workspace-snapshot.sql` 의
+        `save_rank_game_workspace(p_game_id, p_workspace)` 에 넘길 `p_workspace` 형태를 그대로 따른다.
+
+- 사용 예정 흐름
+  - Maker / Studio에서 “이 워크스페이스를 랭크 게임 스냅샷으로 저장”할 때:
+    1. `useWorkspace()` 의 `filesForSave()` 결과를 `buildRankGameWorkspaceSnapshot(files)`에 전달.
+    2. 반환값을 `workspace` 페이로드로 `/api/rank/save-game-workspace` 에 POST.
+    3. 백엔드는 `save_rank_game_workspace` RPC 또는 `rank_game_workspaces` upsert로 저장.
+
+### 19.1.1 Maker UI Shell 편집기 v0 – 구현 상태
+
+- 위치
+  - Maker 프롬프트 에디터 상단 헤더 → `도구 ▾` → **게임 셸 설정**
+  - 클릭 시 `components/maker/settings/GameShellEditor.js` 모달이 열린다.
+- 동작
+  - 현재 템플릿의 JSON(`templateText`)에서 `ui_shell` 블록을 찾아 읽어온다.
+    - 없으면 `{}` 기준으로 시작한다.
+  - 다음 필드를 v0 범위로 편집 가능:
+    - `ui_shell.panels.widgets.enabled` – Shell 위젯 영역 전체 on/off
+    - `ui_shell.panels.turnLogBar.enabled` – 하단 턴 로그 바 on/off
+  - 저장 시:
+    - 템플릿 객체에 `ui_shell.panels.widgets.enabled` / `ui_shell.panels.turnLogBar.enabled`
+      값을 반영한 뒤, `setTemplateText(JSON.stringify(obj, null, 2))` 형태로 갱신한다.
+- 목적
+  - 나중에 workspace 기반 `/game/ui.shell.json` 파일을 사용할 때도 같은 스키마를 공유하기 위해,
+    먼저 템플릿 수준에서 Shell 패널 on/off를 실험·조정할 수 있는 최소 편집기를 제공한다.
+
+
 
 Developer comment — The command will only work if you put it inside $ cmd /c '' or $ cmd /c "". You seem to forget this often, so keep it in mind. When the time comes to use Supabase SQL, try doing it yourself as well. If you need the required keys, ask the developer.
+---
+
+### 18.x. UI 셸 스타일 토큰 (초안)
+
+위젯 종류를 과도하게 늘리는 대신, core 위젯(chatLog / heroCard / statMeter / image / gridCanvas 등)에 **간단한 스타일 토큰**을 붙여 조합력을 높이는 방향으로 설계한다.
+
+- 공통 스타일 토큰(제안)
+  - `padding`: `"none" | "xs" | "sm" | "md" | "lg"`
+  - `gap`: `"none" | "xs" | "sm" | "md"`
+  - `radius`: `"none" | "sm" | "md" | "lg" | "full"`
+  - `tone`: `"primary" | "secondary" | "muted" | "danger"`
+  - `align`: `"start" | "center" | "end"`
+  - `density`: `"compact" | "normal" | "relaxed"`
+
+각 위젯은 `style` 혹은 `styleProps` 필드를 통해 이 토큰들을 받으며, 런타임에서는 토큰을 Tailwind / Figma 비슷한 스타일 맵으로 변환해 inline style에 적용한다.  
+실제 토큰 → 스타일 변환 로직은 `ai-roomchat/components/game/uiShellStyle.js` 의 `applyShellStyleProps(styleProps)` 에 구현되어 있으며, Shell 위젯/컨테이너에서 공통으로 사용한다.
+
+- 현재 구현 기준 동작 요약
+  - `padding` / `gap` / `radius`:
+    - 각 위젯 컨테이너의 여백·간격·모서리 라운드를 직접 조정한다.
+  - `align`:
+    - 컨테이너의 `alignSelf` 에 매핑되어, 같은 행/열 안에서 위젯을 시작/중앙/끝 쪽으로 정렬하는 데 사용된다.
+  - `tone`:
+    - 카드형 위젯의 배경·테두리 톤을 가볍게 바꾼다.
+    - `primary` / `secondary` / `muted` / `danger` 값에 따라 파란 계열, 기본/보조, 흐린, 경고 느낌을 부여한다.
+  - `density`:
+    - `compact` 일 때 글자 크기를 약간 줄이고, 이미 지정된 padding 이 있으면 2px 정도 줄인다.
+    - `relaxed` 일 때는 글자 크기를 약간 키워 좀 더 여유 있는 카드 느낌을 만든다.
+
+- 구현 순서
+  1. `Shell*` 위젯들에서 공통 `styleProps` 객체를 받고, 이를 실제 스타일로 풀어주는 헬퍼(`applyShellStyleProps(styleProps)`)를 사용한다.
+  2. `/game/ui.shell.json` 스키마에 위 토큰들(`padding`, `radius`, `tone` 등)을 옵션으로 열어두고, 생략 시 기본값을 사용하도록 한다.
+  3. Maker UI Shell 편집기에서 이 옵션들을 토글/셀렉트로 조정할 수 있는 간단한 편집 UI를 붙인다.
+
+이 흐름을 유지하면, 위젯 종류 자체는 많지 않아도 “디자인 세부 기능”을 꽤 풍부하게 조합할 수 있는 구조가 된다.
+
+#### 18.x.1. 위젯 예시 + 스타일 조합
+
+간단한 예시:
+
+```jsonc
+{
+  "panels": {
+    "widgets": {
+      "enabled": true,
+      "widgets": [
+        {
+          "kind": "heroCard",
+          "source": "rank.viewer",
+          "style": {
+            "padding": "md",
+            "radius": "lg",
+            "tone": "primary"
+          }
+        },
+        {
+          "kind": "chatLog",
+          "style": {
+            "padding": "sm",
+            "radius": "sm",
+            "density": "compact"
+          },
+          "visibleWhen": "turn.last"
+        }
+      ]
+    }
+  }
+}
+```
+
+위와 같이 `style` 토큰만 바꿔도 같은 heroCard / chatLog 위젯을 카드형, 리스트형 등으로 재사용할 수 있다.  
+토큰은 기본적으로 **선택 사항**이며, 생략 시 엔진이 지정한 기본 스타일이 사용된다.
+
+#### 18.x.2. Maker UI Shell 편집기 (계획)
+
+Maker 쪽에서는 `/game/ui.shell.json`을 직접 편집하는 대신, 다음과 같은 단계를 제공할 계획이다.
+
+1. 패널 토글
+   - header / playerChat / nextBar / widgets 등 패널별 on/off.
+2. 위젯 추가/삭제
+   - kind 선택(chatLog / heroCard / statMeter / image / gridCanvas 등),
+   - source 바인딩 선택(rank.* / variables.* / turn.*).
+3. 스타일 토큰 편집
+   - padding / radius / tone / density 등을 셀렉트 박스로 조정.
+4. 조건부 표시
+   - `visibleWhen`을 간단한 표현식으로 입력하거나 프리셋에서 선택.
+
+이 편집기는 **플래이 / 메인게임이 공유하는 UI 셸 계약**만 건드리고, 실제 React 코드는 수정하지 않는다.  
+새 위젯(kind)을 추가해야 할 때만 엔진 개발자가 React 컴포넌트를 추가하고, Maker는 그 위젯을 조합해서 사용하는 구조를 유지한다.

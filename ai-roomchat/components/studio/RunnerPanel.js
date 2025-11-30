@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStudioTemplate as useTemplate } from '../../contexts/StudioStore';
+import { subscribe } from '../../contexts/StudioBus';
 
 function safeParse(text){ try{ return JSON.parse(text||'{}'); }catch{ return {}; } }
 
@@ -28,7 +29,17 @@ export default function RunnerPanel(){
       if (data.type === 'done') setRunning(false);
     };
     window.addEventListener('message', onMsg);
-    return () => window.removeEventListener('message', onMsg);
+    const unsubscribeToggle = subscribe('studio:runner:toggle', () => {
+      setOpen(v => !v);
+    });
+    const unsubscribeOpen = subscribe('studio:runner:open', () => {
+      setOpen(true);
+    });
+    return () => {
+      window.removeEventListener('message', onMsg);
+      unsubscribeToggle?.();
+      unsubscribeOpen?.();
+    };
   }, []);
 
   const runMock = async () => {

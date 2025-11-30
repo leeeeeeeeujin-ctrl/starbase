@@ -36,8 +36,8 @@
     - 권장 스키마(예시, 최소 동작 세트):
       ```json
       {
-        "player": { "id": "player", "x": 1, "y": 1, "kind": "hero", "facing": "south" },
-        "goblin1": { "id": "goblin1", "x": 4, "y": 2, "kind": "mob", "hp": 10 }
+        "player": { "id": "player", "x": 1, "y": 1, "kind": "hero", "skin": "hero_knight", "label": "플레이어" },
+        "goblin1": { "id": "goblin1", "x": 4, "y": 2, "kind": "mob", "skin": "goblin_green", "hp": 10 }
       }
       ```
 - **훅 요구사항** (capabilityContracts 기준):
@@ -49,6 +49,8 @@
   - 여기서 `ctx`는 최소한 다음을 포함하는 방향으로 맞춘다(문서 레벨 설계):
     - `ctx.world.tilemap` – `/world/tilemap.json` 파싱 결과.
     - `ctx.world.entities` – `/world/entities.json` 파싱 결과.
+      - 각 엔티티는 최소 `{ id, x, y, kind }` 를 가지며,
+        선택적으로 `{ skin, label, ...}` 과 같은 메타데이터를 포함할 수 있다.
     - `ctx.variables` – coreRuntime과 공유하는 상태 (예: 턴 수, 점수, 플래그 등).
 
 ---

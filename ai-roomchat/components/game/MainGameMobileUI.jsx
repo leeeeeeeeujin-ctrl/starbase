@@ -9,6 +9,7 @@ import {
   buildInitialGridState,
   movePlayerOnGrid,
 } from '../../lib/runtime/adapters/worldGridEngine.js';
+import { applyShellStyleProps } from './uiShellStyle.js';
 
 // Shared style tokens
 const btn = { padding:'6px 10px', border:'1px solid #334155', background:'#1e293b', color:'#e2e8f0', borderRadius:8 };
@@ -28,6 +29,7 @@ export default function MainGameMobileUI({
   runtimeBus = null,
   runtimeFeatures = [],
   rankContext = null,
+  shellConfig = null,
 }) {
   const isMobile = useIsMobile(820); // currently unused but reserved for responsive adjustments
   const [layout, setLayout] = useState(() => loadLayout());
@@ -37,8 +39,11 @@ export default function MainGameMobileUI({
   const { files } = useWorkspace();
   const uiConfig = useMemo(() => readUiConfig(template), [template]);
   const nextPolicy = uiConfig?.nextBar?.policy || { timeoutSec: null, roleThreshold: null };
-  const [secondsLeft, setSecondsLeft] = useState(() => (typeof nextPolicy.timeoutSec === 'number' ? nextPolicy.timeoutSec : null));
+  const [secondsLeft, setSecondsLeft] = useState(() =>
+    typeof nextPolicy.timeoutSec === 'number' ? nextPolicy.timeoutSec : null
+  );
   const [charViewIdx, setCharViewIdx] = useState(0);
+  const [turnLogEvents, setTurnLogEvents] = useState([]);
 
   const character = useMemo(() => pickCharacter(template), [template]);
   const imageUrl = character?.image || pickFirstImage(template);
@@ -150,11 +155,64 @@ export default function MainGameMobileUI({
     };
   }, [runtimeBus]);
 
+  // Subscribe to standardized turn log events so UI shell 위젯에서 사용할 수 있다.
+  useEffect(() => {
+    if (!runtimeBus || typeof runtimeBus.on !== 'function') return undefined;
+    const off = runtimeBus.on('runtime:turn-log', (evt) => {
+      try {
+        if (!evt || typeof evt !== 'object') return;
+        setTurnLogEvents(prev => {
+          const next = [...prev, evt];
+          // keep last 50 entries
+          return next.slice(-50);
+        });
+      } catch {
+        // ignore malformed events
+      }
+    });
+    return () => {
+      try {
+        off && off();
+      } catch {
+        // ignore detach errors
+      }
+    };
+  }, [runtimeBus]);
+
   const modules = useMemo(() => {
-    const widgetFlags = readWidgetFlags(template);
-    const playWidgets = buildDefaultWidgets(template, widgetFlags, gridState, rankContext);
-    const defs = {
-      header: (
+    const panelsCfg =
+      shellConfig && typeof shellConfig === 'object' && shellConfig.panels
+        ? shellConfig.panels
+        : {};
+    const panelEnabled = (id, defaultOn) => {
+      const panel = panelsCfg[id];
+      if (!panel || typeof panel !== 'object') return defaultOn;
+      if (panel.enabled === false) return false;
+      if (panel.enabled === true) return true;
+      return defaultOn;
+    };
+
+    // widgets 영역에 배치할 위젯 리스트 결정
+    let playWidgets = [];
+    const shellWidgetsCfg =
+      panelsCfg.widgets && Array.isArray(panelsCfg.widgets.widgets)
+        ? panelsCfg.widgets.widgets
+        : null;
+    if (shellWidgetsCfg && shellWidgetsCfg.length) {
+      playWidgets = buildWidgetsFromShell(shellWidgetsCfg, {
+        template,
+        rankContext,
+        gridState,
+        turnLogEvents,
+      });
+    } else {
+      const widgetFlags = readWidgetFlags(template);
+      playWidgets = buildDefaultWidgets(template, widgetFlags, gridState, rankContext);
+    }
+
+    const defs = {};
+    if (panelEnabled('header', true)) {
+      defs.header = (
         <DynamicSlot
           key="header"
           slotId="play.header"
@@ -162,13 +220,108 @@ export default function MainGameMobileUI({
           resolveAsset={x => x}
           defaultRender={() => <Header userLabel={userLabel} />}
         />
-      ),
-      gameChat: <DynamicSlot key="gameChat" slotId="play.gameChat" files={files} resolveAsset={(x)=>x} defaultRender={() => <GameChat items={Array.isArray(runtimeFeed) ? runtimeFeed.map(m => ({ role: (m.roleScope==='system'?'system':'ai'), text: m.text })) : gameChat} />} />,
-      nextBar: <DynamicSlot key="nextBar" slotId="play.nextBar" files={files} resolveAsset={(x)=>x} defaultRender={() => <NextBar onNext={triggerNext} secondsLeft={(onForceNext != null && typeof runtimeSecondsLeft === 'number') ? runtimeSecondsLeft : secondsLeft} />} />,
-      playerChat: <DynamicSlot key="playerChat" slotId="play.playerChat" files={files} resolveAsset={(x)=>x} defaultRender={() => <PlayerChat items={chat} text={chatText} setText={setChatText} onSend={sendChat} />} />,
-      ...(playWidgets.length > 0 ? { widgets: <DynamicSlot key="widgets" slotId="play.widgets" files={files} resolveAsset={(x)=>x} defaultRender={() => <WidgetRow widgets={playWidgets} />} /> } : {}),
-      character: <DynamicSlot key="character" slotId="play.character" files={files} resolveAsset={(x)=>x} defaultRender={() => <CharacterCard name={character?.name||'캐릭터'} image={imageUrl} desc={character?.desc||'설명'} stats={character?.stats||[10,10,10,10]} cycle={uiConfig?.character?.behavior?.tapCycle || ['desc','abilities','score','image']} viewIdx={charViewIdx} setViewIdx={setCharViewIdx} />} />,
-    };
+      );
+    }
+    if (panelEnabled('gameChat', true)) {
+      defs.gameChat = (
+        <DynamicSlot
+          key="gameChat"
+          slotId="play.gameChat"
+          files={files}
+          resolveAsset={x => x}
+          defaultRender={() => (
+            <GameChat
+              items={
+                Array.isArray(runtimeFeed)
+                  ? runtimeFeed.map(m => ({
+                      role: m.roleScope === 'system' ? 'system' : 'ai',
+                      text: m.text,
+                    }))
+                  : gameChat
+              }
+            />
+          )}
+        />
+      );
+    }
+    if (panelEnabled('nextBar', true)) {
+      defs.nextBar = (
+        <DynamicSlot
+          key="nextBar"
+          slotId="play.nextBar"
+          files={files}
+          resolveAsset={x => x}
+          defaultRender={() => (
+            <NextBar
+              onNext={triggerNext}
+              secondsLeft={
+                onForceNext != null && typeof runtimeSecondsLeft === 'number'
+                  ? runtimeSecondsLeft
+                  : secondsLeft
+              }
+            />
+          )}
+        />
+      );
+    }
+    if (panelEnabled('playerChat', true)) {
+      defs.playerChat = (
+        <DynamicSlot
+          key="playerChat"
+          slotId="play.playerChat"
+          files={files}
+          resolveAsset={x => x}
+          defaultRender={() => (
+            <PlayerChat
+              items={chat}
+              text={chatText}
+              setText={setChatText}
+              onSend={sendChat}
+            />
+          )}
+        />
+      );
+    }
+    if (panelEnabled('widgets', playWidgets.length > 0) && playWidgets.length > 0) {
+      defs.widgets = (
+        <DynamicSlot
+          key="widgets"
+          slotId="play.widgets"
+          files={files}
+          resolveAsset={x => x}
+          defaultRender={() => <WidgetRow widgets={playWidgets} />}
+        />
+      );
+    }
+    if (panelEnabled('character', true)) {
+      defs.character = (
+        <DynamicSlot
+          key="character"
+          slotId="play.character"
+          files={files}
+          resolveAsset={x => x}
+          defaultRender={() => (
+            <CharacterCard
+              name={character?.name || '캐릭터'}
+              image={imageUrl}
+              desc={character?.desc || '설명'}
+              stats={character?.stats || [10, 10, 10, 10]}
+              cycle={
+                uiConfig?.character?.behavior?.tapCycle || [
+                  'desc',
+                  'abilities',
+                  'score',
+                  'image',
+                ]
+              }
+              viewIdx={charViewIdx}
+              setViewIdx={setCharViewIdx}
+            />
+          )}
+        />
+      );
+    }
+
     return layout.order.map(id => defs[id]).filter(Boolean);
   }, [
     layout.order,
@@ -190,6 +343,8 @@ export default function MainGameMobileUI({
     secondsLeft,
     gridState,
     rankContext,
+    shellConfig,
+    turnLogEvents,
   ]);
 
   return (
@@ -414,6 +569,588 @@ function buildDefaultWidgets(template, flags, gridState, rankContext){
     });
   }
   return list;
+}
+
+function buildWidgetsFromShell(configs, ctx){
+  const list = [];
+  const participants = Array.isArray(ctx.rankContext?.players) ? ctx.rankContext.players : [];
+  const lastTurn =
+    Array.isArray(ctx.turnLogEvents) && ctx.turnLogEvents.length
+      ? ctx.turnLogEvents[ctx.turnLogEvents.length - 1]
+       : null;
+  configs.forEach((cfg) => {
+    if (!cfg || typeof cfg !== 'object') return;
+    const kind = cfg.kind;
+    const visible = evaluateVisibleWhen(cfg.visibleWhen, {
+      rankContext: ctx.rankContext,
+      lastTurn,
+    });
+    if (!visible) return;
+    const style = applyShellStyleProps(cfg.style || cfg.styleProps);
+    if (kind === 'chatLog') {
+      list.push({
+        title: cfg.title || '턴 로그',
+        body: (
+          <div style={style}>
+            <ShellChatLogRich
+              events={Array.isArray(ctx.turnLogEvents) ? ctx.turnLogEvents : []}
+              rankContext={ctx.rankContext || null}
+            />
+          </div>
+        ),
+      });
+      return;
+    }
+    if (kind === 'image') {
+      const src = typeof cfg.source === 'string' ? cfg.source : '';
+      let url = null;
+      if (src.startsWith('rank.') && ctx.rankContext) {
+        url = resolveBindingFromRoot(ctx.rankContext, src.slice('rank.'.length));
+      } else if (src.startsWith('variables.') && lastTurn && lastTurn.variables) {
+        url = resolveBindingFromRoot(lastTurn.variables, src.slice('variables.'.length));
+      } else if (src.startsWith('turn.') && lastTurn) {
+        url = resolveBindingFromRoot(lastTurn, src.slice('turn.'.length));
+      } else if (src) {
+        // literal URL
+        url = src;
+      }
+      if (typeof url !== 'string' || !url.trim()) return;
+      list.push({
+        title: cfg.title || '이미지',
+        body: (
+          <div style={style}>
+            <ShellImage src={url.trim()} variant={cfg.variant} />
+          </div>
+        ),
+      });
+      return;
+    }
+    if (kind === 'heroCard') {
+      let player = null;
+      const src = typeof cfg.source === 'string' ? cfg.source : 'rank.viewer';
+      if (src === 'rank.viewer' && ctx.rankContext && ctx.rankContext.viewer) {
+        const ownerId = ctx.rankContext.viewer.ownerId || ctx.rankContext.viewer.owner_id || null;
+        if (ownerId) {
+          player =
+            participants.find((p) => {
+              const oid =
+                p.owner_id ||
+                p.ownerId ||
+                (p.owner && p.owner.id) ||
+                null;
+              return oid && String(oid).trim() === String(ownerId).trim();
+            }) || null;
+        }
+      } else {
+        const m = src.match(/^rank\.players\[(\d+)\]$/);
+        if (m) {
+          const idx = Number(m[1]);
+          if (Number.isFinite(idx) && idx >= 0 && idx < participants.length) {
+            player = participants[idx];
+          }
+        }
+      }
+
+      if (!player && participants.length) {
+        player = participants[0];
+      }
+      if (!player) return;
+
+      list.push({
+        title: cfg.title || '참가자',
+        body: (
+          <div style={style}>
+            <ShellHeroCard player={player} variant={cfg.variant} />
+          </div>
+        ),
+      });
+      return;
+    }
+    if (kind === 'statMeter') {
+      const src = typeof cfg.source === 'string' ? cfg.source : '';
+      let rawValue = null;
+      if (src.startsWith('variables.') && lastTurn && lastTurn.variables) {
+        rawValue = resolveBindingFromRoot(lastTurn.variables, src.slice('variables.'.length));
+      } else if (src.startsWith('rank.') && ctx.rankContext) {
+        rawValue = resolveBindingFromRoot(ctx.rankContext, src.slice('rank.'.length));
+      }
+      const numeric = Number(rawValue);
+      if (!Number.isFinite(numeric)) return;
+      const max =
+        typeof cfg.max === 'number' && Number.isFinite(cfg.max) && cfg.max > 0
+          ? cfg.max
+          : Math.max(Math.abs(numeric), 1);
+      list.push({
+        title: cfg.title || '수치',
+        body: (
+          <div style={style}>
+            <ShellStatMeter value={numeric} max={max} />
+          </div>
+        ),
+      });
+      return;
+    }
+    if (kind === 'badge') {
+      const src = typeof cfg.source === 'string' ? cfg.source : '';
+      let rawValue = null;
+      if (src.startsWith('variables.') && lastTurn && lastTurn.variables) {
+        rawValue = resolveBindingFromRoot(lastTurn.variables, src.slice('variables.'.length));
+      } else if (src.startsWith('rank.') && ctx.rankContext) {
+        rawValue = resolveBindingFromRoot(ctx.rankContext, src.slice('rank.'.length));
+      } else if (src.startsWith('turn.') && lastTurn) {
+        rawValue = resolveBindingFromRoot(lastTurn, src.slice('turn.'.length));
+      } else if (typeof cfg.text === 'string') {
+        rawValue = cfg.text;
+      }
+      const label = (cfg.label || cfg.text || rawValue || '').toString().trim();
+      if (!label) return;
+      list.push({
+        title: cfg.title || '',
+        body: (
+          <div style={style}>
+            <ShellBadge text={label} tone={cfg.tone || cfg.variant} />
+          </div>
+        ),
+      });
+      return;
+    }
+    if (kind === 'textBlock') {
+      const src = typeof cfg.source === 'string' ? cfg.source : '';
+      let bodyText = null;
+      if (src.startsWith('variables.') && lastTurn && lastTurn.variables) {
+        bodyText = resolveBindingFromRoot(lastTurn.variables, src.slice('variables.'.length));
+      } else if (src.startsWith('rank.') && ctx.rankContext) {
+        bodyText = resolveBindingFromRoot(ctx.rankContext, src.slice('rank.'.length));
+      } else if (src.startsWith('turn.') && lastTurn) {
+        bodyText = resolveBindingFromRoot(lastTurn, src.slice('turn.'.length));
+      } else if (typeof cfg.text === 'string') {
+        bodyText = cfg.text;
+      }
+      const bodyStr = bodyText != null ? String(bodyText).trim() : '';
+      if (!bodyStr) return;
+      const heading = cfg.title || cfg.heading || '';
+      list.push({
+        title: heading || cfg.title || '',
+        body: (
+          <div style={style}>
+            <ShellTextBlock heading={heading} body={bodyStr} />
+          </div>
+        ),
+      });
+      return;
+    }
+  });
+  return list;
+}
+
+function evaluateVisibleWhen(expr, ctx) {
+  if (!expr || typeof expr !== 'string') return true;
+  const text = expr.trim();
+  if (!text) return true;
+
+  const evalToken = (token) => {
+    const trimmed = token.trim();
+    if (!trimmed) return false;
+    const isNegated = trimmed.startsWith('!');
+    const core = isNegated ? trimmed.slice(1).trim() : trimmed;
+    let value = null;
+    if (core.startsWith('rank.') && ctx.rankContext) {
+      value = resolveBindingFromRoot(ctx.rankContext, core.slice('rank.'.length));
+    } else if (core.startsWith('variables.') && ctx.lastTurn && ctx.lastTurn.variables) {
+      value = resolveBindingFromRoot(ctx.lastTurn.variables, core.slice('variables.'.length));
+    } else if (core.startsWith('turn.') && ctx.lastTurn) {
+      value = resolveBindingFromRoot(ctx.lastTurn, core.slice('turn.'.length));
+    } else {
+      // unsupported token → treat as false
+      return false;
+    }
+    const truthy = !!value;
+    return isNegated ? !truthy : truthy;
+  };
+
+  // 지원하는 간단 표현식:
+  // - "rank.viewer"
+  // - "!rank.viewer"
+  // - "rank.viewer && variables.turn"
+  // - "rank.viewer || variables.turn"
+  if (text.includes('&&')) {
+    return text.split('&&').every((tok) => evalToken(tok));
+  }
+  if (text.includes('||')) {
+    return text.split('||').some((tok) => evalToken(tok));
+  }
+  return evalToken(text);
+}
+
+function resolveBindingFromRoot(root, path){
+  if (!root || !path) return null;
+  const segments = String(path)
+    .split('.')
+    .map(s => s.trim())
+    .filter(Boolean);
+  let cur = root;
+  for (const seg of segments) {
+    if (cur == null) return null;
+    const m = seg.match(/^(\w+)\[(\d+)\]$/);
+    if (m) {
+      const key = m[1];
+      const idx = Number(m[2]);
+      const arr = cur[key];
+      if (!Array.isArray(arr) || !Number.isFinite(idx) || idx < 0 || idx >= arr.length) {
+        return null;
+      }
+      cur = arr[idx];
+    } else {
+      cur = cur[seg];
+    }
+  }
+  return cur;
+}
+
+function ShellChatLog({ events }){
+  const items = Array.isArray(events) ? events : [];
+  if (!items.length) {
+    return <div style={{ fontSize:12, color:'#94a3b8' }}>아직 진행된 턴이 없습니다.</div>;
+  }
+  return (
+    <div style={{ display:'grid', gap:6, maxHeight:160, overflowY:'auto' }}>
+      {items
+        .slice()
+        .reverse()
+        .map((evt, idx) => {
+          const turn = typeof evt.turn === 'number' && Number.isFinite(evt.turn) ? evt.turn : null;
+          const firstLine =
+            typeof evt.prompt === 'string'
+              ? (evt.prompt.split(/\r?\n/)[0] || '')
+              : evt.nodeLabel || evt.nodeId || '';
+          const text =
+            firstLine.length > 80 ? `${firstLine.slice(0, 76).trimEnd()}…` : firstLine || '내용 없음';
+          return (
+            <div key={idx} style={{ fontSize:11, lineHeight:1.4 }}>
+              <div style={{ color:'#93c5fd' }}>
+                {turn != null ? `턴 ${turn}` : '턴 ?'}
+                {evt.reason ? <span style={{ marginLeft:4, opacity:0.8 }}>{String(evt.reason)}</span> : null}
+              </div>
+              <div style={{ color:'#e5e7eb' }}>{text}</div>
+            </div>
+          );
+        })}
+    </div>
+  );
+}
+
+function ShellChatLogRich({ events, rankContext }){
+  const items = Array.isArray(events) ? events : [];
+  if (!items.length) {
+    return <div style={{ fontSize:12, color:'#94a3b8' }}>아직 진행된 턴이 없습니다.</div>;
+  }
+
+  const players = Array.isArray(rankContext?.players) ? rankContext.players : [];
+
+  const pickSpeaker = (evt) => {
+    const v = evt?.variables || {};
+    const speaker = v.speaker || v.currentSpeaker || {};
+    const ownerId =
+      speaker.ownerId || speaker.owner_id || evt.speakerOwnerId || null;
+    const heroId =
+      speaker.heroId || speaker.hero_id || evt.speakerHeroId || null;
+    const role = speaker.role || evt.speakerRole || null;
+    const accent =
+      speaker.accentColor ||
+      speaker.color ||
+      evt.speakerAccent ||
+      null;
+    const explicitAvatar =
+      speaker.avatarUrl ||
+      speaker.avatar_url ||
+      evt.speakerAvatarUrl ||
+      null;
+
+    let player = null;
+    if (players.length && (ownerId || heroId)) {
+      player =
+        players.find((p) => {
+          if (ownerId && p.ownerId && String(p.ownerId) === String(ownerId)) return true;
+          if (heroId && p.heroId && String(p.heroId) === String(heroId)) return true;
+          return false;
+        }) || null;
+    }
+
+    const avatarUrl = explicitAvatar || player?.avatarUrl || player?.avatar_url || null;
+    const heroName = player?.heroName || null;
+    const resolvedRole = role || player?.role || null;
+
+    return {
+      ownerId,
+      heroId,
+      role: resolvedRole,
+      accentColor: accent || null,
+      avatarUrl,
+      heroName,
+    };
+  };
+
+  return (
+    <div style={{ display:'grid', gap:6, maxHeight:160, overflowY:'auto' }}>
+      {items
+        .slice()
+        .reverse()
+        .map((evt, idx) => {
+          const turn = typeof evt.turn === 'number' && Number.isFinite(evt.turn) ? evt.turn : null;
+          const speaker = pickSpeaker(evt);
+          const promptText =
+            typeof evt.prompt === 'string' && evt.prompt.length
+              ? evt.prompt
+              : String(evt.nodeLabel || evt.nodeId || '');
+          const firstLine = promptText.split('\n')[0] || promptText;
+
+          const accentBorder =
+            speaker.accentColor && typeof speaker.accentColor === 'string'
+              ? speaker.accentColor
+              : 'rgba(148,163,184,0.45)';
+          const accentBg =
+            speaker.accentColor && typeof speaker.accentColor === 'string'
+              ? 'rgba(15,23,42,0.95)'
+              : 'rgba(15,23,42,0.85)';
+
+          return (
+            <div
+              key={idx}
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 8,
+              }}
+            >
+              {speaker.avatarUrl ? (
+                <div
+                  style={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: 999,
+                    overflow: 'hidden',
+                    border: `1px solid ${accentBorder}`,
+                    flexShrink: 0,
+                  }}
+                >
+                  <img
+                    src={speaker.avatarUrl}
+                    alt={speaker.heroName || 'speaker'}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                  />
+                </div>
+              ) : null}
+              <div
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  padding: '6px 8px',
+                  borderRadius: 8,
+                  border: `1px solid ${accentBorder}`,
+                  background: accentBg,
+                }}
+              >
+                <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:2, fontSize:11, color:'#9ca3af' }}>
+                  {turn != null ? (
+                    <span style={{ fontWeight:600, color:'#e5e7eb' }}>턴 {turn}</span>
+                  ) : (
+                    <span style={{ fontWeight:600, color:'#e5e7eb' }}>턴 ?</span>
+                  )}
+                  {speaker.heroName ? (
+                    <span>{speaker.heroName}</span>
+                  ) : null}
+                  {speaker.role ? (
+                    <span style={{ opacity:0.85 }}>({speaker.role})</span>
+                  ) : null}
+                  {evt.reason ? (
+                    <span style={{ marginLeft:4, opacity:0.8 }}>{String(evt.reason)}</span>
+                  ) : null}
+                </div>
+                <div style={{ color:'#e5e7eb', fontSize:12 }}>{firstLine}</div>
+              </div>
+            </div>
+          );
+        })}
+    </div>
+  );
+}
+
+function ShellHeroCard({ player, variant }){
+  const heroName =
+    player?.hero?.name ||
+    player?.hero_name ||
+    player?.heroName ||
+    player?.display_name ||
+    player?.displayName ||
+    player?.owner_id ||
+    player?.ownerId ||
+    '참가자';
+  const role = player?.role || '';
+  const score =
+    typeof player?.score === 'number' && Number.isFinite(player.score) ? player.score : null;
+  const isCompact = variant === 'compact';
+  const avatarUrl =
+    player?.avatarUrl ||
+    player?.avatar_url ||
+    player?.hero?.avatar_url ||
+    player?.hero?.image_url ||
+    null;
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        fontSize: 12,
+        color: '#e5e7eb',
+      }}
+    >
+      {avatarUrl ? (
+        <div
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 999,
+            overflow: 'hidden',
+            border: '1px solid rgba(148,163,184,0.7)',
+            flexShrink: 0,
+          }}
+        >
+          <img
+            src={avatarUrl}
+            alt={heroName}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+          />
+        </div>
+      ) : null}
+      <div style={{ display:'grid', gap:2 }}>
+        <div style={{ fontWeight: 600 }}>{heroName}</div>
+        {role ? (
+          <div style={{ color: '#93c5fd' }}>
+            역할: <span style={{ color: '#e5e7eb' }}>{role}</span>
+          </div>
+        ) : null}
+        {!isCompact && score != null ? (
+          <div style={{ color: '#fde68a' }}>
+            점수: <span style={{ color: '#e5e7eb' }}>{score}</span>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function ShellImage({ src, variant }){
+  const shape = variant === 'circle' ? 'circle' : 'square';
+  return (
+    <div
+      style={{
+        width: '100%',
+        height: 120,
+        borderRadius: shape === 'circle' ? 999 : 10,
+        overflow: 'hidden',
+        background: '#020617',
+        border: '1px solid rgba(148,163,184,0.45)',
+      }}
+    >
+      <img
+        src={src}
+        alt=""
+        style={{
+          width: '100%',
+          height: '100%',
+          objectFit: 'cover',
+          display: 'block',
+        }}
+      />
+    </div>
+  );
+}
+
+function ShellStatMeter({ value, max }){
+  const safeMax = Number.isFinite(Number(max)) && max > 0 ? Number(max) : 1;
+  const ratio = Math.max(0, Math.min(1, Number(value) / safeMax));
+  const percent = Math.round(ratio * 100);
+  return (
+    <div style={{ display:'grid', gap:4, fontSize:12, color:'#e5e7eb' }}>
+      <div
+        style={{
+          position:'relative',
+          width:'100%',
+          height:8,
+          borderRadius:999,
+          background:'rgba(15,23,42,0.9)',
+          overflow:'hidden',
+          border:'1px solid rgba(148,163,184,0.4)',
+        }}
+      >
+        <div
+          style={{
+            position:'absolute',
+            left:0,
+            top:0,
+            bottom:0,
+            width:`${percent}%`,
+            background:'linear-gradient(90deg, #22c55e, #16a34a)',
+          }}
+        />
+      </div>
+      <div style={{ fontSize:11, color:'#9ca3af' }}>
+        {value} / {safeMax} ({percent}%)
+      </div>
+    </div>
+  );
+}
+
+function ShellBadge({ text, tone }){
+  const t = tone || 'secondary';
+  let bg = 'rgba(30,64,175,0.35)';
+  let border = '1px solid rgba(129,140,248,0.7)';
+  let color = '#e5e7eb';
+  if (t === 'primary') {
+    bg = 'rgba(37,99,235,0.35)';
+    border = '1px solid rgba(96,165,250,0.9)';
+  } else if (t === 'muted') {
+    bg = 'rgba(15,23,42,0.8)';
+    border = '1px solid rgba(148,163,184,0.45)';
+    color = '#cbd5e1';
+  } else if (t === 'danger') {
+    bg = 'rgba(220,38,38,0.22)';
+    border = '1px solid rgba(248,113,113,0.9)';
+  }
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '4px 10px',
+        borderRadius: 999,
+        fontSize: 11,
+        fontWeight: 600,
+        background: bg,
+        border,
+        color,
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {text}
+    </span>
+  );
+}
+
+function ShellTextBlock({ heading, body }){
+  return (
+    <div style={{ display:'grid', gap:4, fontSize:12, color:'#e5e7eb' }}>
+      {heading ? (
+        <div style={{ fontWeight:600, color:'#e5e7eb' }}>{heading}</div>
+      ) : null}
+      <div style={{ fontSize:12, lineHeight:1.6, color:'#cbd5e1', whiteSpace:'pre-wrap' }}>
+        {body}
+      </div>
+    </div>
+  );
 }
 
 function readWidgetFlags(template){

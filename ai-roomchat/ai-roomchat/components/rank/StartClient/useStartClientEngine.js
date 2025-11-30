@@ -1776,6 +1776,10 @@ export function useStartClientEngine(gameId, options = {}) {
             entry.extra && typeof entry.extra === 'object'
               ? JSON.parse(JSON.stringify(entry.extra))
               : null;
+          const variables =
+            entry.variables && typeof entry.variables === 'object'
+              ? JSON.parse(JSON.stringify(entry.variables))
+              : null;
 
           const normalizedEntry = {
             role,
@@ -1805,6 +1809,10 @@ export function useStartClientEngine(gameId, options = {}) {
 
           if (extra) {
             normalizedEntry.extra = extra;
+          }
+
+          if (variables) {
+            normalizedEntry.variables = variables;
           }
 
           normalized.push(normalizedEntry);

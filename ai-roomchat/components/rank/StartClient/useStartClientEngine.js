@@ -1929,6 +1929,22 @@ export function useStartClientEngine(gameId, options = {}) {
         const finalSlotLayout =
           mergedSlotLayout.length > 0 ? mergedSlotLayout : slotLayoutFromBundle;
 
+        // 현재 뷰어(owner)와 매칭된 참가자 정보를 rankContext.viewer 로 전달한다.
+        // 아직 viewerId 가 없거나 참가자를 찾지 못한 경우에는 null 로 남겨둔다.
+        const viewerKey = viewerId ? String(viewerId).trim() : '';
+        const viewerParticipantForContext =
+          viewerKey && Array.isArray(hydratedParticipants)
+            ? hydratedParticipants.find(participant => {
+                const ownerCandidate =
+                  participant?.owner_id ||
+                  participant?.ownerId ||
+                  participant?.ownerID ||
+                  (participant?.owner && participant.owner.id) ||
+                  null;
+                return ownerCandidate && String(ownerCandidate).trim() === viewerKey;
+              }) || null
+            : null;
+
         const rankContext = buildRankContext({
           game: bundle.game,
           session: sessionInfo || null,
@@ -1936,6 +1952,13 @@ export function useStartClientEngine(gameId, options = {}) {
           // room 정보는 matchState에서 직접 참조하지 않고,
           // 이후 단계에서 rankContext 확장 시에만 안전하게 연결한다.
           room: null,
+          viewer:
+            viewerParticipantForContext ||
+            (viewerKey
+              ? {
+                  ownerId: viewerKey,
+                }
+              : null),
         });
 
         patchEngineState({

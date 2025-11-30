@@ -17,6 +17,8 @@
  * @property {number} x
  * @property {number} y
  * @property {string} kind
+ * @property {string|undefined} skin
+ * @property {string|undefined} label
  */
 
 /**
@@ -49,6 +51,8 @@ export function buildInitialGridState(files) {
       x: ent.x ?? 0,
       y: ent.y ?? 0,
       kind: ent.kind || 'entity',
+      skin: typeof ent.skin === 'string' ? ent.skin : undefined,
+      label: typeof ent.label === 'string' ? ent.label : undefined,
     }));
     const layers = Array.isArray(tilemap.layers) ? tilemap.layers : [];
     const tileset =

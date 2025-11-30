@@ -20,6 +20,10 @@ import { CodeWorkspaceProvider } from '@/components/workspace/CodeWorkspaceProvi
 import GameShell from '@/components/game/GameShell.jsx';
 import { createCoreRuntime } from '@/lib/runtime/coreRuntime';
 import { loadHooksFromSource } from '@/lib/runtime/safeEvalHookModule';
+import {
+  applySceneFromRank,
+  applySpeakerFromRank,
+} from '@/lib/runtime/rankStandardSlots';
 
 // Ensure matchState is always defined in this module so
 // any legacy reads during render do not throw ReferenceError.
@@ -365,6 +369,55 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     textRuntimeEnabled,
   } = engine;
 
+  // 브리지: StartClient 엔진 로그를 공통 턴 로그 이벤트(runtime:turn-log)로 내보낸다.
+  // logs 배열이 늘어날 때마다 새 항목에 한해서만 이벤트를 발행한다.
+  const lastLogCountRef = useRef(0);
+  useEffect(() => {
+    if (!Array.isArray(logs)) {
+      lastLogCountRef.current = 0;
+      return;
+    }
+    const prevCount = lastLogCountRef.current || 0;
+    const nextCount = logs.length;
+    if (nextCount <= prevCount) {
+      lastLogCountRef.current = nextCount;
+      return;
+    }
+    const slice = logs.slice(prevCount);
+    slice.forEach((entry) => {
+      if (!entry) return;
+      try {
+        const turn = Number.isFinite(Number(entry.turn)) ? Number(entry.turn) : null;
+        const nodeId = entry.nodeId ?? entry.node_id ?? null;
+        const nodeLabel = entry.nodeLabel ?? entry.node_label ?? null;
+        const prompt =
+          (typeof entry.prompt === 'string' && entry.prompt) ||
+          (typeof entry.visiblePrompt === 'string' && entry.visiblePrompt) ||
+          (typeof entry.displayPrompt === 'string' && entry.displayPrompt) ||
+          '';
+        const event = {
+          turn,
+          nodeId,
+          nodeLabel,
+          reason: entry.reason ?? null,
+          input: entry.input ?? null,
+          prompt,
+          ui: entry.ui ?? null,
+          variables: entry.variables ?? null,
+        };
+        runtimeBus.emit('runtime:turn-log', event);
+      } catch (e) {
+        // 로그 브리지는 실패해도 게임 진행에 영향을 주지 않는다.
+        try {
+          console.warn?.('[StartClient] failed to emit runtime:turn-log', e);
+        } catch {
+          // ignore console errors
+        }
+      }
+    });
+    lastLogCountRef.current = nextCount;
+  }, [logs, runtimeBus]);
+
   const logSections = useMemo(() => {
     const panels =
       gameWorkspace && typeof gameWorkspace.ui_shell === 'object'
@@ -503,9 +556,22 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
             content: hooksSource,
           },
         },
+        // rankContext는 표준 데이터 슬롯(speaker/scene 등)을 채우는
+        // 기본 입력으로 사용된다.
         initialVariables: { rank: rankContext || {} },
       });
       runtimeRef.current = runtime;
+
+      // rankContext 기반으로 standard data slots를 한 번 초기화해 둔다.
+      try {
+        if (runtime && typeof runtime.getContextSnapshot === 'function') {
+          const ctx = runtime.getContextSnapshot('rank_init', null);
+          applySpeakerFromRank(ctx, rankContext || null);
+          applySceneFromRank(ctx, rankContext || null);
+        }
+      } catch (slotError) {
+        console.warn('[StartClient] 표준 슬롯(rank → speaker/scene) 초기화 실패:', slotError);
+      }
     } catch (e) {
       console.warn('[StartClient] coreRuntime 초기화 실패:', e);
       runtimeRef.current = null;
@@ -1037,52 +1103,14 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     );
   }
 
-  // 새 메인게임에서는 플래이와 동일한 엔진/쉘만 사용하고,
-  // 기존 StartClient 전용 요약 카드/패널은 모두 숨긴다.
-  const showLegacyShellUi = false;
-
   return (
     <div className={styles.page} style={pageStyle}>
       <div className={styles.shell}>
         <header className={styles.headerRow}>
-          {showLegacyShellUi && (
-            <div className={styles.headerSummary}>
-              <div className={styles.headerLead}>{matchState?.matchMode || '랭크 매치'}</div>
-              <h1 className={styles.headerTitle}>{headerTitle}</h1>
-              {headerDescription ? (
-                <p className={styles.headerDescription}>{headerDescription}</p>
-              ) : null}
-            </div>
-          )}
           <div className={styles.headerControls}>
             <button type="button" className={styles.navButton} onClick={handleBackToRoom}>
               ← 로비로
             </button>
-            {showLegacyShellUi && (
-              <>
-                <div className={styles.headerButtons}>
-                  <button
-                    type="button"
-                    onClick={handleStart}
-                    className={styles.primaryButton}
-                    disabled={startButtonDisabled}
-                  >
-                    {startLabel}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={advanceWithAi}
-                    className={styles.advanceButton}
-                    disabled={isAdvancing || advanceDisabled}
-                  >
-                    {nextLabel}
-                  </button>
-                </div>
-                {consensus?.active ? (
-                  <span className={styles.consensusBadge}>{consensusStatus}</span>
-                ) : null}
-              </>
-            )}
           </div>
         </header>
 
@@ -1309,73 +1337,6 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
           </div>
 
           <aside className={styles.sideColumn}>
-            {showLegacyShellUi && restrictedContext ? (
-              <section className={`${styles.summaryCard} ${styles.visibilityCard}`}>
-                <div className={styles.visibilityHeader}>
-                  <h2 className={styles.summaryTitle}>정보 가시성</h2>
-                  {Array.isArray(activeActorNames) && activeActorNames.length ? (
-                    <div className={styles.actorBadgeRow}>
-                      {activeActorNames.map((name, index) => (
-                        <span key={`${name}-${index}`} className={styles.actorBadge}>
-                          {name}
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-                <p className={styles.visibilityHint}>
-                  블라인드 또는 비실시간 모드에서는 호스트 역할군만 상세한 캐릭터 정보를 확인할 수
-                  있습니다.
-                </p>
-                <div className={styles.visibilityControls}>
-                  <button
-                    type="button"
-                    className={
-                      !showRosterDetails || !viewerCanToggleDetails
-                        ? styles.visibilityButtonActive
-                        : styles.visibilityButton
-                    }
-                    onClick={() => setShowRosterDetails(false)}
-                  >
-                    요약 보기
-                  </button>
-                  <button
-                    type="button"
-                    className={
-                      showRosterDetails ? styles.visibilityButtonActive : styles.visibilityButton
-                    }
-                    onClick={() => {
-                      if (!viewerMaySeeFull) return;
-                      setShowRosterDetails(true);
-                    }}
-                    disabled={!viewerCanToggleDetails}
-                  >
-                    상세 보기
-                  </button>
-                </div>
-                {!viewerMaySeeFull && (
-                  <p className={styles.visibilityNotice}>
-                    호스트와 동일한 역할군만 상세 정보를 열람할 수 있습니다.
-                  </p>
-                )}
-              </section>
-            ) : null}
-
-            {showLegacyShellUi && (
-              <div className={`${styles.summaryCard} ${styles.sideCard}`}>
-                <RosterPanel
-                  participants={participants}
-                  realtimePresence={realtimePresence}
-                  dropInSnapshot={dropInSnapshot}
-                  sessionOutcome={sessionOutcome}
-                  showDetails={!restrictedContext || (showRosterDetails && viewerMaySeeFull)}
-                  viewerOwnerId={viewerOwnerId}
-                  normalizedHostRole={normalizedHostRole}
-                  normalizedViewerRole={normalizedViewerRole}
-                />
-              </div>
-            )}
-
             <div className={`${styles.summaryCard} ${styles.sideCard}`}>
               <LogsPanel
                 logs={logs}

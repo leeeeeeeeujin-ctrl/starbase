@@ -12,6 +12,7 @@ export default function MinimalMakerHeader({
   onOpenCode,
   onOpenUiSettings,
   onOpenRolesConfig,
+  onOpenGameShell,
 }) {
   const btn = (label, onClick, style = {}) => (
     <button
@@ -55,6 +56,7 @@ export default function MinimalMakerHeader({
           onOpenCode={onOpenCode}
           onOpenUiSettings={onOpenUiSettings}
           onOpenRolesConfig={onOpenRolesConfig}
+          onOpenGameShell={onOpenGameShell}
         />
       </div>
     </header>

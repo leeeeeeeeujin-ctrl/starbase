@@ -25,6 +25,7 @@ const ImageToUIGenerator = dynamic(() => import('../ui/ImageToUIGenerator'), { s
 const MainGameMobileUI = dynamic(() => import('../../game/MainGameMobileUI.jsx'), { ssr: false });
 import { applyMainUiPresetObject, getMainUiModules } from '../../../utils/uiPresets';
 import { promptSetsRepository } from '../../../lib/maker/promptSets';
+import GameShellEditor from '../settings/GameShellEditor.js';
 
 export default function MakerEditor() {
   const isMobile = useIsMobile(820);
@@ -115,6 +116,8 @@ export default function MakerEditor() {
   // panels visibility states must be declared before effects that use them
   const [showMultiLanguageEditor, setShowMultiLanguageEditor] = useState(false);
   const [gameSimulatorOpen, setGameSimulatorOpen] = useState(false);
+  const [showGameShellConfig, setShowGameShellConfig] = useState(false);
+  const [showRolesConfig, setShowRolesConfig] = useState(false);
 
   if (isWorkspaceDebug()) {
     try {
@@ -709,6 +712,8 @@ export default function MakerEditor() {
           onBack={goToSetList}
           onAddPrompt={() => addPromptNode('ai')}
           onAddUserAction={() => addPromptNode('user_action')}
+          onOpenGameShell={() => setShowGameShellConfig(true)}
+          onOpenRolesConfig={() => setShowRolesConfig(true)}
           onAddSystem={() => addPromptNode('system')}
           onSave={saveAll}
           onExport={exportSet}
@@ -1199,6 +1204,14 @@ export default function MakerEditor() {
       {showUiSettings && (
         <UiSettingsPanelMaker
           onClose={() => setShowUiSettings(false)}
+          templateText={templateText}
+          setTemplateText={setTemplateText}
+        />
+      )}
+      {showGameShellConfig && (
+        <GameShellEditor
+          visible={showGameShellConfig}
+          onClose={() => setShowGameShellConfig(false)}
           templateText={templateText}
           setTemplateText={setTemplateText}
         />

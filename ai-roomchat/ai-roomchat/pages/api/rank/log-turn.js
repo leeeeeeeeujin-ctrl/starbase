@@ -53,6 +53,10 @@ function normalizeEntries(entries) {
     const prompt = typeof entry.prompt === 'string' ? entry.prompt : null;
     const actors = Array.isArray(entry.actors) ? entry.actors : null;
     const extra = typeof entry.extra === 'object' && entry.extra !== null ? entry.extra : null;
+    const variables =
+      entry.variables && typeof entry.variables === 'object'
+        ? JSON.parse(JSON.stringify(entry.variables))
+        : null;
 
     normalized.push({
       role,
@@ -63,6 +67,7 @@ function normalizeEntries(entries) {
       prompt,
       actors,
       extra,
+      variables,
     });
   });
   return normalized;
@@ -212,6 +217,7 @@ export default async function handler(req, res) {
             idx,
             actors: entry.actors,
             extra: entry.extra,
+            variables: entry.variables,
           });
 
     return {

@@ -75,6 +75,7 @@ export function buildTurnSummaryPayload({
   idx,
   actors,
   extra,
+  variables,
 } = {}) {
   const trimmedContent = trimToString(content);
   if (!trimmedContent) {
@@ -136,6 +137,28 @@ export function buildTurnSummaryPayload({
 
   if (extra && typeof extra === 'object') {
     payload.extra = extra;
+  }
+
+  // 표준 데이터 슬롯(speaker / stats / scene / effects)을 그대로 남겨 두면
+  // 세션 리플레이/분석에서 재사용하기 좋다. 너무 큰 구조를 막기 위해
+  // 1-depth 수준에서만 복사한다.
+  if (variables && typeof variables === 'object') {
+    const outVars = {};
+    if (variables.speaker && typeof variables.speaker === 'object') {
+      outVars.speaker = { ...variables.speaker };
+    }
+    if (variables.stats && typeof variables.stats === 'object') {
+      outVars.stats = { ...variables.stats };
+    }
+    if (variables.scene && typeof variables.scene === 'object') {
+      outVars.scene = { ...variables.scene };
+    }
+    if (variables.effects && typeof variables.effects === 'object') {
+      outVars.effects = { ...variables.effects };
+    }
+    if (Object.keys(outVars).length) {
+      payload.variables = outVars;
+    }
   }
 
   return payload;

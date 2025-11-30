@@ -9,6 +9,7 @@
 - `/graph/prompt-graph.json`
 - `/game/runtime.config.json`
 - `/game/hooks/automation.js`
+- `/game/ui.shell.json` (선택) – 메인 게임 / 플래이에서 공통으로 사용할 UI 셸 설정
 
 ## 1. 개념 요약
 
@@ -71,3 +72,13 @@
 - “노드에 적힌 설정(config.battle)에 따라 프롬프트를 만들고,
    같은 설정을 사용해 다음 노드를 고른다”는 패턴을 확립하는 것에 있습니다.
 
+### 2.5 `/game/ui.shell.json` (선택)
+
+- 이 파일이 존재하면, 랭크 메인게임/플래이에서 공통으로 사용하는 **UI 셸 레이아웃**을 정의합니다.
+- 이 예시에서는:
+  - `widgets` 패널을 활성화하고,
+  - `heroCard` 위젯(뷰어 캐릭터 카드)과 `chatLog` 위젯(턴 로그)을 하나씩 배치합니다.
+  - 각 위젯에는 간단한 스타일 토큰(`padding`, `radius`, `density` 등)이 붙어 있어,
+    동일 위젯을 카드형/리스트형 등으로 재사용할 수 있습니다.
+
+복사 시 이 파일은 워크스페이스 루트의 `/game/ui.shell.json` 으로 들어가야 합니다.

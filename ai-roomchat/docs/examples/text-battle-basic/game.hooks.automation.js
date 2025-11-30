@@ -107,6 +107,38 @@ function applyBattleOutcomeLocal(ctx, params) {
   });
   vars.battleHistory = history;
 
+  // 표준 데이터 슬롯: stats / scene / effects / speaker
+  // - stats: 누적 점수, 턴 수 등을 한 곳에 모은다.
+  // - scene: 직전 장면의 요약 텍스트를 넣어 textBlock 위젯에서 사용할 수 있게 한다.
+  // - effects: 판정 결과에서 넘어온 효과 리스트를 그대로 노출한다.
+  // - speaker: 간단한 발화자 정보(승자 진영 기준)를 기록해 chatLog 위젯이 사용할 수 있게 한다.
+  const stats = (vars.stats && typeof vars.stats === 'object') ? vars.stats : {};
+  stats.turn = typeof ctx.turn === 'number' ? ctx.turn : (stats.turn || 0);
+  stats.heroScore = score.hero;
+  stats.rivalScore = score.rival;
+  vars.stats = stats;
+
+  const scene = (vars.scene && typeof vars.scene === 'object') ? vars.scene : {};
+  scene.summary = narrative;
+  vars.scene = scene;
+
+  if (effects && Array.isArray(effects)) {
+    vars.effects = vars.effects && typeof vars.effects === 'object' ? vars.effects : {};
+    vars.effects.active = effects;
+  }
+
+  const speaker = {};
+  if (winner === 'hero') {
+    speaker.role = 'hero';
+    speaker.accentColor = '#60a5fa';
+  } else if (winner === 'rival') {
+    speaker.role = 'rival';
+    speaker.accentColor = '#f97373';
+  }
+  if (Object.keys(speaker).length) {
+    vars.speaker = speaker;
+  }
+
   ctx.variables = vars;
 
   return {
@@ -303,6 +335,30 @@ export async function onUserAction(ctx, input) {
       effects: data.effects,
       timestamp: data.timestamp,
     });
+
+    // 간단한 AI 호출 디버그 로그를 variables.debug.aiCalls 에 남긴다.
+    try {
+      const vars =
+        ctx.variables && typeof ctx.variables === 'object'
+          ? ctx.variables
+          : (ctx.variables = {});
+      const debug =
+        vars.debug && typeof vars.debug === 'object' ? vars.debug : (vars.debug = {});
+      const calls = Array.isArray(debug.aiCalls) ? debug.aiCalls.slice(-9) : [];
+      calls.push({
+        kind: 'battle-judge',
+        ok: !!result.ok,
+        result: data.result || null,
+        winner: data.winner || null,
+        timestamp: data.timestamp || new Date().toISOString(),
+        promptPreview: typeof prompt === 'string' ? prompt.slice(0, 240) : null,
+      });
+      debug.aiCalls = calls;
+      vars.debug = debug;
+      ctx.variables = vars;
+    } catch {
+      // 디버그 로그는 실패해도 게임 진행에 영향을 주지 않는다.
+    }
 
     // battleResult 토큰을 라우트 키에 매핑:
     // - 'hero_win'  → routes.on_hero_win

@@ -6,6 +6,10 @@ import { unifiedSave } from '../../lib/workspace/unifiedSave.js';
 import { loadExtensionsMeta } from '../../lib/workspace/extensionsMeta.js';
 import { createCoreRuntime } from '../../lib/runtime/coreRuntime.js';
 import { loadHooksFromSource } from '../../lib/runtime/safeEvalHookModule.js';
+import {
+  applySceneFromRank,
+  applySpeakerFromRank,
+} from '../../lib/runtime/rankStandardSlots.js';
 import { loadCapabilitiesMeta } from '../../lib/workspace/capabilitiesMeta.js';
 import { validateCapabilities } from '../../lib/workspace/validateCapabilities.js';
 import { selectRuntimeFeatures } from '../../lib/runtime/runtimeFeatures.js';
@@ -348,6 +352,19 @@ function PlayOverlayContent({ templateBinding }) {
         });
         runtimeRef.current = runtime;
         runtimeHooksRef.current = hooks;
+
+        // rankDefaults / 개발용 rankContext 를 표준 슬롯(speaker/scene)에 투영한다.
+        // 기본 rankDefaults 에서는 no-op 이지만, 나중에 rank 정보를 주입하면
+        // Play / 메인게임이 같은 슬롯 구조를 공유하게 된다.
+        try {
+          if (runtime && typeof runtime.getContextSnapshot === 'function') {
+            const ctx = runtime.getContextSnapshot('play_init', null);
+            applySpeakerFromRank(ctx, rankDefaults);
+            applySceneFromRank(ctx, rankDefaults);
+          }
+        } catch {
+          // 슬롯 초기화 실패는 플레이 자체를 막지 않는다.
+        }
         // Link grid engine (if present) to this runtime and hooks so ctx.world
         // stays in sync with the grid engine and grid hooks can run.
         try {
@@ -365,7 +382,7 @@ function PlayOverlayContent({ templateBinding }) {
         return;
       }
 
-      const publishResult = (result) => {
+      const publishResult = (result, meta) => {
         if (stopped) return;
         try {
           const node = result && result.current ? result.current : null;
@@ -378,9 +395,42 @@ function PlayOverlayContent({ templateBinding }) {
             : null;
           const txt = fromPrompt != null ? fromPrompt : String(node.label || node.id || '');
           bus.emit('system:message', txt);
+          // 표준화된 턴 로그 이벤트(runtime:turn-log)를 발행해
+          // 플래이/메인게임에서 공통 LogsPanel 이 동일한 데이터를 볼 수 있도록 한다.
+          try {
+            const event = {
+              turn: typeof result.turn === 'number' ? result.turn : null,
+              nodeId: node.id || null,
+              nodeLabel: node.label || null,
+              reason: meta?.reason || null,
+              input: meta?.input ?? null,
+              prompt: txt,
+              ui: result.ui || null,
+              variables: result.variables || null,
+            };
+            bus.emit('runtime:turn-log', event);
+          } catch {
+            // ignore log emit errors
+          }
           if (debugPromptEnabled) {
             try {
               setDebugState((prev) => ({ ...prev, lastPrompt: txt }));
+            } catch {
+              // ignore debug state errors
+            }
+          }
+          if (debugLogCallsEnabled) {
+            try {
+              const vars =
+                result && result.variables && typeof result.variables === 'object'
+                  ? result.variables
+                  : null;
+              const dbg =
+                vars && vars.debug && typeof vars.debug === 'object' ? vars.debug : null;
+              const calls = Array.isArray(dbg?.aiCalls) ? dbg.aiCalls : [];
+              if (calls.length) {
+                setDebugState((prev) => ({ ...prev, calls }));
+              }
             } catch {
               // ignore debug state errors
             }
@@ -392,19 +442,24 @@ function PlayOverlayContent({ templateBinding }) {
 
       try {
         if (runtime && typeof runtime.getCurrentWithPrompt === 'function') {
-          runtime.getCurrentWithPrompt().then((res) => {
-            if (!stopped && res && res.current) publishResult(res);
-          }).catch(() => {});
+          runtime
+            .getCurrentWithPrompt()
+            .then((res) => {
+              if (!stopped && res && res.current) {
+                publishResult(res, { reason: 'inspect', input: undefined });
+              }
+            })
+            .catch(() => {});
         } else if (runtime && typeof runtime.getCurrentNode === 'function') {
           const cur = runtime.getCurrentNode();
-          if (cur) publishResult({ current: cur });
+          if (cur) publishResult({ current: cur }, { reason: 'inspect', input: undefined });
         }
       } catch {}
 
       const offTurn = bus.on('turn:next', async () => {
         try {
           const res = await runtime.step({ reason: 'auto' });
-          publishResult(res);
+          publishResult(res, { reason: 'auto', input: undefined });
           const gridEngine = gridEngineRef.current;
           if (gridEngine && typeof gridEngine.step === 'function') {
             const ctx = typeof runtime.getContextSnapshot === 'function'
@@ -421,7 +476,7 @@ function PlayOverlayContent({ templateBinding }) {
         try {
           const text = payload && typeof payload.text === 'string' ? payload.text : '';
           const res = await runtime.step({ reason: 'user_action', input: text });
-          publishResult(res);
+          publishResult(res, { reason: 'user_action', input: text });
           const gridEngine = gridEngineRef.current;
           if (gridEngine && typeof gridEngine.applyAction === 'function') {
             const ctx = typeof runtime.getContextSnapshot === 'function'
@@ -547,34 +602,81 @@ function PlayOverlayContent({ templateBinding }) {
         >
           {debugCollapsed ? '▼ 디버그' : '▲ 디버그'}
         </button>
-        {!debugCollapsed && debugPromptEnabled && debugState.lastPrompt && (
-          <div
-            style={{
-              marginTop: 6,
-              maxWidth: 420,
-              maxHeight: 160,
-              overflow: 'auto',
-              padding: 8,
-              borderRadius: 10,
-              border: '1px solid #1f2937',
-              background: 'rgba(15,23,42,0.96)',
-              color: '#e5e7eb',
-              fontSize: 11,
-              boxShadow: '0 16px 40px rgba(0,0,0,0.65)',
-            }}
-          >
-            <div style={{ fontWeight: 600, marginBottom: 4, color: '#93c5fd' }}>현재 턴 프롬프트</div>
-            <pre
-              style={{
-                margin: 0,
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
-                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-              }}
-            >
-              {debugState.lastPrompt}
-            </pre>
-          </div>
+        {!debugCollapsed && (
+          <>
+            {debugPromptEnabled && debugState.lastPrompt && (
+              <div
+                style={{
+                  marginTop: 6,
+                  maxWidth: 420,
+                  maxHeight: 160,
+                  overflow: 'auto',
+                  padding: 8,
+                  borderRadius: 10,
+                  border: '1px solid #1f2937',
+                  background: 'rgba(15,23,42,0.96)',
+                  color: '#e5e7eb',
+                  fontSize: 11,
+                  boxShadow: '0 16px 40px rgba(0,0,0,0.65)',
+                }}
+              >
+                <div style={{ fontWeight: 600, marginBottom: 4, color: '#93c5fd' }}>
+                  현재 턴 프롬프트
+                </div>
+                <pre
+                  style={{
+                    margin: 0,
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    fontFamily:
+                      'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+                  }}
+                >
+                  {debugState.lastPrompt}
+                </pre>
+              </div>
+            )}
+            {debugLogCallsEnabled &&
+              Array.isArray(debugState.calls) &&
+              debugState.calls.length > 0 && (
+                <div
+                  style={{
+                    marginTop: 6,
+                    maxWidth: 420,
+                    maxHeight: 160,
+                    overflow: 'auto',
+                    padding: 8,
+                    borderRadius: 10,
+                    border: '1px solid #1f2937',
+                    background: 'rgba(15,23,42,0.96)',
+                    color: '#e5e7eb',
+                    fontSize: 11,
+                    boxShadow: '0 16px 40px rgba(0,0,0,0.65)',
+                  }}
+                >
+                  <div style={{ fontWeight: 600, marginBottom: 4, color: '#a5b4fc' }}>
+                    AI 호출 로그
+                  </div>
+                  <ul style={{ margin: 0, paddingLeft: 16 }}>
+                    {debugState.calls
+                      .slice()
+                      .reverse()
+                      .map((call, idx) => (
+                        <li key={idx} style={{ marginBottom: 2 }}>
+                          <span style={{ color: '#e5e7eb' }}>
+                            {call.kind || 'call'} · {call.result || '-'}
+                          </span>
+                          {call.winner ? (
+                            <span style={{ marginLeft: 4, color: '#bbf7d0' }}>
+                              (winner: {call.winner})
+                            </span>
+                          ) : null}
+                        </li>
+                      ))}
+                  </ul>
+                </div>
+              )}
+          </>
         )}
       </div>
     ) : null;

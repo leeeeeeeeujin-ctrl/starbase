@@ -55,12 +55,43 @@ export function attachCanvas2D(canvas, options = {}) {
         const ex = Number(e.x);
         const ey = Number(e.y);
         if (Number.isNaN(ex) || Number.isNaN(ey)) return;
-        ctx.fillStyle = e.kind === 'player' ? '#facc15' : '#f97316';
+
+        // 간단한 "스킨" 표현: skin/kind 에 따라 색상과 모양을 나눈다.
+        const skin = typeof e.skin === 'string' ? e.skin : '';
+        const kind = typeof e.kind === 'string' ? e.kind : 'entity';
+
+        let color = '#f97316';
+        if (kind === 'player') color = '#facc15';
+        else if (skin) {
+          // skin 문자열 해시를 이용해 몇 가지 색상 중 하나를 선택한다.
+          const palette = ['#22c55e', '#0ea5e9', '#a855f7', '#f97316', '#e11d48'];
+          let hash = 0;
+          for (let i = 0; i < skin.length; i += 1) {
+            hash = (hash * 31 + skin.charCodeAt(i)) >>> 0;
+          }
+          color = palette[hash % palette.length];
+        }
+
+        ctx.fillStyle = color;
         const cx = offsetX + ex * tileSize + tileSize / 2;
         const cy = offsetY + ey * tileSize + tileSize / 2;
-        ctx.beginPath();
-        ctx.arc(cx, cy, Math.max(4, tileSize * 0.25), 0, Math.PI * 2);
-        ctx.fill();
+
+        const radius = Math.max(4, tileSize * 0.25);
+        if (kind === 'player') {
+          ctx.beginPath();
+          ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.beginPath();
+          ctx.rect(cx - radius, cy - radius, radius * 2, radius * 2);
+          ctx.fill();
+        }
+
+        if (e.label) {
+          ctx.fillStyle = '#e5e7eb';
+          ctx.font = '10px monospace';
+          ctx.fillText(String(e.label), cx - radius, cy - radius - 2);
+        }
       });
       ctx.fillStyle = '#93c5fd';
       ctx.font = '12px monospace';

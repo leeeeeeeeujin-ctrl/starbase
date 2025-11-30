@@ -2,6 +2,7 @@
 
 import React, { useMemo } from 'react';
 import MainGameMobileUI from './MainGameMobileUI.jsx';
+import TurnLogBar from './TurnLogBar.jsx';
 
 function normalizeShellConfig(raw) {
   if (!raw || typeof raw !== 'object') return {};
@@ -31,6 +32,16 @@ export default function GameShell({
 
   const viewerEnabled =
     cfg?.panels?.viewer?.enabled !== false && viewerHero && typeof viewerHero === 'object';
+
+  const turnLogBarEnabled = (() => {
+    const panelCfg = cfg?.panels?.turnLogBar;
+    if (panelCfg && typeof panelCfg === 'object') {
+      if (panelCfg.enabled === false) return false;
+      if (panelCfg.enabled === true) return true;
+    }
+    // 기본값: 모든 모드에서 off (명시적으로 켜야 함)
+    return false;
+  })();
 
   const title =
     (cfg?.header && cfg.header.title) ||
@@ -156,8 +167,13 @@ export default function GameShell({
           runtimeBus={runtimeBus}
           runtimeFeatures={runtimeFeatures}
           rankContext={rankContext}
+          shellConfig={cfg}
         />
       </div>
+
+      {turnLogBarEnabled && (
+        <TurnLogBar runtimeBus={runtimeBus} />
+      )}
       </div>
     </div>
   );

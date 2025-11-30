@@ -1,0 +1,51 @@
+{
+  "panels": {
+    "widgets": {
+      "enabled": true,
+      "widgets": [
+        {
+          "kind": "heroCard",
+          "source": "rank.viewer",
+          "title": "내 캐릭터",
+          "style": {
+            "padding": "md",
+            "radius": "lg",
+            "tone": "primary"
+          }
+        },
+        {
+          "kind": "badge",
+          "title": "",
+          "source": "variables.battleResult",
+          "text": "진행 상태",
+          "style": {
+            "padding": "xs",
+            "radius": "full",
+            "tone": "secondary"
+          },
+          "visibleWhen": "variables.battleResult"
+        },
+        {
+          "kind": "chatLog",
+          "title": "턴 로그",
+          "style": {
+            "padding": "sm",
+            "radius": "sm",
+            "density": "compact"
+          },
+          "visibleWhen": "rank.viewer && rank.session"
+        },
+        {
+          "kind": "textBlock",
+          "title": "직전 장면 요약",
+          "source": "variables.battleLast.narrative",
+          "style": {
+            "padding": "sm",
+            "radius": "sm"
+          },
+          "visibleWhen": "variables.battleLast && variables.battleLast.narrative"
+        }
+      ]
+    }
+  }
+}

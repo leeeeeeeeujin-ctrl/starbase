@@ -21,6 +21,7 @@ import {
   realtimeModeCopy,
 } from '../../data/rankRegistrationContent';
 import { prepareRegistrationPayload } from '../../lib/rank/registrationValidation';
+import { loadRolesConfig, toRegisterRankRolesPayload } from '../../lib/rank/rolesConfig';
 import { useWorkspaceOptional } from '../workspace/CodeWorkspaceProvider.jsx';
 import { MATCH_MODE_KEYS } from '../../lib/rank/matchModes';
 
@@ -283,29 +284,45 @@ export default function RankNewClient() {
       end_condition_variable: brawlEnabled ? trimmedEndCondition || null : null,
     };
 
-    const slotCountMap = activeSlots.reduce((acc, slot) => {
-      const key = slot.role ? String(slot.role).trim() : '';
-      if (!key) return acc;
-      acc[key] = (acc[key] || 0) + 1;
-      return acc;
-    }, {});
+    // 1) roles.rank.json 이 존재하면 그 값을 우선한다.
+    let rolePayload = null;
+    try {
+      const files = workspace?.files || {};
+      const cfgFromFile = loadRolesConfig(files, '/game/roles.rank.json');
+      const fromFile = toRegisterRankRolesPayload(cfgFromFile);
+      if (Array.isArray(fromFile) && fromFile.length) {
+        rolePayload = fromFile;
+      }
+    } catch {
+      // 워크스페이스 파일 파싱 실패는 폼 기반 역할 정의로 폴백한다.
+    }
 
-    const rolePayload = roles.map(role => {
-      const name = role?.name ? String(role.name).trim() : '역할';
-      const rawMin = Number(role?.score_delta_min);
-      const rawMax = Number(role?.score_delta_max);
-      const min = Number.isFinite(rawMin) ? rawMin : 20;
-      const max = Number.isFinite(rawMax) ? rawMax : 40;
-      const slotCount = Number.isFinite(Number(slotCountMap[name]))
-        ? Number(slotCountMap[name])
-        : 0;
-      return {
-        name,
-        slot_count: Math.max(0, slotCount),
-        score_delta_min: min,
-        score_delta_max: max,
-      };
-    });
+    // 2) 폴백: 기존 폼 기반 역할/점수 정의
+    if (!rolePayload) {
+      const slotCountMap = activeSlots.reduce((acc, slot) => {
+        const key = slot.role ? String(slot.role).trim() : '';
+        if (!key) return acc;
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {});
+
+      rolePayload = roles.map(role => {
+        const name = role?.name ? String(role.name).trim() : '역할';
+        const rawMin = Number(role?.score_delta_min);
+        const rawMax = Number(role?.score_delta_max);
+        const min = Number.isFinite(rawMin) ? rawMin : 20;
+        const max = Number.isFinite(rawMax) ? rawMax : 40;
+        const slotCount = Number.isFinite(Number(slotCountMap[name]))
+          ? Number(slotCountMap[name])
+          : 0;
+        return {
+          name,
+          slot_count: Math.max(0, slotCount),
+          score_delta_min: min,
+          score_delta_max: max,
+        };
+      });
+    }
 
     const res = await registerGame({
       name: name || '새 게임',

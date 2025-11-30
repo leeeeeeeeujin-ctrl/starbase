@@ -42,7 +42,6 @@ export default function UnifiedWorkbench() {
         ['nodes', '프롬프트·노드'],
         ['blocks', '블록코딩'],
         ['code', '코드 에디터'],
-        ['test', '테스트'],
       ].map(([id, label]) => {
         const active = (mode || 'nodes') === id;
         return (
@@ -120,6 +119,22 @@ export default function UnifiedWorkbench() {
           </div>
 
           <button
+            onClick={() => emit('studio:runner:toggle')}
+            title="플레이 / 테스트"
+            style={{
+              padding: '6px 10px',
+              borderRadius: 8,
+              border: '1px solid #cbd5e1',
+              background: '#0b1120',
+              color: '#e2e8f0',
+              fontSize: 12,
+              fontWeight: 600,
+            }}
+          >
+            플레이
+          </button>
+
+          <button
             onClick={() => emit('studio:ai:toggle')}
             title="AI 패널"
             style={{ width: 36, height: 36, borderRadius: 18, border: '1px solid #cbd5e1', background: '#fff' }}
@@ -139,11 +154,6 @@ export default function UnifiedWorkbench() {
           </div>
         )}
         {mode === 'nodes' && <NodesEditor />}
-        {mode === 'test' && (
-          <div style={{ position: 'absolute', right: 12, bottom: 12 }}>
-            <RunnerPanel />
-          </div>
-        )}
       </div>
 
       {/* Floating/Slide panels */}
@@ -155,4 +165,3 @@ export default function UnifiedWorkbench() {
     </div>
   );
 }
-

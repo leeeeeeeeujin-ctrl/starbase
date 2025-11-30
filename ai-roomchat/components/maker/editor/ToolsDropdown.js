@@ -16,7 +16,12 @@ const itemStyle = {
   fontWeight: 600,
 };
 
-export default function ToolsDropdown({ onOpenCode, onOpenUiSettings, onOpenRolesConfig }) {
+export default function ToolsDropdown({
+  onOpenCode,
+  onOpenUiSettings,
+  onOpenRolesConfig,
+  onOpenGameShell,
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -65,6 +70,20 @@ export default function ToolsDropdown({ onOpenCode, onOpenUiSettings, onOpenRole
           <button onClick={onOpenCode} style={itemStyle}>코드 에디터</button>
           <div style={{ height: 1, background: 'rgba(148,163,184,0.25)', margin: '4px 2px' }} />
           <button onClick={onOpenUiSettings} style={itemStyle}>UI 설정</button>
+          {typeof onOpenGameShell === 'function' && (
+            <>
+              <div
+                style={{
+                  height: 1,
+                  background: 'rgba(148,163,184,0.25)',
+                  margin: '4px 2px',
+                }}
+              />
+              <button onClick={onOpenGameShell} style={itemStyle}>
+                게임 셸 설정
+              </button>
+            </>
+          )}
           {typeof onOpenRolesConfig === 'function' && (
             <>
               <div
