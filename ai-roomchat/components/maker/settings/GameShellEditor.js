@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useWorkspace } from "../../workspace/CodeWorkspaceProvider.jsx";
 
 function parseTemplate(text) {
   try {
@@ -44,6 +45,7 @@ export default function GameShellEditor({
   templateText,
   setTemplateText,
 }) {
+  const { writeFile } = useWorkspace();
   const [widgetsEnabled, setWidgetsEnabled] = useState(true);
   const [turnLogBarEnabled, setTurnLogBarEnabled] = useState(false);
   const [widgetRows, setWidgetRows] = useState([]);
@@ -110,6 +112,16 @@ export default function GameShellEditor({
       const next = { ...base, ui_shell: nextShell };
       if (typeof setTemplateText === "function") {
         setTemplateText(JSON.stringify(next, null, 2));
+      }
+
+      // 워크스페이스 VFS에도 /game/ui.shell.json 을 직접 반영한다.
+      try {
+        const uiShellJson = JSON.stringify(nextShell, null, 2) + "\n";
+        if (typeof writeFile === "function") {
+          writeFile("/game/ui.shell.json", uiShellJson);
+        }
+      } catch {
+        // workspace 반영 실패는 조용히 무시 (템플릿만이라도 갱신)
       }
     } catch (e) {
       // Best-effort only; keep errors local

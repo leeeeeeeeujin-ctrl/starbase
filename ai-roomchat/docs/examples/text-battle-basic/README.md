@@ -77,8 +77,12 @@
 - 이 파일이 존재하면, 랭크 메인게임/플래이에서 공통으로 사용하는 **UI 셸 레이아웃**을 정의합니다.
 - 이 예시에서는:
   - `widgets` 패널을 활성화하고,
-  - `heroCard` 위젯(뷰어 캐릭터 카드)과 `chatLog` 위젯(턴 로그)을 하나씩 배치합니다.
-  - 각 위젯에는 간단한 스타일 토큰(`padding`, `radius`, `density` 등)이 붙어 있어,
+  - 다음과 같은 위젯들을 배치합니다.
+    - `heroCard` (`source: "rank.viewer"`): 현재 플레이어(뷰어)의 캐릭터 카드.
+    - `badge` (`source: "variables.battleResult"`): 턴 결과 토큰(`hero_win`, `rival_win`, `tie` 등)을 요약해 보여주는 배지.
+    - `chatLog`: 공통 턴 로그(`runtime:turn-log` 스트림)를 간단히 보여주는 패널.
+    - `textBlock` (`source: "variables.battleLast.narrative"`): 직전 턴의 서술(ex. 판정 결과 요약)을 짧게 보여주는 블록.
+  - 각 위젯에는 간단한 스타일 토큰(`padding`, `radius`, `tone`, `density` 등)이 붙어 있어,
     동일 위젯을 카드형/리스트형 등으로 재사용할 수 있습니다.
 
 복사 시 이 파일은 워크스페이스 루트의 `/game/ui.shell.json` 으로 들어가야 합니다.
