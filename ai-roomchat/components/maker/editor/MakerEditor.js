@@ -321,7 +321,6 @@ export default function MakerEditor() {
   const [showImageToUI, setShowImageToUI] = useState(false);
   const [showResourceEditor, setShowResourceEditor] = useState(false);
   const [showUiSettings, setShowUiSettings] = useState(false);
-  const [showRolesConfig, setShowRolesConfig] = useState(false);
   const [showPlayOverlay, setShowPlayOverlay] = useState(false);
   // Lock background scroll when code editor overlay is open
   useEffect(() => {
