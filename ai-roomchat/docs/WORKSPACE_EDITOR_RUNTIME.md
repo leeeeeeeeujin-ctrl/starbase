@@ -25,10 +25,24 @@ Current high-level status (this repo copy)
   - Text runtime는 실사용 가능 수준, grid-basic은 프리뷰 + 간단 엔진까지 연결.
 - AI code chat dock (UX / actions): **in progress**
   - JSON 액션 파싱/게이팅, 자동 실행 슬라이더, 로그 표현 개선 일부 반영.
+- Hub/플러그인 기반 확장: **planned**
+  - Hub(로컬/외부 에이전트)를 통해 UI 테스트, 로컬 Git, Supabase 연동 등 확장을 외부 플러그인으로 제공하고 ai-roomchat은 JSON API로만 연결하는 방향.
  - Standard data slots (`variables.stats / scene / effects / speaker`): **in progress**
    - 장르에 무관한 공통 슬롯 계약을 `docs/standard-data-slots.md` 에 정의하고, 텍스트 배틀 예제를 통해 사용하는 중.
 - Supabase persistence + SQL helpers: **planned**
   - Capability/확장 스펙만 정의되어 있고, 실제 어댑터/패널 구현은 이후 단계.
+
+### Open tasks (dev notes)
+
+- PlayOverlayContent 구조 분리 진행 중: 어댑터 초기화는 헬퍼로 분리했으나 디버그 UI/입력 처리도 별도 훅/컴포넌트로 쪼개기.
+- 선택된 capability 대비 필요한 파일 안내: Play/Capabilities 패널에서 누락 파일 경고+생성 안내 표시. Capabilities 선택 화면에도 빠른 파일 추가 액션을 더 보강.
+
+### Next goals (platform fit)
+
+- 사용자 흐름 강화: Capabilities 선택 → 필수 파일 자동 생성/가이드 → 런타임/Play에서 즉시 피드백까지 한 화면에서 연결되는 UX 추가.
+- 모듈화 보강: PlayOverlayContent의 입력 처리/디버그/런타임 실행을 훅/컴포넌트로 더 분리해 유지보수·테스트 용이성 확보.
+- 검증/가이드: `computeRuntimeFeatureIssues` 등 핵심 헬퍼의 경량 테스트 추가, 누락 파일 경고가 지속적으로 동작하는지 자동 확인.
+- GameShell 위젯/스타일 토큰: 현재 설계된 토큰을 위젯별로 더 일관되게 적용할 수 있게 모듈화(커스터마이즈성↑).
 
 ---
 
@@ -391,6 +405,74 @@ With this setup, the Play overlay:
 
 4. **Make it possible to build "almost any game".**  
    Capabilities are the contract surface: combinable building blocks that any engine/test can rely on.
+
+> 현실적인 범위 메모  
+> 이 문서에서 말하는 "거의 모든 게임"은 **텍스트/프롬프트/턴 기반 + 캐릭터/매칭/랭크 중심의 AI 게임/도구**를 주 대상으로 한다.  
+> Godot/Unity 수준의 범용 2D/3D 렌더링·물리·애니메이션·오디오·멀티플랫폼 빌드까지 포괄하는 일반 게임엔진을 목표로 하지는 않으며,  
+> 그런 영역이 필요할 때는 별도 엔진(Phaser/PIXIS/three 등)과의 연동을 전제로 한다.
+
+### Debug snapshot (update when things change)
+
+- 플랫폼 목적 요약:
+  - 제작자: 워크스페이스/AI 코드 채팅으로 게임을 만들고, 공용 엔진(GameShell+coreRuntime)으로 실행/배포.
+  - 플레이어: 자신 캐릭터를 들고 매칭/랭크/정산 구조에서 플레이.
+  - 확장/보안: 워크스페이스 VFS 경계 + Hub 플러그인으로 UI 테스트/로컬 Git/Supabase 등 확장을 외부에서 제공, ai-roomchat은 JSON API로만 연결.
+- 핵심 디렉터리:
+  - `components/workspace/` — CodeEditorOverlayV2(PlayOverlay 포함), Capabilities 패널/모달, WorkspaceFrame.
+  - `lib/runtime/` — `coreRuntime`, `runtimeFeatures`, adapters(`adapterManager`, `safeEvalHookModule`, `worldGridEngine` 등).
+  - `components/game/` — `GameSessionShell`, `GameShell`, `MainGameMobileUI`, renderers, PlayScaffold/MainGameParity.
+  - `lib/game/` — AI orchestrator/template, character context, reference 데이터 맵.
+  - `lib/rank/**`, `pages/api/rank/**` — 매칭/랭크/점수(정산은 미구현 추정).
+- 주요 파일/변수 흐름:
+  - 워크스페이스 파일: `/template.json`, `/graph/prompt-graph.json`, `/game/runtime.config.json`, `/game/hooks/automation.js`, `/game/ui.shell.json`, `/characters/*.json`, 선택적 `/game/network.config.json`, `/debug/play.json`.
+  - 런타임 컨텍스트: `coreRuntime` → `ctx = { turn, variables, node, files, world }`, 표준 슬롯(`variables.stats.turn` 등) 자동 업데이트.
+  - 런타임 기능 선택: `meta.capabilities` + 파일 존재 여부 → `runtimeFeatures` / `flags` (`wantsRealtimeNetwork`, `wantsSharedCrdt`).
+  - 네트워크/CRDT: `adapterManager.initAdapters` 로딩 (`network.realtime` + `/game/network.config.json`, `crdt.yjs`).
+  - 캐릭터: `GameSessionShell`이 `character` 상태를 주입/autoLoad, `UnifiedGameSystem`/렌더러가 `characterData`를 UI/템플릿 변수로 등록.
+  - 디버그 상태: PlayOverlay `debugState = { lastPrompt, turnEvents, calls, simUsers }` (localStorage `playDebug.simUsers@{ns}`).
+- TODO(갱신 시 반영): 매칭/정산 구현 상태, Hub/플러그인 연결 여부, 테스트/관측 구성 여부를 여기에 짧게 기록해 둘 것.
+
+### If we aim for “general engine/platform” competitiveness
+
+- Rendering/physics/audio/animation: 2D/3D 엔진(Phaser/Pixi/three 등 일급 연동 또는 내장) + 물리/오디오/애니메이션 파이프라인 확보.
+- Creator tooling: 씬/노드/타임라인 편집기, 에셋 임포트·파이프라인, 디버거/프로파일러, 플러그인/에셋 마켓 등 에코시스템 강화.
+- Sandbox/Hub: 워크스페이스 VFS 경계 실제 적용, Hub 플러그인 권한/배포/업데이트, 로컬/원격 에이전트 안전 연결.
+- Matching/economy/scoring: 점수·랭크·정산 데이터모델/DB/API/UI 완결, 멀티플레이/세션/재접속/복구까지 포함.
+- Quality/ops: 자동 테스트(런타임·매칭·헬퍼), 부하·성능 검증, 로깅·모니터링·알림, CI/CD·릴리즈/롤백, 멀티테넌시+버전/영속 관리.
+- Docs/SDK: 안정된 API/SDK, 예제/템플릿, 확장·플러그인 가이드로 개발자 경험을 상용 수준으로 끌어올리기.
+
+### Execution plan (draft, refine into tickets)
+
+1) Sandbox / Hub 플러그인
+   - Scope: 워크스페이스 VFS 경계 적용, `ai-actions-allowlist`/경로 매핑, Hub 플러그인(JSON API) 권한/배포/업데이트 흐름.
+   - Deliverables: allowlist+경로 적용 코드, Hub API 초안(권한/토큰/헬스체크), 최소 1개 플러그인 PoC(UI 테스트 또는 로컬 Git).
+
+2) Matching / 정산
+   - Scope: 점수/랭크/정산 데이터모델+DB, `/api/rank/**` 확장, UI(라운드/랭크/정산 뷰), 캐릭터/세션 연계.
+   - Deliverables: 스키마/마이그레이션, 정산 엔드포인트, 단순 정산 UI, 재접속/복구 시나리오 정의.
+
+3) Play/툴링 마감
+   - Scope: PlayOverlay 입력/런타임/디버그 훅 분리, Capabilities 선택→필수 파일 템플릿 자동 생성/가이드, runtimeIssues 빠른 액션 완성.
+   - Deliverables: 모듈화된 Play 훅, “필수 파일 생성+템플릿 삽입” 버튼, runtimeIssues 경고/가이드 일관화.
+
+4) 품질/운영
+   - Scope: 핵심 헬퍼·런타임·매칭 API 테스트, 기본 로깅/모니터링/알림, CI/CD·릴리즈/롤백 흐름, 리소스/타임아웃 가드.
+   - Deliverables: 테스트 스위트, 관측 스택(MVP), 배포/롤백 절차 문서, 리미트/쿼터 설정.
+
+5) 렌더링 확장(선택/장기)
+   - Scope: 2D/3D 엔진 일급 연동(Phaser/Pixi/three 중 1개 우선) + 씬/노드 편집기 초안.
+   - Deliverables: 엔진 연동 PoC, 씬 편집 UI 스케치/프로토, GameShell와 연계 규칙 초안.
+
+6) Docs/SDK 패키지
+   - Scope: 안정된 API/SDK(런타임/매칭/Hub), 예제/템플릿, 확장/플러그인 가이드.
+   - Deliverables: SDK 번들, 샘플 세트, 개발자 가이드 세트.
+
+### Testing / validation guide (keep updated)
+- 빠른 스크립트 체크: Node로 핵심 헬퍼 검증(예: `computeRuntimeFeatureIssues`), 필수 파일 존재 여부 검사. 필요 시 `npm test`/`npm run build` 실행.
+- 단위 테스트 우선: 런타임(coreRuntime), 매칭/랭크 API, Hub/플러그인 경계, Capabilities 검증 로직에 집중.
+- 통합/수동: PlayOverlay(디버그 패널 포함)에서 capability 누락 경고, 필수 파일 템플릿 생성 동작 확인.
+- 관측/로그: 에러/경고 로그 수집 경로를 명시하고, 주요 경계(샌드박스/HUB/매칭)에서 로깅·타임아웃·리밋을 점검.
+- 빌드/배포 전: `npm run build`로 기본 컴파일 체크, CI에 동일한 스크립트 연결(준비되면).
 
 ---
 
@@ -2857,3 +2939,14 @@ Maker 쪽에서는 `/game/ui.shell.json`을 직접 편집하는 대신, 다음�
 ## 추가 메모: API 키 라우팅
 - 텍스트 배틀 흐름에서 라우팅된 API 키는 현재 OpenAI 엔드포인트에만 전달됩니다.
 - 다른 프로바이더(Gemini, Claude 등) 키를 함께 쓸 경우 분기 처리가 없어 실패할 수 있으니, 추후 `provider` 필드를 받아 안전하게 분기하거나 OpenAI 전용임을 명시하는 경고를 UI/문서에 추가해야 합니다.
+
+## 부록: Codex 작업/명령 요약
+
+- 환경: Windows `cmd`에서 실행, `danger-full-access`, 네트워크 허용, 승인 정책 `never`(승인 요청 없이 해결). `node` v22.19.0 사용 가능, `python` 없음, `rg` 15.1.0 사용.
+- 파일 읽기: 짧은 내용은 `cmd /C "type path\\to\\file"`; 검색은 `rg "pattern" path`; 일부 구간만 볼 때는 Node로 라인 슬라이스 출력:
+  - `cmd /C node -e "const fs=require('fs');const l=fs.readFileSync('path','utf8').split(/\\r?\\n/);const s=120,e=160;for(let i=s-1;i<e;i++)console.log((i+1)+':'+l[i]);"` 
+- 편집: 수동 변경은 `apply_patch` 사용(ASCII 유지, 불필요한 주석 금지). 자동 생성물/대량 치환은 스크립트·툴을 우선 고려. 사용자 기존 변경은 절대 되돌리지 않음.
+- 대용량/이진: 전부 출력하지 않고 `rg`/부분 슬라이스로 확인. 에셋·이진은 내용 열람 안 함.
+- 실행/테스트: 필요한 경우에만 스크립트 실행. 실행 전후 어떤 커맨드와 기대 결과인지 보고. 요청 없으면 테스트는 건너뛰고 이유를 명시.
+- Git: 기본은 커밋/푸시 안 함. 읽기용 `git status`/`git diff`만 사용하며 강제 리셋(`reset --hard`, `checkout --`) 금지. 커밋 지시 시 메시지/범위 확인 후 진행, amend는 요청 시에만.
+- 보고: 변경 경로를 인라인 코드(`ai-roomchat/...`)로 명시하고, 요약→세부→후속 제안 순서. 테스트 미실행 시 이유와 검증 제안 포함.

@@ -103,3 +103,39 @@ export function selectRuntimeFeatures(params = {}) {
 
   return { features, flags };
 }
+
+/**
+ * Compute user-facing issues when capabilities are selected but required
+ * files/capabilities are missing, so the corresponding runtime feature
+ * cannot be fully enabled. This is intentionally conservative: it only
+ * reports when at least one capability for the feature is selected.
+ *
+ * @param {Object} params
+ * @param {string[]} [params.capabilities]
+ * @param {Object<string,{content?:string}>} [params.files]
+ * @returns {Array<{ id:string, missingCaps?:string[], missingFiles?:string[] }>}
+ */
+export function computeRuntimeFeatureIssues(params = {}) {
+  const caps = Array.isArray(params.capabilities) ? params.capabilities : [];
+  const capSet = new Set(caps);
+  const files = params.files || {};
+  /** @type {Array<{ id:string, missingCaps?:string[], missingFiles?:string[] }>} */
+  const issues = [];
+
+  RUNTIME_FEATURES.forEach((feat) => {
+    if (!feat || !Array.isArray(feat.capabilities) || feat.capabilities.length === 0) return;
+    const selectedAny = feat.capabilities.some((c) => capSet.has(c));
+    if (!selectedAny) return;
+    const missingCaps = feat.capabilities.filter((c) => !capSet.has(c));
+    const missingFiles = (feat.requiredFiles || []).filter((p) => typeof files[p]?.content !== 'string');
+    if (missingCaps.length || missingFiles.length) {
+      issues.push({
+        id: feat.id,
+        ...(missingCaps.length ? { missingCaps } : {}),
+        ...(missingFiles.length ? { missingFiles } : {}),
+      });
+    }
+  });
+
+  return issues;
+}

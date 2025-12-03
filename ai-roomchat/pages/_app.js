@@ -7,9 +7,33 @@ try {
   }
 } catch (_) {}
 
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
+import { useRouter } from 'next/router';
+import dynamic from 'next/dynamic';
 import ExtensionsHost from '../components/workspace/ExtensionsHost';
 import '../styles/globals.css';
+
+const GlobalChatLauncher = dynamic(() => import('@/components/social/GlobalChatLauncher'), { ssr: false });
+
+function OverlayAwareShell({ children }) {
+  const router = useRouter();
+  const pathname = (router?.pathname || '').toLowerCase();
+  const asPath = (router?.asPath || '').toLowerCase();
+
+  const hideChatLauncher = useMemo(() => {
+    const onTitle = pathname === '/' || pathname === '/index' || asPath.startsWith('/title');
+    const onRoster = pathname.startsWith('/roster');
+    const onMaker = pathname.startsWith('/maker') || pathname.startsWith('/prompt');
+    return onTitle || onRoster || onMaker;
+  }, [pathname, asPath]);
+
+  return (
+    <>
+      {children}
+      {!hideChatLauncher ? <GlobalChatLauncher /> : null}
+    </>
+  );
+}
 
 export default function MyApp({ Component, pageProps }) {
   // Register PWA service worker once on the client (for installability/offline support)
@@ -40,9 +64,9 @@ export default function MyApp({ Component, pageProps }) {
   }, []);
 
   return (
-    <>
+    <OverlayAwareShell>
       <Component {...pageProps} />
       <ExtensionsHost />
-    </>
+    </OverlayAwareShell>
   );
 }

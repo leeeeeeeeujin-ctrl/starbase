@@ -12,7 +12,7 @@ import {
 } from '../../lib/runtime/rankStandardSlots.js';
 import { loadCapabilitiesMeta } from '../../lib/workspace/capabilitiesMeta.js';
 import { validateCapabilities } from '../../lib/workspace/validateCapabilities.js';
-import { selectRuntimeFeatures } from '../../lib/runtime/runtimeFeatures.js';
+import { selectRuntimeFeatures, computeRuntimeFeatureIssues } from '../../lib/runtime/runtimeFeatures.js';
 import { isWorkspaceDebug } from '../../lib/workspace/debugFlags.js';
 import { useWorkspace } from './CodeWorkspaceProvider.jsx';
 import FileTree from './FileTree.jsx';
@@ -29,6 +29,411 @@ const GameShell = dynamic(() => import('../game/GameShell.jsx'), {
     </div>
   ),
 });
+
+async function setupRuntimeAdapters({ setId, files, cfg, bus }) {
+  const meta = await loadCapabilitiesMeta(String(setId)).catch(() => ({ capabilities: [] }));
+  const caps = Array.isArray(meta?.capabilities) ? meta.capabilities : [];
+  const { features, flags } = selectRuntimeFeatures({ capabilities: caps, files, config: cfg });
+  const issues = computeRuntimeFeatureIssues({ capabilities: caps, files });
+
+  const hasRealtime = flags.wantsRealtimeNetwork;
+  const hasYjs = flags.wantsSharedCrdt;
+  if (!hasRealtime && !hasYjs) {
+    return { features, issues, adapters: null };
+  }
+
+  // Build networking config from /game/network.config.json when present
+  let networking = null;
+  try {
+    const netText = files?.['/game/network.config.json']?.content || '';
+    if (netText) {
+      const netCfg = JSON.parse(netText || '{}');
+      const rawEngine = String(netCfg.engine || netCfg.id || '').toLowerCase();
+      let id = null;
+      if (/socket/i.test(rawEngine)) id = 'socketio';
+      else if (/colyseus/i.test(rawEngine)) id = 'colyseus';
+      if (id && netCfg.url) {
+        networking = {
+          id,
+          url: netCfg.url,
+          token: netCfg.token || null,
+        };
+      }
+    }
+  } catch {
+    // ignore malformed network.config
+  }
+
+  const sync = hasYjs ? { id: 'yjs' } : null;
+  if (!networking && !sync) {
+    return { features, issues, adapters: null };
+  }
+
+  const cfgAdapters = {};
+  if (networking) cfgAdapters.networking = networking;
+  if (sync) cfgAdapters.sync = sync;
+
+  const { initAdapters } = await import('../../lib/runtime/adapterManager.js');
+  const adapters = await initAdapters(cfgAdapters, (evt) => {
+    try {
+      bus.emit('net:event', evt);
+    } catch {
+      // ignore bus errors
+    }
+  });
+
+  return { features, issues, adapters };
+}
+
+function DebugPanel({
+  enableDebugUi,
+  debugCollapsed,
+  setDebugCollapsed,
+  debugPromptEnabled,
+  debugState,
+  debugLogCallsEnabled,
+  addSimUser,
+  updateSimUser,
+  removeSimUser,
+}) {
+  if (!enableDebugUi) return null;
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: '50%',
+        top: 6,
+        transform: 'translateX(-50%)',
+        zIndex: 20,
+        pointerEvents: 'auto',
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => setDebugCollapsed((v) => !v)}
+        title="플레이 디버그 패널 열기/닫기"
+        style={{
+          padding: '3px 10px',
+          borderRadius: 999,
+          border: '1px solid #334155',
+          background: 'rgba(15,23,42,0.9)',
+          color: '#e5e7eb',
+          fontSize: 11,
+        }}
+      >
+        {debugCollapsed ? '▼ 디버그' : '▲ 디버그'}
+      </button>
+      {!debugCollapsed && (
+        <>
+          {debugPromptEnabled && debugState.lastPrompt && (
+            <div
+              style={{
+                marginTop: 6,
+                maxWidth: 420,
+                maxHeight: 160,
+                overflow: 'auto',
+                padding: 8,
+                borderRadius: 10,
+                border: '1px solid #1f2937',
+                background: 'rgba(15,23,42,0.96)',
+                color: '#e5e7eb',
+                fontSize: 11,
+                boxShadow: '0 16px 40px rgba(0,0,0,0.65)',
+              }}
+            >
+              <div style={{ fontWeight: 600, marginBottom: 4, color: '#93c5fd' }}>
+                현재 턴 프롬프트
+              </div>
+              <pre
+                style={{
+                  margin: 0,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  fontFamily:
+                    'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+                }}
+              >
+                {debugState.lastPrompt}
+              </pre>
+            </div>
+          )}
+          {Array.isArray(debugState.turnEvents) && debugState.turnEvents.length > 0 && (
+            <div
+              style={{
+                marginTop: 6,
+                maxWidth: 420,
+                maxHeight: 180,
+                overflow: 'auto',
+                padding: 8,
+                borderRadius: 10,
+                border: '1px solid #1f2937',
+                background: 'rgba(15,23,42,0.96)',
+                color: '#e5e7eb',
+                fontSize: 11,
+                boxShadow: '0 16px 40px rgba(0,0,0,0.65)',
+              }}
+            >
+                <div style={{ fontWeight: 600, marginBottom: 4, color: '#a5b4fc' }}>
+                  턴 로그 (raw)
+                </div>
+              <ul style={{ margin: 0, paddingLeft: 12 }}>
+                {debugState.turnEvents
+                  .slice()
+                  .slice(-10)
+                  .reverse()
+                  .map((evt, idx) => (
+                    <li key={idx} style={{ marginBottom: 4 }}>
+                      <details>
+                        <summary>
+                          턴 {typeof evt.turn === 'number' ? evt.turn : '-'} ·{' '}
+                          {evt.nodeLabel || evt.nodeId || '(노드 정보 없음)'}
+                          {evt.visibility ? (
+                            <span style={{ marginLeft: 6, color: '#facc15' }}>
+                              ({evt.visibility})
+                            </span>
+                          ) : null}
+                          {evt.variables?.battleLast?.apiRouting ? (
+                            <span style={{ marginLeft: 6, color: '#bbf7d0' }}>
+                              apiRouting →
+                              {evt.variables.battleLast.apiRouting.participant?.name
+                                ? ` ${evt.variables.battleLast.apiRouting.participant.name}`
+                                : ''}
+                            </span>
+                          ) : null}
+                        </summary>
+                        <pre
+                          style={{
+                            marginTop: 2,
+                            whiteSpace: 'pre-wrap',
+                            wordBreak: 'break-word',
+                            fontFamily:
+                              'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+                          }}
+                        >
+                          {JSON.stringify(evt, null, 2)}
+                        </pre>
+                      </details>
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          )}
+          <div
+            style={{
+              marginTop: 6,
+              maxWidth: 420,
+              padding: 8,
+              borderRadius: 10,
+              border: '1px solid #1f2937',
+              background: 'rgba(15,23,42,0.96)',
+              color: '#e5e7eb',
+              fontSize: 11,
+              boxShadow: '0 16px 40px rgba(0,0,0,0.65)',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: 4,
+              }}
+            >
+              <span style={{ fontWeight: 600, color: '#facc15' }}>
+                디버그 참가자 / API 키
+              </span>
+              <button
+                type="button"
+                onClick={addSimUser}
+                style={{
+                  padding: '2px 8px',
+                  borderRadius: 999,
+                  border: '1px solid #4b5563',
+                  background: '#020617',
+                  color: '#e5e7eb',
+                  fontSize: 10,
+                }}
+              >
+                + 추가
+              </button>
+            </div>
+            {Array.isArray(debugState.simUsers) && debugState.simUsers.length > 0 ? (
+              <ul style={{ margin: 0, paddingLeft: 0, listStyle: 'none', display: 'grid', gap: 4 }}>
+                {debugState.simUsers.map((u, idx) => (
+                  <li
+                    key={idx}
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'minmax(0, 1fr)',
+                      gap: 4,
+                    }}
+                  >
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <input
+                        type="text"
+                        placeholder={`참가자 #${idx + 1} 이름`}
+                        value={u?.name || ''}
+                        onChange={(e) =>
+                          updateSimUser(idx, { name: e.target.value })
+                        }
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          padding: '4px 6px',
+                          borderRadius: 6,
+                          border: '1px solid #4b5563',
+                          background: '#020617',
+                          color: '#e5e7eb',
+                          fontSize: 11,
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeSimUser(idx)}
+                        title="이 참가자 제거"
+                        style={{
+                          padding: '0 8px',
+                          borderRadius: 6,
+                          border: '1px solid #7f1d1d',
+                          background: 'rgba(127,29,29,0.4)',
+                          color: '#fecaca',
+                          fontSize: 11,
+                          flexShrink: 0,
+                        }}
+                      >
+                        삭제
+                      </button>
+                    </div>
+                    <input
+                      type="password"
+                      placeholder="API 키 (로컬 디버그 전용, 서버로 전송되지 않음)"
+                      value={u?.apiKey || ''}
+                      onChange={(e) =>
+                        updateSimUser(idx, { apiKey: e.target.value })
+                      }
+                      style={{
+                        width: '100%',
+                        padding: '4px 6px',
+                        borderRadius: 6,
+                        border: '1px solid #4b5563',
+                        background: '#020617',
+                        color: '#e5e7eb',
+                        fontSize: 11,
+                      }}
+                    />
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div style={{ fontSize: 11, color: '#9ca3af' }}>
+                참가자를 추가하면 이름과 API 키를 이 브라우저에만 임시 저장합니다.
+                (워크스페이스 파일이나 서버로는 전송되지 않습니다.)
+              </div>
+            )}
+          </div>
+          {debugLogCallsEnabled &&
+            Array.isArray(debugState.calls) &&
+            debugState.calls.length > 0 && (
+              <div
+                style={{
+                  marginTop: 6,
+                  maxWidth: 420,
+                  maxHeight: 160,
+                  overflow: 'auto',
+                  padding: 8,
+                  borderRadius: 10,
+                  border: '1px solid #1f2937',
+                  background: 'rgba(15,23,42,0.96)',
+                  color: '#e5e7eb',
+                  fontSize: 11,
+                  boxShadow: '0 16px 40px rgba(0,0,0,0.65)',
+                }}
+              >
+                <div style={{ fontWeight: 600, marginBottom: 4, color: '#a5b4fc' }}>
+                  AI 호출 로그
+                </div>
+                <ul style={{ margin: 0, paddingLeft: 16 }}>
+                  {debugState.calls
+                    .slice()
+                    .reverse()
+                    .map((call, idx) => (
+                      <li key={idx} style={{ marginBottom: 2 }}>
+                        <span style={{ color: '#e5e7eb' }}>
+                          {call.kind || 'call'} · {call.result || '-'}
+                        </span>
+                        {call.winner ? (
+                          <span style={{ marginLeft: 4, color: '#bbf7d0' }}>
+                            (winner: {call.winner})
+                          </span>
+                        ) : null}
+                      </li>
+                    ))}
+                </ul>
+              </div>
+            )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function useRuntimeAdapters({ storageNamespace, router, files, cfg, bus, setRuntimeFeatures, setRuntimeIssues, setNetAdapters }) {
+  React.useEffect(() => {
+    let disposed = false;
+    (async () => {
+      try {
+        const setId = storageNamespace || router?.query?.id || null;
+        if (!setId) return;
+        const { features, issues, adapters } = await setupRuntimeAdapters({ setId, files, cfg, bus });
+        if (disposed) {
+          try { adapters?.dispose?.(); } catch {}
+          return;
+        }
+        setRuntimeFeatures(features);
+        setRuntimeIssues(issues);
+        setNetAdapters(adapters);
+      } catch (e) {
+        if (isWorkspaceDebug()) {
+          try { console.warn('[PlayOverlay] adapter init failed', e); } catch {}
+        }
+      }
+    })();
+    return () => {
+      disposed = true;
+      setNetAdapters(null);
+      setRuntimeIssues([]);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageNamespace, JSON.stringify(files)]);
+}
+
+function useDebugSimUsers({ storageNamespace, debugState, setDebugState }) {
+  const LS_KEY = storageNamespace ? `playDebug.simUsers@${storageNamespace}` : 'playDebug.simUsers';
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = window.localStorage.getItem(LS_KEY);
+      if (!raw) return;
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) {
+        setDebugState((s) => ({ ...s, simUsers: arr }));
+      }
+    } catch {
+      // ignore load errors
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [LS_KEY]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const payload = Array.isArray(debugState.simUsers) ? debugState.simUsers : [];
+      window.localStorage.setItem(LS_KEY, JSON.stringify(payload));
+    } catch {
+      // ignore storage errors
+    }
+  }, [LS_KEY, debugState.simUsers]);
+}
 
 // Workspace context error boundary used to guard the editor subtree.
 class WorkspaceBoundary extends React.Component {
@@ -108,6 +513,7 @@ function PlayOverlayContent({ templateBinding }) {
   const [runnerErr, setRunnerErr] = React.useState(null);
   const [netAdapters, setNetAdapters] = React.useState(null);
   const [runtimeFeatures, setRuntimeFeatures] = React.useState([]);
+  const [runtimeIssues, setRuntimeIssues] = React.useState([]);
   const gridEngineRef = React.useRef(null);
   const runtimeRef = React.useRef(null);
   const runtimeHooksRef = React.useRef(null);
@@ -118,6 +524,7 @@ function PlayOverlayContent({ templateBinding }) {
     turnEvents: [],
     simUsers: [],
   });
+  useDebugSimUsers({ storageNamespace, debugState, setDebugState });
   const bus = React.useMemo(() => {
     const listeners = new Map();
     return {
@@ -158,81 +565,16 @@ function PlayOverlayContent({ templateBinding }) {
     const debugLogCallsEnabled = !!(debugConfig && debugConfig.logAiCalls);
 
     // Initialize optional adapters (networking, CRDT sync) based on capabilities + config.
-    React.useEffect(() => {
-      let disposed = false;
-      (async () => {
-        try {
-          const setId = storageNamespace || router?.query?.id || null;
-          if (!setId) return;
-          // Load selected capabilities for this set
-          const meta = await loadCapabilitiesMeta(String(setId)).catch(() => ({ capabilities: [] }));
-          const caps = Array.isArray(meta?.capabilities) ? meta.capabilities : [];
-          const { features, flags } = selectRuntimeFeatures({ capabilities: caps, files, config: cfg });
-          if (!disposed) {
-            setRuntimeFeatures(features);
-          }
-
-          const hasRealtime = flags.wantsRealtimeNetwork;
-          const hasYjs = flags.wantsSharedCrdt;
-          if (!hasRealtime && !hasYjs) return;
-
-          // Build networking config from /game/network.config.json when present
-          let networking = null;
-          try {
-            const netText = files?.['/game/network.config.json']?.content || '';
-            if (netText) {
-              const netCfg = JSON.parse(netText || '{}');
-              const rawEngine = String(netCfg.engine || netCfg.id || '').toLowerCase();
-              let id = null;
-              if (/socket/i.test(rawEngine)) id = 'socketio';
-              else if (/colyseus/i.test(rawEngine)) id = 'colyseus';
-              if (id && netCfg.url) {
-                networking = {
-                  id,
-                  url: netCfg.url,
-                  token: netCfg.token || null,
-                };
-              }
-            }
-          } catch {
-            // ignore malformed network.config
-          }
-
-          const sync = hasYjs ? { id: 'yjs' } : null;
-          if (!networking && !sync) return;
-
-          const cfgAdapters = {};
-          if (networking) cfgAdapters.networking = networking;
-          if (sync) cfgAdapters.sync = sync;
-
-          const { initAdapters } = await import('../../lib/runtime/adapterManager.js');
-          const adapters = await initAdapters(cfgAdapters, (evt) => {
-            try {
-              // bridge generic net events into runtime bus
-              bus.emit('net:event', evt);
-            } catch {
-              // ignore bus errors
-            }
-          });
-          if (disposed) {
-            try { adapters.dispose?.(); } catch {}
-            return;
-          }
-          setNetAdapters(adapters);
-        } catch (e) {
-          if (isWorkspaceDebug()) {
-            try {
-              console.warn('[PlayOverlay] adapter init failed', e);
-            } catch {}
-          }
-        }
-      })();
-      return () => {
-        disposed = true;
-        setNetAdapters(null);
-      };
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [storageNamespace, JSON.stringify(files)]);
+    useRuntimeAdapters({
+      storageNamespace,
+      router,
+      files,
+      cfg,
+      bus,
+      setRuntimeFeatures,
+      setRuntimeIssues,
+      setNetAdapters,
+    });
 
     // World grid engine: enable only when world.grid-basic feature is active.
     React.useEffect(() => {
@@ -621,289 +963,60 @@ function PlayOverlayContent({ templateBinding }) {
       </div>
     ) : null;
 
-    const enableDebugUi = !!(debugConfig || hasCoreTextFeature);
-    const debugPanel = enableDebugUi ? (
+    const issuesPanel = Array.isArray(runtimeIssues) && runtimeIssues.length > 0 ? (
       <div
         style={{
           position: 'absolute',
-          left: '50%',
-          top: 6,
-          transform: 'translateX(-50%)',
-          zIndex: 20,
-          pointerEvents: 'auto',
+          left: 12,
+          top: showBanner ? 52 : 12,
+          zIndex: 11,
+          padding: '8px 10px',
+          borderRadius: 10,
+          border: '1px solid rgba(248,113,113,0.4)',
+          background: 'rgba(120,40,40,0.85)',
+          color: '#fee2e2',
+          fontSize: 11,
+          maxWidth: 480,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
         }}
       >
-        <button
-          type="button"
-          onClick={() => setDebugCollapsed((v) => !v)}
-          title="플레이 디버그 패널 열기/닫기"
-          style={{
-            padding: '3px 10px',
-            borderRadius: 999,
-            border: '1px solid #334155',
-            background: 'rgba(15,23,42,0.9)',
-            color: '#e5e7eb',
-            fontSize: 11,
-          }}
-        >
-          {debugCollapsed ? '▼ 디버그' : '▲ 디버그'}
-        </button>
-        {!debugCollapsed && (
-          <>
-            {debugPromptEnabled && debugState.lastPrompt && (
-              <div
-                style={{
-                  marginTop: 6,
-                  maxWidth: 420,
-                  maxHeight: 160,
-                  overflow: 'auto',
-                  padding: 8,
-                  borderRadius: 10,
-                  border: '1px solid #1f2937',
-                  background: 'rgba(15,23,42,0.96)',
-                  color: '#e5e7eb',
-                  fontSize: 11,
-                  boxShadow: '0 16px 40px rgba(0,0,0,0.65)',
-                }}
-              >
-                <div style={{ fontWeight: 600, marginBottom: 4, color: '#93c5fd' }}>
-                  현재 턴 프롬프트
-                </div>
-                <pre
-                  style={{
-                    margin: 0,
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-word',
-                    fontFamily:
-                      'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-                  }}
-                >
-                  {debugState.lastPrompt}
-                </pre>
-              </div>
-            )}
-            {Array.isArray(debugState.turnEvents) && debugState.turnEvents.length > 0 && (
-              <div
-                style={{
-                  marginTop: 6,
-                  maxWidth: 420,
-                  maxHeight: 180,
-                  overflow: 'auto',
-                  padding: 8,
-                  borderRadius: 10,
-                  border: '1px solid #1f2937',
-                  background: 'rgba(15,23,42,0.96)',
-                  color: '#e5e7eb',
-                  fontSize: 11,
-                  boxShadow: '0 16px 40px rgba(0,0,0,0.65)',
-                }}
-              >
-                  <div style={{ fontWeight: 600, marginBottom: 4, color: '#a5b4fc' }}>
-                    턴 로그 (raw)
-                  </div>
-                <ul style={{ margin: 0, paddingLeft: 12 }}>
-                  {debugState.turnEvents
-                    .slice()
-                    .slice(-10)
-                    .reverse()
-                    .map((evt, idx) => (
-                      <li key={idx} style={{ marginBottom: 4 }}>
-                        <details>
-                          <summary>
-                            턴 {typeof evt.turn === 'number' ? evt.turn : '-'} ·{' '}
-                            {evt.nodeLabel || evt.nodeId || '(노드 정보 없음)'}
-                            {evt.visibility ? (
-                              <span style={{ marginLeft: 6, color: '#facc15' }}>
-                                ({evt.visibility})
-                              </span>
-                            ) : null}
-                            {evt.variables?.battleLast?.apiRouting ? (
-                              <span style={{ marginLeft: 6, color: '#bbf7d0' }}>
-                                apiRouting →
-                                {evt.variables.battleLast.apiRouting.participant?.name
-                                  ? ` ${evt.variables.battleLast.apiRouting.participant.name}`
-                                  : ''}
-                              </span>
-                            ) : null}
-                          </summary>
-                          <pre
-                            style={{
-                              marginTop: 2,
-                              whiteSpace: 'pre-wrap',
-                              wordBreak: 'break-word',
-                              fontFamily:
-                                'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-                            }}
-                          >
-                            {JSON.stringify(evt, null, 2)}
-                          </pre>
-                        </details>
-                      </li>
-                    ))}
-                </ul>
-              </div>
-            )}
-            <div
-              style={{
-                marginTop: 6,
-                maxWidth: 420,
-                padding: 8,
-                borderRadius: 10,
-                border: '1px solid #1f2937',
-                background: 'rgba(15,23,42,0.96)',
-                color: '#e5e7eb',
-                fontSize: 11,
-                boxShadow: '0 16px 40px rgba(0,0,0,0.65)',
-              }}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: 4,
-                }}
-              >
-                <span style={{ fontWeight: 600, color: '#facc15' }}>
-                  디버그 참가자 / API 키
-                </span>
-                <button
-                  type="button"
-                  onClick={addSimUser}
-                  style={{
-                    padding: '2px 8px',
-                    borderRadius: 999,
-                    border: '1px solid #4b5563',
-                    background: '#020617',
-                    color: '#e5e7eb',
-                    fontSize: 10,
-                  }}
-                >
-                  + 추가
-                </button>
-              </div>
-              {Array.isArray(debugState.simUsers) && debugState.simUsers.length > 0 ? (
-                <ul style={{ margin: 0, paddingLeft: 0, listStyle: 'none', display: 'grid', gap: 4 }}>
-                  {debugState.simUsers.map((u, idx) => (
-                    <li
-                      key={idx}
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'minmax(0, 1fr)',
-                        gap: 4,
-                      }}
-                    >
-                      <div style={{ display: 'flex', gap: 4 }}>
-                        <input
-                          type="text"
-                          placeholder={`참가자 #${idx + 1} 이름`}
-                          value={u?.name || ''}
-                          onChange={(e) =>
-                            updateSimUser(idx, { name: e.target.value })
-                          }
-                          style={{
-                            flex: 1,
-                            minWidth: 0,
-                            padding: '4px 6px',
-                            borderRadius: 6,
-                            border: '1px solid #4b5563',
-                            background: '#020617',
-                            color: '#e5e7eb',
-                            fontSize: 11,
-                          }}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removeSimUser(idx)}
-                          title="이 참가자 제거"
-                          style={{
-                            padding: '0 8px',
-                            borderRadius: 6,
-                            border: '1px solid #7f1d1d',
-                            background: 'rgba(127,29,29,0.4)',
-                            color: '#fecaca',
-                            fontSize: 11,
-                            flexShrink: 0,
-                          }}
-                        >
-                          삭제
-                        </button>
-                      </div>
-                      <input
-                        type="password"
-                        placeholder="API 키 (로컬 디버그 전용, 서버로 전송되지 않음)"
-                        value={u?.apiKey || ''}
-                        onChange={(e) =>
-                          updateSimUser(idx, { apiKey: e.target.value })
-                        }
-                        style={{
-                          width: '100%',
-                          padding: '4px 6px',
-                          borderRadius: 6,
-                          border: '1px solid #4b5563',
-                          background: '#020617',
-                          color: '#e5e7eb',
-                          fontSize: 11,
-                        }}
-                      />
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <div style={{ fontSize: 11, color: '#9ca3af' }}>
-                  참가자를 추가하면 이름과 API 키를 이 브라우저에만 임시 저장합니다.
-                  (워크스페이스 파일이나 서버로는 전송되지 않습니다.)
-                </div>
-              )}
-            </div>
-            {debugLogCallsEnabled &&
-              Array.isArray(debugState.calls) &&
-              debugState.calls.length > 0 && (
-                <div
-                  style={{
-                    marginTop: 6,
-                    maxWidth: 420,
-                    maxHeight: 160,
-                    overflow: 'auto',
-                    padding: 8,
-                    borderRadius: 10,
-                    border: '1px solid #1f2937',
-                    background: 'rgba(15,23,42,0.96)',
-                    color: '#e5e7eb',
-                    fontSize: 11,
-                    boxShadow: '0 16px 40px rgba(0,0,0,0.65)',
-                  }}
-                >
-                  <div style={{ fontWeight: 600, marginBottom: 4, color: '#a5b4fc' }}>
-                    AI 호출 로그
-                  </div>
-                  <ul style={{ margin: 0, paddingLeft: 16 }}>
-                    {debugState.calls
-                      .slice()
-                      .reverse()
-                      .map((call, idx) => (
-                        <li key={idx} style={{ marginBottom: 2 }}>
-                          <span style={{ color: '#e5e7eb' }}>
-                            {call.kind || 'call'} · {call.result || '-'}
-                          </span>
-                          {call.winner ? (
-                            <span style={{ marginLeft: 4, color: '#bbf7d0' }}>
-                              (winner: {call.winner})
-                            </span>
-                          ) : null}
-                        </li>
-                      ))}
-                  </ul>
-                </div>
-              )}
-          </>
-        )}
+        <div style={{ fontWeight: 700, marginBottom: 4 }}>기능이 꺼진 이유</div>
+        <ul style={{ margin: 0, paddingLeft: 14, display: 'grid', gap: 4 }}>
+          {runtimeIssues.map((issue, idx) => (
+            <li key={`${issue.id}-${idx}`} style={{ lineHeight: 1.5 }}>
+              <span style={{ color: '#fca5a5' }}>{issue.id}</span>{' '}
+              {issue.missingFiles?.length ? (
+                <span>파일 없음: {issue.missingFiles.join(', ')}</span>
+              ) : null}
+              {issue.missingFiles?.length && issue.missingCaps?.length ? ' / ' : null}
+              {issue.missingCaps?.length ? (
+                <span>capability 누락: {issue.missingCaps.join(', ')}</span>
+              ) : null}
+            </li>
+          ))}
+        </ul>
       </div>
     ) : null;
+
+    const enableDebugUi = !!(debugConfig || hasCoreTextFeature);
+    const debugPanel = (
+      <DebugPanel
+        enableDebugUi={enableDebugUi}
+        debugCollapsed={debugCollapsed}
+        setDebugCollapsed={setDebugCollapsed}
+        debugPromptEnabled={debugPromptEnabled}
+        debugState={debugState}
+        debugLogCallsEnabled={debugLogCallsEnabled}
+        addSimUser={addSimUser}
+        updateSimUser={updateSimUser}
+        removeSimUser={removeSimUser}
+      />
+    );
 
     return (
       <div style={{ position:'relative', height:'100%', width:'100%' }}>
         {banner}
+        {issuesPanel}
         {debugPanel}
         <ErrorBoundary onRetry={() => { try { window.dispatchEvent(new Event('play:retry')); } catch {} }}>
           <GameShell

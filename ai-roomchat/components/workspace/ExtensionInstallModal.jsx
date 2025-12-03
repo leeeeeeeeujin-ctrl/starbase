@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { validateCapabilities } from '../../lib/workspace/validateCapabilities.js';
+import { computeRuntimeFeatureIssues } from '../../lib/runtime/runtimeFeatures.js';
 import { loadCapabilitiesMeta, saveCapabilitiesMeta } from '../../lib/workspace/capabilitiesMeta.js';
 import { saveGithubMeta } from '../../lib/workspace/extensionsMeta.js';
 
@@ -53,6 +54,7 @@ export default function ExtensionInstallModal({
   const [capabilities, setCapabilities] = useState([]);
   const [selectedCaps, setSelectedCaps] = useState([]);
   const [capIssues, setCapIssues] = useState(null);
+  const [runtimeIssues, setRuntimeIssues] = useState([]);
 
   // Load capabilities contracts (static) once per modal lifetime
   useEffect(() => {
@@ -106,6 +108,7 @@ export default function ExtensionInstallModal({
         if (cancelled) return;
         if (!setRes || !capRes) {
           setCapIssues([]);
+          setRuntimeIssues([]);
           return;
         }
         const contracts = Array.isArray(capRes.capabilities)
@@ -116,9 +119,20 @@ export default function ExtensionInstallModal({
           contracts,
           selectedIds: selectedCaps,
         });
+        const issuesRuntime = computeRuntimeFeatureIssues({
+          capabilities: selectedCaps,
+          files: (setRes.files || []).reduce((acc, f) => {
+            if (f?.path) acc[f.path] = { content: f.content };
+            return acc;
+          }, {}),
+        });
         setCapIssues(issues || []);
+        setRuntimeIssues(issuesRuntime || []);
       } catch {
-        if (!cancelled) setCapIssues([]);
+        if (!cancelled) {
+          setCapIssues([]);
+          setRuntimeIssues([]);
+        }
       }
     })();
     return () => { cancelled = true; };
@@ -625,6 +639,22 @@ export default function ExtensionInstallModal({
                   </ul>
                 </div>
               )}
+            </div>
+          )}
+          {Array.isArray(runtimeIssues) && runtimeIssues.length > 0 && (
+            <div style={{ marginTop: 8, fontSize: 12, color: '#f97316' }}>
+              <div style={{ marginBottom: 4 }}>필수 파일/캡이 없어 비활성화된 런타임 기능:</div>
+              <ul style={{ margin: 0, paddingLeft: 16 }}>
+                {runtimeIssues.map((it, i) => (
+                  <li key={i}>
+                    <span style={{ color: '#fca5a5' }}>{it.id}</span>{' '}
+                    {it.missingFiles?.length ? `파일 없음: ${it.missingFiles.join(', ')}` : null}
+                    {it.missingFiles?.length && it.missingCaps?.length ? ' / ' : null}
+                    {it.missingCaps?.length ? `capability 누락: ${it.missingCaps.join(', ')}` : null}
+                  </li>
+                ))}
+              </ul>
+              <div style={{ marginTop: 4 }}>누락된 파일을 추가하거나 capability를 모두 켜면 런타임에서 기능이 활성화됩니다.</div>
             </div>
           )}
         </div>
