@@ -108,7 +108,14 @@ async function processUnifiedGamePrompt(context) {
   }
 
   try {
-    const overrideKey = routing && routing.apiKey ? routing.apiKey : null;
+    // 현재 라우팅은 OpenAI용 키만 안전하게 전달된다.
+    // 다른 프로바이더(Gemini/Claude 등)일 경우 overrideKey를 비워 기본 env 키(또는 fallback)로 처리한다.
+    const overrideKey =
+      routing && routing.provider && routing.provider !== 'openai'
+        ? null
+        : routing && routing.apiKey
+          ? routing.apiKey
+          : null;
     const aiResponse = await callAIJudge(prompt, overrideKey);
 
     // NOTE:
