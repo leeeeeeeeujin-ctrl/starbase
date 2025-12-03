@@ -272,6 +272,18 @@ async function callBattleJudge(prompt, ctx) {
     }
     const battleScore = vars.battleScore || null;
 
+    // 간단한 API 키 라우팅 힌트: 노드 config의 apiKeySlot/apiKeyToken을 그대로 전달한다.
+    // - 서버 측에서는 selectParticipantForPrompt({ gameState, prompt, routeHint }) 에서 이 값을 참고해
+    //   참가자/키를 선택할 수 있다.
+    const nodeConfig = (ctx.node && ctx.node.config) || {};
+    const routeHint = {};
+    if (typeof nodeConfig.apiKeySlot === 'number') {
+      routeHint.slotNo = nodeConfig.apiKeySlot;
+    }
+    if (typeof nodeConfig.apiKeyToken === 'string' && nodeConfig.apiKeyToken.trim()) {
+      routeHint.token = String(nodeConfig.apiKeyToken).trim();
+    }
+
     const body = {
       prompt,
       gameState: {
@@ -283,6 +295,7 @@ async function callBattleJudge(prompt, ctx) {
         heroId,
         rivalId,
         battleScore,
+        routeHint,
       },
       character: null,
     };

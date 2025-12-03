@@ -1,11 +1,13 @@
 // Core runtime: minimal in-memory runner for
 // core.graph + core.runtimeConfig + core.hooks.
 //
-// This is UI-agnostic and does not talk to DOM.
+// This is UI-agnostic and does not talk to DOM, but it does take care of
+// keeping a few standard data slots (특히 stats.turn) 정리해 둔다.
 
 import { buildIndex } from './promptRunner.js';
 import { callHookWithTimeout } from './safeEvalHookModule.js';
 import { buildInitialGridState } from './adapters/worldGridEngine.js';
+import { updateStandardSlots } from './standardSlots.js';
 
 export function createCoreRuntime({ graph, config, hooks, files, initialVariables }) {
   const { nodesById, outEdges } = buildIndex(graph || {});
@@ -74,7 +76,7 @@ export function createCoreRuntime({ graph, config, hooks, files, initialVariable
   }
 
   function buildContext(reason, input) {
-    return {
+    const ctx = {
       turn,
       activeRole: cfg.roles && cfg.roles[0],
       variables,
@@ -84,6 +86,19 @@ export function createCoreRuntime({ graph, config, hooks, files, initialVariable
       reason,
       input,
     };
+
+    // 표준 데이터 슬롯(stats / scene / effects / speaker) 중에서
+    // 최소한 stats.turn 은 런타임에서 일관되게 채워 둔다.
+    // (hooks나 호스트 코드가 updateStandardSlots를 여러 번 호출해도 안전하다.)
+    try {
+      updateStandardSlots(ctx, {
+        stats: { turn },
+      });
+    } catch {
+      // 표준 슬롯 업데이트 실패는 게임 진행을 막지 않는다.
+    }
+
+    return ctx;
   }
 
   function neighborsOf(id) {

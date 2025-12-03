@@ -222,6 +222,75 @@ export default function MakerEditorPanel({
 
                 <div style={{ display: 'grid', gap: 6 }}>
                   <label style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
+                    API 키 라우팅 힌트
+                  </label>
+                  <div style={{ display: 'grid', gap: 6, gridTemplateColumns: '1fr 1fr' }}>
+                    <div style={{ display: 'grid', gap: 4 }}>
+                      <span style={{ fontSize: 11, color: '#6b7280' }}>apiKeySlot (번호)</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={
+                          Number.isFinite(nodeData?.config?.apiKeySlot)
+                            ? nodeData.config.apiKeySlot
+                            : ''
+                        }
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          const num = val === '' ? null : Number(val);
+                          const safe =
+                            num === null || Number.isFinite(num) ? num : nodeData?.config?.apiKeySlot || null;
+                          nodeData.onChange?.({
+                            config: {
+                              ...(nodeData.config || {}),
+                              apiKeySlot: safe,
+                            },
+                          });
+                        }}
+                        placeholder="예: 1"
+                        style={{
+                          borderRadius: 10,
+                          border: '1px solid #cbd5f5',
+                          padding: '6px 10px',
+                          fontSize: 13,
+                          background: '#fff',
+                        }}
+                      />
+                    </div>
+                    <div style={{ display: 'grid', gap: 4 }}>
+                      <span style={{ fontSize: 11, color: '#6b7280' }}>apiKeyToken (토큰)</span>
+                      <input
+                        type="text"
+                        value={nodeData?.config?.apiKeyToken || ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          nodeData.onChange?.({
+                            config: {
+                              ...(nodeData.config || {}),
+                              apiKeyToken: val,
+                            },
+                          });
+                        }}
+                        placeholder="예: hero"
+                        style={{
+                          borderRadius: 10,
+                          border: '1px solid #cbd5f5',
+                          padding: '6px 10px',
+                          fontSize: 13,
+                          background: '#fff',
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 11, color: '#6b7280', lineHeight: 1.4 }}>
+                    • `apiKeySlot`: 이 노드에서 AI 호출 시 슬롯 번호 힌트(예: 공격/수비 슬롯 번호)로 사용됩니다.<br />
+                    • `apiKeyToken`: 프롬프트 안 `@토큰`과 매칭해 참가자를 고를 때 우선순위를 주는 문자열 힌트입니다.
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gap: 6 }}>
+                  <label style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
                     프롬프트 내용
                   </label>
                   <div style={{ height: 180, border: '1px solid #1f2937', borderRadius: 10, overflow: 'hidden', background:'#020617' }}>

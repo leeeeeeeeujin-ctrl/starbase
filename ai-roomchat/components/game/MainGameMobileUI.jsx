@@ -18,6 +18,30 @@ const btnPrimary = { padding:'8px 14px', border:'1px solid #2563eb', background:
 const input = { flex:1, minWidth:0, padding:'8px 10px', background:'#0f172a', color:'#e2e8f0', border:'1px solid #334155', borderRadius:8, outline:'none' };
 const ctl = { padding:'4px 8px', border:'1px solid #334155', background:'#0f172a', color:'#cbd5e1', borderRadius:6 };
 
+function isLogEntryVisible(entry){
+  if (!entry || typeof entry !== 'object') return true;
+
+  if (typeof entry.isVisible === 'boolean') {
+    return entry.isVisible;
+  }
+
+  const raw = typeof entry.visibility === 'string' ? entry.visibility.trim().toLowerCase() : '';
+  if (raw) {
+    if (['hidden', 'private', 'invisible', 'internal'].includes(raw)) {
+      return false;
+    }
+    if (['public', 'party', 'visible', 'shared'].includes(raw)) {
+      return true;
+    }
+  }
+
+  if (typeof entry.public === 'boolean') {
+    return entry.public;
+  }
+
+  return true;
+}
+
 export default function MainGameMobileUI({
   template,
   user = null,
@@ -601,6 +625,47 @@ function buildWidgetsFromShell(configs, ctx){
       });
       return;
     }
+    if (kind === 'aiHistory') {
+      list.push({
+        title: cfg.title || 'AI 히스토리',
+        body: (
+          <div style={style}>
+            <ShellAiHistory
+              events={Array.isArray(ctx.turnLogEvents) ? ctx.turnLogEvents : []}
+              rankContext={ctx.rankContext || null}
+            />
+          </div>
+        ),
+      });
+      return;
+    }
+    if (kind === 'playerHistory') {
+      list.push({
+        title: cfg.title || '플레이어 히스토리',
+        body: (
+          <div style={style}>
+            <ShellPlayerHistory
+              events={Array.isArray(ctx.turnLogEvents) ? ctx.turnLogEvents : []}
+              rankContext={ctx.rankContext || null}
+            />
+          </div>
+        ),
+      });
+      return;
+    }
+    if (kind === 'turnTimeline') {
+      list.push({
+        title: cfg.title || '턴 타임라인',
+        body: (
+          <div style={style}>
+            <ShellTurnTimeline
+              events={Array.isArray(ctx.turnLogEvents) ? ctx.turnLogEvents : []}
+            />
+          </div>
+        ),
+      });
+      return;
+    }
     if (kind === 'image') {
       const src = typeof cfg.source === 'string' ? cfg.source : '';
       let url = null;
@@ -625,7 +690,7 @@ function buildWidgetsFromShell(configs, ctx){
       });
       return;
     }
-    if (kind === 'heroCard') {
+    if (kind === 'heroCard' || kind === 'participantCard') {
       let player = null;
       const src = typeof cfg.source === 'string' ? cfg.source : 'rank.viewer';
       if (src === 'rank.viewer' && ctx.rankContext && ctx.rankContext.viewer) {
@@ -640,6 +705,17 @@ function buildWidgetsFromShell(configs, ctx){
                 null;
               return oid && String(oid).trim() === String(ownerId).trim();
             }) || null;
+        }
+      } else if (src.startsWith('rank.') && ctx.rankContext) {
+        // rank.* 경로는 rankContext 루트에서 직접 resolve한다.
+        const bound = resolveBindingFromRoot(ctx.rankContext, src.slice('rank.'.length));
+        if (bound && typeof bound === 'object') {
+          player = bound;
+        }
+      } else if (src.startsWith('variables.') && lastTurn && lastTurn.variables) {
+        const bound = resolveBindingFromRoot(lastTurn.variables, src.slice('variables.'.length));
+        if (bound && typeof bound === 'object') {
+          player = bound;
         }
       } else {
         const m = src.match(/^rank\.players\[(\d+)\]$/);
@@ -839,8 +915,58 @@ function ShellChatLog({ events }){
   );
 }
 
+function ShellTurnTimeline({ events }){
+  const items = Array.isArray(events) ? events.filter(isLogEntryVisible) : [];
+  if (!items.length) {
+    return <div style={{ fontSize:12, color:'#94a3b8' }}>아직 진행된 턴이 없습니다.</div>;
+  }
+  const lastItems = items.slice(-12);
+  return (
+    <div style={{ display:'grid', gap:6, fontSize:12, color:'#e5e7eb' }}>
+      {lastItems.map((evt, idx) => {
+        const baseIndex = items.length - lastItems.length;
+        const rawTurn = evt && typeof evt.turn !== 'undefined' ? Number(evt.turn) : NaN;
+        const turn = Number.isFinite(rawTurn) && rawTurn > 0 ? rawTurn : baseIndex + idx + 1;
+        const label = evt?.nodeLabel || evt?.nodeId || `턴 ${turn}`;
+        const preview =
+          typeof evt?.prompt === 'string' && evt.prompt.trim()
+            ? evt.prompt.trim().slice(0, 80)
+            : '';
+        return (
+          <div
+            key={evt?.id || `${turn}-${idx}`}
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'auto 1fr',
+              gap: 8,
+              alignItems: 'flex-start',
+            }}
+          >
+            <div
+              style={{
+                width: 18,
+                textAlign: 'right',
+                fontVariantNumeric: 'tabular-nums',
+                color: '#9ca3af',
+              }}
+            >
+              {turn}
+            </div>
+            <div style={{ display: 'grid', gap: 2 }}>
+              <div style={{ color: '#e5e7eb', fontWeight: 600 }}>{label}</div>
+              {preview ? (
+                <div style={{ color: '#cbd5e1', opacity: 0.85 }}>{preview}</div>
+              ) : null}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function ShellChatLogRich({ events, rankContext }){
-  const items = Array.isArray(events) ? events : [];
+  const items = Array.isArray(events) ? events.filter(isLogEntryVisible) : [];
   if (!items.length) {
     return <div style={{ fontSize:12, color:'#94a3b8' }}>아직 진행된 턴이 없습니다.</div>;
   }
@@ -968,6 +1094,171 @@ function ShellChatLogRich({ events, rankContext }){
                 </div>
                 <div style={{ color:'#e5e7eb', fontSize:12 }}>{firstLine}</div>
               </div>
+            </div>
+          );
+        })}
+    </div>
+  );
+}
+
+function ShellAiHistory({ events, rankContext }){
+  const all = Array.isArray(events) ? events.filter(isLogEntryVisible) : [];
+  const items = all.filter(evt => {
+    const speaker = evt?.variables?.speaker || evt?.variables?.currentSpeaker || {};
+    const role = (speaker.role || '').toLowerCase();
+    if (role === 'ai' || role === 'assistant' || role === 'judge') return true;
+    // fallback: reason 으로 추측
+    const reason = (evt.reason || '').toLowerCase();
+    return reason.includes('ai') || reason.includes('judge');
+  });
+
+  if (!items.length) {
+    return <div style={{ fontSize:12, color:'#94a3b8' }}>AI 결과가 아직 없습니다.</div>;
+  }
+
+  const players = Array.isArray(rankContext?.players) ? rankContext.players : [];
+
+  const pickSpeaker = (evt) => {
+    const v = evt?.variables || {};
+    const speaker = v.speaker || v.currentSpeaker || {};
+    const ownerId =
+      speaker.ownerId || speaker.owner_id || evt.speakerOwnerId || null;
+    const heroId =
+      speaker.heroId || speaker.hero_id || evt.speakerHeroId || null;
+    const role = speaker.role || evt.speakerRole || null;
+
+    let player = null;
+    if (players.length && (ownerId || heroId)) {
+      player =
+        players.find((p) => {
+          if (ownerId && p.ownerId && String(p.ownerId) === String(ownerId)) return true;
+          if (heroId && p.heroId && String(p.heroId) === String(heroId)) return true;
+          return false;
+        }) || null;
+    }
+
+    const heroName = player?.heroName || null;
+    const resolvedRole = role || player?.role || null;
+
+    return {
+      heroName,
+      role: resolvedRole,
+    };
+  };
+
+  return (
+    <div style={{ display:'grid', gap:6, maxHeight:160, overflowY:'auto' }}>
+      {items
+        .slice()
+        .reverse()
+        .map((evt, idx) => {
+          const turn = typeof evt.turn === 'number' && Number.isFinite(evt.turn) ? evt.turn : null;
+          const speaker = pickSpeaker(evt);
+          const promptText =
+            typeof evt.prompt === 'string' && evt.prompt.length
+              ? evt.prompt
+              : String(evt.nodeLabel || evt.nodeId || '');
+          const firstLine = promptText.split('\n')[0] || promptText;
+          const summary = (evt.summary && evt.summary.text) || evt.summary || null;
+
+          return (
+            <div
+              key={idx}
+              style={{
+                display: 'grid',
+                gap: 4,
+                padding: '6px 8px',
+                borderRadius: 8,
+                border: '1px solid rgba(148,163,184,0.5)',
+                background: 'rgba(15,23,42,0.9)',
+                fontSize: 12,
+                color: '#e5e7eb',
+              }}
+            >
+              <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                {turn != null ? (
+                  <span style={{ fontSize:11, color:'#9ca3af' }}>턴 {turn}</span>
+                ) : null}
+                {speaker.heroName ? (
+                  <span style={{ fontSize:11, color:'#9ca3af' }}>{speaker.heroName}</span>
+                ) : null}
+                {speaker.role ? (
+                  <span style={{ fontSize:11, color:'#9ca3af' }}>({speaker.role})</span>
+                ) : null}
+              </div>
+              <div style={{ fontWeight:600 }}>{firstLine}</div>
+              {summary ? (
+                <div style={{ fontSize:11, color:'#cbd5e1', opacity:0.9 }}>{summary}</div>
+              ) : null}
+            </div>
+          );
+        })}
+    </div>
+  );
+}
+
+function ShellPlayerHistory({ events, rankContext }){
+  const all = Array.isArray(events) ? events.filter(isLogEntryVisible) : [];
+  const items = all.filter(evt => {
+    const reason = (evt.reason || '').toLowerCase();
+    return reason.includes('user') || reason.includes('player') || reason.includes('chat');
+  });
+
+  if (!items.length) {
+    return <div style={{ fontSize:12, color:'#94a3b8' }}>플레이어 기록이 아직 없습니다.</div>;
+  }
+
+  const players = Array.isArray(rankContext?.players) ? rankContext.players : [];
+
+  const resolvePlayerName = (evt) => {
+    const ownerId = evt.ownerId || evt.owner_id || evt.playerOwnerId || null;
+    const heroId = evt.heroId || evt.hero_id || evt.playerHeroId || null;
+    if (!players.length || (!ownerId && !heroId)) return null;
+    const p =
+      players.find((pl) => {
+        if (ownerId && pl.ownerId && String(pl.ownerId) === String(ownerId)) return true;
+        if (heroId && pl.heroId && String(pl.heroId) === String(heroId)) return true;
+        return false;
+      }) || null;
+    return p?.heroName || null;
+  };
+
+  return (
+    <div style={{ display:'grid', gap:6, maxHeight:160, overflowY:'auto' }}>
+      {items
+        .slice()
+        .reverse()
+        .map((evt, idx) => {
+          const turn = typeof evt.turn === 'number' && Number.isFinite(evt.turn) ? evt.turn : null;
+          const who = resolvePlayerName(evt);
+          const text =
+            typeof evt.prompt === 'string' && evt.prompt.length
+              ? evt.prompt
+              : typeof evt.input === 'string'
+              ? evt.input
+              : '';
+          const firstLine = text.split('\n')[0] || text;
+
+          return (
+            <div
+              key={idx}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 2,
+                padding: '6px 8px',
+                borderRadius: 8,
+                border: '1px solid rgba(148,163,184,0.4)',
+                background: 'rgba(15,23,42,0.9)',
+                fontSize: 12,
+                color: '#e5e7eb',
+              }}
+            >
+              <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:11, color:'#9ca3af' }}>
+                {turn != null ? <span>턴 {turn}</span> : null}
+                {who ? <span>{who}</span> : null}
+              </div>
+              <div>{firstLine}</div>
             </div>
           );
         })}

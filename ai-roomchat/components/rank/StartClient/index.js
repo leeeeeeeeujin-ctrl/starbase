@@ -395,6 +395,23 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
           (typeof entry.visiblePrompt === 'string' && entry.visiblePrompt) ||
           (typeof entry.displayPrompt === 'string' && entry.displayPrompt) ||
           '';
+
+        // 랭크 엔진 로그에 담긴 가시성 정보를 runtime:turn-log 이벤트로 그대로 전달한다.
+        let visibility = null;
+        let isVisible = undefined;
+        try {
+          if (typeof entry.visibility === 'string') {
+            visibility = entry.visibility;
+          }
+          if (typeof entry.isVisible === 'boolean') {
+            isVisible = entry.isVisible;
+          } else if (typeof entry.public === 'boolean') {
+            isVisible = entry.public;
+          }
+        } catch {
+          // visibility 계산 실패는 로그 전파를 막지 않는다.
+        }
+
         const event = {
           turn,
           nodeId,
@@ -404,6 +421,8 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
           prompt,
           ui: entry.ui ?? null,
           variables: entry.variables ?? null,
+          visibility,
+          isVisible,
         };
         runtimeBus.emit('runtime:turn-log', event);
       } catch (e) {

@@ -8,6 +8,7 @@ const PADDING_MAP = {
   sm: 4,
   md: 8,
   lg: 12,
+  xl: 16,
 };
 
 const GAP_MAP = {
@@ -15,6 +16,7 @@ const GAP_MAP = {
   xs: 2,
   sm: 4,
   md: 8,
+  lg: 12,
 };
 
 const RADIUS_MAP = {
@@ -23,6 +25,14 @@ const RADIUS_MAP = {
   md: 8,
   lg: 12,
   full: 9999,
+};
+
+const SHADOW_MAP = {
+  none: 'none',
+  xs: '0 1px 2px rgba(15,23,42,0.45)',
+  sm: '0 2px 6px rgba(15,23,42,0.55)',
+  md: '0 6px 16px rgba(15,23,42,0.6)',
+  lg: '0 14px 30px rgba(15,23,42,0.7)',
 };
 
 /**
@@ -54,6 +64,11 @@ export function applyShellStyleProps(styleProps) {
     style.borderRadius = `${v}px`;
   }
 
+  if (props.shadow && props.shadow in SHADOW_MAP) {
+    const v = SHADOW_MAP[props.shadow];
+    style.boxShadow = v;
+  }
+
   if (props.align) {
     const ALIGN_MAP = {
       start: 'flex-start',
@@ -70,34 +85,34 @@ export function applyShellStyleProps(styleProps) {
   // tone: 위젯 카드의 배경/테두리 느낌만 살짝 바꾼다.
   if (props.tone) {
     const tone = String(props.tone);
+    let accent = null;
+    if (typeof props.accentColor === 'string' && props.accentColor.trim()) {
+      accent = props.accentColor.trim();
+    }
     if (tone === 'primary') {
       if (!style.background) {
         style.background = 'rgba(37,99,235,0.22)';
       }
-      if (!style.border) {
-        style.border = '1px solid rgba(96,165,250,0.7)';
-      }
+      const borderColor = accent || 'rgba(96,165,250,0.7)';
+      if (!style.border) style.border = `1px solid ${borderColor}`;
     } else if (tone === 'secondary') {
       if (!style.background) {
         style.background = 'rgba(15,23,42,0.9)';
       }
-      if (!style.border) {
-        style.border = '1px solid rgba(148,163,184,0.45)';
-      }
+      const borderColor = accent || 'rgba(148,163,184,0.45)';
+      if (!style.border) style.border = `1px solid ${borderColor}`;
     } else if (tone === 'muted') {
       if (!style.background) {
         style.background = 'rgba(15,23,42,0.85)';
       }
-      if (!style.border) {
-        style.border = '1px dashed rgba(148,163,184,0.4)';
-      }
+      const borderColor = accent || 'rgba(148,163,184,0.4)';
+      if (!style.border) style.border = `1px dashed ${borderColor}`;
     } else if (tone === 'danger') {
       if (!style.background) {
         style.background = 'rgba(220,38,38,0.18)';
       }
-      if (!style.border) {
-        style.border = '1px solid rgba(248,113,113,0.85)';
-      }
+      const borderColor = accent || 'rgba(248,113,113,0.85)';
+      if (!style.border) style.border = `1px solid ${borderColor}`;
     }
   }
 
@@ -113,6 +128,16 @@ export function applyShellStyleProps(styleProps) {
       }
     } else if (d === 'relaxed') {
       if (!style.fontSize) style.fontSize = '14px';
+    }
+  }
+
+  // emphasis: 텍스트 강조 정도를 조절한다.
+  if (props.emphasis) {
+    const e = String(props.emphasis);
+    if (e === 'strong') {
+      style.fontWeight = style.fontWeight || 600;
+    } else if (e === 'muted') {
+      style.opacity = typeof style.opacity === 'number' ? style.opacity * 0.8 : 0.75;
     }
   }
 

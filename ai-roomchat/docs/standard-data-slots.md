@@ -127,6 +127,20 @@ updateStandardSlots(ctx, {
 > 훅 내부에서는 동일한 규칙을 **가볍게 복제**해서 사용하는 형태를 유지하고,
 > 서버 API나 Rank 연동 코드에서 위 헬퍼를 활용하는 패턴을 권장한다.
 
+### 2.3 coreRuntime 와의 연동 (`stats.turn`)
+
+- `coreRuntime.step()` 과 `coreRuntime.getContextSnapshot()` 은
+  내부에서 `updateStandardSlots(ctx, { stats: { turn: ctx.turn } })` 를 호출한다.
+  - 즉, 런타임이 턴을 하나 진행할 때마다 `variables.stats.turn` 이 항상
+    최신 턴 번호로 갱신된다.
+- 호스트 코드(플래이 오버레이, StartClient 등)는 이 값을 그대로
+  - 턴 로그(summary / rank_turns),
+  - 타임라인 이벤트,
+  - UI Shell 위젯(statMeter 등)
+  에서 재사용할 수 있다.
+- 그 외의 필드(`heroScore`, `scene.summary`, `effects.active`, `speaker.*`) 는
+  여전히 훅/호스트 코드가 `updateStandardSlots` 를 통해 필요에 따라 채워야 한다.
+
 ## 3. 장르 예시 – 텍스트 배틀
 
 `docs/examples/text-battle-basic/game.hooks.automation.js` 에서는 AI 판정 결과를
@@ -148,4 +162,3 @@ updateStandardSlots(ctx, {
 
 UI Shell 위젯(chatLog, heroCard, statMeter 등)은 이 슬롯들을 읽어서  
 장르에 관계없이 일관된 UI를 렌더링할 수 있다.
-

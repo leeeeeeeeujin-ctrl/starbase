@@ -112,7 +112,12 @@ function PlayOverlayContent({ templateBinding }) {
   const runtimeRef = React.useRef(null);
   const runtimeHooksRef = React.useRef(null);
   const [debugCollapsed, setDebugCollapsed] = React.useState(true);
-  const [debugState, setDebugState] = React.useState({ lastPrompt: null, calls: [] });
+  const [debugState, setDebugState] = React.useState({
+    lastPrompt: null,
+    calls: [],
+    turnEvents: [],
+    simUsers: [],
+  });
   const bus = React.useMemo(() => {
     const listeners = new Map();
     return {
@@ -343,12 +348,19 @@ function PlayOverlayContent({ templateBinding }) {
           dropInEnabled: false,
           players: [],
         };
+        const debugVars =
+          Array.isArray(debugState?.simUsers) && debugState.simUsers.length
+            ? { participants: debugState.simUsers }
+            : undefined;
+
         runtime = createCoreRuntime({
           graph,
           config: cfg,
           hooks,
           files,
-          initialVariables: { rank: rankDefaults },
+          initialVariables: debugVars
+            ? { rank: rankDefaults, debug: debugVars }
+            : { rank: rankDefaults },
         });
         runtimeRef.current = runtime;
         runtimeHooksRef.current = hooks;
@@ -382,36 +394,55 @@ function PlayOverlayContent({ templateBinding }) {
         return;
       }
 
-      const publishResult = (result, meta) => {
-        if (stopped) return;
-        try {
-          const node = result && result.current ? result.current : null;
-          if (!node) {
-            bus.emit('system:message', '게임이 종료되었습니다.');
-            return;
-          }
-          const fromPrompt = result && typeof result.prompt === 'string' && result.prompt.length
-            ? result.prompt
-            : null;
-          const txt = fromPrompt != null ? fromPrompt : String(node.label || node.id || '');
-          bus.emit('system:message', txt);
-          // 표준화된 턴 로그 이벤트(runtime:turn-log)를 발행해
-          // 플래이/메인게임에서 공통 LogsPanel 이 동일한 데이터를 볼 수 있도록 한다.
-          try {
-            const event = {
-              turn: typeof result.turn === 'number' ? result.turn : null,
-              nodeId: node.id || null,
-              nodeLabel: node.label || null,
-              reason: meta?.reason || null,
-              input: meta?.input ?? null,
-              prompt: txt,
-              ui: result.ui || null,
-              variables: result.variables || null,
-            };
-            bus.emit('runtime:turn-log', event);
-          } catch {
-            // ignore log emit errors
-          }
+          const publishResult = (result, meta) => {
+            if (stopped) return;
+            try {
+              const node = result && result.current ? result.current : null;
+              if (!node) {
+                bus.emit('system:message', '게임이 종료되었습니다.');
+                return;
+              }
+              const fromPrompt = result && typeof result.prompt === 'string' && result.prompt.length
+                ? result.prompt
+                : null;
+              const txt = fromPrompt != null ? fromPrompt : String(node.label || node.id || '');
+              bus.emit('system:message', txt);
+              // 표준화된 턴 로그 이벤트(runtime:turn-log)를 발행해
+              // 플래이/메인게임에서 공통 LogsPanel 이 동일한 데이터를 볼 수 있도록 한다.
+              try {
+                // 프롬프트-노드 에디터에서 설정한 가시성(invisible/visibility)을 이벤트에 투영한다.
+                let visibility = null;
+                let isVisible = true;
+                try {
+                  const data = node && node.data ? node.data : null;
+                  if (data) {
+                    if (data.invisible) {
+                      visibility = 'invisible';
+                      isVisible = false;
+                    } else if (typeof data.visibility === 'string') {
+                      visibility = data.visibility;
+                    }
+                  }
+                } catch {
+                  // visibility 계산 실패는 로그 출력 자체를 막지 않는다.
+                }
+
+                const event = {
+                  turn: typeof result.turn === 'number' ? result.turn : null,
+                  nodeId: node.id || null,
+                  nodeLabel: node.label || null,
+                  reason: meta?.reason || null,
+                  input: meta?.input ?? null,
+                  prompt: txt,
+                  ui: result.ui || null,
+                  variables: result.variables || null,
+                  visibility,
+                  isVisible,
+                };
+                bus.emit('runtime:turn-log', event);
+              } catch {
+                // ignore log emit errors
+              }
           if (debugPromptEnabled) {
             try {
               setDebugState((prev) => ({ ...prev, lastPrompt: txt }));
@@ -490,6 +521,20 @@ function PlayOverlayContent({ templateBinding }) {
         }
       });
 
+      // 디버그용: runtime:turn-log 이벤트를 그대로 모아서 turnEvents 에 쌓는다.
+      const offTurnLog = bus.on('runtime:turn-log', (evt) => {
+        try {
+          setDebugState((prev) => {
+            const prevList = Array.isArray(prev.turnEvents) ? prev.turnEvents : [];
+            const next = prevList.length >= 50 ? prevList.slice(prevList.length - 49) : prevList.slice();
+            next.push(evt);
+            return { ...prev, turnEvents: next };
+          });
+        } catch {
+          // ignore debug aggregation errors
+        }
+      });
+
       return () => {
         stopped = true;
         try {
@@ -509,9 +554,10 @@ function PlayOverlayContent({ templateBinding }) {
         try {
           offTurn && offTurn();
           offChat && offChat();
+          offTurnLog && offTurnLog();
         } catch {}
       };
-    }, [engine, cfgText, JSON.stringify(files), bus, debugPromptEnabled]);
+    }, [engine, cfgText, JSON.stringify(files), bus, debugPromptEnabled, JSON.stringify(debugState.simUsers)]);
 
     // Best-effort invoke Runtime/runner.js when engine === builtin (behind flag)
     React.useEffect(() => {
@@ -636,6 +682,180 @@ function PlayOverlayContent({ templateBinding }) {
                 </pre>
               </div>
             )}
+            {Array.isArray(debugState.turnEvents) && debugState.turnEvents.length > 0 && (
+              <div
+                style={{
+                  marginTop: 6,
+                  maxWidth: 420,
+                  maxHeight: 180,
+                  overflow: 'auto',
+                  padding: 8,
+                  borderRadius: 10,
+                  border: '1px solid #1f2937',
+                  background: 'rgba(15,23,42,0.96)',
+                  color: '#e5e7eb',
+                  fontSize: 11,
+                  boxShadow: '0 16px 40px rgba(0,0,0,0.65)',
+                }}
+              >
+                  <div style={{ fontWeight: 600, marginBottom: 4, color: '#a5b4fc' }}>
+                    턴 로그 (raw)
+                  </div>
+                <ul style={{ margin: 0, paddingLeft: 12 }}>
+                  {debugState.turnEvents
+                    .slice()
+                    .slice(-10)
+                    .reverse()
+                    .map((evt, idx) => (
+                      <li key={idx} style={{ marginBottom: 4 }}>
+                        <details>
+                          <summary>
+                            턴 {typeof evt.turn === 'number' ? evt.turn : '-'} ·{' '}
+                            {evt.nodeLabel || evt.nodeId || '(노드 정보 없음)'}
+                            {evt.visibility ? (
+                              <span style={{ marginLeft: 6, color: '#facc15' }}>
+                                ({evt.visibility})
+                              </span>
+                            ) : null}
+                            {evt.variables?.battleLast?.apiRouting ? (
+                              <span style={{ marginLeft: 6, color: '#bbf7d0' }}>
+                                apiRouting →
+                                {evt.variables.battleLast.apiRouting.participant?.name
+                                  ? ` ${evt.variables.battleLast.apiRouting.participant.name}`
+                                  : ''}
+                              </span>
+                            ) : null}
+                          </summary>
+                          <pre
+                            style={{
+                              marginTop: 2,
+                              whiteSpace: 'pre-wrap',
+                              wordBreak: 'break-word',
+                              fontFamily:
+                                'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+                            }}
+                          >
+                            {JSON.stringify(evt, null, 2)}
+                          </pre>
+                        </details>
+                      </li>
+                    ))}
+                </ul>
+              </div>
+            )}
+            <div
+              style={{
+                marginTop: 6,
+                maxWidth: 420,
+                padding: 8,
+                borderRadius: 10,
+                border: '1px solid #1f2937',
+                background: 'rgba(15,23,42,0.96)',
+                color: '#e5e7eb',
+                fontSize: 11,
+                boxShadow: '0 16px 40px rgba(0,0,0,0.65)',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: 4,
+                }}
+              >
+                <span style={{ fontWeight: 600, color: '#facc15' }}>
+                  디버그 참가자 / API 키
+                </span>
+                <button
+                  type="button"
+                  onClick={addSimUser}
+                  style={{
+                    padding: '2px 8px',
+                    borderRadius: 999,
+                    border: '1px solid #4b5563',
+                    background: '#020617',
+                    color: '#e5e7eb',
+                    fontSize: 10,
+                  }}
+                >
+                  + 추가
+                </button>
+              </div>
+              {Array.isArray(debugState.simUsers) && debugState.simUsers.length > 0 ? (
+                <ul style={{ margin: 0, paddingLeft: 0, listStyle: 'none', display: 'grid', gap: 4 }}>
+                  {debugState.simUsers.map((u, idx) => (
+                    <li
+                      key={idx}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'minmax(0, 1fr)',
+                        gap: 4,
+                      }}
+                    >
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <input
+                          type="text"
+                          placeholder={`참가자 #${idx + 1} 이름`}
+                          value={u?.name || ''}
+                          onChange={(e) =>
+                            updateSimUser(idx, { name: e.target.value })
+                          }
+                          style={{
+                            flex: 1,
+                            minWidth: 0,
+                            padding: '4px 6px',
+                            borderRadius: 6,
+                            border: '1px solid #4b5563',
+                            background: '#020617',
+                            color: '#e5e7eb',
+                            fontSize: 11,
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeSimUser(idx)}
+                          title="이 참가자 제거"
+                          style={{
+                            padding: '0 8px',
+                            borderRadius: 6,
+                            border: '1px solid #7f1d1d',
+                            background: 'rgba(127,29,29,0.4)',
+                            color: '#fecaca',
+                            fontSize: 11,
+                            flexShrink: 0,
+                          }}
+                        >
+                          삭제
+                        </button>
+                      </div>
+                      <input
+                        type="password"
+                        placeholder="API 키 (로컬 디버그 전용, 서버로 전송되지 않음)"
+                        value={u?.apiKey || ''}
+                        onChange={(e) =>
+                          updateSimUser(idx, { apiKey: e.target.value })
+                        }
+                        style={{
+                          width: '100%',
+                          padding: '4px 6px',
+                          borderRadius: 6,
+                          border: '1px solid #4b5563',
+                          background: '#020617',
+                          color: '#e5e7eb',
+                          fontSize: 11,
+                        }}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div style={{ fontSize: 11, color: '#9ca3af' }}>
+                  참가자를 추가하면 이름과 API 키를 이 브라우저에만 임시 저장합니다.
+                  (워크스페이스 파일이나 서버로는 전송되지 않습니다.)
+                </div>
+              )}
+            </div>
             {debugLogCallsEnabled &&
               Array.isArray(debugState.calls) &&
               debugState.calls.length > 0 && (
@@ -1134,7 +1354,62 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
       return () => {
         cancelled = true;
       };
-    }, [storageNamespace]);
+  }, [storageNamespace]);
+
+  const addSimUser = React.useCallback(() => {
+    setDebugState((prev) => {
+      const list = Array.isArray(prev.simUsers) ? prev.simUsers.slice() : [];
+      list.push({ name: '', apiKey: '' });
+      return { ...prev, simUsers: list };
+    });
+  }, []);
+
+  const updateSimUser = React.useCallback((index, patch) => {
+    setDebugState((prev) => {
+      const list = Array.isArray(prev.simUsers) ? prev.simUsers.slice() : [];
+      while (list.length <= index) {
+        list.push({ name: '', apiKey: '' });
+      }
+      list[index] = { ...list[index], ...patch };
+      return { ...prev, simUsers: list };
+    });
+  }, []);
+
+  const removeSimUser = React.useCallback((index) => {
+    setDebugState((prev) => {
+      const list = Array.isArray(prev.simUsers) ? prev.simUsers.slice() : [];
+      if (index < 0 || index >= list.length) return prev;
+      list.splice(index, 1);
+      return { ...prev, simUsers: list };
+    });
+  }, []);
+
+  React.useEffect(() => {
+    if (!storageNamespace) return;
+    try {
+      const raw = localStorage.getItem(`playDebug.simUsers@${storageNamespace}`);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setDebugState((prev) => ({ ...prev, simUsers: parsed }));
+      }
+    } catch {
+      // ignore load errors
+    }
+  }, [storageNamespace]);
+
+  React.useEffect(() => {
+    if (!storageNamespace) return;
+    try {
+      const list = Array.isArray(debugState.simUsers) ? debugState.simUsers : [];
+      localStorage.setItem(
+        `playDebug.simUsers@${storageNamespace}`,
+        JSON.stringify(list),
+      );
+    } catch {
+      // ignore persistence errors
+    }
+  }, [storageNamespace, debugState.simUsers]);
 
     const handleValidateCapabilities = async () => {
       try {

@@ -298,6 +298,26 @@ export default function TextBattleSessionPage() {
                       {turn.ai_response}
                     </div>
                   )}
+                  {turn.effects?.apiRouting && (
+                    <details
+                      style={{
+                        marginTop: 4,
+                        fontSize: 11,
+                        color: '#9ca3af',
+                      }}
+                    >
+                      <summary>API 라우팅 정보</summary>
+                      <pre
+                        style={{
+                          marginTop: 2,
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-word',
+                        }}
+                      >
+                        {JSON.stringify(turn.effects?.apiRouting, null, 2)}
+                      </pre>
+                    </details>
+                  )}
                 </div>
               ))}
             </div>
@@ -311,4 +331,3 @@ export default function TextBattleSessionPage() {
     </div>
   );
 }
-

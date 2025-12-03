@@ -73,6 +73,22 @@ export function toTextBattleTurnRow(params = {}) {
   const aiResponseRaw = vars?.aiResponseRaw || null;
   const aiResponse = aiResponseRaw || last.narrative || null;
 
+  // effects: 기존 battleLast.effects 에 더해, 슬롯/참가자 라우팅 정보(apiRouting)가
+  // 들어 있다면 함께 JSON 으로 보관한다.
+  let effects = last.effects || null;
+  try {
+    if (last.apiRouting) {
+      const base =
+        effects && typeof effects === 'object'
+          ? { ...effects }
+          : {};
+      base.apiRouting = last.apiRouting;
+      effects = base;
+    }
+  } catch {
+    // effects 확장은 실패해도 무시한다.
+  }
+
   return {
     session_id: sessionId,
     turn_index: turnIndex,
@@ -85,7 +101,7 @@ export function toTextBattleTurnRow(params = {}) {
     result: last.result || null,
     battle_end: !!last.battleEnd,
     winner: last.winner || null,
-    effects: last.effects || null,
+    effects,
     score,
     duration_ms: durationMs,
   };

@@ -2028,6 +2028,36 @@ Status: in progress
 
 ### 17.3 공통 턴 로그 이벤트 계약 (runtime:turn-log)
 
+> 구현 메모 (표준 슬롯/턴 로그 파이프라인)
+> - `coreRuntime.step()` / `getContextSnapshot()` 는 항상 `variables.stats.turn` 을 현재 턴 번호로 채운다.
+> - 플래이 오버레이(CodeEditorOverlayV2)는 step 결과에서 나온 `result.variables` 를 그대로
+>   `runtimeBus.emit('runtime:turn-log', { ..., variables: result.variables })` 에 포함한다.
+> - StartClient 엔진(useStartClientEngine)은 메인게임 로그 엔트리를 만들 때
+>   가능한 경우 `entry.variables` 에 텍스트 런타임의 `ctx.variables`(표준 슬롯 포함)를 넣고,
+>   `/api/rank/log-turn` 호출 시 그대로 전달한다.
+> - `/api/rank/log-turn` 은 `buildTurnSummaryPayload({ ..., variables })` 를 통해
+>   `rank_turns.summary_payload.variables` 아래에 `speaker / stats / scene / effects` 구조를 복사한다.
+> - 결과적으로, 텍스트 베틀 예제 기준으로는:
+>   - 훅이 `variables.battle*` 와 표준 슬롯들을 채우고,
+>   - 플래이 / 메인게임 / 랭크 턴 로그가 모두 동일한 `variables` 스냅샷을 공유하는 상태다.
+
+- visibility / audience:
+  - `runtime:turn-log` 엔트리는 선택적으로 `isVisible: boolean` 또는 `visibility: string` 을 가질 수 있다.
+    - `visibility: "hidden" | "private" | "invisible" | "internal"` → 기본적으로 턴 로그 UI에서는 숨김.
+    - `visibility: "public" | "party" | "visible" | "shared"` → 기본적으로 표시.
+  - 값의 출처:
+    - 플래이(CodeEditorOverlayV2):
+      - 현재 노드의 `node.data.invisible === true` 이면 `visibility: "invisible"`, `isVisible: false` 로 기록된다.
+      - 그렇지 않고 `node.data.visibility` 가 문자열이면 그대로 `visibility` 필드에 복사된다.
+    - StartClient(랭크 메인게임):
+      - 엔진 로그 항목의 `visibility` / `isVisible` / `public` 값을 그대로 전달한다.
+        - `visibility` 가 문자열이면 그대로 사용.
+        - `isVisible` 이 boolean 이면 그대로 사용,
+        - 없고 `public` 이 boolean 이면 `isVisible = public` 으로 해석한다.
+    - 값이 없으면 `public !== false` 를 기준으로 표시 여부를 결정한다.
+  - UI Shell 위젯(`chatLog`, `turnTimeline` 등)은 위 규칙에 따라
+    `runtime:turn-log` 스트림에서 “보여도 되는” 항목만 필터링해서 출력한다.
+
 - 이벤트 이름:
   - `runtimeBus.emit('runtime:turn-log', event)` 형태로 발행한다.
   - Play(코드 에디터 Play 오버레이)와 랭크 메인게임(StartClient) 모두 **같은 형식**의 이벤트를 소비하는 것이 목표다.
@@ -2564,3 +2594,262 @@ Maker 쪽에서는 `/game/ui.shell.json`을 직접 편집하는 대신, 다음�
 
 이 편집기는 **플래이 / 메인게임이 공유하는 UI 셸 계약**만 건드리고, 실제 React 코드는 수정하지 않는다.  
 새 위젯(kind)을 추가해야 할 때만 엔진 개발자가 React 컴포넌트를 추가하고, Maker는 그 위젯을 조합해서 사용하는 구조를 유지한다.
+#### (향후) GameShell 시각 편집 모드 / 공통 PLAY 버튼
+
+- 프롬프트-노드 에디터의 상단 `테스트` 패널/버튼은 장기적으로 제거하고, **코드 에디터와 동일한 상단 PLAY 버튼 하나**로 테스트를 통합한다.
+  - 프롬프트-노드 에디터 상단의 PLAY 버튼은 CodeEditorOverlayV2의 플레이 엔진을 그대로 사용하고, 현재 프롬프트 세트와 연결된 워크스페이스 파일을 실행한다.
+- UI 셸 편집은 다음 두 진입점을 통해 **동일한 모드**를 공유하는 것을 목표로 한다.
+  - 프롬프트-노드 에디터의 도구 드롭다운에 있는 `게임 셸 설정 / UI 편집` 항목
+  - 플래이 화면 디버그 패널 안의 `UI 셸 편집` 버튼(예정)
+- 이 시각 편집 모드는 실제 GameShell 레이아웃(플래이/메인게임에서 보는 것과 동일한 화면)을 미리보기로 띄운 뒤,
+  - 위젯 박스를 드래그/토글하여 배치·표시 여부·스타일 토큰(padding/radius/tone/density 등)을 조정하고,
+  - 결과를 `/game/ui.shell.json` 및 템플릿의 `ui_shell` 블록에 저장하는 형태로 설계한다.
+- 엔진/계약 레벨 기본 규칙: 새로 추가되는 UI 기능은 모두 **비가시(기본 disabled)** 상태로 계약에만 먼저 추가되고,
+  - Maker의 GameShell 에디터 또는 코드 편집으로 명시적으로 켠 경우에만 플래이/메인게임에 나타난다.
+- 대신 기본 장르(예: 텍스트 베틀)용 예제 템플릿과 “새 게임 만들기” 마법사는,
+  - 추천 레이아웃을 미리 활성화된 `ui_shell` 프리셋으로 제공하여,
+  - 초보자는 “그냥 만들면 바로 보이는” 경험을 하고, 고급 사용자는 필요 시 GameShell 에디터로 세부 조정하는 흐름을 권장한다.
+### 부록: 표준 데이터 슬롯과 랭크 턴 로그
+
+- `coreRuntime` 는 모든 컨텍스트에서 `variables.stats.turn` 을 현재 턴 번호로 채운다.
+  - (`standardSlots.updateStandardSlots(ctx, { stats: { turn } })` 호출)
+- 플래이 / 메인게임 / StartClient 엔진에서 턴 로그를 만들 때,
+  - 가능한 경우 `ctx.variables` 중 표준 슬롯(`stats / scene / effects / speaker`) 을
+    `entry.variables` 로 함께 전달한다.
+- `/api/rank/log-turn`:
+  - 각 엔트리를 정규화(normalize)하면서 `entry.variables` 를 유지한다.
+  - `buildTurnSummaryPayload({ ..., variables: entry.variables })` 를 호출해
+    `rank_turns.summary_payload.variables` 아래에
+    `speaker / stats / scene / effects` 구조를 그대로 복사한다.
+- 이렇게 해 두면:
+  - 나중에 세션 리플레이 / 하이라이트 / 통계 화면에서
+    턴마다의 스피커, 점수, 장면, 효과를 공통 포맷으로 재사용할 수 있다.
+
+### 부록: 역할 / 점수폭 config (`/game/roles.rank.json`) 단일 소스 계획
+
+- 워크스페이스에는 역할/점수폭을 정의하는 전용 파일 `/game/roles.rank.json` 을 둔다.
+  - 구조 예시:
+    ```json
+    {
+      "roles": [
+        { "name": "공격수", "slotCount": 1, "scoreDeltaMin": -20, "scoreDeltaMax": 40, "active": true },
+        { "name": "수비수", "slotCount": 1, "scoreDeltaMin": -10, "scoreDeltaMax": 25, "active": true }
+      ]
+    }
+    ```
+  - Maker의 “역할 / 점수 설정” 도구는 이 파일을 편집하는 UI이다.
+- 서버/등록 측에서는 `lib/rank/rolesConfig.js` 를 사용해 이 파일을 읽는다.
+  - `loadRolesConfig(files)` → `{ roles: [...] }` 형태로 workspace VFS에서 로드.
+  - `toRegisterRankRolesPayload(cfg)` → `register_rank_game` RPC 가 기대하는
+    `p_roles` 페이로드로 변환.
+- `/api/rank/register-game` 의 목표 동작:
+  - 기본적으로는 기존 UI에서 넘어온 `req.body.roles / slots` 를 그대로 검증·사용하되,
+  - 워크스페이스 스냅샷(예: `rank_game_workspaces.ui_shell` 와 동일한 스냅샷)이 존재하는 게임에 대해서는
+    `/game/roles.rank.json` 을 단일 소스로 삼아:
+    - UI 값과 roles.rank.json 이 충돌할 경우 roles.rank.json 을 우선시하고,
+    - RPC `p_roles` 인자는 항상 roles.rank.json 기반으로 생성한다.
+- 이 부록에 정의된 방향대로 정리되면:
+  - 코드 에디터 / 프롬프트-노드 에디터에서 설정한 역할/점수폭이
+    게임 등록/랭크/매칭 전체에서 같은 값을 사용하게 되고,
+  - 기존 게임 등록 페이지의 역할/점수 입력은 보조 UI (또는 읽기 전용 미리보기)에 가깝게 다뤄진다.
+
+### 부록: GameShell 기본 프리셋 운영 원칙
+
+- 텍스트 베틀 기본 UI 셸은 예제 파일
+  `docs/examples/text-battle-basic/game.ui.shell.json`
+  로 제공한다.
+  - 새 워크스페이스/예제를 만들 때 이 내용을 복사해 `/game/ui.shell.json` 으로
+    사용하는 것을 권장하지만,
+    이미 편집된 셸을 덮어쓰는 “프리셋 적용 버튼” 같은 것은 두지 않는다.
+- 즉, 기본 프리셋은 **초기값/참고용**으로만 쓰이고,
+  실제 게임의 화면 구조는 언제나 워크스페이스의 `/game/ui.shell.json`
+  (또는 템플릿 `ui_shell` 블록)을 직접 편집해서 관리한다.
+- GameShellEditor 는 이 파일을 편하게 편집하기 위한 UI일 뿐,
+  한 번 편집된 뒤에는 프리셋으로 되돌리는 자동 동작을 제공하지 않는다.
+
+### 부록: GameShell 위젯 분할 / 컴포넌트 세분화 계획
+
+- 목표:
+  - 기존 Rank 메인게임 UI에 흩어져 있는 기능들을 **작은 Shell 위젯 단위로 쪼개서**,
+    `/game/ui.shell.json` 에서 자유롭게 배치·조합할 수 있게 만든다.
+  - 플래이 / 메인게임 / 향후 장르 확장 모두가 같은 위젯 세트를 공유한다.
+
+- 1차 대상 위젯 (예시 이름):
+  - `turnTimeline`: 턴별 요약/상태를 수직 타임라인 형태로 보여주는 위젯.
+    - 데이터: `runtime:turn-log` 스트림, `summary_payload.preview`, `variables.stats.turn` 등.
+  - `aiHistory`: 마지막 N개의 AI 응답(또는 중요한 응답만)을 모아서 보여주는 패널.
+    - 데이터: `runtime:turn-log` 중 AI/판정 계열로 분류되는 엔트리
+      (`variables.speaker.role` 이 `"ai" | "assistant" | "judge"` 이거나,
+       `reason` 문자열에 `"ai" / "judge"` 가 포함된 경우).
+    - 표시 내용: 한 줄 요약(첫 줄) + 선택적으로 `summary` 텍스트.
+  - `playerHistory`: 플레이어별 액션·채팅·투표 이력을 묶어서 보여주는 패널.
+    - 데이터: `runtime:turn-log` 중 사용자/플레이어 이벤트로 분류되는 엔트리
+      (`reason` 에 `"user" / "player" / "chat"` 포함).
+    - 표시 내용: 턴 번호, 플레이어 이름(있다면), 첫 줄 텍스트.
+  - `heroCard` / `participantCard`: 매칭된 참가자(뷰어/플레이어)를 카드 형태로 보여주는 위젯.
+    - 데이터:
+      - 기본: `rankContext.viewer`, `rankContext.players[*]` 등 랭크 참가자 정보.
+      - 선택적으로 `variables.*` 경로를 통해 훅/런타임이 채운 캐릭터 오브젝트를 사용할 수 있다.
+    - 설정 예:
+      ```json
+      {
+        "kind": "heroCard",
+        "source": "rank.viewer",
+        "variant": "compact"
+      }
+      {
+        "kind": "participantCard",
+        "source": "rank.players[0]"
+      }
+      {
+        "kind": "participantCard",
+        "source": "variables.scene.mainHero"
+      }
+      ```
+    - `source` 해석 규칙:
+      - `"rank.viewer"`: `rankContext.viewer.ownerId` 와 일치하는 `rankContext.players` 항목을 찾아 카드로 출력.
+      - `"rank.*"`: `rankContext` 루트에서 바인딩을 해석해 객체를 그대로 카드 입력으로 사용.
+      - `"variables.*"`: 마지막 턴의 `variables` 루트에서 바인딩을 해석해 객체를 카드 입력으로 사용.
+      - 그 외(`rank.players[0]` 등)는 기본 participants 배열에 인덱스로 접근하는 기존 규칙을 유지한다.
+  - `participantCard`: 기존 메인게임의 “참가자 카드/슬롯 상태”를 대체하는 단일 카드 위젯.
+    - 데이터: rankContext.viewer / rankContext.players / 슬롯 템플릿.
+
+- 위젯 분할 원칙:
+  - “한 위젯 = 한 책임”에 가깝게 쪼갠다.
+    - 예: 턴 타임라인, AI 히스토리, 플레이어 히스토리는 각각 별도 `kind` 로 정의.
+  - 위젯은 항상 **입력 데이터(standardSlots / rankContext / runtime:turn-log)** 만 읽고,
+    내부에서 새로운 상태를 들고 있지 않는다 (필요하면 runtimeBus 이벤트를 사용).
+  - 메인게임 전용으로 하드코딩된 JSX는 점차 제거하고,
+    동일한 기능을 Shell 위젯으로 옮긴 뒤 `ui.shell.json` 에서 켜도록 한다.
+
+- 설정 방식 (예시 스케치):
+  ```json
+  {
+    "panels": {
+      "widgets": {
+        "enabled": true,
+        "widgets": [
+          { "kind": "heroCard", "source": "rank.viewer" },
+          { "kind": "turnTimeline", "source": "runtime.turnLog" },
+          { "kind": "aiHistory", "source": "runtime.turnLog" },
+          { "kind": "playerHistory", "source": "rank.players" }
+        ]
+      }
+    }
+  }
+  ```
+
+- 컴포넌트 세분화 가이드라인:
+  - 새 UI를 추가할 때는 먼저 “데이터 계약(standardSlots / rankContext / 이벤트)”를 정의하고,
+    그 위에 **아주 작은 Shell 위젯**으로 구현한다.
+  - 하나의 위젯이 복잡해지면:
+    - 표시 책임(예: 리스트 렌더링)과
+    - 상호작용 책임(예: 필터/탭 전환)을 분리해, 나중에 다른 Shell 위젯에서 재사용할 수 있게 설계한다.
+  - 이 원칙에 맞춰 점진적으로 메인게임 기존 UI를 치환해 나간다.
+
+### 부록: Shell 스타일 토큰 확장 (padding / radius / tone / density 외)
+
+- 스타일 토큰은 가능한 한 작게 쪼개서 조합할 수 있게 설계한다.
+  - `padding: none|xs|sm|md|lg|xl`
+  - `gap: none|xs|sm|md|lg`
+  - `radius: none|sm|md|lg|full`
+  - `tone: primary|secondary|muted|danger` (+ 선택적 `accentColor` 헥스/색상값)
+  - `density: compact|normal|relaxed`
+  - `align: start|center|end`
+  - `shadow: none|xs|sm|md|lg`
+  - `emphasis: normal|strong|muted`
+- `uiShellStyle.applyShellStyleProps(styleProps)` 는 위 토큰들을 다음과 같이 매핑한다.
+  - padding/gap/radius → padding, gap, borderRadius
+  - tone(+accentColor) → background, border
+  - density → fontSize 및 padding 미세 조정
+  - align → alignSelf
+  - shadow → boxShadow
+  - emphasis → fontWeight / opacity
+- 위 토큰들은 모든 Shell 위젯에서 공통으로 쓸 수 있으며,
+  “크기/모양/색/강조 정도”를 토큰 조합으로 표현할 수 있게 하는 것을 목표로 한다
+  (완전 자유 좌표/픽셀 기반 배치는 추후 2D/3D 렌더러 영역으로 미룬다).
+
+### 부록: 플래이 디버그 참가자 / API 키
+
+- 텍스트 런타임을 플래이에서 테스트할 때,
+  “여러 참가자 + 각자 API 키” 상황을 흉내 내기 위해
+  플래이 디버그 패널에서 **참가자 / API 키 리스트**를 임시로 설정할 수 있다.
+- 동작 방식:
+  - CodeEditorOverlayV2 디버그 패널에
+    “디버그 참가자 / API 키” 섹션이 있고,
+    - 참가자 추가/삭제 버튼,
+    - 참가자별 이름 입력란,
+    - 참가자별 API 키 입력란(로컬 디버그 전용, password 필드)을 제공한다.
+  - 이 값들은 브라우저 `localStorage` 의
+    `playDebug.simUsers@{storageNamespace}` 키에만 저장되며,
+    워크스페이스 파일이나 서버(Supabase, Vercel)로는 전송되지 않는다.
+- 런타임 변수에서의 표현:
+  - 플래이에서 coreRuntime 을 만들 때
+    `initialVariables.debug.participants` 로 투영된다.
+    ```js
+    // variables.debug.participants: [{ name, apiKey }]
+    {
+      rank: { /* rankDefaults ... */ },
+      debug: {
+        participants: [
+          { name: '테스터 1', apiKey: '...' },
+          { name: '테스터 2', apiKey: '...' }
+        ]
+      }
+    }
+    ```
+  - 훅(`/game/hooks/automation.js`) 이나 향후 GameShell 서비스 코드는
+    이 값을 읽어
+    - 외부 AI API 호출 시 참가자별 키를 적용하거나,
+    - 랭크/메인게임과 비슷한 멀티 유저 시나리오를 플래이에서
+      미리 시뮬레이션하는 데 사용할 수 있다.
+
+#### 플레이 디버그 패널 표시
+
+- 디버그 패널의 raw 턴 로그 summary에는 visibility와 apiRouting 요약이 함께 표시된다.
+  - `visibility` 문자열이 있으면 `(visibility)`로 함께 표기.
+  - `variables.battleLast.apiRouting` 이 있으면 `apiRouting → 참가자이름` 으로 요약을 붙인다.
+  - 전체 이벤트는 그대로 JSON으로 펼쳐볼 수 있다.
+
+#### (planned) 슬롯/프롬프트별 API 키 라우팅
+
+- 현재는 `variables.debug.participants` 를 훅에서 직접 사용해야 하지만,
+  향후에는 “어떤 프롬프트/슬롯에서 어느 참가자의 키를 쓸지”를
+  **계약으로 정의**할 계획이다.
+- 개략적인 방향:
+  - 프롬프트‑노드/슬롯 설정에
+    - `config.apiKeySlot` 또는 비슷한 옵션을 두어
+      “이 노드(또는 이 슬롯)는 어느 참가자 슬롯을 대표하는지”를 표시.
+  - 런타임/훅에서는:
+    - 토큰(`@이름`) 또는 `slotNo` 를 기준으로
+      `variables.debug.participants` / 랭크 참가자 풀에서
+      하나의 참가자를 선택하고,
+    - 그 참가자의 `apiKey` 를 실제 AI 호출에 사용.
+  - 이 라우팅 규칙은:
+    - 기본 정책(예: `slotNo` 기준, 없으면 랜덤)을 엔진에서 제공하고,
+    - 더 복잡한 로직(가중치, 우선순위 등)은
+      `/game/hooks/automation.js` 안에서
+      사용자 정의 함수로 확장할 수 있게 하는 것을 목표로 한다.
+
+### 부록: 플래이 / 메인게임 / GameShell 구조 – 쉬운 요약
+
+- **엔진은 하나다.**
+  - 코드 에디터 “플래이”와 랭크용 메인게임(StartClient)은 모두  
+    같은 `coreRuntime` + 같은 그래프(`/graph/prompt-graph.json`) +
+    같은 훅(`/game/hooks/automation.js`)을 사용한다.
+- **화면 껍데기(GameShell)는 공통이다.**
+  - 게임 화면의 상단 제목, 좌우 패널, 로그 패널 등은  
+    `/game/ui.shell.json`(또는 템플릿의 `ui_shell`)에 적힌 설정을 읽어서
+    `GameShell → MainGameMobileUI` 가 그린다.
+  - 장르(텍스트 배틀 등)에 상관없이, “어디에 무엇을 둘지”는 이 셸 설정이 결정한다.
+- **데이터는 표준 슬롯 + 턴 로그로 흐른다.**
+  - `coreRuntime` 는 매 턴마다 `variables.stats / scene / effects / speaker` 같은
+    표준 슬롯을 채우고,
+  - 플래이는 이 결과를 `runtime:turn-log` 이벤트로 내보낸 뒤
+    (필요하면 `/api/rank/log-turn` 으로도 전달한다),
+  - 메인게임은 같은 이벤트/요약 데이터를 받아 Shell 위젯(턴 로그, 히스토리 등)에 뿌린다.
+- **프롬프트‑노드 에디터 / 코드 에디터는 “입력면”이다.**
+  - 두 에디터는 워크스페이스 파일(`/template.json`, `/graph/*`, `/game/*`)을 수정하는
+    도구일 뿐이고, 실제 실행은 항상 위의 공통 엔진 + GameShell을 통해 이루어진다.
+  - 따라서 한 번 구조를 잡아두면, 에디터 쪽에서 기능을 추가해도  
+    플래이와 메인게임이 같은 엔진/같은 UI 셸 위에서 함께 진화한다.

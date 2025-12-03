@@ -10,6 +10,7 @@ import {
   toTextBattleTurnRow,
   toTextBattleSessionRow,
 } from '../../lib/runtime/textBattlePersistence.js';
+import { selectParticipantForPrompt } from '../../lib/runtime/apiKeyRouting.js';
 
 function computeBattleScoreSnapshot(existingScore, parsed) {
   const base =
@@ -98,15 +99,38 @@ export default async function handler(req, res) {
 async function processUnifiedGamePrompt(context) {
   const { prompt, gameState, character } = context;
 
+  let routing = null;
   try {
-    const aiResponse = await callAIJudge(prompt);
+    const routeHint = gameState && gameState.routeHint ? gameState.routeHint : null;
+    routing = selectParticipantForPrompt({ gameState, prompt, routeHint });
+  } catch {
+    routing = null;
+  }
+
+  try {
+    const overrideKey = routing && routing.apiKey ? routing.apiKey : null;
+    const aiResponse = await callAIJudge(prompt, overrideKey);
 
     // NOTE:
     // - 통합 모드에서는 텍스트 배틀/런타임과 바로 연결할 수 있도록
     //   parseAIResponse를 재사용해 구조화된 결과도 함께 돌려준다.
     const parsed = parseAIResponse(aiResponse);
     const timestamp = new Date().toISOString();
-    const battleLastPayload = { ...parsed, timestamp };
+    const battleLastPayload = {
+      ...parsed,
+      timestamp,
+      apiRouting: routing
+        ? {
+            origin: routing.participant?.origin || null,
+            participant: {
+              name: routing.participant?.name || null,
+              slotNo: routing.participant?.slotNo ?? null,
+              heroId: routing.participant?.heroId || null,
+              ownerId: routing.participant?.ownerId || null,
+            },
+          }
+        : null,
+    };
 
     // 기존 스코어는 gameState.battleScore 또는 gameState.variables.battleScore에서 찾는다.
     const existingScore =
@@ -228,7 +252,7 @@ async function processAIBattleJudgment(context) {
 
   try {
     // OpenAI API 호출 (실제 AI 서비스로 교체 가능)
-    const aiResponse = await callAIJudge(aiPrompt);
+    const aiResponse = await callAIJudge(aiPrompt, null);
 
     // 응답 파싱 및 구조화
     const parsedResult = parseAIResponse(aiResponse);
@@ -353,12 +377,15 @@ ${characterProfile.name}이(가) "${action.prompt || action.text}"를 시도합�
 `;
 }
 
-async function callAIJudge(prompt) {
+async function callAIJudge(prompt, apiKeyOverride) {
   // 실제 환경에서는 OpenAI API 또는 다른 AI 서비스 호출
   // 여기서는 예시 응답을 반환
 
-  // 환경변수에서 AI API 키 가져오기
-  const apiKey = process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY;
+  // 환경변수 또는 호출 시 전달된 API 키 가져오기
+  const apiKey =
+    (typeof apiKeyOverride === 'string' && apiKeyOverride.trim()) ||
+    process.env.OPENAI_API_KEY ||
+    process.env.ANTHROPIC_API_KEY;
 
   if (!apiKey) {
     throw new Error('AI API 키가 설정되지 않았습니다');

@@ -50,6 +50,8 @@ function normalizeEntries(entries) {
 
     const visibility = determineVisibility(entry);
     const summary = extractSummary(entry);
+    const variables =
+      entry.variables && typeof entry.variables === 'object' ? entry.variables : null;
     const prompt = typeof entry.prompt === 'string' ? entry.prompt : null;
     const actors = Array.isArray(entry.actors) ? entry.actors : null;
     const extra = typeof entry.extra === 'object' && entry.extra !== null ? entry.extra : null;
@@ -60,6 +62,7 @@ function normalizeEntries(entries) {
       public: entry.public !== false,
       isVisible: visibility,
       summary,
+      variables,
       prompt,
       actors,
       extra,
@@ -212,6 +215,10 @@ export default async function handler(req, res) {
             idx,
             actors: entry.actors,
             extra: entry.extra,
+            // 표준 데이터 슬롯(speaker / stats / scene / effects)을
+            // summary_payload.variables 에 실어 두기 위해 그대로 전달한다.
+            variables:
+              entry.variables && typeof entry.variables === 'object' ? entry.variables : null,
           });
 
     return {
