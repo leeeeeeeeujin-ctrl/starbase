@@ -17,6 +17,11 @@ Implementation status & ordering notes
 - Features are implemented in a **priority-based order** (for now: security/sandbox → runtime features - AI dock UX - Supabase helpers), and this document is updated as they land.
 - Each major section may include a short `Status: done / in progress / planned` note that reflects the current codebase, not a future goal.
 
+### Quick dev log (2025-12-05)
+
+- Pushed `assistant-adjust-character-panels-layout` to `main` (origin). Touched `ai-roomchat/components/character/CharacterBasicView.js` to stop carousel/game cards from clipping and make overlay slides stretch to container width on narrow/rotated layouts.
+
+
 Current high-level status (this repo copy)
 
 - Security / sandbox (AI actions): **in progress**
