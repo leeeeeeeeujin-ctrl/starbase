@@ -58,14 +58,15 @@ export default async function handler(req, res) {
     meta,
   });
 
-  // Try to load workspace score script if present (dynamic require to avoid bundler resolution errors).
+  // Try to load workspace score script if present (dynamic import to avoid bundler resolution errors).
   let scoreResult = null;
   try {
     const scriptPath =
       process.env.SCORE_SCRIPT_PATH ||
       `${process.cwd()}/workspace/score/score-default.js`;
-    // eslint-disable-next-line import/no-dynamic-require, global-require
-    const scoreFn = require(scriptPath);
+    // eslint-disable-next-line import/no-dynamic-require
+    const mod = await import(scriptPath);
+    const scoreFn = mod?.default || mod;
     if (typeof scoreFn === 'function') {
       scoreResult = scoreFn({
         battleLog: normalizedLog,
