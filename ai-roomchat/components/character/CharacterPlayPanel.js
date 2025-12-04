@@ -32,12 +32,14 @@ const panelStyles = {
     display: 'grid',
     gap: 20,
     width: '100%',
-    maxWidth: 'min(1100px, 96vw)',
+    maxWidth: 'min(1200px, 98vw)',
     margin: '0 auto',
   },
   section: {
     display: 'grid',
     gap: 12,
+    width: '100%',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
   },
   headerRow: {
     display: 'flex',
@@ -57,15 +59,17 @@ const panelStyles = {
   },
   sliderTrack: {
     display: 'flex',
-    gap: 12,
-    overflowX: 'auto',
-    padding: '6px 2px 6px 0',
+    gap: 16,
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    padding: '6px 0 6px 0',
     scrollbarWidth: 'thin',
   },
   sliderCard: {
     position: 'relative',
-    width: 'min(200px, 60vw)',
-    minHeight: 108,
+    width: 'min(520px, 100%)',
+    minWidth: 'min(320px, 100%)',
+    minHeight: 128,
     borderRadius: 18,
     border: '1px solid rgba(148,163,184,0.35)',
     background: 'rgba(15,23,42,0.7)',
@@ -193,8 +197,10 @@ const panelStyles = {
   logList: {
     display: 'grid',
     gap: 12,
+    gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
   },
   logCard: {
+    width: '100%',
     borderRadius: 16,
     border: '1px solid rgba(148,163,184,0.28)',
     background: 'rgba(2,6,23,0.78)',
@@ -255,6 +261,7 @@ const panelStyles = {
     border: '1px solid rgba(148,163,184,0.32)',
     background: 'rgba(15,23,42,0.62)',
     padding: 18,
+    width: '100%',
     display: 'grid',
     gap: 8,
   },
@@ -2658,7 +2665,7 @@ export default function CharacterPlayPanel({ hero, playData }) {
   const startButton = (
     <section style={panelStyles.section}>
       <div style={panelStyles.headerRow}>
-        <h3 style={panelStyles.title}>선택한 게임</h3>
+        <h3 style={panelStyles.title}>선택한 게임 <span style={{ fontSize: 12, color: '#22d3ee' }}>1</span></h3>
         {currentRole ? <p style={panelStyles.subtitle}>{currentRole}</p> : null}
       </div>
       <p style={panelStyles.subtitle}>

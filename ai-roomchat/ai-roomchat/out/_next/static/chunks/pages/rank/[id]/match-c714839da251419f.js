@@ -1,2 +1,0 @@
-(self.webpackChunk_N_E=self.webpackChunk_N_E||[]).push([[1231],{2157:function(n,u,t){(window.__NEXT_P=window.__NEXT_P||[]).push(["/rank/[id]/match",function(){return t(1503)}])},1503:function(n,u,t){"use strict";t.r(u),t.d(u,{__N_SSP:function(){return _},default:function(){return r}});var _=!0;function r(){return null}}},function(n){n.O(0,[2888,9774,179],function(){return n(n.s=2157)}),_N_E=n.O()}]);
-//# sourceMappingURL=match-c714839da251419f.js.map

@@ -1,2 +1,0 @@
-(self.webpackChunk_N_E=self.webpackChunk_N_E||[]).push([[6345],{4787:function(n,u,t){(window.__NEXT_P=window.__NEXT_P||[]).push(["/rooms/[id]",function(){return t(3715)}])},3715:function(n,u,t){"use strict";t.r(u),t.d(u,{__N_SSP:function(){return _},default:function(){return c}});var e=t(7294),r=t(1163),_=!0;function c(){let n=(0,r.useRouter)();return(0,e.useEffect)(()=>{n.replace("/match")},[n]),null}}},function(n){n.O(0,[2888,9774,179],function(){return n(n.s=4787)}),_N_E=n.O()}]);
-//# sourceMappingURL=[id]-9138d0dbe57ccdc6.js.map
