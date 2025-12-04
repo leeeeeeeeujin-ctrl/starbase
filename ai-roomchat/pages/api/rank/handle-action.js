@@ -4,6 +4,7 @@ import { performAction, performBatch, isReadOnly } from '../../../lib/rank/actio
 
 const RATE_LIMIT_COUNT = Number(process.env.ACTION_RATE_LIMIT_COUNT || 30);
 const RATE_LIMIT_WINDOW_MS = Number(process.env.ACTION_RATE_LIMIT_WINDOW_MS || 10_000);
+const SANDBOX_ACTIONS = new Set(['sandbox_exec', 'test_run', 'lint_run', 'build_run']);
 
 // In-memory rate limiter (best-effort; serverless may reset)
 const bucket = new Map(); // key => { reset, count }
@@ -49,6 +50,15 @@ function checkRateLimit(key, allowUnlimited) {
   return { ok: true };
 }
 
+function batchContainsSandbox(payload) {
+  const actions = Array.isArray(payload?.actions) ? payload.actions : [];
+  return actions.some((a) => {
+    if (!a || typeof a !== 'object') return false;
+    const t = a.action || a.type || a.name;
+    return SANDBOX_ACTIONS.has(t);
+  });
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -62,6 +72,17 @@ export default async function handler(req, res) {
   if (!action) return res.status(400).json({ ok: false, error: 'unknown_action' });
 
   const isBatch = action === 'batch';
+  const needsSandboxGuard = SANDBOX_ACTIONS.has(action) || (isBatch && batchContainsSandbox(payload));
+  // Extra guard for sandbox-related actions to avoid accidental remote execution.
+  if (needsSandboxGuard) {
+    if (!process.env.SANDBOX_EXEC_ENABLE) {
+      return res.status(403).json({ ok: false, error: 'sandbox_disabled' });
+    }
+    if (!userId) {
+      return res.status(401).json({ ok: false, error: 'auth_required_for_sandbox' });
+    }
+  }
+
   const limiterKey = `${userId || 'anon'}:${action}`;
   const readExempt = !isBatch && isReadOnly(action);
   const rl = checkRateLimit(limiterKey, readExempt);
@@ -78,4 +99,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ ok: false, error: message });
   }
 }
-

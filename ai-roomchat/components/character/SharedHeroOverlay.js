@@ -43,14 +43,16 @@ const styles = {
   },
   surface: {
     width: '100%',
-    maxWidth: 640,
+    maxWidth: 'min(620px, 90vw)',
+    maxHeight: '90vh',
+    overflowY: 'auto',
     padding: '0 16px 18px',
     boxSizing: 'border-box',
     pointerEvents: 'auto',
   },
   collapsedSurface: {
     width: '100%',
-    maxWidth: 640,
+    maxWidth: 'min(620px, 90vw)',
     padding: '0 16px 24px',
     boxSizing: 'border-box',
     pointerEvents: 'auto',
@@ -58,6 +60,7 @@ const styles = {
     justifyContent: 'flex-end',
   },
   hudSection: {
+    maxWidth: '100%',
     borderRadius: 22,
     background: 'rgba(15,23,42,0.82)',
     border: '1px solid rgba(148,163,184,0.15)',

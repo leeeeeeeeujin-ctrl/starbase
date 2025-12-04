@@ -38,6 +38,11 @@ const DEFAULT_READONLY_EXEMPT = new Set([
 
 const MAX_FILE_BYTES = Number(process.env.ACTION_MAX_FILE_BYTES || 2 * 1024 * 1024);
 const SEARCH_MAX_RESULTS_DEFAULT = 200;
+const SANDBOX_MAX_CMD_CHARS = Number(process.env.SANDBOX_MAX_CMD_CHARS || 500);
+// Default: prefix rules are disabled unless explicitly enabled (prefer regex/token).
+const SANDBOX_ALLOW_PREFIX = process.env.SANDBOX_ALLOW_PREFIX
+  ? process.env.SANDBOX_ALLOW_PREFIX !== '0'
+  : false;
 
 // Workspace / docs scoping
 // - All paths are first normalised and resolved relative to BASE_ROOT.
@@ -84,7 +89,10 @@ function resolveSafe(p) {
 
 function classifyPath(absPath) {
   // Explicit escape hatch for local dev: allow full host access when opted-in.
-  if (process.env.AI_ACTIONS_ALLOW_HOST === '1') return 'workspace';
+  // Never enable this in production; only honor when NODE_ENV !== 'production'.
+  if (process.env.AI_ACTIONS_ALLOW_HOST === '1' && process.env.NODE_ENV !== 'production') {
+    return 'workspace';
+  }
 
   const rel = path.relative(BASE_ROOT, absPath).replace(/\\/g, '/');
   if (!rel || rel.startsWith('..')) return 'other';
@@ -207,16 +215,55 @@ function runCommand(cmd, { cwd = BASE_ROOT, timeoutMs = 20000 } = {}) {
   });
 }
 
+const ALLOWLIST_DEFAULT = { allow: [] };
+
+async function ensureAllowlistFile() {
+  try {
+    const target = resolveSafe('workspace/config/ai-actions-allowlist.json');
+    await ensureDir(path.dirname(target));
+    const exists = fsSync.existsSync(target);
+    if (!exists) {
+      await fs.writeFile(target, JSON.stringify(ALLOWLIST_DEFAULT, null, 2), 'utf8');
+    }
+    return target;
+  } catch {
+    return null;
+  }
+}
+
+function firstToken(cmd) {
+  const parts = cmd.trim().split(/\s+/);
+  return parts[0] || '';
+}
+
 async function isCommandAllowed(cmdPreview) {
   try {
     const allowPath = ensureReadableFile(
-      resolveSafe('workspace/config/ai-actions-allowlist.json'),
+      (await ensureAllowlistFile()) || resolveSafe('workspace/config/ai-actions-allowlist.json'),
     );
     const buf = await fs.readFile(allowPath, 'utf8').catch(() => '');
     if (!buf) return false;
     const conf = JSON.parse(buf);
     const allow = Array.isArray(conf.allow) ? conf.allow : [];
-    return allow.some((s) => typeof s === 'string' && cmdPreview.startsWith(s));
+    return allow.some((s) => {
+      if (typeof s !== 'string') return false;
+      const rule = s.trim();
+      if (!rule) return false;
+      if (rule.startsWith('token:')) {
+        const tok = rule.slice('token:'.length).trim();
+        return tok && firstToken(cmdPreview) === tok;
+      }
+      if (rule.startsWith('^')) {
+        try {
+          const re = new RegExp(rule);
+          return re.test(cmdPreview);
+        } catch {
+          return false;
+        }
+      }
+      if (!SANDBOX_ALLOW_PREFIX) return false;
+      return cmdPreview.startsWith(rule);
+    });
   } catch {
     return false;
   }
@@ -415,6 +462,12 @@ async function action_sandbox_exec(payload) {
   }
   const cmd = String(payload?.cmd || '').trim();
   if (!cmd) return { ok: false, error: 'missing_cmd' };
+  if (cmd.length > SANDBOX_MAX_CMD_CHARS) return { ok: false, error: 'cmd_too_long' };
+  // Reject obvious shell chaining/meta usage to keep scope narrow even with allowlist.
+  // This blocks newline, ;, &&, ||, |, $(), backticks which can chain or spawn extra subshells.
+  if (/[\n;]/.test(cmd) || /\|\|/.test(cmd) || /&&/.test(cmd) || /\|/.test(cmd) || /\$\([^\)]*\)/.test(cmd) || /`[^`]*`/.test(cmd)) {
+    return { ok: false, error: 'sandbox_blocked' };
+  }
   const allowed = await isCommandAllowed(cmd);
   if (!allowed) return { ok: false, error: 'sandbox_blocked' };
 

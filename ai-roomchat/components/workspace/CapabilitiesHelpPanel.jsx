@@ -5,6 +5,59 @@ import { useWorkspaceOptional } from './CodeWorkspaceProvider.jsx';
 import { loadCapabilitiesMeta } from '../../lib/workspace/capabilitiesMeta.js';
 import { computeRuntimeFeatureIssues } from '../../lib/runtime/runtimeFeatures.js';
 
+const FILE_TEMPLATES = {
+  '/graph/prompt-graph.json': JSON.stringify({
+    nodes: [{ id: 'start', type: 'ai', label: 'Intro' }],
+    edges: [],
+  }, null, 2) + '\n',
+  '/game/runtime.config.json': JSON.stringify({
+    version: 1,
+    entryNode: 'start',
+    roles: ['players'],
+    voteThreshold: 0.6667,
+    durations: [30, 60, 90],
+    ai: { model: 'gpt-4o-mini' },
+  }, null, 2) + '\n',
+  '/game/hooks/automation.js': [
+    '// User automation hooks',
+    'export function onUserAction(ctx, input) {',
+    '  return null; // return next node id or { next }',
+    '}',
+    'export function selectNext(ctx, neighbors) {',
+    '  return neighbors?.[0]?.id ?? null;',
+    '}',
+    'export function transformPrompt(ctx) {',
+    '  const label = String(ctx?.node?.label || ctx?.node?.id || "");',
+    '  return label;',
+    '}',
+    '',
+  ].join('\n'),
+  '/game/ui.shell.json': JSON.stringify({
+    panels: {
+      header: { enabled: true },
+      gameChat: { enabled: true },
+      nextBar: { enabled: true },
+      playerChat: { enabled: true },
+      widgets: { enabled: true, widgets: [] },
+    },
+  }, null, 2) + '\n',
+  '/game/network.config.json': JSON.stringify({
+    engine: 'socketio',
+    url: 'https://example.com',
+    token: '',
+  }, null, 2) + '\n',
+  '/world/tilemap.json': JSON.stringify({
+    width: 5,
+    height: 5,
+    tileSize: 16,
+    layers: [],
+    tileset: null,
+  }, null, 2) + '\n',
+  '/world/entities.json': JSON.stringify({
+    entities: [],
+  }, null, 2) + '\n',
+};
+
 export default function CapabilitiesHelpPanel({ onClose }) {
   const [caps, setCaps] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -18,11 +71,15 @@ export default function CapabilitiesHelpPanel({ onClose }) {
   const handleCreateFile = async (path) => {
     try {
       if (!ws || typeof ws.addFile !== 'function') return;
-      const key = String(path || '').trim();
+      let key = String(path || '').trim();
+      if (!key.startsWith('/')) key = `/${key}`;
       if (!key) return;
       // 이미 있으면 열기만 한다.
       const exists = ws.files && ws.files[key];
-      if (!exists) await ws.addFile(key, '\n', { readonly: false, dir: false });
+      if (!exists) {
+        const content = FILE_TEMPLATES[key] || '\n';
+        await ws.addFile(key, content, { readonly: false, dir: false });
+      }
       if (typeof ws.open === 'function') ws.open(key);
     } catch (e) {
       try { console.warn('[CapabilitiesHelp] create file failed', e); } catch {}

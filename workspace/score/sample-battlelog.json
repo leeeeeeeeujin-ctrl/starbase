@@ -1,0 +1,38 @@
+{
+  "sessionId": "demo-session",
+  "gameId": "demo-game",
+  "battleLog": {
+    "events": [
+      {
+        "id": "ev1",
+        "type": "score_change",
+        "speaker": {
+          "slotId": "p1"
+        },
+        "delta": 5,
+        "visibility": "public"
+      }
+    ],
+    "participants": {
+      "p1": {
+        "name": "Hero1"
+      }
+    },
+    "outcome": {
+      "winners": [
+        "p1"
+      ],
+      "losers": [],
+      "draw": false
+    },
+    "scoreboard": {
+      "p1": {
+        "total": 5
+      }
+    },
+    "highlightIds": [
+      "ev1"
+    ],
+    "meta": {}
+  }
+}

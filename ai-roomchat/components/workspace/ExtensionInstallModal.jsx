@@ -654,7 +654,23 @@ export default function ExtensionInstallModal({
                   </li>
                 ))}
               </ul>
-              <div style={{ marginTop: 4 }}>누락된 파일을 추가하거나 capability를 모두 켜면 런타임에서 기능이 활성화됩니다.</div>
+              <div style={{ marginTop: 4, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span>누락된 파일을 추가하거나 capability를 모두 켜면 런타임에서 기능이 활성화됩니다.</span>
+                <button
+                  type="button"
+                  style={{ ...styles.secondaryBtn, padding: '4px 8px', fontSize: 11 }}
+                  onClick={() => {
+                    try {
+                      // CapabilitiesHelpPanel listens for this event to open.
+                      if (typeof window !== 'undefined') {
+                        window.dispatchEvent(new Event('capabilities:open'));
+                      }
+                    } catch {}
+                  }}
+                >
+                  누락 파일 생성 패널 열기
+                </button>
+              </div>
             </div>
           )}
         </div>

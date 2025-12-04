@@ -9,6 +9,7 @@ import {
   buildInitialGridState,
   movePlayerOnGrid,
 } from '../../lib/runtime/adapters/worldGridEngine.js';
+import { useBattleLogDebug } from '../workspace/hooks/useBattleLogDebug.js';
 import { applyShellStyleProps } from './uiShellStyle.js';
 
 // Shared style tokens
@@ -54,6 +55,7 @@ export default function MainGameMobileUI({
   runtimeFeatures = [],
   rankContext = null,
   shellConfig = null,
+  battleOutcome = null,
 }) {
   const isMobile = useIsMobile(820); // currently unused but reserved for responsive adjustments
   const [layout, setLayout] = useState(() => loadLayout());
@@ -203,6 +205,75 @@ export default function MainGameMobileUI({
     };
   }, [runtimeBus]);
 
+  // Debug: normalized battle log + highlights from turnLogEvents + rankContext.players
+  const participantsMap = useMemo(() => {
+    const map = {};
+    const players = Array.isArray(rankContext?.players) ? rankContext.players : [];
+    players.forEach((p) => {
+      if (!p) return;
+      const slotId = p.slotId || p.slot_id || p.ownerId || p.owner_id;
+      if (!slotId) return;
+      map[slotId] = {
+        ownerId: p.ownerId || p.owner_id || null,
+        name: p.displayName || p.display_name || p.heroName || p.hero_name || slotId,
+        team: p.team || null,
+        role: p.role || null,
+        characterBio: p.hero?.bio || p.hero?.desc || null,
+      };
+    });
+    return map;
+  }, [rankContext]);
+
+  const { log: debugLog, highlightEvents: debugHighlights } = useBattleLogDebug({
+    events: turnLogEvents,
+    participants: participantsMap,
+    outcome: battleOutcome,
+    scoreboard: null,
+    meta: {},
+  });
+
+  // Broadcast normalized battle log to runtime bus so host/settle flow can consume automatically.
+  useEffect(() => {
+    try {
+      if (runtimeBus?.emit && debugLog) {
+        runtimeBus.emit('runtime:battle-log', debugLog);
+      }
+    } catch {
+      // ignore broadcast errors
+    }
+  }, [runtimeBus, debugLog]);
+
+  // Push battle log to host via fetch (optional) if API key present in shellConfig.
+  useEffect(() => {
+    const apiKey = shellConfig?.rankApiKey || null;
+    const shouldPost = shellConfig?.autoSettle === true;
+    if (!apiKey || !shouldPost) return;
+    if (!debugLog || !debugLog.events || !debugLog.events.length) return;
+    const controller = new AbortController();
+    const send = async () => {
+      try {
+        await fetch('/api/rank/settle', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+          },
+          body: JSON.stringify({
+            sessionId: rankContext?.sessionId || rankContext?.session_id || 'local-session',
+            gameId: rankContext?.gameId || rankContext?.game_id || 'local-game',
+            battleLog: debugLog,
+            userId: user?.id || user?.uid || null,
+          }),
+          signal: controller.signal,
+        });
+      } catch (err) {
+        // ignore network errors in UI
+      }
+    };
+    send();
+    return () => controller.abort();
+  }, [debugLog, shellConfig, rankContext, user]);
+
   const modules = useMemo(() => {
     const panelsCfg =
       shellConfig && typeof shellConfig === 'object' && shellConfig.panels
@@ -228,10 +299,19 @@ export default function MainGameMobileUI({
         rankContext,
         gridState,
         turnLogEvents,
+        battleLog: debugLog,
+        highlightEvents: debugHighlights,
       });
     } else {
       const widgetFlags = readWidgetFlags(template);
-      playWidgets = buildDefaultWidgets(template, widgetFlags, gridState, rankContext);
+      playWidgets = buildDefaultWidgets(
+        template,
+        widgetFlags,
+        gridState,
+        rankContext,
+        debugLog,
+        debugHighlights,
+      );
     }
 
     const defs = {};
@@ -369,6 +449,8 @@ export default function MainGameMobileUI({
     rankContext,
     shellConfig,
     turnLogEvents,
+    debugLog,
+    debugHighlights,
   ]);
 
   return (
@@ -518,8 +600,10 @@ function readUiConfig(template){
   return {};
 }
 
-function buildDefaultWidgets(template, flags, gridState, rankContext){
+function buildDefaultWidgets(template, flags, gridState, rankContext, battleLog, highlightEvents){
   const list = [];
+  const logEvents = Array.isArray(battleLog?.events) ? battleLog.events : [];
+  const highlights = Array.isArray(highlightEvents) ? highlightEvents : [];
   // Resource preview (only if explicitly enabled)
   if (flags?.resourcePreviewEnabled) {
     const image = pickFirstImage(template);
@@ -592,16 +676,30 @@ function buildDefaultWidgets(template, flags, gridState, rankContext){
       ),
     });
   }
+  if (logEvents.length) {
+    const visibleHighlights = highlights.length ? highlights : logEvents.slice(-6);
+    list.push({
+      title: '배틀 로그(디버그)',
+      body: (
+        <ShellBattleHighlights
+          events={visibleHighlights}
+          participants={battleLog?.participants || {}}
+        />
+      ),
+    });
+  }
   return list;
 }
 
 function buildWidgetsFromShell(configs, ctx){
   const list = [];
   const participants = Array.isArray(ctx.rankContext?.players) ? ctx.rankContext.players : [];
-  const lastTurn =
-    Array.isArray(ctx.turnLogEvents) && ctx.turnLogEvents.length
-      ? ctx.turnLogEvents[ctx.turnLogEvents.length - 1]
-       : null;
+  const baseEvents = Array.isArray(ctx.battleLog?.events)
+    ? ctx.battleLog.events
+    : Array.isArray(ctx.turnLogEvents)
+    ? ctx.turnLogEvents
+    : [];
+  const lastTurn = baseEvents.length ? baseEvents[baseEvents.length - 1] : null;
   configs.forEach((cfg) => {
     if (!cfg || typeof cfg !== 'object') return;
     const kind = cfg.kind;
@@ -617,7 +715,7 @@ function buildWidgetsFromShell(configs, ctx){
         body: (
           <div style={style}>
             <ShellChatLogRich
-              events={Array.isArray(ctx.turnLogEvents) ? ctx.turnLogEvents : []}
+              events={baseEvents}
               rankContext={ctx.rankContext || null}
             />
           </div>
@@ -631,7 +729,7 @@ function buildWidgetsFromShell(configs, ctx){
         body: (
           <div style={style}>
             <ShellAiHistory
-              events={Array.isArray(ctx.turnLogEvents) ? ctx.turnLogEvents : []}
+              events={baseEvents}
               rankContext={ctx.rankContext || null}
             />
           </div>
@@ -645,7 +743,7 @@ function buildWidgetsFromShell(configs, ctx){
         body: (
           <div style={style}>
             <ShellPlayerHistory
-              events={Array.isArray(ctx.turnLogEvents) ? ctx.turnLogEvents : []}
+              events={baseEvents}
               rankContext={ctx.rankContext || null}
             />
           </div>
@@ -659,7 +757,7 @@ function buildWidgetsFromShell(configs, ctx){
         body: (
           <div style={style}>
             <ShellTurnTimeline
-              events={Array.isArray(ctx.turnLogEvents) ? ctx.turnLogEvents : []}
+              events={baseEvents}
             />
           </div>
         ),
@@ -958,6 +1056,54 @@ function ShellTurnTimeline({ events }){
                 <div style={{ color: '#cbd5e1', opacity: 0.85 }}>{preview}</div>
               ) : null}
             </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ShellBattleHighlights({ events, participants = {} }){
+  const items = Array.isArray(events) ? events.filter(isLogEntryVisible) : [];
+  if (!items.length) {
+    return <div style={{ fontSize:12, color:'#94a3b8' }}>하이라이트가 없습니다.</div>;
+  }
+  return (
+    <div style={{ display:'grid', gap:6, maxHeight:200, overflowY:'auto' }}>
+      {items.map((evt, idx) => {
+        const turn = typeof evt.turn === 'number' && Number.isFinite(evt.turn) ? evt.turn : null;
+        const speaker = evt.speaker || {};
+        const slotId = speaker.slotId || speaker.ownerId || null;
+        const participant = slotId && participants ? participants[slotId] : null;
+        const name = speaker.name || participant?.name || slotId || '참가자';
+        const role = speaker.role || participant?.role || null;
+        const text =
+          typeof evt.summary === 'string' && evt.summary.trim()
+            ? evt.summary.trim()
+            : typeof evt.prompt === 'string'
+            ? (evt.prompt.split(/\r?\n/)[0] || '')
+            : evt.nodeLabel || evt.nodeId || evt.type;
+        return (
+          <div
+            key={evt.id || `${idx}-${turn || 't'}`}
+            style={{
+              padding: '6px 8px',
+              borderRadius: 8,
+              border: '1px solid rgba(148,163,184,0.4)',
+              background: 'rgba(15,23,42,0.9)',
+              display: 'grid',
+              gap: 2,
+              fontSize: 12,
+              color: '#e5e7eb',
+            }}
+          >
+            <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:11, color:'#9ca3af' }}>
+              {turn != null ? <span>턴 {turn}</span> : <span>턴 ?</span>}
+              <span>{evt.type || 'event'}</span>
+              {name ? <span>{name}</span> : null}
+              {role ? <span style={{ opacity:0.8 }}>({role})</span> : null}
+            </div>
+            <div>{text}</div>
           </div>
         );
       })}

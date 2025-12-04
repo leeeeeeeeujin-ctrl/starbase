@@ -446,18 +446,48 @@ With this setup, the Play overlay:
 1) Sandbox / Hub 플러그인
    - Scope: 워크스페이스 VFS 경계 적용, `ai-actions-allowlist`/경로 매핑, Hub 플러그인(JSON API) 권한/배포/업데이트 흐름.
    - Deliverables: allowlist+경로 적용 코드, Hub API 초안(권한/토큰/헬스체크), 최소 1개 플러그인 PoC(UI 테스트 또는 로컬 Git).
+   - Progress: `ai-actions-allowlist.json` 자동 생성/확인 추가(서버 측). `sandbox_exec`는 여전히 allowlist+경로 매핑을 강제하며, 가드 테스트(`__tests__/lib/rank/actions.sandbox.test.js`) 추가. `/api/rank/handle-action` 도 동일 가드( env 켜짐 + 인증 )를 선행 체크하며 batch 내 sandbox_* 포함 시도도 차단. Hub API 초안 `/docs/hub-api.md` 작성.
+   - Next tickets:
+     - API: Hub JSON 스펙(인증/헬스/플러그인 등록·호출) 초안 리뷰 + 권한/토큰 예제 보완.
+     - Sandbox: `/api/rank/handle-action` 경로 가드 e2e(allowlist 적용 포함) + 배치 액션 시나리오 확인.
+     - Plugin PoC: UI 테스트 플러그인 또는 로컬 Git 플러그인 1개 데모.
+   - Planned plugins (권한/스코프는 `/docs/hub-api.md`에 추가 예정):
+     - UI 테스트 샌드박스(`ui-sandbox`): Playwright/Puppeteer/DevTools 기반, 세션 단위로 click/type/navigate/drag/wait 수행, 콘솔/네트워크 로그+DOM 요약+스크린샷 반환. 브라우저 권한을 웹앱과 분리해 보안 유지.
+     - 로컬 Git(`git-local`): 허용된 cwd에서 status/commit/push/pull 등 최소 git 액션 제공.
+     - Supabase 커넥터(`supabase-client`): 사용자가 등록한 Supabase 프로젝트/키를 이용해 SQL/스토리지 등을 워크스페이스(Play/메인게임 포함)에서 호출하도록 중계. 프로젝트/키는 유저 소유이며, 메인게임/플레이에서도 동일 백엔드를 선택해 사용 가능하도록 연결.
+     - (추가 여지) 로컬 빌드/파일 헬퍼: 허용 경로 내 스크립트 실행·에셋 처리 등, 엄격한 allowlist/스코프 전제.
+   - 현재 Hub 없이 동작하는 에디터 확장/도구(웹앱 내):
+     - AI Code Chat Dock: 코드/파일 액션을 수행하는 내장 도크(Next API 기반).
+     - Capabilities Help/Extensions 패널: capability 계약 조회, 필수 파일 템플릿 안내, 확장 메타 저장.
+     - Play/디버그 패널: 텍스트 런타임 실행, 네트워크/CRDT 어댑터 선택, 디버그 로그·턴 로그 조회.
 
 2) Matching / 정산
    - Scope: 점수/랭크/정산 데이터모델+DB, `/api/rank/**` 확장, UI(라운드/랭크/정산 뷰), 캐릭터/세션 연계.
    - Deliverables: 스키마/마이그레이션, 정산 엔드포인트, 단순 정산 UI, 재접속/복구 시나리오 정의.
+   - Next tickets:
+     - 스키마/DB: 점수/랭크/정산 테이블 설계(MVP) + 마이그레이션 초안.
+     - API: `/api/rank/settle` 등 정산 엔드포인트 설계, 세션/캐릭터 연계 계약.
+     - UI: 정산/랭크 표시용 최소 UI 와이어프레임.
+     - Battle log authoring: 코드 에디터/프롬프트-노드 에디터에서 턴 로그를 가공해 “전투 로그/하이라이트”를 구성·미리보기하는 편집/발췌 기능 추가. (예: 요약 프리셋, 구간 선택, 문단 템플릿)
+     - 표준 로그 스키마/템플릿: 턴 이벤트 타입(`system`, `ai_action`, `user_action`, `judge`, `state_change`, `score_change`, `effect`, `dialogue`, `summary`)을 공통 필드(턴, speaker 슬롯, visibility, variables.stats/scene/effects/speaker) + 타입별 필드로 정의하고, `participants`(slotId → owner/name/team/role/bio) 맵을 별도 보관. 템플릿 엔진(Mustache 수준)으로 `highlightEvents` + `participants` + `finalState` 를 주입해 배틀로그 텍스트/HTML 생성. (세부안: `docs/battle-log-schema.md`, 헬퍼: `lib/runtime/battleLogSchema.js`)
+     - 하이라이트 추출 규칙: `onBattleEnd(ctx)` 훅에서 승패/점수/태그된 이벤트 기반으로 `highlightEvents` 목록을 만들고, `summary_payload`에 outcome/scoreboard/highlightIds 저장. 재생성 가능하도록 템플릿/하이라이트 메타를 함께 저장.
+     - 편집기 UX: 프롬프트-노드 노드/엣지에 “로그 라벨/하이라이트” 태그를 붙이고, 코드 에디터에 `logTemplates` 블록(`/game/runtime.config.json` 등)으로 프리셋/변수 매핑 선언. Play/메인게임 뷰어에서 전체/하이라이트/승패 요약 탭 및 참여자 필터 제공.
 
 3) Play/툴링 마감
    - Scope: PlayOverlay 입력/런타임/디버그 훅 분리, Capabilities 선택→필수 파일 템플릿 자동 생성/가이드, runtimeIssues 빠른 액션 완성.
    - Deliverables: 모듈화된 Play 훅, “필수 파일 생성+템플릿 삽입” 버튼, runtimeIssues 경고/가이드 일관화.
+   - Next tickets:
+     - PlayOverlay: 입력/런타임 훅 분리 티켓(커스텀 훅 1~2개).
+     - Capabilities UI: 템플릿 생성 버튼 추가(ExtensionInstallModal) 및 경고/가이드 문구 정리.
+     - Battle log debug hook wiring (미완): runtimeBus → turnLog → participants/outcome → `useBattleLogDebug`로 정규화/하이라이트 생성. MainGameMobileUI에 데이터 배선(import/참여자 매핑)까지 추가, 디버그 패널 렌더링/정산 호출 연결은 TODO.
 
 4) 품질/운영
    - Scope: 핵심 헬퍼·런타임·매칭 API 테스트, 기본 로깅/모니터링/알림, CI/CD·릴리즈/롤백 흐름, 리소스/타임아웃 가드.
    - Deliverables: 테스트 스위트, 관측 스택(MVP), 배포/롤백 절차 문서, 리미트/쿼터 설정.
+   - Next tickets:
+     - 테스트: `computeRuntimeFeatureIssues` 등 헬퍼 단위 테스트 세트.
+     - 빌드/CI: `npm run build` 체크, 간단한 CI 스크립트 초안.
+     - 관측: 에러/경고 로깅 경로 정의 및 최소 설정.
 
 5) 렌더링 확장(선택/장기)
    - Scope: 2D/3D 엔진 일급 연동(Phaser/Pixi/three 중 1개 우선) + 씬/노드 편집기 초안.
@@ -470,6 +500,19 @@ With this setup, the Play overlay:
 ### Testing / validation guide (keep updated)
 - 빠른 스크립트 체크: Node로 핵심 헬퍼 검증(예: `computeRuntimeFeatureIssues`), 필수 파일 존재 여부 검사. 필요 시 `npm test`/`npm run build` 실행.
 - 단위 테스트 우선: 런타임(coreRuntime), 매칭/랭크 API, Hub/플러그인 경계, Capabilities 검증 로직에 집중.
+- 샌드박스 가드: `__tests__/lib/rank/actions.sandbox.test.js`에서 SANDBOX_EXEC_ENABLE + allowlist 기반 실행/차단, `__tests__/api/rank/handle-action.test.js`에서 API 레벨 env/인증 + batch 포함 여부, allowlist 미스매치 차단/매치 성공 플로우까지 검증.
+- 최근 실행(2025-12-04): `npm test -- __tests__/api/rank/handle-action.test.js __tests__/lib/rank/actions.sandbox.test.js` (PASS). reference_data 경고는 `modulePathIgnorePatterns` 로 일부 줄였고, 패키지 중복 경고도 `modulePathIgnorePatterns`에 `<rootDir>/ai-roomchat` 추가로 해소.
+- 최근 실행(추가): `npm test -- __tests__/lib/rank/actions.sandbox.test.js` (PASS, regex allowlist + shell chaining 차단 + 500자 제한 + token: 규칙 + prefix 비활성 모드 검증 포함).
+
+### Known gaps / tighten-up list
+- Sandbox relax flags: `AI_ACTIONS_ALLOW_HOST=1` 는 dev 우회용으로만 허용. 배포/CI에서는 강제 off + 로그/메트릭 알람 필요.
+- Allowlist strictness: 현재 prefix 매칭(예: `"node "`)은 과도 허용 가능. 정규식/토큰 단위 명시 allowlist로 좁히고, shell=true 의존도를 줄이기. (추가 가드: `;`,`&&`,`||`,`|`,`$()`,`\`` 포함 시 sandbox_blocked, 500자 초과 `cmd_too_long`, `SANDBOX_MAX_CMD_CHARS` 환경변수로 상한 조정 가능, `token:<cmd>`는 첫 토큰만 허용, `SANDBOX_ALLOW_PREFIX=0` 시 prefix 규칙 무시/기본 비활성.)
+- Jest noise: `docs/reference_data/**` 내 다중 package.json으로 haste-map 경고 발생 → `modulePathIgnorePatterns` 로 일부 완화. 루트/중첩 styleMock 중복 제거를 위해 mapper를 `ai-roomchat/__mocks__/styleMock.js`로 고정했고 상위 `__mocks__`는 ignore. 여전히 패키지명 충돌(package.json) 경고 1건은 남아 있음.
+- Hub/플러그인 권한: `/docs/hub-api.md`에 Bearer 토큰 스코프/원점 제한/명령·경로 제한 초안이 있으나, 실제 키 발급·회수/플러그인별 스코프 적용 로직은 미구현.
+- Hub/플러그인: `/docs/hub-api.md`는 초안 상태, 권한/토큰/배포 플로우 미정. 플러그인 PoC 전에 권한 모델 확정 필요.
+- 매칭/정산: 스키마·API·UI 미구현. 문서/티켓만 있음.
+- 배틀로그 런타임 연결: `battleLogSchema/helpers`는 추가됐지만 PlayOverlay/정산/뷰어로의 실제 연결·커스텀 템플릿 입력 경로는 미구현.
+- PlayOverlay: 입력/런타임/디버그 훅 분리 리팩터 미완료(계획만 기록).
 - 통합/수동: PlayOverlay(디버그 패널 포함)에서 capability 누락 경고, 필수 파일 템플릿 생성 동작 확인.
 - 관측/로그: 에러/경고 로그 수집 경로를 명시하고, 주요 경계(샌드박스/HUB/매칭)에서 로깅·타임아웃·리밋을 점검.
 - 빌드/배포 전: `npm run build`로 기본 컴파일 체크, CI에 동일한 스크립트 연결(준비되면).
@@ -2950,3 +2993,29 @@ Maker 쪽에서는 `/game/ui.shell.json`을 직접 편집하는 대신, 다음�
 - 실행/테스트: 필요한 경우에만 스크립트 실행. 실행 전후 어떤 커맨드와 기대 결과인지 보고. 요청 없으면 테스트는 건너뛰고 이유를 명시.
 - Git: 기본은 커밋/푸시 안 함. 읽기용 `git status`/`git diff`만 사용하며 강제 리셋(`reset --hard`, `checkout --`) 금지. 커밋 지시 시 메시지/범위 확인 후 진행, amend는 요청 시에만.
 - 보고: 변경 경로를 인라인 코드(`ai-roomchat/...`)로 명시하고, 요약→세부→후속 제안 순서. 테스트 미실행 시 이유와 검증 제안 포함.
+
+- turn-log ����ȭ ����: lib/runtime/battleLogSchema.js, lib/runtime/battleLogHelpers.js, components/workspace/hooks/useBattleLogDebug.js
+- Play UI: turn-log ��� ��Ʋ �α� ����� ī��, runtime:battle-log �̺�Ʈ�� ȣ��Ʈ/���� �Һ� ����
+
+- runtime:battle-log�� ����/���丮��/�� ����, /api/rank/settle ����
+- �α� Ÿ��/���ü�/����Ŀ �ʵ� �ּ� ���� �� ���� �� ����/����� ���͸�
+- ��ũ�����̽� ����: workspace/config/ai-actions-allowlist.json�� ����; ����� ����/���� ��ũ��Ʈ, ��Ʋ�α� �����, Ŀ���� ������ �ڻ� ����. �⺻ allowlist�� echo/node/npm/git status/diff ����.
+
+- ��ũ�����̽� ����/���� ��ũ��Ʈ �̱���: battleLog��scores/winners/losers/draw/highlights ��� ����/��� ����
+- ��ũ�����̽� �ڻ� ��Ȳ: config/ai-actions-allowlist.json �� ��� ����(���� ��ũ��Ʈ, ��Ʋ�α� ����/��� ���ø� ����)
+- �ؾ� �� ��: settle���� ��ũ�����̽� Ŀ���� ��ũ��Ʈ �켱 ���������� �⺻ ����; ��ũ��Ʈ ��ġ/�Է�(battleLog)/���(scores,winners,losers,draw,highlightIds) ��� ����; ����/���ø� �߰�; ���� ������ ����
+- workspace/score/score-default.js �߰� (battleLog �Է� �� scores/winners/losers/draw/highlightIds ���), workspace/score/sample-battlelog.json ���� �Է� ����.
+- settle API: workspace ���ھ� ��ũ��Ʈ �켱 ����, ���� �� outcome/scoreboard fallback ����(����/��ŷ �ݿ� �̱���).
+- settle: battleLog/result�� workspace/score/history/{sessionId}.json ���� ����(����/�ӽ�), ���� ���д� ����.
+- ���� ���� ��ǥ: ��ũ�����̽� ��ũ��Ʈ�� ��� �� DB/���丮���� ����(����� workspace/score/history/*.json ���� �ӽ�)
+- DB ���� �ʾ�: table battle_history(session_id, game_id, user_id, battle_log(jsonb), result(jsonb), created_at, idx(session_id/game_id/user_id)); API: POST /api/rank/settle -, GET /api/rank/history?sessionId - ����/����/����ŷ �ʼ�.
+- battleHistoryStore: env BATTLE_HISTORY_PG_URL ������ Postgres�� ����/��ȸ, ������ workspace/score/history ���� fallback. settle/history API�� ���� ����� ���.
+- Postgres ���̱׷��̼� ������ �߰�: supabase/battle_history.sql (battle_history ���̺� + �ε���).
+- settle/history API�� x-api-key ��� ��� ���� ���� �߰� (env RANK_API_KEY)
+### ����/�����丮 API ��� ���� (dev)
+- POST /api/rank/settle (��� x-api-key: $RANK_API_KEY): curl -X POST http://localhost:3000/api/rank/settle -H "Content-Type: application/json" -H "x-api-key: test" --data @workspace/score/sample-battlelog.json
+- GET /api/rank/history?sessionId=demo-session (��� x-api-key: $RANK_API_KEY)
+- Play UI auto-settle: shellConfig.autoSettle=true and shellConfig.rankApiKey - /api/rank/settle (x-api-key)
+- history API: sessionId �ܰ� �Ǵ� gameId ��� ��ȸ ����, Postgres or file fallback ���- history API pagination: gameId ��ȸ �� limit/offset ����(�⺻ 10, max 50), nextOffset ��ȯ
+- history API: RANK_STRICT_USER=1�̸� x-user-id�� ������ ����ġ �� 403 (x-api-key ������ ��ȸ)
+- battle log �� �� ������ �߰�: /battle-log/[sessionId]���� history API ȣ���� ���̶���Ʈ/��ü �α� ǥ��

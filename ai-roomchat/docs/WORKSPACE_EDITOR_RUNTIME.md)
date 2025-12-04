@@ -1,0 +1,4 @@
+- 정산 API 요구 사항: sessionId/gameId 필수, events 없으면 400. battleLog 정규화 후 에코(저장은 후속 작업
+- 워크스페이스 스코어 스크립트 추가: workspace/score/score-default.js (battleLog 입력→scores/winners/losers/draw/highlightIds 출력
+- settle API: workspace 스코어 스크립트 우선 실행, 실패 시 outcome/scoreboard fallback 에코(저장은 미구현
+- 히스토리 조회 API 추가: GET /api/rank/history?sessionId=... → workspace/score/history/{sessionId}.json 읽어 반환(로컬 전용
