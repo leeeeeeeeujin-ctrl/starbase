@@ -32,6 +32,8 @@ const panelStyles = {
     display: 'grid',
     gap: 20,
     width: '100%',
+    maxWidth: 'min(1100px, 96vw)',
+    margin: '0 auto',
   },
   section: {
     display: 'grid',
