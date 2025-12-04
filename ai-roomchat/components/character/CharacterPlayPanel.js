@@ -2666,7 +2666,7 @@ export default function CharacterPlayPanel({ hero, playData }) {
   const startButton = (
     <section style={panelStyles.section}>
       <div style={panelStyles.headerRow}>
-        <h3 style={panelStyles.title}>선택한 게임 <span style={{ fontSize: 12, color: '#22d3ee' }}>1</span></h3>
+        <h3 style={panelStyles.title}>선택한 게임</h3>
         {currentRole ? <p style={panelStyles.subtitle}>{currentRole}</p> : null}
       </div>
       <p style={panelStyles.subtitle}>

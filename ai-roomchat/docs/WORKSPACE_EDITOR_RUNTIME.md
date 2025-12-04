@@ -20,8 +20,8 @@ Implementation status & ordering notes
 ### Quick dev log (2025-12-05)
 
 - Pushed `assistant-adjust-character-panels-layout` to `main` (origin). Touched `ai-roomchat/components/character/CharacterBasicView.js` to stop carousel/game cards from clipping and make overlay slides stretch to container width on narrow/rotated layouts.
-
-
+- Pushed `assistant-fix-info-slider-width` to `main` (origin). `ai-roomchat/components/character/CharacterBasicView.js`�� info slider Ʈ���� flex ��� 2����(�� 50%%)�� ������ ����/ĳ���� �г��� ���ݸ� ���̴� ������ �ؼ�.
+- Pushed `assistant-remove-game-count-badge` to `main` (origin). `ai-roomchat/components/character/CharacterPlayPanel.js`���� �������� ���ӡ� ��� �� ���� ���� ������ ����(���� �����̶� ���ʿ�).
 Current high-level status (this repo copy)
 
 - Security / sandbox (AI actions): **in progress**
