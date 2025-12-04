@@ -986,12 +986,10 @@ const styles = {
     maxHeight: '70vh',
   },
   infoSliderTrack: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(2, 100%)',
+    display: 'flex',
     width: '200%',
     height: '100%',
     transition: 'transform 220ms ease',
-    justifyItems: 'start',
   },
   infoSliderSlide: {
     boxSizing: 'border-box',
@@ -1002,6 +1000,9 @@ const styles = {
     minHeight: '100%',
     overflowY: 'auto',
     justifyItems: 'start',
+    flex: '0 0 50%',
+    maxWidth: '50%',
+    width: '50%',
   },
   infoSliderPlaySlide: {
     justifySelf: 'stretch',
@@ -3156,7 +3157,7 @@ export default function CharacterBasicView({ hero }) {
           <div
             style={{
               ...styles.infoSliderTrack,
-              transform: `translateX(-${infoPanelIndex * 100}%)`,
+              transform: `translateX(-${infoPanelIndex * 50}%)`,
             }}
             onTouchStart={handleInfoSliderTouchStart}
             onTouchEnd={handleInfoSliderTouchEnd}
