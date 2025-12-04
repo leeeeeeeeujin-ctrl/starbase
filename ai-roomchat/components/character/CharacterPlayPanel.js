@@ -32,14 +32,13 @@ const panelStyles = {
     display: 'grid',
     gap: 20,
     width: '100%',
-    maxWidth: 'min(960px, 100%)',
+    maxWidth: 'min(1100px, 98vw)',
     margin: '0 auto',
   },
   section: {
     display: 'grid',
     gap: 12,
     width: '100%',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
   },
   headerRow: {
     display: 'flex',
@@ -59,7 +58,7 @@ const panelStyles = {
   },
   sliderTrack: {
     display: 'flex',
-    gap: 12,
+    gap: 10,
     flexWrap: 'wrap',
     justifyContent: 'center',
     padding: '6px 0 6px 0',
@@ -67,9 +66,9 @@ const panelStyles = {
   },
   sliderCard: {
     position: 'relative',
-    width: 'min(420px, 90vw)',
-    minWidth: 'min(260px, 90vw)',
-    minHeight: 112,
+    width: 'min(360px, 92vw)',
+    minWidth: 'min(240px, 92vw)',
+    minHeight: 100,
     borderRadius: 18,
     border: '1px solid rgba(148,163,184,0.35)',
     background: 'rgba(15,23,42,0.7)',
