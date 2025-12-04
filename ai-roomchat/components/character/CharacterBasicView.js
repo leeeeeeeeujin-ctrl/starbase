@@ -277,8 +277,8 @@ const styles = {
   playCarouselFrame: {
     width: '100%',
     display: 'flex',
-    overflow: 'hidden',
-    padding: '0 0 2px',
+    overflow: 'visible',
+    padding: '8px 0 10px',
   },
   playCarouselTrack: {
     flex: '1 1 auto',
@@ -1004,15 +1004,17 @@ const styles = {
     justifyItems: 'start',
   },
   infoSliderPlaySlide: {
-    justifySelf: 'start',
+    justifySelf: 'stretch',
     width: '100%',
-    maxWidth: 360,
+    maxWidth: '100%',
+    minWidth: 0,
     margin: '0',
   },
   infoSliderInfoSlide: {
-    justifySelf: 'start',
+    justifySelf: 'stretch',
     width: '100%',
-    maxWidth: 360,
+    maxWidth: '100%',
+    minWidth: 0,
     margin: '0',
   },
   infoSliderIndicators: {
