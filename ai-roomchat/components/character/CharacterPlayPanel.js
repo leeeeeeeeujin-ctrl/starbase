@@ -200,6 +200,16 @@ const panelStyles = {
     gap: 12,
     gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
   },
+  logToggle: {
+    padding: '6px 10px',
+    borderRadius: 12,
+    border: '1px solid rgba(148,163,184,0.45)',
+    background: 'rgba(15,23,42,0.72)',
+    color: '#e2e8f0',
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: 'pointer',
+  },
   logCard: {
     width: '100%',
     borderRadius: 16,
@@ -2657,6 +2667,21 @@ export default function CharacterPlayPanel({ hero, playData }) {
     [battleDetails, visibleBattles]
   );
 
+  const [expandedBattles, setExpandedBattles] = useState(() => new Set());
+
+  const toggleBattleExpanded = useCallback(battleId => {
+    if (!battleId) return;
+    setExpandedBattles(prev => {
+      const next = new Set(prev);
+      if (next.has(battleId)) {
+        next.delete(battleId);
+      } else {
+        next.add(battleId);
+      }
+      return next;
+    });
+  }, []);
+
   const isMatchingBusy =
     matchingState.open &&
     ['queue', 'awaiting-room', 'staging', 'sampling', 'assembling'].includes(matchingState.phase);
@@ -2731,20 +2756,39 @@ export default function CharacterPlayPanel({ hero, playData }) {
           {visibleBattleRows.map(battle => (
             <article key={battle.id} style={panelStyles.logCard}>
               <div style={panelStyles.logHeader}>
-                <p style={panelStyles.logDate}>
-                  {battle.created_at
-                    ? new Date(battle.created_at).toLocaleString('ko-KR')
-                    : '시간 정보 없음'}
-                </p>
-                <p style={panelStyles.logResult}>
-                  {battle.result ? battle.result.toUpperCase() : 'PENDING'}
-                </p>
+                <div style={{ display: 'grid', gap: 4 }}>
+                  <p style={panelStyles.logDate}>
+                    {battle.created_at
+                      ? new Date(battle.created_at).toLocaleString('ko-KR')
+                      : '시간 정보 없음'}
+                  </p>
+                  <p style={panelStyles.logMeta}>
+                    점수 변화:{' '}
+                    {battle.score_delta != null ? formatPlayNumber(battle.score_delta) : '—'}
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  <p style={panelStyles.logResult}>
+                    {battle.result ? battle.result.toUpperCase() : 'PENDING'}
+                  </p>
+                  {battle.logs?.length ? (
+                    <button
+                      type="button"
+                      style={panelStyles.logToggle}
+                      onClick={() => toggleBattleExpanded(battle.id)}
+                    >
+                      {expandedBattles.has(battle.id) ? '로그 접기' : '로그 펼치기'}
+                    </button>
+                  ) : null}
+                </div>
               </div>
-              <p style={panelStyles.logMeta}>
-                점수 변화: {battle.score_delta != null ? formatPlayNumber(battle.score_delta) : '—'}
+              <p style={panelStyles.logText}>
+                {battle.logs?.length
+                  ? `${battle.logs[0].turn_no ?? 0}턴 - ${battle.logs[0].prompt || '내용 없음'}`
+                  : '로그 없음'}
               </p>
-              {battle.logs?.length ? (
-                <div>
+              {expandedBattles.has(battle.id) && battle.logs?.length ? (
+                <div style={{ display: 'grid', gap: 6 }}>
                   {battle.logs.map(log => (
                     <p key={`${battle.id}-${log.turn_no}`} style={panelStyles.logText}>
                       {log.prompt ? `${log.turn_no ?? 0}턴 - ${log.prompt}` : '로그 없음'}
