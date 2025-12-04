@@ -1,5 +1,5 @@
-import { buildLogFromRuntime, normalizeBattleOutcome } from '../../lib/runtime/battleLogHelpers';
-import { storeBattleHistory } from '../../lib/rank/battleHistoryStore';
+import { buildLogFromRuntime, normalizeBattleOutcome } from '../../../lib/runtime/battleLogHelpers';
+import { storeBattleHistory } from '../../../lib/rank/battleHistoryStore';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -58,12 +58,14 @@ export default async function handler(req, res) {
     meta,
   });
 
-  // Try to load workspace score script if present.
+  // Try to load workspace score script if present (dynamic require to avoid bundler resolution errors).
   let scoreResult = null;
   try {
-    // Load from workspace/score/score-default.js (user can replace with custom script path).
+    const scriptPath =
+      process.env.SCORE_SCRIPT_PATH ||
+      `${process.cwd()}/workspace/score/score-default.js`;
     // eslint-disable-next-line import/no-dynamic-require, global-require
-    const scoreFn = require('../../../workspace/score/score-default.js');
+    const scoreFn = require(scriptPath);
     if (typeof scoreFn === 'function') {
       scoreResult = scoreFn({
         battleLog: normalizedLog,

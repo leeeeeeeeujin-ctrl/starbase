@@ -1,4 +1,4 @@
-import { loadBattleHistoryBySession, loadBattleHistoryByGame } from '../../lib/rank/battleHistoryStore';
+import { loadBattleHistoryBySession, loadBattleHistoryByGame } from '../../../lib/rank/battleHistoryStore';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
