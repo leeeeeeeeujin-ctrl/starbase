@@ -32,13 +32,15 @@ const panelStyles = {
     display: 'grid',
     gap: 20,
     width: '100%',
-    maxWidth: 'min(1100px, 98vw)',
+    maxWidth: 'min(900px, 96vw)',
     margin: '0 auto',
+    boxSizing: 'border-box',
   },
   section: {
     display: 'grid',
     gap: 12,
     width: '100%',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
   },
   headerRow: {
     display: 'flex',
@@ -66,8 +68,8 @@ const panelStyles = {
   },
   sliderCard: {
     position: 'relative',
-    width: 'min(360px, 92vw)',
-    minWidth: 'min(240px, 92vw)',
+    width: 'min(320px, 92vw)',
+    minWidth: 'min(220px, 92vw)',
     minHeight: 100,
     borderRadius: 18,
     border: '1px solid rgba(148,163,184,0.35)',
