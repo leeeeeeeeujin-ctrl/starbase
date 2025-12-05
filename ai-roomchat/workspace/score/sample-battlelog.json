@@ -1,0 +1,76 @@
+{
+  "sessionId": "demo-session",
+  "gameId": "demo-game",
+  "battleLog": {
+    "participants": {
+      "heroA": {
+        "ownerId": "owner-1",
+        "name": "Hero A",
+        "team": "A",
+        "role": "attacker"
+      },
+      "heroB": {
+        "ownerId": "owner-2",
+        "name": "Hero B",
+        "team": "B",
+        "role": "defender"
+      }
+    },
+    "events": [
+      {
+        "id": "ev-1",
+        "type": "system",
+        "turn": 1,
+        "timestamp": 0,
+        "speaker": {},
+        "visibility": "public",
+        "summary": "전투 시작",
+        "variables": null
+      },
+      {
+        "id": "ev-2",
+        "type": "score_change",
+        "turn": 2,
+        "timestamp": 1,
+        "speaker": {
+          "slotId": "heroA"
+        },
+        "visibility": "public",
+        "summary": "Hero A scores",
+        "delta": 1,
+        "variables": null
+      },
+      {
+        "id": "ev-3",
+        "type": "summary",
+        "turn": 3,
+        "timestamp": 2,
+        "speaker": {},
+        "visibility": "public",
+        "summary": "Hero A 승리",
+        "variables": null
+      }
+    ],
+    "outcome": {
+      "winners": ["heroA"],
+      "losers": ["heroB"],
+      "draw": false
+    },
+    "scoreboard": {
+      "heroA": {
+        "score": 1,
+        "delta": 1
+      },
+      "heroB": {
+        "score": 0,
+        "delta": 0
+      }
+    },
+    "highlightIds": ["ev-2", "ev-3"],
+    "meta": {
+      "sessionId": "demo-session",
+      "gameId": "demo-game"
+    }
+  }
+}
+

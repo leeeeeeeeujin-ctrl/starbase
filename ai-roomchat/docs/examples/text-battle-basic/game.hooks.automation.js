@@ -388,3 +388,115 @@ export async function onUserAction(ctx, input) {
   // 그 외에는 그래프의 기본 엣지(selectNext 또는 첫 번째 neighbor)를 사용하도록 null 반환
   return null;
 }
+
+// onBattleEnd: 텍스트 베틀 종료 시점에 턴 로그/최종 변수 상태를 기반으로
+// outcome / scores / highlightIds / templateVars 를 계산하는 예시 훅.
+//
+// 계약(초안):
+// - 입력: ctx.turnLog (runtime:turn-log 이벤트 배열, 없으면 빈 배열),
+//         ctx.variables (battleScore / battleWinner 포함 가능),
+//         ctx.participants (선택 – slotId → 참가자 정보 맵)
+// - 반환: {
+//     outcome: { winners:[slotId], losers:[slotId], draw?:boolean },
+//     scores: { [slotId]: { delta:number, total?:number, reason?:string } },
+//     highlightIds?: string[],
+//     templateId?: string,
+//     templateVars?: any
+//   }
+//
+// 이 예시는 hero/rival 두 슬롯을 가정하고 있으며,
+// 실제 랭크/멀티 슬롯 게임에서는 slotId 체계에 맞게 확장/수정해야 한다.
+export function onBattleEnd(ctx) {
+  const safeNumber = (value) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const vars = (ctx && ctx.variables && typeof ctx.variables === 'object') ? ctx.variables : {};
+  const turnLog = Array.isArray(ctx && ctx.turnLog) ? ctx.turnLog : [];
+
+  // battleScore 예시: { hero: 0, rival: 0 }
+  const battleScore =
+    vars.battleScore && typeof vars.battleScore === 'object' ? vars.battleScore : {};
+  const heroScore = safeNumber(battleScore.hero);
+  const rivalScore = safeNumber(battleScore.rival);
+
+  // hero / rival 두 슬롯을 기본 slotId로 사용한다.
+  const scores = {
+    hero: {
+      delta: heroScore,
+      total: heroScore,
+      reason: 'battle_score',
+    },
+    rival: {
+      delta: rivalScore,
+      total: rivalScore,
+      reason: 'battle_score',
+    },
+  };
+
+  // 승패/무승부 결정: 점수가 더 큰 쪽이 승자, 같으면 무승부.
+  let winners = [];
+  let losers = [];
+  let draw = false;
+
+  if (heroScore > rivalScore) {
+    winners = ['hero'];
+    losers = ['rival'];
+  } else if (rivalScore > heroScore) {
+    winners = ['rival'];
+    losers = ['hero'];
+  } else {
+    draw = true;
+  }
+
+  // battleWinner (예: 'hero' | 'rival') 가 variables 에 있을 경우, 점수와 상관없이 최종 승자 힌트로 사용.
+  try {
+    const winnerToken = vars.battleWinner || vars.battleResultWinner || null;
+    if (winnerToken === 'hero' || winnerToken === 'rival') {
+      winners = [winnerToken];
+      losers = winnerToken === 'hero' ? ['rival'] : ['hero'];
+      draw = false;
+    }
+  } catch {
+    // winner 힌트가 없어도 진행에는 영향을 주지 않는다.
+  }
+
+  // 하이라이트: type === 'summary' / 'judge' 이벤트를 우선 사용, 없으면 전체 로그에서 마지막 몇 개를 사용.
+  const highlightIds = [];
+  try {
+    const summaryLike = turnLog.filter(
+      (ev) => ev && (ev.type === 'summary' || ev.type === 'judge'),
+    );
+    const source = summaryLike.length ? summaryLike : turnLog;
+    source
+      .slice(-5)
+      .forEach((ev) => {
+        if (!ev) return;
+        const id = ev.id || ev.eventId || null;
+        if (id && !highlightIds.includes(id)) {
+          highlightIds.push(id);
+        }
+      });
+  } catch {
+    // 하이라이트 추출 실패는 전체 베틀로그 생성에는 치명적이지 않으므로 무시한다.
+  }
+
+  // 템플릿 렌더링을 위한 기본 변수: 최종 점수 / 승자 토큰 등을 포함.
+  const templateVars = {
+    finalScore: {
+      hero: heroScore,
+      rival: rivalScore,
+    },
+    winner: winners.length === 1 ? winners[0] : null,
+    draw,
+  };
+
+  return {
+    outcome: { winners, losers, draw },
+    scores,
+    highlightIds,
+    templateId: 'text-battle-basic',
+    templateVars,
+  };
+}

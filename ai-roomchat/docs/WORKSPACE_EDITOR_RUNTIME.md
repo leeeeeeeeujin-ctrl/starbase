@@ -20,9 +20,11 @@ Implementation status & ordering notes
 ### Quick dev log (2025-12-05)
 
 - Pushed `assistant-adjust-character-panels-layout` to `main` (origin). Touched `ai-roomchat/components/character/CharacterBasicView.js` to stop carousel/game cards from clipping and make overlay slides stretch to container width on narrow/rotated layouts.
-- Pushed `assistant-fix-info-slider-width` to `main` (origin). `ai-roomchat/components/character/CharacterBasicView.js`�� info slider Ʈ���� flex ��� 2����(�� 50%%)�� ������ ����/ĳ���� �г��� ���ݸ� ���̴� ������ �ؼ�.
-- Pushed `assistant-remove-game-count-badge` to `main` (origin). `ai-roomchat/components/character/CharacterPlayPanel.js`���� �������� ���ӡ� ��� �� ���� ���� ������ ����(���� �����̶� ���ʿ�).
-- Pushed `assistant-battle-log-expandable` to `main` (origin). ��Ʋ�α׸� 5���� ���������̼��ϰ� ���/��ġ�� ��� �߰�, ���� ������(`/battle-log`) �ʾ� ����.
+- Pushed `assistant-fix-info-slider-width` to `main` (origin). `ai-roomchat/components/character/CharacterBasicView.js`의 info slider 트랙을 flex 기반 2분할(각 50%)로 고정해 게임/캐릭터 패널이 절반만 보이던 문제를 해소.
+- Pushed `assistant-remove-game-count-badge` to `main` (origin). `ai-roomchat/components/character/CharacterPlayPanel.js`에서 “선택한 게임” 헤더 옆 고정 숫자 배지를 제거(단일 선택이라 불필요).
+- Pushed `assistant-battle-log-expandable` to `main` (origin). 베틀로그를 5개씩 페이지네이션하고 요약/펼치기 토글 추가, 전용 페이지(`/battle-log`) 초안 생성.
+
+
 Current high-level status (this repo copy)
 
 - Security / sandbox (AI actions): **in progress**
@@ -2231,9 +2233,160 @@ Status: in progress
     - 워크스페이스의 `/game/ui.shell.json`에서
       `panels.turnLogBar.enabled: true` 를 설정했을 때만 표시된다.
 
+### 17.5 Maker 워크스페이스에서의 베틀로그 작성 흐름 (계획/부분 구현)
+
+- 워크스페이스에서 직접 다루는 파일/지점:
+  - `/game/hooks/automation.js`:
+    - 향후 `onBattleEnd(ctx)` 훅의 구현 위치.  
+      - 입력: 텍스트 런타임 기준 `ctx.turnLog`(runtime:turn-log 이벤트 정규화 배열), `ctx.participants`, `ctx.variables`(최종), `ctx.graphHash`, `ctx.hookHash` 등을 포함하는 컨텍스트.
+      - 반환: `{ outcome, scores, highlightIds?, templateId?, templateVars? }`
+        - `outcome`: `{ winners:[slotId], losers:[slotId], draw?:boolean }`
+        - `scores`: `{ [slotId]: { delta, total?, reason? } }` (선택 – 없으면 score-default에서 계산)
+        - `highlightIds`: 하이라이트 대상으로 삼을 이벤트 `id` 배열
+        - `templateId/templateVars`: 텍스트/카드형 베틀로그 템플릿 렌더링에 사용할 힌트
+    - 예시 구현: `docs/examples/text-battle-basic/game.hooks.automation.js` 의 `onBattleEnd(ctx)` 는
+      hero/rival 양쪽 점수(`variables.battleScore`)와 턴 로그의 요약 이벤트를 기반으로
+      승패/무승부, 슬롯별 점수, 하이라이트 이벤트, 템플릿 변수(최종 점수/승자)를 계산하는 참조용 교본이다.
+  - `workspace/score/*.js`:
+    - 정산 스크립트(예: `score-default.js`)는 `battleLog` 전체를 받아 점수/승패/하이라이트를 계산한다.
+    - 현재 기본 스크립트는 `workspace/score/score-default.js`로 제공되며,
+      Maker는 이 파일을 복사/커스터마이즈해 게임별 스코어링을 구현할 수 있다.
+
+- 기본 파이프라인(랭크 텍스트 베틀 기준, 현재 구현):
+  1. 런타임/플레이:
+     - `coreRuntime.step()`/`getCurrentWithPrompt()` 호출 시마다 `runtimeBus.emit('runtime:turn-log', event)` 로 표준 턴 로그 이벤트를 발행한다.
+     - StartClient/Play 오버레이는 이 이벤트를 수집해 세션별 `turnLog` 배열을 유지한다.
+  2. 베틀 종료 시점:
+     - 텍스트 베틀 훅(또는 rank 엔진)이 `variables.battleLast.battleEnd === true` 를 설정하면,  
+       StartClient 가 워크스페이스의 `onBattleEnd(ctx)`(있을 경우)를 한 번 호출해  
+       `outcome/scores/highlightIds/template*` 를 얻고, 정의돼 있지 않거나 오류가 나면
+       최소한의 기본값만 채운다(예: scores 없음, highlightIds 없음).
+  3. battleLog 구축:
+     - `turnLog` + `participants` + `onBattleEnd` 결과를 합쳐 `buildLogFromRuntime` 으로 battleLog 객체를 만든다.
+       - `events`: `runtime:turn-log` 이벤트 정규화 배열
+       - `participants`: Maker/Rank 워크스페이스에서 정의한 슬롯/참가자 맵
+       - `outcome/scoreboard/highlightIds/meta`: `onBattleEnd` 결과와 기본 규칙(기본 highlightRule)을 합친 값
+  4. 점수 정산:
+     - `/api/rank/settle`는 battleLog를 입력으로 받아  
+       `workspace/score/score-default.js`(또는 `SCORE_SCRIPT_PATH`로 지정된 커스텀 스크립트)를 호출해  
+       `{ scores, winners, losers, draw, highlightIds, meta }` 결과를 만들고,  
+       이를 최종 result 객체에 합친 뒤 `battle_history` 또는 파일(`workspace/score/history/*.json`)에 저장한다.
+  5. 뷰어/템플릿:
+     - `/battle-log/[sessionId].jsx`는 우선 result/battleLog의 `outcome/scoreboard/highlightIds`를 사용해  
+       “결과 + 하이라이트 + 전체 로그” 기본 뷰를 구성하고,
+       `battleLog.meta.templateId/templateVars` 또는 `result.meta.template*` 가 있을 경우
+       간단한 템플릿 요약 카드(예: 텍스트 베틀 최종 점수/승자)를 함께 표시한다.
+     - 메인게임 UI에서는 `MainGameMobileUI`의 기본 widgets 안에
+       `battleLog.outcome/scoreboard`를 사용하는 “전투 결과” 카드가 포함되어 있어,
+       플레이어가 게임 화면에서 바로 승/패/점수를 확인할 수 있다.
+     - 이후 단계에서 `templateId/templateVars` 를 보다 일반적인 템플릿 렌더러
+       (예: `/game/logTemplates/*.json`)와 연결해 장르별 전용 베틀로그 페이지를 제공하는 확장을 계획한다.
+
+- 요약:
+  - Maker는 `/game/hooks/automation.js` 의 `onBattleEnd` 와 `workspace/score/*.js` 를 통해  
+    “턴 로그 → 정규화된 battleLog → 점수/승패/하이라이트” 전 과정을 직접 컨트롤할 수 있게 되는 것을 목표로 한다.
+  - 현재는:
+    - `runtime:turn-log` 스트림, battleLog 스키마, `/api/rank/settle` + `score-default` +
+      `/battle-log/[sessionId]` 기본 뷰가 구현되어 있고,
+    - 랭크 텍스트 베틀 세션에 대해서는 StartClient 가 `onBattleEnd(ctx)` 를 호출해
+      outcome/scores/highlightIds/template* 를 battleLog/meta/result 에 반영한다.
+    - 다른 장르/엔진 및 Play 오버레이에서의 `onBattleEnd` 호출 확대와,
+      워크스페이스 정의 템플릿(`logTemplates`) 기반의 풀 베틀로그 렌더링은 다음 단계로 남아 있다.
+
 요약하면, **엔진과 매칭/세션의 뼈대는 이미 Play ↔ Rank 사이에 공유되고 있고**,  
 캐릭터 표시, 턴 히스토리, API 키, 난입 정책 등 “게임별 UI/경험을 풍부하게 만드는 계약”은  
 이후 단계에서 GameShell + coreRuntime ↔ `/game/*` 계층으로 차례대로 끌어올릴 예정이다.
+
+### 17.6 실시간/비실시간 매칭 흐름과 세션 수명주기 (정리)
+
+Status: 개념/파이프라인 정리는 완료, 일부 테이블/뷰어 연계는 미완.
+
+이 서브섹션은 **실시간(realtime) / 비실시간(async) 모두에 공통으로 적용되는 매칭/세션 수명주기**를 요약한다.  
+핵심은 “세션이 잡혔는가 / 진행 중인가 / 정상 종료됐는가 / 중단됐는가”에 따라 어떤 데이터를 어디에 남길지,  
+그리고 그 결과가 어디서 소비되는지를 명확히 하는 것이다.
+
+- 공통 개념:
+  - `rank_sessions` (Supabase / rank 계층, 개념상):
+    - 매칭으로 만들어진 한 판을 의미하는 세션 row.
+    - 주요 필드(개념): `id`, `game_id`, `room_id`, `mode`, `realtime_mode`, `status`, `created_at`, `ended_at`, `winner`, `final_rating_delta` 등.
+    - 이 레벨에서는 **장르별 규칙을 모른다** – “누가 참가했고, 언제 시작/끝났는지, 점수가 어떻게 바뀌었는지” 정도만 다룬다.
+  - `rank_match_roster` / `rank_game_slots`:
+    - 어떤 슬롯/역할에 누가 들어왔는지(또는 대역/봇인지)를 담는 테이블.
+    - `buildRankContext({ game, session, participants, room, viewer })` 가 이 정보를 모아 `rankContext.players` 로 변환한다.
+  - `battle_history` (또는 파일 fallback):
+    - `/api/rank/settle` 을 통해 쓰이는 전투 로그/결과 저장소.
+    - 필드: `session_id`, `game_id`, `user_id`, `battle_log`(정규화된 turn-log/battleLog), `result`(scores/winners/losers/draw/highlights/meta), `created_at`.
+    - 장르별 `onBattleEnd(ctx)` / `workspace/score/*.js` 를 통해 **배틀 결과/요약**이 계산되는 계층.
+
+- 세션 수명주기(개념 흐름):
+  1. **매칭/방 설정 (pre-match)**
+     - `rank_rooms`, `rank_match_roster`, `rank_game_slots` 에서:
+       - 실시간 방(`realtimeMode` on / off), 난입 허용(`dropInEnabled`), 비실시간 async fill(`asyncFill`) 같은 정책을 적용해 방을 만든다.
+     - 세션 row(`rank_sessions`)가 잡히면:
+       - `StartClient` / 랭크 메인게임이 `useStartClientEngine` 을 통해 `rankContext` 를 구성하고,
+       - `rankContext` 가 텍스트 런타임(`ctx.variables.rank`)과 GameShell(`rankContext` prop)까지 전파된다.
+  2. **진행 중 (in-progress)**
+     - 실시간:
+       - `realtimePresence`, `realtimeEvents`, `dropInSnapshot` 등을 통해 “누가 접속/이탈했는지, 현재 동기 상태는 어떤지”를 관리한다.
+       - 텍스트 런타임이든 그리드 런타임이든, 모든 턴/액션은 `runtimeBus.emit('runtime:turn-log', event)` 로 표준 턴 로그를 남긴다.
+     - 비실시간:
+       - `asyncFill` / turn deadline / 쿨다운 등으로 “한 턴씩 메일/알림 기반으로 진행되는” 구조를 허용한다.
+       - 이 경우에도 각 턴의 핵심 정보는 똑같이 `runtime:turn-log` 로 쌓인다.
+     - 이 단계의 핵심은:
+       - **로그/상태는 최대한 “장르-불문” 표준 슬롯(`variables.stats/scene/effects/speaker`, `rankContext.*`)에 기록**하고,
+       - 승패/점수/하이라이트 같은 “배틀 요약”은 아직 확정하지 않는다는 점이다.
+  3. **정상 종료 (completed)**
+     - 텍스트 배틀의 경우:
+       - 훅이나 judge API가 `variables.battleLast.battleEnd === true` 를 세팅하면,
+         - `StartClient` 가 워크스페이스 `onBattleEnd(ctx)` 를 한 번 호출해 `outcome/scores/highlightIds/template*` 를 만든다.
+         - 이 결과 + 누적 `runtime:turn-log` + `rankContext.players` 를 `buildLogFromRuntime` 에 넘겨 `battleLog` 를 구축한다.
+         - `MainGameMobileUI` 가 `runtime:battle-log` 이벤트와 `autoSettle` 설정을 기반으로 `/api/rank/settle` 을 호출해:
+           - `battle_history` 에 `{ battleLog, result }` 를 저장한다.
+           - `result.meta` 에 `sessionId/gameId/templateId/templateVars/source` 등을 남긴다.
+       - 향후에는 다른 장르(그리드, 카드, 실시간 액션)도:
+         - “배틀 종료를 알리는 변수/플래그” → `onBattleEnd(ctx)` → `battleLog` → `/api/rank/settle` → `battle_history` 라는 같은 수직선을 타게 된다.
+     - 순수 랭크 계층에서는:
+       - `rank_sessions.status` 를 `completed` 로 전환하고,
+       - 최종 점수/레이팅 변동(예: `final_rating_delta`) 등을 갱신하는 백엔드 로직이 이어질 수 있다.
+       - 이 레벨은 **장르에 독립적**이어야 하므로, 가능한 한 `battle_history.result` 의 요약 필드만 참조하고, 특정 텍스트 배틀 변수에 직접 의존하지 않는 방향을 유지한다.
+  4. **취소/중단 (cancelled/abandoned)**
+     - 실시간 매치에서:
+       - 플레이어가 중간에 나가거나, 타임아웃/에러로 세션이 더 이상 진행되지 못하는 경우가 있다.
+       - 이때도 원칙은 동일하다:
+         - 가능한 한 **중단 직전까지의 `runtime:turn-log` / `variables` 스냅샷을 읽어** `onBattleEnd(ctx)` 를 한 번 호출해 본다.
+         - 훅이 정의돼 있지 않거나 실패하면, 최소한의 `battleLog` + “cancelled/abandoned” 같은 outcome 토큰만 만들어 `/api/rank/settle`에 보낼 수 있다.
+       - `rank_sessions.status` 는 `cancelled` / `abandoned` 등으로 갱신되고,  
+         이 상태는 로비/캐릭터 통계에서 “무효/취소된 전투”로 집계할지 여부를 결정하는 데 사용된다.
+     - 비실시간 매치에서:
+       - 일정 기간 이상 응답이 없거나, 시즌 종료/취소로 세션이 더 이상 의미가 없을 때:
+         - 동일하게 `runtime:turn-log` + `variables` 기준으로 최소한의 `battleLog` 를 만들고,
+         - 필요하다면 “no_winner / timeout” 같은 outcome 을 `onBattleEnd` 결과 또는 기본 규칙으로 채워 넣는다.
+
+- 소비처(정리된 battleLog/result 를 어디서 쓰는가):
+  - 메인 게임 / 뷰어:
+    - `/battle-log/[sessionId].jsx`:
+      - `/api/rank/history` 를 통해 `battle_history` 를 읽어와 결과/하이라이트/전체 로그를 표시.
+      - `templateId/templateVars` 가 있으면 장르별 요약(예: 텍스트 배틀 최종 점수/승자)을 카드 형태로 보여준다.
+  - 로비 / 캐릭터 통계:
+    - `CharacterStatsPanel`, `GameManagementDetail`:
+      - 현재는 주로 `rank_sessions` / `rank_battles` / 집계 뷰를 사용해 “최근 베틀로그/전적”을 보여주고 있으며,
+      - 향후에는 이 뷰들에서 `battle_history.session_id` 를 함께 가져와
+        - “최근 베틀로그” 카드 → `/battle-log/[sessionId]` 딥링크로 직접 연결하는 쪽으로 정리할 예정이다.
+        - 카드 디자인(초안):
+          - 승리한 쪽 참여자 이름/슬롯을 **초록색 텍스트(예: `#16a34a`)**로, 패배한 쪽은 **빨간색 텍스트(예: `#b91c1c`)**로 표시.
+          - 각 참여자 옆에 레이팅/점수 증감(예: `+24`, `-12`)을 함께 보여주고, 0이거나 무효인 경우는 회색 `0` 또는 `-` 로 표기.
+          - 카드 전체를 클릭하면 해당 세션의 `/battle-log/[sessionId]` 상세 페이지(전체 로그/하이라이트/템플릿 요약)를 새 탭 또는 동일 탭에서 연다.
+          - 비실시간/취소된 세션의 경우, 결과 텍스트에 `취소됨`/`시간초과` 같은 토큰을 함께 노출해 한눈에 상태를 구분할 수 있게 한다.
+    - 장기적으로는:
+      - `battle_history` 의 메타(예: 텍스트 배틀 템플릿 id, 참가자 수, 턴 수)를 활용해
+        - “실시간/비실시간 포함, 어떤 타입의 전투가 얼마나 있었는지”를 캐릭터/게임 통계 카드로 재사용하는 계획이다.
+
+요약하자면, **실시간/비실시간/난입 여부와 무관하게**:
+
+- 매칭/세션 레이어는 `rankContext` 와 세션 상태(`rank_sessions.status`)를 책임지고,
+- 런타임/훅 레이어는 `runtime:turn-log` + `onBattleEnd(ctx)` 를 통해 장르별 battleLog/result 를 계산하며,
+- 정산/뷰어 레이어는 `/api/rank/settle` + `battle_history` + `/battle-log/[sessionId]` 를 통해  
+  “잡혔거나 끝난 매칭”을 모두 같은 방식으로 기록/조회하는 구조를 목표로 한다.
 
 ---
 
@@ -3000,28 +3153,55 @@ Maker 쪽에서는 `/game/ui.shell.json`을 직접 편집하는 대신, 다음�
 - Git: 기본은 커밋/푸시 안 함. 읽기용 `git status`/`git diff`만 사용하며 강제 리셋(`reset --hard`, `checkout --`) 금지. 커밋 지시 시 메시지/범위 확인 후 진행, amend는 요청 시에만.
 - 보고: 변경 경로를 인라인 코드(`ai-roomchat/...`)로 명시하고, 요약→세부→후속 제안 순서. 테스트 미실행 시 이유와 검증 제안 포함.
 
-- turn-log ����ȭ ����: lib/runtime/battleLogSchema.js, lib/runtime/battleLogHelpers.js, components/workspace/hooks/useBattleLogDebug.js
-- Play UI: turn-log ��� ��Ʋ �α� ����� ī��, runtime:battle-log �̺�Ʈ�� ȣ��Ʈ/���� �Һ� ����
+Quick dev log (2025-12-05) 업데이트 문구
 
-- runtime:battle-log�� ����/���丮��/�� ����, /api/rank/settle ����
-- �α� Ÿ��/���ü�/����Ŀ �ʵ� �ּ� ���� �� ���� �� ����/����� ���͸�
-- ��ũ�����̽� ����: workspace/config/ai-actions-allowlist.json�� ����; ����� ����/���� ��ũ��Ʈ, ��Ʋ�α� �����, Ŀ���� ������ �ڻ� ����. �⺻ allowlist�� echo/node/npm/git status/diff ����.
+Pushed assistant-adjust-character-panels-layout to main (origin). ai-roomchat/components/character/CharacterBasicView.js에서 캐러셀/게임 카드가 잘리지 않도록 폭과 레이아웃을 조정.
+Pushed assistant-fix-info-slider-width to main (origin). ai-roomchat/components/character/CharacterBasicView.js의 info slider 트랙을 flex 2분할(각 50%)로 고정해 게임/캐릭터 패널이 절반만 보이던 문제를 해소.
+Pushed assistant-remove-game-count-badge to main (origin). ai-roomchat/components/character/CharacterPlayPanel.js의 “선택한 게임” 헤더 옆 고정 숫자 배지를 제거(단일 선택이라 불필요).
+Pushed assistant-battle-log-expandable to main (origin). 베틀로그를 5개씩 페이지네이션하고 요약/펼치기 토글을 추가, 전용 페이지(/battle-log) 초안 생성.
+추가 메모: API 키 라우팅
 
-- ��ũ�����̽� ����/���� ��ũ��Ʈ �̱���: battleLog��scores/winners/losers/draw/highlights ��� ����/��� ����
-- ��ũ�����̽� �ڻ� ��Ȳ: config/ai-actions-allowlist.json �� ��� ����(���� ��ũ��Ʈ, ��Ʋ�α� ����/��� ���ø� ����)
-- �ؾ� �� ��: settle���� ��ũ�����̽� Ŀ���� ��ũ��Ʈ �켱 ���������� �⺻ ����; ��ũ��Ʈ ��ġ/�Է�(battleLog)/���(scores,winners,losers,draw,highlightIds) ��� ����; ����/���ø� �߰�; ���� ������ ����
-- workspace/score/score-default.js �߰� (battleLog �Է� �� scores/winners/losers/draw/highlightIds ���), workspace/score/sample-battlelog.json ���� �Է� ����.
-- settle API: workspace ���ھ� ��ũ��Ʈ �켱 ����, ���� �� outcome/scoreboard fallback ����(����/��ŷ �ݿ� �̱���).
-- settle: battleLog/result�� workspace/score/history/{sessionId}.json ���� ����(����/�ӽ�), ���� ���д� ����.
-- ���� ���� ��ǥ: ��ũ�����̽� ��ũ��Ʈ�� ��� �� DB/���丮���� ����(����� workspace/score/history/*.json ���� �ӽ�)
-- DB ���� �ʾ�: table battle_history(session_id, game_id, user_id, battle_log(jsonb), result(jsonb), created_at, idx(session_id/game_id/user_id)); API: POST /api/rank/settle -, GET /api/rank/history?sessionId - ����/����/����ŷ �ʼ�.
-- battleHistoryStore: env BATTLE_HISTORY_PG_URL ������ Postgres�� ����/��ȸ, ������ workspace/score/history ���� fallback. settle/history API�� ���� ����� ���.
-- Postgres ���̱׷��̼� ������ �߰�: supabase/battle_history.sql (battle_history ���̺� + �ε���).
-- settle/history API�� x-api-key ��� ��� ���� ���� �߰� (env RANK_API_KEY)
-### ����/�����丮 API ��� ���� (dev)
-- POST /api/rank/settle (��� x-api-key: $RANK_API_KEY): curl -X POST http://localhost:3000/api/rank/settle -H "Content-Type: application/json" -H "x-api-key: test" --data @workspace/score/sample-battlelog.json
-- GET /api/rank/history?sessionId=demo-session (��� x-api-key: $RANK_API_KEY)
-- Play UI auto-settle: shellConfig.autoSettle=true and shellConfig.rankApiKey - /api/rank/settle (x-api-key)
-- history API: sessionId �ܰ� �Ǵ� gameId ��� ��ȸ ����, Postgres or file fallback ���- history API pagination: gameId ��ȸ �� limit/offset ����(�⺻ 10, max 50), nextOffset ��ȯ
-- history API: RANK_STRICT_USER=1�̸� x-user-id�� ������ ����ġ �� 403 (x-api-key ������ ��ȸ)
-- battle log �� �� ������ �߰�: /battle-log/[sessionId]���� history API ȣ���� ���̶���Ʈ/��ü �α� ǥ��
+텍스트 배틀 흐름에서 라우팅된 API 키는 현재 OpenAI 엔드포인트로만 전달된다.
+다른 프로바이더(Gemini, Claude 등)를 병행하려면 provider 필드를 받아 분기하거나, OpenAI 전용임을 UI/문서에 명시해야 한다.
+부록: Codex 작업/명령 요약
+
+환경: Windows cmd, danger-full-access, 네트워크 허용, 승인 정책 never; node v22.19.0 사용, python 없음, rg 사용.
+파일 읽기/검색: type path\to\file, rg "pattern" path; 일부 구간만 볼 때는 Node로 라인 슬라이스 출력.
+편집: 수동 변경은 apply_patch(ASCII 유지, 불필요한 주석 금지), 자동 생성/대량 치환은 스크립트·툴로 처리. 사용자 기존 변경은 되돌리지 않음.
+대용량/이진: 전체 출력 대신 rg/부분 슬라이스로 확인. 에셋·이진은 내용 열람 안 함.
+실행/테스트: 필요한 경우에만 스크립트 실행. 요청 없으면 테스트는 건너뛰고 이유를 명시.
+Git: 기본은 읽기용 git status/git diff; 강제 리셋(reset --hard, checkout --) 금지. 커밋은 메시지/범위 확인 후 진행, amend는 요청 시에만.
+보고: 변경 경로를 인라인 코드(ai-roomchat/...)로 명시하고, 요약→세부→후속 제안 순서. 테스트 미실행 시 이유·검증 제안 포함.
+TODO: turn-log / battle history 정리
+
+turn-log 정규화 합의: lib/runtime/battleLogSchema.js, lib/runtime/battleLogHelpers.js, components/workspace/hooks/useBattleLogDebug.js
+Play UI: turn-log 기반 베틀 로그 카드, runtime:battle-log 이벤트로 호스트/정렬 소비 가능
+runtime:battle-log를 저장/정산 경로와 연결하고 /api/rank/settle 구현
+로그 타입·필드·스키마 최소 합의 후 저장/조회 데이터 통일
+현재 battle log / 정산 사용처(소비처)
+- 정산 API: `pages/api/rank/settle.js`가 `buildLogFromRuntime` + `normalizeBattleOutcome`로 battleLog를 정규화하고, `workspace/score/score-default.js`(또는 `SCORE_SCRIPT_PATH`)가 있으면 점수/승패를 계산한 뒤 `storeBattleHistory`로 영구 저장.
+- 히스토리 API: `pages/api/rank/history.js`가 `lib/rank/battleHistoryStore.js`의 `loadBattleHistoryBySession` / `loadBattleHistoryByGame`을 호출해 battleLog + result + meta를 돌려줌.
+- 배틀로그 뷰어: `pages/battle-log/[sessionId].jsx`가 `/api/rank/history` 응답을 소비해 결과/하이라이트/전체 로그를 렌더링.
+- 워크스페이스 디버그(부분 연결): `components/workspace/hooks/useBattleLogDebug.js`는 runtime turn log + participants + outcome/scoreboard를 받아 battleLog + highlightEvents를 만들어 주며, `MainGameMobileUI`에서 rank 텍스트 런타임 세션에 대해서는 이미 사용 중이다. 다만 WorkspaceOverlay 자체의 디버그 패널(에디터 측)에서는 아직 이 훅을 직접 쓰지 않는다.
+남은 연결 작업(예정)
+- Play UI auto-settle: `MainGameMobileUI`에서 `shellConfig.autoSettle === true`이고 `shellConfig.rankApiKey`가 설정돼 있을 때 `/api/rank/settle`을 호출하는 경로는 구현 완료(랭크 텍스트 런타임 기준). 비랭크/기타 장르에 대한 확장은 이후 단계에서 검토.
+- turn-log → battleLog 브리지: 런타임/플레이가 쌓는 turn-log 이벤트를 `buildLogFromRuntime` 입력 형태로 수집해, 수동/자동 정산 둘 다 동일한 스키마를 쓰도록 맞추기(랭크 StartClient + MainGameMobileUI 조합은 1차 연결 완료, 향후 Play 오버레이/다른 엔진에도 동일 스키마를 확장하는 작업이 남아 있음).
+- 캐릭터/로비 UI 연동: 캐릭터 페이지 하단 및 로비 쪽에 노출되는 “최근 전투/기록” UI는 **viewer 관점의 요약 카드**를 제공한다. `rank_battles.session_id` 가 채워져 있으면 각 카드/행이 `/battle-log/[sessionId]` 로 딥링크하며, 승/패 및 점수 증감은 초록/빨강 텍스트로 강조된다(없으면 구 버전처럼 `/battle-log` 루트로 이동). 아직 이 UI들은 `/api/rank/history` 의 battleLog 전체 스키마를 직접 읽지는 않고, 기존 참여/전적 쿼리(`rank_battles`, `rank_battle_logs`)를 기반으로 동작한다. 차후 이 영역도 history API + battleLog 스키마를 직접 소비하도록 재정비할 계획이며, 엔진/정산 핵심 경로와는 분리된 2차 소비처로 취급한다.
+ - Supabase 세션 로그 연동: `/api/rank/settle`는 항상 `battle_history`(Postgres or 파일)에 `{ battleLog, result }`를 저장하고, **Supabase 서비스 롤 env가 설정된 경우에 한해** `rank_session_battle_logs`에도 세션 단위 요약을 upsert 한다. 이때 `payload`에는 `{ battleLog, result, meta: { sessionId, gameId, userId } }`가 그대로 들어가며, `result` 컬럼은 `{ winners/losers/draw }`를 기반으로 `win/lose/draw/unknown` 중 하나로 축약된다. 이렇게 쌓인 세션 로그는 향후 `/api/rank/sessions` 및 관전/재생 UI의 기본 데이터 소스로 사용된다.
+ - runtime turn-log 이벤트 채널: `components/game/TurnLogBar.jsx`는 `runtimeBus`의 `runtime:turn-log` 이벤트를 구독해 최근 턴 정보를 보여주는 UI를 제공하며, Play(CodeEditorOverlayV2)와 랭크 메인게임(StartClient) 양쪽에서 동일한 스키마의 이벤트를 emit 하는 경로가 이미 존재한다. 이 채널은 `useBattleLogDebug` 및 battleLog 정산 브리지가 공유하는 “런타임→로그” 표준 통로로 사용되며, 향후 다른 장르/엔진에서도 같은 계약을 따르도록 확장하는 작업이 남아 있다.
+워크스페이스 현황: workspace/config/ai-actions-allowlist.json만 존재; 사용자 정책 스크립트, 베틀 로그 저장소, 커스텀 에디터 없음. 기본 allowlist는 echo/node/npm/git status/diff 수준.
+워크스페이스 TODO:
+battleLog → scores/winners/losers/draw/highlights 필드 포함 스키마 정규화
+workspace/score/score-default.js: 기본 스코어 스크립트 추가 완료(입력 battleLog → 출력 scores/winners/losers/draw/highlightIds). workspace/score/sample-battlelog.json 예제로 /api/rank/settle 로컬 호출을 테스트할 수 있음.
+settle: battleLog/result를 workspace/score/history/{sessionId}.json 저장(파일/임시), 추후 DB 이관
+저장/DB:
+임시 JSON → Postgres 승격 예정(현재 workspace/score/history/*.json 백업)
+Postgres 스펙: supabase/battle_history.sql (table battle_history(session_id, game_id, user_id, battle_log jsonb, result jsonb, created_at) + 인덱스)
+battleHistoryStore: env BATTLE_HISTORY_PG_URL 있으면 Postgres, 없으면 파일 fallback. settle/history API는 둘 다 지원 목표.
+API (dev 메모):
+POST /api/rank/settle (x-api-key: $RANK_API_KEY): curl -X POST http://localhost:3000/api/rank/settle -H "Content-Type: application/json" -H "x-api-key: test" --data @workspace/score/sample-battlelog.json
+GET /api/rank/history?sessionId=demo-session (x-api-key: $RANK_API_KEY)
+Play UI auto-settle: shellConfig.autoSettle=true, shellConfig.rankApiKey → /api/rank/settle (x-api-key)
+history API: sessionId 또는 gameId 조회, limit/offset 페이지네이션(기본 10, max 50), nextOffset 반환
+history API: RANK_STRICT_USER=1이면 x-user-id와 소유자 불일치 시 403 (x-api-key 있으면 조회)
+battle log 상세 페이지: /battle-log/[sessionId] → history API 호출, 하이라이트/전체 로그 표시

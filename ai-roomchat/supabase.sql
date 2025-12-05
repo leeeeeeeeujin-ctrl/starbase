@@ -1139,6 +1139,13 @@ create table if not exists public.rank_battles (
   created_at timestamptz not null default now()
 );
 
+-- 세션 ↔ 배틀 히스토리 연결용 session_id (랭크 세션 테이블과의 느슨한 연결)
+alter table public.rank_battles
+  add column if not exists session_id uuid;
+
+create index if not exists rank_battles_session_idx
+  on public.rank_battles (game_id, session_id, created_at desc);
+
 alter table public.rank_battles enable row level security;
 
 drop policy if exists rank_battles_select on public.rank_battles;

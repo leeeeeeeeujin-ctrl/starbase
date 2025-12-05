@@ -20,6 +20,7 @@ import EditorMonaco from '../EditorMonaco.jsx';
 import dynamic from 'next/dynamic';
 import SyncTemplateToVfs from './SyncTemplateToVfs.jsx';
 import AICodeChatPanel from './AICodeChatPanel.jsx';
+import { useBattleLogDebug } from './hooks/useBattleLogDebug.js';
 
 const GameShell = dynamic(() => import('../game/GameShell.jsx'), {
   ssr: false,
@@ -97,6 +98,16 @@ function DebugPanel({
   removeSimUser,
 }) {
   if (!enableDebugUi) return null;
+
+  const turnEvents = Array.isArray(debugState.turnEvents) ? debugState.turnEvents : [];
+  const { log: debugLog, highlightEvents } = useBattleLogDebug({
+    events: turnEvents,
+    participants: {},
+    outcome: null,
+    scoreboard: null,
+    meta: {},
+  });
+
   return (
     <div
       style={{
@@ -371,6 +382,46 @@ function DebugPanel({
                 </ul>
               </div>
             )}
+          {Array.isArray(turnEvents) && turnEvents.length > 0 && (
+            <div
+              style={{
+                marginTop: 6,
+                maxWidth: 420,
+                maxHeight: 160,
+                overflow: 'auto',
+                padding: 8,
+                borderRadius: 10,
+                border: '1px solid #1f2937',
+                background: 'rgba(15,23,42,0.96)',
+                color: '#e5e7eb',
+                fontSize: 11,
+                boxShadow: '0 16px 40px rgba(0,0,0,0.65)',
+              }}
+            >
+              <div style={{ fontWeight: 600, marginBottom: 4, color: '#fbbf24' }}>
+                베틀로그 디버그(최근 턴)
+              </div>
+              {highlightEvents && highlightEvents.length > 0 ? (
+                <ul style={{ margin: 0, paddingLeft: 16 }}>
+                  {highlightEvents.slice(-5).map((ev, idx) => (
+                    <li key={ev.id || idx} style={{ marginBottom: 2 }}>
+                      <span style={{ color: '#e5e7eb' }}>
+                        턴 {typeof ev.turn === 'number' ? ev.turn : '?'} ·{' '}
+                        {ev.summary ||
+                          (typeof ev.prompt === 'string'
+                            ? ev.prompt.split(/\r?\n/)[0] || ''
+                            : ev.nodeLabel || ev.nodeId || '내용 없음')}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div style={{ fontSize: 11, color: '#9ca3af' }}>
+                  하이라이트로 표시할 턴 이벤트가 없습니다.
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
     </div>
@@ -784,6 +835,48 @@ function PlayOverlayContent({ templateBinding }) {
                 bus.emit('runtime:turn-log', event);
               } catch {
                 // ignore log emit errors
+              }
+              // 텍스트 베틀 예제처럼 variables.battleLast.battleEnd 가 true 가 되는 순간,
+              // 워크스페이스 훅의 onBattleEnd(ctx)를 한 번 호출해 outcome/template 메타를 디버그용으로 계산한다.
+              try {
+                const hooks = runtimeHooksRef.current || null;
+                const handler =
+                  hooks && typeof hooks.onBattleEnd === 'function'
+                    ? hooks.onBattleEnd
+                    : null;
+                const vars =
+                  result && result.variables && typeof result.variables === 'object'
+                    ? result.variables
+                    : null;
+                const last =
+                  vars && vars.battleLast && typeof vars.battleLast === 'object'
+                    ? vars.battleLast
+                    : null;
+                if (handler && last && last.battleEnd) {
+                  // turnEvents 는 디버그 상태에 이미 쌓여 있으므로, 거기서 읽어온다.
+                  const turnEvents = Array.isArray(debugState.turnEvents)
+                    ? debugState.turnEvents
+                    : [];
+                  const ctxForHook = {
+                    turnLog: turnEvents,
+                    participants: {},
+                    variables: vars,
+                    graphHash: null,
+                    hookHash: null,
+                  };
+                  Promise.resolve()
+                    .then(() => handler(ctxForHook))
+                    .then(() => {
+                      // 워크스페이스 Play 에서는 onBattleEnd 결과를 화면에 직접 그리기보다는,
+                      // 사용자가 /examples/text-battle-basic 을 참고해 훅을 조정할 수 있도록
+                      // turn 로그/하이라이트만 제공한다. (추가 UI는 이후 단계에서 확장)
+                    })
+                    .catch(() => {
+                      // onBattleEnd 디버그 호출 실패는 플레이를 막지 않는다.
+                    });
+                }
+              } catch {
+                // ignore onBattleEnd debug errors
               }
           if (debugPromptEnabled) {
             try {

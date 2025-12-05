@@ -618,6 +618,13 @@ function buildDefaultWidgets(template, flags, gridState, rankContext, battleLog,
   }
   // Rank participants (if provided via rankContext)
   const participants = Array.isArray(rankContext?.players) ? rankContext.players : [];
+  const participantsBySlot = {};
+  participants.forEach((p) => {
+    if (!p) return;
+    const slotId = p.slotId || p.slot_id || p.ownerId || p.owner_id;
+    if (!slotId) return;
+    participantsBySlot[String(slotId)] = p;
+  });
   if (participants.length) {
     list.push({
       title: '참가자',
@@ -672,6 +679,82 @@ function buildDefaultWidgets(template, flags, gridState, rankContext, battleLog,
               </div>
             );
           })}
+        </div>
+      ),
+    });
+  }
+  // Battle outcome / scoreboard (if onBattleEnd/settle provided one)
+  const outcome = battleLog && typeof battleLog === 'object' ? battleLog.outcome || null : null;
+  const scoreboard =
+    battleLog && typeof battleLog.scoreboard === 'object' ? battleLog.scoreboard : null;
+  const winnerIds = Array.isArray(outcome?.winners) ? outcome.winners : [];
+  const loserIds = Array.isArray(outcome?.losers) ? outcome.losers : [];
+  const isDraw = !!outcome?.draw;
+  const hasScoreboard =
+    scoreboard && typeof scoreboard === 'object' && Object.keys(scoreboard).length > 0;
+  const hasOutcomeSummary = winnerIds.length || loserIds.length || isDraw;
+  if (hasOutcomeSummary || hasScoreboard) {
+    const formatSlotLabel = (slotId) => {
+      const key = String(slotId);
+      const p = participantsBySlot[key];
+      if (!p) return key;
+      return (
+        p?.hero?.name ||
+        p?.hero_name ||
+        p?.heroName ||
+        p?.display_name ||
+        p?.displayName ||
+        p?.owner_id ||
+        p?.ownerId ||
+        key
+      );
+    };
+    list.push({
+      title: '전투 결과',
+      body: (
+        <div style={{ display: 'grid', gap: 6, fontSize: 12, color: '#e5e7eb' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <span>
+              승자:{' '}
+              {winnerIds.length ? winnerIds.map((id) => formatSlotLabel(id)).join(', ') : '없음'}
+            </span>
+            <span>
+              패자:{' '}
+              {loserIds.length ? loserIds.map((id) => formatSlotLabel(id)).join(', ') : '없음'}
+            </span>
+            <span>무승부: {isDraw ? '예' : '아니오'}</span>
+          </div>
+          {hasScoreboard ? (
+            <div style={{ display: 'grid', gap: 4, marginTop: 4 }}>
+              {Object.entries(scoreboard).map(([slotId, row]) => {
+                const score = typeof row?.score === 'number' ? row.score : null;
+                const delta =
+                  typeof row?.delta === 'number' && Number.isFinite(row.delta)
+                    ? row.delta
+                    : null;
+                return (
+                  <div
+                    key={slotId}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '2px 4px',
+                      borderRadius: 4,
+                      background: 'rgba(15,23,42,0.85)',
+                      border: '1px solid rgba(51,65,85,0.7)',
+                    }}
+                  >
+                    <span>{formatSlotLabel(slotId)}</span>
+                    <span>
+                      점수 {score != null ? score : '-'}
+                      {delta != null && delta !== score ? ` (Δ ${delta})` : ''}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
         </div>
       ),
     });

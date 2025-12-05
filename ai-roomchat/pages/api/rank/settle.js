@@ -1,5 +1,6 @@
 import { buildLogFromRuntime, normalizeBattleOutcome } from '../../../lib/runtime/battleLogHelpers';
 import { storeBattleHistory } from '../../../lib/rank/battleHistoryStore';
+import { storeSessionBattleLogToSupabase } from '../../../lib/rank/battleSupabaseSessionStore';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -111,6 +112,21 @@ export default async function handler(req, res) {
     battleLog: normalizedLog,
     result: finalResult,
   });
+
+  // Best-effort session-level snapshot into Supabase rank schema (if configured).
+  try {
+    const userIdHeader =
+      req.headers['x-user-id'] || payload.userId || payload.user_id || null;
+    await storeSessionBattleLogToSupabase({
+      sessionId,
+      gameId,
+      userId: userIdHeader,
+      battleLog: normalizedLog,
+      result: finalResult,
+    });
+  } catch {
+    // Supabase failures should not break settlement.
+  }
 
   return res.status(200).json({
     ok: true,

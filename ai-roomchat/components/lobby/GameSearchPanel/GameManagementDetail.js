@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { useRouter } from 'next/router';
 import { styles } from './styles';
 
 function formatNumber(value) {
@@ -42,6 +43,7 @@ export default function GameManagementDetail({
   onRefreshDetail,
   onDeleteGame,
 }) {
+  const router = useRouter();
   const [tagInput, setTagInput] = useState('');
 
   const activeSeason = useMemo(
@@ -147,6 +149,14 @@ export default function GameManagementDetail({
   };
 
   const topPlayers = stats?.topPlayers || [];
+
+  const handleBattleLogClick = sessionId => {
+    if (sessionId) {
+      router.push(`/battle-log/${sessionId}`);
+    } else {
+      router.push('/battle-log');
+    }
+  };
 
   return (
     <div style={styles.detailBox}>
@@ -400,21 +410,91 @@ export default function GameManagementDetail({
           <div style={styles.emptyState}>아직 기록된 베틀로그가 없습니다.</div>
         ) : (
           <div style={styles.logList}>
-            {battleLogs.slice(0, 12).map(log => (
-              <div key={log.id} style={styles.logItem}>
-                <div style={styles.logMeta}>
-                  <span>{formatDate(log.createdAt || log.created_at)}</span>
-                  {log.battle?.score_delta ? (
-                    <span>점수 변동 {formatNumber(log.battle.score_delta)}</span>
-                  ) : null}
-                  {log.battle?.result ? <span>결과 {log.battle.result}</span> : null}
+            {battleLogs.slice(0, 12).map(log => {
+              const sessionId = log.sessionId || log.battle?.session_id || null;
+              const scoreDeltaRaw =
+                typeof log.battle?.score_delta === 'number' ? log.battle.score_delta : null;
+              const outcomeRaw = log.battle?.result || '';
+              const normalizedOutcome = `${outcomeRaw}`.toLowerCase();
+
+              const scoreColor =
+                scoreDeltaRaw == null
+                  ? '#64748b'
+                  : scoreDeltaRaw > 0
+                    ? '#16a34a'
+                    : scoreDeltaRaw < 0
+                      ? '#b91c1c'
+                      : '#64748b';
+
+              let outcomeColor = '#0f172a';
+              if (normalizedOutcome.includes('draw') || normalizedOutcome.includes('tie')) {
+                outcomeColor = '#0f172a';
+              } else if (normalizedOutcome.includes('win')) {
+                outcomeColor = '#16a34a';
+              } else if (
+                normalizedOutcome.includes('loss') ||
+                normalizedOutcome.includes('lose')
+              ) {
+                outcomeColor = '#b91c1c';
+              }
+
+              const formattedDelta =
+                scoreDeltaRaw == null
+                  ? null
+                  : scoreDeltaRaw > 0
+                    ? `+${formatNumber(scoreDeltaRaw)}`
+                    : formatNumber(scoreDeltaRaw);
+
+              return (
+                <div
+                  key={log.id}
+                  style={{
+                    ...styles.logItem,
+                    cursor: 'pointer',
+                    borderColor: sessionId ? '#bfdbfe' : '#e2e8f0',
+                  }}
+                  onClick={() => handleBattleLogClick(sessionId)}
+                >
+                  <div style={styles.logMeta}>
+                    <span>{formatDate(log.createdAt || log.created_at)}</span>
+                    {formattedDelta !== null ? (
+                      <span style={{ color: scoreColor, fontWeight: 600 }}>
+                        점수 변동 {formattedDelta}
+                      </span>
+                    ) : null}
+                    {outcomeRaw ? (
+                      <span style={{ color: outcomeColor, fontWeight: 700 }}>
+                        결과 {outcomeRaw}
+                      </span>
+                    ) : null}
+                  </div>
+                  {log.prompt ? <p style={styles.logText}>프롬프트: {log.prompt}</p> : null}
+                  {log.aiResponse ? <p style={styles.logText}>응답: {log.aiResponse}</p> : null}
                 </div>
-                {log.prompt ? <p style={styles.logText}>프롬프트: {log.prompt}</p> : null}
-                {log.aiResponse ? <p style={styles.logText}>응답: {log.aiResponse}</p> : null}
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
+        <button
+          type="button"
+          onClick={() => router.push('/battle-log')}
+          style={{
+            marginTop: 8,
+            padding: 10,
+            borderRadius: 14,
+            border: '1px solid #2563eb',
+            background: '#eff6ff',
+            color: '#0f172a',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            cursor: 'pointer',
+            fontSize: 13,
+          }}
+        >
+          <span>베틀로그 페이지에서 자세히 보기</span>
+          <span style={{ color: '#1d4ed8', fontWeight: 600 }}>이동</span>
+        </button>
       </div>
 
       <button onClick={handleEnter} disabled={!game} style={styles.enterButton}>

@@ -235,6 +235,7 @@ export default function useLobbyStats({ heroId, enabled } = {}) {
           opponentName: opponent?.name || '알 수 없는 영웅',
           outcome,
           scoreDelta,
+          sessionId: battle.session_id || null,
         });
       }
 

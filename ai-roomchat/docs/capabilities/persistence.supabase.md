@@ -61,6 +61,9 @@
         - DB에서 row들을 읽어, `mapRowToState`를 이용해 게임 상태로 복원.
       - `saveBattle(state, ctx)` / `saveBattleLog(turn, ctx)`:
         - 전투 결과/로그를 `rank_battles` / `rank_battle_logs`에 기록.
+       - 현재 구현된 최소 경로:
+         - `/api/rank/settle`가 battleLog 정산 시 Supabase 서비스 롤 env가 있을 경우 `rank_session_battle_logs`에 `{ session_id, game_id, owner_id, result, reason, payload }`를 upsert 한다.
+         - 이 경로는 `persistence.supabase.client`의 “세션 요약 스냅샷” 역할을 일부 선점하며, 이후 `saveBattle`/`saveBattleLog`가 붙을 때 동일 스키마를 따르는 레퍼런스로 사용된다.
 
 ---
 
@@ -84,6 +87,9 @@ persistence.supabase capability는 이 스키마를 “게임 코드가 의존�
   - 배틀/로그:
     - `public.rank_battles`, `public.rank_battle_logs`
       - 전투 결과/로그를 어떻게 두 테이블에 나누어 쓸지, state ↔ row 변환 함수로 규정.
+      - `rank_battles.session_id` (추가 컬럼, uuid):
+        - 이 배틀이 어느 `rank_sessions.id` / `battle_history.session_id` 에 대응하는지 표현.
+        - 로비/캐릭터 패널의 “최근 베틀로그” 카드가 `/battle-log/[sessionId]` 로 딥링크할 때 사용된다.
   - 큐/룸/로스터:
     - `rank_rooms`, `rank_room_slots`, `rank_match_queue`, `rank_match_roster` 등은
       network.realtime + matchmaking와 더 긴밀히 연결되며,  
@@ -109,4 +115,3 @@ persistence.supabase capability는 “게임 서버 + DB” 아키텍처 레퍼�
 
 1단계에서는 persistence.supabase를 “어떤 파일/훅/테이블/레퍼런스 문서와 연결되는 capability인지”만 명확히 해 두고,  
 실제 Supabase 클라이언트 어댑터(`persistence.supabase.client`) 구현과 게임 런타임에서의 호출 시점은 이후 단계에서 차근차근 붙여 나간다.
-

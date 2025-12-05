@@ -85,6 +85,15 @@ export default function BattleLogPage() {
   const highlightSet = new Set(highlights);
   const highlightEvents = events.filter(ev => highlightSet.has(ev.id));
 
+  const templateId =
+    data.result?.meta?.templateId ||
+    data.battleLog?.meta?.templateId ||
+    null;
+  const templateVars =
+    data.result?.meta?.templateVars ||
+    data.battleLog?.meta?.templateVars ||
+    null;
+
   return (
     <div style={{ padding: 24, color: '#e2e8f0', background: '#0b1220', minHeight: '100vh' }}>
       <div style={{ display: 'grid', gap: 12, maxWidth: 900, margin: '0 auto' }}>
@@ -103,6 +112,36 @@ export default function BattleLogPage() {
             <span>무승부: {data.result?.draw ? '예' : '아니오'}</span>
           </div>
         </div>
+
+        {templateId || templateVars ? (
+          <div style={{ border: '1px solid rgba(129,140,248,0.5)', borderRadius: 12, padding: 14, background: 'rgba(30,64,175,0.25)' }}>
+            <div style={{ fontSize: 13, color: '#c7d2fe', marginBottom: 6 }}>템플릿 요약</div>
+            <div style={{ fontSize: 13, color: '#e5e7eb', marginBottom: 4 }}>
+              템플릿 ID: {templateId || '지정되지 않음'}
+            </div>
+            {templateVars && templateVars.finalScore ? (
+              <div style={{ fontSize: 13, color: '#e5e7eb' }}>
+                최종 점수: hero {templateVars.finalScore.hero ?? '-'} vs rival{' '}
+                {templateVars.finalScore.rival ?? '-'}
+              </div>
+            ) : null}
+            {templateVars && (templateVars.winner || templateVars.draw) ? (
+              <div style={{ fontSize: 13, color: '#e5e7eb', marginTop: 2 }}>
+                {templateVars.draw
+                  ? '템플릿 기준: 무승부'
+                  : `템플릿 기준 승자: ${templateVars.winner}`}
+              </div>
+            ) : null}
+            {templateVars &&
+            !templateVars.finalScore &&
+            !templateVars.winner &&
+            !templateVars.draw ? (
+              <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 4 }}>
+                템플릿 변수: {JSON.stringify(templateVars)}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         {highlightEvents.length ? (
           <div style={{ display: 'grid', gap: 8 }}>

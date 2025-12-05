@@ -23,6 +23,7 @@ export default function GameShell({
   mode = 'play', // 'play' | 'rank' 등
   viewerHero = null, // 선택: 랭크에서 현재 플레이어 캐릭터 요약
   rankContext = null, // 선택: 랭크 세션/참가자 컨텍스트
+  battleOutcome = null, // 선택: 텍스트 베틀 등에서 onBattleEnd 결과
 }) {
   const cfg = useMemo(() => normalizeShellConfig(shellConfig), [shellConfig]);
   const layoutPreset = useMemo(() => resolveLayoutPreset(cfg), [cfg]);
@@ -74,8 +75,8 @@ export default function GameShell({
             border: '1px solid rgba(148,163,184,0.35)',
             background: 'rgba(15,23,42,0.8)',
           }}
-        >
-          <div
+      >
+      <div
             style={{
               display: 'flex',
               justifyContent: 'space-between',
@@ -168,6 +169,7 @@ export default function GameShell({
           runtimeFeatures={runtimeFeatures}
           rankContext={rankContext}
           shellConfig={cfg}
+          battleOutcome={battleOutcome}
         />
       </div>
 

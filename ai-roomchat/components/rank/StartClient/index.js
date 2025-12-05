@@ -24,6 +24,7 @@ import {
   applySceneFromRank,
   applySpeakerFromRank,
 } from '@/lib/runtime/rankStandardSlots';
+import { normalizeBattleOutcome } from '@/lib/runtime/battleLogHelpers';
 
 // Ensure matchState is always defined in this module so
 // any legacy reads during render do not throw ReferenceError.
@@ -250,6 +251,36 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     };
   }, []);
   const runtimeRef = useRef(null);
+  const runtimeHooksRef = useRef(null);
+  const battleEndHandledRef = useRef(false);
+  const battleOutcomeRef = useRef(null);
+  const [battleOutcome, setBattleOutcome] = useState(null);
+  const turnLogRef = useRef([]);
+
+  // Keep a lightweight turn-log buffer in the host so hooks like onBattleEnd
+  // can see the same runtime:turn-log stream that UI widgets consume.
+  useEffect(() => {
+    if (!runtimeBus || typeof runtimeBus.on !== 'function') return undefined;
+    const off = runtimeBus.on('runtime:turn-log', (evt) => {
+      try {
+        if (!evt || typeof evt !== 'object') return;
+        const prev = Array.isArray(turnLogRef.current) ? turnLogRef.current : [];
+        const next = [...prev, evt];
+        // Keep a modest sliding window – enough for onBattleEnd but not unbounded.
+        turnLogRef.current = next.slice(-200);
+      } catch {
+        // ignore malformed events
+      }
+    });
+    return () => {
+      try {
+        off && off();
+      } catch {
+        // ignore detach errors
+      }
+      turnLogRef.current = [];
+    };
+  }, [runtimeBus]);
 
   useEffect(() => {
     if (usePropGameId) {
@@ -515,8 +546,16 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
       graph.nodes.length === 0
     ) {
       runtimeRef.current = null;
+      runtimeHooksRef.current = null;
+      battleEndHandledRef.current = false;
+      battleOutcomeRef.current = null;
+      setBattleOutcome(null);
       return;
     }
+
+    battleEndHandledRef.current = false;
+    battleOutcomeRef.current = null;
+    setBattleOutcome(null);
 
     let stopped = false;
     let runtime = null;
@@ -580,6 +619,7 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
         initialVariables: { rank: rankContext || {} },
       });
       runtimeRef.current = runtime;
+      runtimeHooksRef.current = hooks;
 
       // rankContext 기반으로 standard data slots를 한 번 초기화해 둔다.
       try {
@@ -594,8 +634,107 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     } catch (e) {
       console.warn('[StartClient] coreRuntime 초기화 실패:', e);
       runtimeRef.current = null;
+      runtimeHooksRef.current = null;
       return;
     }
+
+    const runOnBattleEndOnce = (latestVars) => {
+      if (battleEndHandledRef.current) return;
+      battleEndHandledRef.current = true;
+
+      const hooksForRuntime = runtimeHooksRef.current;
+      const handler =
+        hooksForRuntime && typeof hooksForRuntime.onBattleEnd === 'function'
+          ? hooksForRuntime.onBattleEnd
+          : null;
+      if (!handler) {
+        return;
+      }
+
+      let vars = latestVars && typeof latestVars === 'object' ? latestVars : null;
+      if (!vars) {
+        try {
+          const rt = runtimeRef.current;
+          if (rt && typeof rt.getContextSnapshot === 'function') {
+            const snap = rt.getContextSnapshot('battle_end', null);
+            if (snap && snap.variables && typeof snap.variables === 'object') {
+              vars = snap.variables;
+            }
+          }
+        } catch {
+          // ignore context snapshot errors
+        }
+      }
+      if (!vars || typeof vars !== 'object') {
+        vars = {};
+      }
+
+      const participantsMap = {};
+      try {
+        const players = Array.isArray(rankContext?.players) ? rankContext.players : [];
+        players.forEach((p) => {
+          if (!p) return;
+          const slotId = p.slotId || p.slot_id || p.ownerId || p.owner_id;
+          if (!slotId) return;
+          participantsMap[slotId] = {
+            ownerId: p.ownerId || p.owner_id || null,
+            name: p.displayName || p.display_name || p.heroName || p.hero_name || slotId,
+            team: p.team || null,
+            role: p.role || null,
+            characterBio: p.hero?.bio || p.hero?.desc || null,
+          };
+        });
+      } catch {
+        // participant mapping failures should not break battle end handling
+      }
+
+      const ctxForHook = {
+        turnLog: Array.isArray(turnLogRef.current) ? turnLogRef.current : [],
+        participants: participantsMap,
+        variables: vars,
+        graphHash: null,
+        hookHash: null,
+      };
+
+      Promise.resolve()
+        .then(() => handler(ctxForHook))
+        .then((raw) => {
+          if (!raw) return;
+          const normalized = normalizeBattleOutcome(raw);
+          battleOutcomeRef.current = normalized;
+          setBattleOutcome(normalized);
+        })
+        .catch((err) => {
+          try {
+            console.warn('[StartClient] onBattleEnd 훅 실행 실패:', err);
+          } catch {
+            // ignore console errors
+          }
+        });
+    };
+
+    const maybeHandleBattleEnd = (result) => {
+      if (!result || battleEndHandledRef.current) return;
+      try {
+        const vars =
+          result && result.variables && typeof result.variables === 'object'
+            ? result.variables
+            : null;
+        const last =
+          vars && vars.battleLast && typeof vars.battleLast === 'object'
+            ? vars.battleLast
+            : null;
+        if (last && last.battleEnd) {
+          runOnBattleEndOnce(vars || {});
+        }
+      } catch (err) {
+        try {
+          console.warn('[StartClient] battleEnd 감지 실패:', err);
+        } catch {
+          // ignore console errors
+        }
+      }
+    };
 
     const publishResult = result => {
       if (stopped || !result) return;
@@ -611,7 +750,9 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
         runtimeBus.emit('system:message', txt);
       } catch (err) {
         console.warn('[StartClient] publishResult 실패:', err);
+        return;
       }
+      maybeHandleBattleEnd(result);
     };
 
     try {
@@ -659,6 +800,8 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
       } catch (err) {
         console.warn('[StartClient] runtimeBus unsubscribe 실패:', err);
       }
+      runtimeRef.current = null;
+      runtimeHooksRef.current = null;
     };
   }, [textRuntimeEnabled, graph, rankContext, runtimeBus, gameWorkspace]);
 
@@ -1339,6 +1482,7 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
                       : null
                   }
                   rankContext={rankContext}
+                  battleOutcome={battleOutcome}
                 />
               </CodeWorkspaceProvider>
             ) : (

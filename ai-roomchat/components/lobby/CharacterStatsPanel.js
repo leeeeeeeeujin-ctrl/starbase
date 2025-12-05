@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/router';
 
 const styles = {
   root: {
@@ -197,6 +198,18 @@ const styles = {
     fontWeight: 700,
     color: outcome === '승리' ? '#15803d' : outcome === '패배' ? '#b91c1c' : '#0f172a',
   }),
+  battleScoreDelta: delta => {
+    if (delta === null || delta === undefined) {
+      return { color: '#64748b', fontWeight: 600 };
+    }
+    if (delta > 0) {
+      return { color: '#16a34a', fontWeight: 700 };
+    }
+    if (delta < 0) {
+      return { color: '#b91c1c', fontWeight: 700 };
+    }
+    return { color: '#64748b', fontWeight: 600 };
+  },
 };
 
 function formatNumber(value) {
@@ -229,7 +242,17 @@ export default function CharacterStatsPanel({
   onLeaveGame,
   onRefresh,
 }) {
+  const router = useRouter();
   const [selectedGameId, setSelectedGameId] = useState(null);
+
+  const handleBattleClick = entry => {
+    if (!entry) return;
+    if (entry.sessionId) {
+      router.push(`/battle-log/${entry.sessionId}`);
+    } else {
+      router.push('/battle-log');
+    }
+  };
 
   useEffect(() => {
     if (!games?.length) {
@@ -411,14 +434,30 @@ export default function CharacterStatsPanel({
                   <div style={styles.emptyState}>아직 전투 기록이 없습니다.</div>
                 ) : (
                   selectedBattles.map(entry => (
-                    <div key={entry.id} style={styles.battleCard}>
+                    <div
+                      key={entry.id}
+                      style={{
+                        ...styles.battleCard,
+                        cursor: 'pointer',
+                        borderColor:
+                          entry.outcome === '승리'
+                            ? '#bbf7d0'
+                            : entry.outcome === '패배'
+                              ? '#fecaca'
+                              : '#e2e8f0',
+                        boxShadow: entry.sessionId
+                          ? '0 0 0 1px rgba(37, 99, 235, 0.12)'
+                          : undefined,
+                      }}
+                      onClick={() => handleBattleClick(entry)}
+                    >
                       <div style={styles.battleHeader}>
                         <span>{formatDate(entry.createdAt)}</span>
                         <span style={styles.battleOutcome(entry.outcome)}>{entry.outcome}</span>
                       </div>
                       <div style={styles.battleHeader}>
                         <span>상대 {entry.opponentName}</span>
-                        <span>
+                        <span style={styles.battleScoreDelta(entry.scoreDelta)}>
                           점수 변화{' '}
                           {entry.scoreDelta === null || entry.scoreDelta === undefined
                             ? '-'
@@ -430,6 +469,26 @@ export default function CharacterStatsPanel({
                     </div>
                   ))
                 )}
+                <button
+                  type="button"
+                  onClick={() => router.push('/battle-log')}
+                  style={{
+                    marginTop: 8,
+                    padding: 12,
+                    borderRadius: 14,
+                    border: '1px solid #2563eb',
+                    background: '#eff6ff',
+                    color: '#0f172a',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    cursor: 'pointer',
+                    fontSize: 13,
+                  }}
+                >
+                  <span>베틀로그 페이지에서 자세히 보기</span>
+                  <span style={{ color: '#1d4ed8', fontWeight: 600 }}>이동</span>
+                </button>
               </section>
             </div>
           </div>

@@ -392,7 +392,9 @@ export default function useGameBrowser({ enabled, mode = 'public' } = {}) {
           withTable(supabase, 'rank_battles', table =>
             supabase
               .from(table)
-              .select('id, result, score_delta, created_at, attacker_owner_id, defender_owner_id')
+              .select(
+                'id, result, score_delta, created_at, attacker_owner_id, defender_owner_id, session_id'
+              )
               .eq('game_id', selectedGame.id)
               .order('created_at', { ascending: false })
               .limit(40)
@@ -463,10 +465,14 @@ export default function useGameBrowser({ enabled, mode = 'public' } = {}) {
         }
 
         const battleMap = new Map(battleRows.map(row => [row.id, row]));
-        const decoratedLogs = logRows.map(log => ({
-          ...log,
-          battle: battleMap.get(log.battle_id) || null,
-        }));
+        const decoratedLogs = logRows.map(log => {
+          const battle = battleMap.get(log.battle_id) || null;
+          return {
+            ...log,
+            battle,
+            sessionId: battle?.session_id || null,
+          };
+        });
 
         setGameBattleLogs(decoratedLogs);
         setGameStats(computeGameStats(participantRows, battleRows, selectedGame));
