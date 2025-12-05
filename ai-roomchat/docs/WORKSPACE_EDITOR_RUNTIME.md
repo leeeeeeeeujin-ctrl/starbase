@@ -22,6 +22,7 @@ Implementation status & ordering notes
 - Pushed `assistant-adjust-character-panels-layout` to `main` (origin). Touched `ai-roomchat/components/character/CharacterBasicView.js` to stop carousel/game cards from clipping and make overlay slides stretch to container width on narrow/rotated layouts.
 - Pushed `assistant-fix-info-slider-width` to `main` (origin). `ai-roomchat/components/character/CharacterBasicView.js`ï¿½ï¿½ info slider Æ®ï¿½ï¿½ï¿½ï¿½ flex ï¿½ï¿½ï¿½ 2ï¿½ï¿½ï¿½ï¿½(ï¿½ï¿½ 50%%)ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½/Ä³ï¿½ï¿½ï¿½ï¿½ ï¿½Ğ³ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½İ¸ï¿½ ï¿½ï¿½ï¿½Ì´ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Ø¼ï¿½.
 - Pushed `assistant-remove-game-count-badge` to `main` (origin). `ai-roomchat/components/character/CharacterPlayPanel.js`ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Ó¡ï¿½ ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½(ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ì¶ï¿½ ï¿½ï¿½ï¿½Ê¿ï¿½).
+- Pushed `assistant-battle-log-expandable` to `main` (origin). ï¿½ï¿½Æ²ï¿½Î±×¸ï¿½ 5ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ì¼ï¿½ï¿½Ï°ï¿½ ï¿½ï¿½ï¿½/ï¿½ï¿½Ä¡ï¿½ï¿½ ï¿½ï¿½ï¿½ ï¿½ß°ï¿½, ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½(`/battle-log`) ï¿½Ê¾ï¿½ ï¿½ï¿½ï¿½ï¿½.
 Current high-level status (this repo copy)
 
 - Security / sandbox (AI actions): **in progress**
@@ -2999,12 +3000,12 @@ Maker ìª½ì—ì„œëŠ” `/game/ui.shell.json`ì„ ì§ì ‘ í¸ì§‘í•˜ëŠ” ëŒ€ì‹ , ë‹¤ìŒê³
 - Git: ê¸°ë³¸ì€ ì»¤ë°‹/í‘¸ì‹œ ì•ˆ í•¨. ì½ê¸°ìš© `git status`/`git diff`ë§Œ ì‚¬ìš©í•˜ë©° ê°•ì œ ë¦¬ì…‹(`reset --hard`, `checkout --`) ê¸ˆì§€. ì»¤ë°‹ ì§€ì‹œ ì‹œ ë©”ì‹œì§€/ë²”ìœ„ í™•ì¸ í›„ ì§„í–‰, amendëŠ” ìš”ì²­ ì‹œì—ë§Œ.
 - ë³´ê³ : ë³€ê²½ ê²½ë¡œë¥¼ ì¸ë¼ì¸ ì½”ë“œ(`ai-roomchat/...`)ë¡œ ëª…ì‹œí•˜ê³ , ìš”ì•½â†’ì„¸ë¶€â†’í›„ì† ì œì•ˆ ìˆœì„œ. í…ŒìŠ¤íŠ¸ ë¯¸ì‹¤í–‰ ì‹œ ì´ìœ ì™€ ê²€ì¦ ì œì•ˆ í¬í•¨.
 
-- turn-log Á¤±ÔÈ­ ÇïÆÛ: lib/runtime/battleLogSchema.js, lib/runtime/battleLogHelpers.js, components/workspace/hooks/useBattleLogDebug.js
-- Play UI: turn-log ±â¹İ ¹èÆ² ·Î±× µğ¹ö±× Ä«µå, runtime:battle-log ÀÌº¥Æ®·Î È£½ºÆ®/Á¤»ê ¼Òºñ °¡´É
+- turn-log ï¿½ï¿½ï¿½ï¿½È­ ï¿½ï¿½ï¿½ï¿½: lib/runtime/battleLogSchema.js, lib/runtime/battleLogHelpers.js, components/workspace/hooks/useBattleLogDebug.js
+- Play UI: turn-log ï¿½ï¿½ï¿½ ï¿½ï¿½Æ² ï¿½Î±ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ Ä«ï¿½ï¿½, runtime:battle-log ï¿½Ìºï¿½Æ®ï¿½ï¿½ È£ï¿½ï¿½Æ®/ï¿½ï¿½ï¿½ï¿½ ï¿½Òºï¿½ ï¿½ï¿½ï¿½ï¿½
 
-- runtime:battle-log¸¦ Á¤»ê/½ºÅä¸®Áö/ºä¾î¿¡ ¿¬°á, /api/rank/settle ±¸Çö
-- ·Î±× Å¸ÀÔ/°¡½Ã¼º/½ºÇÇÄ¿ ÇÊµå ÃÖ¼Ò °ËÁõ ÈÄ ÀúÀå ½Ã °ø°³/ºñ°ø°³ ÇÊÅÍ¸µ
-- ¿öÅ©½ºÆäÀÌ½º »óÅÂ: workspace/config/ai-actions-allowlist.json¸¸ Á¸Àç; »ç¿ëÀÚ Á¡¼ö/Á¤»ê ½ºÅ©¸³Æ®, ¹èÆ²·Î±× ÀúÀå¼Ò, Ä¿½ºÅÒ ¿¡µğÅÍ ÀÚ»ê ¾øÀ½. ±âº» allowlist´Â echo/node/npm/git status/diff ¼öÁØ.
+- runtime:battle-logï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½/ï¿½ï¿½ï¿½ä¸®ï¿½ï¿½/ï¿½ï¿½î¿¡ ï¿½ï¿½ï¿½ï¿½, /api/rank/settle ï¿½ï¿½ï¿½ï¿½
+- ï¿½Î±ï¿½ Å¸ï¿½ï¿½/ï¿½ï¿½ï¿½Ã¼ï¿½/ï¿½ï¿½ï¿½ï¿½Ä¿ ï¿½Êµï¿½ ï¿½Ö¼ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½/ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Í¸ï¿½
+- ï¿½ï¿½Å©ï¿½ï¿½ï¿½ï¿½ï¿½Ì½ï¿½ ï¿½ï¿½ï¿½ï¿½: workspace/config/ai-actions-allowlist.jsonï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½; ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½/ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½Å©ï¿½ï¿½Æ®, ï¿½ï¿½Æ²ï¿½Î±ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½, Ä¿ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½Ú»ï¿½ ï¿½ï¿½ï¿½ï¿½. ï¿½âº» allowlistï¿½ï¿½ echo/node/npm/git status/diff ï¿½ï¿½ï¿½ï¿½.
 
 - ï¿½ï¿½Å©ï¿½ï¿½ï¿½ï¿½ï¿½Ì½ï¿½ ï¿½ï¿½ï¿½ï¿½/ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½Å©ï¿½ï¿½Æ® ï¿½Ì±ï¿½ï¿½ï¿½: battleLogï¿½ï¿½scores/winners/losers/draw/highlights ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½/ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 - ï¿½ï¿½Å©ï¿½ï¿½ï¿½ï¿½ï¿½Ì½ï¿½ ï¿½Ú»ï¿½ ï¿½ï¿½È²: config/ai-actions-allowlist.json ï¿½ï¿½ ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½(ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½Å©ï¿½ï¿½Æ®, ï¿½ï¿½Æ²ï¿½Î±ï¿½ ï¿½ï¿½ï¿½ï¿½/ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Ã¸ï¿½ ï¿½ï¿½ï¿½ï¿½)
@@ -3021,6 +3022,6 @@ Maker ìª½ì—ì„œëŠ” `/game/ui.shell.json`ì„ ì§ì ‘ í¸ì§‘í•˜ëŠ” ëŒ€ì‹ , ë‹¤ìŒê³
 - POST /api/rank/settle (ï¿½ï¿½ï¿½ x-api-key: $RANK_API_KEY): curl -X POST http://localhost:3000/api/rank/settle -H "Content-Type: application/json" -H "x-api-key: test" --data @workspace/score/sample-battlelog.json
 - GET /api/rank/history?sessionId=demo-session (ï¿½ï¿½ï¿½ x-api-key: $RANK_API_KEY)
 - Play UI auto-settle: shellConfig.autoSettle=true and shellConfig.rankApiKey - /api/rank/settle (x-api-key)
-- history API: sessionId ï¿½Ü°ï¿½ ï¿½Ç´ï¿½ gameId ï¿½ï¿½ï¿½ ï¿½ï¿½È¸ ï¿½ï¿½ï¿½ï¿½, Postgres or file fallback ï¿½ï¿½ï¿½- history API pagination: gameId Á¶È¸ ½Ã limit/offset Áö¿ø(±âº» 10, max 50), nextOffset ¹İÈ¯
-- history API: RANK_STRICT_USER=1ÀÌ¸é x-user-id¿Í ¼ÒÀ¯ÀÚ ºÒÀÏÄ¡ ½Ã 403 (x-api-key ÀÖÀ¸¸é ¿ìÈ¸)
-- battle log »ó¼¼ ºä ÆäÀÌÁö Ãß°¡: /battle-log/[sessionId]¿¡¼­ history API È£ÃâÇØ ÇÏÀÌ¶óÀÌÆ®/ÀüÃ¼ ·Î±× Ç¥½Ã
+- history API: sessionId ï¿½Ü°ï¿½ ï¿½Ç´ï¿½ gameId ï¿½ï¿½ï¿½ ï¿½ï¿½È¸ ï¿½ï¿½ï¿½ï¿½, Postgres or file fallback ï¿½ï¿½ï¿½- history API pagination: gameId ï¿½ï¿½È¸ ï¿½ï¿½ limit/offset ï¿½ï¿½ï¿½ï¿½(ï¿½âº» 10, max 50), nextOffset ï¿½ï¿½È¯
+- history API: RANK_STRICT_USER=1ï¿½Ì¸ï¿½ x-user-idï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½Ä¡ ï¿½ï¿½ 403 (x-api-key ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½È¸)
+- battle log ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ß°ï¿½: /battle-log/[sessionId]ï¿½ï¿½ï¿½ï¿½ history API È£ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Ì¶ï¿½ï¿½ï¿½Æ®/ï¿½ï¿½Ã¼ ï¿½Î±ï¿½ Ç¥ï¿½ï¿½
