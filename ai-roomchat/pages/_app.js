@@ -7,6 +7,23 @@ try {
   }
 } catch (_) {}
 
+// Global shim for legacy `debugState` references in old bundles.
+try {
+  if (typeof globalThis !== 'undefined' && typeof globalThis.debugState !== 'function') {
+    globalThis.debugState = function debugStateShim(state, options = {}) {
+      try {
+        const label = options.label || 'DEBUG';
+        if (typeof console !== 'undefined' && typeof console.log === 'function') {
+          console.log('[debugState shim]', label, state);
+        }
+      } catch {
+        // ignore logging errors
+      }
+      return '[debugState shim]';
+    };
+  }
+} catch (_) {}
+
 import { useEffect, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import dynamic from 'next/dynamic';
