@@ -247,6 +247,102 @@ Current high-level status (this repo copy)
       ✓ 3. runtime:turn-log 이벤트 발행 및 수집
       ✓ 4. onBattleEnd 훅으로 outcome 계산
       ✓ 5. battle_log 형식 검증
+
+---
+
+## 긴급 버그 수정 (2025-01-XX)
+
+### 문제 상황
+- **증상**: Play 버튼 클릭 시 모든 UI가 멈춤 (F12 DevTools까지 무반응)
+- **발생 시점**: 위 B/C/D/A 작업 완료 후 메인 푸시 직후 발견
+- **영향**: 프로덕션 블로킹 버그 — 핵심 기능 완전 마비
+
+### 근본 원인
+**useBuiltinRuntime 훅의 ref 동기화 실패:**
+
+```javascript
+// ❌ 버그 발생 코드 (useBuiltinRuntime.js)
+function useBuiltinRuntime(...) {
+  const runtimeRef = useRef(null);      // 내부에서 ref 생성
+  const hooksRef = useRef(null);
+  // ... 초기화 로직 ...
+  return { runtimeRef, hooksRef };      // ref 반환
+}
+
+// 부모 컴포넌트 (CodeEditorOverlayV2.jsx)
+const runtimeRef = useRef(null);         // 부모도 ref 생성
+const hooksRef = useRef(null);
+useBuiltinRuntime(gridEngineRef, ...);   // 훅은 내부 ref 사용
+// → 부모 ref는 항상 null로 유지됨
+// → Play 버튼이 부모 ref 참조 → 런타임 초기화 실패 → UI 크래시
+```
+
+**문제의 핵심:**
+- 훅 내부에서 생성한 ref와 부모 컴포넌트의 ref가 **분리된 객체**
+- 훅이 반환한 ref를 부모가 사용하지 않음
+- 부모의 null ref를 다른 코드가 참조 → 런타임 오류 → 이벤트 루프 마비
+
+### 해결 방법
+**ref 소유권을 부모로 통합:**
+
+```javascript
+// ✅ 수정된 코드 (useBuiltinRuntime.js)
+function useBuiltinRuntime(
+  gridEngineRef,
+  bus,
+  gameId,
+  runtimeRef,          // 부모로부터 ref 전달받음
+  hooksRef,            // 부모로부터 ref 전달받음
+  onBattleLogUpdate
+) {
+  // useRef 제거 — 더 이상 내부에서 생성하지 않음
+  
+  useEffect(() => {
+    // 전달받은 ref에 직접 할당
+    runtimeRef.current = ...;
+    hooksRef.current = ...;
+  }, [gridEngineRef, bus, gameId, runtimeRef, hooksRef]);  // dependency 추가
+  
+  // return 문 제거 — ref는 부모가 소유
+}
+
+// 부모 컴포넌트 (CodeEditorOverlayV2.jsx)
+const runtimeRef = useRef(null);
+const hooksRef = useRef(null);
+useBuiltinRuntime(
+  gridEngineRef,
+  bus,
+  gameId,
+  runtimeRef,          // 부모의 ref 전달
+  hooksRef,            // 부모의 ref 전달
+  onBattleLogUpdate
+);
+// → 이제 부모 ref가 실제 런타임 객체 참조 → 정상 작동
+```
+
+### 적용된 수정 사항
+1. **함수 시그니처 변경**: `runtimeRef`, `hooksRef`를 파라미터로 받도록 수정
+2. **내부 useRef 제거**: `const runtimeRef = useRef(null);` 줄 삭제
+3. **return 문 제거**: `return { runtimeRef, hooksRef };` 삭제
+4. **dependency 배열 업데이트**: `useEffect(..., [..., runtimeRef, hooksRef])`
+5. **import 수정**: `useRef` 제거 (더 이상 사용하지 않음)
+
+### 교훈 및 패턴
+**React 훅 리팩토링 시 ref 관리 원칙:**
+- ✅ **명확한 소유권**: ref는 부모 또는 훅 중 **한 곳**에만 존재
+- ✅ **전달 패턴**: 부모가 소유 → 훅에 파라미터로 전달 → 훅이 직접 조작
+- ✅ **반환 패턴**: 훅이 소유 → `return { ref }` → 부모가 받아서 사용
+- ❌ **이중 소유 금지**: 부모와 훅이 각각 ref 생성 후 반환 → **동기화 불가**
+
+**버그 미탐지 이유:**
+- E2E 테스트는 훅 로직만 검증 (유닛 테스트 수준)
+- 실제 React 컴포넌트 통합 테스트 부재
+- ref 객체 동일성 검증 없음
+
+**향후 개선 사항:**
+- [ ] 통합 테스트 추가: 실제 컴포넌트 마운트 + Play 버튼 클릭 시뮬레이션
+- [ ] ref 동일성 검증: `expect(parentRef).toBe(hookReturnedRef)` 체크
+- [ ] useGridEngine 패턴 검토: 동일한 문제 가능성 확인
   
   Test Suites: 1 passed
   Tests: 5 passed, 1 skipped
