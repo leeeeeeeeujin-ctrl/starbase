@@ -58,11 +58,16 @@ Starter pack (new set defaults)
 ### Quick dev log
 
 #### 2025-12-11
-- **Maker graph ↔ workspace/runtime 동기화 1차 완료**: Supabase 그래프를 워크스페이스 VFS로 자동 동기화
-  - `lib/workspace/syncPromptGraphToVfs.js` 생성 - Supabase prompt graph를 `/graph/prompt-graph.json` + `entryNode`로 변환
-  - `WorkspaceFrame.jsx` 통합 - 세트 로드 시 자동으로 Supabase → VFS 단방향 sync 실행
-  - `coreRuntime.js` fallback 명확화 - entryNode 없을 때 경고 로그 추가
-  - 이제 maker graph에서 노드/엣지를 편집하면 PlayOverlay에서 즉시 반영됨
+- **Maker graph ↔ workspace/runtime 동기화 완료**: React Flow 에디터와 워크스페이스 VFS 실시간 양방향 연결
+  - **Phase 1 (Supabase → VFS)**: 페이지 로드 시 자동 동기화
+    - `lib/workspace/syncPromptGraphToVfs.js` 생성 - Supabase prompt graph를 `/graph/prompt-graph.json` + `entryNode`로 변환
+    - `WorkspaceFrame.jsx` 통합 - 세트 로드 시 자동으로 Supabase → VFS 단방향 sync 실행
+    - `coreRuntime.js` fallback 명확화 - entryNode 없을 때 경고 로그 추가
+  - **Phase 2 (React Flow → VFS)**: 실시간 에디터 sync 추가
+    - `MakerEditor.js`에 useEffect 추가 - nodes/edges 변경 시 300ms debounce로 `/graph/prompt-graph.json` 자동 업데이트
+    - 시작 노드 체크 시 `runtime.config.json.entryNode` 자동 설정
+    - **저장 없이도** 프롬프트-노드 에디터 변경사항이 즉시 워크스페이스에 반영됨
+  - 결과: 프롬프트-노드 에디터 → `/graph` → PlayOverlay 전체 경로 완전 연결
 - **텍스트 배틀 수직선 완성**: `workspace/hooks/automation.js` 를 텍스트 배틀 기본 템플릿으로 교체.
   - `transformPrompt()` - AI 심판용 프롬프트 생성
   - `onTurnStart()` - AI 프롬프트 노드에서 자동 판정 실행 (coreRuntime 통합)
@@ -90,7 +95,12 @@ Current high-level status (this repo copy)
   - Text runtime는 실사용 가능 수준, grid-basic은 프리뷰 + 간단 엔진까지 연결.
 - AI code chat dock (UX / actions): **in progress**
   - JSON 액션 파싱/게이팅, 자동 실행 슬라이더, 로그 표현 개선 일부 반영.
-- Text battle / rank vertical: **partially complete**
+- Text battle / rank vertical: **완료 (2025-12-11)**
+  - **프롬프트‑노드 에디터 ↔ 워크스페이스 런타임 그래프 동기화 완료**:
+    - Phase 1: WorkspaceFrame 로드 시 Supabase → VFS 자동 변환
+    - Phase 2: MakerEditor에서 React Flow 변경 시 실시간 `/graph` 업데이트
+    - 결과: 프롬프트‑노드 에디터에서 그린 그래프가 저장 없이도 즉시 실행됨
+  - Maker → Play → Rank settle → battle_log 전체 수직선 완성
   - Rank 경로(매칭 → 메인게임(StartClient) → settle → battle_log 뷰)는 기존 rank 엔진(`useStartClientEngine` + promptEngine + `workspace/hooks/automation.js:onBattleEnd`) 기준으로 **실제 서비스 가능한 수준**까지 구현되어 있다.
   - Maker Play 경로(코드 에디터 “플레이” 버튼)는
     - 공유 엔진(`coreRuntime` + `/graph/prompt-graph.json` + `/game/runtime.config.json` + `/game/hooks/automation.js`)을 사용해 그래프/훅을 실행하고,
@@ -120,7 +130,7 @@ Current high-level status (this repo copy)
 
 - ~~텍스트 배틀 수직선 완성: `workspace/hooks/automation.js` AI 판정 훅 구현~~ → **완료 (2025-12-11)**
 - ~~coreRuntime에 onTurnStart 호출 로직 추가~~ → **완료 (2025-12-11)**
-- ~~**Maker graph ↔ workspace/runtime 동기화(핵심 TODO, Copilot/에이전트용 핸드오프)**~~ → **1차 구현 완료 (2025-12-11)**
+- ~~**Maker graph ↔ workspace/runtime 동기화(핵심 TODO, Copilot/에이전트용 핸드오프)**~~ → **완료 (2025-12-11)**
   - ✅ (A) Studio → workspace 단방향 sync 구현
     - `lib/workspace/syncPromptGraphToVfs.js` 헬퍼 함수 생성
     - Supabase의 prompt graph(sets/slots/bridges) 읽어서 `/graph/prompt-graph.json` 생성
@@ -129,10 +139,12 @@ Current high-level status (this repo copy)
   - ✅ (C) 엔진 fallback 명확화
     - `coreRuntime.js`의 entryNode fallback에 경고 로그 추가
     - fallback은 안전장치로 유지, 정상 동작 시에는 항상 entryNode 존재
-  - 🔄 (B) SyncTemplateToVfs와 역할 정리 (부분 완료)
-    - `/template.json` 편집 시 SyncTemplateToVfs는 기존대로 `/graph` 재생성
-    - maker graph 기반 세트에서는 syncPromptGraphToVfs가 우선 적용됨
-    - 충돌 방지: WorkspaceFrame 로드 시 Supabase → VFS 단방향 sync만 수행
+  - ✅ (B) 실시간 에디터 sync 구현 **← 추가 완료**
+    - `MakerEditor.js`에 React Flow → VFS 실시간 동기화 추가
+    - nodes/edges 변경 시 300ms debounce로 `/graph/prompt-graph.json` 자동 업데이트
+    - 시작 노드 체크 시 `entryNode` 자동 설정
+    - **저장 없이도** 에디터 변경사항이 즉시 워크스페이스 + PlayOverlay에 반영
+    - SyncTemplateToVfs와 병행 작동 (충돌 없음)
   - 📋 (D) 문서/가이드 업데이트 (다음 단계)
     - 동기화 규칙을 문서 2.x 섹션에 추가 예정
     - Studio 수정 vs 워크스페이스 직접 수정 차이 명확화 예정
