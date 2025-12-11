@@ -11,6 +11,7 @@ import React, {
 
 import { useRouter } from 'next/router';
 
+import { useWorkspaceOptional } from './CodeWorkspaceProvider.jsx';
 import { useAiChatSessions } from './hooks/useAiChatSessions';
 import { useSupabaseSessionToken } from './hooks/useSupabaseSessionToken';
 import {
@@ -264,6 +265,8 @@ export default function AIChatDock({ onClose }) {
   } = useAiChatSessions();
   const { token: sessionToken, user: sessionUser, refresh: refreshSessionToken } =
     useSupabaseSessionToken();
+
+  const workspace = useWorkspaceOptional();
 
   logsSnapshotRef.current = logs;
 
@@ -717,38 +720,60 @@ export default function AIChatDock({ onClose }) {
       let workspaceSummary = workspaceSummaryRef.current;
       if (workspaceSummary == null) {
         try {
-          const wsPayload = { path: '/', recursive: true };
-          const wsBody = {
-            action: 'list_files',
-            payload: workspaceSetId ? { ...wsPayload, workspaceSetId } : wsPayload,
-          };
-          if (workspaceSetId) {
-            wsBody.workspaceSetId = workspaceSetId;
-          }
-          const resWs = await fetch('/api/rank/handle-action', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(wsBody),
-          });
-          const dataWs = await resWs.json().catch(() => ({}));
-          const items = dataWs?.result?.items || dataWs?.items || [];
-          const list = Array.isArray(items) ? items : [];
-          const workspaceItems = list.filter(
-            (it) => typeof it?.path === 'string' && it.path.startsWith('workspace/'),
-          );
-          if (workspaceItems.length) {
-            const sorted = workspaceItems
-              .map((it) => String(it.path || ''))
+          const vfs =
+            workspace && (workspace.filesForSave || workspace.files || null);
+          if (vfs && typeof vfs === 'object') {
+            const paths = Object.keys(vfs)
+              .map((p) => String(p || '').trim())
               .filter(Boolean)
               .sort();
-            const limited = sorted.slice(0, 80);
-            const more =
-              sorted.length > limited.length
-                ? `\n... (총 ${sorted.length}개 항목 중 일부만 표시)`
-                : '';
-            workspaceSummary = `${limited.map((p) => `- ${p}`).join('\n')}${more}`;
+            if (paths.length) {
+              const mapped = paths.map((p) =>
+                p === '/' ? 'workspace' : `workspace${p.startsWith('/') ? p : `/${p}`}`,
+              );
+              const limited = mapped.slice(0, 80);
+              const more =
+                mapped.length > limited.length
+                  ? `\n... (총 ${mapped.length}개 항목 중 일부만 표시)`
+                  : '';
+              workspaceSummary = `${limited.map((p) => `- ${p}`).join('\n')}${more}`;
+            } else {
+              workspaceSummary = '현재 workspace/ 디렉터리에 알려진 파일이 없습니다.';
+            }
           } else {
-            workspaceSummary = '현재 workspace/ 디렉터리에 알려진 파일이 없습니다.';
+            const wsPayload = { path: '/', recursive: true };
+            const wsBody = {
+              action: 'list_files',
+              payload: workspaceSetId ? { ...wsPayload, workspaceSetId } : wsPayload,
+            };
+            if (workspaceSetId) {
+              wsBody.workspaceSetId = workspaceSetId;
+            }
+            const resWs = await fetch('/api/rank/handle-action', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(wsBody),
+            });
+            const dataWs = await resWs.json().catch(() => ({}));
+            const items = dataWs?.result?.items || dataWs?.items || [];
+            const list = Array.isArray(items) ? items : [];
+            const workspaceItems = list.filter(
+              (it) => typeof it?.path === 'string' && it.path.startsWith('workspace/'),
+            );
+            if (workspaceItems.length) {
+              const sorted = workspaceItems
+                .map((it) => String(it.path || ''))
+                .filter(Boolean)
+                .sort();
+              const limited = sorted.slice(0, 80);
+              const more =
+                sorted.length > limited.length
+                  ? `\n... (총 ${sorted.length}개 항목 중 일부만 표시)`
+                  : '';
+              workspaceSummary = `${limited.map((p) => `- ${p}`).join('\n')}${more}`;
+            } else {
+              workspaceSummary = '현재 workspace/ 디렉터리에 알려진 파일이 없습니다.';
+            }
           }
         } catch {
           workspaceSummary = '';
@@ -855,6 +880,7 @@ export default function AIChatDock({ onClose }) {
         setAutoStatus,
         workingLogs,
         workspaceSetId,
+        workspace,
       });
 
       if (
@@ -876,7 +902,7 @@ export default function AIChatDock({ onClose }) {
         });
       }
     },
-    [append, chatOptions, getSessionToken, workspaceSetId]
+    [append, chatOptions, getSessionToken, workspace, workspaceSetId]
   );
 
   const handleSend = useCallback(async () => {
@@ -1930,6 +1956,18 @@ function LogRow({ entry }) {
     </div>
   );
 }
+
+function normalizeWorkspaceVfsPath(pathLike) {
+  const raw = (pathLike == null ? '' : String(pathLike)).trim();
+  if (!raw || raw === '.' || raw === '/') return '/';
+  if (raw === 'workspace' || raw === 'workspace/') return '/';
+  const noPrefix = raw.startsWith('workspace/')
+    ? raw.slice('workspace/'.length)
+    : raw;
+  if (!noPrefix) return '/';
+  return noPrefix.startsWith('/') ? noPrefix : `/${noPrefix}`;
+}
+
 async function runActionsAndSummarize({
   actions,
   budget,
@@ -1938,6 +1976,7 @@ async function runActionsAndSummarize({
   setAutoStatus,
   workingLogs,
   workspaceSetId,
+  workspace,
 }) {
   const normalized = normalizeActions(actions);
   if (!normalized.length) {
@@ -1955,8 +1994,10 @@ async function runActionsAndSummarize({
     return { remainingBudget: remaining };
   }
 
-  // Batch fast-path: reduce network roundtrips
-  if (normalized.length > 1) {
+  // Batch fast-path: reduce network roundtrips.
+  // When a live workspace VFS is available, prefer per-action execution
+  // so that we can apply file actions directly to the client workspace.
+  if (normalized.length > 1 && !workspace) {
     const items = normalized.map((a) => ({
       action: a.type,
       payload: a.payload || (a.path ? { path: a.path } : {}),
@@ -1967,6 +2008,7 @@ async function runActionsAndSummarize({
     const batchRes = await executeWorkspaceAction(
       { type: 'batch', payload: { actions: items, sequential: true }, workspaceSetId },
       token,
+      null,
     );
     if (batchRes?.ok) {
       const results = Array.isArray(batchRes.result?.results) ? batchRes.result.results : [];
@@ -1991,7 +2033,11 @@ async function runActionsAndSummarize({
 
   for (const action of normalized) {
     if (remaining <= 0) break;
-    const result = await executeWorkspaceAction({ ...action, workspaceSetId }, token);
+    const result = await executeWorkspaceAction(
+      { ...action, workspaceSetId },
+      token,
+      workspace,
+    );
     executed.push({ action, result });
     append('action', { action, result });
     workingLogs.push({ role: 'action', msg: { action, result } });
@@ -2059,7 +2105,7 @@ function normalizeActions(actions) {
     .filter(Boolean);
 }
 
-async function executeWorkspaceAction(action, token) {
+async function executeWorkspaceAction(action, token, workspace) {
   if (!action.type) {
     return { ok: false, error: 'missing_action_name' };
   }
@@ -2186,6 +2232,164 @@ async function executeWorkspaceAction(action, token) {
     if (actionType === 'memory_todo_prefs_get') {
       const prefs = readTodoPrefs();
       return { ok: true, data: { prefs } };
+    }
+
+    // Local workspace-backed file actions when a CodeWorkspaceProvider
+    // is mounted (Maker editor, etc.). This lets AI 코드 채팅 operate
+    // on the *current* workspace state without relying on Supabase or
+    // server-side workspace sets.
+    const ws = workspace || null;
+    if (ws && typeof window !== 'undefined') {
+      const fileActions = new Set([
+        'list_files',
+        'read_file',
+        'read_file_range',
+        'stat_file',
+        'search_text',
+        'write_file',
+      ]);
+      if (fileActions.has(actionType)) {
+        const vfs =
+          ws.filesForSave && typeof ws.filesForSave === 'object'
+            ? ws.filesForSave
+            : ws.files && typeof ws.files === 'object'
+            ? ws.files
+            : {};
+        const paths = Object.keys(vfs || {});
+
+        if (actionType === 'list_files') {
+          const recursive = !!action.payload?.recursive;
+          const rawPath = action.payload?.path || '/';
+          const rootVfs = normalizeWorkspaceVfsPath(rawPath);
+          const rootDir =
+            rootVfs === '/' ? '/' : (rootVfs.endsWith('/') ? rootVfs : `${rootVfs}/`);
+          const items = [];
+          paths
+            .map((p) => normalizeWorkspaceVfsPath(p))
+            .forEach((p) => {
+              if (rootVfs === '/') {
+                // Root: include all files/dirs under '/'
+              } else if (p !== rootVfs && !p.startsWith(rootDir)) {
+                return;
+              }
+              if (!recursive && rootVfs !== '/') {
+                const rel = p === rootVfs ? '' : p.slice(rootDir.length);
+                if (rel.includes('/')) return;
+              }
+              const meta = vfs[p] || vfs[normalizeWorkspaceVfsPath(p)];
+              if (!meta) return;
+              const isDir = !!meta.dir;
+              const content =
+                !isDir && typeof meta.content === 'string' ? meta.content : '';
+              const size = isDir ? 0 : content.length;
+              const name = p.split('/').pop() || p;
+              const workspacePath =
+                p === '/' ? 'workspace' : `workspace${p.startsWith('/') ? p : `/${p}`}`;
+              items.push({
+                name,
+                path: workspacePath,
+                type: isDir ? 'dir' : 'file',
+                size,
+                mtimeMs: 0,
+              });
+            });
+          return { ok: true, result: { items } };
+        }
+
+        const targetPath = normalizeWorkspaceVfsPath(action.payload?.path);
+        const meta = vfs[targetPath] || null;
+
+        if (actionType === 'read_file') {
+          if (!meta || meta.dir) return { ok: false, error: 'file_not_found' };
+          const content =
+            typeof meta.content === 'string' ? meta.content : '';
+          return {
+            ok: true,
+            result: { encoding: 'utf8', content },
+          };
+        }
+
+        if (actionType === 'read_file_range') {
+          if (!meta || meta.dir) return { ok: false, error: 'file_not_found' };
+          const txt = String(meta.content || '');
+          const lines = txt.split(/\r?\n/);
+          const start = Number(action.payload?.start ?? 0);
+          const end = Number(action.payload?.end ?? start + 250);
+          const s = Math.max(0, start);
+          const e = Math.min(lines.length, Math.max(s, end));
+          const slice = lines.slice(s, e).join('\n');
+          return { ok: true, result: { start: s, end: e, content: slice } };
+        }
+
+        if (actionType === 'stat_file') {
+          if (!meta) return { ok: false, error: 'file_not_found' };
+          const isDir = !!meta.dir;
+          const content =
+            typeof meta.content === 'string' ? meta.content : '';
+          const size = isDir ? 0 : content.length;
+          return {
+            ok: true,
+            result: { isDir, size, mtimeMs: 0 },
+          };
+        }
+
+        if (actionType === 'search_text') {
+          const query = String(action.payload?.query || '').trim();
+          if (!query) return { ok: false, error: 'missing_query' };
+          const maxResults = Number(action.payload?.max_results || 200);
+          const results = [];
+          for (const p of paths) {
+            if (results.length >= maxResults) break;
+            const fp = normalizeWorkspaceVfsPath(p);
+            const fm = vfs[p] || vfs[fp];
+            if (!fm || fm.dir) continue;
+            const content =
+              typeof fm.content === 'string' ? fm.content : '';
+            if (!content) continue;
+            const lines = content.split(/\r?\n/);
+            for (let i = 0; i < lines.length; i += 1) {
+              if (lines[i].includes(query)) {
+                results.push({
+                  path: `workspace${fp}`,
+                  line: i + 1,
+                  preview: lines[i],
+                });
+                if (results.length >= maxResults) break;
+              }
+            }
+          }
+          return { ok: true, result: { results } };
+        }
+
+        if (actionType === 'write_file') {
+          const vfsPath = targetPath;
+          const content =
+            typeof action.payload?.content === 'string'
+              ? action.payload.content
+              : '';
+          if (typeof ws.addFile === 'function') {
+            await ws.addFile(vfsPath, content, { readonly: false, dir: false });
+          } else if (typeof ws.setDraft === 'function') {
+            ws.setDraft(vfsPath, content);
+          }
+          if (
+            (ws.saveFileAndPush || ws.saveAllAndPush) &&
+            (action.workspaceSetId || ws.storageNamespace)
+          ) {
+            const setId = action.workspaceSetId || ws.storageNamespace;
+            try {
+              if (ws.saveFileAndPush) {
+                await ws.saveFileAndPush(setId, vfsPath, content);
+              } else if (ws.saveAllAndPush) {
+                await ws.saveAllAndPush(setId);
+              }
+            } catch {
+              // best-effort persistence; ignore errors here
+            }
+          }
+          return { ok: true };
+        }
+      }
     }
     // Pre-check sandbox allowlist for sandbox_exec/test/lint/build
     if (['sandbox_exec','test_run','lint_run','build_run'].includes(actionType)) {
