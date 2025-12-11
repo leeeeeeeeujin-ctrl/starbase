@@ -292,7 +292,29 @@ Extensions and capabilities are related but distinct:
 - Capabilities - **what the set can do at runtime**.
 - Extensions - **what tools the editor provides while authoring the set**.
 
-### 4.4 Per-set capabilities meta
+### 4.4 AI Code Chat workspace boundary
+
+- AI 코드 채팅 도크(`AIChatDock` / `AICodeChatPanel`)는 워크스페이스 파일 작업을 직접 수행하지 않고,
+  `/api/rank/handle-action` → `lib/rank/actions.js` 를 통해 **제한된 액션 집합**만 호출한다.
+- 루트/스코프:
+  - `BASE_ROOT` ≒ `ai-roomchat` 디렉터리.
+  - 모든 파일 액션은 먼저 `WORKSPACE_PREFIX = 'workspace'` 를 기준으로 정규화된다:
+    - `"/game/runtime.config.json"` → `"workspace/game/runtime.config.json"`.
+    - `"."` / `"/"` → `"workspace"` (유저 세트 루트).
+  - 쓰기 가능한 경로:
+    - `classifyPath(absPath) === 'workspace'` 인 경로만 허용 → **`ai-roomchat/workspace/**` 아래**만 write 가능.
+  - 읽기:
+    - `workspace/**` + 소수의 문서 allowlist (`docs/WORKSPACE_EDITOR_RUNTIME.md`, `docs/AI_GAME_PROMPTS.md`, `docs/capabilities/**` 등)만 허용.
+- 결과적으로:
+  - 유저/AI가 생성·편집하는 파일은 항상 `workspace/**` 아래에 위치하고,
+  - 호스트 앱 코드(`components/**`, `pages/**`, `lib/**`, 대부분의 `docs/**`)는 액션에서 **쓰기 불가** 영역이다.
+  - 서버리스/배포 환경에서 `workspace/` 디렉터리가 아직 없으면:
+    - `list_files` 액션은 빈 목록(`items: []`)을 반환하도록 되어 있어,
+    - “루트 없음” 에러 대신 “비어 있는 워크스페이스”로 취급된다.
+  - 실제 유저 프로젝트를 이 영역에 맵핑할지는 배포/호스트 레이어에서 결정하며,
+    이 레포에서는 기본값으로 `ai-roomchat/workspace`가 “유저 세트/샌드박스” 경계로 사용된다.
+
+### 4.5 Per-set capabilities meta
 
 - Selected capabilities for a set are stored under `meta.capabilities`.
 - Helpers:
@@ -305,7 +327,7 @@ Extensions and capabilities are related but distinct:
     - Lets authors toggle capability ids (core/ui/world/network/state/persistence).
     - Saves selections immediately into `meta.capabilities` for the current set.
 
-### 4.5 Capabilities validation helper
+### 4.6 Capabilities validation helper
 
 - File-based validation helper:
   - `ai-roomchat/lib/workspace/validateCapabilities.js`
@@ -915,6 +937,31 @@ The core text runtime can be treated as a single installable feature composed of
   - Renders each message into the text game/chat area, using the template to place the log and input controls.
 
 With this minimal set present and the capabilities above selected, a workspace set can act as a "pure text game runtime" with no additional adapters required. When a workspace also defines `world.grid.tilemap`, the `world` field in `ctx` will include a derived grid view so hooks can render or summarise world state without re-parsing files.
+
+#### 10.5.1 Play overlay debug participants (`simUsers`)
+
+- Play 오버레이의 디버그 패널에는 **시뮬레이션 참가자(simUsers)** 를 입력하는 작은 폼이 있다.
+  - 이름(name)과 API 키(apiKey)를 브라우저 로컬에만 저장하며, 워크스페이스 파일/서버로는 전송하지 않는다.
+  - 저장 위치: `localStorage['playDebug.simUsers@{storageNamespace}']`.
+- 엔진과의 연결:
+  - `CodeEditorOverlayV2`에서 builtin 텍스트 런타임을 구성할 때:
+    - `debugState.simUsers` 배열이 있으면 이를 기반으로:
+      - `variables.rank.players` 를 채운다:
+        - 각 항목을 `{ ownerId, heroId: null, heroName, role?, apiKey? }` 형태로 변환.
+      - `variables.debug.participants` 에도 동일한 배열을 넣는다.
+    - 없으면 기본값 `{ rank: { players: [] } }` 만 사용한다.
+  - 이렇게 하면:
+    - 워크스페이스 훅(`/game/hooks/automation.js`)에서
+      - `ctx.variables.rank.players` 를 통해 플레이어/참가자 목록을 읽을 수 있고,
+      - 필요 시 `ctx.variables.debug.participants` 를 통해 디버그용 메타(API 키 등)를 별도로 참조할 수 있다.
+    - 표준 슬롯 헬퍼(`applySpeakerFromRank`, `applySceneFromRank`)는 `rank.players` 를 기반으로
+      - `variables.speaker` / `variables.scene` 를 채우므로,
+      - 텍스트 배틀 훅이 “디버그 참가자”를 실제 랭크 참가자와 비슷한 형태로 사용할 수 있다.
+- 주의:
+  - simUsers 는 **Play 오버레이(로컬 디버그)** 에만 영향을 주며,
+    실제 랭크 세션(StartClient)에서 사용하는 `rankContext.players` / Supabase 참가자 데이터와는 분리되어 있다.
+  - 본 게임 플로우에서는 항상 랭크/매칭 시스템에서 넘어온 참가자 정보를 사용하고,
+    Play 디버그는 “샌드박스용 참가자/키”를 주입하는 용도로만 쓴다.
 
 ### 10.6 `net.realtime-basic` runtime feature
 

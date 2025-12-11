@@ -270,9 +270,26 @@ async function isCommandAllowed(cmdPreview) {
 }
 
 async function action_list_files(payload) {
-  const dir = ensureReadableRoot(resolveSafe(payload?.path || '.'));
+  const resolved = resolveSafe(payload?.path || '.');
+  let dir;
+  try {
+    dir = ensureReadableRoot(resolved);
+  } catch (err) {
+    return { ok: false, error: err?.message || 'path_not_allowed' };
+  }
   const recursive = !!payload?.recursive;
-  const items = await listDir(dir, recursive);
+  let items = [];
+  try {
+    items = await listDir(dir, recursive);
+  } catch (err) {
+    // If the workspace root does not exist yet (e.g. serverless read-only
+    // deploys), treat it as an empty directory instead of surfacing ENOENT.
+    if (err && (err.code === 'ENOENT' || err.code === 'ENOTDIR')) {
+      items = [];
+    } else {
+      throw err;
+    }
+  }
   return { ok: true, result: { items } };
 }
 

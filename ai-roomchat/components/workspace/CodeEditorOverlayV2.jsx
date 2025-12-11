@@ -793,17 +793,31 @@ function PlayOverlayContent({ templateBinding }) {
         } catch {
           // ignore hook load errors; runtime will fall back to graph edges only
         }
+        const hasSimUsers = Array.isArray(debugState?.simUsers) && debugState.simUsers.length > 0;
+        const debugPlayers = hasSimUsers
+          ? debugState.simUsers.map((u, index) => {
+              const name = (u && u.name && String(u.name).trim()) || `참가자 #${index + 1}`;
+              const ownerId =
+                (u && u.ownerId && String(u.ownerId).trim()) || `sim-${index + 1}`;
+              return {
+                ownerId,
+                heroId: null,
+                heroName: name,
+                role: (u && u.role && String(u.role).trim()) || null,
+                apiKey: u && u.apiKey ? String(u.apiKey) : null,
+              };
+            })
+          : [];
+
         const rankDefaults = {
           sessionId: null,
           gameMode: 'offline',
           realtimeEnabled: false,
           dropInEnabled: false,
-          players: [],
+          players: debugPlayers,
         };
-        const debugVars =
-          Array.isArray(debugState?.simUsers) && debugState.simUsers.length
-            ? { participants: debugState.simUsers }
-            : undefined;
+
+        const debugVars = hasSimUsers ? { participants: debugPlayers } : undefined;
 
         runtime = createCoreRuntime({
           graph,
