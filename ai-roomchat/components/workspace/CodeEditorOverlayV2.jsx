@@ -584,14 +584,44 @@ function PlayOverlayContent({ templateBinding }) {
       emit(event, payload){ const arr=listeners.get(event)||[]; arr.forEach(fn=>{ try{ fn(payload);}catch(e){ console.warn('bus handler error', e);} }); },
     };
   }, []);
+
+  // 템플릿(JSON) 파싱은 별도로 감싸, 파싱 오류만 명확히 표기한다.
+  let tpl;
   try {
-    const tplText = (typeof templateBinding?.text === 'string' && templateBinding.text.length > 0)
-      ? templateBinding.text
-      : (files?.['/template.json']?.content || '{}');
-    const tpl = JSON.parse(tplText || '{}');
-    const cfgText = files?.['/game/runtime.config.json']?.content || '{}';
-    let cfg = {};
-    try { cfg = JSON.parse(cfgText || '{}'); } catch {}
+    const tplText =
+      typeof templateBinding?.text === 'string' && templateBinding.text.length > 0
+        ? templateBinding.text
+        : files?.['/template.json']?.content || '{}';
+    tpl = JSON.parse(tplText || '{}');
+  } catch (e) {
+    try {
+      // 개발/디버그용 로그
+      // eslint-disable-next-line no-console
+      console.error('[PlayOverlay] failed to parse /template.json', e);
+    } catch {
+      // ignore log errors
+    }
+    const message = String(e && e.message ? e.message : e || '');
+    return (
+      <div style={{ padding:16, color:'#94a3b8' }}>
+        템플릿 JSON을 파싱할 수 없습니다.
+        {message && (
+          <div style={{ marginTop:4, fontSize:11, opacity:0.8 }}>
+            오류: {message}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const cfgText = files?.['/game/runtime.config.json']?.content || '{}';
+  let cfg = {};
+  try {
+    cfg = JSON.parse(cfgText || '{}');
+  } catch {
+    // 잘못된 runtime.config.json 은 기본값으로 대체
+    cfg = {};
+  }
     const engine = String(cfg?.engine || 'builtin').toLowerCase();
     const mode = String(cfg?.mode || (cfg?.durations ? 'turn' : 'realtime')).toLowerCase();
 
@@ -613,19 +643,19 @@ function PlayOverlayContent({ templateBinding }) {
     const debugPromptEnabled = debugConfig
       ? !!debugConfig.promptInspector
       : hasCoreTextFeature;
-    const debugLogCallsEnabled = !!(debugConfig && debugConfig.logAiCalls);
+  const debugLogCallsEnabled = !!(debugConfig && debugConfig.logAiCalls);
 
-    // Initialize optional adapters (networking, CRDT sync) based on capabilities + config.
-    useRuntimeAdapters({
-      storageNamespace,
-      router,
-      files,
-      cfg,
-      bus,
-      setRuntimeFeatures,
-      setRuntimeIssues,
-      setNetAdapters,
-    });
+  // Initialize optional adapters (networking, CRDT sync) based on capabilities + config.
+  useRuntimeAdapters({
+    storageNamespace,
+    router,
+    files,
+    cfg,
+    bus,
+    setRuntimeFeatures,
+    setRuntimeIssues,
+    setNetAdapters,
+  });
 
     // World grid engine: enable only when world.grid-basic feature is active.
     React.useEffect(() => {
@@ -1092,49 +1122,46 @@ function PlayOverlayContent({ templateBinding }) {
     ) : null;
 
     const enableDebugUi = !!(debugConfig || hasCoreTextFeature);
-    const debugPanel = (
-      <DebugPanel
-        enableDebugUi={enableDebugUi}
-        debugCollapsed={debugCollapsed}
-        setDebugCollapsed={setDebugCollapsed}
-        debugPromptEnabled={debugPromptEnabled}
-        debugState={debugState}
-        debugLogCallsEnabled={debugLogCallsEnabled}
-        addSimUser={addSimUser}
-        updateSimUser={updateSimUser}
-        removeSimUser={removeSimUser}
-      />
-    );
+  const debugPanel = (
+    <DebugPanel
+      enableDebugUi={enableDebugUi}
+      debugCollapsed={debugCollapsed}
+      setDebugCollapsed={setDebugCollapsed}
+      debugPromptEnabled={debugPromptEnabled}
+      debugState={debugState}
+      debugLogCallsEnabled={debugLogCallsEnabled}
+      addSimUser={addSimUser}
+      updateSimUser={updateSimUser}
+      removeSimUser={removeSimUser}
+    />
+  );
 
-    return (
-      <div style={{ position:'relative', height:'100%', width:'100%' }}>
-        {banner}
-        {issuesPanel}
-        {debugPanel}
-        <ErrorBoundary onRetry={() => { try { window.dispatchEvent(new Event('play:retry')); } catch {} }}>
-          <GameShell
-            template={tpl}
-            runtimeBus={bus}
-            runtimeFeatures={runtimeFeatures}
-            shellConfig={
-              files?.['/game/ui.shell.json']
-                ? (() => {
-                    try {
-                      return JSON.parse(files['/game/ui.shell.json'].content || '{}');
-                    } catch {
-                      return null;
-                    }
-                  })()
-                : null
-            }
-            mode="play"
-          />
-        </ErrorBoundary>
-      </div>
-    );
-  } catch (e) {
-    return <div style={{ padding:16, color:'#94a3b8' }}>템플릿을 불러올 수 없습니다.</div>;
-  }
+  return (
+    <div style={{ position:'relative', height:'100%', width:'100%' }}>
+      {banner}
+      {issuesPanel}
+      {debugPanel}
+      <ErrorBoundary onRetry={() => { try { window.dispatchEvent(new Event('play:retry')); } catch {} }}>
+        <GameShell
+          template={tpl}
+          runtimeBus={bus}
+          runtimeFeatures={runtimeFeatures}
+          shellConfig={
+            files?.['/game/ui.shell.json']
+              ? (() => {
+                  try {
+                    return JSON.parse(files['/game/ui.shell.json'].content || '{}');
+                  } catch {
+                    return null;
+                  }
+                })()
+              : null
+          }
+          mode="play"
+        />
+      </ErrorBoundary>
+    </div>
+  );
 }
 
 function EditorHost({ path, language, value, onChange, onSave }) {
