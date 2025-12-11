@@ -585,6 +585,35 @@ function PlayOverlayContent({ templateBinding }) {
     };
   }, []);
 
+  // 디버그용 시뮬레이션 참가자 관리 헬퍼
+  const addSimUser = React.useCallback(() => {
+    setDebugState((prev) => {
+      const list = Array.isArray(prev.simUsers) ? prev.simUsers.slice() : [];
+      list.push({ name: '', apiKey: '' });
+      return { ...prev, simUsers: list };
+    });
+  }, []);
+
+  const updateSimUser = React.useCallback((index, patch) => {
+    setDebugState((prev) => {
+      const list = Array.isArray(prev.simUsers) ? prev.simUsers.slice() : [];
+      while (list.length <= index) {
+        list.push({ name: '', apiKey: '' });
+      }
+      list[index] = { ...list[index], ...patch };
+      return { ...prev, simUsers: list };
+    });
+  }, []);
+
+  const removeSimUser = React.useCallback((index) => {
+    setDebugState((prev) => {
+      const list = Array.isArray(prev.simUsers) ? prev.simUsers.slice() : [];
+      if (index < 0 || index >= list.length) return prev;
+      list.splice(index, 1);
+      return { ...prev, simUsers: list };
+    });
+  }, []);
+
   // 템플릿(JSON) 파싱은 별도로 감싸, 파싱 오류만 명확히 표기한다.
   let tpl;
   try {
@@ -1616,33 +1645,6 @@ export default function CodeEditorOverlayV2({ templateBinding, onRequestClose })
       return { ...prev, simUsers: list };
     });
   }, []);
-
-  React.useEffect(() => {
-    if (!storageNamespace) return;
-    try {
-      const raw = localStorage.getItem(`playDebug.simUsers@${storageNamespace}`);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        setDebugState((prev) => ({ ...prev, simUsers: parsed }));
-      }
-    } catch {
-      // ignore load errors
-    }
-  }, [storageNamespace]);
-
-  React.useEffect(() => {
-    if (!storageNamespace) return;
-    try {
-      const list = Array.isArray(debugState.simUsers) ? debugState.simUsers : [];
-      localStorage.setItem(
-        `playDebug.simUsers@${storageNamespace}`,
-        JSON.stringify(list),
-      );
-    } catch {
-      // ignore persistence errors
-    }
-  }, [storageNamespace, debugState.simUsers]);
 
     const handleValidateCapabilities = async () => {
       try {
