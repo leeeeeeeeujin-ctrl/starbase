@@ -183,6 +183,7 @@ export function createCoreRuntime({ graph, config, hooks, files, initialVariable
   async function step({ reason = 'auto', input } = {}) {
     const nextId = await chooseNext(reason, input);
     const hadNode = !!getCurrentNode();
+    const isNewNode = nextId && nodesById.has(nextId) && currentId !== nextId;
 
     if (nextId && nodesById.has(nextId)) {
       currentId = nextId;
@@ -196,6 +197,16 @@ export function createCoreRuntime({ graph, config, hooks, files, initialVariable
     }
 
     const ctx = buildContext(reason, input);
+
+    // 새 노드 진입 시 onTurnStart 훅 호출
+    if (isNewNode && hooks && typeof hooks.onTurnStart === 'function') {
+      try {
+        await hooks.onTurnStart(ctx);
+      } catch (e) {
+        console.warn('[coreRuntime] onTurnStart error:', e);
+      }
+    }
+
     const { prompt, ui } = await computePrompt(reason);
     return {
       current: ctx.node,

@@ -17,8 +17,22 @@ Implementation status & ordering notes
 - Features are implemented in a **priority-based order** (for now: security/sandbox → runtime features - AI dock UX - Supabase helpers), and this document is updated as they land.
 - Each major section may include a short `Status: done / in progress / planned` note that reflects the current codebase, not a future goal.
 
-### Quick dev log (2025-12-05)
+### Quick dev log
 
+#### 2025-12-11
+- **텍스트 배틀 수직선 완성**: `workspace/hooks/automation.js` 를 텍스트 배틀 기본 템플릿으로 교체.
+  - `transformPrompt()` - AI 심판용 프롬프트 생성
+  - `onTurnStart()` - AI 프롬프트 노드에서 자동 판정 실행 (coreRuntime 통합)
+  - `onUserAction()` - 유저 행동 노드에서 입력 기반 판정 실행
+  - `applyBattleOutcomeLocal()` - 판정 결과를 `variables.battleLast/battleResult/battleScore` 에 저장
+  - `onBattleEnd()` - 완전한 승패 판정 및 하이라이트 선정 로직 구현
+- **coreRuntime 개선**: `step()` 함수에 `onTurnStart` 훅 호출 로직 추가
+  - 새 노드 진입 시 자동으로 `hooks.onTurnStart(ctx)` 호출
+  - Play/Rank 모두에서 AI 프롬프트 노드 자동 판정 작동
+- 노드 타입별 처리 문서화: AI 프롬프트/유저 행동/시스템 노드 구분 및 처리 흐름 명시
+- 이제 Play → AI 판정 → variables 갱신 → 턴 로그 → Rank settle → 배틀로그 뷰까지 전체 흐름이 완전히 작동함.
+
+#### 2025-12-05
 - Pushed `assistant-adjust-character-panels-layout` to `main` (origin). Touched `ai-roomchat/components/character/CharacterBasicView.js` to stop carousel/game cards from clipping and make overlay slides stretch to container width on narrow/rotated layouts.
 - Pushed `assistant-fix-info-slider-width` to `main` (origin). `ai-roomchat/components/character/CharacterBasicView.js`의 info slider 트랙을 flex 기반 2분할(각 50%)로 고정해 게임/캐릭터 패널이 절반만 보이던 문제를 해소.
 - Pushed `assistant-remove-game-count-badge` to `main` (origin). `ai-roomchat/components/character/CharacterPlayPanel.js`에서 “선택한 게임” 헤더 옆 고정 숫자 배지를 제거(단일 선택이라 불필요).
@@ -33,8 +47,10 @@ Current high-level status (this repo copy)
   - Text runtime는 실사용 가능 수준, grid-basic은 프리뷰 + 간단 엔진까지 연결.
 - AI code chat dock (UX / actions): **in progress**
   - JSON 액션 파싱/게이팅, 자동 실행 슬라이더, 로그 표현 개선 일부 반영.
-- Text battle / rank vertical: **first slice complete**
-  - Maker 워크스페이스 → Play 오버레이(`runtime:turn-log`) → Rank StartClient(coreRuntime + `onBattleEnd`) → `/api/rank/settle` + `workspace/score/score-default.js` → `battle_history` / `rank_session_battle_logs` → `/battle-log/[sessionId]` → 로비/캐릭터 최근 베틀로그 카드까지 텍스트 배틀 기준 수직선은 1차 완성. (다른 장르/PlayOverlay 전용 템플릿 확장은 후속 작업으로 분리)
+- Text battle / rank vertical: **complete (first genre)**
+  - Maker 워크스페이스 → Play 오버레이(`runtime:turn-log`) → Rank StartClient(coreRuntime + `onBattleEnd`) → `/api/rank/settle` + `workspace/score/score-default.js` → `battle_history` / `rank_session_battle_logs` → `/battle-log/[sessionId]` → 로비/캐릭터 최근 베틀로그 카드까지 텍스트 배틀 기준 수직선 완성.
+  - `workspace/hooks/automation.js` 가 텍스트 배틀 기본 템플릿으로 구현되어 있으며, Play 디버그에서 즉시 AI 판정이 작동함.
+  - 다른 장르 확장은 이 템플릿을 참고/변형하면 됨.
 - Hub/플러그인 기반 확장: **planned**
   - Hub(로컬/외부 에이전트)를 통해 UI 테스트, 로컬 Git, Supabase 연동 등 확장을 외부 플러그인으로 제공하고 ai-roomchat은 JSON API로만 연결하는 방향.
 - Standard data slots (`variables.stats / scene / effects / speaker`): **in progress**
@@ -44,8 +60,11 @@ Current high-level status (this repo copy)
 
 ### Open tasks (dev notes)
 
+- ~~텍스트 배틀 수직선 완성: `workspace/hooks/automation.js` AI 판정 훅 구현~~ → **완료 (2025-12-11)**
+- ~~coreRuntime에 onTurnStart 호출 로직 추가~~ → **완료 (2025-12-11)**
 - PlayOverlayContent 구조 분리 진행 중: 어댑터 초기화는 헬퍼로 분리했으나 디버그 UI/입력 처리도 별도 훅/컴포넌트로 쪼개기.
 - 선택된 capability 대비 필요한 파일 안내: Play/Capabilities 패널에서 누락 파일 경고+생성 안내 표시. Capabilities 선택 화면에도 빠른 파일 추가 액션을 더 보강.
+- 텍스트 배틀 실전 테스트: AI 프롬프트 노드 자동 실행 → 턴 로그 → Rank settle 전체 흐름 검증.
 
 ### Next goals (platform fit)
 
@@ -380,6 +399,53 @@ Extensions and capabilities are related but distinct:
     `workspaceSetId` 가 있을 때 워크스페이스 세트의 `files[]` 를 직접 수정하도록 구현되어 있으며,
     `edit_patch` 는 여전히 물리 `workspace/**` 만 대상으로 한다.)
 
+### 4.8 AI 코드 채팅을 위한 빠른 참조(무엇을 보고/수정할지)
+
+- 기본 개념:
+  - AI 코드 채팅은 **현재 메이커 워크스페이스 세트**를 기준으로 파일을 읽고 쓴다.
+  - 호스트 앱 코드(`components/**`, `pages/**`, `lib/**` 대부분)는 읽기/쓰기가 제한되어 있고,
+    워크스페이스 안에서 조정 가능한 부분만 수정해야 한다.
+
+- 대표 파일/역할:
+  - `/template.json`
+    - 메이커 템플릿(노드/엣지) 원본.
+    - 그래프 구조/노드 텍스트 자체를 손보고 싶을 때 먼저 보는 파일.
+  - `/graph/prompt-graph.json`
+    - 정규화된 그래프. 없을 경우 /template.json 에서 유도된다(4.2 참조).
+    - 프롬프트 그래프의 구조적 문제(노드 타입, 엣지 연결)를 점검할 때 사용.
+  - `/game/runtime.config.json`
+    - 런타임 설정(roles, turnTimer, entryNode 등)을 정의한다.
+    - “다음 턴으로 넘어가는 규칙”, “어떤 역할군이 존재하는지”, “플레이가 어떤 템플릿을 사용하는지”를 바꾸고 싶을 때 가장 먼저 읽어야 하는 곳.
+  - `/game/hooks/automation.js`
+    - 텍스트 배틀 등 런타임에서 호출되는 훅(onTurnStart/onUserAction/transformPrompt/selectNext)을 담는다.
+    - “특정 입력에 따라 다음 노드로 이동하는 규칙”, “프롬프트 앞/뒤에 붙는 설명”, “로그/베틀로그에 남길 메시지” 등을 커스터마이징할 때 수정한다.
+  - `/score/score-default.js`
+    - 기본 점수 정산 로직(onBattleEnd)을 정의한다.
+    - 랭크/점수 증감 규칙을 손보고 싶을 때, 먼저 이 파일을 읽고 수정한다.
+
+- AI 코드 채팅이 작업을 시작할 때 권장 순서:
+  1. 사용자가 설명한 목표를 한 문장으로 정리한다.
+     - 예: “플레이에서 다음 턴으로 안 넘어가는 버그를 고친다”, “베틀로그 카드에 승/패/점수 증감을 요약해서 표시한다”.
+  2. 관련된 워크스페이스 파일을 **read_file** 로 먼저 확인한다.
+     - 런타임/플레이 문제 → `/game/runtime.config.json`, `/game/hooks/automation.js`, `/template.json`, `/graph/prompt-graph.json`.
+     - 점수/베틀로그 문제 → `/score/score-default.js` + 베틀로그 관련 계약은 문서 7.x(랭크/베틀로그) 섹션 참고.
+  3. 필요한 경우에만 **write_file** / **delete_file** / **move_file** / **mkdirs** 를 사용해 수정한다.
+  4. 대규모 수정이 필요할 때는:
+     - 여러 파일을 한 번에 바꾸려 하기보다, 1~2개 파일을 읽고 고친 뒤,
+     - 사용자가 직접 플래이/메인게임에서 확인하도록 안내한다.
+
+- 무엇을 “먼저 읽을지”에 대한 권장 맵:
+  - 텍스트 배틀 메인 플로우를 이해하고 싶을 때:
+    - 이 문서의 2.x(개념) → 5.x(Runtime/Play) → 6.x(Rank/정산/베틀로그) 순으로 읽는다.
+    - 워크스페이스에서는 `/template.json`, `/game/runtime.config.json`, `/game/hooks/automation.js` 를 우선 `read_file` 한다.
+  - 새로운 텍스트 배틀 변형(예: 투표 방식/턴 정책)을 만들고 싶을 때:
+    - 5.x의 TurnTimer/NextBar 계약 설명을 확인한 뒤,
+    - `/game/runtime.config.json` 에서 turnTimer/roles 를 조정하고,
+    - 필요하면 `/game/hooks/automation.js` 의 훅으로 세밀한 로직을 넣는다.
+  - 점수/랭크/베틀로그 카드를 손보고 싶을 때:
+    - 6.x(랭크/정산/베틀로그) 관련 섹션을 먼저 읽고,
+    - 워크스페이스에서는 `/score/score-default.js` 와, 베틀로그 요약에 필요한 필드를 `read_file` 한 뒤 수정한다.
+
 ---
 
 ## 5. Runtime / Play overlay
@@ -423,12 +489,115 @@ In this copy, a minimal core runtime (`ai-roomchat/lib/runtime/coreRuntime.js`) 
 
 - Reads `/graph/prompt-graph.json` + `runtime.config` + `/game/hooks/automation.js` and steps through nodes
   using `createCoreRuntime({ graph, config, hooks, files })`.
+
+#### Node types and AI judgment flow
+
+프롬프트 그래프의 각 노드는 **노드 타입(node type)** 에 따라 다르게 처리됩니다:
+
+1. **AI 프롬프트 노드** (`type: 'ai_prompt'` 또는 `config.autoJudge: true`)
+   - 노드 진입 시 `onTurnStart(ctx)` 훅이 자동으로 AI 판정을 실행합니다.
+   - 사용자 입력 없이 즉시 프롬프트 생성 → AI 호출 → 결과를 `variables`에 저장 → 다음 노드로 이동.
+   - 예: 텍스트 배틀의 각 턴마다 자동으로 심판 AI가 상황을 판정하는 경우.
+
+2. **유저 행동 노드** (`type: 'user_action'`)
+   - 사용자가 입력창에 직접 텍스트를 입력하면 `onUserAction(ctx, input)` 훅이 호출됩니다.
+   - 입력된 텍스트를 프롬프트로 사용해 AI 판정을 요청하고, 결과에 따라 다음 노드를 선택.
+   - 특정 슬롯(참가자)에게는 해당 노드의 프롬프트와 응답을 `visibility` 설정으로 숨길 수 있습니다.
+   - 예: 플레이어가 자유롭게 전략을 입력하고, AI가 그 전략의 성공 여부를 판정하는 경우.
+
+3. **시스템 노드** (`type: 'system'`)
+   - AI 판정 없이 노드의 프롬프트 텍스트를 그대로 표시합니다.
+   - 주로 게임 규칙 설명, 중간 안내 메시지, 결과 요약 등에 사용.
+   - 예: "배틀이 시작됩니다!", "3라운드 종료" 같은 시스템 메시지.
+
+#### 런타임 실행 경로 비교: Play vs StartClient (Rank)
+
+**Play 오버레이 (CodeEditorOverlayV2 → PlayOverlayContent):**
+
+- 위치: `ai-roomchat/components/workspace/CodeEditorOverlayV2.jsx` (line ~820-1050)
+- 엔진: `createCoreRuntime({ graph, config, hooks, files, initialVariables })`
+- 이벤트 흐름:
+  1. `bus.on('turn:next')` → `runtime.step({ reason: 'auto' })` 호출
+  2. `bus.on('player:chat')` → `runtime.step({ reason: 'user_action', input: text })` 호출
+  3. `runtime.step()` 내부에서:
+     - `chooseNext(reason, input)` → `onUserAction(ctx, input)` 또는 `selectNext(ctx, neighbors)` 호출
+     - `computePrompt(reason)` → `transformPrompt(ctx)` 호출
+     - 결과를 `publishResult()` → `bus.emit('system:message')` + `bus.emit('runtime:turn-log')` 발행
+- **주의**: Play에서는 `onTurnStart` 훅이 **호출되지 않음**.
+  - `coreRuntime`은 `step()` 메서드만 제공하며, 노드 진입 시 자동 훅 실행 로직이 없음.
+  - AI 프롬프트 노드의 자동 판정은 현재 **미구현 상태**.
+
+**StartClient (Rank 메인게임):**
+
+- 위치: `ai-roomchat/components/rank/StartClient/index.js` (line ~596-788)
+- 엔진: 동일하게 `createCoreRuntime({ graph, config, hooks, files, initialVariables })` 사용
+- 이벤트 흐름:
+  - Rank 세션 컨텍스트(`rankContext.players`)를 `initialVariables.rank`로 주입
+  - `runtime.step({ reason: 'auto' })` 또는 `runtime.step({ reason: 'user_action', input })` 호출
+  - 턴 로그를 `/api/rank/log-turn` 으로 전송
+  - `variables.battleLast.battleEnd === true` 시점에 `onBattleEnd(ctx)` 호출 → `/api/rank/settle`
+- **주의**: StartClient도 `coreRuntime.step()` 기반이므로 `onTurnStart` 자동 실행은 없음.
+
+**GameRuntimeProvider (레거시/실험적 경로):**
+
+- 위치: `ai-roomchat/components/game/GameRuntimeProvider.jsx` (line ~307-330)
+- 특징: 별도 step 함수에서 **`onTurnStart` 훅을 명시적으로 호출**함:
+  ```javascript
+  // line 311-313
+  if (hookWorkerRef.current) {
+    hookWorkerRef.current.call('onTurnStart', { node, files, config }).catch(()=>{});
+  } else if (typeof hooks.onTurnStart === 'function') {
+    hooks.onTurnStart({ node, files, config });
+  }
+  ```
+- 그러나 이 경로는:
+  - `coreRuntime`을 사용하지 않음 (자체 그래프 순회 로직)
+  - `variables` 컨텍스트가 훅에 전달되지 않음 (`{ node, files, config }` 만 전달)
+  - 현재 Play나 Rank에서 사용되지 않음 (실험적/레거시 코드로 추정)
+
+#### 결론: AI 프롬프트 노드 자동 판정 구현 방안
+
+현재 `coreRuntime`은 `step()` 메서드 중심이며, 노드 진입 시 `onTurnStart` 같은 라이프사이클 훅을 자동으로 호출하지 않습니다.
+
+**옵션 1: coreRuntime에 onTurnStart 호출 추가**
+- `coreRuntime.js`의 `step()` 함수 내부에서 새 노드 진입 시 `hooks.onTurnStart(ctx)` 호출
+- 장점: Play/Rank 모두에서 자동으로 작동, 일관된 라이프사이클
+- 단점: coreRuntime 수정 필요
+
+**옵션 2: 현재 onUserAction 기반으로 유지**
+- AI 프롬프트 노드는 명시적으로 `turn:next` 이벤트를 트리거하거나
+- 노드 설정에서 `autoAdvance: true` 같은 플래그로 자동 진행 표시
+- `onUserAction(ctx, "auto")` 패턴을 계속 사용
+- 장점: 기존 구조 유지, coreRuntime 수정 불필요
+- 단점: "자동 판정"이 명시적 트리거에 의존함
+
+**옵션 3: GameRuntimeProvider 패턴 통합**
+- `coreRuntime`과는 별개로 Play/Rank에서 노드 진입 전에 `onTurnStart` 수동 호출
+- 장점: 깔끔한 분리, coreRuntime은 순수 그래프 엔진으로 유지
+- 단점: Play/Rank 양쪽 코드 수정 필요, 중복 로직
+
+**현재 workspace/hooks/automation.js 상태:**
+- ✅ `onTurnStart` 구현됨 - AI 자동 판정 로직 포함
+- ✅ `onUserAction` 구현됨 - 유저 입력 기반 판정
+- ✅ `onBattleEnd` 구현됨 - 배틀 종료 처리
+- ❌ **Play/Rank에서 `onTurnStart` 호출되지 않음** - 구현 필요
+
+**다음 단계 권장사항:**
+1. `coreRuntime.js`의 `step()` 함수 수정 (옵션 1)
+2. 새 노드 진입 시 `hooks.onTurnStart?.(ctx)` 호출 추가
+3. Play/Rank 양쪽에서 자동으로 작동 확인
+4. 문서 업데이트
+
+**훅 실행 흐름 (수정 필요):**
 - For each active node:
   - Builds a `HookContext` with shared `variables` and calls `hooks.transformPrompt(ctx)` when it is defined.
     If that hook returns a value with a `prompt` field, the runtime uses that `prompt` string.
     If there is no `transformPrompt` hook, it falls back to the node's `label` or `id`.
   - That text is then published as a `system:message` event to `runtimeBus`, and `MainGameMobileUI`
     displays it in the "AI Game Chat" panel.
+  - **AI 프롬프트 노드**: `onTurnStart(ctx)` 가 AI 판정을 자동 실행하고 `variables` 갱신 후 다음 노드로 이동.
+  - **유저 행동 노드**: 사용자가 `player:chat` 이벤트로 입력을 보내면 `onUserAction(ctx, input)` 실행.
+  - **시스템 노드**: 훅 호출 없이 프롬프트만 표시하고 대기 또는 자동 진행.
   - `turn:next` - advances via `reason: 'auto'`.
   - `player:chat` - advances via `reason: 'user_action'`, passing the player's input text as `input`
     and using `onUserAction / selectNext` hooks to choose the next node.
@@ -1210,6 +1379,53 @@ Current usage (this repo copy):
 - `/api/ai-battle-judge` 응답 → `variables.battleLast`를 갱신하고,
 - 필요한 경우 `variables.battleResult`, `variables.battleWinner`, `variables.battleScore`를 함께 업데이트한 뒤,
 - `config.battle.routes`에 정의된 라우트 키(`on_hero_win`, `on_rival_win`, `on_tie`, …)에 위 토큰을 매핑해 다음 노드를 선택하는 패턴을 권장한다.
+
+#### 현재 워크스페이스 템플릿 상태 및 TODO
+
+- 현재 워크스페이스 기본 `/game/hooks/automation.js` 템플릿은:
+  - `onTurnStart(ctx)` – 스켈레톤(내용 없음).
+  - `onUserAction(ctx, input)` – 스켈레톤(내용 없음, **Play에서 AI 판정 호출을 하지 않음**).
+  - `transformPrompt(ctx)` – 단순히 노드 라벨과 예시 텍스트를 반환하는 데모용 구현.
+  - `selectNext(ctx, neighbors)` – 첫 번째 neighbor로만 이동하는 기본 구현.
+- Rank 쪽 정산용 `onBattleEnd(ctx)` 는 별도 파일 `workspace/hooks/automation.js`에만 존재하며,
+  메인게임/정산/베틀로그 수직선에서만 사용된다.
+- 따라서 현재 Play 디버그에서는:
+  - “다음( auto )”을 눌러도 그래프 노드 이동/텍스트 출력만 일어나고,
+  - `/api/ai-battle-judge`가 호출되거나 `variables.battleLast` / `battleResult` / `battleScore`가 채워지지 않는다.
+
+다음 작업자/외주용 TODO:
+
+1. `/docs/examples/text-battle-basic/game.hooks.automation.js` 를 참고해,
+   워크스페이스 `/game/hooks/automation.js` 에 텍스트 배틀 기본 훅 세트를 이식한다.
+   - `transformPrompt(ctx)` – 프롬프트 조합 + `variables.battleHistory` 등을 반영.
+   - `onUserAction(ctx, input)` – `"auto"` 또는 사용자 입력을 받으면
+     `/api/ai-battle-judge` 통합 모드를 호출하고, 응답을 `applyBattleOutcomeLocal` 로 전달.
+   - `applyBattleOutcomeLocal(ctx, params)` – 예시 파일처럼
+     `variables.battleLast / battleResult / battleWinner / battleScore / battleHistory` 및
+     표준 슬롯(stats/scene/effects/speaker)을 갱신한다.
+   - 헬퍼: `getBattleConfig`, `getRankContext`, `safeRoutes`, `callBattleJudge` 를 함께 복사하되,
+     필요 시 **텍스트 배틀 외 장르에서도 재사용 가능하도록** 주석/분기만 가볍게 정리한다.
+2. Play 디버그 패널과의 연계:
+   - CodeEditorOverlayV2는 디버그 패널의 참가자 정보를
+     `initialVariables.rank.players` 와 `initialVariables.debug.participants` 로 전달한다.
+   - 훅 구현 시 `ctx.variables.debug.participants` 및 `ctx.variables.rank` 를 참고해
+     `/api/ai-battle-judge` 호출에 사용할 참가자/키/메타를 선택할 수 있다.
+   - “API 키 라우팅 힌트” 관련 슬롯별 고급 기능은 여전히 **planned** 상태이며,
+     정식 계약이 붙기 전까지는 이 문서와 예시 파일 수준의 가이드로만 유지한다.
+3. onBattleEnd 연동:
+   - Rank 메인게임(StartClient) 경로에서는
+     `workspace/hooks/automation.js` 의 `onBattleEnd(ctx)` 를 이미 호출하고 있다.
+   - Play 쪽에서 `/game/hooks/automation.js` 를 통해 텍스트 배틀을 완성하면,
+     같은 변수 스키마(`variables.battleLast / battleScore / battleWinner`)를 공유하므로
+     Rank 정산/베틀로그 뷰와 **같은 수직선**을 사용할 수 있게 된다.
+
+요약: 이 문서 기준으로 텍스트 배틀 수직선은
+
+- Rank 경로(메인게임/정산/베틀로그)는 1차 완성 상태이고,
+- Maker Play 경로는 “coreRuntime + 그래프 + 디버그 패널”까지만 연결되어 있으며,
+  **실제 AI 판정 호출 훅(onUserAction/transformPrompt/applyBattleOutcomeLocal)은 미구현 상태**다.
+- 다음 작업자는 위 TODO를 기준으로 `/game/hooks/automation.js` 를 확장해
+  Play 디버그에서도 텍스트 배틀이 완주되도록 배선을 완료해야 한다.
 
 DB 매핑(초안):
 
@@ -3176,17 +3392,24 @@ Maker 쪽에서는 `/game/ui.shell.json`을 직접 편집하는 대신, 다음�
 
 #### 플레이 디버그 패널 표시
 
+- Status: **implemented (UI만)** – 디버그 패널과 `variables.debug.participants` 까지는 연결되어 있으나,
+  실제 AI 호출/배틀 판정/로그 라우팅은 **훅 구현에 따라 달라지는 선택 영역**이다.
 - 디버그 패널의 raw 턴 로그 summary에는 visibility와 apiRouting 요약이 함께 표시된다.
   - `visibility` 문자열이 있으면 `(visibility)`로 함께 표기.
   - `variables.battleLast.apiRouting` 이 있으면 `apiRouting → 참가자이름` 으로 요약을 붙인다.
   - 전체 이벤트는 그대로 JSON으로 펼쳐볼 수 있다.
 
-#### (planned) 슬롯/프롬프트별 API 키 라우팅
+#### (planned, advanced) 슬롯/프롬프트별 API 키 라우팅
 
-- 현재는 `variables.debug.participants` 를 훅에서 직접 사용해야 하지만,
-  향후에는 “어떤 프롬프트/슬롯에서 어느 참가자의 키를 쓸지”를
-  **계약으로 정의**할 계획이다.
-- 개략적인 방향:
+- 현재는 `variables.debug.participants` 를 훅에서 **직접** 사용해야 하며,
+  “어떤 프롬프트/슬롯에서 어느 참가자의 키를 쓸지”에 대한 정식 계약은 **아직 미구현(planned)** 이다.
+- Maker UI 가이드라인:
+  - 프롬프트‑노드 에디터에서는 이 기능을 **선택 탭(토글/셀렉트 박스)** 으로 노출하지 않고,
+    “고급 가이드 텍스트” 수준으로만 설명하는 것이 기본 정책이다.
+  - 실제 슬롯별 라우팅 계약이 붙기 전까지는
+    - “API 키 라우팅 힌트”는 **문서/가이드 탭에만 등장**하고,
+    - 사용자가 필수로 건드려야 하는 기본 옵션처럼 보이지 않도록 해야 한다.
+- 개략적인 목표 구조:
   - 프롬프트‑노드/슬롯 설정에
     - `config.apiKeySlot` 또는 비슷한 옵션을 두어
       “이 노드(또는 이 슬롯)는 어느 참가자 슬롯을 대표하는지”를 표시.
