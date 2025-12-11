@@ -362,7 +362,7 @@ function PlayOverlayContent({ templateBinding }) {
     cfg,
     bus,
     debugState,
-    setDebugState,
+    onDebugStateChange: setDebugState,
     debugPromptEnabled,
     debugLogCallsEnabled,
     gridEngineRef,

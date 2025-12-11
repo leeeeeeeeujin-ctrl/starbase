@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from 'react';
+import { useEffect, useMemo, useCallback, useRef } from 'react';
 import { createCoreRuntime } from '../../../lib/runtime/coreRuntime.js';
 import { loadHooksFromSource } from '../../../lib/runtime/safeEvalHookModule.js';
 import {
@@ -30,13 +30,26 @@ export function useBuiltinRuntime({
   cfg,
   bus,
   debugState,
-  setDebugState,
+  onDebugStateChange,
   debugPromptEnabled,
   debugLogCallsEnabled,
   gridEngineRef,
   runtimeRef,
   hooksRef,
 }) {
+  // Stable reference for debugSimUsers to avoid re-running effect
+  const debugSimUsersRef = useRef(debugState?.simUsers);
+  debugSimUsersRef.current = debugState?.simUsers;
+  
+  const debugSimUsersStable = useMemo(() => {
+    const users = debugSimUsersRef.current;
+    return Array.isArray(users) && users.length > 0 ? users : [];
+  }, [debugState?.simUsers?.length]);
+
+  // Stable callback ref for debug state updates
+  const onDebugStateChangeRef = useRef(onDebugStateChange);
+  onDebugStateChangeRef.current = onDebugStateChange;
+
   useEffect(() => {
     if (engine !== 'builtin') return;
 
@@ -65,9 +78,9 @@ export function useBuiltinRuntime({
       }
 
       // 3. 디버그 참가자 설정
-      const hasSimUsers = Array.isArray(debugState?.simUsers) && debugState.simUsers.length > 0;
+      const hasSimUsers = debugSimUsersStable.length > 0;
       const debugPlayers = hasSimUsers
-        ? debugState.simUsers.map((u, index) => {
+        ? debugSimUsersStable.map((u, index) => {
             const name = (u && u.name && String(u.name).trim()) || `참가자 #${index + 1}`;
             const ownerId =
               (u && u.ownerId && String(u.ownerId).trim()) || `sim-${index + 1}`;
@@ -242,8 +255,8 @@ export function useBuiltinRuntime({
             const dbg =
               vars && vars.debug && typeof vars.debug === 'object' ? vars.debug : null;
             const calls = Array.isArray(dbg?.aiCalls) ? dbg.aiCalls : [];
-            if (calls.length) {
-              setDebugState((prev) => ({ ...prev, calls }));
+            if (calls.length && onDebugStateChangeRef.current) {
+              onDebugStateChangeRef.current((prev) => ({ ...prev, calls }));
             }
           } catch {
             // ignore debug state errors
@@ -351,11 +364,12 @@ export function useBuiltinRuntime({
     };
   }, [
     engine,
-    JSON.stringify(files),
-    JSON.stringify(cfg),
+    files?.['/graph/prompt-graph.json']?.content,
+    files?.['/game/hooks/automation.js']?.content,
+    cfg?.entryNode,
+    cfg?.starter,
     bus,
-    debugState,
-    setDebugState,
+    debugSimUsersStable.length,
     debugPromptEnabled,
     debugLogCallsEnabled,
     gridEngineRef,
