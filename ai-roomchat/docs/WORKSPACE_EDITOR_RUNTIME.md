@@ -17,6 +17,17 @@ Implementation status & ordering notes
 - Features are implemented in a **priority-based order** (for now: security/sandbox → runtime features - AI dock UX - Supabase helpers), and this document is updated as they land.
 - Each major section may include a short `Status: done / in progress / planned` note that reflects the current codebase, not a future goal.
 
+Default set philosophy
+
+- 새 워크스페이스 세트를 만들 때의 **기본값**은 “실 서비스에도 바로 쓸 수 있을 정도로 튼튼한 1개 수직선(한 장르 프리셋)”을 목표로 한다.
+  - 예: 텍스트 배틀 기본 세트는 Maker → Play → Rank → 정산/베틀로그까지 한 번에 이어지는 완성형 흐름이 되어야 한다.
+- 이 기본 프리셋 위에서:
+  - 자잘한 장르 차이 / 고급 기능 / 예외 케이스는
+    - capabilities, 별도 설정 파일(`/game/roles.rank.json`, `/debug/play.json`, …), 추가 훅으로 **확장**한다.
+- AI 코드 에디터/코딩 에이전트는:
+  - “빈 세트에서 새로 짓는 것”보다,
+  - “기본 세트를 교본으로 삼아 빼고 더하는 것”을 우선 전략으로 삼아야 한다.
+
 ### Quick dev log
 
 #### 2025-12-11
@@ -47,10 +58,17 @@ Current high-level status (this repo copy)
   - Text runtime는 실사용 가능 수준, grid-basic은 프리뷰 + 간단 엔진까지 연결.
 - AI code chat dock (UX / actions): **in progress**
   - JSON 액션 파싱/게이팅, 자동 실행 슬라이더, 로그 표현 개선 일부 반영.
-- Text battle / rank vertical: **complete (first genre)**
-  - Maker 워크스페이스 → Play 오버레이(`runtime:turn-log`) → Rank StartClient(coreRuntime + `onBattleEnd`) → `/api/rank/settle` + `workspace/score/score-default.js` → `battle_history` / `rank_session_battle_logs` → `/battle-log/[sessionId]` → 로비/캐릭터 최근 베틀로그 카드까지 텍스트 배틀 기준 수직선 완성.
-  - `workspace/hooks/automation.js` 가 텍스트 배틀 기본 템플릿으로 구현되어 있으며, Play 디버그에서 즉시 AI 판정이 작동함.
-  - 다른 장르 확장은 이 템플릿을 참고/변형하면 됨.
+- Text battle / rank vertical: **partially complete**
+  - Rank 경로(매칭 → 메인게임(StartClient) → settle → battle_log 뷰)는 기존 rank 엔진(`useStartClientEngine` + promptEngine + `workspace/hooks/automation.js:onBattleEnd`) 기준으로 **실제 서비스 가능한 수준**까지 구현되어 있다.
+  - Maker Play 경로(코드 에디터 “플레이” 버튼)는
+    - 공유 엔진(`coreRuntime` + `/graph/prompt-graph.json` + `/game/runtime.config.json` + `/game/hooks/automation.js`)을 사용해 그래프/훅을 실행하고,
+    - 디버그 패널에서 턴 로그(`runtime:turn-log`)와 참가자/변수 상태를 확인하는 수준까지 연결되어 있다.
+  - 그러나 현재 워크스페이스 기본 `/game/hooks/automation.js` 는 텍스트 배틀용 AI 판정 훅을 포함하지 않기 때문에,
+    - Play 디버그에서는 아직 `/api/ai-battle-judge` 호출이나 `variables.battleLast / battleScore` 갱신이 일어나지 않는다.
+    - 즉, “그래프만 도는” 상태이며, Rank 수직선과 완전히 같은 엔진/변수 스키마를 **공유하는 단계까지는 도달하지 못한 상태**다.
+  - 텍스트 배틀용 완전한 훅 예시는 `docs/examples/text-battle-basic/game.hooks.automation.js` 에 정의되어 있으며,
+    - 향후 작업자는 이 예시를 `/game/hooks/automation.js` 로 이식/정리해
+      Play와 Rank가 동일한 `coreRuntime`/변수 스키마를 공유하도록 수직선을 마무리해야 한다.
 - Hub/플러그인 기반 확장: **planned**
   - Hub(로컬/외부 에이전트)를 통해 UI 테스트, 로컬 Git, Supabase 연동 등 확장을 외부 플러그인으로 제공하고 ai-roomchat은 JSON API로만 연결하는 방향.
 - Standard data slots (`variables.stats / scene / effects / speaker`): **in progress**
@@ -1382,50 +1400,91 @@ Current usage (this repo copy):
 
 #### 현재 워크스페이스 템플릿 상태 및 TODO
 
-- 현재 워크스페이스 기본 `/game/hooks/automation.js` 템플릿은:
-  - `onTurnStart(ctx)` – 스켈레톤(내용 없음).
-  - `onUserAction(ctx, input)` – 스켈레톤(내용 없음, **Play에서 AI 판정 호출을 하지 않음**).
-  - `transformPrompt(ctx)` – 단순히 노드 라벨과 예시 텍스트를 반환하는 데모용 구현.
-  - `selectNext(ctx, neighbors)` – 첫 번째 neighbor로만 이동하는 기본 구현.
-- Rank 쪽 정산용 `onBattleEnd(ctx)` 는 별도 파일 `workspace/hooks/automation.js`에만 존재하며,
-  메인게임/정산/베틀로그 수직선에서만 사용된다.
-- 따라서 현재 Play 디버그에서는:
-  - “다음( auto )”을 눌러도 그래프 노드 이동/텍스트 출력만 일어나고,
-  - `/api/ai-battle-judge`가 호출되거나 `variables.battleLast` / `battleResult` / `battleScore`가 채워지지 않는다.
+이 레포 기준으로는 두 종류의 "기본" 훅 템플릿이 공존한다.
+
+1. **레포 템플릿 (workspace/hooks/automation.js)**
+   - `ai-roomchat/workspace/hooks/automation.js` 는 **텍스트 배틀 기본 훅 세트**로 구현되어 있다.
+   - 포함 내용:
+     - `onTurnStart(ctx)` – AI 프롬프트/배틀 노드 진입 시 자동으로 `/api/ai-battle-judge`를 호출하고,
+       응답을 `applyBattleOutcomeLocal` 로 반영.
+     - `onUserAction(ctx, input)` – 유저 행동 노드 및 디버그 토큰 처리(특수 토큰으로 강제 분기/리매치 등).
+     - `transformPrompt(ctx)` – 노드/랭크/히스토리를 조합해 심판용 프롬프트를 생성.
+     - `applyBattleOutcomeLocal(ctx, params)` –
+       `variables.battleLast / battleResult / battleWinner / battleScore / battleHistory` 및
+       표준 슬롯(stats/scene/effects/speaker)을 갱신.
+     - `onBattleEnd(ctx)` – Rank 정산/베틀로그 수직선에서 쓰는 최종 outcome/scores/highlight 계산.
+   - Rank StartClient 경로에서는 이 파일의 `onBattleEnd(ctx)` 를 이미 사용하고 있으며,
+     Play 경로에서 `/game/hooks/automation.js` 가 이 템플릿과 정렬되어 있으면 **같은 수직선**을 공유한다.
+
+2. **브라우저 Maker 기본 스켈레톤 (/game/hooks/automation.js)**
+   - 새 워크스페이스를 만들었거나 `/game/hooks/automation.js` 가 비어 있을 때,
+     에디터 상단 "Hooks runtime (edit freely)" 영역에 표시되는 최소 스켈레톤은 다음과 같다:
+     ```js
+     // Hooks runtime (edit freely).
+     export function transformPrompt(ctx){
+       const label = String(ctx?.node?.label || '');
+       return label; // 또는 { prompt, ui }
+     }
+
+     export function onUserAction(ctx, input){
+       // 입력을 보고 다음 노드 id 또는 { next } 반환
+     }
+
+     export function selectNext(ctx, neighbors){
+       return neighbors?.[0]?.id ?? null;
+     }
+     ```
+   - 이 상태에서는:
+     - `transformPrompt` 가 단순히 노드 라벨만 반환하므로,
+       Play UI에서는 그래프 노드 라벨(예: "게임이 시작되었습니다.", "게임이 종료되었습니다.")만 보인다.
+     - `onUserAction` 이 비어 있고, `selectNext` 가 첫 번째 엣지만 따라가기 때문에
+       **AI 판정 호출(/api/ai-battle-judge)이나 battle 변수 갱신은 전혀 일어나지 않는다.**
+
+3. **훅 로더 동작 (loadHooksFromSource)**
+   - `CodeEditorOverlayV2`/`StartClient` 는 `/game/hooks/automation.js` 내용을 그대로 읽어
+     `loadHooksFromSource(source)` 로 평가한다.
+   - 로더는 다음 두 스타일을 모두 지원한다:
+     - CommonJS: `module.exports = { onUserAction, transformPrompt, ... }`.
+     - ESM 스타일: 위 스켈레톤처럼 `export function transformPrompt(...) {}` 등.
+   - 평가 후, 전역 범위에 정의된 `onTurnStart` / `onUserAction` / `transformPrompt` / `selectNext` 등을
+     자동으로 `module.exports` 에 매핑해 `createCoreRuntime({ hooks })` 로 넘긴다.
+
+4. **실제 증상과 연결해서 읽기**
+   - 워크스페이스 그래프가 "엔트리 → 종료" 수준의 단순 노드만 가지고 있고,
+     훅이 위 기본 스켈레톤 그대로라면 Play에서 보이는 것은 보통 다음 두 줄이다:
+     - `게임이 시작되었습니다.`
+     - `게임이 종료되었습니다.`
+   - 이 경우 **런타임/훅이 고장 난 것이 아니라**,
+     - 그래프가 단순하고,
+     - 훅이 아무것도 하지 않기 때문에
+     결과적으로 정적인 노드 라벨만 왕복하는 "순수 데모 그래프" 모드로 동작한다.
 
 다음 작업자/외주용 TODO:
 
-1. `/docs/examples/text-battle-basic/game.hooks.automation.js` 를 참고해,
-   워크스페이스 `/game/hooks/automation.js` 에 텍스트 배틀 기본 훅 세트를 이식한다.
-   - `transformPrompt(ctx)` – 프롬프트 조합 + `variables.battleHistory` 등을 반영.
-   - `onUserAction(ctx, input)` – `"auto"` 또는 사용자 입력을 받으면
-     `/api/ai-battle-judge` 통합 모드를 호출하고, 응답을 `applyBattleOutcomeLocal` 로 전달.
-   - `applyBattleOutcomeLocal(ctx, params)` – 예시 파일처럼
-     `variables.battleLast / battleResult / battleWinner / battleScore / battleHistory` 및
-     표준 슬롯(stats/scene/effects/speaker)을 갱신한다.
-   - 헬퍼: `getBattleConfig`, `getRankContext`, `safeRoutes`, `callBattleJudge` 를 함께 복사하되,
-     필요 시 **텍스트 배틀 외 장르에서도 재사용 가능하도록** 주석/분기만 가볍게 정리한다.
-2. Play 디버그 패널과의 연계:
+1. 텍스트 배틀 샘플 세트 기반 Play 수직선 완성
+   - `/docs/examples/text-battle-basic/graph.prompt-graph.json` 를 참고해,
+     사용하는 워크스페이스의 `/graph/prompt-graph.json` 을 텍스트 배틀용 그래프로 교체한다.
+   - `/docs/examples/text-battle-basic/game.hooks.automation.js` 또는
+     `workspace/hooks/automation.js` 의 최신 템플릿을 참고해,
+     워크스페이스 `/game/hooks/automation.js` 에 텍스트 배틀 훅 세트를 이식한다.
+   - 이 두 가지가 맞춰진 상태에서 Play 디버그에서 `다음` 을 누르면:
+     - 배틀 노드 진입 시 `onTurnStart` 가 자동으로 `/api/ai-battle-judge` 를 호출하고,
+     - `variables.battleLast / battleResult / battleScore` 가 채워진다.
+
+2. Play 디버그 패널과의 연계 유지
    - CodeEditorOverlayV2는 디버그 패널의 참가자 정보를
      `initialVariables.rank.players` 와 `initialVariables.debug.participants` 로 전달한다.
    - 훅 구현 시 `ctx.variables.debug.participants` 및 `ctx.variables.rank` 를 참고해
      `/api/ai-battle-judge` 호출에 사용할 참가자/키/메타를 선택할 수 있다.
    - “API 키 라우팅 힌트” 관련 슬롯별 고급 기능은 여전히 **planned** 상태이며,
      정식 계약이 붙기 전까지는 이 문서와 예시 파일 수준의 가이드로만 유지한다.
-3. onBattleEnd 연동:
+
+3. onBattleEnd 연동 상태
    - Rank 메인게임(StartClient) 경로에서는
      `workspace/hooks/automation.js` 의 `onBattleEnd(ctx)` 를 이미 호출하고 있다.
    - Play 쪽에서 `/game/hooks/automation.js` 를 통해 텍스트 배틀을 완성하면,
      같은 변수 스키마(`variables.battleLast / battleScore / battleWinner`)를 공유하므로
      Rank 정산/베틀로그 뷰와 **같은 수직선**을 사용할 수 있게 된다.
-
-요약: 이 문서 기준으로 텍스트 배틀 수직선은
-
-- Rank 경로(메인게임/정산/베틀로그)는 1차 완성 상태이고,
-- Maker Play 경로는 “coreRuntime + 그래프 + 디버그 패널”까지만 연결되어 있으며,
-  **실제 AI 판정 호출 훅(onUserAction/transformPrompt/applyBattleOutcomeLocal)은 미구현 상태**다.
-- 다음 작업자는 위 TODO를 기준으로 `/game/hooks/automation.js` 를 확장해
-  Play 디버그에서도 텍스트 배틀이 완주되도록 배선을 완료해야 한다.
 
 DB 매핑(초안):
 

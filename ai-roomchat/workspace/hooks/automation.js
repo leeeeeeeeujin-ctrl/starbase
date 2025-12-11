@@ -241,12 +241,19 @@ async function callBattleJudge(prompt, ctx) {
 export async function onTurnStart(ctx) {
   const node = ctx?.node || {};
   const nodeConfig = node.config || {};
-  
-  // AI 프롬프트 노드 판별: autoJudge 플래그 또는 타입 체크
-  const isAIPromptNode = nodeConfig.autoJudge === true || 
-                         node.type === 'ai_prompt' ||
-                         nodeConfig.type === 'ai_prompt';
-  
+
+  const nodeType = node.type || nodeConfig.type || null;
+
+  // AI 프롬프트 노드 판별:
+  // - config.autoJudge === true 인 노드
+  // - 타입이 'ai_prompt' 인 노드
+  // - 텍스트 배틀 예제(graph.prompt-graph.json)에서 사용하는 타입 'battle' 노드
+  //   (opening / mid_round / judge 등)
+  const isAIPromptNode =
+    nodeConfig.autoJudge === true ||
+    nodeType === 'ai_prompt' ||
+    nodeType === 'battle';
+
   if (!isAIPromptNode) {
     // 유저 행동 노드나 시스템 노드는 자동 판정 스킵
     return;

@@ -31,10 +31,17 @@
 - **로더/가드**:
   - `ai-roomchat/lib/runtime/safeEvalHookModule.js`
     - `loadHooksFromSource(source)`:
-      - `new Function('exports','module','require', source)`로 ESM 스타일 스크립트를 평가.
+      - `new Function('exports','module','require', ...)`로 훅 스크립트를 평가.
       - `require`는 막혀 있음(`require()` 호출 시 에러).
-      - 반환 객체:
-        - `onTurnStart`, `onUserAction`, `transformPrompt`, `selectNext`, `onEnterNode`, `onLeaveNode` 중 존재하는 함수만 포함.
+      - **지원하는 작성 스타일**
+        - CommonJS: `module.exports = { onUserAction, transformPrompt, ... }`.
+        - ESM 스타일: `export function onUserAction(...) {}`, `export function transformPrompt(...) {}` 등.
+          - 로더가 `export function` / `export const` / `export let` / `export var` 를 내부적으로 제거한 뒤,
+            전역 범위에 정의된 `onTurnStart` / `onUserAction` / `transformPrompt` / `selectNext` / `onEnterNode` / `onLeaveNode`
+            / `stepSimulation` / `applyAction` 를 자동으로 `module.exports`에 매핑한다.
+      - 평가 이후 반환 객체:
+        - `onTurnStart`, `onUserAction`, `transformPrompt`, `selectNext`, `onEnterNode`, `onLeaveNode` 중
+          실제 함수로 정의된 것만 포함되며, 나머지는 `null` 로 채워진다.
     - `callHookWithTimeout(invoke, timeoutMs)`:
       - 훅을 Promise + 타임아웃 레이스로 감싸서, 지정된 ms 안에 끝나지 않으면 `'hook timeout'` 에러.
   - `ai-roomchat/lib/runtime/coreRuntime.js`

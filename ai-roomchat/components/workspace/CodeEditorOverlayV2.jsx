@@ -997,14 +997,42 @@ function PlayOverlayContent({ templateBinding }) {
 
       const offTurn = bus.on('turn:next', async () => {
         try {
-          const res = await runtime.step({ reason: 'auto' });
-          publishResult(res, { reason: 'auto', input: undefined });
-          const gridEngine = gridEngineRef.current;
-          if (gridEngine && typeof gridEngine.step === 'function') {
-            const ctx = typeof runtime.getContextSnapshot === 'function'
-              ? runtime.getContextSnapshot('auto', undefined)
+          const currentNode =
+            runtime && typeof runtime.getCurrentNode === 'function'
+              ? runtime.getCurrentNode()
               : null;
-            Promise.resolve(gridEngine.step(1, ctx)).catch(() => {});
+          const nodeType = currentNode && currentNode.type;
+          const useAutoUserAction = nodeType === 'ai' || nodeType === 'prompt';
+
+          let res;
+          let reason;
+          let input;
+
+          if (useAutoUserAction) {
+            reason = 'user_action';
+            input = 'auto';
+            res = await runtime.step({ reason, input });
+          } else {
+            reason = 'auto';
+            input = undefined;
+            res = await runtime.step({ reason });
+          }
+
+          publishResult(res, { reason, input });
+
+          const gridEngine = gridEngineRef.current;
+          if (gridEngine) {
+            const ctx =
+              typeof runtime.getContextSnapshot === 'function'
+                ? runtime.getContextSnapshot(reason, input)
+                : null;
+
+            if (useAutoUserAction && typeof gridEngine.applyAction === 'function') {
+              const action = { type: 'chat', text: String(input || '') };
+              Promise.resolve(gridEngine.applyAction(action, ctx)).catch(() => {});
+            } else if (typeof gridEngine.step === 'function') {
+              Promise.resolve(gridEngine.step(1, ctx)).catch(() => {});
+            }
           }
         } catch (e) {
           try { bus.emit('system:message', String(e?.message || e)); } catch {}
