@@ -3,6 +3,7 @@ import { CodeWorkspaceProvider } from '../workspace/CodeWorkspaceProvider.jsx';
 import dynamic from 'next/dynamic';
 import { useSupabaseSessionToken } from './hooks/useSupabaseSessionToken';
 import { applySupabaseAccessToken } from '../../lib/api/authHeaders';
+import { syncPromptGraphToVfs } from '../../lib/workspace/syncPromptGraphToVfs';
 
 // WorkspaceFrame: fetch workspace set data server-first, then mount CodeWorkspaceProvider consistently.
 export default function WorkspaceFrame({ id, children, onReady = () => {} }) {
@@ -66,6 +67,15 @@ export default function WorkspaceFrame({ id, children, onReady = () => {} }) {
               // ignore starter pack failure; keep existing files array
             }
           }
+          
+          // Studio → workspace 단방향 sync: Supabase 그래프를 /graph 로 동기화
+          try {
+            files = await syncPromptGraphToVfs(files, id);
+          } catch (syncErr) {
+            console.warn('[WorkspaceFrame] syncPromptGraphToVfs failed', syncErr);
+            // 동기화 실패해도 워크스페이스는 계속 로드한다
+          }
+          
           setInitFiles(files);
           setEtag(r.headers.get('ETag') || json?.etag || null);
           setLoadState({ status: 'ready', message: null });
@@ -85,6 +95,14 @@ export default function WorkspaceFrame({ id, children, onReady = () => {} }) {
               // ignore starter pack failure
             }
           }
+          
+          // 새 세트도 Supabase 그래프 동기화 시도
+          try {
+            files = await syncPromptGraphToVfs(files, id);
+          } catch (syncErr) {
+            console.warn('[WorkspaceFrame] syncPromptGraphToVfs failed for new set', syncErr);
+          }
+          
           setInitFiles(files);
           setEtag(null);
           setLoadState({ status: 'ready', message: null });

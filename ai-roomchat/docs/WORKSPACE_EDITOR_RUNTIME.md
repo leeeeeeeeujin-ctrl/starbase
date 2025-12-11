@@ -58,6 +58,11 @@ Starter pack (new set defaults)
 ### Quick dev log
 
 #### 2025-12-11
+- **Maker graph ↔ workspace/runtime 동기화 1차 완료**: Supabase 그래프를 워크스페이스 VFS로 자동 동기화
+  - `lib/workspace/syncPromptGraphToVfs.js` 생성 - Supabase prompt graph를 `/graph/prompt-graph.json` + `entryNode`로 변환
+  - `WorkspaceFrame.jsx` 통합 - 세트 로드 시 자동으로 Supabase → VFS 단방향 sync 실행
+  - `coreRuntime.js` fallback 명확화 - entryNode 없을 때 경고 로그 추가
+  - 이제 maker graph에서 노드/엣지를 편집하면 PlayOverlay에서 즉시 반영됨
 - **텍스트 배틀 수직선 완성**: `workspace/hooks/automation.js` 를 텍스트 배틀 기본 템플릿으로 교체.
   - `transformPrompt()` - AI 심판용 프롬프트 생성
   - `onTurnStart()` - AI 프롬프트 노드에서 자동 판정 실행 (coreRuntime 통합)
@@ -89,13 +94,21 @@ Current high-level status (this repo copy)
   - Rank 경로(매칭 → 메인게임(StartClient) → settle → battle_log 뷰)는 기존 rank 엔진(`useStartClientEngine` + promptEngine + `workspace/hooks/automation.js:onBattleEnd`) 기준으로 **실제 서비스 가능한 수준**까지 구현되어 있다.
   - Maker Play 경로(코드 에디터 “플레이” 버튼)는
     - 공유 엔진(`coreRuntime` + `/graph/prompt-graph.json` + `/game/runtime.config.json` + `/game/hooks/automation.js`)을 사용해 그래프/훅을 실행하고,
-    - 디버그 패널에서 턴 로그(`runtime:turn-log`)와 참가자/변수 상태를 확인하는 수준까지 연결되어 있다.
-  - 그러나 현재 워크스페이스 기본 `/game/hooks/automation.js` 는 텍스트 배틀용 AI 판정 훅을 포함하지 않기 때문에,
-    - Play 디버그에서는 아직 `/api/ai-battle-judge` 호출이나 `variables.battleLast / battleScore` 갱신이 일어나지 않는다.
-    - 즉, “그래프만 도는” 상태이며, Rank 수직선과 완전히 같은 엔진/변수 스키마를 **공유하는 단계까지는 도달하지 못한 상태**다.
-  - 텍스트 배틀용 완전한 훅 예시는 `docs/examples/text-battle-basic/game.hooks.automation.js` 에 정의되어 있으며,
-    - 향후 작업자는 이 예시를 `/game/hooks/automation.js` 로 이식/정리해
-      Play와 Rank가 동일한 `coreRuntime`/변수 스키마를 공유하도록 수직선을 마무리해야 한다.
+    - starter pack(새 세트 기본값)이 텍스트 배틀 프리셋(`/graph` + `/game/runtime.config.json` + `/game/hooks/automation.js`)을 제공하도록 정리되어,
+      기본 텍스트 배틀 세트는 Maker → Play → Rank settle 까지 한 번에 돌릴 수 있다.
+  - 다만 **프롬프트‑노드 에디터(studio/maker graph)** 와 워크스페이스 런타임 그래프 사이 연결은 아직 부분적이다:
+    - studio 그래프 편집(시작 지점/노드 연결)은 Supabase 테이블(`prompt_sets`/`prompt_slots`/`prompt_bridges`) 기준으로 저장되며,
+      `/graph/prompt-graph.json` 과 `/game/runtime.config.json.entryNode` 에는 자동으로 반영되지 않는다.
+    - `SyncTemplateToVfs` 는 `/template.json`을 편집할 때만 `/graph/prompt-graph.json` 을 갱신하며,
+      maker graph UI에서 “시작 슬롯 지정/엣지 추가”를 했을 때는 `/graph` 에 엣지나 entryNode 정보가 들어오지 않는다.
+    - 그 결과, 사용자가 새 그래프를 그린 세트는
+      - `/graph` 입장에서는 “노드만 있고 엣지가 없는 그래프”,
+      - `entryNode` 는 starter pack 기본값이거나, 그래프에 존재하지 않는 id 일 수 있다.
+    - `coreRuntime` 는 `entryNode` 가 없거나 존재하지 않을 때 **첫 번째 노드를 안전한 기본 시작점으로 사용하는 fallback** 을 갖지만,
+      이 fallback 이 maker graph의 “시작 지점”/“연결선”과 일치한다는 보장은 없다.
+  - 요약: 텍스트 배틀용 훅/런타임 계약은 Play/Rank까지 수직선이 맞춰져 있으나,
+    maker graph 편집기 ↔ `/graph`/`entryNode` 동기화가 아직 구현되지 않아
+    “프롬프트‑노드 에디터에서 그린 그래프 그대로 builtin 텍스트 런타임이 소비하는” 단계까지는 도달하지 못한 상태다.
 - Hub/플러그인 기반 확장: **planned**
   - Hub(로컬/외부 에이전트)를 통해 UI 테스트, 로컬 Git, Supabase 연동 등 확장을 외부 플러그인으로 제공하고 ai-roomchat은 JSON API로만 연결하는 방향.
 - Standard data slots (`variables.stats / scene / effects / speaker`): **in progress**
@@ -107,9 +120,57 @@ Current high-level status (this repo copy)
 
 - ~~텍스트 배틀 수직선 완성: `workspace/hooks/automation.js` AI 판정 훅 구현~~ → **완료 (2025-12-11)**
 - ~~coreRuntime에 onTurnStart 호출 로직 추가~~ → **완료 (2025-12-11)**
+- ~~**Maker graph ↔ workspace/runtime 동기화(핵심 TODO, Copilot/에이전트용 핸드오프)**~~ → **1차 구현 완료 (2025-12-11)**
+  - ✅ (A) Studio → workspace 단방향 sync 구현
+    - `lib/workspace/syncPromptGraphToVfs.js` 헬퍼 함수 생성
+    - Supabase의 prompt graph(sets/slots/bridges) 읽어서 `/graph/prompt-graph.json` 생성
+    - 시작 슬롯을 `/game/runtime.config.json.entryNode`로 자동 반영
+    - `WorkspaceFrame.jsx`에서 세트 로드 시 자동 동기화 실행
+  - ✅ (C) 엔진 fallback 명확화
+    - `coreRuntime.js`의 entryNode fallback에 경고 로그 추가
+    - fallback은 안전장치로 유지, 정상 동작 시에는 항상 entryNode 존재
+  - 🔄 (B) SyncTemplateToVfs와 역할 정리 (부분 완료)
+    - `/template.json` 편집 시 SyncTemplateToVfs는 기존대로 `/graph` 재생성
+    - maker graph 기반 세트에서는 syncPromptGraphToVfs가 우선 적용됨
+    - 충돌 방지: WorkspaceFrame 로드 시 Supabase → VFS 단방향 sync만 수행
+  - 📋 (D) 문서/가이드 업데이트 (다음 단계)
+    - 동기화 규칙을 문서 2.x 섹션에 추가 예정
+    - Studio 수정 vs 워크스페이스 직접 수정 차이 명확화 예정
 - PlayOverlayContent 구조 분리 진행 중: 어댑터 초기화는 헬퍼로 분리했으나 디버그 UI/입력 처리도 별도 훅/컴포넌트로 쪼개기.
 - 선택된 capability 대비 필요한 파일 안내: Play/Capabilities 패널에서 누락 파일 경고+생성 안내 표시. Capabilities 선택 화면에도 빠른 파일 추가 액션을 더 보강.
 - 텍스트 배틀 실전 테스트: AI 프롬프트 노드 자동 실행 → 턴 로그 → Rank settle 전체 흐름 검증.
+  - 목표: 프롬프트‑노드 에디터(Studio/Maker)에서 그린 그래프가  
+    `/graph/prompt-graph.json` + `/game/runtime.config.json.entryNode` 에 **일관되게 반영**되도록 만들 것.
+  - 현재 상태:
+    - Graph 편집기의 실제 소스는 Supabase(`prompt_sets`/`prompt_slots`/`prompt_bridges`)이며,
+      `/graph` 는 `/template.json` 편집 시 `SyncTemplateToVfs` 가 만들어 주는 “축약 버전(nodes/edges-only)”일 뿐이다.
+    - maker graph에서 “시작 슬롯”을 지정해도 `/game/runtime.config.json.entryNode` 는 자동으로 바뀌지 않는다.
+    - maker graph에서 노드 간 엣지를 추가해도 `/graph.edges` 에는 반영되지 않는 경우가 있어,
+      런타임 입장에서는 “노드만 있고 엣지는 없는 그래프”로 보이기도 한다.
+  - 해야 할 일(1차 구현 방향):
+    - (A) **Studio → workspace 단방향 sync** 를 구현한다.
+      - Maker/Studio 화면에서 세트 로드 시:
+        - Supabase의 prompt graph(sets/slots/bridges)를 읽어,
+          `/graph/prompt-graph.json` 을 `{ nodes, edges }` 형태로 구성해 워크스페이스에 주입.
+        - “시작 슬롯” 정보(있다면)를 `/game/runtime.config.json.entryNode` 로 반영.
+      - PlayOverlay(coreRuntime) 는 이 동기화된 `/graph` + `entryNode` 만을 보고 동작하게 유지한다.
+    - (B) `SyncTemplateToVfs` 와의 역할 정리:
+      - `/template.json` 편집 → `/graph` 재생성 로직은 그대로 두되,
+        maker graph 기반 세트에서는 **Studio가 생성한 `/graph` 를 우선** 사용하도록 문서화/정리.
+      - 충돌 방지 전략(예: Studio graph 편집 후 `/template.json` 도 수정되었을 때 어느 쪽을 진실로 볼지)을
+        최소한 dev-note 수준으로 정리.
+    - (C) **엔진 fallback 재검토**:
+      - `coreRuntime` 의 “entryNode 없으면 첫 노드로 시작” fallback 은 안전장치로 유지하되,
+        maker graph sync 가 들어오면 실제로는 **항상 entryNode가 존재**하도록 만드는 것을 목표로 한다.
+      - 테스트 세트:
+        - starter pack에서 만든 텍스트 배틀 세트 (수정 없음).
+        - maker graph로 새 노드를 추가한 세트(시작 슬롯 지정 / 미지정 각각).
+        - 엣지가 없는 그래프(의도치 않게 바로 끝나지 않도록 최소 가이드/경고 추가 여부 검토).
+    - (D) 문서/가이드 업데이트:
+      - maker graph ↔ `/graph`/`entryNode` 동기화 규칙을 이 문서(Workspace Editor & Runtime) 2.x 섹션에 추가.
+      - “사용자가 무엇을 어디서 고쳐야 하는지” 기준으로:
+        - Studio에서 그래프를 수정하는 경우와,
+        - 워크스페이스에서 `/graph`/`runtime.config` 를直接 수정하는 경우의 차이를 명확히 구분해 설명.
 
 ### Next goals (platform fit)
 

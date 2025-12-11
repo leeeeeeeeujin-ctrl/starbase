@@ -15,9 +15,19 @@ export function createCoreRuntime({ graph, config, hooks, files, initialVariable
   let currentId = cfg.entryNode || null;
   if (!currentId || !nodesById.has(currentId)) {
     // entryNode가 비어 있거나 그래프에 존재하지 않으면
-    // 첫 번째 노드를 안전한 기본값으로 사용한다.
+    // 첫 번째 노드를 안전한 기본값(fallback)으로 사용한다.
+    // 
+    // 주의: 이 fallback은 안전장치일 뿐이며,
+    // maker graph sync가 정상 작동하면 항상 유효한 entryNode가 제공되어야 한다.
+    // (syncPromptGraphToVfs가 시작 슬롯을 entryNode로 설정함)
     const first = nodesById.keys().next();
     currentId = first && !first.done ? first.value : null;
+    if (currentId && process.env.NODE_ENV !== 'production') {
+      console.warn(
+        '[coreRuntime] entryNode missing or invalid, using fallback node:',
+        currentId
+      );
+    }
   }
   let turn = 0;
   const variables =
