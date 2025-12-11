@@ -68,7 +68,7 @@ export default async function handler(req, res) {
   const token = getBearer(req);
   const userId = await getUserId(token);
 
-  const { action, payload, session_id, game_id, idempotencyKey } = req.body || {};
+  const { action, payload, session_id, game_id, idempotencyKey, workspaceSetId } = req.body || {};
   if (!action) return res.status(400).json({ ok: false, error: 'unknown_action' });
 
   const isBatch = action === 'batch';
@@ -90,8 +90,28 @@ export default async function handler(req, res) {
 
   try {
     let out;
-    if (isBatch) out = await performBatch(payload || {});
-    else out = await performAction(action, payload || {});
+    if (isBatch) {
+      let batchPayload = payload || {};
+      if (workspaceSetId && Array.isArray(batchPayload.actions)) {
+        const nextActions = batchPayload.actions.map((a) => {
+          if (!a || typeof a !== 'object') return a;
+          const basePayload =
+            a.payload && typeof a.payload === 'object' && a.payload !== null ? a.payload : {};
+          return {
+            ...a,
+            payload: { ...basePayload, workspaceSetId },
+          };
+        });
+        batchPayload = { ...batchPayload, actions: nextActions };
+      }
+      out = await performBatch(batchPayload);
+    } else {
+      const finalPayload =
+        workspaceSetId && payload && typeof payload === 'object'
+          ? { ...payload, workspaceSetId }
+          : payload || {};
+      out = await performAction(action, finalPayload);
+    }
     if (!out?.ok) return res.status(400).json(out || { ok: false, error: 'action_failed' });
     return res.status(200).json(out);
   } catch (err) {

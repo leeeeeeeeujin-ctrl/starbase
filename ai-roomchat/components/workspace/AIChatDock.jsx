@@ -9,6 +9,8 @@ import React, {
   useState,
 } from 'react';
 
+import { useRouter } from 'next/router';
+
 import { useAiChatSessions } from './hooks/useAiChatSessions';
 import { useSupabaseSessionToken } from './hooks/useSupabaseSessionToken';
 import {
@@ -236,6 +238,19 @@ export default function AIChatDock({ onClose }) {
   const pointerStateRef = useRef(null);
   const liveFrameRef = useRef(null);
   const logsSnapshotRef = useRef([]);
+  const workspaceSummaryRef = useRef(null);
+
+  const router = useRouter();
+  const workspaceSetId = useMemo(() => {
+    try {
+      const raw = router?.query?.id;
+      if (!raw) return null;
+      if (Array.isArray(raw)) return String(raw[0]);
+      return String(raw);
+    } catch {
+      return null;
+    }
+  }, [router?.query?.id]);
 
   const { prefs, updatePrefs } = useDockPrefs();
   const {
@@ -251,6 +266,11 @@ export default function AIChatDock({ onClose }) {
     useSupabaseSessionToken();
 
   logsSnapshotRef.current = logs;
+
+  // Reset cached workspace summary when the active workspace set changes.
+  useEffect(() => {
+    workspaceSummaryRef.current = null;
+  }, [workspaceSetId]);
 
   // Token helper is defined early to avoid TDZ issues when referenced by hooks below
   const getSessionToken = useCallback(
@@ -692,6 +712,52 @@ export default function AIChatDock({ onClose }) {
       const longSummary = summarizeMemory(longMemItems);
       if (shortSummary) sections.push(`단기기억:\n${shortSummary}`);
       if (longSummary) sections.push(`장기기억:\n${longSummary}`);
+      // One-time workspace file summary so the model sees the basic layout
+      // without having to call list_files just to discover it.
+      let workspaceSummary = workspaceSummaryRef.current;
+      if (workspaceSummary == null) {
+        try {
+          const wsPayload = { path: '/', recursive: true };
+          const wsBody = {
+            action: 'list_files',
+            payload: workspaceSetId ? { ...wsPayload, workspaceSetId } : wsPayload,
+          };
+          if (workspaceSetId) {
+            wsBody.workspaceSetId = workspaceSetId;
+          }
+          const resWs = await fetch('/api/rank/handle-action', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(wsBody),
+          });
+          const dataWs = await resWs.json().catch(() => ({}));
+          const items = dataWs?.result?.items || dataWs?.items || [];
+          const list = Array.isArray(items) ? items : [];
+          const workspaceItems = list.filter(
+            (it) => typeof it?.path === 'string' && it.path.startsWith('workspace/'),
+          );
+          if (workspaceItems.length) {
+            const sorted = workspaceItems
+              .map((it) => String(it.path || ''))
+              .filter(Boolean)
+              .sort();
+            const limited = sorted.slice(0, 80);
+            const more =
+              sorted.length > limited.length
+                ? `\n... (총 ${sorted.length}개 항목 중 일부만 표시)`
+                : '';
+            workspaceSummary = `${limited.map((p) => `- ${p}`).join('\n')}${more}`;
+          } else {
+            workspaceSummary = '현재 workspace/ 디렉터리에 알려진 파일이 없습니다.';
+          }
+        } catch {
+          workspaceSummary = '';
+        }
+        workspaceSummaryRef.current = workspaceSummary;
+      }
+      if (workspaceSummary) {
+        sections.push(`워크스페이스 파일 구조(요약):\n${workspaceSummary}`);
+      }
       const memoryHeader = sections.join('\n\n');
 
       const payload = buildModelPayload({
@@ -788,6 +854,7 @@ export default function AIChatDock({ onClose }) {
         getSessionToken,
         setAutoStatus,
         workingLogs,
+        workspaceSetId,
       });
 
       if (
@@ -809,7 +876,7 @@ export default function AIChatDock({ onClose }) {
         });
       }
     },
-    [append, chatOptions, getSessionToken]
+    [append, chatOptions, getSessionToken, workspaceSetId]
   );
 
   const handleSend = useCallback(async () => {
@@ -1863,7 +1930,15 @@ function LogRow({ entry }) {
     </div>
   );
 }
-async function runActionsAndSummarize({ actions, budget, append, getSessionToken, setAutoStatus, workingLogs }) {
+async function runActionsAndSummarize({
+  actions,
+  budget,
+  append,
+  getSessionToken,
+  setAutoStatus,
+  workingLogs,
+  workspaceSetId,
+}) {
   const normalized = normalizeActions(actions);
   if (!normalized.length) {
     return { remainingBudget: budget };
@@ -1889,7 +1964,10 @@ async function runActionsAndSummarize({ actions, budget, append, getSessionToken
       game_id: a.gameId || null,
       idempotencyKey: a.idempotencyKey || null,
     }));
-    const batchRes = await executeWorkspaceAction({ type: 'batch', payload: { actions: items, sequential: true } }, token);
+    const batchRes = await executeWorkspaceAction(
+      { type: 'batch', payload: { actions: items, sequential: true }, workspaceSetId },
+      token,
+    );
     if (batchRes?.ok) {
       const results = Array.isArray(batchRes.result?.results) ? batchRes.result.results : [];
       results.forEach((r, i) => {
@@ -1913,7 +1991,7 @@ async function runActionsAndSummarize({ actions, budget, append, getSessionToken
 
   for (const action of normalized) {
     if (remaining <= 0) break;
-    const result = await executeWorkspaceAction(action, token);
+    const result = await executeWorkspaceAction({ ...action, workspaceSetId }, token);
     executed.push({ action, result });
     append('action', { action, result });
     workingLogs.push({ role: 'action', msg: { action, result } });
@@ -2124,10 +2202,13 @@ async function executeWorkspaceAction(action, token) {
       },
       body: JSON.stringify({
         action: actionType,
-        payload: action.payload,
+        payload: action.workspaceSetId
+          ? { ...(action.payload || {}), workspaceSetId: action.workspaceSetId }
+          : action.payload,
         session_id: action.sessionId,
         game_id: action.gameId,
         idempotencyKey: action.idempotencyKey,
+        workspaceSetId: action.workspaceSetId || null,
       }),
     });
     const data = await res.json().catch(() => ({}));

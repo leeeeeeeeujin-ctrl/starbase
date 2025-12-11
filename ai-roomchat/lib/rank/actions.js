@@ -9,6 +9,8 @@ import fsSync from 'fs';
 import path from 'path';
 import os from 'os';
 import { spawn } from 'child_process';
+import { dbGetSet, dbPutSet } from '../workspace/dbWorkspaceSets.js';
+import { ensure as ensureWorkspaceSet, upsert as upsertWorkspaceSet } from '../workspace/setsStore.js';
 
 let BASE_ROOT = process.cwd();
 if (process.env.WORKSPACE_ROOT) {
@@ -60,6 +62,124 @@ const DOCS_FILE_ALLOWLIST = [
 
 // Doc directories that AI can list/search inside
 const DOCS_DIR_ALLOWLIST = ['docs/capabilities'];
+
+async function loadWorkspaceSetSnapshot(rawId) {
+  const id = rawId && String(rawId).trim();
+  if (!id) return null;
+  // Prefer DB-backed set when available
+  try {
+    const db = await dbGetSet(id);
+    if (db && Array.isArray(db.files)) {
+      return { id: db.id, files: db.files };
+    }
+  } catch {
+    // ignore and fall through to in-memory store
+  }
+  try {
+    const local = ensureWorkspaceSet(id);
+    if (local && Array.isArray(local.files)) {
+      return { id: local.id, files: local.files };
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+async function loadWorkspaceSetFull(rawId) {
+  const id = rawId && String(rawId).trim();
+  if (!id) return null;
+  // Try DB first
+  try {
+    const db = await dbGetSet(id);
+    if (db && Array.isArray(db.files)) {
+      return { id: db.id, files: db.files || [], meta: db.meta || {} };
+    }
+  } catch {
+    // ignore and fall through
+  }
+  // Then dev-only in-memory store
+  try {
+    const local = ensureWorkspaceSet(id);
+    if (local && Array.isArray(local.files)) {
+      return { id, files: local.files || [], meta: local.meta || {} };
+    }
+  } catch {
+    // ignore
+  }
+  // Treat missing set as empty for write paths; callers can decide whether this is an error.
+  return { id, files: [], meta: {} };
+}
+
+async function saveWorkspaceSetFiles(rawId, mutateFiles) {
+  const current = await loadWorkspaceSetFull(rawId);
+  if (!current || !current.id) {
+    return { ok: false, error: 'workspace_set_not_found' };
+  }
+  const baseFiles = Array.isArray(current.files) ? current.files : [];
+  const nextFilesRaw =
+    typeof mutateFiles === 'function' ? mutateFiles(baseFiles) || [] : baseFiles;
+  const normalizedFiles = Array.isArray(nextFilesRaw)
+    ? nextFilesRaw.map((f) => {
+        const setPath = normalizeSetPath(f.path || '/');
+        const isDir = !!f.dir;
+        const content = isDir ? '' : String(f.content ?? '');
+        return {
+          path: setPath,
+          content,
+          readonly: !!f.readonly,
+          dir: isDir,
+        };
+      })
+    : [];
+  const meta =
+    current.meta && typeof current.meta === 'object' && current.meta !== null
+      ? current.meta
+      : {};
+
+  // Update dev in-memory store (best-effort)
+  try {
+    upsertWorkspaceSet(current.id, { files: normalizedFiles, meta }, { merge: false });
+  } catch {
+    // ignore dev-store errors
+  }
+
+  // Update DB when available (also best-effort; errors are surfaced only if nothing succeeded)
+  try {
+    const res = await dbPutSet(current.id, normalizedFiles, meta, null);
+    if (res && typeof res.status === 'number' && res.status >= 200 && res.status < 300) {
+      return { ok: true, files: normalizedFiles };
+    }
+    // If DB is unavailable (503) but dev store was updated, still treat as ok.
+    if (res && res.status === 503) {
+      return { ok: true, files: normalizedFiles };
+    }
+  } catch {
+    // ignore DB errors; fall through
+  }
+
+  // If we reached here, dev-store may still have been updated; consider it success.
+  return { ok: true, files: normalizedFiles };
+}
+
+function normalizeSetPath(p) {
+  const raw = (p == null ? '' : String(p)).trim();
+  if (!raw || raw === '.' || raw === '/') return '/';
+  if (raw === WORKSPACE_PREFIX) return '/';
+  if (raw.startsWith(`${WORKSPACE_PREFIX}/`)) {
+    const tail = raw.slice(WORKSPACE_PREFIX.length);
+    return tail.startsWith('/') ? tail : `/${tail}`;
+  }
+  if (!raw.startsWith('/')) return `/${raw}`;
+  return raw;
+}
+
+function buildWorkspacePathFromSetPath(setPath) {
+  const norm = normalizeSetPath(setPath);
+  if (norm === '/') return WORKSPACE_PREFIX;
+  const rel = norm.replace(/^\/+/, '');
+  return `${WORKSPACE_PREFIX}/${rel}`;
+}
 
 function normalizeWorkspacePath(p) {
   const raw = (p == null ? '' : String(p)).trim();
@@ -270,6 +390,30 @@ async function isCommandAllowed(cmdPreview) {
 }
 
 async function action_list_files(payload) {
+  const setId = payload?.workspaceSetId;
+  if (setId) {
+    const snapshot = await loadWorkspaceSetSnapshot(setId);
+    if (!snapshot || !Array.isArray(snapshot.files) || snapshot.files.length === 0) {
+      return { ok: true, result: { items: [] } };
+    }
+    const items = snapshot.files.map((file) => {
+      const workspacePath = buildWorkspacePathFromSetPath(file.path || '/');
+      const name = workspacePath.split('/').pop() || workspacePath;
+      const isDir = !!file.dir;
+      const content =
+        !isDir && typeof file.content === 'string' ? file.content : '';
+      const size = isDir ? 0 : Buffer.byteLength(content, 'utf8');
+      return {
+        name,
+        path: workspacePath,
+        type: isDir ? 'dir' : 'file',
+        size,
+        mtimeMs: 0,
+      };
+    });
+    return { ok: true, result: { items } };
+  }
+
   const resolved = resolveSafe(payload?.path || '.');
   let dir;
   try {
@@ -294,6 +438,29 @@ async function action_list_files(payload) {
 }
 
 async function action_read_file(payload) {
+  const setId = payload?.workspaceSetId;
+  if (setId) {
+    const snapshot = await loadWorkspaceSetSnapshot(setId);
+    if (!snapshot || !Array.isArray(snapshot.files)) {
+      return { ok: false, error: 'workspace_set_not_found' };
+    }
+    const targetPath = normalizeSetPath(payload?.path || '/');
+    const fileMeta = snapshot.files.find(
+      (f) => normalizeSetPath(f.path || '/') === targetPath && !f.dir,
+    );
+    if (!fileMeta) {
+      return { ok: false, error: 'file_not_found' };
+    }
+    const content = typeof fileMeta.content === 'string' ? fileMeta.content : '';
+    if (Buffer.byteLength(content, 'utf8') > MAX_FILE_BYTES) {
+      return { ok: false, error: 'file_too_large' };
+    }
+    return {
+      ok: true,
+      result: { encoding: 'utf8', content },
+    };
+  }
+
   const file = ensureReadableFile(resolveSafe(payload?.path));
   const stat = await fs.lstat(file);
   if (stat.size > MAX_FILE_BYTES) return { ok: false, error: 'file_too_large' };
@@ -311,6 +478,29 @@ async function action_read_file(payload) {
 }
 
 async function action_read_file_range(payload) {
+  const setId = payload?.workspaceSetId;
+  if (setId) {
+    const snapshot = await loadWorkspaceSetSnapshot(setId);
+    if (!snapshot || !Array.isArray(snapshot.files)) {
+      return { ok: false, error: 'workspace_set_not_found' };
+    }
+    const targetPath = normalizeSetPath(payload?.path || '/');
+    const fileMeta = snapshot.files.find(
+      (f) => normalizeSetPath(f.path || '/') === targetPath && !f.dir,
+    );
+    if (!fileMeta) {
+      return { ok: false, error: 'file_not_found' };
+    }
+    const txt = String(fileMeta.content || '');
+    const lines = txt.split(/\r?\n/);
+    const start = Number(payload?.start ?? 0);
+    const end = Number(payload?.end ?? start + 250);
+    const s = Math.max(0, start);
+    const e = Math.min(lines.length, Math.max(s, end));
+    const slice = lines.slice(s, e).join('\n');
+    return { ok: true, result: { start: s, end: e, content: slice } };
+  }
+
   const file = ensureReadableFile(resolveSafe(payload?.path));
   const start = Number(payload?.start ?? 0);
   const end = Number(payload?.end ?? start + 250);
@@ -323,6 +513,28 @@ async function action_read_file_range(payload) {
 }
 
 async function action_write_file(payload) {
+  const setId = payload?.workspaceSetId;
+  if (setId) {
+    const targetPath = normalizeSetPath(payload?.path || '/');
+    const content = typeof payload?.content === 'string' ? payload.content : '';
+    const res = await saveWorkspaceSetFiles(setId, (files) => {
+      const next = Array.isArray(files) ? files.map((f) => ({ ...f })) : [];
+      let updated = false;
+      for (const f of next) {
+        if (normalizeSetPath(f.path || '/') === targetPath && !f.dir) {
+          f.content = content;
+          f.readonly = !!f.readonly;
+          updated = true;
+        }
+      }
+      if (!updated) {
+        next.push({ path: targetPath, content, readonly: false, dir: false });
+      }
+      return next;
+    });
+    return res.ok ? { ok: true } : { ok: false, error: res.error || 'workspace_set_write_failed' };
+  }
+
   const file = ensureWritablePath(resolveSafe(payload?.path));
   const content = typeof payload?.content === 'string' ? payload.content : '';
   await ensureDir(path.dirname(file));
@@ -331,12 +543,48 @@ async function action_write_file(payload) {
 }
 
 async function action_delete_file(payload) {
+  const setId = payload?.workspaceSetId;
+  if (setId) {
+    const targetPath = normalizeSetPath(payload?.path || '/');
+    const res = await saveWorkspaceSetFiles(setId, (files) => {
+      const base = Array.isArray(files) ? files : [];
+      return base.filter(
+        (f) => !(normalizeSetPath(f.path || '/') === targetPath && !f.dir),
+      );
+    });
+    return res.ok ? { ok: true } : { ok: false, error: res.error || 'workspace_set_write_failed' };
+  }
+
   const file = ensureWritablePath(resolveSafe(payload?.path));
   await fs.rm(file, { force: true });
   return { ok: true };
 }
 
 async function action_delete_dir(payload) {
+  const setId = payload?.workspaceSetId;
+  if (setId) {
+    const dirPath = normalizeSetPath(payload?.path || '/');
+    const recursive = payload?.recursive !== false;
+    const res = await saveWorkspaceSetFiles(setId, (files) => {
+      const base = Array.isArray(files) ? files : [];
+      if (!recursive) {
+        // Non-recursive: remove the exact dir entry only.
+        return base.filter(
+          (f) => !(normalizeSetPath(f.path || '/') === dirPath && !!f.dir),
+        );
+      }
+      // Recursive: remove dir and all children under it.
+      const prefix = dirPath === '/' ? '/' : `${dirPath.replace(/\/+$/, '')}/`;
+      return base.filter((f) => {
+        const p = normalizeSetPath(f.path || '/');
+        if (p === dirPath) return false;
+        if (p.startsWith(prefix)) return false;
+        return true;
+      });
+    });
+    return res.ok ? { ok: true } : { ok: false, error: res.error || 'workspace_set_write_failed' };
+  }
+
   const dir = ensureWritablePath(resolveSafe(payload?.path));
   const recursive = payload?.recursive !== false;
   await fs.rm(dir, { recursive, force: true });
@@ -344,6 +592,29 @@ async function action_delete_dir(payload) {
 }
 
 async function action_move_file(payload) {
+  const setId = payload?.workspaceSetId;
+  if (setId) {
+    const srcPath = normalizeSetPath(payload?.src || payload?.from || '/');
+    const destPath = normalizeSetPath(payload?.dest || payload?.to || '/');
+    const res = await saveWorkspaceSetFiles(setId, (files) => {
+      const base = Array.isArray(files) ? files.map((f) => ({ ...f })) : [];
+      const prefix = `${srcPath.replace(/\/+$/, '')}/`;
+      const destPrefix = `${destPath.replace(/\/+$/, '')}/`;
+      return base.map((f) => {
+        const p = normalizeSetPath(f.path || '/');
+        if (p === srcPath) {
+          return { ...f, path: destPath };
+        }
+        if (p.startsWith(prefix)) {
+          const tail = p.slice(prefix.length);
+          return { ...f, path: `${destPrefix}${tail}` };
+        }
+        return f;
+      });
+    });
+    return res.ok ? { ok: true } : { ok: false, error: res.error || 'workspace_set_write_failed' };
+  }
+
   const src = ensureWritablePath(resolveSafe(payload?.src));
   const dest = ensureWritablePath(resolveSafe(payload?.dest));
   await ensureDir(path.dirname(dest));
@@ -352,6 +623,31 @@ async function action_move_file(payload) {
 }
 
 async function action_copy_file(payload) {
+  const setId = payload?.workspaceSetId;
+  if (setId) {
+    const srcPath = normalizeSetPath(payload?.src || payload?.from || '/');
+    const destPath = normalizeSetPath(payload?.dest || payload?.to || '/');
+    const res = await saveWorkspaceSetFiles(setId, (files) => {
+      const base = Array.isArray(files) ? files.map((f) => ({ ...f })) : [];
+      const srcFile = base.find(
+        (f) => normalizeSetPath(f.path || '/') === srcPath && !f.dir,
+      );
+      if (!srcFile) return base;
+      const content = typeof srcFile.content === 'string' ? srcFile.content : '';
+      const next = base.filter(
+        (f) => !(normalizeSetPath(f.path || '/') === destPath && !f.dir),
+      );
+      next.push({
+        path: destPath,
+        content,
+        readonly: !!srcFile.readonly,
+        dir: false,
+      });
+      return next;
+    });
+    return res.ok ? { ok: true } : { ok: false, error: res.error || 'workspace_set_write_failed' };
+  }
+
   const src = ensureWritablePath(resolveSafe(payload?.src));
   const dest = ensureWritablePath(resolveSafe(payload?.dest));
   await ensureDir(path.dirname(dest));
@@ -360,12 +656,49 @@ async function action_copy_file(payload) {
 }
 
 async function action_mkdirs(payload) {
+  const setId = payload?.workspaceSetId;
+  if (setId) {
+    const dirPath = normalizeSetPath(payload?.path || '/');
+    const res = await saveWorkspaceSetFiles(setId, (files) => {
+      const base = Array.isArray(files) ? files.map((f) => ({ ...f })) : [];
+      const exists = base.some(
+        (f) => normalizeSetPath(f.path || '/') === dirPath && !!f.dir,
+      );
+      if (exists) return base;
+      base.push({ path: dirPath, content: '', readonly: false, dir: true });
+      return base;
+    });
+    return res.ok ? { ok: true } : { ok: false, error: res.error || 'workspace_set_write_failed' };
+  }
+
   const dir = ensureWritablePath(resolveSafe(payload?.path));
   await fs.mkdir(dir, { recursive: true });
   return { ok: true };
 }
 
 async function action_stat_file(payload) {
+  const setId = payload?.workspaceSetId;
+  if (setId) {
+    const snapshot = await loadWorkspaceSetSnapshot(setId);
+    if (!snapshot || !Array.isArray(snapshot.files)) {
+      return { ok: false, error: 'workspace_set_not_found' };
+    }
+    const targetPath = normalizeSetPath(payload?.path || '/');
+    const fileMeta = snapshot.files.find(
+      (f) => normalizeSetPath(f.path || '/') === targetPath,
+    );
+    if (!fileMeta) {
+      return { ok: false, error: 'file_not_found' };
+    }
+    const isDir = !!fileMeta.dir;
+    const content = typeof fileMeta.content === 'string' ? fileMeta.content : '';
+    const size = isDir ? 0 : Buffer.byteLength(content, 'utf8');
+    return {
+      ok: true,
+      result: { isDir, size, mtimeMs: 0 },
+    };
+  }
+
   const p = ensureReadableFile(resolveSafe(payload?.path));
   const s = await fs.lstat(p);
   return {
@@ -375,11 +708,38 @@ async function action_stat_file(payload) {
 }
 
 async function action_search_text(payload) {
-  const root = ensureReadableRoot(resolveSafe(payload?.path || '.'));
+  const setId = payload?.workspaceSetId;
   const query = String(payload?.query || '').trim();
   if (!query) return { ok: false, error: 'missing_query' };
   const maxResults = Number(payload?.max_results || SEARCH_MAX_RESULTS_DEFAULT);
   const results = [];
+
+  if (setId) {
+    const snapshot = await loadWorkspaceSetSnapshot(setId);
+    if (!snapshot || !Array.isArray(snapshot.files)) {
+      return { ok: true, result: { results: [] } };
+    }
+    for (const fileMeta of snapshot.files) {
+      if (results.length >= maxResults) break;
+      if (fileMeta.dir) continue;
+      const content = typeof fileMeta.content === 'string' ? fileMeta.content : '';
+      if (!content) continue;
+      const lines = content.split(/\r?\n/);
+      for (let i = 0; i < lines.length; i += 1) {
+        if (lines[i].includes(query)) {
+          results.push({
+            path: buildWorkspacePathFromSetPath(fileMeta.path || '/'),
+            line: i + 1,
+            preview: lines[i],
+          });
+          if (results.length >= maxResults) break;
+        }
+      }
+    }
+    return { ok: true, result: { results } };
+  }
+
+  const root = ensureReadableRoot(resolveSafe(payload?.path || '.'));
 
   async function scanDir(d) {
     const entries = await fs.readdir(d, { withFileTypes: true });
@@ -419,6 +779,11 @@ async function action_search_text(payload) {
 }
 
 async function action_edit_patch(payload) {
+  // For workspace-set backed operations, prefer explicit write_file-style edits.
+  // Applying git-style patches against the virtual set filesystem is not yet supported.
+  if (payload && payload.workspaceSetId) {
+    return { ok: false, error: 'edit_patch_not_supported_for_workspace_set' };
+  }
   const diff = String(payload?.diff || payload?.patch || '').trim();
   const cwd = BASE_ROOT;
   if (!diff) return { ok: false, error: 'missing_patch' };

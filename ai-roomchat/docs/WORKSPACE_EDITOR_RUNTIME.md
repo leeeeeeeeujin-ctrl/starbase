@@ -311,8 +311,21 @@ Extensions and capabilities are related but distinct:
   - 서버리스/배포 환경에서 `workspace/` 디렉터리가 아직 없으면:
     - `list_files` 액션은 빈 목록(`items: []`)을 반환하도록 되어 있어,
     - “루트 없음” 에러 대신 “비어 있는 워크스페이스”로 취급된다.
+   - `AIChatDock` 은 첫 요청 시 `list_files(path: \"\/\", recursive: true)` 를 한 번 호출해
+     `workspace/**` 아래의 파일 경로 목록을 요약 문자열로 만들고, 이를 memory header 에 포함시킨다.
+     덕분에 모델은 별도 액션 없이도 기본적인 파일 구조(예: `workspace/hooks/automation.js`, `workspace/score/score-default.js`)를 알고 시작할 수 있지만,
+     최신 상태를 보기 위해서는 여전히 `list_files` / `read_file` 액션을 사용할 수 있다.
+   - (보충: 메이커 에디터에서 특정 워크스페이스 세트(`workspaceSetId`)를 편집 중일 때는,
+     `AIChatDock` 이 같은 id를 `list_files` 액션에 함께 전달해 해당 세트 기준의 `workspace/**` 구조를 요약에 포함시킨다.)
   - 실제 유저 프로젝트를 이 영역에 맵핑할지는 배포/호스트 레이어에서 결정하며,
     이 레포에서는 기본값으로 `ai-roomchat/workspace`가 “유저 세트/샌드박스” 경계로 사용된다.
+  - 에디터 워크스페이스 세트와의 관계:
+    - 메이커 에디터의 워크스페이스 세트는 `/api/workspace/sets/:id` + Supabase `workspace_sets`(또는 dev in‑memory store)를 통해 관리된다.
+    - AI 코드 채팅 액션은 `workspaceSetId` 가 주어지면 `lib/workspace/dbWorkspaceSets.js` / `lib/workspace/setsStore.js` 를 통해
+      해당 세트의 `files[]` 를 읽어 **가상 FS** 처럼 다룬다:
+      - `read_file` / `read_file_range` / `list_files` / `stat_file` / `search_text` 는 세트 파일 배열을 기준으로 동작하고,
+      - `path` 는 항상 `workspace/**` 기준으로 반환된다(예: `/game/hooks/automation.js` → `workspace/game/hooks/automation.js`).
+    - `workspaceSetId` 가 없는 경우에는 이전과 동일하게 **물리 디스크의 `workspace/**` 트리**를 기준으로 읽는다.
 
 ### 4.5 Per-set capabilities meta
 
@@ -338,6 +351,34 @@ Extensions and capabilities are related but distinct:
 - This is intended for:
   - Editor-side checks ("To use this capability, you also need these files" warnings),
   - Future CI/lint-style validation of workspace sets.
+
+### 4.7 AI Code Chat ↔ workspace set bridge (계획)
+
+- 목표:
+  - 메이커 에디터가 보고 있는 **단일 워크스페이스 세트(id 기반)** 를 AI 코드 채팅도 동일하게 보게 만든다.
+  - 여전히 호스트 앱 코드(`components/**`, `pages/**`, `lib/**` 등)는 쓰기 불가로 유지한다.
+- 접근 방향(설계 초안):
+  - **논리 루트 = 워크스페이스 세트**:
+    - `AIChatDock` 가 현재 편집 중인 세트 id(예: `workspaceSetId`)를 알고 있도록 하고,
+    - `/api/rank/handle-action` 호출 시 이 id를 함께 넘긴다(예: `payload.workspaceSetId` 또는 최상위 필드).
+  - **액션 레이어에서 세트 사용**:
+    - `lib/rank/actions.js` 에서 `workspaceSetId` 가 있으면:
+      - 파일 액션을 물리 `fs` 가 아니라 `lib/workspace/setsStore` / `dbWorkspaceSets` 를 통해 처리한다.
+      - `read_file` / `list_files` 등은 세트의 `files[]` 배열을 메모리에 올려 “가상 FS” 처럼 동작시킨다.
+      - `write_file` / `edit_patch` / `delete_file` 등은 변경된 파일 목록을 다시 세트로 저장한다.
+  - **단계적 도입**:
+    - 1단계: **읽기 전용 브리지** — `read_file` / `list_files` / `search_text` 만 세트 기반으로 돌려, AI가 세트 내용을 이해하도록 한다.
+    - 2단계: **쓰기 허용** — `write_file` / `edit_patch` 를 세트로 라우팅하되, 에디터의 `unifiedSave` 플로우와 충돌하지 않도록 etag/버전 정책을 정의한다.
+    - 3단계: **UI 통합** — AI 코드 채팅이 변경한 세트 내용이 CodeWorkspaceProvider(VFS)에 자연스럽게 반영되도록, 세트 리로드/머지 정책을 추가한다.
+- 현재 상태:
+  - 1단계(읽기 전용 브리지)는 구현되어 있다:
+    - `AIChatDock` 은 현재 편집 중인 세트 id(라우트 `id`)를 `workspaceSetId` 로 액션에 넘긴다.
+    - `lib/rank/actions.js` 는 `workspaceSetId` 가 있을 때 `read_file` / `read_file_range` / `list_files` / `stat_file` / `search_text`
+      를 세트 기반으로 처리하고, 없을 때는 기존처럼 물리 `workspace/**` 를 사용한다.
+  - 2단계(쓰기 허용)와 3단계(UI 통합)는 아직 미구현이며, 이후 텍스트 배틀 수직선이 안정된 뒤 점진적으로 도입한다.
+  - (보충: 2025-12-11 기준 코드에서는 `write_file` / `delete_file` / `delete_dir` / `move_file` / `copy_file` / `mkdirs` 가
+    `workspaceSetId` 가 있을 때 워크스페이스 세트의 `files[]` 를 직접 수정하도록 구현되어 있으며,
+    `edit_patch` 는 여전히 물리 `workspace/**` 만 대상으로 한다.)
 
 ---
 
