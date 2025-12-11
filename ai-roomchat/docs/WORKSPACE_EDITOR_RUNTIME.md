@@ -1,4 +1,4 @@
-# Workspace Editor & Runtime Overview
+﻿# Workspace Editor & Runtime Overview
 
 This document is the **authoritative guide** for how the Maker workspace editor talks to the runtime and main game.  
 It exists so we can keep the structure stable even while we iterate on features and fix bugs.
@@ -58,27 +58,17 @@ Starter pack (new set defaults)
 ### Quick dev log
 
 #### 2025-12-11
-- **Maker graph ↔ workspace/runtime 동기화 완료**: React Flow 에디터와 워크스페이스 VFS 실시간 양방향 연결
-  - **Phase 1 (Supabase → VFS)**: 페이지 로드 시 자동 동기화
-    - `lib/workspace/syncPromptGraphToVfs.js` 생성 - Supabase prompt graph를 `/graph/prompt-graph.json` + `entryNode`로 변환
-    - `WorkspaceFrame.jsx` 통합 - 세트 로드 시 자동으로 Supabase → VFS 단방향 sync 실행
-    - `coreRuntime.js` fallback 명확화 - entryNode 없을 때 경고 로그 추가
-  - **Phase 2 (React Flow → VFS)**: 실시간 에디터 sync 추가
-    - `MakerEditor.js`에 useEffect 추가 - nodes/edges 변경 시 300ms debounce로 `/graph/prompt-graph.json` 자동 업데이트
-    - 시작 노드 체크 시 `runtime.config.json.entryNode` 자동 설정
-    - **저장 없이도** 프롬프트-노드 에디터 변경사항이 즉시 워크스페이스에 반영됨
-  - 결과: 프롬프트-노드 에디터 → `/graph` → PlayOverlay 전체 경로 완전 연결
-- **텍스트 배틀 수직선 완성**: `workspace/hooks/automation.js` 를 텍스트 배틀 기본 템플릿으로 교체.
-  - `transformPrompt()` - AI 심판용 프롬프트 생성
-  - `onTurnStart()` - AI 프롬프트 노드에서 자동 판정 실행 (coreRuntime 통합)
-  - `onUserAction()` - 유저 행동 노드에서 입력 기반 판정 실행
-  - `applyBattleOutcomeLocal()` - 판정 결과를 `variables.battleLast/battleResult/battleScore` 에 저장
-  - `onBattleEnd()` - 완전한 승패 판정 및 하이라이트 선정 로직 구현
-- **coreRuntime 개선**: `step()` 함수에 `onTurnStart` 훅 호출 로직 추가
-  - 새 노드 진입 시 자동으로 `hooks.onTurnStart(ctx)` 호출
-  - Play/Rank 모두에서 AI 프롬프트 노드 자동 판정 작동
-- 노드 타입별 처리 문서화: AI 프롬프트/유저 행동/시스템 노드 구분 및 처리 흐름 명시
-- 이제 Play → AI 판정 → variables 갱신 → 턴 로그 → Rank settle → 배틀로그 뷰까지 전체 흐름이 완전히 작동함.
+- **텍스트 배틀 수직선 완성**: Play → Rank settle 전체 흐름 작동
+  - `workspace/hooks/automation.js` 텍스트 배틀 기본 템플릿 완성
+  - `transformPrompt()`, `onTurnStart()`, `onUserAction()`, `onBattleEnd()` 구현
+  - `applyBattleOutcomeLocal()` - 판정 결과를 `variables.battleLast/battleResult/battleScore`에 저장
+  - `coreRuntime.js` - `step()` 함수에 `onTurnStart` 호출 로직 추가
+  - 노드 타입별 처리 문서화 (AI 프롬프트/유저 행동/시스템 노드)
+- **starter-pack 텍스트 배틀 기본 세트 정리**: 파일 구성 완성
+- **coreRuntime entryNode fallback 구현**: 첫 번째 노드로 fallback, 개발 모드에서 경고 로그
+- **SyncTemplateToVfs 제한적 sync**: `/template.json.data.template` → `/graph.label` 매핑 구현
+  - 워크스페이스에서 템플릿 직접 수정 시에만 동작
+  - **주의**: Maker 그래프(Supabase) ↔ workspace 동기화는 아직 미구현
 
 #### 2025-12-05
 - Pushed `assistant-adjust-character-panels-layout` to `main` (origin). Touched `ai-roomchat/components/character/CharacterBasicView.js` to stop carousel/game cards from clipping and make overlay slides stretch to container width on narrow/rotated layouts.
@@ -126,68 +116,160 @@ Current high-level status (this repo copy)
 - Supabase persistence + SQL helpers: **planned**
   - Capability/확장 스펙만 정의되어 있고, 실제 어댑터/패널 구현은 이후 단계.
 
-### Open tasks (dev notes)
+### Open tasks (dev notes) — 다음 타자 인계 사항
 
-- ~~텍스트 배틀 수직선 완성: `workspace/hooks/automation.js` AI 판정 훅 구현~~ → **완료 (2025-12-11)**
-- ~~coreRuntime에 onTurnStart 호출 로직 추가~~ → **완료 (2025-12-11)**
-- ~~**Maker graph ↔ workspace/runtime 동기화(핵심 TODO, Copilot/에이전트용 핸드오프)**~~ → **완료 (2025-12-11)**
-  - ✅ (A) Studio → workspace 단방향 sync 구현
-    - `lib/workspace/syncPromptGraphToVfs.js` 헬퍼 함수 생성
-    - Supabase의 prompt graph(sets/slots/bridges) 읽어서 `/graph/prompt-graph.json` 생성
-    - 시작 슬롯을 `/game/runtime.config.json.entryNode`로 자동 반영
-    - `WorkspaceFrame.jsx`에서 세트 로드 시 자동 동기화 실행
-  - ✅ (C) 엔진 fallback 명확화
-    - `coreRuntime.js`의 entryNode fallback에 경고 로그 추가
-    - fallback은 안전장치로 유지, 정상 동작 시에는 항상 entryNode 존재
-  - ✅ (B) 실시간 에디터 sync 구현 **← 추가 완료**
-    - `MakerEditor.js`에 React Flow → VFS 실시간 동기화 추가
-    - nodes/edges 변경 시 300ms debounce로 `/graph/prompt-graph.json` 자동 업데이트
-    - 시작 노드 체크 시 `entryNode` 자동 설정
-    - **저장 없이도** 에디터 변경사항이 즉시 워크스페이스 + PlayOverlay에 반영
-    - SyncTemplateToVfs와 병행 작동 (충돌 없음)
-  - 📋 (D) 문서/가이드 업데이트 (다음 단계)
-    - 동기화 규칙을 문서 2.x 섹션에 추가 예정
-    - Studio 수정 vs 워크스페이스 직접 수정 차이 명확화 예정
-- PlayOverlayContent 구조 분리 진행 중: 어댑터 초기화는 헬퍼로 분리했으나 디버그 UI/입력 처리도 별도 훅/컴포넌트로 쪼개기.
-- 선택된 capability 대비 필요한 파일 안내: Play/Capabilities 패널에서 누락 파일 경고+생성 안내 표시. Capabilities 선택 화면에도 빠른 파일 추가 액션을 더 보강.
-- 텍스트 배틀 실전 테스트: AI 프롬프트 노드 자동 실행 → 턴 로그 → Rank settle 전체 흐름 검증.
-  - 목표: 프롬프트‑노드 에디터(Studio/Maker)에서 그린 그래프가  
-    `/graph/prompt-graph.json` + `/game/runtime.config.json.entryNode` 에 **일관되게 반영**되도록 만들 것.
-  - 현재 상태:
-    - Graph 편집기의 실제 소스는 Supabase(`prompt_sets`/`prompt_slots`/`prompt_bridges`)이며,
-      `/graph` 는 `/template.json` 편집 시 `SyncTemplateToVfs` 가 만들어 주는 “축약 버전(nodes/edges-only)”일 뿐이다.
-    - maker graph에서 “시작 슬롯”을 지정해도 `/game/runtime.config.json.entryNode` 는 자동으로 바뀌지 않는다.
-    - maker graph에서 노드 간 엣지를 추가해도 `/graph.edges` 에는 반영되지 않는 경우가 있어,
-      런타임 입장에서는 “노드만 있고 엣지는 없는 그래프”로 보이기도 한다.
-  - 해야 할 일(1차 구현 방향):
-    - (A) **Studio → workspace 단방향 sync** 를 구현한다.
-      - Maker/Studio 화면에서 세트 로드 시:
-        - Supabase의 prompt graph(sets/slots/bridges)를 읽어,
-          `/graph/prompt-graph.json` 을 `{ nodes, edges }` 형태로 구성해 워크스페이스에 주입.
-        - “시작 슬롯” 정보(있다면)를 `/game/runtime.config.json.entryNode` 로 반영.
-      - PlayOverlay(coreRuntime) 는 이 동기화된 `/graph` + `entryNode` 만을 보고 동작하게 유지한다.
-    - (B) `SyncTemplateToVfs` 와의 역할 정리:
-      - `/template.json` 편집 → `/graph` 재생성 로직은 그대로 두되,
-        maker graph 기반 세트에서는 **Studio가 생성한 `/graph` 를 우선** 사용하도록 문서화/정리.
-      - 충돌 방지 전략(예: Studio graph 편집 후 `/template.json` 도 수정되었을 때 어느 쪽을 진실로 볼지)을
-        최소한 dev-note 수준으로 정리.
-    - (C) **엔진 fallback 재검토**:
-      - `coreRuntime` 의 “entryNode 없으면 첫 노드로 시작” fallback 은 안전장치로 유지하되,
-        maker graph sync 가 들어오면 실제로는 **항상 entryNode가 존재**하도록 만드는 것을 목표로 한다.
-      - 테스트 세트:
-        - starter pack에서 만든 텍스트 배틀 세트 (수정 없음).
-        - maker graph로 새 노드를 추가한 세트(시작 슬롯 지정 / 미지정 각각).
-        - 엣지가 없는 그래프(의도치 않게 바로 끝나지 않도록 최소 가이드/경고 추가 여부 검토).
-    - (D) 문서/가이드 업데이트:
-      - maker graph ↔ `/graph`/`entryNode` 동기화 규칙을 이 문서(Workspace Editor & Runtime) 2.x 섹션에 추가.
-      - “사용자가 무엇을 어디서 고쳐야 하는지” 기준으로:
-        - Studio에서 그래프를 수정하는 경우와,
-        - 워크스페이스에서 `/graph`/`runtime.config` 를直接 수정하는 경우의 차이를 명확히 구분해 설명.
+**완료된 작업 (2025-12-11)**
+- ~~텍스트 배틀 수직선 완성: `workspace/hooks/automation.js` AI 판정 훅 구현~~ → **완료**
+- ~~coreRuntime에 onTurnStart 호출 로직 추가~~ → **완료**
+- ~~starter-pack 텍스트 배틀 기본 세트 정리~~ → **완료**
+  - 파일 구성(`/graph`, `/game/hooks/automation.js`, `/game/runtime.config.json`) 기본 구조 완성
+- ~~coreRuntime entryNode fallback 구현~~ → **완료**
+  - 첫 번째 노드로 fallback하는 안전장치 추가
+  - 개발 모드에서 경고 로그 출력
+- ~~SyncTemplateToVfs에서 `/template.json` → `/graph` 제한적 sync~~ → **완료**
+  - `/template.json.data.template` → `/graph.label` 매핑 구현
+  - 워크스페이스에서 템플릿 직접 수정 시에만 동작
+
+**현재 상태 요약 (2025-12-11)**
+- 기능적으로 **텍스트 배틀 기본 세트 기준으로는 Play → Rank settle 수직선이 한 번 도는 상태**
+- **중요**: Maker 그래프(Supabase) ↔ workspace 동기화는 **아직 미구현**
+  - 완료된 것: `/template.json` 직접 수정 시 `/graph`로 sync (제한적)
+  - 미구현: Maker 그래프에서 Supabase(`prompt_sets/slots/bridges`)에 저장한 내용이 워크스페이스(`/graph`, `/game/runtime.config.json.entryNode`)로 자동 반영되는 진짜 Studio→workspace sync
+  - 현재 Maker 그래프 편집과 워크스페이스는 **여전히 별도 세계로 분리**되어 있음
+
+**방금 완료된 작업 (2025-12-11 저녁)**
+- ✅ **B (완료). PlayOverlayContent 구조 분리 통합 완료**
+  - `components/workspace/hooks/useBuiltinRuntime.js` 생성 (371 lines) - 코어 런타임 초기화 로직 분리
+  - `components/workspace/hooks/useGridEngine.js` 생성 (117 lines) - Grid 엔진 초기화 로직 분리
+  - `components/workspace/PlayDebugPanel.jsx` 생성 (360 lines) - 디버그 UI 컴포넌트 분리
+  - ✅ PlayOverlayContent 통합 완료: 기존 useEffect 블록 제거, 새 훅으로 교체
+  - ✅ 구 DebugPanel 함수 제거 (360+ lines)
+  - ✅ 파일 크기: 2348 lines → 1549 lines (34% 감소, 799 lines 제거)
+  - ✅ Next.js 프로덕션 빌드 검증 통과
+- ✅ **C (완료). Capability ↔ 필요한 파일 안내 UI 개선**
+  - `CapabilitiesHelpPanel.jsx` 개선 (lines 170-225 수정)
+  - 누락된 파일 경고를 더 눈에 띄는 박스로 표시
+  - 각 파일별 "✚ 생성" 버튼 강조 및 도움말 추가
+  - 정상 상태일 때 "✓ 모든 필수 파일 충족" 메시지 표시
+- ✅ **A (완료). 문서 2.x 섹션 업데이트**
+  - Section 3.3: `/template.json` → `/graph` 매핑 흐름 문서화
+  - Section 3.4: coreRuntime entryNode fallback 동작 방식 문서화
+  - Section 3.5: starter-pack 텍스트 배틀 기본 세트 파일 구성 상세 문서화
+- ✅ **D (완료). 텍스트 배틀 E2E 테스트 작성**
+  - `__tests__/text-battle-e2e.test.js` 생성 (420+ lines)
+  - 5개 테스트 케이스 작성 및 통과:
+    1. ✅ coreRuntime 초기화 (graph + config + hooks)
+    2. ✅ onUserAction 훅에서 디버그 토큰으로 배틀 결과 시뮬레이션
+    3. ✅ runtime:turn-log 이벤트 발행 및 수집
+    4. ✅ onBattleEnd 훅으로 outcome 계산
+    5. ✅ battle_log 형식 검증 (settle API 계약)
+  - 수동 테스트 시나리오 문서화 (Play → Settle 전체 플로우)
+  - 테스트 실행 결과: **PASS (5 passed, 1 skipped)**
+
+**작업 완료 요약:**
+- 우선순위 高 작업 2개 완료: B (구조 분리), C (UI 개선)
+- 우선순위 中 작업 2개 완료: A (문서), D (테스트)
+- 총 848 lines의 코드를 재사용 가능한 3개 모듈로 추출
+- 코드베이스 개선: 34% 크기 감소, 유지보수성 향상
+- 품질 보증: E2E 테스트 5개 추가, 빌드 검증 완료
+
+**A. 문서 마무리 (우선순위: 中) — 완료 ✅**
+- ✅ Section 3.3: Template sync (`/template.json.data.template` → `/graph.label` 매핑)
+- ✅ Section 3.4: coreRuntime entryNode fallback (첫 번째 노드로 fallback)
+- ✅ Section 3.5: Starter pack 구조 (텍스트 배틀 기본 세트 파일 구성)
+- ✅ 각 섹션에 구현 상태, 동작 방식, 주의사항 포함
+
+**B. PlayOverlayContent 구조 분리 (우선순위: 高) — 완료 ✅**
+- ✅ useBuiltinRuntime hook (371 lines):
+  - 코어 런타임 초기화 (createCoreRuntime)
+  - 그래프 및 훅 로딩 (loadHooksFromSource)
+  - 디버그 참가자 설정 (simUsers → debugPlayers)
+  - bus 이벤트 핸들러 (turn:next, player:chat)
+  - publishResult 헬퍼 (runtime:turn-log 이벤트, onBattleEnd 호출)
+- ✅ useGridEngine hook (117 lines):
+  - world.grid-basic feature 감지
+  - worldGridEngine 어댑터 lazy loading
+  - 런타임 및 훅 연결 (setWorldEngine, setHooks)
+  - player:chat fallback 핸들러
+- ✅ PlayDebugPanel component (360 lines):
+  - 프롬프트 인스펙터
+  - 턴 로그 (raw) - 최근 10개 역순 표시
+  - 디버그 참가자 관리 (추가/수정/삭제)
+  - AI 호출 로그
+  - 베틀로그 디버그 (useBattleLogDebug)
+- ✅ 통합 완료:
+  - CodeEditorOverlayV2.jsx에서 기존 useEffect 블록 제거
+  - 새 훅 호출로 교체 (lines 692-709)
+  - 구 DebugPanel 함수 완전 제거
+  - import 경로 수정 완료
+- ✅ 검증 완료:
+  - Next.js 프로덕션 빌드 통과
+  - 파일 크기 34% 감소 (2348 → 1549 lines)
+  - 모든 에러 해결
+
+**C. Capability ↔ 필요한 파일 안내 (우선순위: 高) — 완료 ✅**
+- ✅ CapabilitiesHelpPanel.jsx 개선 (lines 170-225):
+  - 누락 파일 경고 박스: 빨강/주황 테두리, ⚠️ 아이콘, 파일 수 표시
+  - 개별 파일 카드: 코드 하이라이팅, "✚ 생성" 버튼 (녹색 배경)
+  - 도움말 텍스트: "✚ 생성 버튼을 클릭하면 기본 템플릿이 자동 생성됩니다"
+  - 정상 상태: 녹색 체크박스 "✓ 모든 필수 파일 충족"
+- ✅ 기능 확인:
+  - computeRuntimeFeatureIssues 활용
+  - 기본 템플릿 자동 생성
+  - 에디터 자동 오픈
+
+**D. 텍스트 배틀 E2E 테스트 (우선순위: 中) — 완료 ✅**
+- ✅ `__tests__/text-battle-e2e.test.js` 작성 (420+ lines)
+- ✅ 테스트 범위:
+  1. coreRuntime 초기화 검증:
+     - graph + config 파싱
+     - entryNode 설정
+     - initialVariables 주입
+  2. onUserAction 훅 시뮬레이션:
+     - 디버그 토큰 ('hero_win') 처리
+     - variables.battleLast/battleScore 갱신
+     - selectNext 동작
+  3. runtime:turn-log 이벤트:
+     - 변수 설정 검증
+     - bus 연결 (실제 통합은 PlayOverlayContent)
+  4. onBattleEnd 훅 검증:
+     - outcome 계산 (winners/losers/draw)
+     - scoreboard 생성 (score/delta)
+  5. battle_log 형식 검증:
+     - settle API 계약 충족
+     - 필수 필드 (sessionId, gameId, events, participants, outcome)
+- ✅ 테스트 실행 결과:
+  ```
+  PASS __tests__/text-battle-e2e.test.js
+    텍스트 배틀 E2E 플로우
+      ✓ 1. 기본 그래프 + 설정으로 런타임 초기화
+      ✓ 2. onUserAction 훅에서 디버그 토큰으로 배틀 결과 시뮬레이션
+      ✓ 3. runtime:turn-log 이벤트 발행 및 수집
+      ✓ 4. onBattleEnd 훅으로 outcome 계산
+      ✓ 5. battle_log 형식 검증
+  
+  Test Suites: 1 passed
+  Tests: 5 passed, 1 skipped
+  Time: 1.296s
+  ```
+- ✅ 수동 테스트 시나리오 문서화:
+  - Play → 턴 진행 → 디버그 패널 확인 → settle → battle-log 페이지
+
+**E. (장기/선택) 진짜 Studio→workspace sync (우선순위: 低)**
+- 현재는 "아직 구현 안 됨"으로 문서화됨
+- 장기적으로 필요한 작업:
+  - Maker 그래프(Supabase `prompt_sets`/`slots`/`bridges`)를 읽어서
+  - `/graph/prompt-graph.json` + `/game/runtime.config.json.entryNode` 생성
+  - 프롬프트‑노드 에디터에서 Save 했을 때 워크스페이스 파일도 함께 갱신
+- 기본 텍스트 배틀 세트 하나로는 현재도 충분히 플레이 가능
+- 여유 있을 때 구현
+
+**권장 순서 완료: B → C → D → A ✅**
 
 ### Next goals (platform fit)
 
 - 사용자 흐름 강화: Capabilities 선택 → 필수 파일 자동 생성/가이드 → 런타임/Play에서 즉시 피드백까지 한 화면에서 연결되는 UX 추가.
-- 모듈화 보강: PlayOverlayContent의 입력 처리/디버그/런타임 실행을 훅/컴포넌트로 더 분리해 유지보수·테스트 용이성 확보.
+- ~~모듈화 보강: PlayOverlayContent의 입력 처리/디버그/런타임 실행을 훅/컴포넌트로 더 분리해 유지보수·테스트 용이성 확보.~~ ✅ 완료 (2025-12-11)
 - 검증/가이드: `computeRuntimeFeatureIssues` 등 핵심 헬퍼의 경량 테스트 추가, 누락 파일 경고가 지속적으로 동작하는지 자동 확인.
 - GameShell 위젯/스타일 토큰: 현재 설계된 토큰을 위젯별로 더 일관되게 적용할 수 있게 모듈화(커스터마이즈성↑).
 
@@ -319,6 +401,104 @@ So **in this repo copy**, workspace saves are not persisted to a DB; they live o
 - Local drafts in `localStorage` on the client.
 
 Persisting sets to a real DB (Supabase tables) is planned, but intentionally deferred.
+
+### 3.3 Template sync: `/template.json` → `/graph` 매핑
+
+**Status: 제한적으로 구현됨 (2025-12-11)**
+
+`ai-roomchat/components/workspace/SyncTemplateToVfs.jsx`:
+- `/template.json` 파일을 워크스페이스에서 직접 수정할 때, `/graph/prompt-graph.json`의 `label` 필드를 자동 업데이트한다.
+- 매핑 규칙:
+  - `template.json.data.template` → `/graph.label`
+  - 노드 ID 기준 매칭: `template.nodes[].id` === `graph.nodes[].id`
+- 동작 방식:
+  - `useEffect` 훅이 `/template.json` 변경을 감지
+  - 기존 `/graph/prompt-graph.json` 로드
+  - 노드별로 `label` 필드만 업데이트
+  - `updateFile()` 로 워크스페이스에 반영
+
+**주의사항:**
+- **Maker 그래프 에디터(Supabase `prompt_sets`/`slots`/`bridges`) ↔ 워크스페이스 동기화는 아직 미구현**
+- 현재는 워크스페이스에서 `/template.json`을 **직접 수정**할 때만 동작
+- Studio/Maker에서 그래프를 편집하고 저장해도 워크스페이스 파일로 자동 반영되지 않음
+
+### 3.4 Core runtime: entryNode fallback
+
+**Status: 구현 완료 (2025-12-11)**
+
+`ai-roomchat/lib/runtime/coreRuntime.js`:
+- `runtime.config.json`에서 `entryNode`가 명시되지 않았거나 해당 노드가 그래프에 없을 때:
+  - **첫 번째 노드(`graph.nodes[0]`)를 entryNode로 사용**
+  - 개발 모드(`isWorkspaceDebug()`)에서는 콘솔에 경고 로그 출력:
+    ```
+    [coreRuntime] entryNode not found, falling back to first node
+    ```
+- 이는 starter-pack이나 간단한 그래프에서 `entryNode` 설정 누락으로 인한 오류를 방지
+
+**Fallback 순서:**
+1. `config.entryNode` 값이 그래프에 존재하는 노드 ID인지 확인
+2. 없으면 `graph.nodes[0].id` 사용
+3. 그래프에 노드가 하나도 없으면 `null` (런타임 초기화 실패)
+
+### 3.5 Starter pack: 텍스트 배틀 기본 세트
+
+**Status: 구현 완료 (2025-12-11)**
+
+`ai-roomchat/pages/api/workspace/starter-pack.js`:
+- 새 워크스페이스 세트 생성 시 제공되는 기본 파일 구조
+- **서버 측에서 생성**되므로, 이 파일을 수정·배포해야 새 세트 기본값이 변경됨
+
+**텍스트 배틀 기본 세트 구성:**
+
+1. `/graph/prompt-graph.json`:
+   ```json
+   {
+     "nodes": [
+       { "id": "start", "type": "ai", "label": "배틀 시작",
+         "config": { "battle": { "routes": {
+           "on_hero_win": "end", "on_rival_win": "end", "on_tie": "end"
+         }}}},
+       { "id": "end", "type": "system", "label": "배틀 종료" }
+     ],
+     "edges": []
+   }
+   ```
+
+2. `/game/runtime.config.json`:
+   ```json
+   {
+     "engine": "builtin",
+     "mode": "turn",
+     "entryNode": "start",
+     "roles": ["players", "observers"],
+     "turnTimer": {
+       "timeoutSec": 60,
+       "roleThreshold": { "players": 1 },
+       "requiredRoles": ["players"]
+     }
+   }
+   ```
+
+3. `/game/hooks/automation.js`:
+   - `transformPrompt(ctx)`: 노드 라벨 + `variables.battleHistory` 합성
+   - `onUserAction(ctx, input)`: 
+     - `''` 또는 `'auto'` 입력 시 `/api/ai-battle-judge` 호출
+     - 판정 결과를 `variables.battleLast/battleResult/battleScore`에 저장
+     - 디버그 토큰(`hero_win`, `rival_win`, `tie` 등) 처리
+     - `selectNext` 또는 그래프 엣지 기반 fallback
+   - `selectNext(ctx, neighbors)`: 안전한 기본값 (첫 이웃 노드)
+   - `onBattleEnd(ctx)`: Rank settle을 위한 outcome 계산
+
+**Play "다음" 버튼 동작:**
+- `turn:next` 이벤트 수신 시:
+  - 현재 노드가 `ai`/`prompt` 타입: `runtime.step({ reason: "user_action", input: "auto" })`
+    - → `onUserAction` 훅 호출 → AI 판정 자동 실행
+  - 그 외 노드: `runtime.step({ reason: "auto" })` → 단순 그래프 진행
+
+**변경 주의사항:**
+- starter-pack 변경은 **새로 생성되는 세트**에만 적용
+- 기존 세트는 자동 마이그레이션되지 않음
+- 기존 세트를 업데이트하려면 새 세트 생성 후 내용 이관 필요
 
 ---
 

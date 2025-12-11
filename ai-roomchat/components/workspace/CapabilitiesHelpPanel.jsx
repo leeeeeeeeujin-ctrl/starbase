@@ -165,33 +165,61 @@ export default function CapabilitiesHelpPanel({ onClose }) {
                   선택된 capability: {activeCaps.length ? activeCaps.join(', ') : '없음'}
                 </div>
                 {Array.isArray(runtimeIssues) && runtimeIssues.length > 0 ? (
-                  <div style={{ color:'#fca5a5', fontSize:12 }}>
-                    필요한 항목이 없어 비활성화된 기능:
+                  <div style={{ 
+                    marginTop: 8,
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    border: '1px solid rgba(248,113,113,0.4)',
+                    background: 'rgba(120,40,40,0.35)',
+                    color:'#fca5a5',
+                    fontSize:12
+                  }}>
+                    <div style={{ fontWeight: 600, marginBottom: 6, color: '#fee2e2' }}>
+                      ⚠️ 비활성화된 기능 ({runtimeIssues.length}개)
+                    </div>
                     <ul style={{ margin:'4px 0 0', paddingLeft:16 }}>
                       {runtimeIssues.map((it, idx) => (
-                        <li key={`${it.id}-${idx}`} style={{ lineHeight:1.4 }}>
-                          <span style={{ color:'#f87171' }}>{it.id}</span>{' '}
+                        <li key={`${it.id}-${idx}`} style={{ lineHeight:1.6, marginBottom: 8 }}>
+                          <div style={{ fontWeight: 600, color:'#fca5a5', marginBottom: 4 }}>{it.id}</div>
                           {it.missingFiles?.length ? (
-                            <div>
-                              파일 없음:
+                            <div style={{ marginLeft: 8 }}>
+                              <div style={{ color: '#fecaca', marginBottom: 2 }}>
+                                📄 누락된 파일 ({it.missingFiles.length}개):
+                              </div>
                               <ul style={{ margin: '2px 0 0', paddingLeft: 14 }}>
                                 {it.missingFiles.map((f, i) => (
-                                  <li key={`${f}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                    <code>{f}</code>
+                                  <li key={`${f}-${i}`} style={{ 
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 8,
+                                    marginBottom: 4,
+                                    padding: '4px 6px',
+                                    borderRadius: 6,
+                                    background: 'rgba(15,23,42,0.5)'
+                                  }}>
+                                    <code style={{ 
+                                      flex: 1,
+                                      color: '#fbbf24',
+                                      fontSize: 11 
+                                    }}>{f}</code>
                                     {ws && typeof ws.addFile === 'function' ? (
                                       <button
                                         type="button"
                                         onClick={() => handleCreateFile(f)}
                                         style={{
-                                          padding: '2px 6px',
+                                          padding: '4px 10px',
                                           borderRadius: 6,
-                                          border: '1px solid #4b5563',
-                                          background: '#020617',
-                                          color: '#e5e7eb',
-                                          fontSize: 10,
+                                          border: '1px solid #065f46',
+                                          background: '#064e3b',
+                                          color: '#d1fae5',
+                                          fontSize: 11,
+                                          fontWeight: 600,
+                                          cursor: 'pointer',
+                                          flexShrink: 0
                                         }}
+                                        title={`${f} 파일을 기본 템플릿으로 생성하고 편집기에서 엽니다`}
                                       >
-                                        생성
+                                        ✚ 생성
                                       </button>
                                     ) : null}
                                   </li>
@@ -200,17 +228,38 @@ export default function CapabilitiesHelpPanel({ onClose }) {
                             </div>
                           ) : null}
                           {it.missingCaps?.length ? (
-                            <div>capability 누락: {it.missingCaps.join(', ')}</div>
+                            <div style={{ marginLeft: 8, marginTop: 4, color: '#fbbf24' }}>
+                              🔌 필요한 capability: {it.missingCaps.join(', ')}
+                            </div>
                           ) : null}
                         </li>
                       ))}
                     </ul>
-                    <div style={{ marginTop:6, color:'#cbd5e1' }}>
-                      필요한 파일을 새로 만들려면 탭에서 <code>파일 추가</code> 후 위 경로대로 생성하세요.
+                    <div style={{ 
+                      marginTop:10,
+                      paddingTop: 8,
+                      borderTop: '1px solid rgba(248,113,113,0.2)',
+                      color:'#e5e7eb',
+                      lineHeight: 1.5
+                    }}>
+                      <strong>도움말:</strong> <code style={{ color: '#fbbf24' }}>✚ 생성</code> 버튼을 클릭하면
+                      기본 템플릿이 자동으로 생성되고 편집기에서 열립니다.
+                      필요에 맞게 내용을 수정하세요.
                     </div>
                   </div>
                 ) : (
-                  <div style={{ color:'#34d399', fontSize:12 }}>모든 선택된 기능의 필수 파일이 충족됨</div>
+                  <div style={{ 
+                    marginTop: 8,
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    border: '1px solid rgba(52,211,153,0.4)',
+                    background: 'rgba(6,78,59,0.35)',
+                    color:'#6ee7b7',
+                    fontSize:12,
+                    fontWeight: 600
+                  }}>
+                    ✓ 모든 선택된 기능의 필수 파일이 충족됨
+                  </div>
                 )}
               </>
             )}
