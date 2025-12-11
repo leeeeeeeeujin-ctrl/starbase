@@ -247,6 +247,50 @@ export default function MakerEditor() {
     return () => clearTimeout(t);
   }, [nodes, edges, toTemplateObject, setTemplateText]);
 
+  // Real-time sync to workspace /graph/prompt-graph.json
+  const { writeFile, files } = useWorkspace();
+  useEffect(() => {
+    if (syncingRef.current || !nodes || !edges || !writeFile) return;
+    const t = setTimeout(() => {
+      try {
+        // 워크스페이스 /graph 파일에 실시간 반영
+        const graphData = {
+          nodes: nodes.map(n => ({
+            id: n.id,
+            type: n.type || 'prompt',
+            label: n.data?.template?.slice(0, 50) || n.data?.label || n.id,
+            data: n.data || {}
+          })),
+          edges: edges.map(e => ({
+            id: e.id,
+            source: e.source,
+            target: e.target,
+            label: e.label || '',
+            data: e.data || {}
+          }))
+        };
+        writeFile('/graph/prompt-graph.json', JSON.stringify(graphData, null, 2) + '\n');
+        
+        // entryNode도 자동 업데이트 (시작 노드가 있으면)
+        const startNode = nodes.find(n => n.data?.isStart);
+        if (startNode && files) {
+          try {
+            const configPath = '/game/runtime.config.json';
+            const existing = files[configPath]?.content;
+            if (existing) {
+              const config = JSON.parse(existing);
+              config.entryNode = startNode.id;
+              writeFile(configPath, JSON.stringify(config, null, 2) + '\n');
+            }
+          } catch {}
+        }
+      } catch (err) {
+        console.warn('[MakerEditor] sync to workspace /graph failed', err);
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [nodes, edges, writeFile, files]);
+
   const {
     selectedNode,
     selectedNodeId,
