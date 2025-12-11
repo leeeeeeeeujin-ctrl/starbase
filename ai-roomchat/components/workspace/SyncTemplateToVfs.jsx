@@ -26,8 +26,29 @@ function InnerSync({ text, setText }){
           const nodes = Array.isArray(obj.nodes) ? obj.nodes : [];
           const edges = Array.isArray(obj.edges) ? obj.edges : [];
           const g = {
-            nodes: nodes.map(n => ({ id: n.id, type: n.type || 'prompt', label: n.data?.name || n.label || '' })),
-            edges: edges.map(e => ({ id: e.id, source: e.source, target: e.target, label: e.label || '' })),
+            // 템플릿 노드의 data.template(프롬프트 본문)를 우선 label로 투영하고,
+            // 나머지 필드는 그대로 유지해 런타임에서 참조할 수 있게 둔다.
+            nodes: nodes.map((n) => {
+              const data = n && typeof n.data === 'object' ? n.data : {};
+              const label =
+                (typeof data.template === 'string' && data.template.length
+                  ? data.template
+                  : null) ||
+                (typeof data.name === 'string' && data.name.length ? data.name : null) ||
+                (typeof n.label === 'string' && n.label.length ? n.label : '');
+              return {
+                id: n.id,
+                type: n.type || 'prompt',
+                label,
+                data,
+              };
+            }),
+            edges: edges.map((e) => ({
+              id: e.id,
+              source: e.source,
+              target: e.target,
+              label: e.label || '',
+            })),
           };
           writeFile('/graph/prompt-graph.json', JSON.stringify(g, null, 2) + '\n');
         } catch {
