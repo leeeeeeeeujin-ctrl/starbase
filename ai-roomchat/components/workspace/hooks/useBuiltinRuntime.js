@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { createCoreRuntime } from '../../../lib/runtime/coreRuntime.js';
 import { loadHooksFromSource } from '../../../lib/runtime/safeEvalHookModule.js';
 import {
@@ -21,7 +21,8 @@ import {
  * @param {boolean} params.debugPromptEnabled - 프롬프트 디버그 활성화 여부
  * @param {boolean} params.debugLogCallsEnabled - AI 호출 로그 활성화 여부
  * @param {Object} params.gridEngineRef - Grid 엔진 ref
- * @returns {{ runtimeRef: React.MutableRefObject, hooksRef: React.MutableRefObject }}
+ * @param {Object} params.runtimeRef - Runtime ref (외부에서 전달)
+ * @param {Object} params.hooksRef - Hooks ref (외부에서 전달)
  */
 export function useBuiltinRuntime({
   engine,
@@ -33,10 +34,9 @@ export function useBuiltinRuntime({
   debugPromptEnabled,
   debugLogCallsEnabled,
   gridEngineRef,
+  runtimeRef,
+  hooksRef,
 }) {
-  const runtimeRef = useRef(null);
-  const hooksRef = useRef(null);
-
   useEffect(() => {
     if (engine !== 'builtin') return;
 
@@ -359,7 +359,7 @@ export function useBuiltinRuntime({
     debugPromptEnabled,
     debugLogCallsEnabled,
     gridEngineRef,
+    runtimeRef,
+    hooksRef,
   ]);
-
-  return { runtimeRef, hooksRef };
 }
