@@ -13,6 +13,12 @@ export function createCoreRuntime({ graph, config, hooks, files, initialVariable
   const { nodesById, outEdges } = buildIndex(graph || {});
   const cfg = config || {};
   let currentId = cfg.entryNode || null;
+  if (!currentId || !nodesById.has(currentId)) {
+    // entryNode가 비어 있거나 그래프에 존재하지 않으면
+    // 첫 번째 노드를 안전한 기본값으로 사용한다.
+    const first = nodesById.keys().next();
+    currentId = first && !first.done ? first.value : null;
+  }
   let turn = 0;
   const variables =
     initialVariables && typeof initialVariables === 'object'
