@@ -24,6 +24,14 @@ try {
   }
 } catch (_) {}
 
+// Global shim for legacy `tplText` references in old bundles.
+try {
+  if (typeof globalThis !== 'undefined' && typeof globalThis.tplText === 'undefined') {
+    // Ensure it exists so any unguarded reads do not throw ReferenceError.
+    globalThis.tplText = '';
+  }
+} catch (_) {}
+
 import { useEffect, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import dynamic from 'next/dynamic';
