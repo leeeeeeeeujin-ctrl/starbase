@@ -1331,13 +1331,52 @@ export function useStartClientEngine(gameId, options = {}) {
     [patchEngineState]
   );
   const [turnTimerSeconds] = useState(() => {
-    const timerFromMeta = Number(initialSessionMeta?.turnTimer?.baseSeconds);
-    if (Number.isFinite(timerFromMeta) && timerFromMeta > 0) {
-      return timerFromMeta;
+    const meta = initialSessionMeta?.turnTimer;
+    if (meta !== undefined && meta !== null) {
+      if (typeof meta === 'object') {
+        const fromTimeout = Number(meta.timeoutSec ?? meta.timeout_seconds);
+        if (Number.isFinite(fromTimeout) && fromTimeout > 0) {
+          return Math.floor(fromTimeout);
+        }
+        const fromBase = Number(meta.baseSeconds);
+        if (Number.isFinite(fromBase) && fromBase > 0) {
+          return Math.floor(fromBase);
+        }
+      } else {
+        const legacy = Number(meta);
+        if (Number.isFinite(legacy) && legacy > 0) {
+          return Math.floor(legacy);
+        }
+      }
     }
     if (typeof window === 'undefined') return 60;
-    const stored = Number(readStartSessionValue(START_SESSION_KEYS.TURN_TIMER));
-    if (Number.isFinite(stored) && stored > 0) return stored;
+    const rawStored = readStartSessionValue(START_SESSION_KEYS.TURN_TIMER);
+    if (rawStored != null) {
+      try {
+        const trimmed = String(rawStored).trim();
+        if (trimmed) {
+          if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+            const parsed = JSON.parse(trimmed);
+            if (parsed && typeof parsed === 'object') {
+              const fromTimeout = Number(parsed.timeoutSec ?? parsed.timeout_seconds);
+              if (Number.isFinite(fromTimeout) && fromTimeout > 0) {
+                return Math.floor(fromTimeout);
+              }
+              const fromBase = Number(parsed.baseSeconds);
+              if (Number.isFinite(fromBase) && fromBase > 0) {
+                return Math.floor(fromBase);
+              }
+            }
+          }
+          const storedNumeric = Number(trimmed);
+          if (Number.isFinite(storedNumeric) && storedNumeric > 0) {
+            return Math.floor(storedNumeric);
+          }
+        }
+      } catch {
+        // ignore malformed TURN_TIMER values
+      }
+    }
     return 60;
   });
   const realtimeManagerRef = useRef(null);
@@ -1366,6 +1405,44 @@ export function useStartClientEngine(gameId, options = {}) {
   const turnVoteControllerRef = useRef(null);
   if (!turnVoteControllerRef.current) {
     turnVoteControllerRef.current = createTurnVoteController();
+    try {
+      const meta = initialSessionMeta?.turnTimer;
+      let ratio = null;
+      if (meta && typeof meta === 'object') {
+        const rawThreshold =
+          meta.roleThreshold ?? meta.thresholdRatio ?? meta.voteThreshold ?? null;
+        const numeric = Number(rawThreshold);
+        if (Number.isFinite(numeric) && numeric > 0 && numeric <= 1) {
+          ratio = numeric;
+        }
+      }
+      if (ratio === null && typeof window !== 'undefined') {
+        const rawStored = readStartSessionValue(START_SESSION_KEYS.TURN_TIMER);
+        if (rawStored != null) {
+          const trimmed = String(rawStored).trim();
+          if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+            try {
+              const parsed = JSON.parse(trimmed);
+              if (parsed && typeof parsed === 'object') {
+                const rawThreshold =
+                  parsed.roleThreshold ?? parsed.thresholdRatio ?? parsed.voteThreshold ?? null;
+                const numeric = Number(rawThreshold);
+                if (Number.isFinite(numeric) && numeric > 0 && numeric <= 1) {
+                  ratio = numeric;
+                }
+              }
+            } catch {
+              // ignore malformed TURN_TIMER threshold
+            }
+          }
+        }
+      }
+      if (ratio !== null) {
+        turnVoteControllerRef.current.configure({ thresholdRatio: ratio });
+      }
+    } catch {
+      // ignore configuration errors and fall back to default threshold
+    }
   }
   const initialRealtimeSnapshotRef = useRef(null);
   if (!initialRealtimeSnapshotRef.current) {
@@ -4524,6 +4601,8 @@ export function useStartClientEngine(gameId, options = {}) {
     consensus: {
       required: eligibleOwnerIds.length,
       count: consensusCount,
+      eligibleOwnerIds,
+      consentedOwnerIds,
       viewerEligible: viewerCanConsent,
       viewerHasConsented,
       active: needsConsensus,

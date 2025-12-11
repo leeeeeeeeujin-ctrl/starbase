@@ -32,7 +32,7 @@ function EventRow({ ev }) {
 
 export default function BattleLogPage() {
   const router = useRouter();
-  const { sessionId } = router.query || {};
+  const { sessionId, view: viewParam } = router.query || {};
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -80,10 +80,35 @@ export default function BattleLogPage() {
     return null;
   }
 
-  const events = Array.isArray(data.battleLog?.events) ? data.battleLog.events : [];
+  const battleLog = data.battleLog || {};
+  const events = Array.isArray(battleLog?.events) ? battleLog.events : [];
   const highlights = data.result?.highlightIds || data.battleLog?.highlightIds || [];
   const highlightSet = new Set(highlights);
   const highlightEvents = events.filter(ev => highlightSet.has(ev.id));
+
+  const participants =
+    battleLog && typeof battleLog.participants === 'object' ? battleLog.participants : {};
+  const scoreboardFromLog =
+    battleLog && typeof battleLog.scoreboard === 'object' && battleLog.scoreboard
+      ? battleLog.scoreboard
+      : null;
+  const scoresFromResult =
+    data.result && typeof data.result.scores === 'object' ? data.result.scores : null;
+  const scoreboard = scoreboardFromLog || scoresFromResult || null;
+  const winners = Array.isArray(data.result?.winners) ? data.result.winners : [];
+  const losers = Array.isArray(data.result?.losers) ? data.result.losers : [];
+  const draw = !!data.result?.draw;
+  const winnerSet = new Set(winners.map(id => String(id)));
+  const loserSet = new Set(losers.map(id => String(id)));
+  const hasScoreboard =
+    scoreboard && typeof scoreboard === 'object' && Object.keys(scoreboard).length > 0;
+
+  const viewId =
+    typeof viewParam === 'string' && viewParam.trim() ? viewParam.trim() : 'default';
+  const showResultCard = true;
+  const showScoreboardCard = viewId === 'default' || viewId === 'scores' || viewId === 'summary';
+  const showHighlights = viewId === 'default' || viewId === 'summary' || viewId === 'highlights';
+  const showFullLog = viewId === 'default' || viewId === 'log' || viewId === 'timeline';
 
   const templateId =
     data.result?.meta?.templateId ||
@@ -104,14 +129,146 @@ export default function BattleLogPage() {
           </div>
         </div>
 
-        <div style={{ border: '1px solid rgba(148,163,184,0.25)', borderRadius: 12, padding: 14, background: 'rgba(15,23,42,0.7)' }}>
-          <div style={{ fontSize: 13, color: '#cbd5e1', marginBottom: 6 }}>결과</div>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 13 }}>
-            <span>승자: {(data.result?.winners || []).join(', ') || '-'}</span>
-            <span>패자: {(data.result?.losers || []).join(', ') || '-'}</span>
-            <span>무승부: {data.result?.draw ? '예' : '아니오'}</span>
+        {showResultCard && (
+          <div style={{ border: '1px solid rgba(148,163,184,0.25)', borderRadius: 12, padding: 14, background: 'rgba(15,23,42,0.7)' }}>
+            <div style={{ fontSize: 13, color: '#cbd5e1', marginBottom: 6 }}>결과</div>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 13 }}>
+              <span>승자: {(data.result?.winners || []).join(', ') || '-'}</span>
+              <span>패자: {(data.result?.losers || []).join(', ') || '-'}</span>
+              <span>무승부: {data.result?.draw ? '예' : '아니오'}</span>
+            </div>
           </div>
-        </div>
+        )}
+
+        {showScoreboardCard && hasScoreboard ? (
+          <div
+            style={{
+              border: '1px solid rgba(148,163,184,0.3)',
+              borderRadius: 12,
+              padding: 14,
+              background: 'rgba(15,23,42,0.75)',
+              display: 'grid',
+              gap: 8,
+            }}
+          >
+            <div style={{ fontSize: 13, color: '#cbd5e1' }}>참여자 요약</div>
+            <div style={{ display: 'grid', gap: 8 }}>
+              {Object.entries(scoreboard).map(([slotId, row]) => {
+                const key = String(slotId);
+                const participant = participants[key] || {};
+                const name =
+                  participant.heroName ||
+                  participant.hero_name ||
+                  participant.name ||
+                  participant.displayName ||
+                  key;
+                const role = participant.role || '';
+                const baseScore =
+                  typeof row === 'number'
+                    ? row
+                    : typeof row?.score === 'number'
+                      ? row.score
+                      : null;
+                const delta =
+                  typeof row?.delta === 'number' && Number.isFinite(row.delta)
+                    ? row.delta
+                    : null;
+                const tone = winnerSet.has(key)
+                  ? 'win'
+                  : loserSet.has(key)
+                    ? 'lose'
+                    : draw
+                      ? 'draw'
+                      : 'neutral';
+
+                let borderColor = 'rgba(148,163,184,0.45)';
+                let bg = 'rgba(15,23,42,0.9)';
+                let textColor = '#e5e7eb';
+                if (tone === 'win') {
+                  borderColor = 'rgba(34,197,94,0.9)';
+                  bg = 'linear-gradient(135deg, rgba(6,78,59,0.9), rgba(5,46,22,0.95))';
+                  textColor = '#bbf7d0';
+                } else if (tone === 'lose') {
+                  borderColor = 'rgba(239,68,68,0.85)';
+                  bg = 'linear-gradient(135deg, rgba(127,29,29,0.9), rgba(69,10,10,0.95))';
+                  textColor = '#fecaca';
+                } else if (tone === 'draw') {
+                  borderColor = 'rgba(245,158,11,0.85)';
+                  bg = 'linear-gradient(135deg, rgba(120,53,15,0.9), rgba(69,26,3,0.95))';
+                  textColor = '#fde68a';
+                }
+
+                const scoreText =
+                  baseScore != null ? baseScore : delta != null ? delta : null;
+                const deltaLabel =
+                  delta != null && delta !== baseScore
+                    ? `${delta > 0 ? '+' : ''}${delta}`
+                    : null;
+
+                return (
+                  <div
+                    key={key}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '8px 10px',
+                      borderRadius: 10,
+                      border: `1px solid ${borderColor}`,
+                      background: bg,
+                    }}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 700,
+                          color: textColor,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
+                        {name}
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 2 }}>
+                        {role ? (
+                          <span style={{ fontSize: 11, color: '#bfdbfe' }}>
+                            역할: <span style={{ color: '#e5e7eb' }}>{role}</span>
+                          </span>
+                        ) : null}
+                        {tone === 'win' ? (
+                          <span style={{ fontSize: 11, color: '#bbf7d0' }}>승리</span>
+                        ) : tone === 'lose' ? (
+                          <span style={{ fontSize: 11, color: '#fecaca' }}>패배</span>
+                        ) : tone === 'draw' ? (
+                          <span style={{ fontSize: 11, color: '#fde68a' }}>무승부</span>
+                        ) : null}
+                      </div>
+                    </div>
+                    {scoreText != null || deltaLabel ? (
+                      <div
+                        style={{
+                          fontSize: 12,
+                          textAlign: 'right',
+                          color: '#e5e7eb',
+                          minWidth: 80,
+                        }}
+                      >
+                        {scoreText != null ? <div>점수 {scoreText}</div> : null}
+                        {deltaLabel ? (
+                          <div style={{ fontSize: 11, color: delta > 0 ? '#bbf7d0' : '#fecaca' }}>
+                            Δ {deltaLabel}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
 
         {templateId || templateVars ? (
           <div style={{ border: '1px solid rgba(129,140,248,0.5)', borderRadius: 12, padding: 14, background: 'rgba(30,64,175,0.25)' }}>
@@ -143,7 +300,7 @@ export default function BattleLogPage() {
           </div>
         ) : null}
 
-        {highlightEvents.length ? (
+        {showHighlights && highlightEvents.length ? (
           <div style={{ display: 'grid', gap: 8 }}>
             <div style={{ fontSize: 14, fontWeight: 700 }}>하이라이트</div>
             {highlightEvents.map(ev => (
@@ -152,18 +309,20 @@ export default function BattleLogPage() {
           </div>
         ) : null}
 
-        <div style={{ display: 'grid', gap: 8 }}>
-          <div style={{ fontSize: 14, fontWeight: 700 }}>전체 로그</div>
-          {events.length === 0 ? (
-            <div style={{ fontSize: 13, color: '#94a3b8' }}>기록이 없습니다.</div>
-          ) : (
-            <div style={{ display: 'grid', gap: 8 }}>
-              {events.map(ev => (
-                <EventRow key={ev.id} ev={ev} />
-              ))}
-            </div>
-          )}
-        </div>
+        {showFullLog && (
+          <div style={{ display: 'grid', gap: 8 }}>
+            <div style={{ fontSize: 14, fontWeight: 700 }}>전체 로그</div>
+            {events.length === 0 ? (
+              <div style={{ fontSize: 13, color: '#94a3b8' }}>기록이 없습니다.</div>
+            ) : (
+              <div style={{ display: 'grid', gap: 8 }}>
+                {events.map(ev => (
+                  <EventRow key={ev.id} ev={ev} />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

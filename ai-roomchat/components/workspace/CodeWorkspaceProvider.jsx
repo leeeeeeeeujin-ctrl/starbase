@@ -43,14 +43,25 @@ const defaultFiles = {
   "/template.json": { content: "{}\n", readonly: false },
   "/graph/prompt-graph.json": { content: "{\n  \"nodes\": [],\n  \"edges\": []\n}\n", readonly: false },
   "/game/runtime.config.json": {
-    content: JSON.stringify({
-      version: 1,
-      roles: ["players", "observers"],
-      voteThreshold: 0.6667,
-      durations: [30, 60, 90, 120, 180],
-      entryNode: null,
-      ai: { model: "gemini-2.5-flash" }
-    }, null, 2)+"\n",
+    content: JSON.stringify(
+      {
+        version: 1,
+        roles: ["players", "observers"],
+        // turnTimer: 턴 진행 ready 규칙(NextBar.policy와 동일 의미)
+        turnTimer: {
+          timeoutSec: 60,
+          roleThreshold: 0.5,
+          requiredRoles: ["players"],
+        },
+        // 기존 voteThreshold/durations는 하위 호환용(점진적 마이그레이션 대상)
+        voteThreshold: 0.6667,
+        durations: [30, 60, 90, 120, 180],
+        entryNode: null,
+        ai: { model: "gemini-2.5-flash" },
+      },
+      null,
+      2,
+    )+"\\n",
     readonly: false,
   },
   "/game/hooks/automation.js": {

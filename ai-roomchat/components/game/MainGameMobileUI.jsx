@@ -56,6 +56,7 @@ export default function MainGameMobileUI({
   rankContext = null,
   shellConfig = null,
   battleOutcome = null,
+  consensus = null,
 }) {
   const isMobile = useIsMobile(820); // currently unused but reserved for responsive adjustments
   const [layout, setLayout] = useState(() => loadLayout());
@@ -64,7 +65,36 @@ export default function MainGameMobileUI({
   const [chatText, setChatText] = useState('');
   const { files } = useWorkspace();
   const uiConfig = useMemo(() => readUiConfig(template), [template]);
-  const nextPolicy = uiConfig?.nextBar?.policy || { timeoutSec: null, roleThreshold: null };
+
+  // Derive turn progression policy (nextBar) from template and /game/runtime.config.json.
+  const runtimeTurnTimer = useMemo(() => {
+    try {
+      const cfgText = files?.['/game/runtime.config.json']?.content || '';
+      if (!cfgText) return null;
+      const cfg = JSON.parse(cfgText || '{}');
+      if (cfg && typeof cfg.turnTimer === 'object' && cfg.turnTimer !== null) {
+        return cfg.turnTimer;
+      }
+    } catch {
+      // ignore malformed runtime.config
+    }
+    return null;
+  }, [files?.['/game/runtime.config.json']?.content]);
+
+  const nextPolicy = useMemo(() => {
+    const fromTemplate = uiConfig?.nextBar?.policy || null;
+    const base = fromTemplate || runtimeTurnTimer || {};
+    const timeoutSec =
+      typeof base.timeoutSec === 'number' && Number.isFinite(base.timeoutSec)
+        ? base.timeoutSec
+        : null;
+    const roleThreshold =
+      typeof base.roleThreshold === 'number' && Number.isFinite(base.roleThreshold)
+        ? base.roleThreshold
+        : null;
+    const requiredRoles = Array.isArray(base.requiredRoles) ? base.requiredRoles : undefined;
+    return { timeoutSec, roleThreshold, requiredRoles };
+  }, [uiConfig, runtimeTurnTimer]);
   const [secondsLeft, setSecondsLeft] = useState(() =>
     typeof nextPolicy.timeoutSec === 'number' ? nextPolicy.timeoutSec : null
   );
@@ -74,6 +104,18 @@ export default function MainGameMobileUI({
   const character = useMemo(() => pickCharacter(template), [template]);
   const imageUrl = character?.image || pickFirstImage(template);
   const userLabel = useMemo(() => user?.name || user?.id || 'User #1234', [user]);
+
+  const readySummary = useMemo(() => {
+    if (!consensus || typeof consensus !== 'object') return null;
+    const rawRequired = Number(consensus.required);
+    const rawCount = Number(consensus.count);
+    const required = Number.isFinite(rawRequired) && rawRequired > 0 ? Math.floor(rawRequired) : 0;
+    const count = Number.isFinite(rawCount) && rawCount > 0 ? Math.floor(rawCount) : 0;
+    const safeCount = required > 0 ? Math.min(count, required) : count;
+    const viewerHasConsented = Boolean(consensus.viewerHasConsented);
+    if (!required && !safeCount && !viewerHasConsented) return null;
+    return { required, count: safeCount, viewerHasConsented };
+  }, [consensus]);
 
   // Persist layout edits driven by template/runtime (no manual edit UI)
   useEffect(() => {
@@ -311,6 +353,7 @@ export default function MainGameMobileUI({
         rankContext,
         debugLog,
         debugHighlights,
+        consensus,
       );
     }
 
@@ -363,6 +406,8 @@ export default function MainGameMobileUI({
                   ? runtimeSecondsLeft
                   : secondsLeft
               }
+              policy={nextPolicy}
+              readySummary={readySummary}
             />
           )}
         />
@@ -451,6 +496,8 @@ export default function MainGameMobileUI({
     turnLogEvents,
     debugLog,
     debugHighlights,
+    nextPolicy,
+    consensus,
   ]);
 
   return (
@@ -491,9 +538,43 @@ function GameChat({ items }) {
   );
 }
 
-function NextBar({ onNext, secondsLeft }) {
+function NextBar({ onNext, secondsLeft, policy, readySummary }) {
+  const thresholdPct =
+    policy && typeof policy.roleThreshold === 'number' && Number.isFinite(policy.roleThreshold)
+      ? Math.round(policy.roleThreshold * 100)
+      : null;
+  const requiredRoles =
+    policy && Array.isArray(policy.requiredRoles) && policy.requiredRoles.length > 0
+      ? policy.requiredRoles.join(', ')
+      : null;
+
   return (
-    <div style={{ display:'flex', justifyContent:'flex-end' }}>
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+      <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
+        {policy && (thresholdPct != null || requiredRoles) ? (
+          <span style={{ fontSize:11, color:'#94a3b8' }}>
+            {requiredRoles ? `역할: ${requiredRoles}` : null}
+            {requiredRoles && thresholdPct != null ? ' · ' : null}
+            {thresholdPct != null ? `ready ≥ ${thresholdPct}%` : null}
+          </span>
+        ) : null}
+        {readySummary && (readySummary.required > 0 || readySummary.count > 0) ? (
+          <span style={{ fontSize:11, color:'#a5b4fc' }}>
+            ready {readySummary.count} / {readySummary.required || '–'}
+          </span>
+        ) : null}
+        {readySummary ? (
+          <span
+            style={{
+              fontSize:11,
+              color: readySummary.viewerHasConsented ? '#bbf7d0' : '#a5b4fc',
+            }}
+          >
+            ready {Number(readySummary.count) || 0} / {readySummary.required || '–'}
+            {readySummary.viewerHasConsented ? ' · 내 투표 완료' : ''}
+          </span>
+        ) : null}
+      </div>
       <div style={{ display:'flex', alignItems:'center', gap:8 }}>
         {typeof secondsLeft === 'number' && secondsLeft >= 0 && (
           <span style={{ fontSize:12, color:'#93c5fd' }}>자동 진행: {secondsLeft}s</span>
@@ -600,7 +681,15 @@ function readUiConfig(template){
   return {};
 }
 
-function buildDefaultWidgets(template, flags, gridState, rankContext, battleLog, highlightEvents){
+function buildDefaultWidgets(
+  template,
+  flags,
+  gridState,
+  rankContext,
+  battleLog,
+  highlightEvents,
+  consensus,
+){
   const list = [];
   const logEvents = Array.isArray(battleLog?.events) ? battleLog.events : [];
   const highlights = Array.isArray(highlightEvents) ? highlightEvents : [];
@@ -618,6 +707,42 @@ function buildDefaultWidgets(template, flags, gridState, rankContext, battleLog,
   }
   // Rank participants (if provided via rankContext)
   const participants = Array.isArray(rankContext?.players) ? rankContext.players : [];
+  const viewerOwnerId =
+    typeof rankContext?.viewer?.ownerId === 'string'
+      ? rankContext.viewer.ownerId.trim()
+      : typeof rankContext?.viewer?.owner_id === 'string'
+        ? rankContext.viewer.owner_id.trim()
+        : '';
+  const readyOwnerIds = (() => {
+    if (!consensus || typeof consensus !== 'object') return new Map();
+    const eligible = Array.isArray(consensus.eligibleOwnerIds)
+      ? consensus.eligibleOwnerIds
+      : [];
+    const consented = Array.isArray(consensus.consentedOwnerIds)
+      ? consensus.consentedOwnerIds
+      : [];
+    const eligibleSet = new Set(
+      eligible
+        .map(id => (id == null ? '' : String(id).trim()))
+        .filter(id => id)
+    );
+    const consentedSet = new Set(
+      consented
+        .map(id => (id == null ? '' : String(id).trim()))
+        .filter(id => id)
+    );
+    const map = new Map();
+    eligibleSet.forEach(id => {
+      map.set(id, { eligible: true, consented: consentedSet.has(id) });
+    });
+    consentedSet.forEach(id => {
+      if (!map.has(id)) {
+        map.set(id, { eligible: false, consented: true });
+      }
+    });
+    return map;
+  })();
+  const consensusActive = Boolean(consensus && typeof consensus === 'object' && consensus.active);
   const participantsBySlot = {};
   participants.forEach((p) => {
     if (!p) return;
@@ -643,6 +768,25 @@ function buildDefaultWidgets(template, flags, gridState, rankContext, battleLog,
             const role = p?.role || '';
             const score =
               typeof p?.score === 'number' && Number.isFinite(p.score) ? p.score : null;
+            const ownerRaw = p?.ownerId ?? p?.owner_id;
+            const ownerId =
+              ownerRaw === null || ownerRaw === undefined ? '' : String(ownerRaw).trim();
+            const readyInfo = ownerId ? readyOwnerIds.get(ownerId) : null;
+            const isReady =
+              consensusActive && readyInfo && readyInfo.consented === true;
+            const isViewer =
+              ownerId && viewerOwnerId && ownerId === viewerOwnerId;
+            const borderColor = isReady
+              ? 'rgba(56,189,248,0.85)'
+              : 'rgba(51,65,85,0.7)';
+            const backgroundColor = isReady
+              ? 'linear-gradient(135deg, rgba(15,23,42,0.95), rgba(8,47,73,0.9))'
+              : 'rgba(15,23,42,0.85)';
+            const boxShadow = isReady
+              ? isViewer
+                ? '0 0 0 1px rgba(56,189,248,0.55)'
+                : '0 0 0 1px rgba(56,189,248,0.35)'
+              : 'none';
             return (
               <div
                 key={p?.id || `${heroName}-${idx}`}
@@ -652,8 +796,9 @@ function buildDefaultWidgets(template, flags, gridState, rankContext, battleLog,
                   alignItems: 'center',
                   padding: '4px 6px',
                   borderRadius: 6,
-                  background: 'rgba(15,23,42,0.85)',
-                  border: '1px solid rgba(51,65,85,0.7)',
+                  background: backgroundColor,
+                  border: `1px solid ${borderColor}`,
+                  boxShadow,
                 }}
               >
                 <div style={{ minWidth: 0 }}>
@@ -667,11 +812,28 @@ function buildDefaultWidgets(template, flags, gridState, rankContext, battleLog,
                   >
                     {heroName}
                   </div>
-                  {role ? (
-                    <div style={{ fontSize: 11, color: '#93c5fd' }}>
-                      역할: <span style={{ color: '#e5e7eb' }}>{role}</span>
-                    </div>
-                  ) : null}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 2 }}>
+                    {role ? (
+                      <div style={{ fontSize: 11, color: '#93c5fd' }}>
+                        역할: <span style={{ color: '#e5e7eb' }}>{role}</span>
+                      </div>
+                    ) : null}
+                    {isReady ? (
+                      <span
+                        style={{
+                          fontSize: 10,
+                          padding: '2px 6px',
+                          borderRadius: 999,
+                          background: 'rgba(34,197,94,0.2)',
+                          border: '1px solid rgba(34,197,94,0.7)',
+                          color: '#bbf7d0',
+                        }}
+                      >
+                        다음 투표 완료
+                        {isViewer ? ' · 내 캐릭터' : ''}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
                 {score != null ? (
                   <div style={{ fontSize: 11, color: '#fde68a', marginLeft: 8 }}>점수 {score}</div>

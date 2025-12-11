@@ -969,6 +969,34 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     () => mergeRosterEntries(matchRosterForChat, participantRosterForChat),
     [matchRosterForChat, participantRosterForChat]
   );
+  const readyOwnerIds = useMemo(() => {
+    const eligible = Array.isArray(consensus?.eligibleOwnerIds)
+      ? consensus.eligibleOwnerIds
+      : [];
+    const consented = Array.isArray(consensus?.consentedOwnerIds)
+      ? consensus.consentedOwnerIds
+      : [];
+    const eligibleSet = new Set(
+      eligible
+        .map(id => (id == null ? '' : String(id).trim()))
+        .filter(id => id)
+    );
+    const consentedSet = new Set(
+      consented
+        .map(id => (id == null ? '' : String(id).trim()))
+        .filter(id => id)
+    );
+    const map = new Map();
+    eligibleSet.forEach(id => {
+      map.set(id, { eligible: true, consented: consentedSet.has(id) });
+    });
+    consentedSet.forEach(id => {
+      if (!map.has(id)) {
+        map.set(id, { eligible: false, consented: true });
+      }
+    });
+    return map;
+  }, [consensus?.eligibleOwnerIds, consensus?.consentedOwnerIds]);
   const viewerOwnerId = useMemo(() => {
     const raw = matchState?.viewer?.ownerId || matchState?.viewer?.viewerId;
     return raw ? String(raw).trim() : '';
@@ -1382,7 +1410,16 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
                             standin: slot.standin,
                             matchSource: slot.matchSource,
                           });
-                          const statusClass = slot.ready
+                          const ownerId =
+                            slot.ownerId != null
+                              ? String(slot.ownerId).trim()
+                              : slot.member?.ownerId != null
+                                ? String(slot.member.ownerId).trim()
+                                : '';
+                          const readyInfo = ownerId ? readyOwnerIds.get(ownerId) : null;
+                          const isReady =
+                            readyInfo && readyInfo.consented === true ? true : Boolean(slot.ready);
+                          const statusClass = isReady
                             ? styles.slotReady
                             : slot.heroName === '빈 슬롯'
                               ? styles.slotEmpty
@@ -1483,6 +1520,7 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
                   }
                   rankContext={rankContext}
                   battleOutcome={battleOutcome}
+                  consensus={consensus}
                 />
               </CodeWorkspaceProvider>
             ) : (

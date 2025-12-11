@@ -24,6 +24,7 @@ export default function GameShell({
   viewerHero = null, // 선택: 랭크에서 현재 플레이어 캐릭터 요약
   rankContext = null, // 선택: 랭크 세션/참가자 컨텍스트
   battleOutcome = null, // 선택: 텍스트 베틀 등에서 onBattleEnd 결과
+  consensus = null, // 선택: 랭크 턴 합의 상태(ready/threshold 등)
 }) {
   const cfg = useMemo(() => normalizeShellConfig(shellConfig), [shellConfig]);
   const layoutPreset = useMemo(() => resolveLayoutPreset(cfg), [cfg]);
@@ -33,6 +34,11 @@ export default function GameShell({
 
   const viewerEnabled =
     cfg?.panels?.viewer?.enabled !== false && viewerHero && typeof viewerHero === 'object';
+
+  const viewerReady =
+    mode === 'rank' && consensus && typeof consensus === 'object'
+      ? Boolean(consensus.viewerHasConsented)
+      : false;
 
   const turnLogBarEnabled = (() => {
     const panelCfg = cfg?.panels?.turnLogBar;
@@ -103,12 +109,17 @@ export default function GameShell({
           style={{
             padding: '10px 14px',
             borderRadius: 12,
-            border: '1px solid rgba(148,163,184,0.4)',
+            border: viewerReady
+              ? '1px solid rgba(56,189,248,0.85)'
+              : '1px solid rgba(148,163,184,0.4)',
             background:
               'linear-gradient(135deg, rgba(15,23,42,0.95) 0%, rgba(15,23,42,0.85) 60%, rgba(30,64,175,0.35) 100%)',
             display: 'flex',
             alignItems: 'center',
             gap: 12,
+            boxShadow: viewerReady
+              ? '0 0 0 1px rgba(56,189,248,0.35)'
+              : '0 0 0 0 rgba(0,0,0,0)',
           }}
         >
           {viewerHero.avatar_url ? (
@@ -135,6 +146,22 @@ export default function GameShell({
             </div>
             {viewerHero.role ? (
               <div style={{ fontSize: 12, color: '#93c5fd' }}>{viewerHero.role}</div>
+            ) : null}
+            {mode === 'rank' && consensus && typeof consensus === 'object' ? (
+              <div
+                style={{
+                  fontSize: 11,
+                  color: viewerReady ? '#bbf7d0' : '#9ca3af',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                ready {Number.isFinite(Number(consensus.count || 0)) ? Number(consensus.count || 0) : 0}
+                {' / '}
+                {Number.isFinite(Number(consensus.required || 0)) ? Number(consensus.required || 0) : 0}
+                {viewerReady ? ' · 내 투표 완료' : ''}
+              </div>
             ) : null}
             {viewerHero.tagline ? (
               <div
@@ -170,6 +197,7 @@ export default function GameShell({
           rankContext={rankContext}
           shellConfig={cfg}
           battleOutcome={battleOutcome}
+          consensus={consensus}
         />
       </div>
 

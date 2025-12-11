@@ -121,14 +121,26 @@ Status: in progress – 텍스트 베틀/랭크 기준으로 1차 구현 완료,
     - `events = battleLog.events || []`
     - `highlights = result.highlightIds || battleLog.highlightIds || []`
     - `highlightEvents = events.filter(ev => highlights.includes(ev.id))`
-    - 화면 구성:
+    - 화면 구성(기본 프리셋, `view=default`):
       1. 상단 헤더: `세션 ID / 게임 ID / createdAt`
       2. 결과 카드: `result.winners` / `result.losers` / `result.draw`
-      3. “하이라이트” 섹션:
+      3. 참여자 요약 카드:
+         - `battleLog.scoreboard` 또는 `result.scores` 를 사용해
+           `slotId → { score, delta }` 정보를 읽고,
+           `battleLog.participants[slotId]` 의 `heroName/role` 을 함께 표시한다.
+         - 승자(`result.winners`)는 초록 계열 카드, 패자(`result.losers`)는 빨간 계열 카드,
+           무승부/기타는 중립 카드 톤으로 색을 달리해 한눈에 승패를 구분한다.
+      4. “하이라이트” 섹션:
          - `highlightEvents`를 최근순으로 카드 목록으로 보여준다.
          - 각 카드에는 `턴, type, speaker.name/slotId, summary` 를 요약 텍스트로 사용.
-      4. “전체 로그” 섹션:
+      5. “전체 로그” 섹션:
          - `events` 전체를 같은 카드 스타일로 한 번 더 렌더링한다.
+    - `view` 쿼리 파라미터에 따른 섹션 토글:
+      - `view=summary`: 결과 + 참여자 요약 + 하이라이트만 표시.
+      - `view=highlights`: 결과 + 하이라이트만 표시.
+      - `view=log` 또는 `view=timeline`: 결과 + 전체 로그만 표시.
+      - `view=scores`: 결과 + 참여자 요약만 표시.
+      - 기타/생략 시: `view=default` 와 동일하게 모든 섹션을 표시.
     - 요약 텍스트 규칙:
       - `summary = ev.summary` 가 있으면 우선 사용.
       - 없으면 `ev.prompt` 첫 줄 또는 `nodeLabel/nodeId` 중 하나를 fallback으로 사용.

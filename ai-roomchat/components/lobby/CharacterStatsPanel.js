@@ -248,7 +248,7 @@ export default function CharacterStatsPanel({
   const handleBattleClick = entry => {
     if (!entry) return;
     if (entry.sessionId) {
-      router.push(`/battle-log/${entry.sessionId}`);
+      router.push(`/battle-log/${entry.sessionId}?view=summary`);
     } else {
       router.push('/battle-log');
     }

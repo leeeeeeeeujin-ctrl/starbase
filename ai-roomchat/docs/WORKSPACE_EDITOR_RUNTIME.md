@@ -33,10 +33,12 @@ Current high-level status (this repo copy)
   - Text runtime는 실사용 가능 수준, grid-basic은 프리뷰 + 간단 엔진까지 연결.
 - AI code chat dock (UX / actions): **in progress**
   - JSON 액션 파싱/게이팅, 자동 실행 슬라이더, 로그 표현 개선 일부 반영.
+- Text battle / rank vertical: **first slice complete**
+  - Maker 워크스페이스 → Play 오버레이(`runtime:turn-log`) → Rank StartClient(coreRuntime + `onBattleEnd`) → `/api/rank/settle` + `workspace/score/score-default.js` → `battle_history` / `rank_session_battle_logs` → `/battle-log/[sessionId]` → 로비/캐릭터 최근 베틀로그 카드까지 텍스트 배틀 기준 수직선은 1차 완성. (다른 장르/PlayOverlay 전용 템플릿 확장은 후속 작업으로 분리)
 - Hub/플러그인 기반 확장: **planned**
   - Hub(로컬/외부 에이전트)를 통해 UI 테스트, 로컬 Git, Supabase 연동 등 확장을 외부 플러그인으로 제공하고 ai-roomchat은 JSON API로만 연결하는 방향.
- - Standard data slots (`variables.stats / scene / effects / speaker`): **in progress**
-   - 장르에 무관한 공통 슬롯 계약을 `docs/standard-data-slots.md` 에 정의하고, 텍스트 배틀 예제를 통해 사용하는 중.
+- Standard data slots (`variables.stats / scene / effects / speaker`): **in progress**
+  - 장르에 무관한 공통 슬롯 계약을 `docs/standard-data-slots.md` 에 정의하고, 텍스트 배틀 예제를 통해 사용하는 중.
 - Supabase persistence + SQL helpers: **planned**
   - Capability/확장 스펙만 정의되어 있고, 실제 어댑터/패널 구현은 이후 단계.
 
@@ -519,7 +521,7 @@ With this setup, the Play overlay:
 - Hub/플러그인 권한: `/docs/hub-api.md`에 Bearer 토큰 스코프/원점 제한/명령·경로 제한 초안이 있으나, 실제 키 발급·회수/플러그인별 스코프 적용 로직은 미구현.
 - Hub/플러그인: `/docs/hub-api.md`는 초안 상태, 권한/토큰/배포 플로우 미정. 플러그인 PoC 전에 권한 모델 확정 필요.
 - 매칭/정산: 스키마·API·UI 미구현. 문서/티켓만 있음.
-- 배틀로그 런타임 연결: `battleLogSchema/helpers`는 추가됐지만 PlayOverlay/정산/뷰어로의 실제 연결·커스텀 템플릿 입력 경로는 미구현.
+- 배틀로그 런타임 연결: 텍스트 배틀/랭크 수직선 기준으로는 `runtime:turn-log` → `useBattleLogDebug` → `/api/rank/settle` → `/battle-log/[sessionId]`까지 1차 연결이 완료되었고, PlayOverlay 전용 디버그/편집기 템플릿, 다른 장르/엔진에 대한 확장·커스텀 템플릿 입력 경로만 미구현 상태이다.
 - PlayOverlay: 입력/런타임/디버그 훅 분리 리팩터 미완료(계획만 기록).
 - 통합/수동: PlayOverlay(디버그 패널 포함)에서 capability 누락 경고, 필수 파일 템플릿 생성 동작 확인.
 - 관측/로그: 에러/경고 로그 수집 경로를 명시하고, 주요 경계(샌드박스/HUB/매칭)에서 로깅·타임아웃·리밋을 점검.
@@ -1519,48 +1521,44 @@ Supabase/SQL 작업 협업 메모:
      - 스냅샷이 있으면, 이 내용을 coreRuntime + `CodeWorkspaceProvider.initialFiles`에 그대로 주입해  
        플레이/메인게임이 동일한 파일/구성을 바라보도록 한다.
 
-### 11.8 남은 정렬 작업 (요약)
+### 11.8 텍스트 배틀 정산 스캐폴드 (onBattleEnd + score-default)
 
-- 워크스페이스 → 랭크 스냅샷 저장:
-  - (현재 레포 상태: **구현 완료**)  
-    - Rank 등록 UI(`RankNewClient`)에서 `/api/rank/register-game` 성공 후,  
-      현재 워크스페이스의 `/template.json`, `/graph/prompt-graph.json`, `/game/runtime.config.json`, `/game/hooks/automation.js`를 읽어  
-      `/api/rank/save-game-workspace`로 전송하는 흐름이 연결되어 있다.
-  - 이때 “어느 워크스페이스 세트의 파일을 읽을지”는 Maker/Rank 화면 간 공유 컨텍스트(예: set id)를 기준으로 결정한다.
-- 텍스트 런타임 게임에서 레거시 엔진 정리:
-  - `textRuntimeEnabled === true`인 게임:
-    - 메인 턴 진행/프롬프트/승패 로직은 오직 `coreRuntime + /game/hooks/automation.js`에서만 처리한다.
-    - (현재 레포 상태: StartClient UI와 레거시 `advanceTurn`에서 텍스트 런타임 게임에 대한 직접 진행은 막아둔 상태이며,  
-      `matchFlow`/타임라인 엔진은 로그/슬롯/투표 패널용 데이터만 유지하도록 단계적으로 축소 중이다.)
-    - **매칭 직후 자동 시작**:
-      - 텍스트 런타임 게임에서 랭크 매칭이 성공해 StartClient로 진입하면,
-        별도의 “게임 시작” 버튼을 누르지 않아도 `useStartClientEngine.handleStart()`가 자동으로 호출되어  
-        `/api/rank/start-session` → 랭크 세션 생성이 진행된다.
-      - 이 자동 시작은 StartClient가 `textRuntimeEnabled === true`이고,  
-        아직 `sessionInfo.id`가 없는 경우에만 1회 수행된다.
-- 훅에서 `ctx.variables.rank` 적극 사용:
-  - 예제 훅(`/game/hooks/automation.js`, 텍스트 배틀 예시)에서:
-    - `ctx.variables.rank.players`, `sessionId`, `gameMode`,  
-      `realtimeEnabled`, `dropInEnabled` 등을 실제로 읽어:
-      - 실시간/비실시간 분기,
-      - 난입 허용 여부,
-      - 참가자/역할별 프롬프트/점수 계산에 활용하는 패턴을 정착시킨다.
-- 세션 종료 → 랭크 점수 반영:
-  - 텍스트 배틀 세션 종료 시:
-    - `text_battle_sessions`/`text_battle_turns`와 `/game/roles.rank.json`을 함께 참고해  
-      최종 승자/점수 스냅샷을 만들고,
-    - `finalize_rank_session_outcome` 또는 이를 래핑한 RPC를 호출해 랭크/레이팅 테이블을 갱신하는 경로를 마련한다.
-- 매칭 모드/디버그 UX:
-  - `realtime_match`(`standard/off`)와 난입 옵션을:
-    - 매칭 큐 → `rankContext` → 훅 → UI까지 일관되게 전달하고,
-    - 실시간/비실시간/난입 여부에 따라 StartClient UI와 텍스트 런타임 훅이 동일한 규칙을 따르도록 정리한다.
-  - Play 디버그 패널(현재 턴 프롬프트, AI 호출 로그)와 StartClient의 로그/요약 뷰를  
-    같은 정보 소스(coreRuntime · rankContext · Supabase 로그)에 맞춰 재정비한다.
-    - `/debug/play.json`의 `logAiCalls: true` 일 때, Play 오버레이 상단 디버그 패널은
-      `variables.debug.aiCalls` 값을 읽어 간단한 AI 호출 로그를 함께 보여준다.
-      (텍스트 배틀 예제 훅은 `/api/ai-battle-judge` 호출 후 이 배열에 호출 결과를 누적한다.)
+- 정산 흐름(요약):
+  - StartClient 엔진이 한 세션 동안 `runtime:turn-log` 이벤트를 누적한다.
+  - 텍스트 배틀 훅에서 `variables.battleLast.battleEnd === true` 가 되면:
+    - `coreRuntime.getContextSnapshot('battle_end', null)` 으로 최종 컨텍스트를 읽고,
+    - 워크스페이스 `/game/hooks/automation.js` 의 `onBattleEnd(ctx)` 를 한 번 호출한다.
+  - `onBattleEnd(ctx)` 의 반환값 `{ outcome, scores, highlightIds, templateId, templateVars }` 는
+    - `buildLogFromRuntime` → `battleLog.outcome/scoreboard/highlightIds/meta.template*` 로 반영되고,
+    - `/api/rank/settle` → `workspace/score/score-default.js` → `battleHistoryStore` → `/battle-log/[sessionId]` 에서 소비된다.
 
-    같은 정보 소스(coreRuntime · rankContext · Supabase 로그)에 맞춰 재정비한다.
+- 기본 스캐폴드(현재 레포 기준):
+  - `/workspace/score/score-default.js`:
+    - 입력: `{ battleLog, participants, meta }` 또는 `battleLog` 자체.
+    - 동작:
+      - `battleLog.scoreboard` 또는 `battleLog.outcome.scores` 가 있으면 우선 사용한다.
+      - 없으면 `events` 중 `type === 'score_change'` 인 항목을 모아 slotId별 누적 점수를 계산하고,
+        `{ slotId: { score, delta } }` 형태의 scoreboard를 만든다.
+      - scoreboard를 기준으로 승자/패자/무승부(`winners/losers/draw`)를 판정한다.
+      - `highlightIds` 는 battleLog/outcome 둘 중 존재하는 값을 그대로 사용한다.
+      - meta에는 `sessionId/gameId` 등을 병합하고, `source: 'workspace/score/score-default'` 를 남긴다.
+    - 반환:
+      - `{ scores, winners, losers, draw, highlightIds, meta }` 를 그대로 `/api/rank/settle` 결과로 전달한다.
+  - `/workspace/hooks/automation.js`:
+    - 기본 구현은 outcome/scores 를 건드리지 않고, 최소한의 메타만 채운다.
+    - Maker는 이 파일을 워크스페이스 `/game/hooks/automation.js` 에 복사·수정해서 사용한다.
+      - 예: 특정 변수(턴 수, 조건 만족 여부)에 따라 승자/패자/무승부를 강제로 지정하거나,
+        `scores[slotId].reason` 에 “템플릿 기준 승리 조건”을 남기는 식으로 확장.
+
+- Maker가 변경하는 지점:
+  - `/game/hooks/automation.js`:
+    - `export function onBattleEnd(ctx) { ... }` 를 구현/수정해서:
+      - 텍스트 배틀 장르에 특화된 승패 로직,
+      - 하이라이트 이벤트 id 목록,
+      - 템플릿 id/변수(`templateId/templateVars`)를 설정할 수 있다.
+  - `/workspace/score/score-default.js` 복제본:
+    - 필요하다면 게임별로 다른 SCORE_SCRIPT_PATH 를 지정해
+      - 점수 계산/승패 판정/하이라이트 id를 전면 교체할 수 있다.
 
 ### 11.9 GameShell 통합 UI (planned)
 
@@ -3142,6 +3140,49 @@ Maker 쪽에서는 `/game/ui.shell.json`을 직접 편집하는 대신, 다음�
 - 텍스트 배틀 흐름에서 라우팅된 API 키는 현재 OpenAI 엔드포인트에만 전달됩니다.
 - 다른 프로바이더(Gemini, Claude 등) 키를 함께 쓸 경우 분기 처리가 없어 실패할 수 있으니, 추후 `provider` 필드를 받아 안전하게 분기하거나 OpenAI 전용임을 명시하는 경고를 UI/문서에 추가해야 합니다.
 
+### 베틀로그 / 하이라이트 뷰 계약
+
+- 표준 로그 스키마
+  - 실행/정산/뷰어는 모두 `lib/runtime/battleLogSchema.js` 에 정의된 공통 스키마를 사용한다.
+    - `events[]`: `type / turn / timestamp / speaker(slotId, ownerId, name, role, team) / visibility / summary / variables / attachments / tags?`.
+    - `participants`: `slotId → { ownerId, heroName, role, team, score?, characterBio? }`.
+    - `outcome`: `{ winners:[slotId], losers:[slotId], draw?, scores? }`.
+    - `scoreboard`: `{ slotId: { score, delta? } }` (없으면 `outcome.scores` 로 대체).
+    - `highlightIds`: 하이라이트 대상 event id 배열.
+
+- 하이라이트 선택 규칙
+  - 기본 규칙은 `buildLogFromRuntime` 의 `highlightRule` 로 정의된다.
+    - 기본값: `{ types: ['score_change','judge','summary'], visibility: 'public' }`.
+    - Maker가 `runtime:turn-log` 이벤트에 `type`, `visibility`, `tags` 를 채우면, 이 규칙과 결합해 하이라이트가 자동 선정된다.
+  - `onBattleEnd(ctx)` 가 `{ highlightIds }` 를 반환하면, 이 명시적 리스트가 규칙보다 우선한다.
+  - 향후에는 `/game/runtime.config.json` 의 `logTemplates` 나 전용 설정(`/game/logTemplates/*.json`) 에서
+    - 게임/장르별 하이라이트 규칙(타입/태그/visibility)을 선언해 뷰어에 전달한다.
+
+- 뷰 패턴(요약 뷰 vs 전체 로그)
+  - 기본 `/battle-log/[sessionId]` 페이지는 다음 패턴으로 표시한다.
+    - 헤더: `sessionId / gameId / createdAt`.
+    - 결과 카드: `result.winners / losers / draw`.
+    - 참여자 요약 카드: `participants + scoreboard` 를 사용해 슬롯별 점수/Δ/역할/승패(색상) 표시.
+    - 하이라이트 섹션: `highlightIds` 에 해당하는 이벤트만 카드로 표시.
+    - 전체 로그 섹션: `events[]` 전체를 같은 카드 패턴으로 렌더링.
+  - 이 레이아웃은 “기본 프리셋” 으로 간주하고,
+    - `viewId` / `logTemplates` 를 통해
+      - 하이라이트 전용 뷰(요약만), 타임라인 중심 뷰(턴 순서 전체), 점수/랭킹 중심 뷰 등으로
+      - 섹션 가시성/정렬 방식을 커스텀할 수 있도록 확장한다.
+
+- Maker / 훅이 조정할 수 있는 부분
+  - 턴 이벤트 단위:
+    - `type`(예: `'score_change'`, `'judge'`, `'dialogue'`, `'summary'`),
+      `summary`, `visibility`, `tags` 를 명시적으로 채워 하이라이트/뷰어의 우선순위를 안내한다.
+  - 종료 훅(`onBattleEnd(ctx)`):
+    - `{ outcome, scores, highlightIds, templateId, templateVars }` 를 반환해
+      - scoreboard/승패/하이라이트/템플릿 메타를 한 번에 설정한다.
+  - 설정 파일:
+    - `/game/runtime.config.json` 의 `logTemplates` 또는 별도 JSON 템플릿에서
+      - 어떤 뷰 프리셋을 기본 `/battle-log` 뷰로 사용할지,
+      - 각 섹션(결과/참여자/하이라이트/전체 로그)을 보이거나 숨길지,
+      - 타입/태그별 스타일(색상/아이콘)을 어떻게 매핑할지 선언한다.
+
 ## 부록: Codex 작업/명령 요약
 
 - 환경: Windows `cmd`에서 실행, `danger-full-access`, 네트워크 허용, 승인 정책 `never`(승인 요청 없이 해결). `node` v22.19.0 사용 가능, `python` 없음, `rg` 15.1.0 사용.
@@ -3205,3 +3246,148 @@ Play UI auto-settle: shellConfig.autoSettle=true, shellConfig.rankApiKey → /ap
 history API: sessionId 또는 gameId 조회, limit/offset 페이지네이션(기본 10, max 50), nextOffset 반환
 history API: RANK_STRICT_USER=1이면 x-user-id와 소유자 불일치 시 403 (x-api-key 있으면 조회)
 battle log 상세 페이지: /battle-log/[sessionId] → history API 호출, 하이라이트/전체 로그 표시
+
+### Turn progression & ready voting (nextBar, 텍스트 배틀 기본 규칙)
+
+텍스트 배틀 계열 런타임은 “턴 기반(next) 진행”을 기본으로 하며, 다음 턴으로 넘어갈지 여부를 **타임아웃 + 역할군별 ready 투표** 조합으로 결정한다.
+
+- 구성 요소
+  - UI 셸: `components/game/MainGameMobileUI.jsx` → `NextBar` 슬롯(`play.nextBar`)이 턴 진행 UI를 담당한다.
+  - 설정 소스: 템플릿의 `template.ui.play.nextBar.policy` 또는 기본값이 `nextPolicy`로 매핑된다.
+  - 표준 필드(초안 스펙):
+    - `timeoutSec: number | null` – 각 턴의 기본 시간 제한(초). `null`이면 자동 진행 없음.
+    - `roleThreshold: number | null` – 역할군별 “다음” 버튼을 누른 인원 비율이 어느 정도 이상이어야 ready로 보는지 (기본 구상: `0.5` = 과반).
+    - `requiredRoles?: string[]` – 모든 턴에서 ready 상태가 되어야 하는 필수 역할군 목록(예: `["attacker","defender"]`). 지정되지 않으면 참여 중인 모든 역할군을 대상으로 간주.
+- 개념적 동작
+  - 각 플레이어는 자신의 역할(예: attacker/defender/support 등)에 속한다.
+  - 한 턴 동안:
+    - 플레이어가 `NextBar`의 “다음 ▶” 을 누르면, 해당 플레이어의 역할군에 대한 “ready 투표”로 취급된다.
+    - 역할군 R 의 전체 인원 대비 ready 인원 비율이 `roleThreshold` 이상이면, R 은 ready 상태가 된다.
+    - 모든 `requiredRoles` 가 ready 이거나, 타이머(`timeoutSec`)가 0이 되면 → 다음 턴으로 진행(`runtimeBus.emit('turn:next')` / `onForceNext` 호출).
+  - 이 구조는 “승부를 투표로 가르는 것”이 아니라, **턴 진행을 위한 ready check** 를 표준화한 것이다.
+- Play 오버레이(코드 에디터) vs 메인게임
+  - Play(코드 에디터, `CodeEditorOverlayV2` + `GameShell`):
+    - 기본적으로 **디버그/실험 모드**로 취급한다.
+    - 동일한 정책 필드를 읽되, 실제로는 “뷰어 1명이 눌러도 곧바로 다음 턴으로” 진행하는 느슨한 모드를 우선하며, ready 비율은 디버그 패널/turn-log 에만 반영하는 방향을 목표로 한다.
+    - 이는 템플릿과 훅(`/game/hooks/automation.js`)을 빠르게 수정/실행해 보는 데 집중한 UX다.
+  - 메인게임(랭크 텍스트 배틀, `MainGameMobileUI` + StartClient):
+    - `timeoutSec` / `roleThreshold` / `requiredRoles`를 실제 턴 진행 규칙으로 엄격하게 적용한다.
+    - 기본 디폴트:
+      - `timeoutSec`: 장르/프리셋에 따라 30~90초 범위.
+      - `roleThreshold`: `0.5`(과반).
+      - `requiredRoles`: 참여 중인 모든 실질 역할군.
+    - 향후 `/game/runtime.config.json` 또는 템플릿에서 이 값을 커스터마이즈할 수 있게 하고, 워크스페이스의 훅(`/game/hooks/automation.js`)에서 **역할군별 투표/ready 정책**을 더 정교하게 제어할 수 있도록 확장할 계획이다.
+
+Status (2025-12-11 기준)
+
+- `/game/runtime.config.json`의 `turnTimer` 블록과 템플릿의 `ui.play.nextBar.policy`는 `MainGameMobileUI`에서 통합되어 `nextPolicy`로 사용된다.
+- 현재 클라이언트 쪽에서는 `timeoutSec`과 UI 표시(NextBar의 정책 설명 텍스트)에 우선 적용되어 있으며, 실제 멀티 유저 ready 비율 계산은 StartClient/랭크 클라이언트 채널(`TURN_TIMER*`)로 이관 예정이다.
+
+#### 랭크 세션용 턴 타이머 구성 스키마 (TURN_TIMER)
+
+- StartClient / 랭크 클라이언트는 “시작 세션 값”으로 다음 키를 사용한다.
+  - `TURN_TIMER` – 이 게임 세션 전체에 적용되는 turnTimer 정책.
+  - `TURN_TIMER_VOTE` – 뷰어(참가자)가 “다음 ▶” 을 눌렀음을 나타내는 단일 이벤트(쓰기용).
+  - `TURN_TIMER_VOTES` – 현재 턴에서 집계된 투표/ready 상태(읽기용, 필요 시).
+- `TURN_TIMER` 값은 `/game/runtime.config.json.turnTimer` 와 동일한 구조를 사용한다.
+  ```ts
+  type TurnTimerConfig = {
+    timeoutSec: number | null;
+    roleThreshold: number | null;
+    requiredRoles?: string[]; // 생략 시 참여 중인 모든 역할
+  };
+  ```
+  - StartClient는:
+    - 우선 스튜디오 템플릿의 `ui.play.nextBar.policy`를 찾고,
+    - 없으면 워크스페이스 `/game/runtime.config.json.turnTimer` 를 읽어 기본값으로 삼은 뒤,
+    - 이를 `TURN_TIMER` 키에 저장한 후 세션 전역 정책으로 사용한다.
+    - `timeoutSec` → StartClient 엔진의 `turnTimerSeconds`(턴 타이머 기본 초)로 해석된다.
+    - `roleThreshold` → 현재 구현에서는 **전체 참가자 기준** 합의 비율(thresholdRatio)로만 사용되며,
+      `requiredRoles` 기반 역할군별 세분화는 추후 확장 대상으로 남겨 둔다.
+  - 이 값은 나중에 세션 메타(`rankContext.sessionMeta.turnTimer`)에도 동일 구조로 복제해 조회 가능하게 만든다.
+
+#### 턴 진행 상태 스키마 (rankContext.turnState)
+
+- 랭크 메인게임에서 “현재 턴이 어디까지 와 있고, 각 역할군이 얼마나 ready 되었는지”는 `rankContext.turnState`로 노출한다.
+  ```ts
+  type RoleReadyState = {
+    total: number;     // 이 역할군 전체 인원 수
+    ready: number;     // 이번 턴에서 ready(다음 ▶)를 누른 인원 수
+  };
+
+  type TurnState = {
+    turn: number;      // 1‑based 턴 번호
+    secondsLeft: number | null; // 0 이상이면 남은 초, null이면 타임아웃 없음/외부 제어
+    startedAt: string; // ISO 타임스탬프
+    deadlineAt: string | null;  // ISO, 없으면 timeoutSec 미사용
+    readyByRole: Record<string, RoleReadyState>;
+    lastAdvanceReason?: 'timeout' | 'all_ready' | 'force_admin' | 'system';
+  };
+
+  // rankContext 예시 (요약)
+  interface RankContext {
+    // ...
+    viewer?: {
+      ownerId: string;
+      roles?: string[]; // 이 뷰어가 속한 역할군 목록 (예: ['attacker'])
+    };
+    turnTimer?: TurnTimerConfig; // TURN_TIMER에서 복제
+    turnState?: TurnState;
+    // ...
+  }
+  ```
+- StartClient / 랭크 클라이언트 동작(개념):
+  - 각 뷰어가 `NextBar` 에서 “다음 ▶” 을 누르면:
+    - `TURN_TIMER_VOTE` 키에 `{ turn, role, ownerId }` 같은 이벤트를 기록하고,
+    - 내부적으로 `TURN_TIMER_VOTES` / 세션 저장소에서 역할군별 ready 집계를 갱신한다.
+  - 매 틱 또는 이벤트마다:
+    - `TURN_TIMER` + 참가자 리스트를 기준으로 `readyByRole` 를 갱신하고,
+    - 타임아웃(`secondsLeft`)을 감소시키며,
+    - 모든 `requiredRoles` 가 `ready/total >= roleThreshold` 를 만족하거나, `secondsLeft <= 0` 이 되면:
+      - `turnState.lastAdvanceReason` 를 각각 `'all_ready'` 또는 `'timeout'` 으로 설정하고,
+      - 다음 턴으로 넘긴 뒤, 새로운 `TurnState`를 작성한다.
+
+#### MainGameMobileUI 에서의 소비 방식 (계약)
+
+- `components/game/MainGameMobileUI.jsx` 는 다음 정보를 사용한다.
+  - `nextPolicy` – 위에서 설명한 `TurnTimerConfig` (템플릿 + runtime.config 통합).
+  - `rankContext.turnState` – 현재 턴 상태(있을 경우).
+- 현재 구현(2025‑12‑11 기준):
+  - `nextPolicy.timeoutSec` → 로컬 카운트다운과 NextBar의 “자동 진행: Ns” 표시.
+  - `nextPolicy.roleThreshold / requiredRoles` → NextBar 왼쪽에 정책 요약 텍스트 표기.
+  - ready 비율에 따른 자동 진행 여부는 아직 StartClient/랭크 클라이언트 쪽에서만 판단하는 것으로 남겨 두고,
+    `MainGameMobileUI` 는 “정책/상태를 시각화하는 UI” 역할에 집중한다.
+- 향후 확장 방향:
+  - `rankContext.turnState.readyByRole` 를 읽어:
+    - NextBar 주변에 “attacker 2/3 ready · defender 1/2 ready” 같은 요약을 표시하고,
+    - 필요하다면 클라이언트에서도 “이미 모든 requiredRoles가 조건을 만족했는지”를 계산해
+      - 버튼 상태/텍스트를 바꾸거나(예: “대기 중...” → “모두 준비 완료”),
+      - 외부 `onForceNext` 없는 디버그/싱글플레이 모드에서 자동으로 `triggerNext()` 를 호출하는 데 사용한다.
+
+#### Ready 상태 시각화 (NextBar + 캐릭터 카드)
+
+- NextBar (턴 진행 버튼)
+  - 메인게임 화면 하단의 `NextBar` 는 다음 정보를 함께 보여준다.
+    - 남은 시간: `nextPolicy.timeoutSec` / `runtimeSecondsLeft` 를 기반으로 한 “자동 진행: Ns”.
+    - 합의 요약: StartClient의 `consensus` 스냅샷을 다운샘플링한 `readySummary` 를 사용해  
+      `ready {count} / {required}` + (뷰어가 투표한 경우 `· 내 투표 완료`) 텍스트를 표시한다.
+  - `consensus` 가 없거나(플래이/싱글플레이 등) 아직 합의 정보가 들어오지 않은 경우에는
+    ready 요약 줄을 생략하고, 기존 정책/타이머 정보만 노출된다.
+
+- 캐릭터 카드 / 슬롯 테두리
+  - `GameShell` 의 뷰어 캐릭터 섹션은 랭크 모드에서 `consensus.viewerHasConsented` 를 사용해
+    - 뷰어가 “다음 ▶” 을 눌렀을 때 카드 테두리를 청록색 계열로 강조하고,
+    - 카드 하단에 `ready {count} / {required} · 내 투표 완료` 형태의 요약을 함께 표기한다.
+  - 메인게임 `참가자` 위젯(`MainGameMobileUI` 기본 위젯)은  
+    `rankContext.players[*].ownerId` 와 `consensus.eligibleOwnerIds / consentedOwnerIds` 를 매칭해
+    - ready 상태인 참가자의 카드에 청록색 테두리/광택과 “다음 투표 완료” 배지를 표시하고,
+    - 뷰어 본인의 카드인 경우 “· 내 캐릭터” 꼬리표를 덧붙인다.
+  - StartClient의 매칭 편성 카드(슬롯 리스트)는 `consensus.eligibleOwnerIds / consentedOwnerIds` 와
+    각 슬롯의 `ownerId` 를 매칭해
+    - ready(동의 완료) 상태인 참가자의 슬롯을 `slotReady` 스타일로 고정 표시하고,
+    - 아직 동의하지 않은 슬롯은 `slotPending` 스타일을 유지한다.
+  - 현재 구현(2025‑12‑11 기준)에서는
+    - 뷰어 카드 + 매칭 슬롯 수준에서 ready 상태가 반영되고,
+    - 개별 캐릭터 상세 카드(예: RosterPanel 기반 뷰)는 차후 확장 대상으로 남겨 둔다.
+  - 이 시각화는 **장르 표준 UX** 로 간주하며, 텍스트 배틀 이외의 장르에서도
+    동일한 ready/합의 규칙을 재사용할 수 있도록 설계한다.

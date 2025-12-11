@@ -32,6 +32,45 @@ try {
   }
 } catch (_) {}
 
+// Global shims for legacy sim-user helpers used by older Play overlay bundles.
+try {
+  if (typeof globalThis !== 'undefined') {
+    if (typeof globalThis.addSimUser !== 'function') {
+      globalThis.addSimUser = function addSimUserShim() {
+        try {
+          if (typeof console !== 'undefined' && console.warn) {
+            console.warn('[simUser shim] addSimUser called before workspace sim-user helpers are wired');
+          }
+        } catch {
+          // ignore logging errors
+        }
+      };
+    }
+    if (typeof globalThis.updateSimUser !== 'function') {
+      globalThis.updateSimUser = function updateSimUserShim() {
+        try {
+          if (typeof console !== 'undefined' && console.warn) {
+            console.warn('[simUser shim] updateSimUser called before workspace sim-user helpers are wired');
+          }
+        } catch {
+          // ignore logging errors
+        }
+      };
+    }
+    if (typeof globalThis.removeSimUser !== 'function') {
+      globalThis.removeSimUser = function removeSimUserShim() {
+        try {
+          if (typeof console !== 'undefined' && console.warn) {
+            console.warn('[simUser shim] removeSimUser called before workspace sim-user helpers are wired');
+          }
+        } catch {
+          // ignore logging errors
+        }
+      };
+    }
+  }
+} catch (_) {}
+
 import { useEffect, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import dynamic from 'next/dynamic';

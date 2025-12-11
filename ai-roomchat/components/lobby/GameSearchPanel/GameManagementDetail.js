@@ -152,7 +152,7 @@ export default function GameManagementDetail({
 
   const handleBattleLogClick = sessionId => {
     if (sessionId) {
-      router.push(`/battle-log/${sessionId}`);
+      router.push(`/battle-log/${sessionId}?view=summary`);
     } else {
       router.push('/battle-log');
     }
