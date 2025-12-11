@@ -28,6 +28,33 @@ Default set philosophy
   - “빈 세트에서 새로 짓는 것”보다,
   - “기본 세트를 교본으로 삼아 빼고 더하는 것”을 우선 전략으로 삼아야 한다.
 
+Starter pack (new set defaults)
+
+- 새 세트의 초기 파일은 브라우저 `defaultFiles`가 아니라 **서버 `GET /api/workspace/starter-pack` 응답**으로 생성된다.
+  - 구현: `pages/api/workspace/starter-pack.js`  
+    → 이 파일을 수정·배포해야 “새 세트 기본값”이 바뀐다.
+- 2025‑12‑11 기준 텍스트 배틀 기본 세트 구성:
+  - `/graph/prompt-graph.json`
+    - `start` (type: `ai`) 노드: 프롬프트 작성용, `config.battle.routes` 에서 `on_hero_win / on_rival_win / on_tie → "end"`.
+    - `end` (type: `system`) 노드: 배틀 종료 안내 노드.
+  - `/game/runtime.config.json`
+    - `engine: "builtin"`, `mode: "turn"`, `entryNode: "start"`.
+    - `roles: ["players","observers"]`, `turnTimer.timeoutSec/roleThreshold/requiredRoles` 등 텍스트 배틀용 기본값 포함.
+  - `/game/hooks/automation.js`
+    - `transformPrompt(ctx)`: 노드 라벨 + `variables.battleHistory` 를 합쳐 심판용 프롬프트 생성.
+    - `onUserAction(ctx, input)`:  
+      - `''` 또는 `'auto'` 입력 시 `/api/ai-battle-judge` 호출 후 `variables.battleLast / battleResult / battleScore` 갱신.  
+      - `hero_win / rival_win / tie / rematch / end` 등 디버그 토큰 처리.  
+      - `selectNext` 혹은 그래프 기본 엣지로 fallback.
+    - `selectNext(ctx, neighbors)`: 이웃 첫 노드로 이동하는 안전한 기본값.
+- Play “다음” 버튼과의 계약:
+  - builtin 텍스트 런타임에서 `turn:next` 이벤트를 받으면,
+    - 현재 노드 type 이 `ai`/`prompt` 인 경우: `runtime.step({ reason: "user_action", input: "auto" })` → 위 훅의 `onUserAction` 경로를 통과해 **AI 판정이 자동 실행**된다.
+    - 그 외 노드: `runtime.step({ reason: "auto" })` 로 단순 그래프 진행.
+- 주의:
+  - 이 starter pack 변경은 **변경 이후에 생성된 세트**에만 적용된다.
+  - 이미 존재하는 세트는 자동 마이그레이션되지 않으므로, 필요하면 새 세트를 만들고 기존 내용을 이 구조에 맞춰 옮겨야 한다.
+
 ### Quick dev log
 
 #### 2025-12-11
