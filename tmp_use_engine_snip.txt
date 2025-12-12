@@ -1,0 +1,1292 @@
+  34:   buildOwnerRosterSnapshot,
+  35:   collectUniqueOwnerIds,
+  36:   createOwnerDisplayMap,
+  37:   deriveParticipantOwnerId,
+  38: } from './engine/participants';
+  39: import {
+  40:   appendMainGameLogs,
+  41:   initialMainGameState,
+  42:   mainGameReducer,
+  43:   patchMainGameState,
+  44:   replaceMainGameLogs,
+  45: } from './engine/mainGameMachine';
+  46: import {
+  47:   createOutcomeLedger,
+  48:   syncOutcomeLedger,
+  49:   recordOutcomeLedger,
+  50:   buildOutcomeSnapshot,
+  51: } from './engine/outcomeLedger';
+  52: import { isApiKeyError } from './engine/apiKeyUtils';
+  53: import { createTurnTimerService } from './services/turnTimerService';
+  54: import { createTurnVoteController, deriveEligibleOwnerIds } from './services/turnVoteController';
+  55: import { createRealtimeSessionManager } from './services/realtimeSessionManager';
+  56: import { createDropInQueueService } from './services/dropInQueueService';
+  57: import { createAsyncSessionManager } from './services/asyncSessionManager';
+  58: import { mergeTimelineEvents, normalizeTimelineStatus } from '@/lib/rank/timelineEvents';
+  59: import { buildDropInExtensionTimelineEvent } from '@/lib/rank/dropInTimeline';
+  60: import { prepareHistoryPayload } from '@/lib/rank/chatHistory';
+  61: import { presummarizeHistory } from '@/lib/client/offload/presummarize';
+  62: import { buildHistorySeedEntries } from '@/lib/rank/historySeeds';
+  63: import { runClientAction } from '@/lib/rank/clientActions';
+  64: import { runMatchWithFallback } from '@/lib/client/offload/ruleSim';
+  65: import { fetchCached } from '@/lib/client/cache/fetchCached';
+  66: import { useHistoryBuffer } from './hooks/useHistoryBuffer';
+  67: import { useStartSessionLifecycle } from './hooks/useStartSessionLifecycle';
+  68: import { useStartApiKeyManager } from './hooks/useStartApiKeyManager';
+  69: import { useStartCooldown } from './hooks/useStartCooldown';
+  70: import { useStartManualResponse } from './hooks/useStartManualResponse';
+  71: import { useStartSessionWatchdog } from './hooks/useStartSessionWatchdog';
+  72: import { consumeStartMatchMeta } from '../startConfig';
+  73: import {
+  74:   clearGameMatchData,
+  75:   hydrateGameMatchData,
+  76:   setGameMatchSessionMeta,
+  77: } from '../../../modules/rank/matchDataStore';
+  78: import { fetchLatestSessionRow } from '@/modules/rank/matchRealtimeSync';
+  79: import { buildRankContext } from '@/lib/rank/rankContext';
+  80: import { createCoreRuntime } from '@/lib/runtime/coreRuntime';
+  81: import {
+  82:   START_SESSION_KEYS,
+  83:   readStartSessionValue,
+  84:   readStartSessionValues,
+  85: } from '@/lib/rank/startSessionChannel';
+  86: import {
+  87:   getConnectionEntriesForGame,
+  88:   subscribeConnectionRegistry,
+  89: } from '@/lib/rank/startConnectionRegistry';
+  90: 
+  91: import { buildParticipantsFromRoster } from './utils';
+  92: 
+  93: function toInt(value, { min = null } = {}) {
+----
+1387:   if (!dropInQueueRef.current) {
+1388:     dropInQueueRef.current = createDropInQueueService();
+1389:   }
+1390:   const processedDropInReleasesRef = useRef(new Set());
+1391:   const asyncSessionManagerRef = useRef(null);
+1392:   if (!asyncSessionManagerRef.current) {
+1393:     asyncSessionManagerRef.current = createAsyncSessionManager({
+1394:       dropInQueue: dropInQueueRef.current,
+1395:     });
+1396:   }
+1397:   const turnTimerServiceRef = useRef(null);
+1398:   if (!turnTimerServiceRef.current) {
+1399:     turnTimerServiceRef.current = createTurnTimerService({
+1400:       baseSeconds: turnTimerSeconds,
+1401:     });
+1402:   } else {
+1403:     turnTimerServiceRef.current.configureBase(turnTimerSeconds);
+1404:   }
+1405:   const turnVoteControllerRef = useRef(null);
+1406:   if (!turnVoteControllerRef.current) {
+1407:     turnVoteControllerRef.current = createTurnVoteController();
+1408:     try {
+1409:       const meta = initialSessionMeta?.turnTimer;
+1410:       let ratio = null;
+1411:       if (meta && typeof meta === 'object') {
+1412:         const rawThreshold =
+1413:           meta.roleThreshold ?? meta.thresholdRatio ?? meta.voteThreshold ?? null;
+1414:         const numeric = Number(rawThreshold);
+1415:         if (Number.isFinite(numeric) && numeric > 0 && numeric <= 1) {
+1416:           ratio = numeric;
+1417:         }
+1418:       }
+1419:       if (ratio === null && typeof window !== 'undefined') {
+1420:         const rawStored = readStartSessionValue(START_SESSION_KEYS.TURN_TIMER);
+1421:         if (rawStored != null) {
+1422:           const trimmed = String(rawStored).trim();
+1423:           if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+1424:             try {
+1425:               const parsed = JSON.parse(trimmed);
+1426:               if (parsed && typeof parsed === 'object') {
+1427:                 const rawThreshold =
+1428:                   parsed.roleThreshold ?? parsed.thresholdRatio ?? parsed.voteThreshold ?? null;
+1429:                 const numeric = Number(rawThreshold);
+1430:                 if (Number.isFinite(numeric) && numeric > 0 && numeric <= 1) {
+1431:                   ratio = numeric;
+1432:                 }
+1433:               }
+1434:             } catch {
+1435:               // ignore malformed TURN_TIMER threshold
+1436:             }
+1437:           }
+1438:         }
+1439:       }
+1440:       if (ratio !== null) {
+1441:         turnVoteControllerRef.current.configure({ thresholdRatio: ratio });
+1442:       }
+1443:     } catch {
+1444:       // ignore configuration errors and fall back to default threshold
+1445:     }
+1446:   }
+----
+1433:               }
+1434:             } catch {
+1435:               // ignore malformed TURN_TIMER threshold
+1436:             }
+1437:           }
+1438:         }
+1439:       }
+1440:       if (ratio !== null) {
+1441:         turnVoteControllerRef.current.configure({ thresholdRatio: ratio });
+1442:       }
+1443:     } catch {
+1444:       // ignore configuration errors and fall back to default threshold
+1445:     }
+1446:   }
+1447:   const initialRealtimeSnapshotRef = useRef(null);
+1448:   if (!initialRealtimeSnapshotRef.current) {
+1449:     initialRealtimeSnapshotRef.current = realtimeManagerRef.current
+1450:       ? realtimeManagerRef.current.getSnapshot()
+1451:       : null;
+1452:   }
+1453:   const [consensusState, setConsensusState] = useState(() =>
+1454:     turnVoteControllerRef.current.getSnapshot()
+1455:   );
+1456:   const [realtimePresence, setRealtimePresence] = useState(initialRealtimeSnapshotRef.current);
+1457:   const [realtimeEvents, setRealtimeEvents] = useState(() =>
+1458:     initializeRealtimeEvents(initialRealtimeSnapshotRef.current)
+1459:   );
+1460:   const realtimeEventsRef = useRef(realtimeEvents);
+1461:   const [dropInSnapshot, setDropInSnapshot] = useState(null);
+1462:   const dropInSnapshotRef = useRef(null);
+1463: 
+1464:   useEffect(() => {
+1465:     logsRef.current = Array.isArray(logs) ? logs : [];
+1466:   }, [logs]);
+1467: 
+1468:   useEffect(() => {
+1469:     const list = Array.isArray(participants) ? participants : [];
+1470:     participantsRef.current = list;
+1471:     if (outcomeLedgerRef.current) {
+1472:       const changed = syncOutcomeLedger(outcomeLedgerRef.current, { participants: list });
+1473:       if (changed) {
+1474:         setSessionOutcome(buildOutcomeSnapshot(outcomeLedgerRef.current));
+1475:       }
+1476:     }
+1477:   }, [participants]);
+1478: 
+1479:   useEffect(() => {
+1480:     outcomeLedgerRef.current = createOutcomeLedger({ participants: participantsRef.current });
+1481:     setSessionOutcome(buildOutcomeSnapshot(outcomeLedgerRef.current));
+1482:     sessionFinalizedRef.current = false;
+1483:   }, [gameId]);
+1484: 
+1485:   useEffect(() => {
+1486:     currentNodeIdRef.current = currentNodeId ?? null;
+1487:   }, [currentNodeId]);
+1488: 
+1489:   useEffect(() => {
+1490:     statusMessageRef.current = typeof statusMessage === 'string' ? statusMessage : '';
+1491:   }, [statusMessage]);
+1492: 
+----
+2932:     recordTimelineEvents(
+2933:       [
+2934:         {
+2935:           type: 'drop_in_matching_context',
+2936:           ownerId: null,
+2937:           reason: metadata.matching.matchType || 'matched',
+2938:           turn: 0,
+2939:           timestamp: metadata.matching.storedAt,
+2940:           context: { actorLabel: '시스템', matchType: metadata.matching.matchType || null },
+2941:           metadata,
+2942:         },
+2943:       ],
+2944:       { turnNumber: 0 }
+2945:     );
+2946:     matchMetaLoggedRef.current = true;
+2947:   }, [preflight, recordTimelineEvents]);
+2948:   const normalizedViewerId = useMemo(() => {
+2949:     if (!viewerId) return '';
+2950:     return String(viewerId).trim();
+2951:   }, [viewerId]);
+2952:   const eligibleOwnerIds = consensusState?.eligibleOwnerIds || [];
+2953:   const consentedOwnerIds = consensusState?.consentedOwnerIds || [];
+2954:   const consensusCount = consensusState?.consensusCount || 0;
+2955:   const needsConsensus = !preflight && Boolean(consensusState?.needsConsensus);
+2956:   const viewerCanConsent =
+2957:     needsConsensus && normalizedViewerId ? eligibleOwnerIds.includes(normalizedViewerId) : false;
+2958:   const viewerHasConsented = viewerCanConsent && consentedOwnerIds.includes(normalizedViewerId);
+2959:   const currentNode = useMemo(
+2960:     () => graph.nodes.find(node => node.id === currentNodeId) || null,
+2961:     [graph.nodes, currentNodeId]
+2962:   );
+2963:   const aiMemory = useMemo(() => history.getAiMemory({ last: 24 }), [history, historyVersion]);
+2964:   const playerHistories = useMemo(
+2965:     () =>
+2966:       participants.map((participant, index) => ({
+2967:         slotIndex: index,
+2968:         role: participant?.role || '',
+2969:         heroName:
+2970:           participant?.hero?.name ||
+2971:           participant?.name ||
+2972:           participant?.hero_name ||
+2973:           participant?.heroName ||
+2974:           '',
+2975:         entries: history.getVisibleForSlot(index, { onlyPublic: true, last: 10 }),
+2976:       })),
+2977:     [participants, history, historyVersion]
+2978:   );
+2979:   const currentActorContext = useMemo(
+2980:     () => resolveActorContext({ node: currentNode, slots, participants }),
+2981:     [currentNode, slots, participants]
+2982:   );
+2983:   const slotType = currentNode?.slot_type || 'ai';
+2984:   const isUserActionSlot = slotType === 'user_action' || slotType === 'manual';
+2985:   const viewerOwnsSlot =
+2986:     isUserActionSlot && viewerId && currentActorContext?.participant?.owner_id === viewerId;
+2987:   const canSubmitAction = !isUserActionSlot || viewerOwnsSlot;
+2988:   const currentActorInfo = useMemo(
+2989:     () => ({
+2990:       slotIndex: currentActorContext?.slotIndex ?? null,
+2991:       role: currentActorContext?.participant?.role || currentActorContext?.heroSlot?.role || '',
+----
+2933:       [
+2934:         {
+2935:           type: 'drop_in_matching_context',
+2936:           ownerId: null,
+2937:           reason: metadata.matching.matchType || 'matched',
+2938:           turn: 0,
+2939:           timestamp: metadata.matching.storedAt,
+2940:           context: { actorLabel: '시스템', matchType: metadata.matching.matchType || null },
+2941:           metadata,
+2942:         },
+2943:       ],
+2944:       { turnNumber: 0 }
+2945:     );
+2946:     matchMetaLoggedRef.current = true;
+2947:   }, [preflight, recordTimelineEvents]);
+2948:   const normalizedViewerId = useMemo(() => {
+2949:     if (!viewerId) return '';
+2950:     return String(viewerId).trim();
+2951:   }, [viewerId]);
+2952:   const eligibleOwnerIds = consensusState?.eligibleOwnerIds || [];
+2953:   const consentedOwnerIds = consensusState?.consentedOwnerIds || [];
+2954:   const consensusCount = consensusState?.consensusCount || 0;
+2955:   const needsConsensus = !preflight && Boolean(consensusState?.needsConsensus);
+2956:   const viewerCanConsent =
+2957:     needsConsensus && normalizedViewerId ? eligibleOwnerIds.includes(normalizedViewerId) : false;
+2958:   const viewerHasConsented = viewerCanConsent && consentedOwnerIds.includes(normalizedViewerId);
+2959:   const currentNode = useMemo(
+2960:     () => graph.nodes.find(node => node.id === currentNodeId) || null,
+2961:     [graph.nodes, currentNodeId]
+2962:   );
+2963:   const aiMemory = useMemo(() => history.getAiMemory({ last: 24 }), [history, historyVersion]);
+2964:   const playerHistories = useMemo(
+2965:     () =>
+2966:       participants.map((participant, index) => ({
+2967:         slotIndex: index,
+2968:         role: participant?.role || '',
+2969:         heroName:
+2970:           participant?.hero?.name ||
+2971:           participant?.name ||
+2972:           participant?.hero_name ||
+2973:           participant?.heroName ||
+2974:           '',
+2975:         entries: history.getVisibleForSlot(index, { onlyPublic: true, last: 10 }),
+2976:       })),
+2977:     [participants, history, historyVersion]
+2978:   );
+2979:   const currentActorContext = useMemo(
+2980:     () => resolveActorContext({ node: currentNode, slots, participants }),
+2981:     [currentNode, slots, participants]
+2982:   );
+2983:   const slotType = currentNode?.slot_type || 'ai';
+2984:   const isUserActionSlot = slotType === 'user_action' || slotType === 'manual';
+2985:   const viewerOwnsSlot =
+2986:     isUserActionSlot && viewerId && currentActorContext?.participant?.owner_id === viewerId;
+2987:   const canSubmitAction = !isUserActionSlot || viewerOwnsSlot;
+2988:   const currentActorInfo = useMemo(
+2989:     () => ({
+2990:       slotIndex: currentActorContext?.slotIndex ?? null,
+2991:       role: currentActorContext?.participant?.role || currentActorContext?.heroSlot?.role || '',
+2992:       name:
+----
+2934:         {
+2935:           type: 'drop_in_matching_context',
+2936:           ownerId: null,
+2937:           reason: metadata.matching.matchType || 'matched',
+2938:           turn: 0,
+2939:           timestamp: metadata.matching.storedAt,
+2940:           context: { actorLabel: '시스템', matchType: metadata.matching.matchType || null },
+2941:           metadata,
+2942:         },
+2943:       ],
+2944:       { turnNumber: 0 }
+2945:     );
+2946:     matchMetaLoggedRef.current = true;
+2947:   }, [preflight, recordTimelineEvents]);
+2948:   const normalizedViewerId = useMemo(() => {
+2949:     if (!viewerId) return '';
+2950:     return String(viewerId).trim();
+2951:   }, [viewerId]);
+2952:   const eligibleOwnerIds = consensusState?.eligibleOwnerIds || [];
+2953:   const consentedOwnerIds = consensusState?.consentedOwnerIds || [];
+2954:   const consensusCount = consensusState?.consensusCount || 0;
+2955:   const needsConsensus = !preflight && Boolean(consensusState?.needsConsensus);
+2956:   const viewerCanConsent =
+2957:     needsConsensus && normalizedViewerId ? eligibleOwnerIds.includes(normalizedViewerId) : false;
+2958:   const viewerHasConsented = viewerCanConsent && consentedOwnerIds.includes(normalizedViewerId);
+2959:   const currentNode = useMemo(
+2960:     () => graph.nodes.find(node => node.id === currentNodeId) || null,
+2961:     [graph.nodes, currentNodeId]
+2962:   );
+2963:   const aiMemory = useMemo(() => history.getAiMemory({ last: 24 }), [history, historyVersion]);
+2964:   const playerHistories = useMemo(
+2965:     () =>
+2966:       participants.map((participant, index) => ({
+2967:         slotIndex: index,
+2968:         role: participant?.role || '',
+2969:         heroName:
+2970:           participant?.hero?.name ||
+2971:           participant?.name ||
+2972:           participant?.hero_name ||
+2973:           participant?.heroName ||
+2974:           '',
+2975:         entries: history.getVisibleForSlot(index, { onlyPublic: true, last: 10 }),
+2976:       })),
+2977:     [participants, history, historyVersion]
+2978:   );
+2979:   const currentActorContext = useMemo(
+2980:     () => resolveActorContext({ node: currentNode, slots, participants }),
+2981:     [currentNode, slots, participants]
+2982:   );
+2983:   const slotType = currentNode?.slot_type || 'ai';
+2984:   const isUserActionSlot = slotType === 'user_action' || slotType === 'manual';
+2985:   const viewerOwnsSlot =
+2986:     isUserActionSlot && viewerId && currentActorContext?.participant?.owner_id === viewerId;
+2987:   const canSubmitAction = !isUserActionSlot || viewerOwnsSlot;
+2988:   const currentActorInfo = useMemo(
+2989:     () => ({
+2990:       slotIndex: currentActorContext?.slotIndex ?? null,
+2991:       role: currentActorContext?.participant?.role || currentActorContext?.heroSlot?.role || '',
+2992:       name:
+2993:         currentActorContext?.participant?.hero?.name || currentActorContext?.heroSlot?.name || '',
+----
+2935:           type: 'drop_in_matching_context',
+2936:           ownerId: null,
+2937:           reason: metadata.matching.matchType || 'matched',
+2938:           turn: 0,
+2939:           timestamp: metadata.matching.storedAt,
+2940:           context: { actorLabel: '시스템', matchType: metadata.matching.matchType || null },
+2941:           metadata,
+2942:         },
+2943:       ],
+2944:       { turnNumber: 0 }
+2945:     );
+2946:     matchMetaLoggedRef.current = true;
+2947:   }, [preflight, recordTimelineEvents]);
+2948:   const normalizedViewerId = useMemo(() => {
+2949:     if (!viewerId) return '';
+2950:     return String(viewerId).trim();
+2951:   }, [viewerId]);
+2952:   const eligibleOwnerIds = consensusState?.eligibleOwnerIds || [];
+2953:   const consentedOwnerIds = consensusState?.consentedOwnerIds || [];
+2954:   const consensusCount = consensusState?.consensusCount || 0;
+2955:   const needsConsensus = !preflight && Boolean(consensusState?.needsConsensus);
+2956:   const viewerCanConsent =
+2957:     needsConsensus && normalizedViewerId ? eligibleOwnerIds.includes(normalizedViewerId) : false;
+2958:   const viewerHasConsented = viewerCanConsent && consentedOwnerIds.includes(normalizedViewerId);
+2959:   const currentNode = useMemo(
+2960:     () => graph.nodes.find(node => node.id === currentNodeId) || null,
+2961:     [graph.nodes, currentNodeId]
+2962:   );
+2963:   const aiMemory = useMemo(() => history.getAiMemory({ last: 24 }), [history, historyVersion]);
+2964:   const playerHistories = useMemo(
+2965:     () =>
+2966:       participants.map((participant, index) => ({
+2967:         slotIndex: index,
+2968:         role: participant?.role || '',
+2969:         heroName:
+2970:           participant?.hero?.name ||
+2971:           participant?.name ||
+2972:           participant?.hero_name ||
+2973:           participant?.heroName ||
+2974:           '',
+2975:         entries: history.getVisibleForSlot(index, { onlyPublic: true, last: 10 }),
+2976:       })),
+2977:     [participants, history, historyVersion]
+2978:   );
+2979:   const currentActorContext = useMemo(
+2980:     () => resolveActorContext({ node: currentNode, slots, participants }),
+2981:     [currentNode, slots, participants]
+2982:   );
+2983:   const slotType = currentNode?.slot_type || 'ai';
+2984:   const isUserActionSlot = slotType === 'user_action' || slotType === 'manual';
+2985:   const viewerOwnsSlot =
+2986:     isUserActionSlot && viewerId && currentActorContext?.participant?.owner_id === viewerId;
+2987:   const canSubmitAction = !isUserActionSlot || viewerOwnsSlot;
+2988:   const currentActorInfo = useMemo(
+2989:     () => ({
+2990:       slotIndex: currentActorContext?.slotIndex ?? null,
+2991:       role: currentActorContext?.participant?.role || currentActorContext?.heroSlot?.role || '',
+2992:       name:
+2993:         currentActorContext?.participant?.hero?.name || currentActorContext?.heroSlot?.name || '',
+2994:       isUserAction: isUserActionSlot,
+----
+4292:     }
+4293:     if (!viewerCanConsent) {
+4294:       setStatusMessage('동의 대상인 참가자만 다음 턴 진행을 제안할 수 있습니다.');
+4295:       return;
+4296:     }
+4297:     const controller = turnVoteControllerRef.current;
+4298:     if (!controller) {
+4299:       return;
+4300:     }
+4301:     if (realtimeEnabled && normalizedViewerId) {
+4302:       const manager = realtimeManagerRef.current;
+4303:       if (manager) {
+4304:         const snapshot = manager.recordParticipation(normalizedViewerId, turn, {
+4305:           type: 'vote',
+4306:         });
+4307:         if (snapshot) {
+4308:           applyRealtimeSnapshot(snapshot);
+4309:         }
+4310:       }
+4311:     }
+4312:     advanceIntentRef.current = { override: null, reason: 'consensus' };
+4313:     let snapshot = controller.getSnapshot();
+4314:     if (!controller.hasConsented(normalizedViewerId)) {
+4315:       snapshot = controller.registerConsent(normalizedViewerId);
+4316:     }
+4317:     setConsensusState(snapshot);
+4318:     const { consensusCount: futureCount, threshold } = snapshot;
+4319:     setStatusMessage(`다음 턴 동의 ${futureCount}/${threshold}명`);
+4320:   }, [
+4321:     advanceTurn,
+4322:     clearConsensusVotes,
+4323:     needsConsensus,
+4324:     setStatusMessage,
+4325:     viewerCanConsent,
+4326:     normalizedViewerId,
+4327:     realtimeEnabled,
+4328:     turn,
+4329:     applyRealtimeSnapshot,
+4330:   ]);
+4331: 
+4332:   const autoAdvance = useCallback(() => {
+4333:     advanceIntentRef.current = null;
+4334:     clearConsensusVotes();
+4335:     const turnNumber = Number.isFinite(Number(turn)) ? Number(turn) : null;
+4336:     recordTimelineEvents(
+4337:       [
+4338:         {
+4339:           type: 'turn_timeout',
+4340:           turn: turnNumber,
+4341:           timestamp: Date.now(),
+4342:           reason: 'timeout',
+4343:           context: {
+4344:             mode: realtimeEnabled ? 'realtime' : 'async',
+4345:           },
+4346:         },
+4347:       ],
+4348:       { turnNumber }
+4349:     );
+4350:     return advanceTurn(null, { reason: 'timeout' });
+4351:   }, [advanceTurn, clearConsensusVotes, recordTimelineEvents, turn, realtimeEnabled]);
+----
+4298:     if (!controller) {
+4299:       return;
+4300:     }
+4301:     if (realtimeEnabled && normalizedViewerId) {
+4302:       const manager = realtimeManagerRef.current;
+4303:       if (manager) {
+4304:         const snapshot = manager.recordParticipation(normalizedViewerId, turn, {
+4305:           type: 'vote',
+4306:         });
+4307:         if (snapshot) {
+4308:           applyRealtimeSnapshot(snapshot);
+4309:         }
+4310:       }
+4311:     }
+4312:     advanceIntentRef.current = { override: null, reason: 'consensus' };
+4313:     let snapshot = controller.getSnapshot();
+4314:     if (!controller.hasConsented(normalizedViewerId)) {
+4315:       snapshot = controller.registerConsent(normalizedViewerId);
+4316:     }
+4317:     setConsensusState(snapshot);
+4318:     const { consensusCount: futureCount, threshold } = snapshot;
+4319:     setStatusMessage(`다음 턴 동의 ${futureCount}/${threshold}명`);
+4320:   }, [
+4321:     advanceTurn,
+4322:     clearConsensusVotes,
+4323:     needsConsensus,
+4324:     setStatusMessage,
+4325:     viewerCanConsent,
+4326:     normalizedViewerId,
+4327:     realtimeEnabled,
+4328:     turn,
+4329:     applyRealtimeSnapshot,
+4330:   ]);
+4331: 
+4332:   const autoAdvance = useCallback(() => {
+4333:     advanceIntentRef.current = null;
+4334:     clearConsensusVotes();
+4335:     const turnNumber = Number.isFinite(Number(turn)) ? Number(turn) : null;
+4336:     recordTimelineEvents(
+4337:       [
+4338:         {
+4339:           type: 'turn_timeout',
+4340:           turn: turnNumber,
+4341:           timestamp: Date.now(),
+4342:           reason: 'timeout',
+4343:           context: {
+4344:             mode: realtimeEnabled ? 'realtime' : 'async',
+4345:           },
+4346:         },
+4347:       ],
+4348:       { turnNumber }
+4349:     );
+4350:     return advanceTurn(null, { reason: 'timeout' });
+4351:   }, [advanceTurn, clearConsensusVotes, recordTimelineEvents, turn, realtimeEnabled]);
+4352: 
+4353:   useEffect(() => {
+4354:     if (!needsConsensus) return undefined;
+4355:     if (!advanceIntentRef.current) return undefined;
+4356:     if (!consensusState?.hasReachedThreshold) return undefined;
+4357:     const turnNumber = Number.isFinite(Number(turn)) ? Number(turn) : null;
+----
+4336:     recordTimelineEvents(
+4337:       [
+4338:         {
+4339:           type: 'turn_timeout',
+4340:           turn: turnNumber,
+4341:           timestamp: Date.now(),
+4342:           reason: 'timeout',
+4343:           context: {
+4344:             mode: realtimeEnabled ? 'realtime' : 'async',
+4345:           },
+4346:         },
+4347:       ],
+4348:       { turnNumber }
+4349:     );
+4350:     return advanceTurn(null, { reason: 'timeout' });
+4351:   }, [advanceTurn, clearConsensusVotes, recordTimelineEvents, turn, realtimeEnabled]);
+4352: 
+4353:   useEffect(() => {
+4354:     if (!needsConsensus) return undefined;
+4355:     if (!advanceIntentRef.current) return undefined;
+4356:     if (!consensusState?.hasReachedThreshold) return undefined;
+4357:     const turnNumber = Number.isFinite(Number(turn)) ? Number(turn) : null;
+4358:     recordTimelineEvents(
+4359:       [
+4360:         {
+4361:           type: 'consensus_reached',
+4362:           turn: turnNumber,
+4363:           timestamp: Date.now(),
+4364:           reason: 'consensus',
+4365:           context: {
+4366:             consensusCount: consensusState?.consensusCount ?? null,
+4367:             threshold: consensusState?.threshold ?? null,
+4368:             mode: realtimeEnabled ? 'realtime' : 'async',
+4369:           },
+4370:         },
+4371:       ],
+4372:       { turnNumber }
+4373:     );
+4374:     const intent = advanceIntentRef.current;
+4375:     advanceIntentRef.current = null;
+4376:     clearConsensusVotes();
+4377:     advanceTurn(intent?.override ?? null, { reason: intent?.reason || 'consensus' });
+4378:     return undefined;
+4379:   }, [
+4380:     advanceTurn,
+4381:     consensusState?.hasReachedThreshold,
+4382:     needsConsensus,
+4383:     clearConsensusVotes,
+4384:     recordTimelineEvents,
+4385:     consensusState?.consensusCount,
+4386:     consensusState?.threshold,
+4387:     realtimeEnabled,
+4388:     turn,
+4389:   ]);
+4390: 
+4391:   useEffect(() => {
+4392:     if (preflight || !realtimeEnabled) {
+4393:       const snapshot = turnVoteControllerRef.current?.syncEligibleOwners([]);
+4394:       if (snapshot) {
+4395:         setConsensusState(snapshot);
+----
+4341:           timestamp: Date.now(),
+4342:           reason: 'timeout',
+4343:           context: {
+4344:             mode: realtimeEnabled ? 'realtime' : 'async',
+4345:           },
+4346:         },
+4347:       ],
+4348:       { turnNumber }
+4349:     );
+4350:     return advanceTurn(null, { reason: 'timeout' });
+4351:   }, [advanceTurn, clearConsensusVotes, recordTimelineEvents, turn, realtimeEnabled]);
+4352: 
+4353:   useEffect(() => {
+4354:     if (!needsConsensus) return undefined;
+4355:     if (!advanceIntentRef.current) return undefined;
+4356:     if (!consensusState?.hasReachedThreshold) return undefined;
+4357:     const turnNumber = Number.isFinite(Number(turn)) ? Number(turn) : null;
+4358:     recordTimelineEvents(
+4359:       [
+4360:         {
+4361:           type: 'consensus_reached',
+4362:           turn: turnNumber,
+4363:           timestamp: Date.now(),
+4364:           reason: 'consensus',
+4365:           context: {
+4366:             consensusCount: consensusState?.consensusCount ?? null,
+4367:             threshold: consensusState?.threshold ?? null,
+4368:             mode: realtimeEnabled ? 'realtime' : 'async',
+4369:           },
+4370:         },
+4371:       ],
+4372:       { turnNumber }
+4373:     );
+4374:     const intent = advanceIntentRef.current;
+4375:     advanceIntentRef.current = null;
+4376:     clearConsensusVotes();
+4377:     advanceTurn(intent?.override ?? null, { reason: intent?.reason || 'consensus' });
+4378:     return undefined;
+4379:   }, [
+4380:     advanceTurn,
+4381:     consensusState?.hasReachedThreshold,
+4382:     needsConsensus,
+4383:     clearConsensusVotes,
+4384:     recordTimelineEvents,
+4385:     consensusState?.consensusCount,
+4386:     consensusState?.threshold,
+4387:     realtimeEnabled,
+4388:     turn,
+4389:   ]);
+4390: 
+4391:   useEffect(() => {
+4392:     if (preflight || !realtimeEnabled) {
+4393:       const snapshot = turnVoteControllerRef.current?.syncEligibleOwners([]);
+4394:       if (snapshot) {
+4395:         setConsensusState(snapshot);
+4396:       }
+4397:       return;
+4398:     }
+4399:     const snapshot = turnVoteControllerRef.current?.syncEligibleOwners(
+4400:       deriveEligibleOwnerIds(participants)
+----
+4344:             mode: realtimeEnabled ? 'realtime' : 'async',
+4345:           },
+4346:         },
+4347:       ],
+4348:       { turnNumber }
+4349:     );
+4350:     return advanceTurn(null, { reason: 'timeout' });
+4351:   }, [advanceTurn, clearConsensusVotes, recordTimelineEvents, turn, realtimeEnabled]);
+4352: 
+4353:   useEffect(() => {
+4354:     if (!needsConsensus) return undefined;
+4355:     if (!advanceIntentRef.current) return undefined;
+4356:     if (!consensusState?.hasReachedThreshold) return undefined;
+4357:     const turnNumber = Number.isFinite(Number(turn)) ? Number(turn) : null;
+4358:     recordTimelineEvents(
+4359:       [
+4360:         {
+4361:           type: 'consensus_reached',
+4362:           turn: turnNumber,
+4363:           timestamp: Date.now(),
+4364:           reason: 'consensus',
+4365:           context: {
+4366:             consensusCount: consensusState?.consensusCount ?? null,
+4367:             threshold: consensusState?.threshold ?? null,
+4368:             mode: realtimeEnabled ? 'realtime' : 'async',
+4369:           },
+4370:         },
+4371:       ],
+4372:       { turnNumber }
+4373:     );
+4374:     const intent = advanceIntentRef.current;
+4375:     advanceIntentRef.current = null;
+4376:     clearConsensusVotes();
+4377:     advanceTurn(intent?.override ?? null, { reason: intent?.reason || 'consensus' });
+4378:     return undefined;
+4379:   }, [
+4380:     advanceTurn,
+4381:     consensusState?.hasReachedThreshold,
+4382:     needsConsensus,
+4383:     clearConsensusVotes,
+4384:     recordTimelineEvents,
+4385:     consensusState?.consensusCount,
+4386:     consensusState?.threshold,
+4387:     realtimeEnabled,
+4388:     turn,
+4389:   ]);
+4390: 
+4391:   useEffect(() => {
+4392:     if (preflight || !realtimeEnabled) {
+4393:       const snapshot = turnVoteControllerRef.current?.syncEligibleOwners([]);
+4394:       if (snapshot) {
+4395:         setConsensusState(snapshot);
+4396:       }
+4397:       return;
+4398:     }
+4399:     const snapshot = turnVoteControllerRef.current?.syncEligibleOwners(
+4400:       deriveEligibleOwnerIds(participants)
+4401:     );
+4402:     if (snapshot) {
+4403:       setConsensusState(snapshot);
+----
+4346:         },
+4347:       ],
+4348:       { turnNumber }
+4349:     );
+4350:     return advanceTurn(null, { reason: 'timeout' });
+4351:   }, [advanceTurn, clearConsensusVotes, recordTimelineEvents, turn, realtimeEnabled]);
+4352: 
+4353:   useEffect(() => {
+4354:     if (!needsConsensus) return undefined;
+4355:     if (!advanceIntentRef.current) return undefined;
+4356:     if (!consensusState?.hasReachedThreshold) return undefined;
+4357:     const turnNumber = Number.isFinite(Number(turn)) ? Number(turn) : null;
+4358:     recordTimelineEvents(
+4359:       [
+4360:         {
+4361:           type: 'consensus_reached',
+4362:           turn: turnNumber,
+4363:           timestamp: Date.now(),
+4364:           reason: 'consensus',
+4365:           context: {
+4366:             consensusCount: consensusState?.consensusCount ?? null,
+4367:             threshold: consensusState?.threshold ?? null,
+4368:             mode: realtimeEnabled ? 'realtime' : 'async',
+4369:           },
+4370:         },
+4371:       ],
+4372:       { turnNumber }
+4373:     );
+4374:     const intent = advanceIntentRef.current;
+4375:     advanceIntentRef.current = null;
+4376:     clearConsensusVotes();
+4377:     advanceTurn(intent?.override ?? null, { reason: intent?.reason || 'consensus' });
+4378:     return undefined;
+4379:   }, [
+4380:     advanceTurn,
+4381:     consensusState?.hasReachedThreshold,
+4382:     needsConsensus,
+4383:     clearConsensusVotes,
+4384:     recordTimelineEvents,
+4385:     consensusState?.consensusCount,
+4386:     consensusState?.threshold,
+4387:     realtimeEnabled,
+4388:     turn,
+4389:   ]);
+4390: 
+4391:   useEffect(() => {
+4392:     if (preflight || !realtimeEnabled) {
+4393:       const snapshot = turnVoteControllerRef.current?.syncEligibleOwners([]);
+4394:       if (snapshot) {
+4395:         setConsensusState(snapshot);
+4396:       }
+4397:       return;
+4398:     }
+4399:     const snapshot = turnVoteControllerRef.current?.syncEligibleOwners(
+4400:       deriveEligibleOwnerIds(participants)
+4401:     );
+4402:     if (snapshot) {
+4403:       setConsensusState(snapshot);
+4404:     }
+4405:   }, [participants, realtimeEnabled, preflight]);
+----
+4347:       ],
+4348:       { turnNumber }
+4349:     );
+4350:     return advanceTurn(null, { reason: 'timeout' });
+4351:   }, [advanceTurn, clearConsensusVotes, recordTimelineEvents, turn, realtimeEnabled]);
+4352: 
+4353:   useEffect(() => {
+4354:     if (!needsConsensus) return undefined;
+4355:     if (!advanceIntentRef.current) return undefined;
+4356:     if (!consensusState?.hasReachedThreshold) return undefined;
+4357:     const turnNumber = Number.isFinite(Number(turn)) ? Number(turn) : null;
+4358:     recordTimelineEvents(
+4359:       [
+4360:         {
+4361:           type: 'consensus_reached',
+4362:           turn: turnNumber,
+4363:           timestamp: Date.now(),
+4364:           reason: 'consensus',
+4365:           context: {
+4366:             consensusCount: consensusState?.consensusCount ?? null,
+4367:             threshold: consensusState?.threshold ?? null,
+4368:             mode: realtimeEnabled ? 'realtime' : 'async',
+4369:           },
+4370:         },
+4371:       ],
+4372:       { turnNumber }
+4373:     );
+4374:     const intent = advanceIntentRef.current;
+4375:     advanceIntentRef.current = null;
+4376:     clearConsensusVotes();
+4377:     advanceTurn(intent?.override ?? null, { reason: intent?.reason || 'consensus' });
+4378:     return undefined;
+4379:   }, [
+4380:     advanceTurn,
+4381:     consensusState?.hasReachedThreshold,
+4382:     needsConsensus,
+4383:     clearConsensusVotes,
+4384:     recordTimelineEvents,
+4385:     consensusState?.consensusCount,
+4386:     consensusState?.threshold,
+4387:     realtimeEnabled,
+4388:     turn,
+4389:   ]);
+4390: 
+4391:   useEffect(() => {
+4392:     if (preflight || !realtimeEnabled) {
+4393:       const snapshot = turnVoteControllerRef.current?.syncEligibleOwners([]);
+4394:       if (snapshot) {
+4395:         setConsensusState(snapshot);
+4396:       }
+4397:       return;
+4398:     }
+4399:     const snapshot = turnVoteControllerRef.current?.syncEligibleOwners(
+4400:       deriveEligibleOwnerIds(participants)
+4401:     );
+4402:     if (snapshot) {
+4403:       setConsensusState(snapshot);
+4404:     }
+4405:   }, [participants, realtimeEnabled, preflight]);
+4406: 
+----
+4357:     const turnNumber = Number.isFinite(Number(turn)) ? Number(turn) : null;
+4358:     recordTimelineEvents(
+4359:       [
+4360:         {
+4361:           type: 'consensus_reached',
+4362:           turn: turnNumber,
+4363:           timestamp: Date.now(),
+4364:           reason: 'consensus',
+4365:           context: {
+4366:             consensusCount: consensusState?.consensusCount ?? null,
+4367:             threshold: consensusState?.threshold ?? null,
+4368:             mode: realtimeEnabled ? 'realtime' : 'async',
+4369:           },
+4370:         },
+4371:       ],
+4372:       { turnNumber }
+4373:     );
+4374:     const intent = advanceIntentRef.current;
+4375:     advanceIntentRef.current = null;
+4376:     clearConsensusVotes();
+4377:     advanceTurn(intent?.override ?? null, { reason: intent?.reason || 'consensus' });
+4378:     return undefined;
+4379:   }, [
+4380:     advanceTurn,
+4381:     consensusState?.hasReachedThreshold,
+4382:     needsConsensus,
+4383:     clearConsensusVotes,
+4384:     recordTimelineEvents,
+4385:     consensusState?.consensusCount,
+4386:     consensusState?.threshold,
+4387:     realtimeEnabled,
+4388:     turn,
+4389:   ]);
+4390: 
+4391:   useEffect(() => {
+4392:     if (preflight || !realtimeEnabled) {
+4393:       const snapshot = turnVoteControllerRef.current?.syncEligibleOwners([]);
+4394:       if (snapshot) {
+4395:         setConsensusState(snapshot);
+4396:       }
+4397:       return;
+4398:     }
+4399:     const snapshot = turnVoteControllerRef.current?.syncEligibleOwners(
+4400:       deriveEligibleOwnerIds(participants)
+4401:     );
+4402:     if (snapshot) {
+4403:       setConsensusState(snapshot);
+4404:     }
+4405:   }, [participants, realtimeEnabled, preflight]);
+4406: 
+4407:   useEffect(() => {
+4408:     if (preflight) {
+4409:       advanceIntentRef.current = null;
+4410:       clearConsensusVotes();
+4411:     }
+4412:   }, [preflight, clearConsensusVotes]);
+4413: 
+4414:   useEffect(() => {
+4415:     advanceIntentRef.current = null;
+4416:     clearConsensusVotes();
+----
+4361:           type: 'consensus_reached',
+4362:           turn: turnNumber,
+4363:           timestamp: Date.now(),
+4364:           reason: 'consensus',
+4365:           context: {
+4366:             consensusCount: consensusState?.consensusCount ?? null,
+4367:             threshold: consensusState?.threshold ?? null,
+4368:             mode: realtimeEnabled ? 'realtime' : 'async',
+4369:           },
+4370:         },
+4371:       ],
+4372:       { turnNumber }
+4373:     );
+4374:     const intent = advanceIntentRef.current;
+4375:     advanceIntentRef.current = null;
+4376:     clearConsensusVotes();
+4377:     advanceTurn(intent?.override ?? null, { reason: intent?.reason || 'consensus' });
+4378:     return undefined;
+4379:   }, [
+4380:     advanceTurn,
+4381:     consensusState?.hasReachedThreshold,
+4382:     needsConsensus,
+4383:     clearConsensusVotes,
+4384:     recordTimelineEvents,
+4385:     consensusState?.consensusCount,
+4386:     consensusState?.threshold,
+4387:     realtimeEnabled,
+4388:     turn,
+4389:   ]);
+4390: 
+4391:   useEffect(() => {
+4392:     if (preflight || !realtimeEnabled) {
+4393:       const snapshot = turnVoteControllerRef.current?.syncEligibleOwners([]);
+4394:       if (snapshot) {
+4395:         setConsensusState(snapshot);
+4396:       }
+4397:       return;
+4398:     }
+4399:     const snapshot = turnVoteControllerRef.current?.syncEligibleOwners(
+4400:       deriveEligibleOwnerIds(participants)
+4401:     );
+4402:     if (snapshot) {
+4403:       setConsensusState(snapshot);
+4404:     }
+4405:   }, [participants, realtimeEnabled, preflight]);
+4406: 
+4407:   useEffect(() => {
+4408:     if (preflight) {
+4409:       advanceIntentRef.current = null;
+4410:       clearConsensusVotes();
+4411:     }
+4412:   }, [preflight, clearConsensusVotes]);
+4413: 
+4414:   useEffect(() => {
+4415:     advanceIntentRef.current = null;
+4416:     clearConsensusVotes();
+4417:   }, [turn, clearConsensusVotes]);
+4418: 
+4419:   useEffect(() => {
+4420:     const sessionId = sessionInfo?.id;
+----
+4365:           context: {
+4366:             consensusCount: consensusState?.consensusCount ?? null,
+4367:             threshold: consensusState?.threshold ?? null,
+4368:             mode: realtimeEnabled ? 'realtime' : 'async',
+4369:           },
+4370:         },
+4371:       ],
+4372:       { turnNumber }
+4373:     );
+4374:     const intent = advanceIntentRef.current;
+4375:     advanceIntentRef.current = null;
+4376:     clearConsensusVotes();
+4377:     advanceTurn(intent?.override ?? null, { reason: intent?.reason || 'consensus' });
+4378:     return undefined;
+4379:   }, [
+4380:     advanceTurn,
+4381:     consensusState?.hasReachedThreshold,
+4382:     needsConsensus,
+4383:     clearConsensusVotes,
+4384:     recordTimelineEvents,
+4385:     consensusState?.consensusCount,
+4386:     consensusState?.threshold,
+4387:     realtimeEnabled,
+4388:     turn,
+4389:   ]);
+4390: 
+4391:   useEffect(() => {
+4392:     if (preflight || !realtimeEnabled) {
+4393:       const snapshot = turnVoteControllerRef.current?.syncEligibleOwners([]);
+4394:       if (snapshot) {
+4395:         setConsensusState(snapshot);
+4396:       }
+4397:       return;
+4398:     }
+4399:     const snapshot = turnVoteControllerRef.current?.syncEligibleOwners(
+4400:       deriveEligibleOwnerIds(participants)
+4401:     );
+4402:     if (snapshot) {
+4403:       setConsensusState(snapshot);
+4404:     }
+4405:   }, [participants, realtimeEnabled, preflight]);
+4406: 
+4407:   useEffect(() => {
+4408:     if (preflight) {
+4409:       advanceIntentRef.current = null;
+4410:       clearConsensusVotes();
+4411:     }
+4412:   }, [preflight, clearConsensusVotes]);
+4413: 
+4414:   useEffect(() => {
+4415:     advanceIntentRef.current = null;
+4416:     clearConsensusVotes();
+4417:   }, [turn, clearConsensusVotes]);
+4418: 
+4419:   useEffect(() => {
+4420:     const sessionId = sessionInfo?.id;
+4421:     if (!sessionId) return undefined;
+4422: 
+4423:     const channel = supabase.channel(`rank-session:${sessionId}`, {
+4424:       config: { broadcast: { ack: true } },
+----
+4366:             consensusCount: consensusState?.consensusCount ?? null,
+4367:             threshold: consensusState?.threshold ?? null,
+4368:             mode: realtimeEnabled ? 'realtime' : 'async',
+4369:           },
+4370:         },
+4371:       ],
+4372:       { turnNumber }
+4373:     );
+4374:     const intent = advanceIntentRef.current;
+4375:     advanceIntentRef.current = null;
+4376:     clearConsensusVotes();
+4377:     advanceTurn(intent?.override ?? null, { reason: intent?.reason || 'consensus' });
+4378:     return undefined;
+4379:   }, [
+4380:     advanceTurn,
+4381:     consensusState?.hasReachedThreshold,
+4382:     needsConsensus,
+4383:     clearConsensusVotes,
+4384:     recordTimelineEvents,
+4385:     consensusState?.consensusCount,
+4386:     consensusState?.threshold,
+4387:     realtimeEnabled,
+4388:     turn,
+4389:   ]);
+4390: 
+4391:   useEffect(() => {
+4392:     if (preflight || !realtimeEnabled) {
+4393:       const snapshot = turnVoteControllerRef.current?.syncEligibleOwners([]);
+4394:       if (snapshot) {
+4395:         setConsensusState(snapshot);
+4396:       }
+4397:       return;
+4398:     }
+4399:     const snapshot = turnVoteControllerRef.current?.syncEligibleOwners(
+4400:       deriveEligibleOwnerIds(participants)
+4401:     );
+4402:     if (snapshot) {
+4403:       setConsensusState(snapshot);
+4404:     }
+4405:   }, [participants, realtimeEnabled, preflight]);
+4406: 
+4407:   useEffect(() => {
+4408:     if (preflight) {
+4409:       advanceIntentRef.current = null;
+4410:       clearConsensusVotes();
+4411:     }
+4412:   }, [preflight, clearConsensusVotes]);
+4413: 
+4414:   useEffect(() => {
+4415:     advanceIntentRef.current = null;
+4416:     clearConsensusVotes();
+4417:   }, [turn, clearConsensusVotes]);
+4418: 
+4419:   useEffect(() => {
+4420:     const sessionId = sessionInfo?.id;
+4421:     if (!sessionId) return undefined;
+4422: 
+4423:     const channel = supabase.channel(`rank-session:${sessionId}`, {
+4424:       config: { broadcast: { ack: true } },
+4425:     });
+----
+4466:         console.warn('[StartClient] 실시간 타임라인 채널 해제 실패:', error);
+4467:       }
+4468:       if (turnEventBackfillAbortRef.current) {
+4469:         turnEventBackfillAbortRef.current.abort();
+4470:         turnEventBackfillAbortRef.current = null;
+4471:       }
+4472:       supabase.removeChannel(channel);
+4473:       if (typeof unsubscribeTurnEvents === 'function') {
+4474:         unsubscribeTurnEvents();
+4475:       }
+4476:     };
+4477:   }, [sessionInfo?.id, supabase, setRealtimeEvents, applyTurnStateChange, backfillTurnEvents]);
+4478: 
+4479:   useEffect(() => {
+4480:     if (!needsConsensus) {
+4481:       const intent = advanceIntentRef.current;
+4482:       advanceIntentRef.current = null;
+4483:       if (intent) {
+4484:         clearConsensusVotes();
+4485:         advanceTurn(intent?.override ?? null, {
+4486:           reason: intent?.reason || 'consensus',
+4487:         });
+4488:       }
+4489:     }
+4490:   }, [needsConsensus, advanceTurn, clearConsensusVotes]);
+4491: 
+4492:   const turnTimerSnapshot = useMemo(() => {
+4493:     const baseFromState = Number.isFinite(Number(turnTimerSeconds))
+4494:       ? Math.max(0, Math.floor(Number(turnTimerSeconds)))
+4495:       : null;
+4496:     const fallbackBonus = 30;
+4497:     const fallbackTurn = Number.isFinite(Number(turn)) ? Math.floor(Number(turn)) : 0;
+4498:     const fallbackDropInTurn = Number.isFinite(Number(lastDropInTurn))
+4499:       ? Math.floor(Number(lastDropInTurn))
+4500:       : 0;
+4501: 
+4502:     const service = turnTimerServiceRef.current;
+4503:     if (!service) {
+4504:       return {
+4505:         baseSeconds: baseFromState,
+4506:         firstTurnBonusSeconds: fallbackBonus,
+4507:         firstTurnBonusAvailable: false,
+4508:         dropInBonusSeconds: fallbackBonus,
+4509:         pendingDropInBonus: false,
+4510:         lastTurnNumber: fallbackTurn,
+4511:         lastDropInAppliedTurn: fallbackDropInTurn,
+4512:       };
+4513:     }
+4514: 
+4515:     const snapshot = service.getSnapshot() || {};
+4516:     const resolvedBase = Number.isFinite(Number(snapshot.baseSeconds))
+4517:       ? Math.floor(Number(snapshot.baseSeconds))
+4518:       : baseFromState;
+4519: 
+4520:     return {
+4521:       baseSeconds: resolvedBase,
+4522:       firstTurnBonusSeconds: Number.isFinite(Number(snapshot.firstTurnBonusSeconds))
+4523:         ? Math.floor(Number(snapshot.firstTurnBonusSeconds))
+4524:         : fallbackBonus,
+4525:       firstTurnBonusAvailable: Boolean(snapshot.firstTurnBonusAvailable),
+----
+4581:     turnDeadline,
+4582:     currentActor: currentActorInfo,
+4583:     canSubmitAction,
+4584:     activeBackdropUrls: activeHeroAssets.backgrounds,
+4585:     activeActorNames,
+4586:     activeBgmUrl: activeHeroAssets.bgmUrl,
+4587:     activeBgmDuration: activeHeroAssets.bgmDuration,
+4588:     activeAudioProfile: activeHeroAssets.audioProfile,
+4589:     lastDropInTurn,
+4590:     turnTimerSnapshot,
+4591:     sessionInfo,
+4592:     realtimePresence,
+4593:     realtimeEvents,
+4594:     dropInSnapshot,
+4595:     connectionRoster,
+4596:     sessionOutcome,
+4597:     sharedTurn: {
+4598:       owners: managedOwnerIds,
+4599:       roster: sharedTurnRoster,
+4600:     },
+4601:     consensus: {
+4602:       required: eligibleOwnerIds.length,
+4603:       count: consensusCount,
+4604:       viewerEligible: viewerCanConsent,
+4605:       viewerHasConsented,
+4606:       active: needsConsensus,
+4607:       threshold: consensusState?.threshold ?? Math.max(1, Math.ceil(eligibleOwnerIds.length * 0.8)),
+4608:       reached: Boolean(consensusState?.hasReachedThreshold),
+4609:     },
+4610:     // Expose rank / text-runtime bridge so StartClient can host
+4611:     // a shared "Play engine" box driven by coreRuntime.
+4612:     rankContext,
+4613:     textRuntimeEnabled,
+4614:   };
+4615: }
+4616: 
+----
+4583:     canSubmitAction,
+4584:     activeBackdropUrls: activeHeroAssets.backgrounds,
+4585:     activeActorNames,
+4586:     activeBgmUrl: activeHeroAssets.bgmUrl,
+4587:     activeBgmDuration: activeHeroAssets.bgmDuration,
+4588:     activeAudioProfile: activeHeroAssets.audioProfile,
+4589:     lastDropInTurn,
+4590:     turnTimerSnapshot,
+4591:     sessionInfo,
+4592:     realtimePresence,
+4593:     realtimeEvents,
+4594:     dropInSnapshot,
+4595:     connectionRoster,
+4596:     sessionOutcome,
+4597:     sharedTurn: {
+4598:       owners: managedOwnerIds,
+4599:       roster: sharedTurnRoster,
+4600:     },
+4601:     consensus: {
+4602:       required: eligibleOwnerIds.length,
+4603:       count: consensusCount,
+4604:       viewerEligible: viewerCanConsent,
+4605:       viewerHasConsented,
+4606:       active: needsConsensus,
+4607:       threshold: consensusState?.threshold ?? Math.max(1, Math.ceil(eligibleOwnerIds.length * 0.8)),
+4608:       reached: Boolean(consensusState?.hasReachedThreshold),
+4609:     },
+4610:     // Expose rank / text-runtime bridge so StartClient can host
+4611:     // a shared "Play engine" box driven by coreRuntime.
+4612:     rankContext,
+4613:     textRuntimeEnabled,
+4614:   };
+4615: }
+4616: 
+----
+4587:     activeBgmDuration: activeHeroAssets.bgmDuration,
+4588:     activeAudioProfile: activeHeroAssets.audioProfile,
+4589:     lastDropInTurn,
+4590:     turnTimerSnapshot,
+4591:     sessionInfo,
+4592:     realtimePresence,
+4593:     realtimeEvents,
+4594:     dropInSnapshot,
+4595:     connectionRoster,
+4596:     sessionOutcome,
+4597:     sharedTurn: {
+4598:       owners: managedOwnerIds,
+4599:       roster: sharedTurnRoster,
+4600:     },
+4601:     consensus: {
+4602:       required: eligibleOwnerIds.length,
+4603:       count: consensusCount,
+4604:       viewerEligible: viewerCanConsent,
+4605:       viewerHasConsented,
+4606:       active: needsConsensus,
+4607:       threshold: consensusState?.threshold ?? Math.max(1, Math.ceil(eligibleOwnerIds.length * 0.8)),
+4608:       reached: Boolean(consensusState?.hasReachedThreshold),
+4609:     },
+4610:     // Expose rank / text-runtime bridge so StartClient can host
+4611:     // a shared "Play engine" box driven by coreRuntime.
+4612:     rankContext,
+4613:     textRuntimeEnabled,
+4614:   };
+4615: }
+4616: 
+----
+4588:     activeAudioProfile: activeHeroAssets.audioProfile,
+4589:     lastDropInTurn,
+4590:     turnTimerSnapshot,
+4591:     sessionInfo,
+4592:     realtimePresence,
+4593:     realtimeEvents,
+4594:     dropInSnapshot,
+4595:     connectionRoster,
+4596:     sessionOutcome,
+4597:     sharedTurn: {
+4598:       owners: managedOwnerIds,
+4599:       roster: sharedTurnRoster,
+4600:     },
+4601:     consensus: {
+4602:       required: eligibleOwnerIds.length,
+4603:       count: consensusCount,
+4604:       viewerEligible: viewerCanConsent,
+4605:       viewerHasConsented,
+4606:       active: needsConsensus,
+4607:       threshold: consensusState?.threshold ?? Math.max(1, Math.ceil(eligibleOwnerIds.length * 0.8)),
+4608:       reached: Boolean(consensusState?.hasReachedThreshold),
+4609:     },
+4610:     // Expose rank / text-runtime bridge so StartClient can host
+4611:     // a shared "Play engine" box driven by coreRuntime.
+4612:     rankContext,
+4613:     textRuntimeEnabled,
+4614:   };
+4615: }
+4616: 
+----

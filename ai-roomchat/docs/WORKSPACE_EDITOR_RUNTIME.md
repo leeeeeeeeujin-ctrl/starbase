@@ -72,6 +72,27 @@ Starter pack (new set defaults)
 - **Play 텍스트 런타임 단일 노드 처리 개선**:
   - builtin 텍스트 런타임의 `publishResult` 가 `variables.battleLast.narrative` 를 우선 소비하도록 조정.
   - 단일 노드/1‑shot 그래프에서도 AI 판정 결과가 최소 한 번은 채팅 로그에 노출되고, 그래프가 즉시 끝나는 경우에도 종료 전에 마지막 내러티브를 한 번 보여 준다.
+- **AI 배틀 판정 API 키/폴백 동작 메모**:
+  - `pages/api/ai-battle-judge.js`:
+    - `callAIJudge(prompt, apiKeyOverride)` 는  
+      1) 디버그/라우팅에서 전달된 키(`apiKeyOverride`),  
+      2) 서버 환경 변수(`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) 순으로 키를 찾는다.
+    - 키가 전혀 없으면 `Error('AI API 키가 설정되지 않았습니다')` 를 던지고,  
+      이 경우에는 `generateFallbackResponse()` 를 호출하지 않는다(= 완전 무키 상태에서는 “AI가 돈 것처럼 보이는” 폴백은 없음).
+    - 키는 있으나 외부 AI 호출이 실패할 때(네트워크/레이트 리밋 등)는  
+      `generateFallbackResponse(prompt)` 가 실행되고,  
+      `**서술**: ...`, `**결과**: ...` 형식의 텍스트를 반환 → `parseAIResponse()` 를 거쳐 `variables.battleLast.narrative` 에 들어간다.
+  - Play 디버그 패널에서 API 키를 비워도:
+    - 서버 환경 변수에 키가 남아 있으면 실제 AI 호출이 계속 된다.  
+      (사용자 입장에서는 “키를 안 넣었는데도 AI가 도는 것처럼” 보이는 이유.)
+    - 반대로 서버 키까지 모두 제거하면, `/api/ai-battle-judge` 는 500/에러를 돌려주고  
+      `callBattleJudge()` 쪽에서 `ok: false` 경로로 빠지며, `battleLast.narrative` 는 채워지지 않는다.
+  - 통합 게임 시스템용 폴백 중 하나는  
+    `"{characterName}이(가) 잠시 생각에 잠깁니다. 다음에는 어떤 일이 일어날까요?"`  
+    를 `narrative/response` 로 돌려주며, `characterName` 기본값은 `"플레이어"` 다.  
+    Play에서 키가 없거나 호출이 실패할 때 이 경로가 사용되면,  
+    지금 관찰된 것처럼 “플레이어이(가) 잠시 생각에 잠깁니다…” 라는 문장이  
+    AI 응답 대신 폴백 내레이션으로 들어오게 된다.
 
 #### 2025-12-05
 - Pushed `assistant-adjust-character-panels-layout` to `main` (origin). Touched `ai-roomchat/components/character/CharacterBasicView.js` to stop carousel/game cards from clipping and make overlay slides stretch to container width on narrow/rotated layouts.
@@ -128,7 +149,54 @@ Current high-level status (this repo copy)
   - 파일 구성(`/graph`, `/game/hooks/automation.js`, `/game/runtime.config.json`) 기본 구조 완성
 - ~~coreRuntime entryNode fallback 구현~~ → **완료**
   - 첫 번째 노드로 fallback하는 안전장치 추가
+
+**남은 이슈/관찰 메모**
+
+- 텍스트 배틀 Play에서 단일/이중 노드 그래프를 돌릴 때:
+  - 관찰된 로그 예시  
+    `게임이 시작되었습니다. → 123 → 다음 단계로 진행합니다. → {{slot1.name}}만을 출력하라 플레이어이(가) 잠시 생각에 잠깁니다. 다음에는 어떤 일이 일어날까요? → 다음 단계로 진행합니다. → 플레이어이(가) 잠시 생각에 잠깁니다. 다음에는 어떤 일이 일어날까요? → 게임이 종료되었습니다.`  
+    처럼, 노드가 2개뿐인데도 3턴 이상 진행된 것처럼 보이는 케이스가 있다.
+  - 원인 요약:
+    - NextBar 자체가 클릭마다 `"다음 단계로 진행합니다."` 시스템 메시지를 추가하고,
+    - builtin runtime `publishResult` 가 `node.label`(프롬프트‑노드 라벨)과  
+      `variables.battleLast.narrative`(AI/폴백 내레이션)를 한 줄로 합쳐 보여주며,
+    - 종료 시점에는 같은 `battleLast.narrative` 를 한 번 더 보내고 나서  
+      `"게임이 종료되었습니다."` 를 추가하기 때문.
+    - API 키가 없거나 호출이 실패하면  
+      `"{characterName}이(가) 잠시 생각에 잠깁니다. 다음에는 어떤 일이 일어날까요?"`  
+      폴백이 내레이션으로 들어와, 실제 AI가 판정한 것처럼 보이는 혼동도 있다.
+  - TODO (향후 정리 방향):
+    - 2노드 그래프 기준 “턴 1: 노드1 프롬프트 + 내레이션”, “턴 2: 노드2 프롬프트 + 내레이션” 정도로  
+      노드 수와 턴 로그 개수가 직관적으로 매칭되도록 Play 출력 규칙 재정의.
+    - 종료 직전에 같은 내레이션을 재노출하는 브랜치는 제거하거나,  
+      “마지막 요약” 타입으로 분리해 중복을 피할 것.
+    - `hook timeout`(500ms) 에러는 사용자 채팅이 아니라 디버그 전용 영역에만 노출.
+     - 디버그 패널에서 참가자/캐릭터 슬롯(이름, ownerId, role, API 키 등)을  
+       명시적으로 설정할 수 있게 해서, 폴백 내레이션에 항상 `"플레이어"` 만 나오는 문제를 줄이고  
+       실제 캐릭터 이름이 반영되도록 개선.
   - 개발 모드에서 경고 로그 출력
+
+**다음 타자(코파일럿)에게 넘길 요구사항 요약**
+
+- 목표: “텍스트 배틀 기본 세트”를 **실 서비스 가능한 교본 수직선**으로 마무리하기.
+- 요청사항:
+  - Play 텍스트 런타임:
+    - 2노드/단일 노드 그래프에서도 “턴 수 = 노드 수”에 가깝게 보이도록  
+      `publishResult` / NextBar / 시스템 메시지 출력 규칙 정리.
+    - `hook timeout` 을 사용자 채팅이 아니라 디버그 전용 패널에만 노출.
+  - 프롬프트‑노드 매핑:
+    - 프롬프트‑노드 에디터에서 쓴 텍스트(`data.template`)가  
+      - 사용자에게 보여주는 문장,  
+      - AI에게 넘기는 심판용 프롬프트  
+      둘 중 어디에 어떻게 들어가는지 명확히 분리하고,  
+      단일 노드/간단 텍스트 게임에서도 직관적인 결과가 나오도록 조정.
+  - 폴백/캐릭터 이름:
+    - `"{characterName}이(가) 잠시 생각에 잠깁니다..."` 폴백 경로를  
+      - 언제, 어떤 조건에서 쓰는지 정리하고,  
+      - 디버그 패널에서 슬롯/캐릭터 이름을 설정하면 characterName에 반영되도록 개선.
+  - 문서:
+    - 위 수정사항을 이 문서 2.x/3.x/“Open tasks” 섹션에 반영해서,  
+      다음 에이전트/사용자가 바로 구조를 이해하고 확장할 수 있게 유지.
 - ~~SyncTemplateToVfs에서 `/template.json` → `/graph` 제한적 sync~~ → **완료**
   - `/template.json.data.template` → `/graph.label` 매핑 구현
   - 워크스페이스에서 템플릿 직접 수정 시에만 동작
@@ -4393,3 +4461,6 @@ Status (2025-12-11 기준)
     - 개별 캐릭터 상세 카드(예: RosterPanel 기반 뷰)는 차후 확장 대상으로 남겨 둔다.
   - 이 시각화는 **장르 표준 UX** 로 간주하며, 텍스트 배틀 이외의 장르에서도
     동일한 ready/합의 규칙을 재사용할 수 있도록 설계한다.
+
+#### 2025-12-12
+- **AI 배틀 판정 폴백 개선**: 에러 폴백 메시지 명확화, 캐릭터 이름 매핑 개선, dev/prod 모드 분리  상세 내용은 [WORKSPACE_EDITOR_RUNTIME_PATCH.md](./WORKSPACE_EDITOR_RUNTIME_PATCH.md) 참조
