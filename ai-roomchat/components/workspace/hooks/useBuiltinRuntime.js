@@ -320,21 +320,29 @@ export function useBuiltinRuntime({
       }
     };
 
-    // 초기 상태 발행 + 첫 번째 턴 자동 시작
+    // 초기 상태 발행 + 첫 번째 노드 AI 호출 (이동하지 않음)
     try {
       if (runtime && typeof runtime.getCurrentWithPrompt === 'function') {
         runtime
           .getCurrentWithPrompt()
-          .then((res) => {
+          .then(async (res) => {
             if (!stopped && res && res.current) {
-              publishResult(res, { reason: 'inspect', input: undefined });
-              
-              // 첫 노드가 ai/prompt 타입이면 자동으로 턴 시작
               const nodeType = res.current && res.current.type;
-              if (nodeType === 'ai' || nodeType === 'prompt') {
-                setTimeout(() => {
-                  if (!stopped) bus.emit('turn:next');
-                }, 100);
+              
+              // 첫 노드가 ai/prompt 타입이면 현재 노드에서 바로 onTurnStart 호출
+              if ((nodeType === 'ai' || nodeType === 'prompt') && hooks && typeof hooks.onTurnStart === 'function') {
+                try {
+                  const ctx = runtime.getContextSnapshot('user_action', 'auto');
+                  await hooks.onTurnStart(ctx);
+                  // onTurnStart 후 다시 프롬프트와 결과를 가져옴
+                  const updated = await runtime.getCurrentWithPrompt();
+                  publishResult(updated, { reason: 'user_action', input: 'auto' });
+                } catch (e) {
+                  console.warn('[useBuiltinRuntime] initial onTurnStart error:', e);
+                  publishResult(res, { reason: 'inspect', input: undefined });
+                }
+              } else {
+                publishResult(res, { reason: 'inspect', input: undefined });
               }
             }
           })
@@ -342,13 +350,21 @@ export function useBuiltinRuntime({
       } else if (runtime && typeof runtime.getCurrentNode === 'function') {
         const cur = runtime.getCurrentNode();
         if (cur) {
-          publishResult({ current: cur }, { reason: 'inspect', input: undefined });
+          const nodeType = cur.type;
           
-          // 첫 노드가 ai/prompt 타입이면 자동으로 턴 시작
-          if (cur.type === 'ai' || cur.type === 'prompt') {
-            setTimeout(() => {
-              if (!stopped) bus.emit('turn:next');
-            }, 100);
+          // 첫 노드가 ai/prompt 타입이면 현재 노드에서 바로 onTurnStart 호출
+          if ((nodeType === 'ai' || nodeType === 'prompt') && hooks && typeof hooks.onTurnStart === 'function') {
+            try {
+              const ctx = runtime.getContextSnapshot('user_action', 'auto');
+              await hooks.onTurnStart(ctx);
+              const updated = runtime.getCurrentNode();
+              publishResult({ current: updated }, { reason: 'user_action', input: 'auto' });
+            } catch (e) {
+              console.warn('[useBuiltinRuntime] initial onTurnStart error:', e);
+              publishResult({ current: cur }, { reason: 'inspect', input: undefined });
+            }
+          } else {
+            publishResult({ current: cur }, { reason: 'inspect', input: undefined });
           }
         }
       }
