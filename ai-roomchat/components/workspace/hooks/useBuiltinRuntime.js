@@ -168,13 +168,7 @@ export function useBuiltinRuntime({
 
         // 게임 종료 시점(single-node 포함) 처리
         if (!node) {
-          // 마지막 턴에 AI 내러티브가 있었다면 한 번은 보여준다.
-          if (battleLast && typeof battleLast.narrative === 'string') {
-            const narrative = battleLast.narrative.trim();
-            if (narrative) {
-              try { bus.emit('system:message', narrative); } catch {}
-            }
-          }
+          // 종료 시 중복 narrative 제거: 마지막 턴에서 이미 표시했으므로 여기서는 종료 메시지만
           bus.emit('system:message', '게임이 종료되었습니다.');
           return;
         }
@@ -195,8 +189,8 @@ export function useBuiltinRuntime({
             userText = narrative;
           }
         } else if (meta?.reason === 'inspect') {
-          // 초기 상태: 노드 라벨(또는 기본 프롬프트)만 보여 준다.
-          userText = baseLabel || runtimePrompt || '';
+          // 초기 상태: inspect는 디버그용이므로 사용자 메시지 발행 안 함
+          userText = '';
         } else if (runtimePrompt) {
           // 일반 텍스트 런타임: transformPrompt 결과를 그대로 보여 준다.
           userText = runtimePrompt;
@@ -369,7 +363,13 @@ export function useBuiltinRuntime({
           }
         }
       } catch (e) {
-        try { bus.emit('system:message', String(e?.message || e)); } catch {}
+        // hook timeout은 디버그 전용으로만 노출
+        const msg = String(e?.message || e);
+        if (msg === 'hook timeout') {
+          try { bus.emit('debug:error', { type: 'hook_timeout', message: msg, context: 'turn:next' }); } catch {}
+        } else {
+          try { bus.emit('system:message', msg); } catch {}
+        }
       }
     });
 
@@ -389,7 +389,13 @@ export function useBuiltinRuntime({
           Promise.resolve(gridEngine.applyAction(action, ctx)).catch(() => {});
         }
       } catch (e) {
-        try { bus.emit('system:message', String(e?.message || e)); } catch {}
+        // hook timeout은 디버그 전용으로만 노출
+        const msg = String(e?.message || e);
+        if (msg === 'hook timeout') {
+          try { bus.emit('debug:error', { type: 'hook_timeout', message: msg, context: 'player:chat' }); } catch {}
+        } else {
+          try { bus.emit('system:message', msg); } catch {}
+        }
       }
     });
 

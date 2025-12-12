@@ -233,6 +233,7 @@ function PlayOverlayContent({ templateBinding }) {
     calls: [],
     turnEvents: [],
     simUsers: [],
+    debugErrors: [], // hook timeout 등 디버그 에러
   });
   useDebugSimUsers({ storageNamespace, debugState, setDebugState });
   const bus = React.useMemo(() => {
@@ -243,6 +244,20 @@ function PlayOverlayContent({ templateBinding }) {
       emit(event, payload){ const arr=listeners.get(event)||[]; arr.forEach(fn=>{ try{ fn(payload);}catch(e){ console.warn('bus handler error', e);} }); },
     };
   }, []);
+
+  // debug:error 이벤트 리스너 (hook timeout 등)
+  React.useEffect(() => {
+    const off = bus.on('debug:error', (err) => {
+      setDebugState((prev) => {
+        const errors = Array.isArray(prev.debugErrors) ? prev.debugErrors.slice() : [];
+        errors.push({ ...err, ts: Date.now() });
+        // 최대 20개까지만 유지
+        while (errors.length > 20) errors.shift();
+        return { ...prev, debugErrors: errors };
+      });
+    });
+    return off;
+  }, [bus]);
 
   // 디버그용 시뮬레이션 참가자 관리 헬퍼
   const addSimUser = React.useCallback(() => {

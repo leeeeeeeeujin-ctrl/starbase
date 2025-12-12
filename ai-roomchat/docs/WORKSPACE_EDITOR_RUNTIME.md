@@ -203,10 +203,25 @@ Current high-level status (this repo copy)
 
 **현재 상태 요약 (2025-12-11)**
 - 기능적으로 **텍스트 배틀 기본 세트 기준으로는 Play → Rank settle 수직선이 한 번 도는 상태**
-- **중요**: Maker 그래프(Supabase) ↔ workspace 동기화는 **아직 미구현**
+
+**완료된 개선사항 (2025-12-12)**
+- ✅ **AI 폴백 개선**: 에러/성공 구분, 캐릭터 이름 매핑, dev/prod 모드 분리 ([WORKSPACE_EDITOR_RUNTIME_PATCH.md](./WORKSPACE_EDITOR_RUNTIME_PATCH.md))
+- ✅ **디버그 패널 확장**: 캐릭터 이름/슬롯 역할 설정 UI 추가 ([PlayDebugPanel.jsx](../../components/workspace/PlayDebugPanel.jsx#L207-L237))
+- ✅ **hook timeout 디버그 전용화**: 사용자 채팅에서 제거, 디버그 패널에만 표시 ([useBuiltinRuntime.js](../../components/workspace/hooks/useBuiltinRuntime.js#L366-L374))
+- ✅ **Play 출력 규칙 정리**: "턴 수 ≈ 노드 수" 직관적 매핑
+  - inspect 시점 시스템 메시지 제거 (중복 방지)
+  - 게임 종료 시 narrative 중복 출력 제거
+  - NextBar "다음 단계로 진행합니다." 메시지 제거
+- ✅ **프롬프트-노드 매핑 명확화**:
+  - `node.label` → 기본 텍스트
+  - `transformPrompt` 훅 → 동적 프롬프트 변환 (선택적)
+  - 최종 사용자 텍스트: `label + AI narrative` (텍스트 배틀) 또는 `transformPrompt 결과` (일반 런타임)
+  - AI용 프롬프트: `transformPrompt` 훅에서 `variables`, `slots` 참조해 구성
+- **중요**: Maker 그래프(Supabase) ↔ workspace 동기화는 **아직 미구현** → ⚠️ **[보류] 코덱스에게 추가 설명 요청 필요**
   - 완료된 것: `/template.json` 직접 수정 시 `/graph`로 sync (제한적)
   - 미구현: Maker 그래프에서 Supabase(`prompt_sets/slots/bridges`)에 저장한 내용이 워크스페이스(`/graph`, `/game/runtime.config.json.entryNode`)로 자동 반영되는 진짜 Studio→workspace sync
   - 현재 Maker 그래프 편집과 워크스페이스는 **여전히 별도 세계로 분리**되어 있음
+  - **보류 사유**: 전체 데이터 흐름 설계가 필요한 장기 과제. Supabase 스키마, 워크스페이스 파일 구조, 동기화 전략에 대한 코덱스의 명확한 가이드라인이 필요함.
 
 **방금 완료된 작업 (2025-12-11 저녁)**
 - ✅ **B (완료). PlayOverlayContent 구조 분리 통합 완료**

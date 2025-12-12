@@ -5,7 +5,7 @@ import { useBattleLogDebug } from './hooks/useBattleLogDebug.js';
 
 /**
  * Play 디버그 패널 컴포넌트
- * 프롬프트 인스펙터, 턴 로그, 디버그 참가자 관리, AI 호출 로그, 베틀로그 디버그
+ * 프롬프트 인스펙터, 턴 로그, 디버그 참가자 관리, AI 호출 로그, 베틀로그 디버그, hook timeout 에러
  */
 export default function PlayDebugPanel({
   enableDebugUi,
@@ -21,6 +21,7 @@ export default function PlayDebugPanel({
   if (!enableDebugUi) return null;
 
   const turnEvents = Array.isArray(debugState.turnEvents) ? debugState.turnEvents : [];
+  const debugErrors = Array.isArray(debugState.debugErrors) ? debugState.debugErrors : [];
   const { log: debugLog, highlightEvents } = useBattleLogDebug({
     events: turnEvents,
     participants: {},
@@ -88,6 +89,36 @@ export default function PlayDebugPanel({
               >
                 {debugState.lastPrompt}
               </pre>
+            </div>
+          )}
+
+          {/* Hook Timeout 에러 (디버그 전용) */}
+          {debugErrors.length > 0 && (
+            <div
+              style={{
+                marginTop: 6,
+                maxWidth: 420,
+                padding: 8,
+                borderRadius: 10,
+                border: '1px solid #dc2626',
+                background: 'rgba(127,29,29,0.2)',
+                color: '#fca5a5',
+                fontSize: 11,
+                boxShadow: '0 16px 40px rgba(0,0,0,0.65)',
+              }}
+            >
+              <div style={{ fontWeight: 600, marginBottom: 4, color: '#fecaca' }}>
+                ⚠️ Hook Timeout (디버그 전용)
+              </div>
+              <ul style={{ margin: 0, paddingLeft: 16 }}>
+                {debugErrors.slice(-5).map((err, idx) => (
+                  <li key={idx} style={{ marginBottom: 2 }}>
+                    <span style={{ color: '#fca5a5' }}>
+                      {err.context} · {err.message} ({new Date(err.ts).toLocaleTimeString()})
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 
@@ -241,6 +272,42 @@ export default function PlayDebugPanel({
                         삭제
                       </button>
                     </div>
+                    {/* 캐릭터 이름 (AI fallback에서 사용) */}
+                    <input
+                      type="text"
+                      placeholder="캐릭터 이름 (AI 응답 폴백 시 표시)"
+                      value={u?.characterName || ''}
+                      onChange={(e) =>
+                        updateSimUser(idx, { characterName: e.target.value })
+                      }
+                      style={{
+                        width: '100%',
+                        padding: '4px 6px',
+                        borderRadius: 6,
+                        border: '1px solid #4b5563',
+                        background: '#020617',
+                        color: '#e5e7eb',
+                        fontSize: 11,
+                      }}
+                    />
+                    {/* 슬롯 역할 (slot1, slot2 등) */}
+                    <input
+                      type="text"
+                      placeholder="슬롯 역할 (예: slot1, slot2)"
+                      value={u?.slotRole || ''}
+                      onChange={(e) =>
+                        updateSimUser(idx, { slotRole: e.target.value })
+                      }
+                      style={{
+                        width: '100%',
+                        padding: '4px 6px',
+                        borderRadius: 6,
+                        border: '1px solid #4b5563',
+                        background: '#020617',
+                        color: '#e5e7eb',
+                        fontSize: 11,
+                      }}
+                    />
                     <input
                       type="password"
                       placeholder="API 키 (로컬 디버그 전용, 서버로 전송되지 않음)"

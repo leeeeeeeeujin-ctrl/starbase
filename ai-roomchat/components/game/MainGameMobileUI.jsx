@@ -169,12 +169,8 @@ export default function MainGameMobileUI({
   const triggerNext = useCallback(() => {
     if (typeof onForceNext === 'function') {
       try { onForceNext(); } catch {}
-    } else {
-      // Play 디버그용: 메인게임(랭크)에서는 기본 시스템 문구를 출력하지 않는다.
-      if (mode === 'play') {
-        setGameChat(prev => [...prev, { role: 'system', text: '다음 단계로 진행합니다.' }]);
-      }
     }
+    // "다음 단계로 진행합니다." 메시지 제거: 실제 턴 내용은 useBuiltinRuntime에서 발행
     try { runtimeBus?.emit?.('turn:next'); } catch {}
     try { onNext?.(); } catch {}
     if (onForceNext == null && typeof nextPolicy.timeoutSec === 'number') setSecondsLeft(nextPolicy.timeoutSec);
