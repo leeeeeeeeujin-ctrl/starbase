@@ -126,6 +126,8 @@ async function processUnifiedGamePrompt(context) {
     const battleLastPayload = {
       ...parsed,
       timestamp,
+      success: true, // AI 호출 성공
+      fallback: false,
       apiRouting: routing
         ? {
             origin: routing.participant?.origin || null,
@@ -228,13 +230,59 @@ async function processUnifiedGamePrompt(context) {
   } catch (error) {
     console.error('통합 게임 프롬프트 처리 오류:', error);
 
-    // 더 나은 폴백 응답
-    const characterName = character?.name || '플레이어';
+    // ============================================================
+    // 에러 폴백 처리
+    // ============================================================
+    // 이 경로는 다음 상황에서 실행됨:
+    // 1. AI API 키가 없거나 잘못됨
+    // 2. AI API 호출 실패 (네트워크, 타임아웃, 레이트 리밋 등)
+    // 3. callAIJudge 내부에서 예외 발생
+    //
+    // 주의:
+    // - 이 메시지는 **AI 응답이 아니라 에러 폴백**임을 명확히 해야 함
+    // - 클라이언트에서 fallback: true를 보고 적절한 UI 처리 필요
+    //   (예: 에러 아이콘, 재시도 버튼, 디버그 모드에서만 표시 등)
+    // ============================================================
+
+    // 캐릭터 이름 추출 우선순위:
+    // 1. routing.participant.name (API 라우팅에서 선택된 참가자)
+    // 2. gameState.participants[].name (게임 상태의 참가자 목록)
+    // 3. character?.name (직접 전달된 캐릭터 객체)
+    // 4. '시스템' (최종 폴백)
+    let characterName = '시스템';
+    
+    try {
+      // routing이 있으면 그쪽 participant 이름 우선
+      if (routing && routing.participant && routing.participant.name) {
+        characterName = routing.participant.name;
+      } 
+      // gameState에 participants 배열이 있으면 첫 번째 참가자
+      else if (gameState && Array.isArray(gameState.participants) && gameState.participants.length > 0) {
+        const firstParticipant = gameState.participants[0];
+        characterName = firstParticipant.name || firstParticipant.hero?.name || firstParticipant.heroName || characterName;
+      }
+      // character 객체가 직접 전달된 경우
+      else if (character && character.name) {
+        characterName = character.name;
+      }
+    } catch {
+      // 이름 추출 실패 시 기본값 유지
+    }
+
+    // 개발 모드: 명확한 에러 메시지
+    // 프로덕션: 자연스러운 대기 메시지 (하지만 fallback: true로 구분 가능)
+    const isDev = process.env.NODE_ENV === 'development';
+    const fallbackNarrative = isDev
+      ? `⚠️ AI 판정 실패: ${error.message || '알 수 없는 오류'}. 재시도하거나 디버그 패널에서 API 키를 확인하세요.`
+      : `${characterName}이(가) 잠시 생각에 잠깁니다. 다음에는 어떤 일이 일어날까요?`;
+
     return {
-      narrative: `${characterName}이(가) 잠시 생각에 잠깁니다. 다음에는 어떤 일이 일어날까요?`,
-      response: `${characterName}이(가) 잠시 생각에 잠깁니다. 다음에는 어떤 일이 일어날까요?`,
+      narrative: fallbackNarrative,
+      response: fallbackNarrative,
       success: false,
       fallback: true,
+      errorType: error.name || 'UnknownError',
+      errorMessage: isDev ? error.message : undefined, // 개발 모드에서만 상세 에러
       timestamp: new Date().toISOString(),
     };
   }
