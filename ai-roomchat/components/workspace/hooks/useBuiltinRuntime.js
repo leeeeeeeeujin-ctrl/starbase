@@ -183,6 +183,15 @@ export function useBuiltinRuntime({
         if (battleLast && typeof battleLast.narrative === 'string' && battleLast.narrative.trim()) {
           // 텍스트 배틀 등: 프롬프트 + AI 응답을 한 턴 내용으로 묶어서 보여 준다.
           const narrative = battleLast.narrative.trim();
+          
+          // AI fallback 감지 및 카운터 증가
+          if (battleLast.fallback === true && onDebugStateChangeRef.current) {
+            onDebugStateChangeRef.current((prev) => ({
+              ...prev,
+              fallbackCount: (prev.fallbackCount || 0) + 1,
+            }));
+          }
+          
           if (baseLabel) {
             userText = `${baseLabel}\n\n${narrative}`;
           } else {
@@ -199,7 +208,14 @@ export function useBuiltinRuntime({
         }
 
         if (userText) {
-          bus.emit('system:message', userText);
+          // fallback 여부를 메타데이터로 함께 전달
+          const isFallback = battleLast?.fallback === true;
+          const isDev = typeof process !== 'undefined' && process.env?.NODE_ENV === 'development';
+          bus.emit('system:message', userText, { 
+            fallback: isFallback,
+            isDev,
+            errorMessage: isFallback && isDev ? battleLast?.errorMessage : undefined
+          });
         }
 
         // runtime:turn-log 이벤트 발행

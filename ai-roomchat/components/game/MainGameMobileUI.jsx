@@ -137,8 +137,21 @@ export default function MainGameMobileUI({
     const offLayout = runtimeBus.on('ui:setLayout', (order) => {
       try { if (Array.isArray(order)) setLayout(cur => ({ ...cur, order })); } catch {}
     });
-    const offSystem = runtimeBus.on('system:message', (msg) => {
-      try { if (msg != null) setGameChat(prev => [...prev, { role: 'system', text: String(msg) }]); } catch {}
+    const offSystem = runtimeBus.on('system:message', (msg, meta) => {
+      try { 
+        if (msg != null) {
+          const text = String(msg);
+          const isFallback = meta?.fallback === true;
+          const isDev = meta?.isDev === true;
+          setGameChat(prev => [...prev, { 
+            role: 'system', 
+            text,
+            fallback: isFallback,
+            isDev,
+            errorMessage: meta?.errorMessage
+          }]);
+        }
+      } catch {}
     });
     return () => { try { offLayout?.(); offSystem?.(); } catch {} };
   }, [runtimeBus]);
@@ -165,6 +178,11 @@ export default function MainGameMobileUI({
     try { runtimeBus?.emit?.('player:chat', { text: t }); } catch {}
     setChatText('');
   }, [chatText, onPlayerChat, runtimeBus]);
+
+  const retryLastTurn = useCallback(() => {
+    // 마지막 AI 턴 재시도: turn:next 이벤트 재발행
+    try { runtimeBus?.emit?.('turn:next'); } catch {}
+  }, [runtimeBus]);
 
   const triggerNext = useCallback(() => {
     if (typeof onForceNext === 'function') {
@@ -395,6 +413,7 @@ export default function MainGameMobileUI({
                     }))
                   : gameChat
               }
+              onRetryLast={retryLastTurn}
             />
           )}
         />
@@ -534,14 +553,59 @@ function Header({ userLabel }) {
   );
 }
 
-function GameChat({ items }) {
+function GameChat({ items, onRetryLast }) {
   return (
     <div style={{ background:'#0a1220', border:'1px solid rgba(148,163,184,0.25)', borderRadius:12, minHeight:200, display:'flex', flexDirection:'column' }}>
       <div style={{ padding:'8px 10px', borderBottom:'1px solid rgba(148,163,184,0.2)', fontSize:12, color:'#93c5fd' }}>AI 게임 채팅</div>
       <div style={{ flex:1, minHeight:0, overflow:'auto', padding:10, display:'grid', gap:8 }}>
-        {items.map((m, i) => (
-          <div key={i} style={{ fontSize:13, lineHeight:1.5, color: m.role==='system' ? '#e2e8f0' : '#cbd5e1' }}>{m.text}</div>
-        ))}
+        {items.map((m, i) => {
+          const isFallback = m.fallback === true;
+          const isDev = m.isDev === true;
+          const baseColor = m.role === 'system' ? '#e2e8f0' : '#cbd5e1';
+          const isLastFallback = isFallback && i === items.length - 1;
+          
+          // Fallback 스타일: 개발=빨강+아이콘, 프로덕션=노랑+미묘한 경고
+          const style = isFallback
+            ? {
+                fontSize: 13,
+                lineHeight: 1.5,
+                color: isDev ? '#fca5a5' : '#fbbf24',
+                padding: '6px 8px',
+                borderRadius: 6,
+                border: isDev ? '1px solid #dc2626' : '1px solid rgba(245,158,11,0.3)',
+                background: isDev ? 'rgba(127,29,29,0.15)' : 'rgba(245,158,11,0.05)',
+              }
+            : { fontSize: 13, lineHeight: 1.5, color: baseColor };
+          
+          return (
+            <div key={i} style={style}>
+              {isFallback && isDev && '⚠️ '}
+              {m.text}
+              {isFallback && isDev && m.errorMessage && (
+                <div style={{ fontSize: 10, marginTop: 4, opacity: 0.8 }}>
+                  에러: {m.errorMessage}
+                </div>
+              )}
+              {isLastFallback && onRetryLast && (
+                <button
+                  onClick={onRetryLast}
+                  style={{
+                    marginTop: 6,
+                    padding: '4px 10px',
+                    fontSize: 11,
+                    borderRadius: 6,
+                    border: '1px solid #f59e0b',
+                    background: 'rgba(245,158,11,0.2)',
+                    color: '#fbbf24',
+                    cursor: 'pointer',
+                  }}
+                >
+                  🔄 재시도
+                </button>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

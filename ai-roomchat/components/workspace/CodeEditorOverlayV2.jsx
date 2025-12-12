@@ -234,6 +234,7 @@ function PlayOverlayContent({ templateBinding }) {
     turnEvents: [],
     simUsers: [],
     debugErrors: [], // hook timeout 등 디버그 에러
+    fallbackCount: 0, // AI fallback 발생 횟수
   });
   useDebugSimUsers({ storageNamespace, debugState, setDebugState });
   const bus = React.useMemo(() => {

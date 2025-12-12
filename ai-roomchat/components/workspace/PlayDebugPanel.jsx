@@ -122,6 +122,30 @@ export default function PlayDebugPanel({
             </div>
           )}
 
+          {/* AI Fallback 카운터 */}
+          {typeof debugState.fallbackCount === 'number' && debugState.fallbackCount > 0 && (
+            <div
+              style={{
+                marginTop: 6,
+                maxWidth: 420,
+                padding: 8,
+                borderRadius: 10,
+                border: '1px solid #f59e0b',
+                background: 'rgba(245,158,11,0.1)',
+                color: '#fbbf24',
+                fontSize: 11,
+                boxShadow: '0 16px 40px rgba(0,0,0,0.65)',
+              }}
+            >
+              <div style={{ fontWeight: 600, color: '#fbbf24' }}>
+                ⚠️ AI 폴백 발생 횟수: {debugState.fallbackCount}회
+              </div>
+              <div style={{ marginTop: 4, fontSize: 10, color: '#fcd34d', opacity: 0.8 }}>
+                API 키 확인 또는 네트워크 상태를 점검하세요.
+              </div>
+            </div>
+          )}
+
           {/* 턴 로그 (raw) */}
           {Array.isArray(debugState.turnEvents) && debugState.turnEvents.length > 0 && (
             <div
