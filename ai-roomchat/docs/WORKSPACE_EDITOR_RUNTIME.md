@@ -7,6 +7,8 @@ It exists so we can keep the structure stable even while we iterate on features 
 
 ## 시작 노드 동작 (Start Node Behavior)
 
+> TL;DR: 시작 노드는 엔진 초기화 전용 숨은 준비 턴이며, 여기서 나온 AI 응답은 플레이어 채팅에 표시되지 않습니다.
+
 **중요**: 시작 노드는 초기화 전용으로, AI 응답이 플레이어에게 표시되지 않습니다.
 
 ### 동작 방식
@@ -27,6 +29,8 @@ It exists so we can keep the structure stable even while we iterate on features 
 ---
 
 ## 코드 에디터 ↔ 프롬프트-노드 에디터 동기화
+
+> TL;DR: 그래프/프롬프트의 진리의 원천은 Maker 프롬프트‑노드 에디터이며, 코드 에디터의 그래프/템플릿 파일은 이를 반영·조정하는 보조 수단입니다.
 
 **문제**: 프롬프트-노드 에디터와 코드 에디터가 같은 워크스페이스를 사용하지만, 변경사항이 서로 동기화되지 않았고, 프롬프트 수정이 저장되지 않는 심각한 문제가 있었습니다.
 
@@ -114,6 +118,29 @@ writeFile: (path, content) => {
 4. `saveAll` 호출 시 최신 `nodes` 상태를 Supabase에 저장 ✅
 5. 코드 에디터는 `file?.content` 변경 감지 → 버퍼 자동 업데이트 ✅
 
+### 어디서 무엇을 편집해야 하는가 (편집 책임 구분)
+
+- **그래프 구조 / 노드 이름 / 시작 노드 지정**
+  - 책임: 프롬프트-노드 에디터 (React Flow 그래프)
+  - 사용: 노드 추가/삭제, 에지 연결, `시작` 플래그, 노드 이름(카드 상단 입력창)
+  - 코드 에디터에서 `/graph/prompt-graph.json` 을 직접 수정해도,  
+    이후 프롬프트-노드 에디터에서 저장하면 다시 그래프 상태가 진리의 원천이 되어 **코드 쪽 그래프 정의가 덮어써집니다.**
+  - 설계 의도: “그래프는 눈으로 보이는 편집기가 소유하고, 코드 에디터에서는 읽기 전용에 가깝게 취급”  
+    (필요 시 고급 사용자가 임시 수정은 할 수 있지만, 궁극적 소스는 그래프입니다.)
+
+- **프롬프트 내용(template) / 변수 규칙 / UI 템플릿 전반**
+  - 책임: 프롬프트-노드 에디터의 우측 패널 + 코드 에디터의 `template.json`
+  - 사용:
+    - 일반적인 텍스트 배틀 게임 제작: 프롬프트-노드 에디터 패널에서 템플릿/변수 규칙 수정
+    - 장르 확장 / 메인 UI / 게임 셸 설정 등: 코드 에디터에서 `template.json` 전체 구조 편집
+  - 주의: 텍스트 프롬프트는 Supabase `prompt_slots.template` 가 진리의 원천이므로,  
+    코드 에디터에서 임시 수정 후 저장하지 않고 나가면 프롬프트-노드 에디터에서 다시 저장할 때 덮어쓸 수 있습니다.
+
+- **현재 상태 (2025‑12‑12 기준)**
+  - 노드 이름은 Supabase 스키마에는 별도 컬럼이 없고, `template.json` 의 `nodes[*].data.name` 에만 보조적으로 저장됩니다.
+  - 이름을 안정적으로 사용하려면 **프롬프트-노드 에디터에서 이름을 관리**하고,  
+    코드 에디터에서 그래프 섹션을 직접 건드리지 않는 것을 권장합니다.
+
 ### 구현 위치
 - [MakerEditor.js](../ai-roomchat/components/maker/editor/MakerEditor.js#L177-L185): hydrateFromTemplate dependency 제거
 - [MakerEditorPanel.js](../ai-roomchat/components/maker/editor/MakerEditorPanel.js#L304-L326): 직접 setNodes 호출로 변경
@@ -149,6 +176,8 @@ Default set philosophy
 
 Starter pack (new set defaults)
 
+> TL;DR: 새 세트는 서버 `GET /api/workspace/starter-pack`에서 텍스트 배틀 기본 그래프/런타임/훅을 받아와, Maker → Play → Rank 수직선을 바로 돌릴 수 있는 구조로 생성됩니다.
+
 - 새 세트의 초기 파일은 브라우저 `defaultFiles`가 아니라 **서버 `GET /api/workspace/starter-pack` 응답**으로 생성된다.
   - 구현: `pages/api/workspace/starter-pack.js`  
     → 이 파일을 수정·배포해야 “새 세트 기본값”이 바뀐다.
@@ -170,9 +199,27 @@ Starter pack (new set defaults)
   - builtin 텍스트 런타임에서 `turn:next` 이벤트를 받으면,
     - 현재 노드 type 이 `ai`/`prompt` 인 경우: `runtime.step({ reason: "user_action", input: "auto" })` → 위 훅의 `onUserAction` 경로를 통과해 **AI 판정이 자동 실행**된다.
     - 그 외 노드: `runtime.step({ reason: "auto" })` 로 단순 그래프 진행.
-- 주의:
+"주의:
   - 이 starter pack 변경은 **변경 이후에 생성된 세트**에만 적용된다.
   - 이미 존재하는 세트는 자동 마이그레이션되지 않으므로, 필요하면 새 세트를 만들고 기존 내용을 이 구조에 맞춰 옮겨야 한다.
+
+## Quick Start: 텍스트 배틀 수직선 만들기
+
+> TL;DR: 기본 텍스트 배틀 세트를 하나 만든 뒤 Maker에서 그래프를 정리하고, Play로 바로 돌려 본 다음 Rank/베틀로그까지 이어지는 한 줄 흐름을 확인하면 됩니다.
+
+1. **새 워크스페이스 세트 만들기**
+  - Workspace UI에서 텍스트 배틀 기본 세트(Starter pack)를 기준으로 새 세트를 생성합니다.
+  - 생성 직후 `/graph/prompt-graph.json`, `/game/runtime.config.json`, `/game/hooks/automation.js` 가 자동으로 채워집니다.
+2. **Maker에서 그래프 확인/수정**
+  - Maker 프롬프트‑노드 에디터를 열어 `start` → `end` 로 이어지는 기본 그래프를 확인합니다.
+  - 필요한 만큼 프롬프트 노드를 추가하고, `시작 지정` 버튼으로 시작 노드를 명시합니다.
+3. **프롬프트/변수 규칙 다듬기**
+  - 우측 패널에서 각 노드의 프롬프트 내용을 수정하고, `config.battle.routes` 및 변수 규칙을 텍스트 배틀에 맞게 조정합니다.
+4. **Play에서 실행해 보기**
+  - Workspace 코드 에디터의 Play 버튼을 눌러 builtin 텍스트 런타임을 실행합니다.
+  - 단일/2노드 그래프 기준으로 "턴 수 ≈ 노드 수" 로 보이는지, 내레이션/판정이 기대대로 출력되는지 확인합니다.
+5. **Rank/베틀로그까지 이어 보기**
+  - 동일 세트로 Rank 매칭 → 메인게임(StartClient) → settle → `/battle-log` 페이지까지 한 번 돌려, 점수/하이라이트/로그가 일관되게 이어지는지 점검합니다.
 
 ### Quick dev log
 
@@ -4579,3 +4626,31 @@ Status (2025-12-11 기준)
 
 #### 2025-12-12
 - **AI 배틀 판정 폴백 개선**: 에러 폴백 메시지 명확화, 캐릭터 이름 매핑 개선, dev/prod 모드 분리  상세 내용은 [WORKSPACE_EDITOR_RUNTIME_PATCH.md](./WORKSPACE_EDITOR_RUNTIME_PATCH.md) 참조
+
+---
+
+## Copilot 외주용 작업 메모
+
+> 이 섹션은 “다음 타자(Copilot 등)에게 맡겨도 되는 일감”을 정리한 메모입니다.  
+> 여기 적힌 범위 밖의 런타임/수퍼베이스/그래프 저장 로직은 **우리 쪽에서 직접 관리**합니다.
+
+- **문서/가이드 정리**
+  - 이 문서의 각 주요 섹션에 짧은 TL;DR 요약 박스 추가 (예: “Play 디버그 참가자 / API 키” 위에 한 줄 설명).
+  - Maker 페이지를 처음 여는 사용자를 위한 “빠른 시작(Quick Start): 텍스트 배틀 수직선 만들기” 섹션 초안 작성.
+
+- **UI 안내/라벨링 보강**
+  - 프롬프트-노드 에디터 패널에 안내 문구 추가:
+    - 예: “그래프 구조 및 노드 이름은 이 에디터에서만 편집됩니다. 코드 에디터의 그래프 JSON은 고급 사용자용입니다.”
+  - Play 디버그 패널에 경고/힌트 추가:
+    - 예: “이 패널에서 설정한 참가자/키는 디버그 전용이며, 메인게임 랭크 데이터에는 저장되지 않습니다.”
+
+- **로깅/주석 보완 (행동 변경 없음)**
+  - `workspace/hooks/automation.js` 와 `components/workspace/hooks/useBuiltinRuntime.js` 에
+    - `ctx.debug`, `variables.battleLast` 등 주요 필드에 대한 JSDoc/주석 추가.
+  - 이미 존재하는 `console.log` 근처에, 데이터 흐름을 추적하기 위한 **비침투적 로그**만 보강:
+    - 예: 디버그 참가자/키가 런타임으로 잘 들어왔는지 1줄 요약 로그.
+
+- **하지 말아야 할 작업 (외주 금지 범위)**
+  - Supabase 스키마 변경 (`prompt_sets / prompt_slots / prompt_bridges` 컬럼 추가/삭제).
+  - Maker 그래프 저장/로드 로직 변경 (`useMakerEditorGraph`, `useMakerEditorPersistence`, `useMakerEditorLoader` 구조 수정).
+  - Play/메인게임 런타임 핵심 흐름(`useBuiltinRuntime`, 점수 정산, Turn/Rank 엔진)의 제어 흐름 변경.

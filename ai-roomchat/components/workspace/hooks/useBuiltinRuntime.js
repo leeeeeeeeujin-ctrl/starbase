@@ -102,6 +102,20 @@ export function useBuiltinRuntime({
           })
         : [];
 
+      if (hasSimUsers && debugPlayers.length) {
+        try {
+          console.log('[useBuiltinRuntime] 디버그 참가자 주입', {
+            count: debugPlayers.length,
+            players: debugPlayers.map((p) => ({
+              ownerId: p.ownerId,
+              heroName: p.heroName,
+              role: p.role,
+              hasApiKey: !!p.apiKey,
+            })),
+          });
+        } catch {}
+      }
+
       const rankDefaults = {
         sessionId: null,
         gameMode: 'offline',

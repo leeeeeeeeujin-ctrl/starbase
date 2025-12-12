@@ -16,6 +16,50 @@
  */
 
 // =============================================================================
+// 컨텍스트/variables 구조 메모 (JSDoc)
+// =============================================================================
+
+/**
+ * @typedef {Object} TextBattleContext
+ * @property {{ id?: string, label?: string, type?: string, config?: Object }} [node]
+ *   현재 턴의 그래프 노드. label 은 사용자에게 보이는 프롬프트 제목, config.battle 에는 배틀 설정이 들어갑니다.
+ * @property {Object} [variables]
+ *   런타임 상태 저장소. battleLast / battleResult / battleScore / stats / scene / effects / speaker 등 표준 슬롯과
+ *   debug 용 메타데이터를 모두 포함합니다.
+ * @property {{
+ *   narrative?: string,
+ *   result?: string,
+ *   battleEnd?: boolean,
+ *   winner?: string,
+ *   effects?: any,
+ *   timestamp?: string,
+ * }} [variables.battleLast]
+ *   가장 최근 AI 판정 결과 및 내레이션. useBuiltinRuntime.publishResult() 에서 사용자 메시지를 만들 때 우선 소비됩니다.
+ * @property {{
+ *   battleScore?: { hero?: number, rival?: number },
+ *   battleHistory?: Array<{ node?: string, text?: string, winner?: string, result?: string }>,
+ *   speaker?: { role?: string, accentColor?: string },
+ *   stats?: Object,
+ *   scene?: Object,
+ *   effects?: Object,
+ *   debug?: {
+ *     aiCalls?: Array<{
+ *       kind?: string,
+ *       ok?: boolean,
+ *       result?: string | null,
+ *       winner?: string | null,
+ *       timestamp?: string,
+ *       promptPreview?: string | null,
+ *     }>,
+ *     participants?: Array<any>,
+ *   },
+ * }} [variables]
+ *   텍스트 배틀에서 사용하는 대표적인 슬롯 구조. 훅 구현 시에는 필요한 필드만 부분적으로 참조해도 됩니다.
+ * @property {number} [turn]
+ *   현재 턴 번호. battleHistory / stats.turn 계산에 사용됩니다.
+ */
+
+// =============================================================================
 // 헬퍼 함수들
 // =============================================================================
 
@@ -231,12 +275,14 @@ async function callBattleJudge(prompt, ctx) {
 
 /**
  * onTurnStart: 노드 진입 시 coreRuntime에서 자동으로 호출됩니다.
- * 
+ *
  * AI 프롬프트 노드(`config.autoJudge === true` 또는 `type: 'ai_prompt'`)에서
- * 자동으로 AI 판정을 실행하고 결과를 variables에 저장합니다.
- * 
+ * 자동으로 AI 판정을 실행하고 결과를 variables.battleLast / battleResult / battleScore 에 저장합니다.
+ *
  * 이 훅은 coreRuntime.step()에서 새 노드 진입 시 호출되며,
  * 전체 컨텍스트(node, variables, turn, files, world 등)를 받습니다.
+ *
+ * @param {TextBattleContext} ctx
  */
 export async function onTurnStart(ctx) {
   const node = ctx?.node || {};
@@ -261,6 +307,14 @@ export async function onTurnStart(ctx) {
 
   // AI 판정 자동 실행
   const prompt = transformPrompt(ctx);
+  // 디버그용: 어떤 노드/턴에서 어떤 심판용 프롬프트를 생성했는지 1줄 요약
+  try {
+    console.log('[onTurnStart] auto judge 시작', {
+      nodeId: ctx?.node?.id,
+      turn: ctx?.turn,
+      promptPreview: typeof prompt === 'string' ? prompt.slice(0, 80) : null,
+    });
+  } catch {}
   const result = await callBattleJudge(prompt, ctx);
   
   if (!result.ok || !result.data) {
@@ -406,6 +460,14 @@ export async function onUserAction(ctx, input) {
   // 자동 판정: "auto" 입력 시 /api/ai-battle-judge 호출
   if (text === 'auto') {
     const prompt = transformPrompt(ctx);
+    // 디버그용: 디버그 패널에서 auto 토큰을 눌렀을 때의 심판 요청 요약
+    try {
+      console.log('[onUserAction] auto judge 요청', {
+        nodeId: ctx?.node?.id,
+        turn: ctx?.turn,
+        promptPreview: typeof prompt === 'string' ? prompt.slice(0, 80) : null,
+      });
+    } catch {}
     const result = await callBattleJudge(prompt, ctx);
     if (!result.ok || !result.data) {
       // 실패 시에는 그래프 기본 엣지에 맡긴다

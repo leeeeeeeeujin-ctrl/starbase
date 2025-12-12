@@ -249,6 +249,9 @@ export default function PlayDebugPanel({
                 + 추가
               </button>
             </div>
+            <div style={{ fontSize: 10, color: '#9ca3af', marginBottom: 4 }}>
+              이 패널에서 설정한 참가자와 API 키는 플래이 디버그 전용이며, 랭크/메인게임 참가자 데이터나 서버에는 저장되지 않습니다.
+            </div>
             {Array.isArray(debugState.simUsers) && debugState.simUsers.length > 0 ? (
               <ul style={{ margin: 0, paddingLeft: 0, listStyle: 'none', display: 'grid', gap: 4 }}>
                 {debugState.simUsers.map((u, idx) => (

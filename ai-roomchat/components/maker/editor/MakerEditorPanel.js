@@ -162,6 +162,10 @@ export default function MakerEditorPanel({
                   ? '선택한 브릿지를 편집 중입니다.'
                   : '편집할 프롬프트 또는 브릿지를 선택하세요.'}
             </span>
+            <span style={{ fontSize: 11, color: '#6b7280', lineHeight: 1.4 }}>
+              그래프 구조와 노드 이름은 이 편집기가 진리의 원천입니다. 코드 에디터의 그래프 JSON 편집은 고급 사용자용이며,
+              여기서 저장한 내용이 최종적으로 워크스페이스 런타임에 반영됩니다.
+            </span>
 
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button
