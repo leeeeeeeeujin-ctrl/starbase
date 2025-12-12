@@ -17,6 +17,7 @@ export default function MinimalMakerHeader({
   const btn = (label, onClick, style = {}) => (
     <button
       onClick={onClick}
+      disabled={label === '저장' && busy}
       style={{
         padding: '6px 10px',
         borderRadius: 10,

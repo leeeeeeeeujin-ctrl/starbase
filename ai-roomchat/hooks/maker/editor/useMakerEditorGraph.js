@@ -33,6 +33,12 @@ export function useMakerEditorGraph(flowMapRef) {
 
   const loadGraph = useCallback(
     (slotRows = [], bridgeRows = [], options = {}) => {
+      console.log('[useMakerEditorGraph] loadGraph START', {
+        slotCount: slotRows.length,
+        bridgeCount: bridgeRows.length,
+        firstSlotTemplate: slotRows[0]?.template?.substring(0, 30)
+      });
+      
       const { onDelete = () => {}, onSetStart } = options;
       const { slotMap, nodes: preparedNodes } = mapSlotRowsToNodes(slotRows);
       flowMapRef.current = slotMap;
@@ -42,12 +48,7 @@ export function useMakerEditorGraph(flowMapRef) {
           ...node,
           data: {
             ...node.data,
-            onChange: partial =>
-              setNodes(current =>
-                current.map(item =>
-                  item.id === node.id ? { ...item, data: { ...item.data, ...partial } } : item
-                )
-              ),
+            // Remove onChange callback - use direct setNodes in components instead
             onDelete: () => onDelete(node.id),
             onSetStart: () => (onSetStart ? onSetStart(node.id) : markAsStart(node.id)),
           },
@@ -55,6 +56,10 @@ export function useMakerEditorGraph(flowMapRef) {
       );
 
       setEdges(createEdgesFromBridges(bridgeRows));
+      
+      console.log('[useMakerEditorGraph] loadGraph COMPLETE', {
+        loadedNodes: preparedNodes.length
+      });
     },
     [flowMapRef, markAsStart, setEdges, setNodes]
   );

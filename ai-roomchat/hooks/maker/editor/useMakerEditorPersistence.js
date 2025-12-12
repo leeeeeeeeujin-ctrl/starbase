@@ -102,6 +102,22 @@ export function useMakerEditorPersistence({ graph, setInfo, onAfterSave }) {
   const saveAll = useCallback(async () => {
     if (!setInfo || busy) return;
 
+    try {
+      console.log('[useMakerEditorPersistence] saveAll start', {
+        setId: setInfo?.id,
+        nodeCount: nodes.length,
+        edgeCount: edges.length,
+        nodes: nodes.map(n => ({
+          id: n.id,
+          slotNo: n.data?.slotNo,
+          isStart: !!n.data?.isStart,
+          template: n.data?.template?.substring(0, 50),
+        })),
+      });
+    } catch {
+      // ignore log errors
+    }
+
     setBusy(true);
     try {
       const slotOrder = new Map();
@@ -132,6 +148,18 @@ export function useMakerEditorPersistence({ graph, setInfo, onAfterSave }) {
           var_rules_local: sanitizeVariableRules(node.data.var_rules_local),
         };
 
+        try {
+          console.log('[useMakerEditorPersistence] upsert slot payload', {
+            flowNodeId: node.id,
+            existingSlotId: slotId,
+            slotNo,
+            isStart: !!payload.is_start,
+            template: payload.template.substring(0, 80),
+          });
+        } catch {
+          // ignore log errors
+        }
+
         if (!slotId) {
           const { data: inserted, error } = await withTableQuery(supabase, 'prompt_slots', from =>
             from.insert(payload).select().single()
@@ -142,10 +170,26 @@ export function useMakerEditorPersistence({ graph, setInfo, onAfterSave }) {
           }
           slotId = inserted.id;
           flowMapRef.current.set(node.id, slotId);
+          try {
+            console.log('[useMakerEditorPersistence] inserted new slot', {
+              flowNodeId: node.id,
+              slotId,
+            });
+          } catch {
+            // ignore log errors
+          }
         } else {
           await withTableQuery(supabase, 'prompt_slots', from =>
             from.update(payload).eq('id', slotId)
           );
+          try {
+            console.log('[useMakerEditorPersistence] updated slot', {
+              flowNodeId: node.id,
+              slotId,
+            });
+          } catch {
+            // ignore log errors
+          }
         }
       }
 
@@ -198,6 +242,16 @@ export function useMakerEditorPersistence({ graph, setInfo, onAfterSave }) {
             from.delete().eq('id', bridge.id)
           );
         }
+      }
+
+      try {
+        console.log('[useMakerEditorPersistence] saveAll done', {
+          setId: setInfo.id,
+          slotCount: nodes.length,
+          keptBridgeCount: keep.size,
+        });
+      } catch {
+        // ignore log errors
       }
 
       setNodes(existing =>

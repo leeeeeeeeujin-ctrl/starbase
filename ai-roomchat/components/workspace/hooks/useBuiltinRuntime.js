@@ -1,5 +1,8 @@
 "use client";
 
+// 모듈 로드 확인
+console.log('[useBuiltinRuntime] 모듈 로드됨 - ', new Date().toISOString());
+
 import { useEffect, useMemo, useCallback, useRef } from 'react';
 import { createCoreRuntime } from '../../../lib/runtime/coreRuntime.js';
 import { loadHooksFromSource } from '../../../lib/runtime/safeEvalHookModule.js';
@@ -51,8 +54,13 @@ export function useBuiltinRuntime({
   onDebugStateChangeRef.current = onDebugStateChange;
 
   useEffect(() => {
-    if (engine !== 'builtin') return;
+    console.log('[useBuiltinRuntime] useEffect 실행됨, engine:', engine);
+    if (engine !== 'builtin') {
+      console.log('[useBuiltinRuntime] builtin 엔진이 아님, 종료');
+      return;
+    }
 
+    console.log('[useBuiltinRuntime] builtin 초기화 시작');
     let stopped = false;
     let runtime = null;
 
@@ -184,6 +192,8 @@ export function useBuiltinRuntime({
           // 텍스트 배틀 등: 프롬프트 + AI 응답을 한 턴 내용으로 묶어서 보여 준다.
           const narrative = battleLast.narrative.trim();
           
+          console.log('[publishResult] battleLast.narrative 있음:', { narrative: narrative.substring(0, 50), baseLabel });
+          
           // AI fallback 감지 및 카운터 증가
           if (battleLast.fallback === true && onDebugStateChangeRef.current) {
             onDebugStateChangeRef.current((prev) => ({
@@ -199,11 +209,14 @@ export function useBuiltinRuntime({
           }
         } else if (meta?.reason === 'inspect') {
           // 초기 상태: inspect는 디버그용이므로 사용자 메시지 발행 안 함
+          console.log('[publishResult] inspect 모드 - 메시지 발행 안 함');
           userText = '';
         } else if (runtimePrompt) {
           // 일반 텍스트 런타임: transformPrompt 결과를 그대로 보여 준다.
+          console.log('[publishResult] runtimePrompt 사용:', runtimePrompt.substring(0, 50));
           userText = runtimePrompt;
         } else {
+          console.log('[publishResult] baseLabel만 사용:', baseLabel);
           userText = baseLabel || '';
         }
 
@@ -211,11 +224,14 @@ export function useBuiltinRuntime({
           // fallback 여부를 메타데이터로 함께 전달
           const isFallback = battleLast?.fallback === true;
           const isDev = typeof process !== 'undefined' && process.env?.NODE_ENV === 'development';
+          console.log('[publishResult] system:message 발행:', { userText, isFallback, reason: meta?.reason });
           bus.emit('system:message', userText, { 
             fallback: isFallback,
             isDev,
             errorMessage: isFallback && isDev ? battleLast?.errorMessage : undefined
           });
+        } else {
+          console.log('[publishResult] userText 없음, 메시지 발행 안 함:', { reason: meta?.reason, battleLast, baseLabel, runtimePrompt });
         }
 
         // runtime:turn-log 이벤트 발행
@@ -321,27 +337,34 @@ export function useBuiltinRuntime({
     };
 
     // 초기 상태 발행 + 첫 번째 노드 AI 호출 (이동하지 않음)
+    console.log('[useBuiltinRuntime] 초기화 완료, 첫 노드 확인 시작');
     try {
       if (runtime && typeof runtime.getCurrentWithPrompt === 'function') {
+        console.log('[useBuiltinRuntime] getCurrentWithPrompt 호출');
         runtime
           .getCurrentWithPrompt()
           .then(async (res) => {
+            console.log('[useBuiltinRuntime] getCurrentWithPrompt 응답:', res);
             if (!stopped && res && res.current) {
               const nodeType = res.current && res.current.type;
+              console.log('[useBuiltinRuntime] 첫 노드 타입:', nodeType, 'hooks:', !!hooks, 'onTurnStart:', typeof hooks?.onTurnStart);
               
               // 첫 노드가 ai/prompt 타입이면 현재 노드에서 바로 onTurnStart 호출
               if ((nodeType === 'ai' || nodeType === 'prompt') && hooks && typeof hooks.onTurnStart === 'function') {
                 try {
+                  console.log('[useBuiltinRuntime] 첫 노드 AI 호출 시작:', nodeType);
                   const ctx = runtime.getContextSnapshot('user_action', 'auto');
                   await hooks.onTurnStart(ctx);
                   // onTurnStart 후 다시 프롬프트와 결과를 가져옴
                   const updated = await runtime.getCurrentWithPrompt();
+                  console.log('[useBuiltinRuntime] 첫 노드 AI 호출 완료, battleLast:', updated?.variables?.battleLast);
                   publishResult(updated, { reason: 'user_action', input: 'auto' });
                 } catch (e) {
                   console.warn('[useBuiltinRuntime] initial onTurnStart error:', e);
                   publishResult(res, { reason: 'inspect', input: undefined });
                 }
               } else {
+                console.log('[useBuiltinRuntime] 첫 노드가 ai/prompt 타입이 아님:', nodeType);
                 publishResult(res, { reason: 'inspect', input: undefined });
               }
             }

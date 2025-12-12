@@ -3,6 +3,125 @@
 This document is the **authoritative guide** for how the Maker workspace editor talks to the runtime and main game.  
 It exists so we can keep the structure stable even while we iterate on features and fix bugs.
 
+---
+
+## 시작 노드 동작 (Start Node Behavior)
+
+**중요**: 시작 노드는 초기화 전용으로, AI 응답이 플레이어에게 표시되지 않습니다.
+
+### 동작 방식
+- 시작 노드(`isStart: true`)는 게임 엔진 초기화에만 사용됩니다
+- AI API는 호출되지만, 응답은 게임 채팅에 표시되지 않습니다
+- 실제 게임 턴은 두 번째 노드부터 시작됩니다
+
+### UI 가이드
+- 프롬프트-노드 에디터에서 시작 노드는:
+  - 노드 이름 입력이 비활성화됩니다 (`disabled={isStart}`)
+  - 프롬프트 내용 편집 대신 경고 메시지를 표시합니다
+  - Placeholder: "시작 노드 (초기화 전용)"
+
+### 구현 위치
+- [PromptNode.js](../ai-roomchat/components/maker/PromptNode.js#L123-L147): 노드 이름 입력 비활성화
+- [MakerEditorPanel.js](../ai-roomchat/components/maker/editor/MakerEditorPanel.js#L293): 프롬프트 내용 편집 비활성화
+
+---
+
+## 코드 에디터 ↔ 프롬프트-노드 에디터 동기화
+
+**문제**: 프롬프트-노드 에디터와 코드 에디터가 같은 워크스페이스를 사용하지만, 변경사항이 서로 동기화되지 않았고, 프롬프트 수정이 저장되지 않는 심각한 문제가 있었습니다.
+
+### 원인
+1. **순환 동기화 문제**:
+   - 프롬프트-노드 에디터: `onChange` 콜백 → `nodes` 업데이트
+   - `nodes` 변경 → debounced effect(200ms) → `templateText` 업데이트
+   - `templateText` 변경 → `hydrateFromTemplate` → `nodes` 다시 덮어씀 ❌
+
+2. **클로저 문제**:
+   - `onChange` 콜백이 `loadGraph`에서 생성될 때 고정됨
+   - 이후 `edges` 변경이 클로저에 반영되지 않음
+   - `writeFile` 호출 시 옛날 `edges` 사용
+
+3. **코드 에디터 리렌더 문제**:
+   - `file?.content` 변경을 감지하지 못함
+   - 열린 파일은 로컬 버퍼를 유지해서 외부 변경 무시
+
+### 해결 방법
+
+**1. 순환 동기화 제거** ([MakerEditor.js](../ai-roomchat/components/maker/editor/MakerEditor.js)):
+```javascript
+// Before: templateText 변경 시 다시 hydrate
+useEffect(() => {
+  hydrateFromTemplate();
+}, [templateText]); // ❌
+
+// After: 초기 로드 시에만 hydrate, 이후 nodes가 진리의 원천
+useEffect(() => {
+  if (!hydratedRef.current) {
+    hydrateFromTemplate();
+  }
+}, []); // ✅
+```
+
+**2. 직접 setNodes 호출로 클로저 문제 회피** ([MakerEditorPanel.js](../ai-roomchat/components/maker/editor/MakerEditorPanel.js)):
+```javascript
+// Before: onChange 콜백 사용 (클로저에 갇힌 옛날 edges)
+nodeData.onChange?.({ template: val }); // ❌
+
+// After: 직접 setNodes 호출
+setNodes(current =>
+  current.map(n =>
+    n.id === selectedNodeId
+      ? { ...n, data: { ...n.data, template: val } }
+      : n
+  )
+); // ✅
+```
+
+**3. 코드 에디터의 file.content 변경 감지** ([CodeEditorOverlayV2.jsx](../ai-roomchat/components/workspace/CodeEditorOverlayV2.jsx)):
+```javascript
+// Before: file 객체 참조로 체크 (내용 변경 감지 못함)
+useEffect(() => {
+  setBuf(...);
+}, [activePath, file]); // ❌
+
+// After: file.content를 직접 dependency에 추가
+useEffect(() => {
+  const newContent = drafts?.[activePath] ?? (file?.content ?? '');
+  if (newContent !== buf) {
+    setBuf(newContent);
+  }
+}, [activePath, file?.content, drafts]); // ✅
+```
+
+**4. writeFile에서 draft 제거** ([CodeWorkspaceProvider.jsx](../ai-roomchat/components/workspace/CodeWorkspaceProvider.jsx)):
+```javascript
+writeFile: (path, content) => {
+  setFiles((m) => { /* ...update files... */ });
+  
+  // draft 제거 → 다른 에디터가 최신 파일을 읽도록 강제
+  setDrafts((m) => {
+    if (!m || !m[path]) return m;
+    const { [path]: _, ...rest } = m;
+    return rest;
+  });
+}
+```
+
+### 동작 방식
+1. 프롬프트-노드 에디터에서 수정 → 직접 `setNodes` 호출 → `nodes` 상태 즉시 업데이트 ✅
+2. `nodes` → debounced effect(200ms) → `templateText` 업데이트 ✅
+3. ~~`templateText` → `hydrateFromTemplate`~~ ❌ (더 이상 발생하지 않음)
+4. `saveAll` 호출 시 최신 `nodes` 상태를 Supabase에 저장 ✅
+5. 코드 에디터는 `file?.content` 변경 감지 → 버퍼 자동 업데이트 ✅
+
+### 구현 위치
+- [MakerEditor.js](../ai-roomchat/components/maker/editor/MakerEditor.js#L177-L185): hydrateFromTemplate dependency 제거
+- [MakerEditorPanel.js](../ai-roomchat/components/maker/editor/MakerEditorPanel.js#L304-L326): 직접 setNodes 호출로 변경
+- [CodeEditorOverlayV2.jsx](../ai-roomchat/components/workspace/CodeEditorOverlayV2.jsx#L580-L590): file.content dependency 추가
+- [CodeWorkspaceProvider.jsx](../ai-roomchat/components/workspace/CodeWorkspaceProvider.jsx#L1015-L1069): writeFile에 draft 제거 로직
+
+---
+
 Conceptually, this stack behaves like a small but modern **general‑purpose game engine** for AI‑driven games:
 
 - 기본 예시는 “AI 텍스트 배틀”이지만, 이는 **첫 번째 장르 프리셋**일 뿐이다.  
@@ -205,26 +324,71 @@ Current high-level status (this repo copy)
 - 기능적으로 **텍스트 배틀 기본 세트 기준으로는 Play → Rank settle 수직선이 한 번 도는 상태**
 
 **완료된 개선사항 (2025-12-12)**
-- ✅ **AI 폴백 개선**: 에러/성공 구분, 캐릭터 이름 매핑, dev/prod 모드 분리 ([WORKSPACE_EDITOR_RUNTIME_PATCH.md](./WORKSPACE_EDITOR_RUNTIME_PATCH.md))
-- ✅ **디버그 패널 확장**: 캐릭터 이름/슬롯 역할 설정 UI 추가 ([PlayDebugPanel.jsx](../../components/workspace/PlayDebugPanel.jsx#L207-L237))
-- ✅ **hook timeout 디버그 전용화**: 사용자 채팅에서 제거, 디버그 패널에만 표시 ([useBuiltinRuntime.js](../../components/workspace/hooks/useBuiltinRuntime.js#L366-L374))
-- ✅ **Play 출력 규칙 정리**: "턴 수 ≈ 노드 수" 직관적 매핑
+
+### 1. AI 폴백 시스템 개선 ✅
+- **문제**: 에러 폴백 메시지가 정상 응답처럼 보임, 캐릭터 이름 항상 "플레이어"
+- **해결**:
+  - dev/prod 모드 분리 구현 ([WORKSPACE_EDITOR_RUNTIME_PATCH.md](./WORKSPACE_EDITOR_RUNTIME_PATCH.md))
+  - 캐릭터 이름 우선순위 체인: `routing.participant.name` → `gameState.participants[].name` → `character.name` → `'시스템'`
+  - 응답 플래그 추가: `success`, `fallback`, `errorType`, `errorMessage`
+- **커밋**: `d5230f6f8` (ai-battle-judge.js)
+
+### 2. 디버그 패널 확장 ✅
+- **구현**:
+  - 캐릭터 이름/슬롯 역할 설정 UI ([PlayDebugPanel.jsx](../../components/workspace/PlayDebugPanel.jsx#L293-L314))
+  - hook timeout 디스플레이 (디버그 전용, lines 96-122)
+  - AI 폴백 카운터 (lines 124-140)
+  - 슬롯 입력 UX: 숫자만 입력 → 자동 `slot{N}` 변환
+- **커밋**: `0d5646c71`, `cf67b5bd1`, `f5875539f`
+
+### 3. Play 출력 규칙 정리 ✅
+- **목표**: "턴 수 ≈ 노드 수" 직관적 매핑
+- **변경사항**:
   - inspect 시점 시스템 메시지 제거 (중복 방지)
   - 게임 종료 시 narrative 중복 출력 제거
   - NextBar "다음 단계로 진행합니다." 메시지 제거
-- ✅ **프롬프트-노드 매핑 명확화**:
+- **커밋**: `0d5646c71`
+
+### 4. 프롬프트-노드 매핑 명확화 ✅
+- **계약 정리**:
   - `node.label` → 기본 텍스트
   - `transformPrompt` 훅 → 동적 프롬프트 변환 (선택적)
-  - 최종 사용자 텍스트: `label + AI narrative` (텍스트 배틀) 또는 `transformPrompt 결과` (일반 런타임)
-  - AI용 프롬프트: `transformPrompt` 훅에서 `variables`, `slots` 참조해 구성
-- **중요**: Maker 그래프(Supabase) ↔ workspace 동기화는 **아직 미구현** → ⚠️ **[보류] 코덱스에게 추가 설명 요청 필요**
-  - 완료된 것: `/template.json` 직접 수정 시 `/graph`로 sync (제한적)
-  - 미구현: Maker 그래프에서 Supabase(`prompt_sets/slots/bridges`)에 저장한 내용이 워크스페이스(`/graph`, `/game/runtime.config.json.entryNode`)로 자동 반영되는 진짜 Studio→workspace sync
-  - 현재 Maker 그래프 편집과 워크스페이스는 **여전히 별도 세계로 분리**되어 있음
-  - **보류 사유**: 전체 데이터 흐름 설계가 필요한 장기 과제. Supabase 스키마, 워크스페이스 파일 구조, 동기화 전략에 대한 코덱스의 명확한 가이드라인이 필요함.
+  - 최종 사용자 텍스트: `label + AI narrative` (텍스트 배틀)
+  - AI용 프롬프트: `transformPrompt` 훅에서 `variables`, `slots` 참조
+- **문서**: Section 3.3, 3.4, 3.5 업데이트 완료
 
-**방금 완료된 작업 (2025-12-11 저녁)**
-- ✅ **B (완료). PlayOverlayContent 구조 분리 통합 완료**
+### 5. 클라이언트 폴백 감지 UI ✅
+- **구현**:
+  - 폴백 카운터 표시 (PlayDebugPanel)
+  - 시각적 피드백: dev=빨강 테두리+에러 상세, prod=노랑 테두리+경고
+  - 재시도 버튼 (마지막 폴백 메시지에만 표시)
+- **파일**: MainGameMobileUI.jsx (lines 140-152, 550-592)
+- **커밋**: `f5875539f`
+
+### 6. 첫 노드 AI 호출 버그 수정 ✅
+- **문제**: 
+  - 첫 프롬프트 노드에서 AI API가 호출되지 않음
+  - 첫 시도(auto turn:next): 첫 노드를 건너뛰고 두 번째 노드부터 시작
+- **근본 원인**: `coreRuntime.step()`의 `isNewNode` 체크로 인해 첫 노드에서 `onTurnStart` 미실행
+- **최종 해결**:
+  - useBuiltinRuntime 초기화 시 첫 노드가 ai/prompt 타입이면 직접 `onTurnStart(ctx)` 호출
+  - turn:next 이벤트 없이 현재 노드에서 AI 실행 후 결과 표시
+  - 사용자가 NextBar 클릭하면 그때 다음 노드로 이동
+- **파일**: [useBuiltinRuntime.js](../../components/workspace/hooks/useBuiltinRuntime.js#L323-L369)
+- **커밋**: `ae12b6227` (첫 시도, 실패), `722f41bd1` (최종 수정)
+
+### 7. 장기 계획 (미구현)
+- ⚠️ **Maker 그래프(Supabase) ↔ workspace 동기화** → **[보류] 코덱스 설계 필요**
+  - 완료: `/template.json` 직접 수정 → `/graph` sync (제한적)
+  - 미구현: Maker 그래프 편집 → workspace 파일 자동 반영
+  - 보류 사유: 전체 데이터 흐름 설계 필요 (Supabase 스키마, 워크스페이스 구조, 동기화 전략)
+
+---
+
+## 과거 작업 기록 (아카이브)
+
+**2025-12-11 저녁 작업**
+- ✅ **B. PlayOverlayContent 구조 분리 통합 완료**
   - `components/workspace/hooks/useBuiltinRuntime.js` 생성 (371 lines) - 코어 런타임 초기화 로직 분리
   - `components/workspace/hooks/useGridEngine.js` 생성 (117 lines) - Grid 엔진 초기화 로직 분리
   - `components/workspace/PlayDebugPanel.jsx` 생성 (360 lines) - 디버그 UI 컴포넌트 분리
@@ -232,16 +396,16 @@ Current high-level status (this repo copy)
   - ✅ 구 DebugPanel 함수 제거 (360+ lines)
   - ✅ 파일 크기: 2348 lines → 1549 lines (34% 감소, 799 lines 제거)
   - ✅ Next.js 프로덕션 빌드 검증 통과
-- ✅ **C (완료). Capability ↔ 필요한 파일 안내 UI 개선**
+- ✅ **C. Capability ↔ 필요한 파일 안내 UI 개선**
   - `CapabilitiesHelpPanel.jsx` 개선 (lines 170-225 수정)
   - 누락된 파일 경고를 더 눈에 띄는 박스로 표시
   - 각 파일별 "✚ 생성" 버튼 강조 및 도움말 추가
   - 정상 상태일 때 "✓ 모든 필수 파일 충족" 메시지 표시
-- ✅ **A (완료). 문서 2.x 섹션 업데이트**
+- ✅ **A. 문서 2.x 섹션 업데이트**
   - Section 3.3: `/template.json` → `/graph` 매핑 흐름 문서화
   - Section 3.4: coreRuntime entryNode fallback 동작 방식 문서화
   - Section 3.5: starter-pack 텍스트 배틀 기본 세트 파일 구성 상세 문서화
-- ✅ **D (완료). 텍스트 배틀 E2E 테스트 작성**
+- ✅ **D. 텍스트 배틀 E2E 테스트 작성**
   - `__tests__/text-battle-e2e.test.js` 생성 (420+ lines)
   - 5개 테스트 케이스 작성 및 통과:
     1. ✅ coreRuntime 초기화 (graph + config + hooks)
@@ -252,27 +416,7 @@ Current high-level status (this repo copy)
   - 수동 테스트 시나리오 문서화 (Play → Settle 전체 플로우)
   - 테스트 실행 결과: **PASS (5 passed, 1 skipped)**
 
-**작업 완료 요약:**
-- 우선순위 高 작업 2개 완료: B (구조 분리), C (UI 개선)
-- 우선순위 中 작업 2개 완료: A (문서), D (테스트)
-- 총 848 lines의 코드를 재사용 가능한 3개 모듈로 추출
-- 코드베이스 개선: 34% 크기 감소, 유지보수성 향상
-- 품질 보증: E2E 테스트 5개 추가, 빌드 검증 완료
-
-**A. 문서 마무리 (우선순위: 中) — 완료 ✅**
-- ✅ Section 3.3: Template sync (`/template.json.data.template` → `/graph.label` 매핑)
-- ✅ Section 3.4: coreRuntime entryNode fallback (첫 번째 노드로 fallback)
-- ✅ Section 3.5: Starter pack 구조 (텍스트 배틀 기본 세트 파일 구성)
-- ✅ 각 섹션에 구현 상태, 동작 방식, 주의사항 포함
-
-**B. PlayOverlayContent 구조 분리 (우선순위: 高) — 완료 ✅**
-- ✅ useBuiltinRuntime hook (371 lines):
-  - 코어 런타임 초기화 (createCoreRuntime)
-  - 그래프 및 훅 로딩 (loadHooksFromSource)
-  - 디버그 참가자 설정 (simUsers → debugPlayers)
-  - bus 이벤트 핸들러 (turn:next, player:chat)
-  - publishResult 헬퍼 (runtime:turn-log 이벤트, onBattleEnd 호출)
-- ✅ useGridEngine hook (117 lines):
+---
   - world.grid-basic feature 감지
   - worldGridEngine 어댑터 lazy loading
   - 런타임 및 훅 연결 (setWorldEngine, setHooks)
@@ -292,51 +436,7 @@ Current high-level status (this repo copy)
   - Next.js 프로덕션 빌드 통과
   - 파일 크기 34% 감소 (2348 → 1549 lines)
   - 모든 에러 해결
-
-**C. Capability ↔ 필요한 파일 안내 (우선순위: 高) — 완료 ✅**
-- ✅ CapabilitiesHelpPanel.jsx 개선 (lines 170-225):
-  - 누락 파일 경고 박스: 빨강/주황 테두리, ⚠️ 아이콘, 파일 수 표시
-  - 개별 파일 카드: 코드 하이라이팅, "✚ 생성" 버튼 (녹색 배경)
-  - 도움말 텍스트: "✚ 생성 버튼을 클릭하면 기본 템플릿이 자동 생성됩니다"
-  - 정상 상태: 녹색 체크박스 "✓ 모든 필수 파일 충족"
-- ✅ 기능 확인:
-  - computeRuntimeFeatureIssues 활용
-  - 기본 템플릿 자동 생성
-  - 에디터 자동 오픈
-
-**D. 텍스트 배틀 E2E 테스트 (우선순위: 中) — 완료 ✅**
-- ✅ `__tests__/text-battle-e2e.test.js` 작성 (420+ lines)
-- ✅ 테스트 범위:
-  1. coreRuntime 초기화 검증:
-     - graph + config 파싱
-     - entryNode 설정
-     - initialVariables 주입
-  2. onUserAction 훅 시뮬레이션:
-     - 디버그 토큰 ('hero_win') 처리
-     - variables.battleLast/battleScore 갱신
-     - selectNext 동작
-  3. runtime:turn-log 이벤트:
-     - 변수 설정 검증
-     - bus 연결 (실제 통합은 PlayOverlayContent)
-  4. onBattleEnd 훅 검증:
-     - outcome 계산 (winners/losers/draw)
-     - scoreboard 생성 (score/delta)
-  5. battle_log 형식 검증:
-     - settle API 계약 충족
-     - 필수 필드 (sessionId, gameId, events, participants, outcome)
-- ✅ 테스트 실행 결과:
-  ```
-  PASS __tests__/text-battle-e2e.test.js
-    텍스트 배틀 E2E 플로우
-      ✓ 1. 기본 그래프 + 설정으로 런타임 초기화
-      ✓ 2. onUserAction 훅에서 디버그 토큰으로 배틀 결과 시뮬레이션
-      ✓ 3. runtime:turn-log 이벤트 발행 및 수집
-      ✓ 4. onBattleEnd 훅으로 outcome 계산
-      ✓ 5. battle_log 형식 검증
-
 ---
-
-## 긴급 버그 수정 (2025-01-XX)
 
 ### 문제 상황
 - **증상**: Play 버튼 클릭 시 모든 UI가 멈춤 (F12 DevTools까지 무반응)

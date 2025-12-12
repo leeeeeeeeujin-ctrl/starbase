@@ -128,19 +128,21 @@ export default function PromptNode({ id, data, selected }) {
           onTouchStart={stopDrag}
           onDoubleClick={stopDrag}
           onChange={onNameChange}
-          placeholder="이름 없음"
+          placeholder={isStart ? '시작 노드 (초기화 전용)' : '이름 없음'}
           spellCheck={false}
+          disabled={isStart}
           style={{
             width: '100%',
             boxSizing: 'border-box',
             padding: '6px 8px',
             borderRadius: 10,
             border: '1px solid #334155',
-            background: '#0b1220',
-            color: '#e2e8f0',
+            background: isStart ? '#1e293b' : '#0b1220',
+            color: isStart ? '#64748b' : '#e2e8f0',
             fontSize: 12,
             fontWeight: 700,
             outline: 'none',
+            cursor: isStart ? 'not-allowed' : 'text',
           }}
           aria-label="노드 이름"
         />

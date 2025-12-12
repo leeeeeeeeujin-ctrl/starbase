@@ -578,8 +578,20 @@ function EditorPane() {
   // 파일 전환이나 외부에서 파일 내용이 갱신될 때만 버퍼를 재동기화한다.
   // drafts 변경(키 입력)은 여기서 다시 적용하지 않는다.
   useEffect(() => {
-    setBuf(drafts?.[activePath] ?? (file?.content ?? ''));
-  }, [activePath, file]);
+    const newContent = drafts?.[activePath] ?? (file?.content ?? '');
+    console.log('[EditorPane] file content changed', {
+      activePath,
+      hasDraft: !!drafts?.[activePath],
+      fileContent: file?.content?.substring(0, 100),
+      newContent: newContent.substring(0, 100),
+      bufMatch: newContent === buf
+    });
+    // 버퍼가 현재 내용과 다를 때만 업데이트 (무한 루프 방지)
+    if (newContent !== buf) {
+      console.log('[EditorPane] updating buf from file change');
+      setBuf(newContent);
+    }
+  }, [activePath, file?.content, drafts]);
   if (!file) return <div style={{ padding: 16, color: '#e2e8f0' }}>파일을 선택하세요.</div>;
   const doSave = async () => {
     try {

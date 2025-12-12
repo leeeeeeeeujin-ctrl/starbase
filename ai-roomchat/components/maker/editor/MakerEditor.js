@@ -171,11 +171,13 @@ export default function MakerEditor() {
 
   // Initial hydrate when opening existing template
   useEffect(() => {
+    // Only hydrate once on initial load, never re-hydrate from templateText changes
+    // (nodes are the source of truth after initial load)
     if (!hydratedRef.current && typeof setNodes === 'function' && typeof setEdges === 'function') {
       hydrateFromTemplate();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [templateText]);
+  }, []); // Remove templateText from dependencies!
 
   // Restore UI prefs (split and panel visibility)
   useEffect(() => {
@@ -237,10 +239,17 @@ export default function MakerEditor() {
 
   // Debounced sync to templateText on graph changes
   useEffect(() => {
-    if (syncingRef.current) return;
+    if (syncingRef.current) {
+      console.log('[MakerEditor] skip sync - syncingRef is true');
+      return;
+    }
     const t = setTimeout(() => {
       try {
         const obj = toTemplateObject();
+        console.log('[MakerEditor] syncing nodes→templateText', {
+          nodeCount: nodes.length,
+          templates: nodes.map(n => n.data?.template?.substring(0, 30))
+        });
         setTemplateText && setTemplateText(JSON.stringify(obj, null, 2));
       } catch {}
     }, 200);
@@ -320,17 +329,29 @@ export default function MakerEditor() {
   } = variables;
 
   const { busy, saveAll, deletePrompt, addPromptNode, goToSetList, goToLobby } = persistence;
-  // Unify saves: after Maker DB save, also persist workspace VFS files (including drafts) for this set
+  // Unify saves: after Maker DB save, also persist workspace VFS files (including drafts) for this set.
   const { filesForSave: wsFiles, saveAll: markWorkspaceSaved } = useWorkspace();
   const unifiedSaveAll = useCallback(async () => {
+    if (busy) return;
     try {
       await saveAll();
-      try { await saveSet(String(status?.setInfo?.id || status?.router?.query?.id || ''), wsFiles); } catch (e) { try { console.warn('[MakerEditor] workspace save failed', e); } catch {} }
-      try { markWorkspaceSaved(); } catch {}
+      try {
+        const setKey = String(status?.setInfo?.id || status?.router?.query?.id || '');
+        if (setKey) {
+          await saveSet(setKey, wsFiles);
+        }
+      } catch (e) {
+        try {
+          console.warn('[MakerEditor] workspace save failed', e);
+        } catch {}
+      }
+      try {
+        markWorkspaceSaved();
+      } catch {}
     } catch (e) {
       throw e;
     }
-  }, [saveAll, wsFiles, markWorkspaceSaved, status?.setInfo, status?.router]);
+  }, [busy, saveAll, wsFiles, markWorkspaceSaved, status?.setInfo, status?.router]);
 
   const {
     entries: saveHistory,
@@ -345,13 +366,13 @@ export default function MakerEditor() {
   // Expose minimal actions for panel-level toolbar without prop plumbing
   useEffect(() => {
     try {
-      if (typeof window !== 'undefined') {
-        window.__makerActions = {
-          addPromptNode,
-          saveAll: unifiedSaveAll,
-          unifiedSaveAll,
-        };
-      }
+        if (typeof window !== 'undefined') {
+          window.__makerActions = {
+            addPromptNode,
+            saveAll: unifiedSaveAll,
+            unifiedSaveAll,
+          };
+        }
     } catch {}
     return () => {
       try {
@@ -749,32 +770,31 @@ export default function MakerEditor() {
           gap: 10,
         }}
       >
-      <MinimalMakerHeader
-          setName={setInfo?.name}
+       <MinimalMakerHeader
           busy={busy}
           onBack={goToSetList}
-          onAddPrompt={() => addPromptNode('ai')}
-          onAddUserAction={() => addPromptNode('user_action')}
-          onOpenGameShell={() => setShowGameShellConfig(true)}
-          onOpenRolesConfig={() => setShowRolesConfig(true)}
-          onAddSystem={() => addPromptNode('system')}
-          onSave={saveAll}
-          onExport={exportSet}
-          onImport={importSet}
-          onGoLobby={goToLobby}
-          collapsed={headerCollapsed}
-          onToggleCollapse={() => setHeaderCollapsed(prev => !prev)}
-        onOpenVariables={() => setVariableDrawerOpen(true)}
-        onOpenCode={() => { try { if (typeof window !== 'undefined') window.__INLINE_CODE_IN_PANEL__ = true; } catch {}; setShowMultiLanguageEditor(true); }}
-        onOpenTemplate={() => setShowTemplateLibrary(true)}
-        onOpenUiSettings={() => setShowUiSettings(true)}
-        onOpenResource={() => setShowResourceEditor(true)}
-        onOpenRolesConfig={() => setShowRolesConfig(true)}
-          onCreateWithAI={handleCreateWithAI}
-          onOpenCodeEditor={openCodeEditor}
-          onOpenMultiLanguageEditor={() => setShowMultiLanguageEditor(true)}
+          onOpenVariables={() => setVariableDrawerOpen(true)}
           onStartSimulation={startGameSimulation}
-          quickActions={collapsedQuickActions}
+          onSave={unifiedSaveAll}
+          onCreateWithAI={handleCreateWithAI}
+          onOpenCode={async () => {
+            if (busy) return;
+            try {
+              await unifiedSaveAll();
+            } catch (e) {
+              try {
+                alert('저장 중 오류가 발생했습니다. 코드 에디터로 이동하기 전에 다시 시도해 주세요.\n\n' + String(e?.message || e));
+              } catch {}
+              return;
+            }
+            try {
+              if (typeof window !== 'undefined') window.__INLINE_CODE_IN_PANEL__ = true;
+            } catch {}
+            setShowMultiLanguageEditor(true);
+          }}
+          onOpenUiSettings={() => setShowUiSettings(true)}
+          onOpenRolesConfig={() => setShowRolesConfig(true)}
+          onOpenGameShell={() => setShowGameShellConfig(true)}
         />
 
         {versionAlert && (
@@ -1022,7 +1042,7 @@ export default function MakerEditor() {
       </div>
 
       {/* 하단 우측 변수 오버레이 버튼은 중복이므로 제거 (패널/헤더에서 접근) */}
-      <VariableDrawer
+       <VariableDrawer
         open={variableDrawerOpen}
         onClose={() => setVariableDrawerOpen(false)}
         selectedNode={selectedNode}
@@ -1110,6 +1130,33 @@ export default function MakerEditor() {
               ))}
             </ul>
           )}
+        </div>
+      )}
+      {busy && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15,23,42,0.55)',
+            zIndex: 2000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <div
+            style={{
+              padding: '14px 18px',
+              borderRadius: 14,
+              background: '#020617',
+              border: '1px solid rgba(148,163,184,0.6)',
+              color: '#e5e7eb',
+              fontSize: 13,
+              boxShadow: '0 18px 40px rgba(15,23,42,0.9)',
+            }}
+          >
+            저장 중입니다… 잠시만 기다려 주세요.
+          </div>
         </div>
       )}
 

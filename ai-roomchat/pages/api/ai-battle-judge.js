@@ -269,12 +269,33 @@ async function processUnifiedGamePrompt(context) {
       // 이름 추출 실패 시 기본값 유지
     }
 
-    // 개발 모드: 명확한 에러 메시지
-    // 프로덕션: 자연스러운 대기 메시지 (하지만 fallback: true로 구분 가능)
+    // 에러 타입 분류로 사용자 친화적 안내 제공
     const isDev = process.env.NODE_ENV === 'development';
+    const errorMsg = error.message || '알 수 없는 오류';
+    
+    // 에러 카테고리 판별
+    let errorCategory = 'unknown';
+    let userHint = '';
+    
+    if (errorMsg.includes('API 키') || errorMsg.includes('apiKey') || errorMsg.includes('Unauthorized')) {
+      errorCategory = 'api_key';
+      userHint = '디버그 패널에서 AI API 키를 확인하세요.';
+    } else if (errorMsg.includes('rate limit') || errorMsg.includes('quota') || errorMsg.includes('429')) {
+      errorCategory = 'rate_limit';
+      userHint = 'API 사용량 한도에 도달했습니다. 잠시 후 다시 시도하세요.';
+    } else if (errorMsg.includes('timeout') || errorMsg.includes('ECONNREFUSED') || errorMsg.includes('network')) {
+      errorCategory = 'network';
+      userHint = '네트워크 연결을 확인하고 재시도하세요.';
+    } else {
+      errorCategory = 'unknown';
+      userHint = '일시적인 문제가 발생했습니다. 재시도하세요.';
+    }
+
+    // 개발 모드: 상세 에러
+    // 프로덕션: 에러 종류에 따른 명확한 안내 (더 이상 모호하지 않음)
     const fallbackNarrative = isDev
-      ? `⚠️ AI 판정 실패: ${error.message || '알 수 없는 오류'}. 재시도하거나 디버그 패널에서 API 키를 확인하세요.`
-      : `${characterName}이(가) 잠시 생각에 잠깁니다. 다음에는 어떤 일이 일어날까요?`;
+      ? `⚠️ AI 판정 실패: ${errorMsg}. ${userHint}`
+      : `⚠️ AI 판정 오류: ${userHint}`;
 
     return {
       narrative: fallbackNarrative,
@@ -282,7 +303,9 @@ async function processUnifiedGamePrompt(context) {
       success: false,
       fallback: true,
       errorType: error.name || 'UnknownError',
-      errorMessage: isDev ? error.message : undefined, // 개발 모드에서만 상세 에러
+      errorCategory, // api_key | rate_limit | network | unknown
+      errorMessage: isDev ? errorMsg : undefined, // 개발 모드에서만 상세 에러
+      userHint, // 프로덕션에서도 액션 가능한 힌트 제공
       timestamp: new Date().toISOString(),
     };
   }
@@ -480,20 +503,15 @@ async function callAIJudge(prompt, apiKeyOverride) {
   } catch (error) {
     console.error('AI API 호출 오류:', error);
 
-    // 폴백 응답
-    return generateFallbackResponse(prompt);
+    // 에러를 상위로 전파하여 processUnifiedGamePrompt의 catch 블록에서 처리
+    throw error;
   }
 }
 
 function generateFallbackResponse(prompt) {
-  // AI API가 실패했을 때의 기본 응답
-  const fallbackResponses = [
-    '**서술**: 치열한 공방이 펼쳐지며 양쪽 모두 최선을 다합니다. 승부의 향방을 예측하기 어려운 상황입니다.\n**결과**: partial\n**효과**: 긴장감 상승\n**배틀종료**: false\n**승자**: 없음',
-    '**서술**: 뛰어난 판단력으로 상황을 유리하게 이끌어갑니다. 하지만 상대도 만만치 않은 대응을 보여줍니다.\n**결과**: success\n**효과**: 자신감 증가\n**배틀종료**: false\n**승자**: 없음',
-    '**서술**: 예상치 못한 변수가 발생하며 계획에 차질이 생깁니다. 새로운 전략이 필요한 시점입니다.\n**결과**: failure\n**효과**: 재정비 필요\n**배틀종료**: false\n**승자**: 없음',
-  ];
-
-  return fallbackResponses[Math.floor(Math.random() * fallbackResponses.length)];
+  // 더 이상 더미 응답을 반환하지 않음
+  // 에러를 던져서 상위 catch 블록에서 명확한 에러 처리
+  throw new Error('AI API 호출 실패: 더미 응답 대신 명확한 에러를 표시하기 위해 에러를 전파합니다.');
 }
 
 function parseAIResponse(aiResponse) {

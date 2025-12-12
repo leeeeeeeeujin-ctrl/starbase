@@ -1012,9 +1012,11 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
         { const c=canon(path); setFiles((m) => ({ ...m, [c]: { content, readonly: false } })); setDirty((d) => ({ ...d, [c]: true })); },
       createFolder: (path) =>
         setFiles((m) => ({ ...m, [normalizeDir(path)]: { dir: true, readonly: true } })),
-      writeFile: (path, content) =>
+      writeFile: (path, content) => {
+        const c = canon(path);
+        
+        // 1. Update files state
         setFiles((m) => {
-          const c = canon(path);
           const f = m[c] || { readonly: false };
           if (f.readonly) return m;
           const next = { ...m };
@@ -1067,7 +1069,15 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
             if (!sig || sig !== curSig) setDirty((d) => ({ ...d, [c]: true }));
           });
           return next;
-        }),
+        });
+        
+        // 2. Clear any existing draft for this file to sync with other editors
+        setDrafts((m) => {
+          if (!m || !m[c]) return m;
+          const { [c]: _, ...rest } = m;
+          return rest;
+        });
+      },
       rename: (oldPath, newPath) => {
         setFiles((m) => {
           const o=canon(oldPath), n=canon(newPath);

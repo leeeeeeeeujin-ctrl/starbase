@@ -100,6 +100,11 @@ export function useMakerEditorLoader({
           onVersionDrift(buildVersionAlert(slotRows || []));
         }
 
+        console.log('[useMakerEditorLoader] loadGraph called', {
+          setId,
+          slotCount: slotRows?.length || 0,
+          bridgeCount: bridgeRows?.length || 0
+        });
         loadGraph(slotRows || [], bridgeRows || []);
       } catch (error) {
         if (!active) return;

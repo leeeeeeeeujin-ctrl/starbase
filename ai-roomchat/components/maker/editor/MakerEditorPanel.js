@@ -293,33 +293,62 @@ export default function MakerEditorPanel({
                   <label style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
                     프롬프트 내용
                   </label>
-                  <div style={{ height: 180, border: '1px solid #1f2937', borderRadius: 10, overflow: 'hidden', background:'#020617' }}>
-                    <EditorMonaco
-                      value={nodeData.template || ''}
-                      onChange={val => {
-                        // local graph update
-                        nodeData.onChange?.({ template: val });
-                        // studio JSON update
-                        if (studio && typeof studio.setTemplateText === 'function') {
-                          try {
-                            const obj = JSON.parse(studio.templateText || '{}');
-                            if (Array.isArray(obj.nodes)) {
-                              const idx = obj.nodes.findIndex(n => n?.id === selectedNodeId);
-                              if (idx >= 0) {
-                                const n = obj.nodes[idx] || {};
-                                const data = { ...(n.data || {}), template: val };
-                                obj.nodes[idx] = { ...n, data };
-                                studio.setTemplateText(JSON.stringify(obj, null, 2));
+                  {nodeData.isStart ? (
+                    <div style={{ padding: 12, border: '1px solid #334155', borderRadius: 10, background: '#0f172a', color: '#94a3b8', fontSize: 12, lineHeight: 1.6 }}>
+                      ⚠️ <strong>시작 노드는 초기화 전용입니다.</strong><br />
+                      시작 노드의 AI 응답은 플레이어에게 표시되지 않습니다.<br />
+                      실제 게임 턴은 다음 노드부터 시작됩니다.
+                    </div>
+                  ) : (
+                    <div style={{ height: 180, border: '1px solid #1f2937', borderRadius: 10, overflow: 'hidden', background:'#020617' }}>
+                      <EditorMonaco
+                        value={nodeData.template || ''}
+                        onChange={val => {
+                          console.log('[MakerEditorPanel] Monaco onChange', {
+                            selectedNodeId,
+                            newTemplateLength: val.length,
+                            oldTemplateLength: (nodeData.template || '').length,
+                            newValue: val.substring(0, 50)
+                          });
+                          
+                          // Direct update to nodes state (bypassing onChange callback closure issues)
+                          setNodes(current => {
+                            const updated = current.map(n =>
+                              n.id === selectedNodeId
+                                ? { ...n, data: { ...n.data, template: val } }
+                                : n
+                            );
+                            
+                            console.log('[MakerEditorPanel] setNodes result', {
+                              nodeCount: updated.length,
+                              updatedNodeTemplate: updated.find(n => n.id === selectedNodeId)?.data?.template?.substring(0, 50)
+                            });
+                            
+                            return updated;
+                          });
+                          
+                          // Also update studio JSON if available
+                          if (studio && typeof studio.setTemplateText === 'function') {
+                            try {
+                              const obj = JSON.parse(studio.templateText || '{}');
+                              if (Array.isArray(obj.nodes)) {
+                                const idx = obj.nodes.findIndex(n => n?.id === selectedNodeId);
+                                if (idx >= 0) {
+                                  const n = obj.nodes[idx] || {};
+                                  const data = { ...(n.data || {}), template: val };
+                                  obj.nodes[idx] = { ...n, data };
+                                  studio.setTemplateText(JSON.stringify(obj, null, 2));
+                                }
                               }
-                            }
-                          } catch {}
-                        }
-                      }}
-                      language="markdown"
-                      theme="vs-dark"
-                      height="100%"
-                    />
-                  </div>
+                            } catch {}
+                          }
+                        }}
+                        language="markdown"
+                        theme="vs-dark"
+                        height="100%"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             )}
