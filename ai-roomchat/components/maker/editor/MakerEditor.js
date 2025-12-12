@@ -147,6 +147,44 @@ export default function MakerEditor() {
     return next;
   }, [templateText, nodes, edges]);
 
+  // Hydrate only the node 이름(name/title/label) from template JSON back into graph nodes.
+  // 텍스트 프롬프트 내용(template)은 Supabase가 진리의 원천이므로, 여기서는 덮어쓰지 않는다.
+  const hydrateNamesFromTemplate = useCallback(() => {
+    let obj;
+    try {
+      obj = JSON.parse(templateText || '{}');
+    } catch {
+      obj = {};
+    }
+    const tn = Array.isArray(obj.nodes) ? obj.nodes : [];
+    if (!tn.length) return;
+
+    const nameById = new Map();
+    tn.forEach(n => {
+      const data = n && n.data ? n.data : {};
+      const name = data.name || data.title || n.label || '';
+      if (n.id && name) {
+        nameById.set(n.id, String(name));
+      }
+    });
+    if (!nameById.size) return;
+
+    setNodes(existing =>
+      (existing || []).map(node => {
+        const currentName = node?.data?.name || node?.data?.title || '';
+        const nextName = nameById.get(node.id);
+        if (!nextName || currentName === nextName) return node;
+        return {
+          ...node,
+          data: {
+            ...(node.data || {}),
+            name: nextName,
+          },
+        };
+      })
+    );
+  }, [templateText, setNodes]);
+
   const hydrateFromTemplate = useCallback(() => {
     let obj; try { obj = JSON.parse(templateText || '{}'); } catch { obj = {}; }
     const tn = Array.isArray(obj.nodes) ? obj.nodes : [];
@@ -178,6 +216,12 @@ export default function MakerEditor() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Remove templateText from dependencies!
+
+  // 이름만 템플릿 JSON에서 다시 가져와 그래프에 반영
+  useEffect(() => {
+    if (!templateText) return;
+    hydrateNamesFromTemplate();
+  }, [templateText, hydrateNamesFromTemplate]);
 
   // Restore UI prefs (split and panel visibility)
   useEffect(() => {
