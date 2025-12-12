@@ -150,16 +150,63 @@ export function useBuiltinRuntime({
       if (stopped) return;
       try {
         const node = result && result.current ? result.current : null;
+        const vars =
+          result && result.variables && typeof result.variables === 'object'
+            ? result.variables
+            : null;
+        const battleLast =
+          vars && vars.battleLast && typeof vars.battleLast === 'object'
+            ? vars.battleLast
+            : null;
+
+        const baseLabel =
+          node && typeof node.label === 'string' && node.label.trim().length
+            ? node.label.trim()
+            : node && node.id
+              ? String(node.id)
+              : '';
+
+        // 게임 종료 시점(single-node 포함) 처리
         if (!node) {
+          // 마지막 턴에 AI 내러티브가 있었다면 한 번은 보여준다.
+          if (battleLast && typeof battleLast.narrative === 'string') {
+            const narrative = battleLast.narrative.trim();
+            if (narrative) {
+              try { bus.emit('system:message', narrative); } catch {}
+            }
+          }
           bus.emit('system:message', '게임이 종료되었습니다.');
           return;
         }
 
-        const fromPrompt = result && typeof result.prompt === 'string' && result.prompt.length
-          ? result.prompt
-          : null;
-        const txt = fromPrompt != null ? fromPrompt : String(node.label || node.id || '');
-        bus.emit('system:message', txt);
+        // 사용자에게 보여 줄 텍스트 구성
+        let userText = '';
+        const runtimePrompt =
+          result && typeof result.prompt === 'string' && result.prompt.length
+            ? result.prompt
+            : null;
+
+        if (battleLast && typeof battleLast.narrative === 'string' && battleLast.narrative.trim()) {
+          // 텍스트 배틀 등: 프롬프트 + AI 응답을 한 턴 내용으로 묶어서 보여 준다.
+          const narrative = battleLast.narrative.trim();
+          if (baseLabel) {
+            userText = `${baseLabel}\n\n${narrative}`;
+          } else {
+            userText = narrative;
+          }
+        } else if (meta?.reason === 'inspect') {
+          // 초기 상태: 노드 라벨(또는 기본 프롬프트)만 보여 준다.
+          userText = baseLabel || runtimePrompt || '';
+        } else if (runtimePrompt) {
+          // 일반 텍스트 런타임: transformPrompt 결과를 그대로 보여 준다.
+          userText = runtimePrompt;
+        } else {
+          userText = baseLabel || '';
+        }
+
+        if (userText) {
+          bus.emit('system:message', userText);
+        }
 
         // runtime:turn-log 이벤트 발행
         try {
@@ -185,9 +232,10 @@ export function useBuiltinRuntime({
             nodeLabel: node.label || null,
             reason: meta?.reason || null,
             input: meta?.input ?? null,
-            prompt: txt,
+            // TurnLogBar 에서도 사용자에게 보이는 것과 동일한 문자열을 사용한다.
+            prompt: userText || baseLabel || runtimePrompt || '',
             ui: result.ui || null,
-            variables: result.variables || null,
+            variables: vars,
             visibility,
             isVisible,
           };
@@ -202,10 +250,6 @@ export function useBuiltinRuntime({
           const handler =
             hooks && typeof hooks.onBattleEnd === 'function'
               ? hooks.onBattleEnd
-              : null;
-          const vars =
-            result && result.variables && typeof result.variables === 'object'
-              ? result.variables
               : null;
           const last =
             vars && vars.battleLast && typeof vars.battleLast === 'object'
@@ -238,9 +282,12 @@ export function useBuiltinRuntime({
         }
 
         // 디버그 상태 업데이트
-        if (debugPromptEnabled) {
+        if (debugPromptEnabled && onDebugStateChangeRef.current) {
           try {
-            setDebugState((prev) => ({ ...prev, lastPrompt: txt }));
+            onDebugStateChangeRef.current((prev) => ({
+              ...prev,
+              lastPrompt: runtimePrompt || baseLabel || '',
+            }));
           } catch {
             // ignore debug state errors
           }
@@ -248,10 +295,6 @@ export function useBuiltinRuntime({
 
         if (debugLogCallsEnabled) {
           try {
-            const vars =
-              result && result.variables && typeof result.variables === 'object'
-                ? result.variables
-                : null;
             const dbg =
               vars && vars.debug && typeof vars.debug === 'object' ? vars.debug : null;
             const calls = Array.isArray(dbg?.aiCalls) ? dbg.aiCalls : [];

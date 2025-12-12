@@ -46,6 +46,7 @@ function isLogEntryVisible(entry){
 export default function MainGameMobileUI({
   template,
   user = null,
+  mode = 'play', // 'play' | 'rank' 등
   onNext = () => {},
   runtimeFeed = null,
   runtimeSecondsLeft = null,
@@ -60,7 +61,7 @@ export default function MainGameMobileUI({
 }) {
   const isMobile = useIsMobile(820); // currently unused but reserved for responsive adjustments
   const [layout, setLayout] = useState(() => loadLayout());
-  const [gameChat, setGameChat] = useState(() => [{ role: 'system', text: '게임이 시작되었습니다.' }]);
+  const [gameChat, setGameChat] = useState(() => []);
   const [chat, setChat] = useState([]);
   const [chatText, setChatText] = useState('');
   const { files } = useWorkspace();
@@ -121,6 +122,15 @@ export default function MainGameMobileUI({
   useEffect(() => {
     saveLayout(layout);
   }, [layout]);
+
+  // Play 모드에서만 초기 "게임이 시작되었습니다." 시스템 메시지 출력
+  useEffect(() => {
+    if (mode !== 'play') return;
+    setGameChat((prev) => {
+      if (prev && prev.length > 0) return prev;
+      return [{ role: 'system', text: '게임이 시작되었습니다.' }];
+    });
+  }, [mode]);
   // Optional runtime bus listeners (no-op when not provided)
   useEffect(() => {
     if (!runtimeBus || typeof runtimeBus.on !== 'function') return;
@@ -160,7 +170,10 @@ export default function MainGameMobileUI({
     if (typeof onForceNext === 'function') {
       try { onForceNext(); } catch {}
     } else {
-      setGameChat(prev => [...prev, { role: 'system', text: '다음 단계로 진행합니다.' }]);
+      // Play 디버그용: 메인게임(랭크)에서는 기본 시스템 문구를 출력하지 않는다.
+      if (mode === 'play') {
+        setGameChat(prev => [...prev, { role: 'system', text: '다음 단계로 진행합니다.' }]);
+      }
     }
     try { runtimeBus?.emit?.('turn:next'); } catch {}
     try { onNext?.(); } catch {}

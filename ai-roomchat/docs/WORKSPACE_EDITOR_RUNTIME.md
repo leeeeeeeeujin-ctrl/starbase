@@ -69,6 +69,9 @@ Starter pack (new set defaults)
 - **SyncTemplateToVfs 제한적 sync**: `/template.json.data.template` → `/graph.label` 매핑 구현
   - 워크스페이스에서 템플릿 직접 수정 시에만 동작
   - **주의**: Maker 그래프(Supabase) ↔ workspace 동기화는 아직 미구현
+- **Play 텍스트 런타임 단일 노드 처리 개선**:
+  - builtin 텍스트 런타임의 `publishResult` 가 `variables.battleLast.narrative` 를 우선 소비하도록 조정.
+  - 단일 노드/1‑shot 그래프에서도 AI 판정 결과가 최소 한 번은 채팅 로그에 노출되고, 그래프가 즉시 끝나는 경우에도 종료 전에 마지막 내러티브를 한 번 보여 준다.
 
 #### 2025-12-05
 - Pushed `assistant-adjust-character-panels-layout` to `main` (origin). Touched `ai-roomchat/components/character/CharacterBasicView.js` to stop carousel/game cards from clipping and make overlay slides stretch to container width on narrow/rotated layouts.

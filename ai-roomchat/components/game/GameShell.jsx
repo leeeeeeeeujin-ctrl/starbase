@@ -192,6 +192,7 @@ export default function GameShell({
       >
         <MainGameMobileUI
           template={template}
+          mode={mode}
           runtimeBus={runtimeBus}
           runtimeFeatures={runtimeFeatures}
           rankContext={rankContext}
