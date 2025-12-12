@@ -3,8 +3,13 @@
 import { useCallback, useState } from 'react';
 
 import { supabase } from '../../../lib/supabase';
-import { withTableQuery } from '../../../lib/supabaseTables';
 import { sanitizeVariableRules } from '../../../lib/variableRules';
+
+// NOTE:
+// Maker 에디터 저장 경로에서는 Supabase JS 클라이언트를 직접 사용한다.
+// withTableQuery 래퍼는 테스트/대체 스키마용으로 남겨두되,
+// 실제 프롬프트 세트 편집에서는 prompt_slots / prompt_bridges 만 사용하므로
+// 여기서는 명시적으로 해당 테이블을 호출해 네트워크 요청이 확실히 나가도록 고정한다.
 
 export function useMakerEditorPersistence({ graph, setInfo, onAfterSave }) {
   const {
@@ -26,7 +31,7 @@ export function useMakerEditorPersistence({ graph, setInfo, onAfterSave }) {
       setSelectedEdge(current => (current?.id === edge.id ? null : current));
       const bridgeId = edge?.data?.bridgeId;
       if (bridgeId) {
-        await withTableQuery(supabase, 'prompt_bridges', from => from.delete().eq('id', bridgeId));
+        await supabase.from('prompt_bridges').delete().eq('id', bridgeId);
       }
     },
     [setEdges, setSelectedEdge]
@@ -57,7 +62,7 @@ export function useMakerEditorPersistence({ graph, setInfo, onAfterSave }) {
       if (bridgeIds.length > 0) {
         await Promise.all(
           bridgeIds.map(id =>
-            withTableQuery(supabase, 'prompt_bridges', from => from.delete().eq('id', id))
+            supabase.from('prompt_bridges').delete().eq('id', id)
           )
         );
       }
@@ -66,11 +71,12 @@ export function useMakerEditorPersistence({ graph, setInfo, onAfterSave }) {
       forgetFlowNode(flowNodeId);
       if (!slotId) return;
 
-      await withTableQuery(supabase, 'prompt_bridges', from =>
-        from.delete().or(`from_slot_id.eq.${slotId},to_slot_id.eq.${slotId}`)
-      );
+      await supabase
+        .from('prompt_bridges')
+        .delete()
+        .or(`from_slot_id.eq.${slotId},to_slot_id.eq.${slotId}`);
 
-      await withTableQuery(supabase, 'prompt_slots', from => from.delete().eq('id', slotId));
+      await supabase.from('prompt_slots').delete().eq('id', slotId);
     },
     [edges, flowMapRef, forgetFlowNode, setEdges, setNodes, setSelectedEdge, setSelectedNodeId]
   );
@@ -81,10 +87,11 @@ export function useMakerEditorPersistence({ graph, setInfo, onAfterSave }) {
         const slotId = flowMapRef.current.get(node.id);
         forgetFlowNode(node.id);
         if (!slotId) continue;
-        await withTableQuery(supabase, 'prompt_bridges', from =>
-          from.delete().or(`from_slot_id.eq.${slotId},to_slot_id.eq.${slotId}`)
-        );
-        await withTableQuery(supabase, 'prompt_slots', from => from.delete().eq('id', slotId));
+        await supabase
+          .from('prompt_bridges')
+          .delete()
+          .or(`from_slot_id.eq.${slotId},to_slot_id.eq.${slotId}`);
+        await supabase.from('prompt_slots').delete().eq('id', slotId);
       }
     },
     [flowMapRef, forgetFlowNode]
@@ -94,7 +101,7 @@ export function useMakerEditorPersistence({ graph, setInfo, onAfterSave }) {
     for (const edge of deleted) {
       const bridgeId = edge?.data?.bridgeId;
       if (bridgeId) {
-        await withTableQuery(supabase, 'prompt_bridges', from => from.delete().eq('id', bridgeId));
+        await supabase.from('prompt_bridges').delete().eq('id', bridgeId);
       }
     }
   }, []);
@@ -161,9 +168,11 @@ export function useMakerEditorPersistence({ graph, setInfo, onAfterSave }) {
         }
 
         if (!slotId) {
-          const { data: inserted, error } = await withTableQuery(supabase, 'prompt_slots', from =>
-            from.insert(payload).select().single()
-          );
+          const { data: inserted, error } = await supabase
+            .from('prompt_slots')
+            .insert(payload)
+            .select()
+            .single();
           if (error || !inserted) {
             console.error(error);
             continue;
@@ -179,9 +188,7 @@ export function useMakerEditorPersistence({ graph, setInfo, onAfterSave }) {
             // ignore log errors
           }
         } else {
-          await withTableQuery(supabase, 'prompt_slots', from =>
-            from.update(payload).eq('id', slotId)
-          );
+          await supabase.from('prompt_slots').update(payload).eq('id', slotId);
           try {
             console.log('[useMakerEditorPersistence] updated slot', {
               flowNodeId: node.id,
@@ -193,9 +200,10 @@ export function useMakerEditorPersistence({ graph, setInfo, onAfterSave }) {
         }
       }
 
-      const { data: existingBridges } = await withTableQuery(supabase, 'prompt_bridges', from =>
-        from.select('id').eq('from_set', setInfo.id)
-      );
+      const { data: existingBridges } = await supabase
+        .from('prompt_bridges')
+        .select('id')
+        .eq('from_set', setInfo.id);
 
       const keep = new Set();
 
@@ -218,9 +226,11 @@ export function useMakerEditorPersistence({ graph, setInfo, onAfterSave }) {
 
         let bridgeId = edge.data?.bridgeId;
         if (!bridgeId) {
-          const { data: inserted, error } = await withTableQuery(supabase, 'prompt_bridges', from =>
-            from.insert(payload).select().single()
-          );
+          const { data: inserted, error } = await supabase
+            .from('prompt_bridges')
+            .insert(payload)
+            .select()
+            .single();
           if (error || !inserted) {
             console.error(error);
             continue;
@@ -228,9 +238,7 @@ export function useMakerEditorPersistence({ graph, setInfo, onAfterSave }) {
           bridgeId = inserted.id;
           edge.data = { ...(edge.data || {}), bridgeId };
         } else {
-          await withTableQuery(supabase, 'prompt_bridges', from =>
-            from.update(payload).eq('id', bridgeId)
-          );
+          await supabase.from('prompt_bridges').update(payload).eq('id', bridgeId);
         }
 
         keep.add(bridgeId);
@@ -238,9 +246,7 @@ export function useMakerEditorPersistence({ graph, setInfo, onAfterSave }) {
 
       for (const bridge of existingBridges || []) {
         if (!keep.has(bridge.id)) {
-          await withTableQuery(supabase, 'prompt_bridges', from =>
-            from.delete().eq('id', bridge.id)
-          );
+          await supabase.from('prompt_bridges').delete().eq('id', bridge.id);
         }
       }
 
