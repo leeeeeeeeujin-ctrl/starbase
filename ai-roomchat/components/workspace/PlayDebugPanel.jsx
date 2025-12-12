@@ -290,14 +290,21 @@ export default function PlayDebugPanel({
                         fontSize: 11,
                       }}
                     />
-                    {/* 슬롯 역할 (slot1, slot2 등) */}
+                    {/* 슬롯 번호 (내부적으로 slot{N} 형식으로 변환) */}
                     <input
-                      type="text"
-                      placeholder="슬롯 역할 (예: slot1, slot2)"
-                      value={u?.slotRole || ''}
-                      onChange={(e) =>
-                        updateSimUser(idx, { slotRole: e.target.value })
+                      type="number"
+                      placeholder="슬롯 번호 (1, 2, 3...)"
+                      min="1"
+                      value={
+                        u?.slotRole && u.slotRole.startsWith('slot')
+                          ? u.slotRole.replace('slot', '')
+                          : ''
                       }
+                      onChange={(e) => {
+                        const num = e.target.value.trim();
+                        const slotRole = num ? `slot${num}` : '';
+                        updateSimUser(idx, { slotRole });
+                      }}
                       style={{
                         width: '100%',
                         padding: '4px 6px',
