@@ -320,7 +320,7 @@ export function useBuiltinRuntime({
       }
     };
 
-    // 초기 상태 발행
+    // 초기 상태 발행 + 첫 번째 턴 자동 시작
     try {
       if (runtime && typeof runtime.getCurrentWithPrompt === 'function') {
         runtime
@@ -328,12 +328,29 @@ export function useBuiltinRuntime({
           .then((res) => {
             if (!stopped && res && res.current) {
               publishResult(res, { reason: 'inspect', input: undefined });
+              
+              // 첫 노드가 ai/prompt 타입이면 자동으로 턴 시작
+              const nodeType = res.current && res.current.type;
+              if (nodeType === 'ai' || nodeType === 'prompt') {
+                setTimeout(() => {
+                  if (!stopped) bus.emit('turn:next');
+                }, 100);
+              }
             }
           })
           .catch(() => {});
       } else if (runtime && typeof runtime.getCurrentNode === 'function') {
         const cur = runtime.getCurrentNode();
-        if (cur) publishResult({ current: cur }, { reason: 'inspect', input: undefined });
+        if (cur) {
+          publishResult({ current: cur }, { reason: 'inspect', input: undefined });
+          
+          // 첫 노드가 ai/prompt 타입이면 자동으로 턴 시작
+          if (cur.type === 'ai' || cur.type === 'prompt') {
+            setTimeout(() => {
+              if (!stopped) bus.emit('turn:next');
+            }, 100);
+          }
+        }
       }
     } catch {}
 
