@@ -374,14 +374,25 @@ export function useBuiltinRuntime({
         const cur = runtime.getCurrentNode();
         if (cur) {
           const nodeType = cur.type;
-          
+
           // 첫 노드가 ai/prompt 타입이면 현재 노드에서 바로 onTurnStart 호출
           if ((nodeType === 'ai' || nodeType === 'prompt') && hooks && typeof hooks.onTurnStart === 'function') {
             try {
               const ctx = runtime.getContextSnapshot('user_action', 'auto');
-              await hooks.onTurnStart(ctx);
-              const updated = runtime.getCurrentNode();
-              publishResult({ current: updated }, { reason: 'user_action', input: 'auto' });
+              Promise.resolve(hooks.onTurnStart(ctx))
+                .then(() => {
+                  try {
+                    const updated = runtime.getCurrentNode();
+                    publishResult({ current: updated }, { reason: 'user_action', input: 'auto' });
+                  } catch (err) {
+                    console.warn('[useBuiltinRuntime] initial onTurnStart post-call error:', err);
+                    publishResult({ current: cur }, { reason: 'inspect', input: undefined });
+                  }
+                })
+                .catch((e) => {
+                  console.warn('[useBuiltinRuntime] initial onTurnStart error:', e);
+                  publishResult({ current: cur }, { reason: 'inspect', input: undefined });
+                });
             } catch (e) {
               console.warn('[useBuiltinRuntime] initial onTurnStart error:', e);
               publishResult({ current: cur }, { reason: 'inspect', input: undefined });
