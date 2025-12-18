@@ -107,6 +107,14 @@ function applyBattleOutcomeLocal(ctx, params) {
   const errorCategory = params.errorCategory || null;
   const errorMessage = params.errorMessage || null;
   const userHint = params.userHint || null;
+  const actor = params.actor || null;
+  const satisfiedVars = Array.isArray(params.satisfiedVars)
+    ? params.satisfiedVars
+    : null;
+  const characterResults =
+    params.characterResults && typeof params.characterResults === 'object'
+      ? params.characterResults
+      : null;
 
   vars.battleLast = {
     narrative,
@@ -120,6 +128,9 @@ function applyBattleOutcomeLocal(ctx, params) {
     errorCategory,
     errorMessage,
     userHint,
+    actor,
+    satisfiedVars,
+    characterResults,
   };
 
   // battleResult: 그래프 라우팅에서 쓰기 좋은 짧은 토큰으로 축약
@@ -438,32 +449,58 @@ export function transformPrompt(ctx) {
     ? Object.entries(routes).map(([k, v]) => `- ${k} -> ${v}`).join('\n')
     : '(라우트 없음: 기본 그래프 엣지 사용)';
 
-  const prompt = [
-    `당신은 AI 텍스트 배틀의 심판이자 연출자입니다.`,
+  const ruleText =
+    typeof profile.rules === 'string' && profile.rules.trim()
+      ? profile.rules.trim()
+      : '게임 세계관/톤/심판 기준 등은 추후 게임 등록 페이지나 프롬프트-노드 에디터에서 추가 규칙으로 확장할 수 있습니다.';
+
+  const varGuideText =
+    typeof profile.varGuide === 'string' && profile.varGuide.trim()
+      ? profile.varGuide.trim()
+      : '변수(variables)는 이 응답의 메타 정보(만족된 변수명, 캐릭터 결과)를 기반으로 훅에서 업데이트됩니다. 여기서는 변수 이름만 일관되게 사용하면 됩니다.';
+
+  const templateText = typeof data.template === 'string' ? data.template.trim() : '';
+
+  const promptLines = [
+    `보내는 프롬프트 규칙`,
+    `규칙:`,
+    ruleText,
     ``,
-    `현재 배틀 단계(stage): ${stage}`,
-    `톤(tone): ${tone}`,
+    `변수 지침:`,
+    varGuideText,
+    `-----------------------------`,
+    `프롬프트:`,
+    templateText ||
+      '(이 노드에 프롬프트 텍스트가 정의되어 있지 않습니다. 프롬프트-노드 에디터에서 template를 채워 주세요.)',
     ``,
-    `참여 중인 진영/캐릭터:`,
+    `# 입력 정보`,
+    `- 배틀 단계(stage): ${stage}`,
+    `- 톤(tone): ${tone}`,
+    ``,
+    `## 진영/캐릭터`,
     sideSummary,
     ``,
-    `랭크/세션 컨텍스트(있다면):`,
+    `## 랭크/세션 컨텍스트`,
     rankSummary,
     ``,
-    `최근 턴 기록:`,
+    `## 최근 턴 기록`,
     historyText,
     ``,
-    `이 노드에서 가능한 라우트(routes) 예시:`,
+    `## 라우트 정보`,
     routesText,
     ``,
-    `- 위 정보를 바탕으로 이번 턴에 어떤 장면이 펼쳐질지 한국어로 생생하게 묘사해 주세요.`,
-    `- 각 캐릭터가 어떤 말/행동을 하는지 구체적으로 써 주세요.`,
-    `- (선택) 마지막에 '누가 우세한지'에 대한 짧은 평가를 덧붙여도 좋습니다.`,
-    ``,
-    `※ 참고: 실제 승패/노드 이동 결정 로직은 별도의 규칙(onUserAction/selectNext)에서 처리됩니다.`
-  ].join('\n');
+    `응답 규칙:`,
+    `아래 형식을 정확히 지켜서 한 번만 응답하세요.`,
+    `1) 먼저 "응답:" 으로 시작하는 줄을 쓰고, 그 뒤에 이번 턴의 내레이션을 한국어로 여러 줄 작성합니다. 내레이션에는 게임 안에서 벌어지는 장면과 대사만 포함하고, 프롬프트나 규칙에 대한 메타 설명은 넣지 마세요.`,
+    `2) 내레이션이 끝난 다음 줄에 "----------------------------------" 만 단독으로 적습니다.`,
+    `3) 그 다음 줄 두 줄은 완전히 빈 줄로 둡니다.`,
+    `4) 그 다음 줄에 "이번 응답의 주역: <주역 캐릭터 식별자>" 를 씁니다. 예: "이번 응답의 주역: hero" 또는 "이번 응답의 주역: rival".`,
+    `5) 그 다음 줄에 "만족된 변수명: var_a, var_b, ..." 형식으로 씁니다. 만족된 변수가 없으면 "만족된 변수명: 없음" 이라고 적습니다.`,
+    `6) 그 다음 줄에 "캐릭터 결과: hero=win, rival=lose" 처럼 "id=win|lose|out" 리스트를 쉼표로 구분해 씁니다. 결과가 없다면 "캐릭터 결과: 없음" 이라고 적습니다.`,
+    `추가적인 마크다운, 설명, 다른 형식의 메타 정보는 작성하지 마세요.`,
+  ];
 
-  return prompt;
+  return promptLines.join('\n');
 }
 
 /**
@@ -520,6 +557,57 @@ export async function onUserAction(ctx, input) {
       errorMessage: data.errorMessage,
       userHint: data.userHint,
     });
+
+    // -----------------------------------------------------------------------
+    // 프로바이더/키 문제로 AI 판정을 전혀 수행할 수 없는 경우
+    // → 이 판은 무승부로 강제 종료한다.
+    //
+    // - data.fallback === true 이면서 errorCategory === 'api_key' 인 경우를
+    //   "유효한 API 키/프로바이더를 찾지 못함"으로 간주한다.
+    // - battleLast / battleResult / battleScore 를 tie 상태로 맞추어 두면,
+    //   이후 onBattleEnd() 와 라우팅(on_tie) 에서 자연스럽게 처리된다.
+    // -----------------------------------------------------------------------
+    if (
+      data.fallback &&
+      (data.errorCategory === 'api_key' ||
+        data.errorCategory === 'format' ||
+        data.errorCategory === 'echo')
+    ) {
+      try {
+        const vars =
+          ctx.variables && typeof ctx.variables === 'object'
+            ? ctx.variables
+            : (ctx.variables = {});
+
+        // battleLast를 무승부 종료 상태로 덮어쓴다.
+        const last =
+          vars.battleLast && typeof vars.battleLast === 'object'
+            ? vars.battleLast
+            : {};
+        last.result = 'tie';
+        last.battleEnd = true;
+        last.winner = null;
+        last.fallback = true;
+        vars.battleLast = last;
+
+        // 점수 스냅샷이 없다면 0:0 으로 초기화한다.
+        if (!vars.battleScore || typeof vars.battleScore !== 'object') {
+          vars.battleScore = { hero: 0, rival: 0 };
+        }
+
+        // 전역 battleResult 토큰도 tie 로 설정
+        vars.battleResult = 'tie';
+
+        // applyBattleOutcomeLocal 이 돌려준 토큰이 있다면 함께 덮어쓴다.
+        if (outcome && typeof outcome === 'object') {
+          outcome.battleResult = 'tie';
+          outcome.battleEnd = true;
+          outcome.winner = null;
+        }
+      } catch {
+        // 무승부 처리 실패 시에도 게임 진행 자체는 막지 않는다.
+      }
+    }
 
     // AI 호출 디버그 로그 기록
     try {
