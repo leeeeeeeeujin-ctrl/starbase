@@ -378,7 +378,7 @@ export default function PlayDebugPanel({
                 style={{
                   marginTop: 6,
                   maxWidth: 420,
-                  maxHeight: 160,
+                  maxHeight: 180,
                   overflow: 'auto',
                   padding: 8,
                   borderRadius: 10,
@@ -397,15 +397,30 @@ export default function PlayDebugPanel({
                     .slice()
                     .reverse()
                     .map((call, idx) => (
-                      <li key={idx} style={{ marginBottom: 2 }}>
-                        <span style={{ color: '#e5e7eb' }}>
-                          {call.kind || 'call'} · {call.result || '-'}
-                        </span>
-                        {call.winner ? (
-                          <span style={{ marginLeft: 4, color: '#bbf7d0' }}>
-                            (winner: {call.winner})
+                      <li key={idx} style={{ marginBottom: 4 }}>
+                        <div>
+                          <span style={{ color: call.ok ? '#bbf7d0' : '#fecaca' }}>
+                            {call.kind || 'call'} · {call.ok ? 'OK' : 'FAIL'} ·{' '}
+                            {call.result || '-'}
                           </span>
-                        ) : null}
+                          {call.winner ? (
+                            <span style={{ marginLeft: 4, color: '#bbf7d0' }}>
+                              (winner: {call.winner})
+                            </span>
+                          ) : null}
+                        </div>
+                        {call.fallback && (
+                          <div style={{ marginLeft: 4, color: '#fbbf24' }}>
+                            폴백 발생
+                            {call.errorCategory ? ` · ${call.errorCategory}` : ''}
+                            {call.userHint ? ` · ${call.userHint}` : ''}
+                          </div>
+                        )}
+                        {!call.fallback && call.httpError && (
+                          <div style={{ marginLeft: 4, color: '#fca5a5' }}>
+                            HTTP 오류: {call.httpError}
+                          </div>
+                        )}
                       </li>
                     ))}
                 </ul>

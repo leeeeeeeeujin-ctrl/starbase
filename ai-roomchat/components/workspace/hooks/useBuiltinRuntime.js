@@ -350,70 +350,24 @@ export function useBuiltinRuntime({
       }
     };
 
-    // 초기 상태 발행 + 첫 번째 노드 AI 호출 (이동하지 않음)
+    // 초기 상태 발행: 첫 노드 정보만 inspect 용으로 한 번 보여주고,
+    // 실제 AI 호출/진행은 사용자가 "다음"을 눌렀을 때(turn:next) 처리한다.
     console.log('[useBuiltinRuntime] 초기화 완료, 첫 노드 확인 시작');
     try {
       if (runtime && typeof runtime.getCurrentWithPrompt === 'function') {
-        console.log('[useBuiltinRuntime] getCurrentWithPrompt 호출');
         runtime
           .getCurrentWithPrompt()
-          .then(async (res) => {
+          .then((res) => {
             console.log('[useBuiltinRuntime] getCurrentWithPrompt 응답:', res);
             if (!stopped && res && res.current) {
-              const nodeType = res.current && res.current.type;
-              console.log('[useBuiltinRuntime] 첫 노드 타입:', nodeType, 'hooks:', !!hooks, 'onTurnStart:', typeof hooks?.onTurnStart);
-              
-              // 첫 노드가 ai/prompt 타입이면 현재 노드에서 바로 onTurnStart 호출
-              if ((nodeType === 'ai' || nodeType === 'prompt') && hooks && typeof hooks.onTurnStart === 'function') {
-                try {
-                  console.log('[useBuiltinRuntime] 첫 노드 AI 호출 시작:', nodeType);
-                  const ctx = runtime.getContextSnapshot('user_action', 'auto');
-                  await hooks.onTurnStart(ctx);
-                  // onTurnStart 후 다시 프롬프트와 결과를 가져옴
-                  const updated = await runtime.getCurrentWithPrompt();
-                  console.log('[useBuiltinRuntime] 첫 노드 AI 호출 완료, battleLast:', updated?.variables?.battleLast);
-                  publishResult(updated, { reason: 'user_action', input: 'auto' });
-                } catch (e) {
-                  console.warn('[useBuiltinRuntime] initial onTurnStart error:', e);
-                  publishResult(res, { reason: 'inspect', input: undefined });
-                }
-              } else {
-                console.log('[useBuiltinRuntime] 첫 노드가 ai/prompt 타입이 아님:', nodeType);
-                publishResult(res, { reason: 'inspect', input: undefined });
-              }
+              publishResult(res, { reason: 'inspect', input: undefined });
             }
           })
           .catch(() => {});
       } else if (runtime && typeof runtime.getCurrentNode === 'function') {
         const cur = runtime.getCurrentNode();
         if (cur) {
-          const nodeType = cur.type;
-
-          // 첫 노드가 ai/prompt 타입이면 현재 노드에서 바로 onTurnStart 호출
-          if ((nodeType === 'ai' || nodeType === 'prompt') && hooks && typeof hooks.onTurnStart === 'function') {
-            try {
-              const ctx = runtime.getContextSnapshot('user_action', 'auto');
-              Promise.resolve(hooks.onTurnStart(ctx))
-                .then(() => {
-                  try {
-                    const updated = runtime.getCurrentNode();
-                    publishResult({ current: updated }, { reason: 'user_action', input: 'auto' });
-                  } catch (err) {
-                    console.warn('[useBuiltinRuntime] initial onTurnStart post-call error:', err);
-                    publishResult({ current: cur }, { reason: 'inspect', input: undefined });
-                  }
-                })
-                .catch((e) => {
-                  console.warn('[useBuiltinRuntime] initial onTurnStart error:', e);
-                  publishResult({ current: cur }, { reason: 'inspect', input: undefined });
-                });
-            } catch (e) {
-              console.warn('[useBuiltinRuntime] initial onTurnStart error:', e);
-              publishResult({ current: cur }, { reason: 'inspect', input: undefined });
-            }
-          } else {
-            publishResult({ current: cur }, { reason: 'inspect', input: undefined });
-          }
+          publishResult({ current: cur, turn: 0, prompt: cur.label || cur.id, variables: {} }, { reason: 'inspect', input: undefined });
         }
       }
     } catch {}

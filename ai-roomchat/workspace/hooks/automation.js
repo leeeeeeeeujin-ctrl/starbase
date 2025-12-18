@@ -355,13 +355,19 @@ export async function onTurnStart(ctx) {
     const vars = ctx.variables || {};
     const debug = vars.debug || {};
     const calls = Array.isArray(debug.aiCalls) ? debug.aiCalls.slice(-9) : [];
+    const ok = !!result.ok && !data.fallback;
     calls.push({
       kind: 'battle-judge-auto',
-      ok: true,
+      ok,
       result: data.result || null,
       winner: data.winner || null,
       timestamp: data.timestamp || new Date().toISOString(),
       promptPreview: typeof prompt === 'string' ? prompt.slice(0, 240) : null,
+      fallback: !!data.fallback,
+      errorCategory: data.errorCategory || null,
+      userHint: data.userHint || null,
+      errorMessage: data.errorMessage || null,
+      httpError: !result.ok ? result.error || null : null,
     });
     debug.aiCalls = calls;
     vars.debug = debug;
@@ -375,11 +381,21 @@ export async function onTurnStart(ctx) {
  */
 export function transformPrompt(ctx) {
   const node = ctx?.node || {};
+  const data = node.data || {};
   const battle = getBattleConfig(ctx);
   const routes = safeRoutes(battle);
   const profile = battle.promptProfile || {};
   const sides = Array.isArray(battle.sides) ? battle.sides : [];
   const rank = getRankContext(ctx);
+
+  // 0) 텍스트 배틀 설정이 없다면, 노드 템플릿을 그대로 사용
+  //    (단일 노드/간단 디버그용: 프롬프트-노드 에디터에서 작성한 텍스트를 그대로 AI에게 전달)
+  if ((!battle || Object.keys(battle).length === 0) && typeof data.template === 'string') {
+    const raw = data.template;
+    if (raw && raw.trim()) {
+      return raw;
+    }
+  }
 
   const stage = profile.stage || node.id || 'battle_stage';
   const tone = profile.tone || 'competitive_but_fun';
@@ -514,13 +530,19 @@ export async function onUserAction(ctx, input) {
       const debug =
         vars.debug && typeof vars.debug === 'object' ? vars.debug : (vars.debug = {});
       const calls = Array.isArray(debug.aiCalls) ? debug.aiCalls.slice(-9) : [];
+      const ok = !!result.ok && !data.fallback;
       calls.push({
         kind: 'battle-judge',
-        ok: !!result.ok,
+        ok,
         result: data.result || null,
         winner: data.winner || null,
         timestamp: data.timestamp || new Date().toISOString(),
         promptPreview: typeof prompt === 'string' ? prompt.slice(0, 240) : null,
+        fallback: !!data.fallback,
+        errorCategory: data.errorCategory || null,
+        userHint: data.userHint || null,
+        errorMessage: data.errorMessage || null,
+        httpError: !result.ok ? result.error || null : null,
       });
       debug.aiCalls = calls;
       vars.debug = debug;
