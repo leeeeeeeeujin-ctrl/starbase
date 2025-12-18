@@ -71,6 +71,16 @@ try {
   }
 } catch (_) {}
 
+// Global shim for legacy `showLegacyShellUi` references in older rank bundles.
+try {
+  if (typeof globalThis !== 'undefined' && typeof globalThis.showLegacyShellUi !== 'function') {
+    globalThis.showLegacyShellUi = function showLegacyShellUiShim() {
+      // 기본값: 레거시 쉘 UI는 사용하지 않음.
+      return false;
+    };
+  }
+} catch (_) {}
+
 import { useEffect, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import dynamic from 'next/dynamic';
