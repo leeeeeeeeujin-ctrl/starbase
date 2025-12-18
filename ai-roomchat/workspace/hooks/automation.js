@@ -102,6 +102,11 @@ function applyBattleOutcomeLocal(ctx, params) {
   const winner = params.winner || null;
   const effects = params.effects || null;
   const timestamp = params.timestamp || null;
+  const fallback = params.fallback === true;
+  const errorType = params.errorType || null;
+  const errorCategory = params.errorCategory || null;
+  const errorMessage = params.errorMessage || null;
+  const userHint = params.userHint || null;
 
   vars.battleLast = {
     narrative,
@@ -110,6 +115,11 @@ function applyBattleOutcomeLocal(ctx, params) {
     winner,
     effects,
     timestamp,
+    fallback,
+    errorType,
+    errorCategory,
+    errorMessage,
+    userHint,
   };
 
   // battleResult: 그래프 라우팅에서 쓰기 좋은 짧은 토큰으로 축약
@@ -333,6 +343,11 @@ export async function onTurnStart(ctx) {
     winner: data.winner,
     effects: data.effects,
     timestamp: data.timestamp,
+    fallback: data.fallback,
+    errorType: data.errorType,
+    errorCategory: data.errorCategory,
+    errorMessage: data.errorMessage,
+    userHint: data.userHint,
   });
 
   // AI 호출 디버그 로그 기록
@@ -483,6 +498,11 @@ export async function onUserAction(ctx, input) {
       winner: data.winner,
       effects: data.effects,
       timestamp: data.timestamp,
+      fallback: data.fallback,
+      errorType: data.errorType,
+      errorCategory: data.errorCategory,
+      errorMessage: data.errorMessage,
+      userHint: data.userHint,
     });
 
     // AI 호출 디버그 로그 기록
@@ -618,4 +638,3 @@ export function onBattleEnd(ctx) {
     templateVars,
   };
 }
-

@@ -289,6 +289,44 @@ function PlayOverlayContent({ templateBinding }) {
     });
   }, []);
 
+  // 디버그 참가자 → rankContext(플레이 전용) 투영
+  const debugRankContext = React.useMemo(() => {
+    try {
+      const users = Array.isArray(debugState.simUsers) ? debugState.simUsers : [];
+      if (!users.length) return null;
+      const players = users.map((u, index) => {
+        const name =
+          (u && u.name && String(u.name).trim()) || `참가자 #${index + 1}`;
+        const ownerId =
+          (u && u.ownerId && String(u.ownerId).trim()) || `sim-${index + 1}`;
+        const role = (u && u.role && String(u.role).trim()) || null;
+        const apiKey = u && u.apiKey ? String(u.apiKey) : null;
+        return {
+          ownerId,
+          heroId: null,
+          heroName: name,
+          role,
+          apiKey,
+        };
+      });
+      if (!players.length) return null;
+      const viewer = {
+        ownerId: players[0].ownerId,
+        roles: players[0].role ? [players[0].role] : [],
+      };
+      return {
+        sessionId: 'local-debug-session',
+        gameMode: 'offline',
+        realtimeEnabled: false,
+        dropInEnabled: false,
+        players,
+        viewer,
+      };
+    } catch {
+      return null;
+    }
+  }, [debugState.simUsers]);
+
   // 템플릿(JSON) 파싱은 별도로 감싸, 파싱 오류만 명확히 표기한다.
   let tpl;
   try {
@@ -520,6 +558,7 @@ function PlayOverlayContent({ templateBinding }) {
               : null
           }
           mode="play"
+          rankContext={debugRankContext}
         />
       </ErrorBoundary>
     </div>

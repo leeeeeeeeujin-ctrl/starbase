@@ -4629,6 +4629,41 @@ Status (2025-12-11 기준)
 
 ---
 
+## 텍스트 배틀 / 매칭 현재 상태 요약
+
+- **매칭/정산 레이어는 설계 메모 단계**  
+  - `docs/sql/text-battle-match-rpc-notes.sql` 에 정의된  
+    `public.find_text_battle_pair(...)`, `public.finalize_text_battle_rank(...)` 는 아직 구현되지 않았다.  
+  - 따라서, 텍스트 배틀은 현재 **오프라인/디버그 세션**처럼만 동작하며,  
+    랭크 큐(`rank_match_queue`), 세션(`rank_sessions`)과 실제 점수 정산으로는 연결되지 않는다.  
+  - 메인게임(랭크)에서 텍스트 배틀을 “정식 모드”로 사용하기 전에,  
+    이 RPC 들과 Supabase 쿼리/트랜잭션 레이어를 먼저 구축해야 한다.
+
+- **Play 디버그: 첫 턴 AI 호출 / hook timeout 이슈**  
+  - `workspace/hooks/automation.js` 의 `onTurnStart`는 텍스트 배틀용 노드에서  
+    `/api/ai-battle-judge` 를 호출해 AI 판정을 수행하도록 되어 있으나,  
+    현재 일부 세트에서 첫 턴 `turn:next` 시점에  
+    `Hook Timeout (디버그 전용) · turn:next · hook timeout` 이 발생하고  
+    첫 프롬프트에 대한 응답이 출력되지 않는 사례가 있다.  
+  - 이는 브라우저 런타임(core.text-runtime)이 훅 실행을 제한 시간 안에 끝내지 못해  
+    `hook timeout` 을 던지는 경로로,  
+    `/api/ai-battle-judge` 응답 처리/에러 처리 경로와 함께 추가 분석이 필요하다.
+
+- **Play 디버그 패널 API 키 ↔ AI 호출 경로**  
+  - 디버그 패널에서 입력한 참가자/API 키는  
+    `variables.rank.players` / `variables.debug.participants` 로 주입되고,  
+    `/api/ai-battle-judge` 에서는 `selectParticipantForPrompt()` 를 통해  
+    이 풀에서 API 키를 선택해 `callAIJudge(prompt, overrideKey)` 로 넘기도록 설계되어 있다.  
+  - 하지만 현재 빌드 기준으로는, 디버그 패널에 API 키를 입력해도  
+    실제 외부 AI 호출이 안정적으로 성공하지 않고,  
+    첫 턴에서 hook timeout 또는 폴백 응답만 보이는 경우가 있다.  
+  - 메인게임 테스트에 들어가기 전에  
+    - 디버그 참가자 → `variables.debug.participants` → `selectParticipantForPrompt` → `callAIJudge`  
+      전체 경로를 재검증하고,  
+    - env 기반 기본 키가 없을 때도 “디버그 패널 키만으로” 호출이 되도록 보완해야 한다.
+
+---
+
 ## Copilot 외주용 작업 메모
 
 > 이 섹션은 “다음 타자(Copilot 등)에게 맡겨도 되는 일감”을 정리한 메모입니다.  

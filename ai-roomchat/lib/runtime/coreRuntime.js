@@ -127,9 +127,14 @@ export function createCoreRuntime({ graph, config, hooks, files, initialVariable
   }
 
   function getHookTimeout() {
-    const v = cfg.hookTimeoutMs || cfg.hookTimeout;
+    const v = cfg.hookTimeoutMs ?? cfg.hookTimeout;
     const n = Number(v);
-    return Number.isFinite(n) && n > 0 ? n : 500;
+    if (Number.isFinite(n) && n > 0) return n;
+    // 기본값:
+    // - 텍스트 런타임/AI 판정 훅(onUserAction/transformPrompt 등)이
+    //   외부 API를 호출할 수 있으므로, 500ms 수준의 타임아웃은 너무 공격적이다.
+    // - 별도 설정이 없을 때는 여유 있는 15초를 기본으로 사용한다.
+    return 15000;
   }
 
   async function chooseNext(reason, input) {
