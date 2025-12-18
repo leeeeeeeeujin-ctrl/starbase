@@ -4662,6 +4662,17 @@ Status (2025-12-11 기준)
       전체 경로를 재검증하고,  
     - env 기반 기본 키가 없을 때도 “디버그 패널 키만으로” 호출이 되도록 보완해야 한다.
 
+- **AI 프로바이더 확장 계획 (후순위)**  
+  - 현재 `/api/ai-battle-judge` 는  
+    - OpenAI Chat Completions (`sk-...` 키)  
+    - Google Gemini Generative Language API (`AIza...` 키, `GEMINI_API_VERSION`/`GEMINI_MODEL`)  
+    정도만 직접 지원한다.  
+  - 구조상 `callAIJudge(prompt, apiKeyOverride)` 한 곳에서 키 패턴/설정을 보고  
+    프로바이더(OpenAI/Gemini/기타)를 분기하도록 설계되어 있으므로,  
+    Anthropic / DeepSeek / 자체 호스팅 모델 등은 **추가 브랜치만 붙이면 수직선 내에 편입 가능**하다.  
+  - 다만 텍스트 배틀 1차 수직선 안정화가 우선이므로,  
+    OpenAI + Gemini 이외의 프로바이더 확장은 **후순위(차후 작업)** 로 둔다.
+
 ---
 
 ## Copilot 외주용 작업 메모

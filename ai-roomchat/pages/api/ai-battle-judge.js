@@ -108,14 +108,10 @@ async function processUnifiedGamePrompt(context) {
   }
 
   try {
-    // 현재 라우팅은 OpenAI용 키만 안전하게 전달된다.
-    // 다른 프로바이더(Gemini/Claude 등)일 경우 overrideKey를 비워 기본 env 키(또는 fallback)로 처리한다.
-    const overrideKey =
-      routing && routing.provider && routing.provider !== 'openai'
-        ? null
-        : routing && routing.apiKey
-          ? routing.apiKey
-          : null;
+    // 참가자 라우팅에서 전달된 API 키(있다면)를 우선 사용한다.
+    // callAIJudge 쪽에서 키 패턴(예: sk- / AIza 등)을 보고
+    // OpenAI / Gemini 등 적절한 프로바이더를 선택한다.
+    const overrideKey = routing && routing.apiKey ? routing.apiKey : null;
     const aiResponse = await callAIJudge(prompt, overrideKey);
 
     // NOTE:
@@ -456,21 +452,89 @@ ${characterProfile.name}이(가) "${action.prompt || action.text}"를 시도합�
 }
 
 async function callAIJudge(prompt, apiKeyOverride) {
-  // 실제 환경에서는 OpenAI API 또는 다른 AI 서비스 호출
-  // 여기서는 예시 응답을 반환
-
   // 환경변수 또는 호출 시 전달된 API 키 가져오기
-  const apiKey =
-    (typeof apiKeyOverride === 'string' && apiKeyOverride.trim()) ||
-    process.env.OPENAI_API_KEY ||
-    process.env.ANTHROPIC_API_KEY;
+  const override = typeof apiKeyOverride === 'string' ? apiKeyOverride.trim() : '';
 
-  if (!apiKey) {
+  // 키 패턴을 보고 프로바이더를 추론한다.
+  // - OpenAI: sk- 로 시작
+  // - Gemini: AIza 로 시작 (Google Generative Language API 키 형식)
+  let provider = null;
+  let apiKey = null;
+
+  if (override) {
+    if (override.startsWith('sk-')) {
+      provider = 'openai';
+      apiKey = override;
+    } else if (override.startsWith('AIza')) {
+      provider = 'gemini';
+      apiKey = override;
+    }
+  }
+
+  // override에서 프로바이더를 확정하지 못했다면 환경변수 기반으로 추론
+  if (!provider) {
+    if (process.env.OPENAI_API_KEY) {
+      provider = 'openai';
+      apiKey = process.env.OPENAI_API_KEY;
+    } else if (process.env.GEMINI_API_KEY) {
+      provider = 'gemini';
+      apiKey = process.env.GEMINI_API_KEY;
+    } else if (process.env.ANTHROPIC_API_KEY) {
+      provider = 'openai'; // 임시: Anthropic 키가 설정된 경우에도 OpenAI 경로로 취급
+      apiKey = process.env.ANTHROPIC_API_KEY;
+    }
+  }
+
+  if (!provider || !apiKey) {
     throw new Error('AI API 키가 설정되지 않았습니다');
   }
 
   try {
-    // OpenAI API 호출 예시
+    if (provider === 'gemini') {
+      // Google Generative Language API (Gemini)
+      const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+      const version = process.env.GEMINI_API_VERSION || 'v1beta';
+      const endpoint = `https://generativelanguage.googleapis.com/${version}/models/${model}:generateContent?key=${encodeURIComponent(
+        apiKey,
+      )}`;
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: prompt }],
+            },
+          ],
+        }),
+      });
+
+      if (!response.ok) {
+        let msg = `AI API 호출 실패: ${response.status}`;
+        if (response.status === 401 || response.status === 403) {
+          msg += ' Unauthorized';
+        } else if (response.status === 429) {
+          msg += ' rate limit';
+        }
+        throw new Error(msg);
+      }
+
+      const data = await response.json();
+      const candidates = Array.isArray(data.candidates) ? data.candidates : [];
+      const first = candidates[0] || {};
+      const parts = (first.content && first.content.parts) || first.parts || [];
+      const text = parts
+        .map((p) => (typeof p.text === 'string' ? p.text : ''))
+        .join('')
+        .trim();
+      return text || JSON.stringify(data);
+    }
+
+    // 기본: OpenAI Chat Completions
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -478,7 +542,7 @@ async function callAIJudge(prompt, apiKeyOverride) {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-3.5-turbo',
+        model: process.env.OPENAI_MODEL || 'gpt-3.5-turbo',
         messages: [
           {
             role: 'system',
@@ -495,14 +559,20 @@ async function callAIJudge(prompt, apiKeyOverride) {
     });
 
     if (!response.ok) {
-      throw new Error(`AI API 호출 실패: ${response.status}`);
+      // 상태 코드에 따라 보다 구체적인 힌트를 남긴다.
+      let msg = `AI API 호출 실패: ${response.status}`;
+      if (response.status === 401 || response.status === 403) {
+        msg += ' Unauthorized';
+      } else if (response.status === 429) {
+        msg += ' rate limit';
+      }
+      throw new Error(msg);
     }
 
     const data = await response.json();
     return data.choices[0].message.content;
   } catch (error) {
     console.error('AI API 호출 오류:', error);
-
     // 에러를 상위로 전파하여 processUnifiedGamePrompt의 catch 블록에서 처리
     throw error;
   }
