@@ -50,6 +50,16 @@ export default function GameShell({
     (template && template.description) ||
     '';
 
+  // 랭크 모드에서 채팅/플레이어 표시를 위해 viewerHero 정보를 user 형태로 변환
+  const viewerUser = useMemo(() => {
+    if (!viewerHero || typeof viewerHero !== 'object') return null;
+    return {
+      name: viewerHero.name || '',
+      id: viewerHero.owner_id || viewerHero.hero_id || null,
+      avatarUrl: viewerHero.avatar_url || null,
+    };
+  }, [viewerHero]);
+
   return (
     <div style={{ height: '100%', width: '100%', display: 'flex', justifyContent: 'center' }}>
       <div
@@ -181,6 +191,7 @@ export default function GameShell({
       >
         <MainGameMobileUI
           template={template}
+          user={viewerUser}
           mode={mode}
           runtimeBus={runtimeBus}
           runtimeFeatures={runtimeFeatures}

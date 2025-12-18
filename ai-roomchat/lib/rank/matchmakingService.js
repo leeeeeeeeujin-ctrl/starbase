@@ -189,10 +189,68 @@ export async function loadOwnerParticipantRoster(supabaseClient, { gameId, owner
 }
 
 export async function postCheckMatchAssignments(supabaseClient, options = {}) {
-  return executePostCheck(supabaseClient, options, {
+  const baseResult = await executePostCheck(supabaseClient, options, {
     loadRoster: ({ gameId, ownerIds }) =>
       loadOwnerParticipantRoster(supabaseClient, { gameId, ownerIds }),
   });
+
+  // Safety guard: enforce per-assignment slot capacity on the server side.
+  const assignments = Array.isArray(baseResult?.assignments) ? baseResult.assignments : [];
+  const trimmedAssignments = [];
+  const overCapacityRemoved = [];
+
+  assignments.forEach((assignment) => {
+    if (!assignment || typeof assignment !== 'object') {
+      trimmedAssignments.push(assignment);
+      return;
+    }
+
+    const members = Array.isArray(assignment.members) ? assignment.members : [];
+    const numericSlots = Number(assignment.slots);
+    const hasExplicitSlots = Number.isFinite(numericSlots) && numericSlots > 0;
+
+    if (!hasExplicitSlots || members.length <= numericSlots) {
+      trimmedAssignments.push(assignment);
+      return;
+    }
+
+    const keep = members.slice(0, numericSlots);
+    const extra = members.slice(numericSlots);
+
+    extra.forEach((member) => {
+      if (!member || typeof member !== 'object') return;
+      overCapacityRemoved.push({
+        ...member,
+        role: member.role || assignment.role || null,
+        reason: member.reason || 'over_capacity',
+        slotIndex:
+          typeof member.slotIndex === 'number'
+            ? member.slotIndex
+            : Number.isFinite(Number(assignment.slotIndex))
+              ? Number(assignment.slotIndex)
+              : null,
+      });
+    });
+
+    trimmedAssignments.push({
+      ...assignment,
+      members: keep,
+      removedMembers: Array.isArray(assignment.removedMembers)
+        ? assignment.removedMembers.concat(extra)
+        : extra,
+    });
+  });
+
+  const mergedRemovedMembers = [
+    ...(Array.isArray(baseResult?.removedMembers) ? baseResult.removedMembers : []),
+    ...overCapacityRemoved,
+  ];
+
+  return {
+    ...baseResult,
+    assignments: trimmedAssignments,
+    removedMembers: mergedRemovedMembers,
+  };
 }
 
 function normalizeStatus(value) {

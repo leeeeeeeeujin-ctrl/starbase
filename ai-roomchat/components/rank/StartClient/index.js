@@ -490,6 +490,23 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     };
   }, [gameWorkspace && gameWorkspace.ui_shell]);
 
+  const logsPanelVisible = useMemo(() => {
+    const shell =
+      gameWorkspace && typeof gameWorkspace.ui_shell === 'object'
+        ? gameWorkspace.ui_shell
+        : null;
+    if (!shell) return false;
+    const panels = shell.panels || {};
+    const candidate =
+      (panels.logs && typeof panels.logs === 'object' && panels.logs) ||
+      (panels.turnHistory && typeof panels.turnHistory === 'object' && panels.turnHistory) ||
+      null;
+    if (!candidate) return false;
+    if (candidate.visible === false || candidate.enabled === false) return false;
+    if (candidate.visible === true || candidate.enabled === true) return true;
+    return false;
+  }, [gameWorkspace && gameWorkspace.ui_shell]);
+
   const autoStartRef = useRef(false);
 
   useEffect(() => {
@@ -701,8 +718,13 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
         .then((raw) => {
           if (!raw) return;
           const normalized = normalizeBattleOutcome(raw);
-          battleOutcomeRef.current = normalized;
-          setBattleOutcome(normalized);
+          const merged = {
+            ...normalized,
+            finalizeSummary:
+              raw && typeof raw === 'object' ? raw.finalizeSummary || null : null,
+          };
+          battleOutcomeRef.current = merged;
+          setBattleOutcome(merged);
         })
         .catch((err) => {
           try {
@@ -740,14 +762,50 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
       if (stopped || !result) return;
       try {
         const node = result.current || null;
+        const vars =
+          result && result.variables && typeof result.variables === 'object'
+            ? result.variables
+            : null;
+        const battleLast =
+          vars && vars.battleLast && typeof vars.battleLast === 'object'
+            ? vars.battleLast
+            : null;
+
+        const baseLabel =
+          node && typeof node.label === 'string' && node.label.trim().length
+            ? node.label.trim()
+            : node && node.id
+              ? String(node.id)
+              : '';
+
+        // 종료 시점: 별도 내레이션 중복 없이 종료 메시지만 표시
         if (!node) {
           runtimeBus.emit('system:message', '게임이 종료되었습니다.');
           return;
         }
-        const fromPrompt =
-          typeof result.prompt === 'string' && result.prompt.length ? result.prompt : null;
-        const txt = fromPrompt != null ? fromPrompt : String(node.label || node.id || '');
-        runtimeBus.emit('system:message', txt);
+
+        let userText = '';
+        const runtimePrompt =
+          result && typeof result.prompt === 'string' && result.prompt.length
+            ? result.prompt
+            : null;
+
+        if (battleLast && typeof battleLast.narrative === 'string' && battleLast.narrative.trim()) {
+          const narrative = battleLast.narrative.trim();
+          if (baseLabel) {
+            userText = `${baseLabel}\n\n${narrative}`;
+          } else {
+            userText = narrative;
+          }
+        } else if (runtimePrompt) {
+          userText = runtimePrompt;
+        } else {
+          userText = baseLabel || '';
+        }
+
+        if (userText) {
+          runtimeBus.emit('system:message', userText);
+        }
       } catch (err) {
         console.warn('[StartClient] publishResult 실패:', err);
         return;
@@ -777,7 +835,20 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
         const res = await runtimeRef.current.step({ reason: 'auto' });
         publishResult(res);
       } catch (err) {
-        runtimeBus.emit('system:message', String(err?.message || err));
+        const msg = String(err?.message || err);
+        if (msg === 'hook timeout') {
+          try {
+            runtimeBus.emit('debug:error', {
+              type: 'hook_timeout',
+              message: msg,
+              context: 'turn:next',
+            });
+          } catch {
+            // ignore debug errors
+          }
+        } else {
+          runtimeBus.emit('system:message', msg);
+        }
       }
     });
 
@@ -788,7 +859,20 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
         const res = await runtimeRef.current.step({ reason: 'user_action', input: text });
         publishResult(res);
       } catch (err) {
-        runtimeBus.emit('system:message', String(err?.message || err));
+        const msg = String(err?.message || err);
+        if (msg === 'hook timeout') {
+          try {
+            runtimeBus.emit('debug:error', {
+              type: 'hook_timeout',
+              message: msg,
+              context: 'player:chat',
+            });
+          } catch {
+            // ignore debug errors
+          }
+        } else {
+          runtimeBus.emit('system:message', msg);
+        }
       }
     });
 
@@ -1266,6 +1350,23 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
         .join(' · ')
     : '';
 
+  const logsPanelVisible = useMemo(() => {
+    const shell =
+      gameWorkspace && typeof gameWorkspace.ui_shell === 'object'
+        ? gameWorkspace.ui_shell
+        : null;
+    const panel =
+      shell && shell.panels && typeof shell.panels === 'object'
+        ? shell.panels.logs || shell.panels.turnHistory || null
+        : null;
+    if (panel && typeof panel.visible === 'boolean') {
+      return panel.visible;
+    }
+    // 랭크 메인게임 기본값: 턴 & 히스토리 패널은 숨겨 두고,
+    // ui_shell 설정으로 명시적으로 켜도록 한다.
+    return false;
+  }, [gameWorkspace && gameWorkspace.ui_shell]);
+
   if (!ready) {
     return (
       <div className={styles.page} style={pageStyle}>
@@ -1537,17 +1638,19 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
             )}
           </div>
 
-          <aside className={styles.sideColumn}>
-            <div className={`${styles.summaryCard} ${styles.sideCard}`}>
-              <LogsPanel
-                logs={logs}
-                aiMemory={aiMemory}
-                playerHistories={playerHistories}
-                realtimeEvents={realtimeEvents}
-                sections={logSections}
-              />
-            </div>
-          </aside>
+          {logsPanelVisible && (
+            <aside className={styles.sideColumn}>
+              <div className={`${styles.summaryCard} ${styles.sideCard}`}>
+                <LogsPanel
+                  logs={logs}
+                  aiMemory={aiMemory}
+                  playerHistories={playerHistories}
+                  realtimeEvents={realtimeEvents}
+                  sections={logSections}
+                />
+              </div>
+            </aside>
+          )}
         </div>
       </div>
     </div>

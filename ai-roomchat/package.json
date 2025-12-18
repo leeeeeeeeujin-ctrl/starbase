@@ -53,10 +53,11 @@
     "studio:test:cli": "node tools/test_cli_bridge.js",
     "r2:cors:set": "node scripts/set-r2-cors.js",
     "r2:cors:get": "node scripts/get-r2-cors.js",
-  "mobile:build": "node scripts/gen-mobile-endpoints.js && next build && npx cap copy",
+    "mobile:build": "node scripts/gen-mobile-endpoints.js && next build && npx cap copy",
     "mobile:sync": "npx cap sync",
     "mobile:android": "npx cap open android",
-    "mobile:ios": "npx cap open ios"
+    "mobile:ios": "npx cap open ios",
+    "rank:cleanup:sessions": "node scripts/cleanupExpiredRankSessions.js"
   },
   "dependencies": {
   "@capacitor/core": "^6.2.0",

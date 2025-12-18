@@ -333,6 +333,17 @@ export default function MainGameMobileUI({
     const shouldPost = shellConfig?.autoSettle === true;
     if (!apiKey || !shouldPost) return;
     if (!debugLog || !debugLog.events || !debugLog.events.length) return;
+
+    // 텍스트 배틀 세션 / 요약 정보가 있다면 settle payload에 함께 포함한다.
+    const textSessionId =
+      (rankContext && rankContext.session && rankContext.session.id) ||
+      rankContext?.sessionId ||
+      null;
+    const textSummary =
+      battleOutcome && typeof battleOutcome === 'object' && battleOutcome.finalizeSummary
+        ? battleOutcome.finalizeSummary
+        : null;
+
     const controller = new AbortController();
     const send = async () => {
       try {
@@ -343,9 +354,39 @@ export default function MainGameMobileUI({
             'x-api-key': apiKey,
           },
           body: JSON.stringify({
-            sessionId: rankContext?.sessionId || rankContext?.session_id || 'local-session',
-            gameId: rankContext?.gameId || rankContext?.game_id || 'local-game',
-            battleLog: debugLog,
+            sessionId:
+              (rankContext && rankContext.session && rankContext.session.id) ||
+              rankContext?.sessionId ||
+              rankContext?.session_id ||
+              'local-session',
+            gameId:
+              (rankContext && rankContext.game && rankContext.game.id) ||
+              rankContext?.gameId ||
+              rankContext?.game_id ||
+              'local-game',
+            battleLog: {
+              ...debugLog,
+              ...(textSessionId
+                ? {
+                    textBattleSessionId: textSessionId,
+                  }
+                : null),
+              ...(textSummary
+                ? {
+                    textBattleSummary: textSummary,
+                  }
+                : null),
+            },
+            ...(textSessionId
+              ? {
+                  textBattleSessionId: textSessionId,
+                }
+              : null),
+            ...(textSummary
+              ? {
+                  textBattleSummary: textSummary,
+                }
+              : null),
             userId: user?.id || user?.uid || null,
           }),
           signal: controller.signal,
@@ -356,7 +397,7 @@ export default function MainGameMobileUI({
     };
     send();
     return () => controller.abort();
-  }, [debugLog, shellConfig, rankContext, user]);
+  }, [debugLog, shellConfig, rankContext, user, battleOutcome]);
 
   const modules = useMemo(() => {
     const panelsCfg =

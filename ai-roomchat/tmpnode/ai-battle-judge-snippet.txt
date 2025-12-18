@@ -1,0 +1,208 @@
+타입에 따른 적절한 응답
+    const status = error.name === 'ValidationError' ? 400 : 500;
+    const message =
+      process.env.NODE_ENV === 'development'
+        ? error.message
+        : 'AI 판정 처리 중 오류가 발생했습니다';
+
+    res.status(status).json({
+      error: 'AI processing failed',
+      message,
+      ...(process.env.NODE_ENV === 'development' && { stack: error.stack }),
+    });
+  }
+}
+
+// 통합 게임 시스템용 프롬프트 처리
+async function processUnifiedGamePrompt(context) {
+  const { prompt, gameState, character } = context;
+
+  let routing = null;
+  try {
+    const routeHint = gameState && gameState.routeHint ? gameState.routeHint : null;
+    routing = selectParticipantForPrompt({ gameState, prompt, routeHint });
+  } catch {
+    routing = null;
+  }
+
+  // 단일 호출: 한 번의 callAIJudge + 파싱/형식 검사
+  const judgeOnce = async (overrideKey) => {
+    const aiResponse = await callAIJudge(prompt, overrideKey);
+    const parsed = parseAIResponse(aiResponse);
+
+    let success = true;
+    let fallback = false;
+    let errorCategory = null;
+    let userHint = null;
+    let errorMessage = null;
+
+    // 응답 형식 자체가 계약에 맞지 않는 경우
+    if (parsed && parsed.formatOk === false) {
+      // 파싱 실패 원인이 쿼터/키/권한 오류인지 먼저 확인
+      const inlineError = classifyInlineError(aiResponse);
+      if (inlineError) {
+        success = false;
+        fallback = true;
+        errorCategory = inlineError.category; // rate_limit | api_key
+        userHint = inlineError.hint;
+        const isDev = process.env.NODE_ENV === 'development';
+        parsed.narrative = isDev
+          ? `⚠️ AI 응답 오류(${inlineError.category}): ${inlineError.hint}`
+          : `⚠️ AI 응답 오류: ${inlineError.hint}`;
+        errorMessage = 'Inline provider error text detected';
+      } else {
+        success = false;
+        fallback = true;
+        errorCategory = 'format';
+        userHint =
+          'AI 응답 형식을 이해하지 못했습니다. 프롬프트-노드 에디터의 응답 규칙 설명을 확인하세요.';
+        const isDev = process.env.NODE_ENV === 'development';
+        parsed.narrative = isDev
+          ? `⚠️ AI 응답 형식 오류: 응답 구조를 해석하지 못했습니다. ${userHint}`
+          : '⚠️ AI 응답 형식 오류: 일시적인 문제로 이번 턴 결과를 해석하지 못했습니다.';
+        errorMessage = 'LLM response did not match expected format';
+      }
+    }
+
+    // 프롬프트를 거의 그대로 반복하는 에코 응답 감지
+    if (!fallback) {
+      const echo = similarityScore(prompt, aiResponse);
+      if (echo >= 0.9) {
+        success = false;
+        fallback = true;
+        errorCategory = 'echo';
+        userHint =
+          'AI 응답이 프롬프트를 거의 그대로 반복했습니다. 프롬프트 규칙이나 예시를 조정한 뒤 다시 시도하세요.';
+        const isDev = process.env.NODE_ENV === 'development';
+        parsed.narrative = isDev
+          ? '⚠️ AI 응답이 프롬프트를 그대로 반복해 이 턴 결과를 사용할 수 없습니다.'
+          : '⚠️ AI 응답이 올바르지 않아 이 턴 결과를 사용할 수 없습니다.';
+        errorMessage = `prompt/response echo detected (similarity=${echo.toFixed(2)})`;
+      }
+    }
+
+    return { aiResponse, parsed, success, fallback, errorCategory, userHint, errorMessage };
+  };
+
+  const runWithRetries = async (overrideKey, maxAttempts = 3) => {
+    let last = null;
+    for (let i = 0; i < maxAttempts; i += 1) {
+      const res = await judgeOnce(overrideKey);
+      last = res;
+      // 형식/에코 오류면 재시도, 그 외(성공 또는 api_key/network 등)는 즉시 반환
+      if (!res.fallback || (res.errorCategory && !['format', 'echo'].includes(res.errorCategory))) {
+        return res;
+      }
+    }
+    return last;
+  };
+
+  try {
+    // 참가자 라우팅에서 전달된 API 키(있다면)를 우선 사용한다.
+    // callAIJudge 쪽에서 키 패턴(예: sk- / AIza 등)을 보고
+    // OpenAI / Gemini 등 적절한 프로바이더를 선택한다.
+    const overrideKey = routing && routing.apiKey ? routing.apiKey : null;
+
+    let result = null;
+
+    // 1) overrideKey가 있으면 우선 3회까지 시도
+    if (overrideKey) {
+      result = await runWithRetries(overrideKey, 3);
+      if (
+        result &&
+        result.fallback &&
+        result.errorCategory &&
+        ['format', 'echo'].includes(result.errorCategory)
+      ) {
+        // 형식/에코로만 계속 실패한 경우 → 다음 키(환경 변수 기반)로 넘어간다.
+        result = null;
+      }
+    }
+
+    // 2) overrideKey가 없거나 형식/에코로만 실패했다면 env 기반 키로 3회 시도
+    if (!result) {
+      result = await runWithRetries(null, 3);
+    }
+
+    const { aiResponse, parsed, success, fallback, errorCategory, userHint, errorMessage } =
+      result || (await judgeOnce(overrideKey));
+
+    const timestamp = new Date().toISOString();
+    const battleLastPayload = {
+      ...parsed,
+      timestamp,
+      success,
+      fallback,
+      errorCategory,
+      errorMessage,
+      userHint,
+      apiRouting: routing
+        ? {
+            origin: routing.participant?.origin || null,
+            participant: {
+              name: routing.participant?.name || null,
+              slotNo: routing.participant?.slotNo ?? null,
+              heroId: routing.participant?.heroId || null,
+              ownerId: routing.participant?.ownerId || null,
+            },
+          }
+        : null,
+    };
+
+    // 기존 스코어는 gameState.battleScore 또는 gameState.variables.battleScore에서 찾는다.
+    const existingScore =
+      (gameState && gameState.battleScore) ||
+      (gameState && gameState.variables && gameState.variables.battleScore) ||
+      null;
+    const updatedScore = computeBattleScoreSnapshot(existingScore, parsed);
+
+    // Optional: best-effort logging when gameState carries a session identifier.
+    // Failures are ignored so judgement latency is not affected.
+    (async () => {
+      try {
+        const sessionId = gameState && gameState.sessionId;
+        if (!sessionId) return;
+        if (!supabaseAdmin || typeof supabaseAdmin.from !== 'function') return;
+
+        // 0) 세션 row 보장(text_battle_sessions, best-effort upsert)
+        try {
+          const baseSessionRow = toTextBattleSessionRow({
+            variables: {
+              battleWinner:
+                parsed && parsed.battleEnd && parsed.winner ? parsed.winner : null,
+              battleScore: updatedScore,
+            },
+          });
+          await supabaseAdmin
+            .from('text_battle_sessions')
+            .upsert(
+              {
+                id: sessionId,
+                ...baseSessionRow,
+              },
+              { onConflict: 'id' },
+            );
+        } catch {
+          // 세션 row 생성 실패는 무시한다.
+        }
+
+        // 1) 턴 로그(text_battle_turns)
+        const ctx = {
+          node: {
+            id: gameState.nodeId || null,
+            label: gameState.nodeLabel || null,
+          },
+          variables: {
+            // NOTE:
+            // - battleLast: 구조화된 판정 결과 + timestamp
+            // - battleScore: 이 턴 이후 스코어 스냅샷
+            // - lastPrompt: 이 턴에 사용된 전체 프롬프트 텍스트
+            // - aiResponseRaw: LLM이 반환한 전체 응답 텍스트
+            battleLast: battleLastPayload,
+            battleScore: updatedScore,
+            lastPrompt: prompt,
+            aiResponseRaw: aiResponse,
+          },
+        };
+        const turnIndex = Number.isFinite(Number(gameState.turn))
+          ? Num

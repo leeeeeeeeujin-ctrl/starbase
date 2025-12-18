@@ -305,12 +305,56 @@ Current high-level status (this repo copy)
   - 이 레포 복사본에서는 공식 랭크 정산을 기존 `/api/rank/settle` + `rank_session_battle_logs` 기준으로 유지하고,
     텍스트 배틀 로그/세션은 부가 로그·분석 채널로만 사용하는 상태로 고정한 뒤,
     Rank 엔진 리팩터링 + text-battle-settle 연동은 향후 별도 작업(전용 턴)으로 진행한다.
+  - `/api/rank/settle` 을 직접 호출하는 배치/백엔드에서 텍스트 배틀 세션을 함께 정산하고 싶다면,  
+    payload/battleLog에 아래 필드를 추가할 수 있다:
+    - `textBattleSessionId` 또는 `text_battle_session_id` → `text_battle_sessions.id`
+    - `textBattleSummary` 또는 `text_battle_summary` → `finalize_text_battle_rank` 의 `p_summary` 로 전달될 JSON  
+      (예: `{ "winner": "hero", "final_score": { "hero": 2, "rival": 1 } }`)
+    - `/api/rank/settle` 는 이 필드를 인식해 best-effort 로 `finalize_text_battle_rank(sessionId, textSessionId, summary)` 를 호출하고,  
+      실패하더라도 기존 랭크 정산 응답에는 영향을 주지 않는다.
 - Hub/플러그인 기반 확장: **planned**
   - Hub(로컬/외부 에이전트)를 통해 UI 테스트, 로컬 Git, Supabase 연동 등 확장을 외부 플러그인으로 제공하고 ai-roomchat은 JSON API로만 연결하는 방향.
 - Standard data slots (`variables.stats / scene / effects / speaker`): **in progress**
   - 장르에 무관한 공통 슬롯 계약을 `docs/standard-data-slots.md` 에 정의하고, 텍스트 배틀 예제를 통해 사용하는 중.
 - Supabase persistence + SQL helpers: **planned**
   - Capability/확장 스펙만 정의되어 있고, 실제 어댑터/패널 구현은 이후 단계.
+
+### Rank 매칭 / 세션 수명 구조 스냅샷 (현재 상태)
+
+- **rank_sessions**  
+  - 랭크 메인 세션의 수명 관리 테이블.  
+  - `cleanup_expired_rank_sessions(p_cutoff_minutes, p_batch_limit)` (docs/sql/cleanup-expired-rank-sessions.sql)이  
+    오래된 `active/preparing/ready` 세션을 `aborted` 로 마크해 매칭/시작 로직이 더 이상 잡지 않도록 한다.
+- **rank_battles**  
+  - 개별 전투(매치 한 번)에 대한 결과 저장 테이블.  
+  - 일부 클라이언트 코드(랭크 로비 최근 전투 조회)는 `rank_battles.session_id` 컬럼을 기대한다.  
+  - 이 컬럼은 기본 스키마에는 없으며, `docs/sql/rank-battles-session-id.sql` 을 적용해야 생성된다.  
+    (미적용 상태에서는 Supabase `select id, ..., session_id` 쿼리가 400/42703 에러를 낸다.)
+- **text_battle_sessions / text_battle_turns**  
+  - 텍스트 배틀용 세션/턴 로그 테이블.  
+  - `/api/ai-battle-judge` 가 `gameState.sessionId` 를 `text_battle_sessions.id` 로 사용해  
+    best-effort upsert + 턴 로그 insert 를 수행한다.  
+  - `finalize_text_battle_rank(p_rank_session_id, p_text_session_id, p_summary)`  
+    (docs/sql/text-battle-match-rpc.impl.sql)은 이 세션을 `completed` 로 마크하고,  
+    필요하면 `finalize_rank_session_outcome` 를 호출해 랭크 세션을 함께 종료한다.
+- **프론트엔드 매칭 상태 (matchFlow / matchDataStore)**  
+  - `lib/rank/matchFlow.js`  
+    - `createEmptyMatchFlowState()` 에서 `snapshot`, `roster`, `assignments`, `sessionMeta`, `sessionHistory` 등  
+      클라이언트 측 매칭/세션 뷰 모델을 정의한다.  
+    - `readMatchFlowState(gameId)` 는 `modules/rank/matchDataStore` 에 저장된 상태를 읽어 StartClient 에 주입한다.
+  - `modules/rank/matchDataStore.js`  
+    - 브라우저 `localStorage` 기반 캐시(`rank.match.game.{gameId}`)로 매칭/세션 메타/히스토리 스냅샷을 유지한다.  
+    - `sessionMeta.turnState` 는 현재 턴 번호/마감 시각, `sessionHistory.turns` 는 채팅/타임라인 이벤트를 나타낸다.
+- **StartClient / useStartClientEngine 연동**  
+  - `components/rank/StartClient/index.js` 는 `matchFlow` 상태를 읽어  
+    - 상단 메타(방 코드, 매치 모드 등)와  
+    - 텍스트 런타임용 `rankContext`(`lib/rank/rankContext.js`) 를 구성하고,  
+    - `createCoreRuntime(...)` 로 텍스트 배틀 엔진을 초기화한다.  
+  - `useStartClientEngine` 은 여전히 기존 promptEngine/타임라인/정산 로직을 사용하며,  
+    텍스트 배틀 전용 수직선(텍스트 런타임 + `ai-battle-judge` + `text_battle_*`)은  
+    별도의 채널로 동작한다.  
+  - Rank 정산 공식 경로는 기존 `/api/rank/settle` + `rank_session_battle_logs` 기준을 유지하고,  
+    텍스트 배틀 세션 연동(`finalize_text_battle_rank`)은 선택적/후순위 작업으로 남겨 둔다.
 
 ### Open tasks (dev notes) — 다음 타자 인계 사항
 
@@ -400,6 +444,9 @@ Current high-level status (this repo copy)
   - inspect 시점 시스템 메시지 제거 (중복 방지)
   - 게임 종료 시 narrative 중복 출력 제거
   - NextBar "다음 단계로 진행합니다." 메시지 제거
+  - 메인게임(StartClient)의 텍스트 런타임도 같은 규칙으로 정리:  
+    `node.label + battleLast.narrative`를 한 턴 내용으로 한 번만 표시하고,  
+    종료 시에는 `"게임이 종료되었습니다."` 만 별도로 출력
 - **커밋**: `0d5646c71`
 
 ### 4. 프롬프트-노드 매핑 명확화 ✅
@@ -430,11 +477,25 @@ Current high-level status (this repo copy)
 - **파일**: [useBuiltinRuntime.js](../../components/workspace/hooks/useBuiltinRuntime.js#L323-L369)
 - **커밋**: `ae12b6227` (첫 시도, 실패), `722f41bd1` (최종 수정)
 
-### 7. 장기 계획 (미구현)
-- ⚠️ **Maker 그래프(Supabase) ↔ workspace 동기화** → **[보류] 코덱스 설계 필요**
-  - 완료: `/template.json` 직접 수정 → `/graph` sync (제한적)
-  - 미구현: Maker 그래프 편집 → workspace 파일 자동 반영
-  - 보류 사유: 전체 데이터 흐름 설계 필요 (Supabase 스키마, 워크스페이스 구조, 동기화 전략)
+### 7. 장기 계획 (부분 완료, 일부 미구현)
+- ⚠️ **Maker 그래프(Supabase) ↔ workspace 동기화**
+  - **완료 (워크스페이스 VFS 기준)**:
+    - `/template.json` 직접 수정 → `/graph/prompt-graph.json` 제한적 sync  
+      (`SyncTemplateToVfs.jsx` – `data.template`/`data.name`를 `label`로 투영)
+    - Maker 에디터에서 React Flow 그래프 편집 시:
+      - `components/maker/editor/MakerEditor.js`에서 `nodes`/`edges` 변경을 감지해
+        `/graph/prompt-graph.json`에 실시간 반영
+      - 시작 노드(`node.data.isStart === true`)가 있으면  
+        `/game/runtime.config.json.entryNode`를 해당 노드 id로 자동 갱신
+    - 결과: **프롬프트‑노드 에디터에서 그린 그래프가 Play/builtin 엔진이 읽는 `/graph`/`entryNode`까지 바로 이어지는 상태**.
+  - **미구현 (Studio ↔ Rank 메인게임 연동)**:
+    - Supabase `prompt_sets` / `prompt_slots` / `prompt_bridges`에서  
+      `rank_game_workspaces.workspace.graph/runtime_config/hooks_source` 로 가는  
+      “게임별 워크스페이스 스냅샷” 자동 생성/업데이트 경로.
+  - 보류 사유:
+    - Rank 메인 엔진(StartClient)와 Studio/Maker를 어떻게 분리·연결할지  
+      (각 게임의 기본 워크스페이스 세트/버전 관리, 자동 마이그레이션 전략 등)  
+      에 대한 설계가 더 필요해서, **현재는 수동/부분 연동 단계**로 유지.
 
 ---
 
@@ -1539,6 +1600,86 @@ With this setup, the Play overlay:
 > Godot/Unity 수준의 범용 2D/3D 렌더링·물리·애니메이션·오디오·멀티플랫폼 빌드까지 포괄하는 일반 게임엔진을 목표로 하지는 않으며,  
 > 그런 영역이 필요할 때는 별도 엔진(Phaser/PIXIS/three 등)과의 연동을 전제로 한다.
 
+### Main game / play / matching overview
+
+이 섹션은 “메이커 → 플래이 → 메인게임/매칭/정산” 전체 흐름을 한 번에 보는 지도 역할을 합니다.  
+세부 구현이 바뀌어도, 여기 적힌 축/계약은 유지되는 것을 목표로 합니다.
+
+#### 6.1 코드 에디터 / 워크스페이스 축
+
+- **CodeWorkspaceProvider** (`components/workspace/CodeWorkspaceProvider.jsx`)
+  - 브라우저 VFS 역할을 하는 컨텍스트.
+  - 주요 파일:
+    - `/template.json` — 프롬프트-노드 에디터와 동기화되는 템플릿 JSON.
+    - `/graph/prompt-graph.json` — 프롬프트 그래프(노드/엣지 구조).
+    - `/game/runtime.config.json` — 엔진 설정(turn 모드, entryNode, 타이머 등).
+    - `/game/hooks/automation.js` — 텍스트 배틀용 훅(onTurnStart / onUserAction / onBattleEnd).
+    - `/game/ui.shell.json` — 메인게임/플래이 UI 패널 설정(턴로그/AI 히스토리 등).
+  - Supabase `workspace_sets` 와의 관계:
+    - 메이커 페이지가 특정 세트(id)를 열면, 해당 세트의 파일들이 VFS로 주입됨.
+    - 저장 시 세트와 Supabase 테이블(`prompt_sets`, `prompt_slots`, `prompt_bridges` 등)에 반영.
+
+- **AI 코드 채팅** (`components/workspace/AIChatDock.jsx`)
+  - 위 VFS를 “workspace/**” 루트로 보고 `read_file` / `write_file` / `edit_patch` 액션을 수행.
+  - 현재는 주로 `/game/hooks/automation.js`, `/game/ui.shell.json` 등 **유저가 건드려도 되는 파일**을 편집하는 용도.
+
+#### 6.2 Play / 디버그 축
+
+- **Play 오버레이** (`CodeEditorOverlayV2.jsx` → `PlayOverlayContent`)
+  - `engine: 'builtin'` 인 경우:
+    - `/graph/prompt-graph.json` + `/game/runtime.config.json` + `/game/hooks/automation.js` 를 읽어
+      `createCoreRuntime({ graph, config, hooks, files, initialVariables })` 를 생성.
+    - `useBuiltinRuntime` 훅이 `turn:next` / `player:chat` 이벤트를 받아
+      `runtime.step({ reason, input })` 를 호출하고,
+      결과를 `runtimeBus.emit('system:message')`, `runtimeBus.emit('runtime:turn-log')` 로 발행.
+  - 디버그 패널 (`PlayDebugPanel.jsx`):
+    - `debugState = { lastPrompt, turnEvents, calls, simUsers }` 를 보여줌.
+    - 참가자/역할/apiKey 를 디버그 전용으로 주입해, 실제 매칭 없이도 수직선을 테스트할 수 있게 한다.
+
+#### 6.3 메인게임(StartClient) / 랭크 축
+
+- **StartClient** (`components/rank/StartClient/index.js`)
+  - 랭크 메인게임의 Shell 역할.
+  - 입력:
+    - `matchState` (`lib/rank/matchFlow` + `modules/rank/matchDataStore`) — 매칭/세션/로스터/방 정보.
+    - `rankContext` (`lib/rank/rankContext.buildRankContext`) — `initialVariables.rank` 로 주입되는 표준 컨텍스트:
+      - `rank.sessionId`, `rank.gameMode`, `rank.players[]`(ownerId/heroId/heroName/role 등).
+  - 내부:
+    - **랭크 엔진(useStartClientEngine)** — 기존 텍스트/프롬프트 엔진 + outcomeLedger + timeline.
+    - **텍스트 런타임(coreRuntime)** — `textRuntimeEnabled` 인 게임에 한해:
+      - `createCoreRuntime({ graph, config, hooks, files, initialVariables: { rank } })`.
+      - `runtimeBus` 를 통해 `turn:next` / `player:chat` 이벤트를 수신, `runtime.step()` 호출.
+      - `runtime:turn-log` 이벤트를 StartClient가 받아 `turnLogRef` 에 적재, 훅 `onBattleEnd(ctx)` 에 전달.
+      - `onBattleEnd(ctx)` 결과는 `normalizeBattleOutcome(raw)` + `raw.finalizeSummary` 로 `battleOutcome` 에 보관.
+  - 출력:
+    - UI:
+      - `GameShell` + `MainGameMobileUI` 를 통해 채팅/캐릭터/턴 진행 표시.
+      - `logs` / `aiMemory` / `playerHistories` 는 메인게임 우측 패널(로그/AI 히스토리/플레이어 히스토리)로 노출.
+    - 백엔드:
+      - 턴 진행 중: `useStartClientEngine` 이 `/api/rank/run-turn`, `/api/rank/log-turn`, `/api/rank/turn-events` 등을 사용해
+        현재 턴 상태와 이벤트를 Supabase 랭크 스키마에 반영.
+      - 세션 종료 시:
+        - 역할군/참가자별 승패/점수 요약 → `/api/rank/complete-session` → `finalize_rank_session_outcome` RPC.
+        - 배틀 로그(턴 이벤트 + 참가자 + outcome) → `/api/rank/settle` → `battle_history` / `rank_battles` 스냅샷 +
+          (필요 시) 텍스트 배틀 세션 정산(`finalize_text_battle_rank`).
+
+#### 6.4 매칭 / 세션 수명 축 (요약)
+
+- Supabase 테이블/뷰 (랭크):
+  - `rank_games`, `rank_sessions`, `rank_battles`, `rank_turn_events` 등.
+  - `docs/sql/*rank*.sql`, `docs/rank-*.md` 에 상세 설계/마이그레이션 초안이 정리되어 있음.
+- 주요 API:
+  - `/api/rank/start-session` — 매칭이 성사되면 랭크 세션 시작.
+  - `/api/rank/run-turn` / `/api/rank/log-turn` / `/api/rank/turn-events` — 턴 진행/로그 기록.
+  - `/api/rank/complete-session` — `finalize_rank_session_outcome` RPC 로 랭크 세션 결과 정산.
+  - `/api/rank/settle` — battleLog 기반 정산 + Supabase `rank_battles` 스냅샷 저장.
+- 현재 상태 메모:
+  - 예전 매칭/세션이 제대로 종료되지 않아, 새 매칭이 “죽지 않은 세션”에 붙는 문제가 있었음.
+  - 이 문서에서 정의한 텍스트 배틀 수직선(세션/턴/정산)이 안정된 뒤,
+    랭크 전체 매칭/세션 수명 리팩토링을 별도 단계로 진행할 계획.
+
+---
+
 ### Debug snapshot (update when things change)
 
 - 플랫폼 목적 요약:
@@ -1559,6 +1700,32 @@ With this setup, the Play overlay:
   - 캐릭터: `GameSessionShell`이 `character` 상태를 주입/autoLoad, `UnifiedGameSystem`/렌더러가 `characterData`를 UI/템플릿 변수로 등록.
   - 디버그 상태: PlayOverlay `debugState = { lastPrompt, turnEvents, calls, simUsers }` (localStorage `playDebug.simUsers@{ns}`).
 - TODO(갱신 시 반영): 매칭/정산 구현 상태, Hub/플러그인 연결 여부, 테스트/관측 구성 여부를 여기에 짧게 기록해 둘 것.
+
+### Rank 정산 ↔ 텍스트 배틀 세션 연동 (현재 상태 메모)
+
+- `pages/api/ai-battle-judge.js`
+  - 통합 경로(`processUnifiedGamePrompt`)에서 `gameState.sessionId` 가 주어질 경우:
+    - `text_battle_sessions` / `text_battle_turns` 에 best-effort 로깅을 수행한다.
+    - 실패해도 Play/메인게임 흐름에는 영향을 주지 않는다.
+- `workspace/hooks/automation.js`
+  - `onBattleEnd(ctx)` 는 텍스트 배틀 종료 시 다음 구조를 반환한다:
+    - `finalizeSummary: { winner, final_score }`
+    - 이 값은 랭크 정산과 Supabase 랭크 함수(`finalize_text_battle_rank`)에 넘기기 좋은 최소 요약이다.
+- `pages/api/rank/settle.js`
+  - 기본 랭크 정산(`storeBattleHistory`, `storeSessionBattleLogToSupabase`) 후,
+    - payload 또는 battleLog/meta 에서 다음 필드를 **선택적으로** 읽는다:
+      - `textBattleSessionId` / `text_battle_session_id`
+      - `textBattleSummary` / `text_battle_summary`
+    - 둘 중 하나라도 없으면 아무 것도 하지 않는다(기존 동작 유지).
+    - 둘 다 있으면:
+      - `supabaseAdmin.rpc('finalize_text_battle_rank', { p_rank_session_id, p_text_session_id, p_summary })`
+      - 이 호출 실패 역시 무시하며, 랭크 정산 응답은 기존과 동일하게 반환한다.
+- 앞으로 할 일:
+  - StartClient(메인게임) 엔진이 텍스트 배틀 게임에 한해:
+    - `onBattleEnd(ctx).finalizeSummary` 를 구하고,
+    - 텍스트 배틀 세션 id(`gameState.sessionId` 또는 별도 매핑)를 `textBattleSessionId` 로,
+    - 위 요약을 `textBattleSummary` 로 `rank/settle` 요청에 포함하도록 점진적으로 연결한다.
+  - 이 문서의 계약대로만 필드를 채워주면, 랭크/베틀로그 쪽은 추가 수정 없이 텍스트 배틀 세션과 연결된다.
 
 ### If we aim for “general engine/platform” competitiveness
 
@@ -2395,6 +2562,12 @@ DB 매핑(초안):
      - `supabaseAdmin.from('text_battle_sessions').update({ status, winner, final_score }).eq('id', sessionId)`로 요약 row를 **best-effort 업데이트**한다. (행이 없거나 FK 구성이 다르면 조용히 실패)
 3. **역할/점수폭 설정 파일 연결 (`/game/roles.rank.json`)**  
    - 기존 랭크/게임 등록 UI에서 입력하던 역할/점수폭을 워크스페이스 파일(`/game/roles.rank.json`) 기반으로 읽어, `register_rank_game` 계열 RPC의 `p_roles` 인자로 넘기도록 등록 플로우를 정리한다.
+4. **Rank 정산 엔드포인트(`/api/rank/settle`)와의 자동 연동** *(메인게임 Shell 경로에서 사용 가능)*  
+   - 메인 Rank 게임 클라이언트(`StartClient` → `GameShell` → `MainGameMobileUI`)는 텍스트 배틀 런타임이 활성화된 경우,  
+     - `shellConfig.rankApiKey` + `shellConfig.autoSettle === true`일 때 `/api/rank/settle`을 자동 호출하고,  
+     - `battleLog` 및 루트 payload에 `textBattleSessionId` + `textBattleSummary(finalizeSummary)`를 함께 실어 보낸다.  
+   - 이 경로는 `/api/rank/settle` 이 `finalize_text_battle_rank(p_rank_session_id, p_text_session_id, p_summary)` RPC를  
+     best‑effort 로 호출하도록 하는 **통합 정산 브리지** 역할을 한다.
 
 ---
 
