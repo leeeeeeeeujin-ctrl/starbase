@@ -490,23 +490,6 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     };
   }, [gameWorkspace && gameWorkspace.ui_shell]);
 
-  const logsPanelVisible = useMemo(() => {
-    const shell =
-      gameWorkspace && typeof gameWorkspace.ui_shell === 'object'
-        ? gameWorkspace.ui_shell
-        : null;
-    if (!shell) return false;
-    const panels = shell.panels || {};
-    const candidate =
-      (panels.logs && typeof panels.logs === 'object' && panels.logs) ||
-      (panels.turnHistory && typeof panels.turnHistory === 'object' && panels.turnHistory) ||
-      null;
-    if (!candidate) return false;
-    if (candidate.visible === false || candidate.enabled === false) return false;
-    if (candidate.visible === true || candidate.enabled === true) return true;
-    return false;
-  }, [gameWorkspace && gameWorkspace.ui_shell]);
-
   const autoStartRef = useRef(false);
 
   useEffect(() => {
