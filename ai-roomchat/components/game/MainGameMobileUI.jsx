@@ -169,15 +169,30 @@ export default function MainGameMobileUI({
   }, [template]);
 
   const sendChat = useCallback(() => {
-    const t = (chatText || '').trim(); if (!t) return;
+    const t = (chatText || '').trim();
+    if (!t) return;
     if (typeof onPlayerChat === 'function') {
-      try { onPlayerChat({ text: t }); } catch {}
+      try {
+        onPlayerChat({ text: t });
+      } catch {}
     } else {
-      setChat(prev => [...prev, { role: 'me', text: t, at: Date.now() }]);
+      // 로컬 단일 플레이 모드용 기본 채팅 메시지
+      setChat(prev => [
+        ...prev,
+        {
+          role: 'me',
+          text: t,
+          at: Date.now(),
+          fromName: userLabel,
+          fromAvatar: imageUrl || null,
+        },
+      ]);
     }
-    try { runtimeBus?.emit?.('player:chat', { text: t }); } catch {}
+    try {
+      runtimeBus?.emit?.('player:chat', { text: t });
+    } catch {}
     setChatText('');
-  }, [chatText, onPlayerChat, runtimeBus]);
+  }, [chatText, onPlayerChat, runtimeBus, userLabel, imageUrl]);
 
   const retryLastTurn = useCallback(() => {
     // 마지막 AI 턴 재시도: turn:next 이벤트 재발행
@@ -454,6 +469,8 @@ export default function MainGameMobileUI({
               text={chatText}
               setText={setChatText}
               onSend={sendChat}
+              currentUserLabel={userLabel}
+              currentUserAvatar={imageUrl}
             />
           )}
         />
@@ -658,13 +675,125 @@ function NextBar({ onNext, secondsLeft, policy, readySummary }) {
   );
 }
 
-function PlayerChat({ items, text, setText, onSend }) {
+function PlayerChat({ items, text, setText, onSend, currentUserLabel, currentUserAvatar }) {
   return (
     <div style={{ background:'#0a1220', border:'1px solid rgba(148,163,184,0.25)', borderRadius:12 }}>
-      <div style={{ maxHeight:120, overflow:'auto', padding:10, display:'grid', gap:6 }}>
-        {items.map((m,i) => (
-          <div key={i} style={{ fontSize:12, color: m.role==='me' ? '#a7f3d0' : '#cbd5e1' }}>{m.text}</div>
-        ))}
+      <div style={{ maxHeight:120, overflow:'auto', padding:10, display:'flex', flexDirection:'column', gap:6 }}>
+        {items.map((m, i) => {
+          const isMe = m.role === 'me';
+          const name = m.fromName || (isMe ? (currentUserLabel || '나') : '상대');
+          const avatar = m.fromAvatar || currentUserAvatar || null;
+          const alignStyle = isMe ? { justifyContent: 'flex-end' } : { justifyContent: 'flex-start' };
+          const bubbleColor = isMe ? '#1d4ed8' : '#111827';
+          const bubbleBorder = isMe ? '1px solid rgba(59,130,246,0.6)' : '1px solid rgba(148,163,184,0.6)';
+          const textColor = '#e5e7eb';
+          return (
+            <div
+              key={i}
+              style={{
+                display: 'flex',
+                ...alignStyle,
+              }}
+            >
+              {!isMe && (
+                <div
+                  style={{
+                    width: 26,
+                    height: 26,
+                    borderRadius: '999px',
+                    background: '#020617',
+                    marginRight: 6,
+                    overflow: 'hidden',
+                    flexShrink: 0,
+                  }}
+                >
+                  {avatar ? (
+                    <img
+                      src={avatar}
+                      alt={name}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 11,
+                        color: '#9ca3af',
+                      }}
+                    >
+                      {name?.[0] || '?'}
+                    </div>
+                  )}
+                </div>
+              )}
+              <div style={{ maxWidth: '78%' }}>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: '#9ca3af',
+                    marginBottom: 2,
+                    textAlign: isMe ? 'right' : 'left',
+                  }}
+                >
+                  {name}
+                </div>
+                <div
+                  style={{
+                    padding: '6px 10px',
+                    borderRadius: 10,
+                    background: bubbleColor,
+                    border: bubbleBorder,
+                    color: textColor,
+                    fontSize: 12,
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                  }}
+                >
+                  {m.text}
+                </div>
+              </div>
+              {isMe && (
+                <div
+                  style={{
+                    width: 26,
+                    height: 26,
+                    borderRadius: '999px',
+                    background: '#020617',
+                    marginLeft: 6,
+                    overflow: 'hidden',
+                    flexShrink: 0,
+                  }}
+                >
+                  {currentUserAvatar ? (
+                    <img
+                      src={currentUserAvatar}
+                      alt={currentUserLabel || 'me'}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 11,
+                        color: '#9ca3af',
+                      }}
+                    >
+                      {(currentUserLabel || '나')?.[0] || '나'}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
       <div style={{ display:'flex', gap:8, padding:8, borderTop:'1px solid rgba(148,163,184,0.2)' }}>
         <input value={text} onChange={e=>setText(e.target.value)} placeholder="메시지 입력" style={input} />

@@ -7,6 +7,12 @@ import { sanitizeSupabaseUrl } from '@/lib/supabaseEnv';
 const url = sanitizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL);
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
+// If a rank session stays "active" for longer than this without being updated,
+// treat it as stale and start a fresh session instead of reusing it.
+// This enforces "one recent game per user per game" while allowing old
+// stuck sessions to be ignored.
+const STALE_SESSION_THRESHOLD_MINUTES = 60;
+
 if (!url || !anonKey) {
   throw new Error('Missing Supabase configuration for start-session API');
 }
@@ -117,7 +123,7 @@ export default async function handler(req, res) {
     'rank_sessions',
     async from => {
       const qRes = await from
-        .select('id, status, created_at')
+        .select('id, status, created_at, updated_at')
         .eq('game_id', game_id)
         .eq('owner_id', ownerId)
         .order('created_at', { ascending: false })
@@ -136,7 +142,32 @@ export default async function handler(req, res) {
   let session = existingSession || null;
   let created = false;
 
-  if (!session || session.status !== 'active') {
+  // Determine whether an existing "active" session is still recent enough
+  // to be reused. If it's too old, we treat it as stale and create a new one.
+  let reuseExisting = false;
+  if (session && session.status === 'active') {
+    const thresholdMs = STALE_SESSION_THRESHOLD_MINUTES * 60 * 1000;
+    const updatedAtRaw = session.updated_at || session.created_at;
+    const updatedAtMs = updatedAtRaw ? Date.parse(updatedAtRaw) : NaN;
+    if (Number.isFinite(updatedAtMs)) {
+      const ageMs = Date.now() - updatedAtMs;
+      if (ageMs <= thresholdMs) {
+        reuseExisting = true;
+      }
+    }
+  }
+
+  if (!session || !reuseExisting) {
+    // If there was a stale "active" session, mark it aborted so it no longer
+    // participates in future lookups or analytics as a live game.
+    if (session && session.status === 'active' && !reuseExisting) {
+      await withTableQuery(supabaseAdmin, 'rank_sessions', from =>
+        from
+          .update({ status: 'aborted', updated_at: now })
+          .eq('id', session.id)
+      );
+    }
+
     const { data: inserted, error: insertError } = await withTableQuery(
       supabaseAdmin,
       'rank_sessions',

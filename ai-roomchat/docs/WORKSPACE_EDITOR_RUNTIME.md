@@ -299,6 +299,12 @@ Current high-level status (this repo copy)
   - 요약: 텍스트 배틀용 훅/런타임 계약은 Play/Rank까지 수직선이 맞춰져 있으나,
     maker graph 편집기 ↔ `/graph`/`entryNode` 동기화가 아직 구현되지 않아
     “프롬프트‑노드 에디터에서 그린 그래프 그대로 builtin 텍스트 런타임이 소비하는” 단계까지는 도달하지 못한 상태다.
+- Rank 엔진 리팩터링 + `/api/rank/text-battle-settle` 연동: **deferred**
+  - 텍스트 배틀 vertical 기준선(Play → `/api/ai-battle-judge` → `text_battle_sessions`/`text_battle_turns`)은 현재 상태로 사용 가능 수준까지 정리되었다.
+  - Rank 메인 엔진(StartClient) 구조가 복잡한 만큼, `/api/rank/text-battle-settle` / `finalize_text_battle_rank` 연동은 영향 범위가 크다.
+  - 이 레포 복사본에서는 공식 랭크 정산을 기존 `/api/rank/settle` + `rank_session_battle_logs` 기준으로 유지하고,
+    텍스트 배틀 로그/세션은 부가 로그·분석 채널로만 사용하는 상태로 고정한 뒤,
+    Rank 엔진 리팩터링 + text-battle-settle 연동은 향후 별도 작업(전용 턴)으로 진행한다.
 - Hub/플러그인 기반 확장: **planned**
   - Hub(로컬/외부 에이전트)를 통해 UI 테스트, 로컬 Git, Supabase 연동 등 확장을 외부 플러그인으로 제공하고 ai-roomchat은 JSON API로만 연결하는 방향.
 - Standard data slots (`variables.stats / scene / effects / speaker`): **in progress**
@@ -2364,6 +2370,18 @@ DB 매핑(초안):
         - `ai_response` 컬럼 ← `ctx.variables.aiResponseRaw` (LLM **원본 응답 전체 텍스트**)가 있으면 그 값을, 없으면 `battleLast.narrative`를 사용한다.
 - 실제 INSERT/UPDATE는:
   - Supabase service role을 사용하는 백엔드 코드(예: rank 액션 또는 별도 RPC)에서 이 객체를 받아 `supabase.from('text_battle_sessions')` / `supabase.from('text_battle_turns')`로 실행하는 식으로 구현한다.
+
+세션 ID 매핑 규칙:
+
+- `core.text-runtime` / Play / Rank 모두에서 **텍스트 배틀 세션의 1차 키**는 `gameState.sessionId` 로 본다.
+- `/api/ai-battle-judge` 통합 프롬프트 경로에서는:
+  - `gameState.sessionId` 값을 그대로 `text_battle_turns.session_id` 및 `text_battle_sessions.id` 로 사용한다.
+  - 텍스트 배틀 세션을 미리 만들었다면 그 `id` 를 `gameState.sessionId` 로 싣고, 그렇지 않다면 다른 경로에서 생성한 후 그 `id` 를 넘겨야 한다.
+- `text_battle_sessions.external_id` 는 선택적인 “외부 키”(예: rank 세션 id, room id 등)를 위한 필드이며,
+  - Rank 엔진과의 1:1 연결을 이 필드로 할지, `id` 자체를 공유할지는 추후 단계에서 결정한다.
+ - `/api/ai-battle-judge` 는 `gameState.sessionId` 가 주어진 경우,  
+   `toTextBattleSessionRow({ variables: { battleWinner, battleScore } })` 를 기반으로  
+   `text_battle_sessions.id = gameState.sessionId` 를 upsert 하여 세션 row 를 **best‑effort로 생성/갱신**한다.
 
 다음 단계(우선순위, 이 레포 기준):
 
@@ -4721,7 +4739,192 @@ Status (2025-12-11 기준)
     기존 `**서술** / **결과** / **배틀종료** ...` 포맷에서 점진적으로 전환할 예정이며,  
     텍스트 배틀 수직선이 안정되면 메인게임/랭크 엔진과의 연동 규칙도 이 계약을 기준으로 맞춘다.
 
+### 텍스트 배틀 매칭/세션/정산 수명 설계 (초안)
+
+- **1단계: 매칭 큐 (rank_match_queue)**  
+  - 플레이어는 텍스트 배틀을 요청하면 `rank_match_queue` 에 올라가며,  
+    이 상태는 **“상대 찾는 동안만”** 유지된다.  
+  - 매칭 성공 시:  
+    - 큐에서 해당 엔트리를 제거하고,  
+    - `rank_sessions` 또는 `text_battle_sessions` 에 세션 레코드를 생성한다.  
+  - 큐 타임아웃/취소:  
+    - 최대 대기 시간을 넘거나 사용자가 취소하면 큐에서 제거하고,  
+    - 세션은 생성하지 않는다(다시 큐 진입 가능).
+
+- **2단계: 프리‑스타트 세션 (pending → active 직전)**  
+  - 매칭 성공 직후 세션 상태는 `pending` 이며,  
+    실제 게임 UI가 로드되어 첫 턴이 시작되면 `active` 로 전환된다.  
+  - 어느 한쪽이 일정 시간 동안 입장하지 않으면:  
+    - 세션을 `aborted` 상태로 마크하고,  
+    - 랭크 점수 변화 없이 “매칭 실패/취소”로 처리한다.  
+  - `pending`/`aborted` 세션은 **다시 매칭 큐에 들어가는 것**과는 독립적으로 유지한다(로그/통계용).
+
+- **3단계: 게임 진행 (active 세션)**  
+  - `active` 상태 동안에는 텍스트 배틀 엔진이  
+    - `/api/ai-battle-judge` 를 통해 턴별 판정을 받고,  
+    - `text_battle_turns` 에 턴 로그를 쌓으며,  
+    - `variables.battleScore` / `battleLast` 를 갱신한다.  
+  - 플레이어 이탈/무응답:  
+    - 텍스트 배틀의 특성상, 일정 턴/시간 동안 입력/ready 상태가 없으면  
+      - 남은 쪽 승리, 또는  
+      - 양쪽 모두 무응답이면 무승부(tie)  
+      와 같은 규칙을 적용할 수 있도록 훅/런타임 레벨에서 확장 여지를 남긴다.  
+    - 이 규칙은 `onBattleEnd` / 랭크 정산 RPC 설계 시 함께 정의한다.
+
+- **4단계: 배틀 종료(onBattleEnd) → 랭크 정산(finalize_text_battle_rank)**  
+  - 텍스트 배틀 훅의 `onBattleEnd(ctx)` 는  
+    - `outcome: { winners, losers, draw }`  
+    - `scores: { slotId → { delta, total, reason } }`  
+    - `highlightIds`, `templateVars`  
+    를 산출한다.  
+  - 이 결과를 기반으로 별도 RPC  
+    - `public.finalize_text_battle_rank(session_id, outcome, scores, meta)`  
+    등을 호출해,  
+    - 랭크 점수 반영,  
+    - `text_battle_sessions` 최종 스코어/승자 저장,  
+    - `/battle-log` 뷰에서 사용할 하이라이트 정보를 기록하도록 설계한다.  
+  - 정산이 끝나면 세션 상태는 `finished` 로 전환되며,  
+    이후에는 새 매칭/새 세션 생성에만 관여한다.
+
+- **5단계: 비정상 종료/예외 처리**  
+  - AI 판정 실패:  
+    - 키/레이트리밋/네트워크/형식/에코 오류가 3회 재시도 + 다른 키 후보까지 모두 실패하면  
+      - 해당 턴/판은 **무승부(tie)** 로 처리하고,  
+      - 세션도 `finished(draw)` 로 닫은 뒤,  
+      - 플레이어는 새 매칭을 잡을 수 있도록 풀어준다.  
+  - 장시간 방치 세션:  
+    - `active` 상태로 너무 오래 남은 세션은  
+      - 서버 측 배치 작업 또는 타임아웃 로직으로 `aborted`/`finished` 로 정리하고,  
+      - 남은 플레이어에게는 적절한 패널티/무승부 규칙을 적용한다(정책에 따라 결정).  
+  - 전역 제약:  
+    - “플레이어당 동시에 한 게임” invariant 를 유지하기 위해,  
+      - 새 매칭을 잡을 때는 `active`/`pending` 세션이 있는지 먼저 검사하고,  
+      - `finished`/`aborted` 세션만 남도록 주기적으로 정리하는 배치/트리거를 둔다.
+
 ---
+
+## 텍스트 배틀 랭크/메인게임 연동 구현 메모
+
+- **목표 수직선**  
+  - Maker(프롬프트-노드 에디터) → Play 디버그(automation.js + /api/ai-battle-judge) →  
+    MainGame(동일 런타임) → 텍스트 배틀 세션/턴 로그(text_battle_sessions/turns) →  
+    랭크 정산(finalize_text_battle_rank → finalize_rank_session_outcome).
+
+- **1단계: MainGame에서 builtin 텍스트 배틀 런타임 사용**  
+  - `useBuiltinRuntime` 를 “Play 전용”이 아니라 공용 훅으로 두고,  
+    - `engine: 'builtin'`, `/graph/prompt-graph.json`, `/game/hooks/automation.js`, `/game/runtime.config.json` 을 기반으로 초기화.  
+  - `GameShell` / `MainGameMobileUI` 에서 같은 runtimeBus 를 구독해  
+    - 텍스트 배틀 턴 진행, `battleLast` 상태, 시스템 메시지를 UI에 반영.  
+  - Play 전용 디버그 메시지(“게임이 시작되었습니다/종료되었습니다/다음 단계…”)는  
+    - MainGame 모드에서는 숨기거나 별도 시스템 로그로만 사용.
+
+- **2단계: 텍스트 배틀 종료 → 랭크/텍스트 배틀 정산 연동**  
+  - Supabase SQL:  
+    - `docs/sql/text-battle-sessions.sql` – `text_battle_sessions` / `text_battle_turns` 테이블.  
+    - `docs/sql/text-battle-match-rpc.impl.sql` – `finalize_text_battle_rank(...)` RPC 초안.  
+  - `/api/ai-battle-judge` 의 `processUnifiedGamePrompt` 가  
+    - 각 턴을 `text_battle_turns` 로 로깅하고,  
+    - `battleLast` 에 `winner/result/battleEnd/actor/vars` 를 채우는지 확인.  
+  - `workspace/hooks/automation.js:onBattleEnd(ctx)` 에서  
+    - `{ outcome, scores, highlightIds }` 요약을 만들고,  
+    - 새 API(예: `/api/rank/text-battle-settle`)를 호출해  
+      - `finalize_text_battle_rank` → `finalize_rank_session_outcome` 순으로 정산.
+
+- **3단계: 매칭/세션 수명 + 동시 참여 금지**  
+  - `pages/api/rank/start-session.js`  
+    - 같은 `game_id + owner_id` 조합에 대해  
+      - `updated_at` 기준 **60분 이내의 active 세션**이 있으면 재사용,  
+      - 오래된 active 세션은 `status='aborted'` 로 마킹 후 새 세션 생성.  
+    - ⇒ “최근 게임 1개만 유효, 예전 좀비 세션은 무시” 정책.  
+  - Supabase SQL: `docs/sql/cleanup-expired-rank-sessions.sql` (신규)  
+    - `status ∈ ('active','preparing','ready')` & `updated_at` 이 오래된 세션을  
+      - 배치로 `aborted` 로 전환하는 cleanup 함수.  
+  - 매칭 진입 가드:  
+    - `/api/rank/latest-session` 결과를 기반으로  
+      - 이미 `active/preparing/ready` 세션이 있으면 새 매칭/게임 시작을 막고,  
+      - 사용자에게 “기존 경기부터 정리” 안내 표시.
+
+- **4단계: Play 디버그 UX + 베틀로그**  
+  - Play 디버그 패널의 참가자 정보/API 키를  
+    - `variables.rank.players` / `variables.debug.participants`/AI 라우팅에 정확히 반영.  
+  - `ai-battle-judge` 의 `fallback/errorCategory/errorMessage/userHint` 를  
+    - Play 디버그 UI에서 명확히 표시 (키 오류, 쿼터 초과, 포맷/에코 문제 구분).  
+  - 텍스트 배틀 종료 후  
+    - `text_battle_turns` 를 캐릭터 페이지/로비의 베틀로그 요약 카드 + 상세 로그/하이라이트 뷰에 연결.  
+  - 프롬프트-노드 에디터/automation 에서  
+    - “어떤 턴을 하이라이트로 삼을지” 를 커스텀할 수 있는 훅 포인트만 열어 둔다.
+
+이 섹션의 구현은 Copilot 외주 대상이 아니라 **우리 쪽에서 직접 담당**하며,  
+단계별로 코드를 넣을 때마다 이 메모와 상위 설계 섹션을 함께 갱신한다.
+
+## 텍스트 배틀 수직선 TODO (턴 단위)
+
+> 큰 리팩터링을 한 번에 하지 않고, 각 턴에서 “안전하게 끝낼 수 있는 크기”로 나누기 위한 TODO 목록.
+
+- **[완료] 백엔드/정산 인프라**
+  - `/api/ai-battle-judge` → `text_battle_turns` / `text_battle_sessions` 로깅  
+  - `workspace/hooks/automation.js:onBattleEnd(ctx)` → `finalizeSummary`(winner, final_score) 추가  
+  - `finalize_text_battle_rank` RPC + `/api/rank/text-battle-settle`  
+  - `cleanup_expired_rank_sessions` 함수로 오래된 랭크 세션 정리
+
+> 엔진 구조 요약: 메인게임은 기존 랭크/매칭/타임라인 엔진을 그대로 유지하고, 텍스트 배틀의 턴·판정·로그는 `coreRuntime` + `workspace/hooks/automation.js` + `/api/ai-battle-judge` 로 이루어진 공통 엔진이 담당한다. 메인게임은 이 공통 엔진을 “전투/판정 플러그인”처럼 호출하는 구조를 목표로 한다.
+
+- **[TODO] A. 랭크 StartClient ↔ 텍스트 런타임 브리지 (실험 경로)**
+  - `useStartClientEngine` 내부에서:  
+    - 텍스트 배틀 게임 + `textRuntimeEnabled === true` 일 때만,  
+    - 워크스페이스 스냅샷(`/template.json`, `/graph/prompt-graph.json`, `/game/runtime.config.json`, `/game/hooks/automation.js`)을 읽어  
+      `createCoreRuntime({ graph, config, hooks, files, initialVariables: { rank: buildRankContext(...) } })` 를 별도 “실험용 runtime”으로 띄운다.  
+    - 이 runtime 에서 나오는 주요 상태(`variables.battleLast`, `turn`, `prompt`)를  
+      - 기존 mainGame 엔진을 바꾸지 않고,  
+      - `runtimeBus` 나 별도 feed 객체로 GameShell/MainGameMobileUI 쪽에 **읽기 전용**으로 흘려준다.  
+  - 이 단계의 목표: “메인 랭크 엔진은 그대로 두되, 텍스트 런타임을 옆에서 같이 돌려보는 수준”까지.
+
+- **[TODO] B. 랭크 정산 시 텍스트 배틀 정산 호출 연동**
+  - StartClient 엔진 쪽에서 “게임 종료”를 감지하는 지점(현재 `/api/rank/settle` 호출 전에)에서:  
+    - `rankSessionId` + `text_battle_sessions.id` + `onBattleEnd(ctx).finalizeSummary` 를 모아  
+      `POST /api/rank/text-battle-settle` 를 **한 번 더 호출**한다.  
+  - 실패 시에는 기존 정산(`/api/rank/settle`)만으로도 게임이 끝나도록,  
+    - 텍스트 배틀 정산은 “부가적인 계층”으로 동작하게 설계한다.
+
+- **[TODO] C. MainGame UI와 텍스트 베틀 로그/정산 뷰 연결**
+  - 텍스트 배틀이 끝난 랭크 세션에 대해:  
+    - `text_battle_turns` 를 기반으로 “정산 패널 + 베틀로그”를 한 화면에 보여주는 컴포넌트  
+      (예: `components/game/TextBattleSummaryView.jsx`) 를 만든다.  
+    - 캐릭터 페이지/랭킹/히스토리에서 이 뷰를 열 수 있도록 라우팅/링크를 추가.  
+  - 이 컴포넌트는 워크스페이스에도 복제(예: `/game/ui/battle-summary.jsx`)해  
+    코드 에디터에서 수정 가능한 템플릿으로 제공한다.
+
+- **[TODO] D. (후순위) 메인 랭크 엔진의 점진적 통합**
+  - 위 A–C 단계가 안정화된 뒤,  
+    - 기존 `useStartClientEngine` 내 프롬프트/턴 처리 일부를  
+      텍스트 런타임(coreRuntime + automation.js) 호출로 점진적으로 대체.  
+  - 항상 “한 번에 한 덩어리”만 바꾸고,  
+    - 매 턴/패스마다:  
+      - 영향 범위를 문서에 메모,  
+      - 새 코드 경로와 기존 경로가 동시에 존재하도록 두고,  
+      - 충분히 안정화된 후에만 구 버전 경로를 제거한다.
+
+- **[TODO] E. AI 판정/로그 기능 단위 모듈화**
+  - `ai-battle-judge`를 세 층으로 나눈다:
+    - (1) **프로바이더 어댑터 레이어**: OpenAI/Gemini 등 LLM 호출만 담당 (`callAIJudgeProvider` 류)  
+    - (2) **프롬프트/응답 계약 레이어**: “보내는 프롬프트 규칙 / 응답 규칙”에 맞춰 `parseAIResponse` 를 유지,  
+      텍스트 배틀 외 다른 장르에서도 재사용 가능하게 설계  
+    - (3) **퍼시스턴스 레이어**: `lib/runtime/textBattlePersistence.js` 의 `toTextBattleSessionRow` / `toTextBattleTurnRow` 를 사용해  
+      `text_battle_sessions` / `text_battle_turns` 에 best‑effort 로깅을 수행 (엔진/장르에 독립적인 공통 모듈)
+  - 현재 구현 상태:
+    - (1) `lib/providers/gameAIBattleProvider.js: callAIJudge` 로 프로바이더 어댑터 레이어 분리 **(완료)**  
+    - (2) `lib/runtime/textBattleResponseContract.js: parseAIResponse` 로 응답 계약 레이어 분리 **(완료)**  
+    - (3) 퍼시스턴스 레이어는 기존 `textBattlePersistence.js` + `ai-battle-judge` 내부 best‑effort Supabase 로깅을 유지하되,  
+      향후 필요 시 별도 helper (`logTextBattleTurn` 등)로 감쌀 여지를 남긴다.
+  - 앞으로 새로운 장르/게임 타입에서 AI 판정이 필요하면:
+    - 런타임 훅에서 **프롬프트만 만들고**,  
+    - 이 공통 모듈에 “프롬프트 → LLM 호출 → 응답 파싱 → (선택) 로그 저장”을 위임하도록 한다.
+  - 유지보수 원칙:
+    - LLM 교체/추가는 “프로바이더 어댑터 레이어”만 수정  
+    - 프롬프트/응답 형식 변경은 “계약 레이어”만 수정  
+    - DB 스키마 변경은 “퍼시스턴스 레이어”만 수정하도록 경계를 명확히 유지한다.
+
+이 TODO 섹션은 “턴 단위로 어디까지 할 수 있는지”를 정리한 것이므로,  
 
 ## Copilot 외주용 작업 메모
 

@@ -740,11 +740,18 @@ export function onBattleEnd(ctx) {
     draw,
   };
 
+  // finalize_text_battle_rank 에 전달하기 좋은 최소 요약
+  const finalizeSummary = {
+    winner: templateVars.winner,
+    final_score: templateVars.finalScore,
+  };
+
   return {
     outcome: { winners, losers, draw },
     scores,
     highlightIds,
     templateId: 'text-battle-basic',
     templateVars,
+    finalizeSummary,
   };
 }

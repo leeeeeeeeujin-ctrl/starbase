@@ -261,7 +261,7 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
   // can see the same runtime:turn-log stream that UI widgets consume.
   useEffect(() => {
     if (!runtimeBus || typeof runtimeBus.on !== 'function') return undefined;
-    const off = runtimeBus.on('runtime:turn-log', (evt) => {
+    const off = runtimeBus.on('runtime:turn-log', evt => {
       try {
         if (!evt || typeof evt !== 'object') return;
         const prev = Array.isArray(turnLogRef.current) ? turnLogRef.current : [];

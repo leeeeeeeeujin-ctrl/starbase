@@ -11,6 +11,8 @@ import {
   toTextBattleSessionRow,
 } from '../../lib/runtime/textBattlePersistence.js';
 import { selectParticipantForPrompt } from '../../lib/runtime/apiKeyRouting.js';
+import { callAIJudge } from '../../lib/providers/gameAIBattleProvider.js';
+import { parseAIResponse } from '../../lib/runtime/textBattleResponseContract.js';
 
 function similarityScore(a, b) {
   try {
@@ -36,6 +38,53 @@ function similarityScore(a, b) {
     return common / denom;
   } catch {
     return 0;
+  }
+}
+
+function classifyInlineError(aiResponse) {
+  try {
+    const text = String(aiResponse || '');
+    const lower = text.toLowerCase();
+    if (!lower) return null;
+
+    // OpenAI/Gemini 공통: 쿼터/레이트리밋
+    if (
+      lower.includes('you exceeded your current quota') ||
+      lower.includes('insufficient_quota') ||
+      lower.includes('quota exceeded for metric') ||
+      lower.includes('resource_exhausted')
+    ) {
+      return {
+        category: 'rate_limit',
+        hint: 'API 사용량 한도에 도달했습니다. 잠시 후 다시 시도하세요.',
+      };
+    }
+
+    // 키/권한 문제
+    if (
+      lower.includes('incorrect api key provided') ||
+      lower.includes('invalid api key') ||
+      lower.includes('api key not valid') ||
+      lower.includes('the caller does not have permission') ||
+      lower.includes('permission_denied')
+    ) {
+      return {
+        category: 'api_key',
+        hint: '디버그 패널에서 AI API 키를 확인하세요.',
+      };
+    }
+
+    // 일반적인 rate limit 문구
+    if (lower.includes('rate limit') && lower.includes('try again')) {
+      return {
+        category: 'rate_limit',
+        hint: 'API 레이트 리밋에 도달했습니다. 잠시 후 다시 시도하세요.',
+      };
+    }
+
+    return null;
+  } catch {
+    return null;
   }
 }
 
@@ -147,16 +196,30 @@ async function processUnifiedGamePrompt(context) {
 
     // 응답 형식 자체가 계약에 맞지 않는 경우
     if (parsed && parsed.formatOk === false) {
-      success = false;
-      fallback = true;
-      errorCategory = 'format';
-      userHint =
-        'AI 응답 형식을 이해하지 못했습니다. 프롬프트-노드 에디터의 응답 규칙 설명을 확인하세요.';
-      const isDev = process.env.NODE_ENV === 'development';
-      parsed.narrative = isDev
-        ? `⚠️ AI 응답 형식 오류: 응답 구조를 해석하지 못했습니다. ${userHint}`
-        : '⚠️ AI 응답 형식 오류: 일시적인 문제로 이번 턴 결과를 해석하지 못했습니다.';
-      errorMessage = 'LLM response did not match expected format';
+      // 파싱 실패 원인이 쿼터/키/권한 오류인지 먼저 확인
+      const inlineError = classifyInlineError(aiResponse);
+      if (inlineError) {
+        success = false;
+        fallback = true;
+        errorCategory = inlineError.category; // rate_limit | api_key
+        userHint = inlineError.hint;
+        const isDev = process.env.NODE_ENV === 'development';
+        parsed.narrative = isDev
+          ? `⚠️ AI 응답 오류(${inlineError.category}): ${inlineError.hint}`
+          : `⚠️ AI 응답 오류: ${inlineError.hint}`;
+        errorMessage = 'Inline provider error text detected';
+      } else {
+        success = false;
+        fallback = true;
+        errorCategory = 'format';
+        userHint =
+          'AI 응답 형식을 이해하지 못했습니다. 프롬프트-노드 에디터의 응답 규칙 설명을 확인하세요.';
+        const isDev = process.env.NODE_ENV === 'development';
+        parsed.narrative = isDev
+          ? `⚠️ AI 응답 형식 오류: 응답 구조를 해석하지 못했습니다. ${userHint}`
+          : '⚠️ AI 응답 형식 오류: 일시적인 문제로 이번 턴 결과를 해석하지 못했습니다.';
+        errorMessage = 'LLM response did not match expected format';
+      }
     }
 
     // 프롬프트를 거의 그대로 반복하는 에코 응답 감지
@@ -258,6 +321,28 @@ async function processUnifiedGamePrompt(context) {
         const sessionId = gameState && gameState.sessionId;
         if (!sessionId) return;
         if (!supabaseAdmin || typeof supabaseAdmin.from !== 'function') return;
+
+        // 0) 세션 row 보장(text_battle_sessions, best-effort upsert)
+        try {
+          const baseSessionRow = toTextBattleSessionRow({
+            variables: {
+              battleWinner:
+                parsed && parsed.battleEnd && parsed.winner ? parsed.winner : null,
+              battleScore: updatedScore,
+            },
+          });
+          await supabaseAdmin
+            .from('text_battle_sessions')
+            .upsert(
+              {
+                id: sessionId,
+                ...baseSessionRow,
+              },
+              { onConflict: 'id' },
+            );
+        } catch {
+          // 세션 row 생성 실패는 무시한다.
+        }
 
         // 1) 턴 로그(text_battle_turns)
         const ctx = {
@@ -562,335 +647,12 @@ ${characterProfile.name}이(가) "${action.prompt || action.text}"를 시도합�
 `;
 }
 
-async function callAIJudge(prompt, apiKeyOverride) {
-  // 환경변수 또는 호출 시 전달된 API 키 가져오기
-  const override = typeof apiKeyOverride === 'string' ? apiKeyOverride.trim() : '';
-
-  // 키 패턴을 보고 프로바이더를 추론한다.
-  // - OpenAI: sk- 로 시작
-  // - Gemini: AIza 로 시작 (Google Generative Language API 키 형식)
-  let provider = null;
-  let apiKey = null;
-
-  if (override) {
-    if (override.startsWith('sk-')) {
-      provider = 'openai';
-      apiKey = override;
-    } else if (override.startsWith('AIza')) {
-      provider = 'gemini';
-      apiKey = override;
-    }
-  }
-
-  // override에서 프로바이더를 확정하지 못했다면 환경변수 기반으로 추론
-  if (!provider) {
-    if (process.env.OPENAI_API_KEY) {
-      provider = 'openai';
-      apiKey = process.env.OPENAI_API_KEY;
-    } else if (process.env.GEMINI_API_KEY) {
-      provider = 'gemini';
-      apiKey = process.env.GEMINI_API_KEY;
-    } else if (process.env.ANTHROPIC_API_KEY) {
-      provider = 'openai'; // 임시: Anthropic 키가 설정된 경우에도 OpenAI 경로로 취급
-      apiKey = process.env.ANTHROPIC_API_KEY;
-    }
-  }
-
-  if (!provider || !apiKey) {
-    throw new Error('AI API 키가 설정되지 않았습니다');
-  }
-
-  try {
-    if (provider === 'gemini') {
-      // Google Generative Language API (Gemini)
-      const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
-      const version = process.env.GEMINI_API_VERSION || 'v1beta';
-      const endpoint = `https://generativelanguage.googleapis.com/${version}/models/${model}:generateContent?key=${encodeURIComponent(
-        apiKey,
-      )}`;
-
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: 'user',
-              parts: [{ text: prompt }],
-            },
-          ],
-        }),
-      });
-
-      if (!response.ok) {
-        let msg = `AI API 호출 실패: ${response.status}`;
-        if (response.status === 401 || response.status === 403) {
-          msg += ' Unauthorized';
-        } else if (response.status === 429) {
-          msg += ' rate limit';
-        }
-        throw new Error(msg);
-      }
-
-      const data = await response.json();
-      const candidates = Array.isArray(data.candidates) ? data.candidates : [];
-      const first = candidates[0] || {};
-      const parts = (first.content && first.content.parts) || first.parts || [];
-      const text = parts
-        .map((p) => (typeof p.text === 'string' ? p.text : ''))
-        .join('')
-        .trim();
-      return text || JSON.stringify(data);
-    }
-
-    // 기본: OpenAI Chat Completions
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || 'gpt-3.5-turbo',
-        messages: [
-          {
-            role: 'system',
-            content: '당신은 게임 배틀 심판 AI입니다. 공정하고 흥미진진한 판정을 내려주세요.',
-          },
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
-        max_tokens: 500,
-        temperature: 0.8,
-      }),
-    });
-
-    if (!response.ok) {
-      // 상태 코드에 따라 보다 구체적인 힌트를 남긴다.
-      let msg = `AI API 호출 실패: ${response.status}`;
-      if (response.status === 401 || response.status === 403) {
-        msg += ' Unauthorized';
-      } else if (response.status === 429) {
-        msg += ' rate limit';
-      }
-      throw new Error(msg);
-    }
-
-    const data = await response.json();
-    return data.choices[0].message.content;
-  } catch (error) {
-    console.error('AI API 호출 오류:', error);
-    // 에러를 상위로 전파하여 processUnifiedGamePrompt의 catch 블록에서 처리
-    throw error;
-  }
-}
+// LLM 호출(`callAIJudge`)은 lib/providers/gameAIBattleProvider.js 에서 공통 제공한다.
 
 function generateFallbackResponse(prompt) {
   // 더 이상 더미 응답을 반환하지 않음
   // 에러를 던져서 상위 catch 블록에서 명확한 에러 처리
   throw new Error('AI API 호출 실패: 더미 응답 대신 명확한 에러를 표시하기 위해 에러를 전파합니다.');
-}
-
-function parseAIResponse(aiResponse) {
-  try {
-    const text = typeof aiResponse === 'string' ? aiResponse : String(aiResponse ?? '');
-    const rawLines = text.split(/\r?\n/);
-    const trimmedLines = rawLines.map((l) => l.trim()).filter(Boolean);
-
-    const normalize = (line) =>
-      String(line || '')
-        .replace(/\s+/g, '')
-        .replace(/[：:]/g, ':')
-        .toLowerCase();
-
-    const hasMarker = (line, key) => normalize(line).includes(key);
-
-    const base = {
-      narrative: '',
-      result: 'continue',
-      effects: null,
-      battleEnd: false,
-      winner: null,
-      formatOk: false,
-    };
-
-    // -------------------------------------------------------------------
-    // 1) 레거시 포맷(**서술** / **결과** / **배틀종료** / **승자** / **효과**)
-    // -------------------------------------------------------------------
-    const hasLegacyMarkers = trimmedLines.some(
-      (l) => l.includes('**서술**:') || l.includes('**결과**:'),
-    );
-
-    if (hasLegacyMarkers) {
-      const parsed = { ...base };
-
-      trimmedLines.forEach((line) => {
-        if (line.includes('**서술**:')) {
-          parsed.narrative = line.replace('**서술**:', '').trim();
-        } else if (line.includes('**결과**:')) {
-          const result = line.replace('**결과**:', '').trim().toLowerCase();
-          parsed.result = ['success', 'partial', 'failure', 'critical'].includes(result)
-            ? result
-            : 'continue';
-        } else if (line.includes('**배틀종료**:')) {
-          parsed.battleEnd = line.toLowerCase().includes('true');
-        } else if (line.includes('**승자**:')) {
-          const winner = line.replace('**승자**:', '').trim();
-          parsed.winner = winner !== '없음' && winner !== '' ? winner : null;
-        } else if (line.includes('**효과**:')) {
-          const effect = line.replace('**효과**:', '').trim();
-          if (effect && effect !== '없음') {
-            parsed.effects = { description: effect };
-          }
-        }
-      });
-
-      parsed.formatOk = true;
-      return parsed;
-    }
-
-    // -------------------------------------------------------------------
-    // 2) 새 포맷 (응답 / 이번 응답의 주역 / 만족된 변수명 / 캐릭터 결과)
-    // -------------------------------------------------------------------
-    const hasNewMarkers = trimmedLines.some(
-      (l) =>
-        hasMarker(l, '이번응답의주역') ||
-        hasMarker(l, '만족된변수명') ||
-        hasMarker(l, '캐릭터결과'),
-    );
-
-    if (hasNewMarkers) {
-      const parsed = {
-        ...base,
-        actor: null,
-        satisfiedVars: [],
-        characterResults: {},
-      };
-
-      // 내레이션: "응답:" 줄 이후 ~ 메타 섹션 직전까지
-      const idxResponse = rawLines.findIndex((l) => normalize(l).startsWith('응답:'));
-      if (idxResponse >= 0) {
-        const narrativeLines = [];
-        const first = rawLines[idxResponse];
-        const firstBody = first.split('응답:')[1];
-        if (firstBody && firstBody.trim()) {
-          narrativeLines.push(firstBody.trim());
-        }
-
-        for (let i = idxResponse + 1; i < rawLines.length; i++) {
-          const t = rawLines[i].trim();
-          if (
-            t.startsWith('이번 응답의 주역:') ||
-            t.startsWith('만족된 변수명:') ||
-            t.startsWith('캐릭터 결과:')
-          ) {
-            break;
-          }
-          if (/^-{5,}$/.test(t)) {
-            // 구분선은 내레이션에 포함하지 않는다
-            continue;
-          }
-          narrativeLines.push(rawLines[i]);
-        }
-
-        parsed.narrative = narrativeLines.join('\n').trim();
-      } else {
-        // "응답:" 헤더가 없으면 전체를 내레이션으로 취급
-        parsed.narrative = text.trim();
-      }
-
-      // 메타 정보 파싱
-      rawLines.forEach((lineRaw) => {
-        const line = lineRaw.trim();
-        const norm = normalize(line);
-
-        if (norm.includes('이번응답의주역')) {
-          const value = lineRaw.split(':').slice(1).join(':');
-          parsed.actor = value ? value.trim() || null : null;
-        } else if (norm.includes('만족된변수명')) {
-          const value = lineRaw.split(':').slice(1).join(':');
-          if (value) {
-            const v = value.trim();
-            if (v && v !== '없음') {
-              parsed.satisfiedVars = v
-                .split(',')
-                .map((s) => s.trim())
-                .filter(Boolean);
-            }
-          }
-        } else if (norm.includes('캐릭터결과')) {
-          const value = lineRaw.split(':').slice(1).join(':');
-          if (value) {
-            const v = value.trim();
-            if (v && v !== '없음') {
-              const pairs = v.split(',').map((s) => s.trim()).filter(Boolean);
-              const statusMap = {};
-              pairs.forEach((p) => {
-                const [id, status] = p.split('=').map((s) => s.trim());
-                if (!id || !status) return;
-                statusMap[id] = status;
-              });
-              parsed.characterResults = statusMap;
-
-              const heroStatus = statusMap.hero || null;
-              const rivalStatus = statusMap.rival || null;
-
-              // 단순 규칙:
-              // - hero=win & rival!=win → hero 승
-              // - rival=win & hero!=win → rival 승
-              // - 그 외에는 winner 없음
-              if (heroStatus === 'win' && rivalStatus !== 'win') {
-                parsed.winner = 'hero';
-              } else if (rivalStatus === 'win' && heroStatus !== 'win') {
-                parsed.winner = 'rival';
-              } else {
-                parsed.winner = null;
-              }
-
-              // 종료 여부는 win/out 이 하나라도 있으면 true 로 본다 (초기 규칙)
-              const hasTerminal = Object.values(statusMap).some(
-                (s) => s === 'win' || s === 'out',
-              );
-              parsed.battleEnd = hasTerminal;
-
-              // winner 가 있으면 result 를 success 로 올려 준다.
-              if (parsed.winner && parsed.result === 'continue') {
-                parsed.result = 'success';
-              }
-            }
-          }
-        }
-      });
-
-      parsed.formatOk = true;
-      return parsed;
-    }
-
-    // -------------------------------------------------------------------
-    // 3) 어떤 포맷에도 맞지 않을 경우: 전체 텍스트를 내레이션으로 사용
-    // -------------------------------------------------------------------
-    return {
-      ...base,
-      narrative: text.substring(0, 200) + (text.length > 200 ? '...' : ''),
-    };
-  } catch (error) {
-    console.error('AI 응답 파싱 오류:', error);
-
-    // 파싱 실패 시 기본값 반환
-    const safe = typeof aiResponse === 'string' ? aiResponse : String(aiResponse ?? '');
-    return {
-      narrative: safe.substring(0, 200) + (safe.length > 200 ? '...' : ''),
-      result: 'continue',
-      effects: null,
-      battleEnd: false,
-      winner: null,
-      formatOk: false,
-    };
-  }
 }
 
 function determineGameUpdates(parsedResult, character) {
