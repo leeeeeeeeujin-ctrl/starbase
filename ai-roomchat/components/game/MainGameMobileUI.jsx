@@ -104,7 +104,7 @@ export default function MainGameMobileUI({
 
   const character = useMemo(() => pickCharacter(template), [template]);
   const imageUrl = character?.image || pickFirstImage(template);
-  const userLabel = useMemo(() => user?.name || user?.id || 'User #1234', [user]);
+  const userLabel = useMemo(() => user?.name || '플레이어', [user]);
 
   const readySummary = useMemo(() => {
     if (!consensus || typeof consensus !== 'object') return null;
