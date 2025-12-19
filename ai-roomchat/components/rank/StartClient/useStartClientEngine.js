@@ -3198,6 +3198,9 @@ export function useStartClientEngine(gameId, options = {}) {
           mode: realtimeEnabled ? 'realtime' : 'manual',
           role: viewerParticipant?.role || null,
           match_code: null,
+          // 새 매치 흐름에서 진입한 경우에는 항상
+          // 이전 세션을 재사용하지 않고 새 세션을 생성한다.
+          session_policy: matchSnapshotSeed ? 'new_per_match' : undefined,
         }),
       });
 
@@ -3304,6 +3307,7 @@ export function useStartClientEngine(gameId, options = {}) {
     slotLayout,
     matchingMetadata,
     setPromptMetaWarning,
+    matchSnapshotSeed,
   ]);
 
   const advanceTurn = useCallback(

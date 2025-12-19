@@ -81,7 +81,7 @@ export default async function handler(req, res) {
     }
   }
 
-  const { game_id, mode, role, match_code, turn_timer } = payload || {};
+  const { game_id, mode, role, match_code, turn_timer, session_policy } = payload || {};
 
   if (!game_id) {
     return res.status(400).json({ error: 'missing_game_id' });
@@ -89,6 +89,12 @@ export default async function handler(req, res) {
 
   const ownerId = user.id;
   const now = new Date().toISOString();
+
+  const sessionPolicy =
+    typeof session_policy === 'string' && session_policy.trim()
+      ? session_policy.trim()
+      : '';
+  const forceNewSession = sessionPolicy === 'new_per_match';
 
   const { data: participant, error: participantError } = await withTableQuery(
     supabaseAdmin,
@@ -145,7 +151,7 @@ export default async function handler(req, res) {
   // Determine whether an existing "active" session is still recent enough
   // to be reused. If it's too old, we treat it as stale and create a new one.
   let reuseExisting = false;
-  if (session && session.status === 'active') {
+  if (!forceNewSession && session && session.status === 'active') {
     const thresholdMs = STALE_SESSION_THRESHOLD_MINUTES * 60 * 1000;
     const updatedAtRaw = session.updated_at || session.created_at;
     const updatedAtMs = updatedAtRaw ? Date.parse(updatedAtRaw) : NaN;
