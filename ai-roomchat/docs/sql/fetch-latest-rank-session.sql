@@ -10,11 +10,19 @@ returns jsonb
 language plpgsql
 security definer
 set search_path = public
-stable
+volatile
 as $$
 declare
   v_row record;
 begin
+  -- Opportunistic cleanup: on every latest-session fetch, also mark
+  -- long-idle rank_sessions as aborted so they no longer interfere
+  -- with matchmaking / session adoption.
+  --
+  -- 60분 이상 갱신되지 않은 active/preparing/ready 세션은
+  -- stuck 세션으로 간주하고 정리한다.
+  perform public.cleanup_expired_rank_sessions(60, 500);
+
   select
     s.id,
     s.status,

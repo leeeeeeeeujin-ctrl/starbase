@@ -5042,15 +5042,21 @@ Status (2025-12-11 기준)
 
 > 엔진 구조 요약: 메인게임은 기존 랭크/매칭/타임라인 엔진을 그대로 유지하고, 텍스트 배틀의 턴·판정·로그는 `coreRuntime` + `workspace/hooks/automation.js` + `/api/ai-battle-judge` 로 이루어진 공통 엔진이 담당한다. 메인게임은 이 공통 엔진을 “전투/판정 플러그인”처럼 호출하는 구조를 목표로 한다.
 
-- **[TODO] A. 랭크 StartClient ↔ 텍스트 런타임 브리지 (실험 경로)**
-  - `useStartClientEngine` 내부에서:  
-    - 텍스트 배틀 게임 + `textRuntimeEnabled === true` 일 때만,  
-    - 워크스페이스 스냅샷(`/template.json`, `/graph/prompt-graph.json`, `/game/runtime.config.json`, `/game/hooks/automation.js`)을 읽어  
-      `createCoreRuntime({ graph, config, hooks, files, initialVariables: { rank: buildRankContext(...) } })` 를 별도 “실험용 runtime”으로 띄운다.  
-    - 이 runtime 에서 나오는 주요 상태(`variables.battleLast`, `turn`, `prompt`)를  
-      - 기존 mainGame 엔진을 바꾸지 않고,  
-      - `runtimeBus` 나 별도 feed 객체로 GameShell/MainGameMobileUI 쪽에 **읽기 전용**으로 흘려준다.  
-  - 이 단계의 목표: “메인 랭크 엔진은 그대로 두되, 텍스트 런타임을 옆에서 같이 돌려보는 수준”까지.
+- **[완료] A. 랭크 StartClient ↔ 텍스트 런타임 브리지 (기본 경로)**
+  - `useStartClientEngine` 내부:  
+    - 랭크 게임 번들을 `loadGameBundle(supabase, gameId, { rosterSnapshot, matchInstanceId, roomId })` 로 불러온 뒤,  
+      로스터/슬롯 레이아웃을 정규화하고 `buildRankContext({ game, session, participants, room: null, viewer })` 로 `rankContext` 를 생성한다.  
+    - `patchEngineState({ game: bundle.game, participants: hydratedParticipants, slotLayout: finalSlotLayout, graph: bundle.graph, rankContext, textRuntimeEnabled: true })` 로  
+      메인 엔진 상태에 `rankContext` 와 `textRuntimeEnabled` 플래그를 주입한다.  
+  - `StartClient/index.js` 내부:  
+    - `textRuntimeEnabled === true` 이고 `rank_game_workspaces` 에서 로드한 `gameWorkspace` 스냅샷이 있을 때,  
+      - `gameWorkspace.graph/runtime_config/hooks_source/template` 를 바탕으로  
+        `createCoreRuntime({ graph: workspaceGraph, config, hooks, files, initialVariables: { rank: rankContext || {} } })` 를 생성하고,  
+      - `runtimeBus` 의 `turn:next` / `player:chat` 이벤트를 `runtime.step({ reason: 'auto' | 'user_action', ... })` 에 연결한다.  
+      - `runtime:turn-log` 이벤트와 `onBattleEnd(ctx)` 결과를 읽어  
+        기존 StartClient 턴 로그/정산 파이프라인으로 전달하고, `battleOutcome` 상태를 구성한다.  
+  - 이 단계의 목표였던 “메인 랭크 엔진은 그대로 두되, 텍스트 런타임을 옆에서 같이 돌려보는 수준”은  
+    현재 레포 기준으로 충족된 상태이며, 이후 단계 B–E 에서 정산/요약 뷰를 단계적으로 통합한다.
 
 - **[TODO] B. 랭크 정산 시 텍스트 배틀 정산 호출 연동**
   - StartClient 엔진 쪽에서 “게임 종료”를 감지하는 지점(현재 `/api/rank/settle` 호출 전에)에서:  
