@@ -407,17 +407,50 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     async ({ outcome, ctx }) => {
       if (!sessionId || !gameId) return;
 
-      try {
-        const events = Array.isArray(turnLogRef.current) ? turnLogRef.current : [];
-        const participants =
-          ctx && typeof ctx.participants === 'object' ? ctx.participants : {};
-        const meta = {
-          ...(ctx && typeof ctx.graphHash === 'string' ? { graphHash: ctx.graphHash } : {}),
-          ...(ctx && typeof ctx.hookHash === 'string' ? { hookHash: ctx.hookHash } : {}),
-          textBattleSummary:
-            outcome && typeof outcome === 'object' ? outcome.finalizeSummary || null : null,
-        };
+      const events = Array.isArray(turnLogRef.current) ? turnLogRef.current : [];
+      const participants = ctx && typeof ctx.participants === 'object' ? ctx.participants : {};
+      const meta = {
+        ...(ctx && typeof ctx.graphHash === 'string' ? { graphHash: ctx.graphHash } : {}),
+        ...(ctx && typeof ctx.hookHash === 'string' ? { hookHash: ctx.hookHash } : {}),
+        textBattleSummary:
+          outcome && typeof outcome === 'object' ? outcome.finalizeSummary || null : null,
+      };
 
+      let textBattleSessionId = null;
+
+      try {
+        const resp = await fetch('/api/rank/text-battle-runtime-settle', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            sessionId,
+            gameId,
+            events,
+            participants,
+            variables: ctx && typeof ctx.variables === 'object' ? ctx.variables : {},
+          }),
+        });
+        if (resp && resp.ok) {
+          try {
+            const payload = await resp.json();
+            if (payload && payload.ok && payload.textBattleSessionId) {
+              textBattleSessionId = payload.textBattleSessionId;
+            }
+          } catch {
+            // ignore parse errors
+          }
+        }
+      } catch (err) {
+        try {
+          console.warn('[StartClient] text-battle runtime settle failed:', err);
+        } catch {
+          // ignore console errors
+        }
+      }
+
+      try {
         await fetch('/api/rank/settle', {
           method: 'POST',
           headers: {
@@ -433,7 +466,11 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
               participants,
               outcome,
               meta,
+              ...(textBattleSessionId
+                ? { textBattleSessionId }
+                : null),
             },
+            textBattleSessionId: textBattleSessionId || null,
             textBattleSummary:
               outcome && typeof outcome === 'object' ? outcome.finalizeSummary || null : null,
           }),
@@ -588,11 +625,16 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
   }, [gameId]);
 
   useEffect(() => {
+    const effectiveGraph =
+      gameWorkspace && gameWorkspace.graph && typeof gameWorkspace.graph === 'object'
+        ? gameWorkspace.graph
+        : graph;
+
     if (
       !textRuntimeEnabled ||
-      !graph ||
-      !Array.isArray(graph.nodes) ||
-      graph.nodes.length === 0
+      !effectiveGraph ||
+      !Array.isArray(effectiveGraph.nodes) ||
+      effectiveGraph.nodes.length === 0
     ) {
       runtimeRef.current = null;
       runtimeHooksRef.current = null;
@@ -609,14 +651,9 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     let stopped = false;
     let runtime = null;
 
-    const first = graph.nodes[0] || {};
+    const first = effectiveGraph.nodes[0] || {};
     const baseEntryNode = first.id || first.slotId || null;
     if (!baseEntryNode) return;
-
-    const workspaceGraph =
-      gameWorkspace && gameWorkspace.graph && typeof gameWorkspace.graph === 'object'
-        ? gameWorkspace.graph
-        : graph;
     const runtimeConfig =
       gameWorkspace && gameWorkspace.runtime_config && typeof gameWorkspace.runtime_config === 'object'
         ? gameWorkspace.runtime_config
@@ -643,7 +680,7 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
 
     try {
       runtime = createCoreRuntime({
-        graph: workspaceGraph,
+        graph: effectiveGraph,
         config: cfg,
         hooks,
         files: {
@@ -653,9 +690,9 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
                 ? JSON.stringify(gameWorkspace.template, null, 2) + '\n'
                 : '{}\n',
           },
-          '/graph/prompt-graph.json': {
-            content: JSON.stringify(workspaceGraph, null, 2) + '\n',
-          },
+           '/graph/prompt-graph.json': {
+             content: JSON.stringify(effectiveGraph, null, 2) + '\n',
+           },
           '/game/runtime.config.json': {
             content: JSON.stringify(cfg, null, 2) + '\n',
           },
@@ -1663,7 +1700,7 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
 
         <div className={styles.bodyGrid}>
           <div className={styles.playColumn}>
-            {textRuntimeEnabled && gameWorkspace ? (
+            {textRuntimeEnabled ? (
               <CodeWorkspaceProvider
                 storageNamespace={`rank:${gameId || ''}`}
                 initialFiles={

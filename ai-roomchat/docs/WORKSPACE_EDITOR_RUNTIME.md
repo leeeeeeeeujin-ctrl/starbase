@@ -5145,13 +5145,17 @@ Status (2025-12-11 기준)
   - Supabase SQL:  
     - `docs/sql/text-battle-sessions.sql` – `text_battle_sessions` / `text_battle_turns` 테이블.  
     - `docs/sql/text-battle-match-rpc.impl.sql` – `finalize_text_battle_rank(...)` RPC 초안.  
-  - `/api/ai-battle-judge` 의 `processUnifiedGamePrompt` 가  
+  - `/api/ai-battle-judge` 의 `processUnifiedGamePrompt` 경로는  
+    - 에디터/Play 디버그용 텍스트 배틀에 대해  
     - 각 턴을 `text_battle_turns` 로 로깅하고,  
-    - `battleLast` 에 `winner/result/battleEnd/actor/vars` 를 채우는지 확인.  
-  - `workspace/hooks/automation.js:onBattleEnd(ctx)` 에서  
-    - `{ outcome, scores, highlightIds }` 요약을 만들고,  
-    - 새 API(예: `/api/rank/text-battle-settle`)를 호출해  
-      - `finalize_text_battle_rank` → `finalize_rank_session_outcome` 순으로 정산.
+    - `battleLast` 에 `winner/result/battleEnd/actor/vars` 를 채우는 best‑effort 경로로 유지.  
+  - 메인 랭크 게임(StartClient)에서는  
+    - `workspace/hooks/automation.js:onBattleEnd(ctx)` → `components/rank/StartClient/index.js:settleTextBattle` 가  
+      - `turnLogRef`(runtime:turn-log)와 `ctx.variables` 를 `/api/rank/text-battle-runtime-settle` 로 전달해  
+      - 한 판 기준 텍스트 배틀 로그를 `text_battle_sessions` / `text_battle_turns` 에 기록하고,  
+    - 이어서 `/api/rank/settle` 호출 시  
+      - `textBattleSessionId` + `textBattleSummary` 를 함께 보내  
+      - 내부에서 `finalize_text_battle_rank` → `finalize_rank_session_outcome` 순으로 랭크 정산을 best‑effort 로 트리거한다.
 
 - **3단계: 매칭/세션 수명 + 동시 참여 금지**  
   - `pages/api/rank/start-session.js`  
