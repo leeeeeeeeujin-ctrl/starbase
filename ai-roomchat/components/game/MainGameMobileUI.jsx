@@ -102,7 +102,81 @@ export default function MainGameMobileUI({
   const [charViewIdx, setCharViewIdx] = useState(0);
   const [turnLogEvents, setTurnLogEvents] = useState([]);
 
-  const character = useMemo(() => pickCharacter(template), [template]);
+  const fallbackCharacter = useMemo(() => pickCharacter(template), [template]);
+
+  const rankCharacter = useMemo(() => {
+    if (mode !== 'rank') return null;
+    if (!rankContext || typeof rankContext !== 'object') return null;
+
+    const players = Array.isArray(rankContext.players) ? rankContext.players : [];
+    if (!players.length) return null;
+
+    const viewerOwnerIdRaw =
+      rankContext.viewer?.ownerId ?? rankContext.viewer?.owner_id ?? null;
+    const viewerOwnerId =
+      viewerOwnerIdRaw != null ? String(viewerOwnerIdRaw).trim() : '';
+
+    let primary =
+      (viewerOwnerId &&
+        players.find(p => {
+          if (!p) return false;
+          const owner =
+            p.ownerId != null
+              ? String(p.ownerId).trim()
+              : p.owner_id != null
+                ? String(p.owner_id).trim()
+                : '';
+          return owner && owner === viewerOwnerId;
+        })) ||
+      players[0];
+
+    if (!primary) return null;
+
+    const hero = primary.hero || {};
+    const name =
+      hero.name ||
+      primary.hero_name ||
+      primary.heroName ||
+      primary.display_name ||
+      primary.displayName ||
+      fallbackCharacter?.name ||
+      '캐릭터';
+
+    const desc =
+      hero.bio ||
+      hero.desc ||
+      fallbackCharacter?.desc ||
+      '설명';
+
+    const score =
+      typeof primary.score === 'number' && Number.isFinite(primary.score)
+        ? primary.score
+        : 0;
+    const rating =
+      typeof primary.rating === 'number' && Number.isFinite(primary.rating)
+        ? primary.rating
+        : 0;
+
+    const image =
+      hero.avatar_url ||
+      hero.image_url ||
+      fallbackCharacter?.image ||
+      null;
+
+    return {
+      name,
+      image,
+      desc,
+      // 간단한 요약용 스탯: [점수, 레이팅, 0, 0]
+      stats: [score, rating, 0, 0],
+    };
+  }, [mode, rankContext, fallbackCharacter]);
+
+  const character = useMemo(
+    () => rankCharacter || fallbackCharacter,
+    [rankCharacter, fallbackCharacter]
+  );
+
   const imageUrl = character?.image || pickFirstImage(template);
   const userLabel = useMemo(() => user?.name || '플레이어', [user]);
 

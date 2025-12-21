@@ -25,6 +25,7 @@ import {
   applySpeakerFromRank,
 } from '@/lib/runtime/rankStandardSlots';
 import { normalizeBattleOutcome } from '@/lib/runtime/battleLogHelpers';
+import { isApiKeyError } from './engine/apiKeyUtils';
 
 // Ensure matchState is always defined in this module so
 // any legacy reads during render do not throw ReferenceError.
@@ -914,11 +915,20 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
 
   const statusMessages = useMemo(() => {
     const messages = [];
-    const errorText = toDisplayError(engineError);
-    if (errorText) messages.push(errorText);
+
+    if (engineError && isApiKeyError(engineError)) {
+      messages.push(
+        'API 키가 없거나 잘못 설정되어 있어 AI 응답을 생성할 수 없습니다. 설정 화면에서 API 키를 입력한 뒤 다시 시도해 주세요.'
+      );
+    } else {
+      const errorText = toDisplayError(engineError);
+      if (errorText) messages.push(errorText);
+    }
+
     if (statusMessage) messages.push(statusMessage);
     if (apiKeyWarning) messages.push(apiKeyWarning);
     if (promptMetaWarning) messages.push(promptMetaWarning);
+
     const unique = [];
     messages.forEach(message => {
       if (!message) return;
