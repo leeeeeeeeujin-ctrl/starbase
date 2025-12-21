@@ -245,6 +245,28 @@ export default async function handler(req, res) {
     }
   }
 
+  // Once a rank session is (re)started for this owner+game, any matched queue
+  // entries for the same owner/game are no longer needed. Mark them as
+  // consumed so subsequent enqueue attempts are not blocked by stale
+  // `status = 'matched'` rows.
+  try {
+    await withTableQuery(supabaseAdmin, 'rank_match_queue', async from => {
+      const qRes = await from
+        .update({ status: 'consumed', party_key: null, updated_at: now })
+        .eq('game_id', game_id)
+        .eq('owner_id', ownerId)
+        .eq('status', 'matched');
+      return {
+        data: qRes.data,
+        error: qRes.error,
+      };
+    });
+  } catch (queueCleanupError) {
+    // Best-effort: 큐 정리 실패는 세션 시작 자체를 막지 않는다.
+    // eslint-disable-next-line no-console
+    console.warn('[start-session] failed to consume matched queue entries:', queueCleanupError);
+  }
+
   return res.status(200).json({
     ok: true,
     session: {

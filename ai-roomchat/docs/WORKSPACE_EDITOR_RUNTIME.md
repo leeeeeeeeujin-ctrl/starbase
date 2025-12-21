@@ -275,18 +275,24 @@ Current high-level status (this repo copy)
   - Text runtime는 실사용 가능 수준, grid-basic은 프리뷰 + 간단 엔진까지 연결.
 - AI code chat dock (UX / actions): **in progress**
   - JSON 액션 파싱/게이팅, 자동 실행 슬라이더, 로그 표현 개선 일부 반영.
-- Text battle / rank vertical: **완료 (2025-12-11)**
-  - **프롬프트‑노드 에디터 ↔ 워크스페이스 런타임 그래프 동기화 완료**:
-    - Phase 1: WorkspaceFrame 로드 시 Supabase → VFS 자동 변환
-    - Phase 2: MakerEditor에서 React Flow 변경 시 실시간 `/graph` 업데이트
-    - 결과: 프롬프트‑노드 에디터에서 그린 그래프가 저장 없이도 즉시 실행됨
-  - Maker → Play → Rank settle → battle_log 전체 수직선 완성
-  - Rank 경로(매칭 → 메인게임(StartClient) → settle → battle_log 뷰)는 기존 rank 엔진(`useStartClientEngine` + promptEngine + `workspace/hooks/automation.js:onBattleEnd`) 기준으로 **실제 서비스 가능한 수준**까지 구현되어 있다.
-  - Maker Play 경로(코드 에디터 “플레이” 버튼)는
-    - 공유 엔진(`coreRuntime` + `/graph/prompt-graph.json` + `/game/runtime.config.json` + `/game/hooks/automation.js`)을 사용해 그래프/훅을 실행하고,
-    - starter pack(새 세트 기본값)이 텍스트 배틀 프리셋(`/graph` + `/game/runtime.config.json` + `/game/hooks/automation.js`)을 제공하도록 정리되어,
-      기본 텍스트 배틀 세트는 Maker → Play → Rank settle 까지 한 번에 돌릴 수 있다.
-  - 다만 **프롬프트‑노드 에디터(studio/maker graph)** 와 워크스페이스 런타임 그래프 사이 연결은 아직 부분적이다:
+- Text battle / rank vertical: **부분 완료 (2025-12-11 기준 프로토타입)**  
+  _※ 이전 버전 문서에는 “완료/실제 서비스 가능”으로 적혀 있었지만, 현재 레포/DB 상태 기준으로는 아래와 같이 제한이 있다._
+  - **엔진/훅 계약 자체는 정리됨**:
+    - `coreRuntime` + `/graph/prompt-graph.json` + `/game/runtime.config.json` + `/game/hooks/automation.js` 조합으로 텍스트 배틀 그래프를 실행할 수 있고,
+    - `workspace/hooks/automation.js:onBattleEnd` → `/api/rank/text-battle-settle` → `text_battle_sessions`/`text_battle_turns` 로 이어지는 “판정/베틀로그 영속화” 경로는 동작한다.
+  - **Maker → Play 경로는 단일 플레이 기준으로 사용 가능**:
+    - 코드 에디터 “Play” 버튼은 공유 엔진을 사용해 텍스트 런타임을 돌릴 수 있고,
+    - starter pack 세트는 기본 텍스트 배틀 프리셋(`/graph` + `/game/runtime.config.json` + `/game/hooks/automation.js`)을 제공한다.
+  - **그러나 Rank 경로(매칭 → 메인게임(StartClient) → settle)** 는 아직 “유저가 들어와서 게임하고 가는” 수준까지는 정리되지 않았다:
+    - 기존 rank 매칭 엔진은 `pages/api/rank/match.js` + `lib/rank/matchmakingService.js` + `components/rank/AutoMatchProgress.js` 에 **소스 형태로 온전히 존재**하지만,
+      텍스트 배틀 전용 흐름(`docs/sql/text-battle-match-rpc.impl.sql`의 `find_text_battle_pair` 등)은 큐 enqueue 수준(v1)까지만 구현되어 있고 실제 룸/세션 생성에 연결되어 있지 않다.
+    - `StartClient` → `GameShell` → `MainGameMobileUI` 방향의 텍스트 런타임 브릿지는 1인/로컬 기준으로는 동작하지만,
+      다중 참가자 간 **게임 상황/채팅 동기화**, “동일 랭크 세션을 여러 뷰어가 공유하는” 부분은 아직 미완성/버그가 있다.
+      - 예: 어떤 참가자는 `Next` 클릭 시 “게임이 종료되었습니다.” 메시지를 보는데, 다른 쪽은 그대로인 상태가 발생할 수 있다.
+      - 캐릭터 카드/참가자 패널은 `rankContext`/매치 로스터와 완전히 동기화되어 있지 않아, 하단 카드에 `캐릭터 / 점수: 20` 같은 폴백이 남을 수 있다.
+    - 예전 매칭 세션으로 “끌려 들어가는” 문제는 `fetch_latest_rank_session_v2` + `cleanup_expired_rank_sessions` 로 1차 완화했지만,
+      과거 세션 당사자 관점에서는 여전히 잔존 케이스가 있고, `rank_match_queue` 소비/정리 정책도 텍스트 배틀 v1 흐름과 완전히 맞춰지지 않았다.
+  - **프롬프트‑노드 에디터(studio/maker graph) ↔ 워크스페이스 런타임 그래프 동기화는 여전히 부분적**:
     - studio 그래프 편집(시작 지점/노드 연결)은 Supabase 테이블(`prompt_sets`/`prompt_slots`/`prompt_bridges`) 기준으로 저장되며,
       `/graph/prompt-graph.json` 과 `/game/runtime.config.json.entryNode` 에는 자동으로 반영되지 않는다.
     - `SyncTemplateToVfs` 는 `/template.json`을 편집할 때만 `/graph/prompt-graph.json` 을 갱신하며,
@@ -296,9 +302,30 @@ Current high-level status (this repo copy)
       - `entryNode` 는 starter pack 기본값이거나, 그래프에 존재하지 않는 id 일 수 있다.
     - `coreRuntime` 는 `entryNode` 가 없거나 존재하지 않을 때 **첫 번째 노드를 안전한 기본 시작점으로 사용하는 fallback** 을 갖지만,
       이 fallback 이 maker graph의 “시작 지점”/“연결선”과 일치한다는 보장은 없다.
-  - 요약: 텍스트 배틀용 훅/런타임 계약은 Play/Rank까지 수직선이 맞춰져 있으나,
-    maker graph 편집기 ↔ `/graph`/`entryNode` 동기화가 아직 구현되지 않아
-    “프롬프트‑노드 에디터에서 그린 그래프 그대로 builtin 텍스트 런타임이 소비하는” 단계까지는 도달하지 못한 상태다.
+  - 요약: 텍스트 배틀용 엔진/훅/정산 경로는 Play/Rank settle 레벨에서 기본 동작까지는 맞춰져 있지만,  
+    **“랭크 매칭 → 메인게임 → 멀티 참가자 동기화 → 정산까지 한 판을 완전히 플레이”하는 경험은 아직 프로토타입 단계**이며,  
+    maker graph 편집기 ↔ `/graph`/`entryNode` 동기화와 `rank_match_queue` 소비/정리, 멀티뷰어 동기화가 추가로 필요하다.
+  - **범용 랭크 매칭 v2(재구현 계획, 최대 12인)**:
+    - 목표: 텍스트 베틀을 포함한 랭크 게임 전반에 대해 **최대 12명(예: 6vs6, 또는 12인 방)까지** 한 번에 매칭될 수 있는 **단일 범용 매칭 엔진/플로우**를 재구성한다.
+    - 구현 축:
+      - Supabase 쪽에서는
+        - `docs/sql/text-battle-match-rpc.impl.sql` 의 `find_text_battle_pair` / `finalize_text_battle_rank` 를  
+          v1(단순 enqueue/정산) → v2(큐 조회 + 역할/슬롯 배치 + 룸/세션 생성 + 최대 12인 매칭)으로 확장하되,  
+          **특정 장르 전용이 아니라 rank 공통 스키마(`rank_match_queue`/`rank_rooms`/`rank_sessions` 등)를 사용하는 범용 RPC**로 다룬다.
+        - `docs/sql/cleanup-rank-match-queue.sql` 의 `cleanup_rank_match_queue(p_stale_wait_minutes, p_delete_cutoff_minutes, p_batch_limit)` 를  
+          관리/배치 채널에서 주기적으로 호출해
+          - 오래된 `waiting` 엔트리는 `expired` 로 상태 전환하고,
+          - 충분히 시간이 지난 `matched/consumed/abandoned/expired` 엔트리는 실제로 삭제해 큐 테이블을 정리한다.
+      - Node/Next.js 쪽에서는 기존 `/api/rank/match` + `lib/rank/matchmakingService` 구조를 재사용해,  
+        **하나의 범용 매칭 엔진**이 모드/게임별 설정(역할 구성, 슬롯 수, 드롭인 여부 등)에 따라 동작하도록 하고,  
+        텍스트 베틀은 그중 하나의 게임 타입으로 소비되게 한다.  
+        이 때 핵심 흐름은 **“queue → assignments → rank_sessions/rank_match_roster → StartClient(rankContext) → 런타임(텍스트/기타)”** 로 고정한다.
+      - `rank_match_queue` 는 여전히 중심 큐 테이블로 사용하되,
+        - JS 측 `loadQueueEntries()` 가 `status = 'waiting'` 만 소비하도록 유지해 **매칭된 티켓은 다시 큐에 쓰이지 않도록** 하고,
+        - Supabase RPC/배치에서 `matched/abandoned/expired` 상태 엔트리를 정리하는 보조 함수(예: `cleanup_matched_rank_queue(...)`)를 추가해  
+          장기적으로 큐 테이블이 과거 매칭에 잠식되지 않게 한다.
+    - 이 문서에서 말하는 “매칭 엔진 재구현”은 기존 JS 엔진을 버린다는 뜻이 아니라,  
+      **텍스트 베틀 전용 수직선(최대 12인) 기준으로 매칭 → 메인게임 → 정산까지 다시 설계하고, 중간 단계를 비워 두지 않는 것**을 목표로 한다.
 - Rank 엔진 리팩터링 + `/api/rank/text-battle-settle` 연동: **deferred**
   - 텍스트 배틀 vertical 기준선(Play → `/api/ai-battle-judge` → `text_battle_sessions`/`text_battle_turns`)은 현재 상태로 사용 가능 수준까지 정리되었다.
   - Rank 메인 엔진(StartClient) 구조가 복잡한 만큼, `/api/rank/text-battle-settle` / `finalize_text_battle_rank` 연동은 영향 범위가 크다.
@@ -355,6 +382,14 @@ Current high-level status (this repo copy)
     별도의 채널로 동작한다.  
   - Rank 정산 공식 경로는 기존 `/api/rank/settle` + `rank_session_battle_logs` 기준을 유지하고,  
     텍스트 배틀 세션 연동(`finalize_text_battle_rank`)은 선택적/후순위 작업으로 남겨 둔다.
+  - **rank_match_queue / 큐 수명**  
+    - `lib/rank/matchmakingService.loadQueueEntries(...)` 는 `status = 'waiting'` 인 엔트리만 읽어 매칭 후보로 사용한다.
+    - `/api/rank/match` 가 매칭을 성사시키면 `markAssignmentsMatched(...)` 를 통해 `status = 'matched'` 로 전환하고,  
+      이후 `/api/rank/start-session` 이 세션을 시작할 때 같은 `game_id + owner_id` 에 대해  
+      `status = 'matched'` 인 엔트리를 `status = 'consumed'` 로 바꿔 “이 매칭은 세션으로 소비되었다”는 것을 표시한다.
+    - `docs/sql/cleanup-rank-match-queue.sql` 의 `cleanup_rank_match_queue(...)` 를 통해  
+      오래된 `waiting` 엔트리를 `expired` 로 바꾸고,  
+      충분히 지난 `matched/consumed/abandoned/expired` 엔트리는 실제로 삭제해 큐를 슬림하게 유지한다.
 
 ### Open tasks (dev notes) — 다음 타자 인계 사항
 
@@ -5177,12 +5212,17 @@ Status (2025-12-11 기준)
     - 따라서 Play(코드 에디터 플래이)에서 보는 것과 **완전히 동일한 런타임/턴 흐름**은 아직 StartClient 메인 화면에 적용되지 않았고,  
       후속 단계(B–D)에서 턴 제어·정산·요약 뷰를 점진적으로 coreRuntime 기준으로 이관해야 한다.
 
-- **[TODO] B. 랭크 정산 시 텍스트 배틀 정산 호출 연동**
-  - StartClient 엔진 쪽에서 “게임 종료”를 감지하는 지점(현재 `/api/rank/settle` 호출 전에)에서:  
-    - `rankSessionId` + `text_battle_sessions.id` + `onBattleEnd(ctx).finalizeSummary` 를 모아  
-      `POST /api/rank/text-battle-settle` 를 **한 번 더 호출**한다.  
-  - 실패 시에는 기존 정산(`/api/rank/settle`)만으로도 게임이 끝나도록,  
-    - 텍스트 배틀 정산은 “부가적인 계층”으로 동작하게 설계한다.
+- **[완료] B. 랭크 정산 시 텍스트 배틀 정산 호출 연동 (StartClient 경로)**
+  - StartClient 엔진에서 coreRuntime `onBattleEnd(ctx)` 결과(`finalizeSummary` 포함)를 감지하면:  
+    - 현재 랭크 세션 ID(`sessionInfo.id`) / 게임 ID(`gameId`)와  
+      `runtime:turn-log` 로 쌓인 턴 이벤트 / 참가자 맵을 모아  
+      `POST /api/rank/settle` 을 한 번 호출한다.  
+  - `/api/rank/settle` 내부에서:
+    - `buildLogFromRuntime` 으로 battleLog를 정규화하고  
+      `storeBattleHistory` / `storeSessionBattleLogToSupabase` 를 통해 세션 단위 로그를 남긴다.
+    - payload 또는 `battleLog.meta.textBattleSummary` 에 텍스트 배틀 요약이 있으면  
+      이를 함께 저장하고, 필요 시 `finalize_text_battle_rank` RPC 와 연동할 수 있다.  
+  - 실패 시에도 기존 랭크 세션 자체는 유지되며, 텍스트 배틀 정산은 best-effort 부가 계층으로 동작한다.
 
 - **[TODO] C. MainGame UI와 텍스트 베틀 로그/정산 뷰 연결**
   - 텍스트 배틀이 끝난 랭크 세션에 대해:  

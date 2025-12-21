@@ -401,6 +401,54 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     textRuntimeEnabled,
   } = engine;
 
+  const sessionId = sessionInfo?.id || null;
+
+  const settleTextBattle = useCallback(
+    async ({ outcome, ctx }) => {
+      if (!sessionId || !gameId) return;
+
+      try {
+        const events = Array.isArray(turnLogRef.current) ? turnLogRef.current : [];
+        const participants =
+          ctx && typeof ctx.participants === 'object' ? ctx.participants : {};
+        const meta = {
+          ...(ctx && typeof ctx.graphHash === 'string' ? { graphHash: ctx.graphHash } : {}),
+          ...(ctx && typeof ctx.hookHash === 'string' ? { hookHash: ctx.hookHash } : {}),
+          textBattleSummary:
+            outcome && typeof outcome === 'object' ? outcome.finalizeSummary || null : null,
+        };
+
+        await fetch('/api/rank/settle', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            sessionId,
+            gameId,
+            battleLog: {
+              sessionId,
+              gameId,
+              events,
+              participants,
+              outcome,
+              meta,
+            },
+            textBattleSummary:
+              outcome && typeof outcome === 'object' ? outcome.finalizeSummary || null : null,
+          }),
+        });
+      } catch (err) {
+        try {
+          console.warn('[StartClient] 텍스트 배틀 정산 호출 실패:', err);
+        } catch {
+          // ignore console errors
+        }
+      }
+    },
+    [gameId, sessionId]
+  );
+
   // 브리지: StartClient 엔진 로그를 공통 턴 로그 이벤트(runtime:turn-log)로 내보낸다.
   // logs 배열이 늘어날 때마다 새 항목에 한해서만 이벤트를 발행한다.
   const lastLogCountRef = useRef(0);
@@ -709,6 +757,10 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
           };
           battleOutcomeRef.current = merged;
           setBattleOutcome(merged);
+
+          // 한 판이 끝난 시점에서 랭크 정산 API를 호출해
+          // battleLog 및 (선택적으로) 텍스트 배틀 랭크 정산을 수행한다.
+          settleTextBattle({ outcome: merged, ctx: ctxForHook });
         })
         .catch((err) => {
           try {
@@ -871,7 +923,7 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
       runtimeRef.current = null;
       runtimeHooksRef.current = null;
     };
-  }, [textRuntimeEnabled, graph, rankContext, runtimeBus, gameWorkspace]);
+  }, [textRuntimeEnabled, graph, rankContext, runtimeBus, gameWorkspace, settleTextBattle]);
 
   const sessionMetaSignatureRef = useRef('');
   const turnStateSignatureRef = useRef('');
