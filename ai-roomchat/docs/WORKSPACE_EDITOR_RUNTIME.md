@@ -2809,16 +2809,28 @@ Supabase/SQL 작업 협업 메모:
      `coreRuntime` + 워크스페이스 훅 + 랭크 컨텍스트로 대체하고,
    - 향후 다른 장르도 같은 패턴(단일 런타임 + 랭크 컨텍스트)으로 정렬한다.
 
-상태:
+상태 (이 레포 사본 기준):
 
-- Play 오버레이 / 워크스페이스 런타임: **in progress → stable에 근접**  
-- Rank StartClient와의 런타임 정렬:  
-  - `buildRankContext`로 랭크 컨텍스트를 만들고,  
-  - `useStartClientEngine`에서 `textRuntimeEnabled` 플래그와 함께 노출하며,  
-  - `StartClient`의 플레이 영역은  
-    - `textRuntimeEnabled === true`인 게임에 대해서는 `MainGameMobileUI + coreRuntime` 조합을 **메인 화면으로 사용**하고,  
-    - 그 외 레거시 게임에 대해서만 기존 `TurnInfoPanel + ManualResponsePanel` 엔진을 사용한다.  
-- 이후 코드 리팩터는 이 섹션을 기준으로 진행한다.
+- Play 오버레이 / 워크스페이스 런타임:
+  - `createCoreRuntime` + `/game/hooks/automation.js` 기반 텍스트 런타임은 실제로 안정적으로 구동 중.
+  - 코드 에디터 Play UI는 `MainGameMobileUI`를 사용하여 이 엔진을 “메인 화면”으로 소비한다.
+- Rank StartClient와의 런타임 정렬:
+  - `useStartClientEngine`에서 `buildRankContext({ game, session, participants, room: null, viewer })`를 호출해  
+    `rankContext`를 구성하고, `engineState.rankContext`, `engineState.textRuntimeEnabled`로 노출하는 부분은 구현되어 있다.
+  - `StartClient/index.js`는 `textRuntimeEnabled === true`이고 `rank_game_workspaces` 스냅샷이 있을 때:
+    - 같은 `createCoreRuntime` + `/game/hooks/automation.js` 조합을 생성하고,
+    - `runtimeBus`를 통해 `turn:next` / `player:chat` 이벤트를 런타임에 전달하며,
+    - `runtime:turn-log` / `onBattleEnd(ctx)` 결과를 StartClient의 `battleOutcome`·로그 파이프라인으로 연결한다.
+  - **그러나**:
+    - StartClient의 메인 턴 엔진은 여전히 기존 랭크 엔진(`useStartClientEngine` + promptEngine + timeline/outcomeLedger)이 맡고 있고,
+    - `MainGameMobileUI + coreRuntime` 조합은 “보조 패널 / 코드 워크스페이스 박스” 수준으로만 사용된다.
+    - `다음` 버튼/수동 응답 버튼은 coreRuntime 를 직접 구동하지 않고,  
+      랭크 엔진과 텍스트 런타임이 나란히 존재하는 구조라,  
+      Play에서 보던 “완전히 동일한 흐름”과는 차이가 있다.
+- 앞으로의 리팩터:
+  - 텍스트 배틀 장르에 한해:
+    - StartClient 메인 컬럼을 `MainGameMobileUI + coreRuntime` 기반으로 점진적으로 이관하고,
+    - 기존 랭크 엔진은 세션/매칭 컨텍스트, 합의/타이머, 정산/히스토리 관리 쪽으로 역할을 좁혀 가는 방향을 목표로 한다.
 
 ### 11.5 Rank 컨텍스트 헬퍼 (`buildRankContext`)
 
@@ -2935,8 +2947,10 @@ Supabase/SQL 작업 협업 메모:
     - 현재는 “엔진 두 개, UI 둘” 구조:
       - 랭크 메인 엔진은 여전히 자체 프롬프트/턴 상태 머신을 돌리고,
       - 텍스트 런타임 엔진은 **로그/정산/보조 패널용 플러그인**처럼 옆에서 돌아가는 수준이다.
-    - 아직 “한 엔진(coreRuntime)에 턴 진행을 전적으로 위임하는” 단계까지는 가지 않았고,  
-      문서/코드는 “랭크 엔진 유지 + coreRuntime를 전투/판정 플러그인으로 쓰는” 과도기 구조임을 전제로 한다.
+    - Play(코드 에디터 플래이)는 coreRuntime를 **메인 엔진**으로 사용하지만,
+      StartClient 메인 화면은 아직 기존 랭크 엔진이 메인이고 coreRuntime는 보조 역할이다.
+    - “한 엔진(coreRuntime)에 턴 진행을 전적으로 위임하고, 랭크 엔진은 컨텍스트/정산만 담당”하는 단계는  
+      아직 구현되지 않았으며, 향후 리팩터링 대상임을 전제로 한다.
 
 - **텍스트 런타임 ↔ StartClient 브릿지**
   - 소스:
@@ -2965,6 +2979,24 @@ Supabase/SQL 작업 협업 메모:
     - 텍스트 배틀에 한해 “턴 단위 로그 + 최종 정산” 경로는 대부분 구성되어 있으나,
     - 메인 랭크 엔진과의 경계(어디까지 coreRuntime에 위임할지)는 아직 **문서상 계획 + 최소 구현** 수준이라,  
       새로운 장르/모드에서는 반드시 이 체크리스트를 기준으로 다시 검증해야 한다.
+
+- **매칭 ↔ 메인게임 glue**
+  - 소스:
+    - 큐: `rank_match_queue` (대기 티켓, `status = 'queued'|'matched'|...'` 등).
+    - 매칭 결과: JS 매칭 엔진(클라이언트/서버) + `rank_rooms`, `rank_match_roster`, `rank_sessions`.
+    - 세션 채택: `/api/rank/latest-session` + `fetch_latest_rank_session_v2`(+ `cleanup_expired_rank_sessions`).
+  - 소비자:
+    - 매칭 화면: `AutoMatchProgress` (로컬 매칭 결과 + DB 스냅샷을 합쳐 MatchReady/StartClient로 넘김).
+    - 메인게임: `useStartClientEngine` → `participants`/`slotLayout`/`matchSnapshot`/`rankContext`.
+  - 현재 상태 / 한계:
+    - 큐 소비용 RPC(`consume_rank_match_queue`)는 별도 SQL로 제공되어 있지만,
+      실제 매칭 엔진에서 언제/어떻게 호출할지는 프로젝트 환경에 따라 추가 설계가 필요하다.
+    - 일부 진입 경로에서는 여전히 “최근 active 세션 재사용 / 로컬 매칭 fallback” 패턴이 남아 있을 수 있고,
+      이 경우 매칭 결과와 StartClient 메인게임, 텍스트 런타임 사이에 **부분적으로만 연결된** 상태가 된다.
+    - 목표 상태는:
+      - `rank_match_queue` → `rank_rooms`/`rank_match_roster`/`rank_sessions` → `matchRealtimeSync` → `useStartClientEngine` → `rankContext` → `coreRuntime` 까지가
+        한 번의 매치 인스턴스(`matchInstanceId`/`sessionId`) 기준으로 끊김 없이 이어지는 것이며,
+      - 이 문서는 그 경로를 설계 기준으로 삼고, 현재 레포에는 “브리지와 일부 정리용 RPC만 구현되어 있고 나머지는 환경별로 채워 넣어야 한다”는 점을 명시한다.
 
 ### 11.7 Rank 게임 워크스페이스 스냅샷 (`rank_game_workspaces`)
 
@@ -5138,8 +5170,12 @@ Status (2025-12-11 기준)
       - `runtimeBus` 의 `turn:next` / `player:chat` 이벤트를 `runtime.step({ reason: 'auto' | 'user_action', ... })` 에 연결한다.  
       - `runtime:turn-log` 이벤트와 `onBattleEnd(ctx)` 결과를 읽어  
         기존 StartClient 턴 로그/정산 파이프라인으로 전달하고, `battleOutcome` 상태를 구성한다.  
-  - 이 단계의 목표였던 “메인 랭크 엔진은 그대로 두되, 텍스트 런타임을 옆에서 같이 돌려보는 수준”은  
-    현재 레포 기준으로 충족된 상태이며, 이후 단계 B–E 에서 정산/요약 뷰를 단계적으로 통합한다.
+  - 현재 한계:
+    - 이 브리지 경로는 “텍스트 런타임을 **옆에서 같이 돌려보는**” 수준까지만 구현되어 있다.
+    - 메인 턴 제어(다음 버튼, 수동 응답, 타임라인 진행)는 여전히 기존 랭크 엔진이 담당하며,  
+      coreRuntime의 진행 상태가 메인게임 UI 전체를 직접 지배하지는 않는다.
+    - 따라서 Play(코드 에디터 플래이)에서 보는 것과 **완전히 동일한 런타임/턴 흐름**은 아직 StartClient 메인 화면에 적용되지 않았고,  
+      후속 단계(B–D)에서 턴 제어·정산·요약 뷰를 점진적으로 coreRuntime 기준으로 이관해야 한다.
 
 - **[TODO] B. 랭크 정산 시 텍스트 배틀 정산 호출 연동**
   - StartClient 엔진 쪽에서 “게임 종료”를 감지하는 지점(현재 `/api/rank/settle` 호출 전에)에서:  
