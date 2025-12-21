@@ -275,15 +275,33 @@ Current high-level status (this repo copy)
   - Text runtime는 실사용 가능 수준, grid-basic은 프리뷰 + 간단 엔진까지 연결.
 - AI code chat dock (UX / actions): **in progress**
   - JSON 액션 파싱/게이팅, 자동 실행 슬라이더, 로그 표현 개선 일부 반영.
-- Text battle / rank vertical: **부분 완료 (2025-12-11 기준 프로토타입)**  
-  _※ 이전 버전 문서에는 “완료/실제 서비스 가능”으로 적혀 있었지만, 현재 레포/DB 상태 기준으로는 아래와 같이 제한이 있다._
+- Text battle / rank vertical: **부분 완료 (2025-12-11 기준 프로토타입 → 2025-12-22 기준 1인 수직선 연결)**  
+  _※ 이전 버전 문서에는 “완료/실제 서비스 가능”으로 적혀 있었지만, 현재 레포/DB 상태 기준으로는 아래와 같이 단계별로 정리된다._
   - **엔진/훅 계약 자체는 정리됨**:
     - `coreRuntime` + `/graph/prompt-graph.json` + `/game/runtime.config.json` + `/game/hooks/automation.js` 조합으로 텍스트 배틀 그래프를 실행할 수 있고,
-    - `workspace/hooks/automation.js:onBattleEnd` → `/api/rank/text-battle-settle` → `text_battle_sessions`/`text_battle_turns` 로 이어지는 “판정/베틀로그 영속화” 경로는 동작한다.
+    - `workspace/hooks/automation.js:onBattleEnd` → `/api/rank/text-battle-runtime-settle` → `text_battle_sessions`/`text_battle_turns` → `/api/rank/settle` → `finalize_text_battle_rank` 로 이어지는 “판정/베틀로그 영속화 + 랭크 정산” 경로는 동작한다.
   - **Maker → Play 경로는 단일 플레이 기준으로 사용 가능**:
     - 코드 에디터 “Play” 버튼은 공유 엔진을 사용해 텍스트 런타임을 돌릴 수 있고,
     - starter pack 세트는 기본 텍스트 배틀 프리셋(`/graph` + `/game/runtime.config.json` + `/game/hooks/automation.js`)을 제공한다.
-  - **그러나 Rank 경로(매칭 → 메인게임(StartClient) → settle)** 는 아직 “유저가 들어와서 게임하고 가는” 수준까지는 정리되지 않았다:
+  - **Maker → Rank 메인게임(StartClient) 경로는 “수동 publish” 기준으로 1인 플레이 수직선이 연결된 상태**:
+    - Maker/Workspace에서 워크스페이스 세트(그래프/템플릿/훅)를 편집한 뒤,
+      `components/maker/editor/MakerEditor.js` 상단 툴바의 **랭크 메인게임 워크스페이스 저장(onSaveToRank)** 액션을 통해
+      `/template.json`, `/graph/prompt-graph.json`, `/game/runtime.config.json`, `/game/hooks/automation.js` 를 하나의 스냅샷으로 묶어
+      `/api/rank/save-game-workspace` → `rank_game_workspaces`(game_id별 1행) 에 저장할 수 있다.
+    - 랭크 메인게임 `StartClient` (`components/rank/StartClient/index.js`) 는
+      1) `/api/rank/game-workspace?gameId=...` 로 `rank_game_workspaces` 스냅샷을 우선 조회하고,
+      2) 없을 때에만 `/api/rank/text-battle-default-workspace` (docs/examples/text-battle-basic/*) 로 폴백한다.
+    - 저장된 워크스페이스가 있으면 메인게임의 텍스트 런타임은:
+      - `gameWorkspace.template` → `template`(GameShell/MainGameMobileUI),
+      - `gameWorkspace.graph` → `effectiveGraph`,
+      - `gameWorkspace.runtime_config` → `cfg`,
+      - `gameWorkspace.hooks_source` → `hooksSource`(onUserAction/onBattleEnd),
+      - `gameWorkspace.ui_shell` → 메인게임 UI 패널/레이아웃 설정
+      를 사용한다.
+    - 이 경로를 통해 **“Maker에서 정의한 텍스트 배틀 세트” → Rank 매칭 → 메인게임(StartClient) → 텍스트 배틀 실행 → settle** 까지 1인 기준 수직선은 실제로 돌릴 수 있다.
+    - 다만, Studio/Maker 세트와 rank_game_workspaces 스냅샷은 아직 자동 동기화가 아니므로,
+      **그래프/프롬프트를 바꾼 뒤 Rank 메인게임에서 테스트하려면 매번 “랭크 메인게임 워크스페이스 저장”을 눌러 publish** 해야 한다.
+  - **다중 참가자/완전한 랭크 경험은 여전히 제한적**:
     - 기존 rank 매칭 엔진은 `pages/api/rank/match.js` + `lib/rank/matchmakingService.js` + `components/rank/AutoMatchProgress.js` 에 **소스 형태로 온전히 존재**하지만,
       텍스트 배틀 전용 흐름(`docs/sql/text-battle-match-rpc.impl.sql`의 `find_text_battle_pair` 등)은 큐 enqueue 수준(v1)까지만 구현되어 있고 실제 룸/세션 생성에 연결되어 있지 않다.
     - `StartClient` → `GameShell` → `MainGameMobileUI` 방향의 텍스트 런타임 브릿지는 1인/로컬 기준으로는 동작하지만,
@@ -292,7 +310,7 @@ Current high-level status (this repo copy)
       - 캐릭터 카드/참가자 패널은 `rankContext`/매치 로스터와 완전히 동기화되어 있지 않아, 하단 카드에 `캐릭터 / 점수: 20` 같은 폴백이 남을 수 있다.
     - 예전 매칭 세션으로 “끌려 들어가는” 문제는 `fetch_latest_rank_session_v2` + `cleanup_expired_rank_sessions` 로 1차 완화했지만,
       과거 세션 당사자 관점에서는 여전히 잔존 케이스가 있고, `rank_match_queue` 소비/정리 정책도 텍스트 배틀 v1 흐름과 완전히 맞춰지지 않았다.
-  - **프롬프트‑노드 에디터(studio/maker graph) ↔ 워크스페이스 런타임 그래프 동기화는 여전히 부분적**:
+  - **프롬프트‑노드 에디터(studio/maker graph) ↔ Rank 메인게임 워크스페이스 동기화는 “수동 publish” 단계**:
     - studio 그래프 편집(시작 지점/노드 연결)은 Supabase 테이블(`prompt_sets`/`prompt_slots`/`prompt_bridges`) 기준으로 저장되며,
       `/graph/prompt-graph.json` 과 `/game/runtime.config.json.entryNode` 에는 자동으로 반영되지 않는다.
     - `SyncTemplateToVfs` 는 `/template.json`을 편집할 때만 `/graph/prompt-graph.json` 을 갱신하며,

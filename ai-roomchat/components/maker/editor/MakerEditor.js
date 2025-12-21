@@ -591,7 +591,127 @@ export default function MakerEditor() {
     } catch {}
   }, [templateText, setTemplateText]);
 
-  // 🎮 게임 시뮬레이션 상태 (declared earlier; duplicate removed)
+  // 🎮 Rank 메인게임과 연동하기 위한 워크스페이스 스냅샷 저장
+  //
+  // - 현재 워크스페이스의 핵심 파일(/template.json, /graph/prompt-graph.json,
+  //   /game/runtime.config.json, /game/hooks/automation.js)을 모아서
+  //   `/api/rank/save-game-workspace` 로 전송한다.
+  // - 이 API는 rank_games.owner_id 권한을 체크하므로, Maker에서 해당 게임의
+  //   owner 인 상태에서만 성공한다.
+  const [saveToRankBusy, setSaveToRankBusy] = useState(false);
+  const [saveToRankMessage, setSaveToRankMessage] = useState(null);
+
+  const handleSaveWorkspaceToRankGame = useCallback(async () => {
+    const rawGameId = setInfo?.rankGameId || setInfo?.gameId || null;
+    const gameId =
+      typeof rawGameId === 'string' && rawGameId.trim() ? rawGameId.trim() : null;
+    if (!gameId) {
+      alert('이 워크스페이스와 연결된 랭크 게임 ID를 찾지 못했습니다.\n\n게임 등록 후 다시 시도해 주세요.');
+      return;
+    }
+
+    try {
+      setSaveToRankBusy(true);
+      setSaveToRankMessage(null);
+
+      const currentFiles = filesRef.current || {};
+      const readContentOrNull = path => {
+        try {
+          const file = currentFiles[path];
+          if (!file || typeof file.content !== 'string') return null;
+          const trimmed = file.content.trim();
+          return trimmed ? file.content : null;
+        } catch {
+          return null;
+        }
+      };
+
+      let templateJson = null;
+      let graphJson = null;
+      let runtimeConfigJson = null;
+
+      const templateTextContent = readContentOrNull('/template.json');
+      const graphTextContent = readContentOrNull('/graph/prompt-graph.json');
+      const runtimeConfigTextContent = readContentOrNull('/game/runtime.config.json');
+      const hooksSource = readContentOrNull('/game/hooks/automation.js');
+
+      try {
+        if (templateTextContent) {
+          templateJson = JSON.parse(templateTextContent);
+        }
+      } catch {
+        // template 파싱 실패는 계속 진행하되, 서버에서 추가 검증을 하도록 둔다.
+      }
+      try {
+        if (graphTextContent) {
+          graphJson = JSON.parse(graphTextContent);
+        }
+      } catch {
+        // graph 파싱 실패 역시 서버에서 거르도록 두고, 최소한의 형태만 보낸다.
+      }
+      try {
+        if (runtimeConfigTextContent) {
+          runtimeConfigJson = JSON.parse(runtimeConfigTextContent);
+        }
+      } catch {
+        // runtime.config 는 선택 필드이므로 파싱 실패 시 null 로 둔다.
+      }
+
+      const payload = {
+        gameId,
+        workspace: {
+          template: templateJson,
+          graph: graphJson,
+          runtime_config: runtimeConfigJson,
+          hooks_source: hooksSource,
+          ui_shell: null,
+        },
+      };
+
+      const res = await fetch('/api/rank/save-game-workspace', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      let body = null;
+      try {
+        body = await res.json();
+      } catch {
+        body = null;
+      }
+
+      if (!res.ok || !body?.ok) {
+        const msg =
+          body?.detail ||
+          body?.error ||
+          `워크스페이스를 랭크 게임에 저장하지 못했습니다. (HTTP ${res.status})`;
+        setSaveToRankMessage(msg);
+        alert(
+          '랭크 메인게임 워크스페이스 저장에 실패했습니다.\n\n' +
+            (typeof msg === 'string' ? msg : '잠시 후 다시 시도해 주세요.')
+        );
+        return;
+      }
+
+      const successMsg = '현재 워크스페이스 구성이 랭크 메인게임 워크스페이스에 저장되었습니다.';
+      setSaveToRankMessage(successMsg);
+      alert(successMsg);
+    } catch (err) {
+      const msg = err?.message || String(err);
+      setSaveToRankMessage(msg);
+      alert(
+        '랭크 메인게임 워크스페이스 저장 중 오류가 발생했습니다.\n\n' +
+          (typeof msg === 'string' ? msg : '')
+      );
+    } finally {
+      setSaveToRankBusy(false);
+    }
+  }, [setInfo, filesRef]);
+
+  // 🎮 게임 시뮬레이션 상태
 
   // 게임 시뮬레이션 시작
   const startGameSimulation = useCallback(() => {
@@ -821,6 +941,9 @@ export default function MakerEditor() {
           onStartSimulation={startGameSimulation}
           onSave={unifiedSaveAll}
           onCreateWithAI={handleCreateWithAI}
+          onSaveToRank={handleSaveWorkspaceToRankGame}
+          saveToRankBusy={saveToRankBusy}
+          saveToRankMessage={saveToRankMessage}
           onOpenCode={async () => {
             if (busy) return;
             try {

@@ -601,23 +601,43 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     }
     let alive = true;
     (async () => {
+      let workspace = null;
+
+      // 1) 우선 rank_game_workspaces에서 저장된 워크스페이스를 시도
       try {
-        const resp = await fetch(`/api/rank/game-workspace?gameId=${encodeURIComponent(gameId)}`);
+        const resp = await fetch(
+          `/api/rank/game-workspace?gameId=${encodeURIComponent(gameId)}`
+        );
         if (!alive) return;
-        if (!resp.ok) {
-          setGameWorkspace(null);
-          return;
-        }
-        const payload = await resp.json();
-        if (!alive) return;
-        if (payload && payload.ok && payload.workspace) {
-          setGameWorkspace(payload.workspace);
-        } else {
-          setGameWorkspace(null);
+        if (resp.ok) {
+          const payload = await resp.json();
+          if (payload && payload.ok && payload.workspace) {
+            workspace = payload.workspace;
+          }
         }
       } catch {
-        if (alive) setGameWorkspace(null);
+        // ignore; fallback will handle
       }
+      if (!alive) return;
+
+      // 2) 저장된 워크스페이스가 없으면 기본 텍스트 배틀 예시(text-battle-basic)를 사용
+      if (!workspace) {
+        try {
+          const resp = await fetch('/api/rank/text-battle-default-workspace');
+          if (!alive) return;
+          if (resp.ok) {
+            const payload = await resp.json();
+            if (payload && payload.ok && payload.workspace) {
+              workspace = payload.workspace;
+            }
+          }
+        } catch {
+          // ignore default workspace failures
+        }
+      }
+      if (!alive) return;
+
+      setGameWorkspace(workspace || null);
     })();
     return () => {
       alive = false;
