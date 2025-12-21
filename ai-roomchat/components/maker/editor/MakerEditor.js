@@ -614,7 +614,7 @@ export default function MakerEditor() {
       setSaveToRankBusy(true);
       setSaveToRankMessage(null);
 
-      const currentFiles = filesRef.current || {};
+      const currentFiles = files || {};
       const readContentOrNull = path => {
         try {
           const file = currentFiles[path];
