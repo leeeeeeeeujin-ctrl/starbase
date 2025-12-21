@@ -1097,20 +1097,66 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     const ownerCandidate =
       toTrimmedId(matchState?.viewer?.ownerId ?? matchState?.viewer?.viewerId) ||
       (viewerOwnerId ? viewerOwnerId : null);
+
+    const rankPlayers = Array.isArray(rankContext?.players) ? rankContext.players : [];
+    const rankMatch =
+      rankPlayers.find(player => {
+        if (!player) return false;
+        const playerOwnerId =
+          player.ownerId != null ? String(player.ownerId).trim() : '';
+        const playerHeroId =
+          player.heroId != null ? String(player.heroId).trim() : '';
+        const ownerMatch =
+          ownerCandidate && playerOwnerId
+            ? playerOwnerId === String(ownerCandidate).trim()
+            : false;
+        const heroMatch =
+          viewerHeroId && playerHeroId
+            ? playerHeroId === String(viewerHeroId).trim()
+            : false;
+        return ownerMatch || heroMatch;
+      }) || null;
+
     const rosterEntry = findRosterEntry(chatRoster, {
       heroId: viewerHeroId,
       ownerId: ownerCandidate,
     });
+
     const heroName =
-      matchState?.viewer?.heroName ?? matchState?.viewer?.hero?.name ?? rosterEntry?.heroName ?? '';
+      rankMatch?.heroName ||
+      matchState?.viewer?.heroName ||
+      matchState?.viewer?.hero?.name ||
+      rosterEntry?.heroName ||
+      '';
+
     const avatarUrl =
-      matchState?.viewer?.hero?.avatar_url ??
-      matchState?.viewer?.avatarUrl ??
-      matchState?.viewer?.avatar_url ??
-      rosterEntry?.avatarUrl ??
+      rankMatch?.avatarUrl ||
+      matchState?.viewer?.hero?.avatar_url ||
+      matchState?.viewer?.avatarUrl ||
+      matchState?.viewer?.avatar_url ||
+      rosterEntry?.avatarUrl ||
       null;
 
-    if (!viewerHeroId && !ownerCandidate && !heroName && !avatarUrl) {
+    const backgrounds =
+      Array.isArray(rankMatch?.backgrounds) && rankMatch.backgrounds.length
+        ? rankMatch.backgrounds
+        : null;
+
+    const bgmUrl = rankMatch?.bgmUrl || null;
+    const bgmDurationSeconds =
+      rankMatch && typeof rankMatch.bgmDurationSeconds === 'number'
+        ? rankMatch.bgmDurationSeconds
+        : null;
+    const audioProfile = rankMatch?.audioProfile || null;
+
+    if (
+      !viewerHeroId &&
+      !ownerCandidate &&
+      !heroName &&
+      !avatarUrl &&
+      !backgrounds &&
+      !bgmUrl
+    ) {
       return null;
     }
 
@@ -1120,6 +1166,10 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
       user_id: ownerCandidate || null,
       name: heroName || (viewerHeroId ? `캐릭터 #${viewerHeroId}` : '익명 참가자'),
       avatar_url: avatarUrl || null,
+      backgrounds: backgrounds || [],
+      bgm_url: bgmUrl,
+      bgm_duration_seconds: bgmDurationSeconds,
+      audio_profile: audioProfile,
     };
   }, [
     chatRoster,
@@ -1132,6 +1182,7 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
     matchState?.viewer?.viewerId,
     viewerHeroId,
     viewerOwnerId,
+    rankContext?.players,
   ]);
   const asyncMatchInstanceId = useMemo(() => {
     if (!asyncFillInfo) return null;

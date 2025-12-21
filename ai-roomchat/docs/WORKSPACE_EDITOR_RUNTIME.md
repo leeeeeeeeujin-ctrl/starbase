@@ -2882,6 +2882,89 @@ Supabase/SQL 작업 협업 메모:
     - `const rank = buildRankContext({ game, session, participants, room });`
     - `createCoreRuntime({ graph, config, hooks, files, initialVariables: { rank } })`로 엔진 생성.
   - 훅에서는 언제나 `ctx.variables.rank`로 랭크 정보를 읽고, 장르에 무관하게 동일 구조를 사용한다.
+  - 현재 한계 / 미동기화 영역:
+    - StartClient의 캐릭터 패널/참가자 카드(뷰어 프로필, 슬롯/로스터 뷰)는  
+      - `matchState.roster`/`chatRoster` 등 랭크 클라이언트 스냅샷을 직접 참조하고 있고,  
+      - `rankContext.players` 와 1:1 매핑·동기화된 단일 소스로 아직 완전히 통합되어 있지 않다.
+    - 따라서 동일 세션이라도
+      - 캐릭터 패널에 보이는 일부 메타(아바타/역할/점수)가  
+      - 텍스트 런타임 훅에서 보는 `ctx.variables.rank.players[*]` 와 미묘히 어긋날 수 있는 여지가 남아 있으며,  
+      - 향후에는 “rankContext를 단일 진리의 원천으로 두고, UI/훅이 그 위에서만 파생되도록” 정리하는 리팩터링이 필요하다.
+
+### 11.9 Rank / 런타임 연결 지점 체크리스트
+
+> “뭐가 어디에 연결돼 있어야 하는가?”를 한눈에 보기 위한 요약.  
+> 실제 코드 상태와 비교해 빠진 연결/중복 소스를 점검할 때 기준으로 쓴다.
+
+- **매치/세션 ID 흐름**
+  - 소스:
+    - DB: `rank_sessions.id`, `rank_rooms.id`, 매칭 스냅샷(`matchInstanceId` 등).
+    - API: `/api/rank/start-session`, `/api/rank/latest-session`, `fetch_latest_rank_session_v2`, `cleanup_expired_rank_sessions`.
+  - 소비자:
+    - `useStartClientEngine` → `sessionInfo`, `matchSnapshotSeed`, `engineState.sessionId`.
+    - `buildRankContext({ session })` → `rankContext.sessionId`, `rankContext.session.id`.
+    - 텍스트 배틀 퍼시스턴스: `/api/ai-battle-judge` → `text_battle_sessions.id`, `text_battle_turns.session_id`.
+  - 상태:
+    - “예전 세션에 빨려들어가는” 문제는 **새 매치 플로우**에서 `session_policy: 'new_per_match'` 적용 + cleanup 함수로 상당 부분 완화됨.
+    - 여전히, 일부 진입 경로(직접 `/rank/[id]/start` 등)가 옛 정책(최근 active 세션 재사용)에 의존할 여지가 있음 →  
+      장기적으로는 “owner·game·matchInstance 단위 1세션” 규칙을 **모든 진입 경로에서 일관되게** 강제해야 한다.
+
+- **참가자/캐릭터 메타 (히어로 카드)**
+  - 소스:
+    - DB: `rank_match_roster`, `rank_participants`, `heroes` 관련 뷰.
+    - 클라: `matchRealtimeSync`가 만든 `matchState.roster`, `chatRoster`.
+    - `buildRankContext({ participants })` → `rankContext.players[*]` (ownerId, heroId, heroName, avatar/backgrounds/bgm/audioProfile, score, rating, role).
+  - 소비자:
+    - StartClient 캐릭터 패널/뷰어 프로필: `viewerHeroProfile`, `matchRosterForChat`, `participantRosterForChat` (직접 `matchState.roster`/`chatRoster` 참조).
+    - 텍스트 런타임 훅: `ctx.variables.rank.players`(권장) 또는 기존 하위 호환 필드.
+  - 상태:
+    - **두 개의 소스**(matchState 기반 구조 vs rankContext.players)가 공존하고 있으며,  
+      캐릭터 패널은 현재 rankContext가 아닌 matchState 측 구조만 사용한다.
+    - 안전한 방향:
+      - rankContext를 “정규화된 단일 소스”로 보고,
+      - StartClient 캐릭터 패널/툴팁/요약 뷰가 `rankContext.players`를 우선 사용하게 점진적으로 이관한다.
+
+- **턴/게임 진행 엔진**
+  - 소스:
+    - 랭크 메인 엔진: `useStartClientEngine` 내부의 `mainGameReducer` + `promptEngine` + `timeline/outcomeLedger`.
+    - 텍스트 런타임 엔진: `createCoreRuntime({ graph, config, hooks, files, initialVariables: { rank } })` + `/game/hooks/automation.js`.
+  - 소비자:
+    - 랭크 메인 UI: StartClient의 메인 패널(턴 정보, 수동 응답, 타임라인, 합의/투표 등).
+    - 텍스트 런타임 플레이 UI: `GameShell` / `MainGameMobileUI` (Play 및 StartClient 내부의 코드 워크스페이스 박스).
+  - 상태:
+    - 현재는 “엔진 두 개, UI 둘” 구조:
+      - 랭크 메인 엔진은 여전히 자체 프롬프트/턴 상태 머신을 돌리고,
+      - 텍스트 런타임 엔진은 **로그/정산/보조 패널용 플러그인**처럼 옆에서 돌아가는 수준이다.
+    - 아직 “한 엔진(coreRuntime)에 턴 진행을 전적으로 위임하는” 단계까지는 가지 않았고,  
+      문서/코드는 “랭크 엔진 유지 + coreRuntime를 전투/판정 플러그인으로 쓰는” 과도기 구조임을 전제로 한다.
+
+- **텍스트 런타임 ↔ StartClient 브릿지**
+  - 소스:
+    - StartClient: `runtimeBus`(`turn:next`, `player:chat`, `runtime:turn-log`) + `createCoreRuntime` 초기화 useEffect.
+    - 워크스페이스 스냅샷: `rank_game_workspaces` + `/api/rank/game-workspace`.
+  - 연결:
+    - `textRuntimeEnabled === true`이고 `gameWorkspace`가 있을 때:
+      - StartClient가 `graph`/`runtime_config`/`hooks_source`/`template`를 읽어 coreRuntime를 구성.
+      - `runtimeBus.turn:next`/`player:chat` → `runtime.step({ reason: 'auto' | 'user_action', input })`.
+      - `runtime:turn-log` 이벤트와 `onBattleEnd(ctx)` 결과를 받아 StartClient의 `battleOutcome`/로그 파이프라인으로 전달.
+  - 상태:
+    - 브릿지는 **돌아가지만**, 메인 턴 엔진과 완전히 통합된 것은 아니다:
+      - “다음 턴” 버튼이 직접 coreRuntime를 구동하지 않고,
+      - 랭크 엔진과 텍스트 런타임이 나란히 존재하는 구조라,  
+        일부 게임/그래프에서 “엔진 간 이해 차이”가 생길 수 있는 여지가 남아 있다.
+
+- **로그/정산/리플레이**
+  - 소스:
+    - 텍스트 배틀 판정: `/api/ai-battle-judge` + `textBattlePersistence` → `text_battle_sessions` / `text_battle_turns`.
+    - 랭크 정산: `/api/rank/settle`, `/api/rank/text-battle-settle`, `finalize_text_battle_rank` RPC.
+    - 런타임 로그: `runtime:turn-log` 이벤트, `onBattleEnd(ctx)` → `battleLog.outcome/scoreboard/highlightIds`.
+  - 소비자:
+    - StartClient: 전투 종료 후 정산/요약 패널, `battleOutcome`.
+    - 히스토리/베틀로그 UI: `/battle-log/[sessionId]`, 향후 TextBattleSummaryView 등.
+  - 상태:
+    - 텍스트 배틀에 한해 “턴 단위 로그 + 최종 정산” 경로는 대부분 구성되어 있으나,
+    - 메인 랭크 엔진과의 경계(어디까지 coreRuntime에 위임할지)는 아직 **문서상 계획 + 최소 구현** 수준이라,  
+      새로운 장르/모드에서는 반드시 이 체크리스트를 기준으로 다시 검증해야 한다.
 
 ### 11.7 Rank 게임 워크스페이스 스냅샷 (`rank_game_workspaces`)
 
