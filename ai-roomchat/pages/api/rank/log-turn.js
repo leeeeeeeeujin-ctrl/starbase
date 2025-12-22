@@ -114,193 +114,200 @@ function extractSummary(entry) {
 }
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    res.setHeader('Allow', ['POST']);
-    return res.status(405).json({ error: 'method_not_allowed' });
-  }
-
-  const authHeader = req.headers.authorization || '';
-  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-  if (!token) {
-    return res.status(401).json({ error: 'unauthorized' });
-  }
-
-  const { data: userData, error: userError } = await anonClient.auth.getUser(token);
-  const user = userData?.user || null;
-  if (userError || !user) {
-    return res.status(401).json({ error: 'unauthorized' });
-  }
-
-  let payload = req.body;
-  if (typeof payload === 'string') {
-    try {
-      payload = JSON.parse(payload || '{}');
-    } catch (error) {
-      return res.status(400).json({ error: 'invalid_payload' });
+  try {
+    if (req.method !== 'POST') {
+      res.setHeader('Allow', ['POST']);
+      return res.status(405).json({ error: 'method_not_allowed' });
     }
-  }
 
-  const {
-    session_id: sessionId,
-    game_id: gameId,
-    entries,
-    turn_number: turnNumber,
-  } = payload || {};
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    if (!token) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
 
-  if (!sessionId || typeof sessionId !== 'string') {
-    return res.status(400).json({ error: 'missing_session_id' });
-  }
+    const { data: userData, error: userError } = await anonClient.auth.getUser(token);
+    const user = userData?.user || null;
+    if (userError || !user) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
 
-  const normalizedEntries = normalizeEntries(entries);
-  if (!normalizedEntries.length) {
-    return res.status(400).json({ error: 'missing_entries' });
-  }
-
-  const { data: session, error: sessionError } = await withTableQuery(
-    supabaseAdmin,
-    'rank_sessions',
-    from => from.select('id, owner_id, game_id, turn').eq('id', sessionId).maybeSingle()
-  );
-
-  if (sessionError) {
-    return res.status(400).json({ error: sessionError.message });
-  }
-
-  // If the session row is missing owner information (common in some
-  // test mocks), allow the operation to proceed — the real DB will
-  // always include owner_id. Only reject if an owner_id exists and
-  // doesn't match the requesting user.
-  if (!session || (session.owner_id && session.owner_id !== user.id)) {
-    return res.status(403).json({ error: 'forbidden' });
-  }
-
-  if (gameId && session.game_id && session.game_id !== gameId) {
-    return res.status(409).json({ error: 'session_game_mismatch' });
-  }
-
-  const { data: lastTurn, error: lastError } = await withTableQuery(
-    supabaseAdmin,
-    'rank_turns',
-    from =>
-      from
-        .select('idx')
-        .eq('session_id', sessionId)
-        .order('idx', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-  );
-
-  if (lastError) {
-    return res.status(400).json({ error: lastError.message });
-  }
-
-  let startIdx = 0;
-  const lastIdx = Number(lastTurn?.idx);
-  if (Number.isFinite(lastIdx)) {
-    startIdx = Math.floor(lastIdx) + 1;
-  }
-
-  const currentTurn = Number(session.turn);
-
-  const rows = normalizedEntries.map((entry, offset) => {
-    const idx = startIdx + offset;
-    const summaryPayload =
-      entry.summary && typeof entry.summary === 'object'
-        ? entry.summary
-        : buildTurnSummaryPayload({
-            role: entry.role,
-            content: entry.content,
-            prompt: entry.prompt,
-            session: { id: sessionId, turn: currentTurn },
-            idx,
-            actors: entry.actors,
-            extra: entry.extra,
-            // 표준 데이터 슬롯(speaker / stats / scene / effects)을
-            // summary_payload.variables 에 실어 두기 위해 그대로 전달한다.
-            variables:
-              entry.variables && typeof entry.variables === 'object' ? entry.variables : null,
-          });
-
-    return {
-      session_id: sessionId,
-      idx,
-      role: entry.role,
-      public: entry.public,
-      is_visible: entry.isVisible,
-      content: entry.content,
-      summary_payload: summaryPayload,
-    };
-  });
-
-  const { data: inserted, error: insertError } = await withTableQuery(
-    supabaseAdmin,
-    'rank_turns',
-    from => from.insert(rows).select('id, idx, role, public, content, created_at')
-  );
-
-  // Debug: surface insert result for tests so we can diagnose failures
-
-  console.error('[DEBUG log-turn] insert result:', inserted, 'error:', insertError);
-
-  if (insertError) {
-    return res.status(400).json({ error: insertError.message });
-  }
-
-  const now = new Date().toISOString();
-  const numericTurn = Number(turnNumber);
-  const updatePayload = { updated_at: now };
-  if (Number.isFinite(numericTurn) && numericTurn > 0) {
-    updatePayload.turn = Math.max(session.turn || 0, numericTurn);
-  }
-
-  const { error: updateError } = await withTableQuery(supabaseAdmin, 'rank_sessions', from =>
-    from.update(updatePayload).eq('id', sessionId)
-  );
-
-  if (updateError) {
-    return res.status(400).json({ error: updateError.message });
-  }
-
-  const resolvedTurn =
-    Number.isFinite(numericTurn) && numericTurn > 0 ? numericTurn : Number(session.turn) || null;
-  const timelineEvents = extractRealtimeTimelineEvents(normalizedEntries, {
-    sessionId,
-    gameId: gameId || session.game_id || null,
-    turn: resolvedTurn,
-  });
-
-  if (timelineEvents.length) {
-    const timelineRows = timelineEvents
-      .map(event =>
-        mapTimelineEventToRow(event, {
-          sessionId,
-          gameId: gameId || session.game_id || null,
-        })
-      )
-      .filter(Boolean);
-
-    if (timelineRows.length) {
+    let payload = req.body;
+    if (typeof payload === 'string') {
       try {
-        await withTableQuery(supabaseAdmin, 'rank_session_timeline_events', from =>
-          from.upsert(timelineRows, { onConflict: 'event_id', ignoreDuplicates: false })
-        );
-      } catch (timelineError) {
-        console.error('[log-turn] failed to persist timeline events', timelineError);
+        payload = JSON.parse(payload || '{}');
+      } catch (error) {
+        return res.status(400).json({ error: 'invalid_payload' });
       }
     }
 
-    await broadcastRealtimeTimeline(sessionId, timelineEvents, {
-      turn: resolvedTurn,
-      gameId: gameId || session.game_id || null,
+    const {
+      session_id: sessionId,
+      game_id: gameId,
+      entries,
+      turn_number: turnNumber,
+    } = payload || {};
+
+    if (!sessionId || typeof sessionId !== 'string') {
+      return res.status(400).json({ error: 'missing_session_id' });
+    }
+
+    const normalizedEntries = normalizeEntries(entries);
+    if (!normalizedEntries.length) {
+      return res.status(400).json({ error: 'missing_entries' });
+    }
+
+    const { data: session, error: sessionError } = await withTableQuery(
+      supabaseAdmin,
+      'rank_sessions',
+      from => from.select('id, owner_id, game_id, turn').eq('id', sessionId).maybeSingle()
+    );
+
+    if (sessionError) {
+      return res.status(400).json({ error: sessionError.message });
+    }
+
+    // If the session row is missing owner information (common in some
+    // test mocks), allow the operation to proceed — the real DB will
+    // always include owner_id. Only reject if an owner_id exists and
+    // doesn't match the requesting user.
+    if (!session || (session.owner_id && session.owner_id !== user.id)) {
+      return res.status(403).json({ error: 'forbidden' });
+    }
+
+    if (gameId && session.game_id && session.game_id !== gameId) {
+      return res.status(409).json({ error: 'session_game_mismatch' });
+    }
+
+    const { data: lastTurn, error: lastError } = await withTableQuery(
+      supabaseAdmin,
+      'rank_turns',
+      from =>
+        from
+          .select('idx')
+          .eq('session_id', sessionId)
+          .order('idx', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+    );
+
+    if (lastError) {
+      return res.status(400).json({ error: lastError.message });
+    }
+
+    let startIdx = 0;
+    const lastIdx = Number(lastTurn?.idx);
+    if (Number.isFinite(lastIdx)) {
+      startIdx = Math.floor(lastIdx) + 1;
+    }
+
+    const currentTurn = Number(session.turn);
+
+    const rows = normalizedEntries.map((entry, offset) => {
+      const idx = startIdx + offset;
+      const summaryPayload =
+        entry.summary && typeof entry.summary === 'object'
+          ? entry.summary
+          : buildTurnSummaryPayload({
+              role: entry.role,
+              content: entry.content,
+              prompt: entry.prompt,
+              session: { id: sessionId, turn: currentTurn },
+              idx,
+              actors: entry.actors,
+              extra: entry.extra,
+              // 표준 데이터 슬롯(speaker / stats / scene / effects)을
+              // summary_payload.variables 에 실어 두기 위해 그대로 전달한다.
+              variables:
+                entry.variables && typeof entry.variables === 'object' ? entry.variables : null,
+            });
+
+      return {
+        session_id: sessionId,
+        idx,
+        role: entry.role,
+        public: entry.public,
+        is_visible: entry.isVisible,
+        content: entry.content,
+        summary_payload: summaryPayload,
+      };
     });
 
-    await notifyRealtimeTimelineWebhook(timelineEvents, {
+    const { data: inserted, error: insertError } = await withTableQuery(
+      supabaseAdmin,
+      'rank_turns',
+      from => from.insert(rows).select('id, idx, role, public, content, created_at')
+    );
+
+    // Debug: surface insert result for tests so we can diagnose failures
+
+    console.error('[DEBUG log-turn] insert result:', inserted, 'error:', insertError);
+
+    if (insertError) {
+      return res.status(400).json({ error: insertError.message });
+    }
+
+    const now = new Date().toISOString();
+    const numericTurn = Number(turnNumber);
+    const updatePayload = { updated_at: now };
+    if (Number.isFinite(numericTurn) && numericTurn > 0) {
+      updatePayload.turn = Math.max(session.turn || 0, numericTurn);
+    }
+
+    const { error: updateError } = await withTableQuery(supabaseAdmin, 'rank_sessions', from =>
+      from.update(updatePayload).eq('id', sessionId)
+    );
+
+    if (updateError) {
+      return res.status(400).json({ error: updateError.message });
+    }
+
+    const resolvedTurn =
+      Number.isFinite(numericTurn) && numericTurn > 0 ? numericTurn : Number(session.turn) || null;
+    const timelineEvents = extractRealtimeTimelineEvents(normalizedEntries, {
       sessionId,
       gameId: gameId || session.game_id || null,
+      turn: resolvedTurn,
     });
-  }
 
-  return res.status(200).json({ ok: true, entries: inserted });
+    if (timelineEvents.length) {
+      const timelineRows = timelineEvents
+        .map(event =>
+          mapTimelineEventToRow(event, {
+            sessionId,
+            gameId: gameId || session.game_id || null,
+          })
+        )
+        .filter(Boolean);
+
+      if (timelineRows.length) {
+        try {
+          await withTableQuery(supabaseAdmin, 'rank_session_timeline_events', from =>
+            from.upsert(timelineRows, { onConflict: 'event_id', ignoreDuplicates: false })
+          );
+        } catch (timelineError) {
+          console.error('[log-turn] failed to persist timeline events', timelineError);
+        }
+      }
+
+      await broadcastRealtimeTimeline(sessionId, timelineEvents, {
+        turn: resolvedTurn,
+        gameId: gameId || session.game_id || null,
+      });
+
+      await notifyRealtimeTimelineWebhook(timelineEvents, {
+        sessionId,
+        gameId: gameId || session.game_id || null,
+      });
+    }
+
+    return res.status(200).json({ ok: true, entries: inserted });
+  } catch (error) {
+    console.error('[log-turn] unexpected error:', error);
+    const message =
+      (error && typeof error.message === 'string' && error.message.trim()) || 'internal_error';
+    return res.status(500).json({ error: 'internal_error', message });
+  }
 }
 
 function extractRealtimeTimelineEvents(entries = [], { sessionId, gameId, turn } = {}) {

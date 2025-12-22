@@ -460,334 +460,318 @@ function isServiceRoleAuthError(error) {
 }
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    res.setHeader('Allow', ['POST']);
-    return res.status(405).json({ error: 'method_not_allowed' });
-  }
-
-  const authHeader = req.headers.authorization || '';
-  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-  if (!token) {
-    return res.status(401).json({ error: 'unauthorized' });
-  }
-
-  let userId = null;
-  let userError = null;
-
   try {
-    const { data: userData, error } = await anonClient.auth.getUser(token);
-    userError = error || null;
-    userId = toOptionalUuid(userData?.user?.id);
-  } catch (error) {
-    userError = error;
-    userId = null;
-  }
+    if (req.method !== 'POST') {
+      res.setHeader('Allow', ['POST']);
+      return res.status(405).json({ error: 'method_not_allowed' });
+    }
 
-  if (!userId) {
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    if (!token) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+
+    let userId = null;
+    let userError = null;
+
     try {
-      const { data: serviceUser, error: serviceError } = await supabaseAdmin.auth.getUser(token);
-      if (!serviceError && serviceUser?.user?.id) {
-        userId = toOptionalUuid(serviceUser.user.id);
-        userError = null;
-      } else if (serviceError) {
-        userError = serviceError;
-      }
-    } catch (serviceException) {
-      userError = serviceException;
+      const { data: userData, error } = await anonClient.auth.getUser(token);
+      userError = error || null;
+      userId = toOptionalUuid(userData?.user?.id);
+    } catch (error) {
+      userError = error;
       userId = null;
     }
-  }
 
-  if (userError || !userId) {
-    return res.status(401).json({ error: 'unauthorized' });
-  }
+    if (!userId) {
+      try {
+        const { data: serviceUser, error: serviceError } = await supabaseAdmin.auth.getUser(token);
+        if (!serviceError && serviceUser?.user?.id) {
+          userId = toOptionalUuid(serviceUser.user.id);
+          userError = null;
+        } else if (serviceError) {
+          userError = serviceError;
+        }
+      } catch (serviceException) {
+        userError = serviceException;
+        userId = null;
+      }
+    }
 
-  const { payload, error } = parseBody(req);
-  if (error) {
-    return res.status(400).json({ error });
-  }
+    if (userError || !userId) {
+      return res.status(401).json({ error: 'unauthorized' });
+    }
 
-  const sessionId = toOptionalUuid(payload.session_id ?? payload.sessionId);
-  if (!sessionId) {
-    return res.status(400).json({ error: 'missing_session_id' });
-  }
+    const { payload, error } = parseBody(req);
+    if (error) {
+      return res.status(400).json({ error });
+    }
 
-  const gameId = toOptionalUuid(payload.game_id ?? payload.gameId);
-  const roomId = toOptionalUuid(payload.room_id ?? payload.roomId);
-  const matchInstanceId = toTrimmedString(payload.match_instance_id ?? payload.matchInstanceId);
-  const collaborators = parseCollaborators(
-    payload.collaborators ?? payload.shared_owners ?? payload.sharedOwners
-  );
+    const sessionId = toOptionalUuid(payload.session_id ?? payload.sessionId);
+    if (!sessionId) {
+      return res.status(400).json({ error: 'missing_session_id' });
+    }
 
-  const userAuthConfig = createSupabaseAuthConfig(url, {
-    apikey: anonKey,
-    authorization: `Bearer ${token}`,
-  });
+    const gameId = toOptionalUuid(payload.game_id ?? payload.gameId);
+    const roomId = toOptionalUuid(payload.room_id ?? payload.roomId);
+    const matchInstanceId = toTrimmedString(payload.match_instance_id ?? payload.matchInstanceId);
+    const collaborators = parseCollaborators(
+      payload.collaborators ?? payload.shared_owners ?? payload.sharedOwners
+    );
 
-  const userClient = createClient(url, anonKey, {
-    auth: { persistSession: false },
-    global: {
-      headers: { ...userAuthConfig.headers },
-      fetch: userAuthConfig.fetch,
-    },
-  });
-
-  const { data: sessionRow, error: sessionError } = await withTableQuery(
-    userClient,
-    'rank_sessions',
-    from => from.select('id, owner_id, game_id').eq('id', sessionId).maybeSingle()
-  );
-
-  if (sessionError) {
-    console.error('[session-meta] session lookup failed:', sessionError);
-    return res.status(400).json({ error: 'session_lookup_failed' });
-  }
-
-  if (!sessionRow) {
-    return res.status(404).json({ error: 'session_not_found' });
-  }
-
-  const ownerId = toOptionalUuid(sessionRow.owner_id);
-  const sessionGameId = toOptionalUuid(sessionRow.game_id);
-
-  let authorized = !!ownerId && ownerId === userId;
-  let sessionRoomId = null;
-  let serviceRoleAuthFailed = false;
-
-  if (!authorized) {
-    sessionRoomId = await resolveSessionRoomId(sessionId, {
-      fallbackRoomId: roomId,
-      sessionOwnerId: ownerId,
+    const userAuthConfig = createSupabaseAuthConfig(url, {
+      apikey: anonKey,
+      authorization: `Bearer ${token}`,
     });
-  }
 
-  if (!authorized && sessionRoomId) {
-    try {
-      const { data: slotRow, error: slotError } = await withTableQuery(
-        supabaseAdmin,
-        'rank_room_slots',
-        from =>
-          from
-            .select('occupant_owner_id, room_id')
-            .eq('room_id', sessionRoomId)
-            .eq('occupant_owner_id', userId)
-            .maybeSingle()
-      );
-      if (slotError) {
-        console.error('[session-meta] room slot lookup failed:', slotError);
-      } else if (slotRow) {
-        let roomMatchesSession = true;
+    const userClient = createClient(url, anonKey, {
+      auth: { persistSession: false },
+      global: {
+        headers: { ...userAuthConfig.headers },
+        fetch: userAuthConfig.fetch,
+      },
+    });
 
-        if (ownerId || sessionGameId) {
-          try {
-            const { data: roomRow, error: roomError } = await withTableQuery(
-              supabaseAdmin,
-              'rank_rooms',
-              from => from.select('id, owner_id, game_id').eq('id', sessionRoomId).maybeSingle()
-            );
+    const { data: sessionRow, error: sessionError } = await withTableQuery(
+      userClient,
+      'rank_sessions',
+      from => from.select('id, owner_id, game_id').eq('id', sessionId).maybeSingle()
+    );
 
-            if (roomError) {
-              console.error('[session-meta] room lookup failed:', roomError);
-              roomMatchesSession = false;
-            } else if (!roomRow) {
-              roomMatchesSession = false;
-            } else {
-              if (ownerId) {
-                const roomOwnerId = toOptionalUuid(roomRow.owner_id);
-                if (!roomOwnerId || roomOwnerId !== ownerId) {
-                  roomMatchesSession = false;
+    if (sessionError) {
+      console.error('[session-meta] session lookup failed:', sessionError);
+      return res.status(400).json({ error: 'session_lookup_failed' });
+    }
+
+    if (!sessionRow) {
+      return res.status(404).json({ error: 'session_not_found' });
+    }
+
+    const ownerId = toOptionalUuid(sessionRow.owner_id);
+    const sessionGameId = toOptionalUuid(sessionRow.game_id);
+
+    let authorized = !!ownerId && ownerId === userId;
+    let sessionRoomId = null;
+    let serviceRoleAuthFailed = false;
+
+    if (!authorized) {
+      sessionRoomId = await resolveSessionRoomId(sessionId, {
+        fallbackRoomId: roomId,
+        sessionOwnerId: ownerId,
+      });
+    }
+
+    if (!authorized && sessionRoomId) {
+      try {
+        const { data: slotRow, error: slotError } = await withTableQuery(
+          supabaseAdmin,
+          'rank_room_slots',
+          from =>
+            from
+              .select('occupant_owner_id, room_id')
+              .eq('room_id', sessionRoomId)
+              .eq('occupant_owner_id', userId)
+              .maybeSingle()
+        );
+        if (slotError) {
+          console.error('[session-meta] room slot lookup failed:', slotError);
+        } else if (slotRow) {
+          let roomMatchesSession = true;
+
+          if (ownerId || sessionGameId) {
+            try {
+              const { data: roomRow, error: roomError } = await withTableQuery(
+                supabaseAdmin,
+                'rank_rooms',
+                from => from.select('id, owner_id, game_id').eq('id', sessionRoomId).maybeSingle()
+              );
+
+              if (roomError) {
+                console.error('[session-meta] room lookup failed:', roomError);
+                roomMatchesSession = false;
+              } else if (!roomRow) {
+                roomMatchesSession = false;
+              } else {
+                if (ownerId) {
+                  const roomOwnerId = toOptionalUuid(roomRow.owner_id);
+                  if (!roomOwnerId || roomOwnerId !== ownerId) {
+                    roomMatchesSession = false;
+                  }
+                }
+
+                if (roomMatchesSession && sessionGameId) {
+                  const roomGameId = toOptionalUuid(roomRow.game_id);
+                  if (roomGameId && roomGameId !== sessionGameId) {
+                    roomMatchesSession = false;
+                  }
                 }
               }
-
-              if (roomMatchesSession && sessionGameId) {
-                const roomGameId = toOptionalUuid(roomRow.game_id);
-                if (roomGameId && roomGameId !== sessionGameId) {
-                  roomMatchesSession = false;
-                }
-              }
+            } catch (roomQueryError) {
+              console.error('[session-meta] room query error:', roomQueryError);
+              roomMatchesSession = false;
             }
-          } catch (roomQueryError) {
-            console.error('[session-meta] room query error:', roomQueryError);
-            roomMatchesSession = false;
+          }
+
+          if (roomMatchesSession) {
+            authorized = true;
           }
         }
-
-        if (roomMatchesSession) {
-          authorized = true;
-        }
+      } catch (roomError) {
+        console.error('[session-meta] room slot query error:', roomError);
       }
-    } catch (roomError) {
-      console.error('[session-meta] room slot query error:', roomError);
     }
-  }
 
-  if (!authorized && matchInstanceId) {
-    try {
-      const { data: rosterRow, error: rosterError } = await withTableQuery(
-        supabaseAdmin,
-        'rank_match_roster',
-        from =>
-          from
-            .select('owner_id, game_id')
-            .eq('match_instance_id', matchInstanceId)
-            .eq('owner_id', userId)
-            .maybeSingle()
-      );
-      if (rosterError) {
-        console.error('[session-meta] match roster lookup failed:', rosterError);
-      } else if (rosterRow) {
-        const rosterGameId = toOptionalUuid(rosterRow.game_id);
-        if (!sessionGameId || !rosterGameId || rosterGameId === sessionGameId) {
-          authorized = true;
-        }
-      }
-    } catch (rosterError) {
-      console.error('[session-meta] match roster query error:', rosterError);
-    }
-  }
-
-  if (!authorized && collaborators.length && collaborators.includes(userId)) {
-    const participantGameId = sessionGameId || gameId;
-    if (participantGameId) {
+    if (!authorized && matchInstanceId) {
       try {
-        const { data: participantRow, error: participantError } = await withTableQuery(
+        const { data: rosterRow, error: rosterError } = await withTableQuery(
           supabaseAdmin,
-          'rank_participants',
+          'rank_match_roster',
           from =>
             from
               .select('owner_id, game_id')
-              .eq('game_id', participantGameId)
+              .eq('match_instance_id', matchInstanceId)
               .eq('owner_id', userId)
               .maybeSingle()
         );
-        if (participantError) {
-          console.error('[session-meta] participant lookup failed:', participantError);
-        } else if (participantRow) {
-          authorized = true;
+        if (rosterError) {
+          console.error('[session-meta] match roster lookup failed:', rosterError);
+        } else if (rosterRow) {
+          const rosterGameId = toOptionalUuid(rosterRow.game_id);
+          if (!sessionGameId || !rosterGameId || rosterGameId === sessionGameId) {
+            authorized = true;
+          }
         }
-      } catch (participantError) {
-        console.error('[session-meta] participant query error:', participantError);
+      } catch (rosterError) {
+        console.error('[session-meta] match roster query error:', rosterError);
       }
     }
-  }
 
-  if (!authorized) {
-    console.warn('[session-meta] unauthorized session meta attempt', {
-      sessionId,
-      userId,
-    });
-    return res.status(403).json({ error: 'forbidden' });
-  }
+    if (!authorized && collaborators.length && collaborators.includes(userId)) {
+      const participantGameId = sessionGameId || gameId;
+      if (participantGameId) {
+        try {
+          const { data: participantRow, error: participantError } = await withTableQuery(
+            supabaseAdmin,
+            'rank_participants',
+            from =>
+              from
+                .select('owner_id, game_id')
+                .eq('game_id', participantGameId)
+                .eq('owner_id', userId)
+                .maybeSingle()
+          );
+          if (participantError) {
+            console.error('[session-meta] participant lookup failed:', participantError);
+          } else if (participantRow) {
+            authorized = true;
+          }
+        } catch (participantError) {
+          console.error('[session-meta] participant query error:', participantError);
+        }
+      }
+    }
 
-  if (gameId && sessionGameId && sessionGameId !== gameId) {
-    return res.status(409).json({ error: 'session_game_mismatch' });
-  }
+    if (!authorized) {
+      console.warn('[session-meta] unauthorized session meta attempt', {
+        sessionId,
+        userId,
+      });
+      return res.status(403).json({ error: 'forbidden' });
+    }
 
-  const metaPayload = sanitizeMeta(payload.meta);
-  const eventPayload = sanitizeTurnStateEvent(payload.turn_state_event ?? payload.turnStateEvent);
-  const rpcPayload = {
-    p_session_id: sessionId,
-    p_selected_time_limit: metaPayload.selected_time_limit_seconds,
-    p_time_vote: metaPayload.time_vote,
-    p_drop_in_bonus_seconds: metaPayload.drop_in_bonus_seconds,
-    p_turn_state: metaPayload.turn_state,
-    p_async_fill_snapshot: metaPayload.async_fill_snapshot,
-    p_realtime_mode: metaPayload.realtime_mode,
-    p_extras: metaPayload.extras ?? null,
-  };
+    if (gameId && sessionGameId && sessionGameId !== gameId) {
+      return res.status(409).json({ error: 'session_game_mismatch' });
+    }
 
-  let metaResult = null;
-  let metaError = null;
-  try {
-    const { data, error: primaryError } = await supabaseAdmin.rpc(
-      'upsert_match_session_meta',
-      rpcPayload
-    );
-    metaResult = data;
-    metaError = primaryError;
-  } catch (rpcError) {
-    metaError = rpcError;
-  }
+    const metaPayload = sanitizeMeta(payload.meta);
+    const eventPayload = sanitizeTurnStateEvent(payload.turn_state_event ?? payload.turnStateEvent);
+    const rpcPayload = {
+      p_session_id: sessionId,
+      p_selected_time_limit: metaPayload.selected_time_limit_seconds,
+      p_time_vote: metaPayload.time_vote,
+      p_drop_in_bonus_seconds: metaPayload.drop_in_bonus_seconds,
+      p_turn_state: metaPayload.turn_state,
+      p_async_fill_snapshot: metaPayload.async_fill_snapshot,
+      p_realtime_mode: metaPayload.realtime_mode,
+      p_extras: metaPayload.extras ?? null,
+    };
 
-  if (metaError && isServiceRoleAuthError(metaError)) {
-    serviceRoleAuthFailed = true;
+    let metaResult = null;
+    let metaError = null;
     try {
-      const { data, error: fallbackError } = await userClient.rpc(
+      const { data, error: primaryError } = await supabaseAdmin.rpc(
         'upsert_match_session_meta',
         rpcPayload
       );
       metaResult = data;
-      metaError = fallbackError || null;
-    } catch (fallbackFailure) {
-      metaError = fallbackFailure;
-    }
-  }
-
-  const missingColumns = metaError ? extractMissingColumnNames(metaError) : [];
-  const hasAmbiguousSessionId = metaError ? isAmbiguousColumnError(metaError, 'session_id') : false;
-  const shouldUseLegacyFallback =
-    metaError &&
-    (isMissingFunctionError(metaError, 'upsert_match_session_meta') ||
-      missingColumns.length > 0 ||
-      hasAmbiguousSessionId);
-
-  if (shouldUseLegacyFallback) {
-    console.warn('[session-meta] RPC unavailable, attempting direct table upsert', {
-      code: metaError.code,
-      message: metaError.message,
-      reason: missingColumns.length
-        ? 'missing_columns'
-        : hasAmbiguousSessionId
-          ? 'ambiguous_session_id'
-          : 'missing_function',
-    });
-    const legacyResult = await upsertMetaViaLegacyTable(
-      serviceRoleAuthFailed ? userClient : supabaseAdmin,
-      sessionId,
-      metaPayload,
-      { initialSkip: missingColumns }
-    );
-
-    if (!legacyResult.error) {
-      metaResult = legacyResult.data;
-      metaError = null;
-    } else {
-      metaError = legacyResult.error;
-    }
-  }
-
-  if (metaError) {
-    console.error('[session-meta] upsert failed:', metaError);
-    const supabaseError = serializeSupabaseError(metaError);
-    return res
-      .status(500)
-      .json(supabaseError ? { error: 'upsert_failed', supabaseError } : { error: 'upsert_failed' });
-  }
-
-  let eventResult = null;
-  let timelineEvent = null;
-  if (eventPayload) {
-    let eventError = null;
-    let eventData = null;
-    try {
-      const { data, error } = await supabaseAdmin.rpc('enqueue_rank_turn_state_event', {
-        p_session_id: sessionId,
-        p_turn_state: eventPayload.turn_state,
-        p_turn_number: eventPayload.turn_number,
-        p_source: eventPayload.source,
-        p_emitter: eventPayload.emitter_id,
-        p_extras: eventPayload.extras,
-      });
-      eventData = data;
-      eventError = error;
+      metaError = primaryError;
     } catch (rpcError) {
-      eventError = rpcError;
+      metaError = rpcError;
     }
 
-    if (eventError && (serviceRoleAuthFailed || isServiceRoleAuthError(eventError))) {
+    if (metaError && isServiceRoleAuthError(metaError)) {
       serviceRoleAuthFailed = true;
       try {
-        const { data, error } = await userClient.rpc('enqueue_rank_turn_state_event', {
+        const { data, error: fallbackError } = await userClient.rpc(
+          'upsert_match_session_meta',
+          rpcPayload
+        );
+        metaResult = data;
+        metaError = fallbackError || null;
+      } catch (fallbackFailure) {
+        metaError = fallbackFailure;
+      }
+    }
+
+    const missingColumns = metaError ? extractMissingColumnNames(metaError) : [];
+    const hasAmbiguousSessionId = metaError ? isAmbiguousColumnError(metaError, 'session_id') : false;
+    const shouldUseLegacyFallback =
+      metaError &&
+      (isMissingFunctionError(metaError, 'upsert_match_session_meta') ||
+        missingColumns.length > 0 ||
+        hasAmbiguousSessionId);
+
+    if (shouldUseLegacyFallback) {
+      console.warn('[session-meta] RPC unavailable, attempting direct table upsert', {
+        code: metaError.code,
+        message: metaError.message,
+        reason: missingColumns.length
+          ? 'missing_columns'
+          : hasAmbiguousSessionId
+            ? 'ambiguous_session_id'
+            : 'missing_function',
+      });
+      const legacyResult = await upsertMetaViaLegacyTable(
+        serviceRoleAuthFailed ? userClient : supabaseAdmin,
+        sessionId,
+        metaPayload,
+        { initialSkip: missingColumns }
+      );
+
+      if (!legacyResult.error) {
+        metaResult = legacyResult.data;
+        metaError = null;
+      } else {
+        metaError = legacyResult.error;
+      }
+    }
+
+    if (metaError) {
+      console.error('[session-meta] upsert failed:', metaError);
+      const supabaseError = serializeSupabaseError(metaError);
+      return res.status(500).json(
+        supabaseError ? { error: 'upsert_failed', supabaseError } : { error: 'upsert_failed' }
+      );
+    }
+
+    let eventResult = null;
+    let timelineEvent = null;
+    if (eventPayload) {
+      let eventError = null;
+      let eventData = null;
+      try {
+        const { data, error } = await supabaseAdmin.rpc('enqueue_rank_turn_state_event', {
           p_session_id: sessionId,
           p_turn_state: eventPayload.turn_state,
           p_turn_number: eventPayload.turn_number,
@@ -796,100 +780,126 @@ export default async function handler(req, res) {
           p_extras: eventPayload.extras,
         });
         eventData = data;
-        eventError = error || null;
-      } catch (fallbackError) {
-        eventError = fallbackError;
+        eventError = error;
+      } catch (rpcError) {
+        eventError = rpcError;
       }
-    }
 
-    if (eventError) {
-      console.error('[session-meta] enqueue event failed:', eventError);
-    } else {
-      eventResult = eventData;
+      if (eventError && (serviceRoleAuthFailed || isServiceRoleAuthError(eventError))) {
+        serviceRoleAuthFailed = true;
+        try {
+          const { data, error } = await userClient.rpc('enqueue_rank_turn_state_event', {
+            p_session_id: sessionId,
+            p_turn_state: eventPayload.turn_state,
+            p_turn_number: eventPayload.turn_number,
+            p_source: eventPayload.source,
+            p_emitter: eventPayload.emitter_id,
+            p_extras: eventPayload.extras,
+          });
+          eventData = data;
+          eventError = error || null;
+        } catch (fallbackError) {
+          eventError = fallbackError;
+        }
+      }
 
-      const bonusSeconds = Number(
-        eventPayload.extras?.dropInBonusSeconds ??
-          eventPayload.turn_state?.dropInBonusSeconds ??
-          metaPayload.drop_in_bonus_seconds ??
-          0
-      );
+      if (eventError) {
+        console.error('[session-meta] enqueue event failed:', eventError);
+      } else {
+        eventResult = eventData;
 
-      if (bonusSeconds > 0 && eventPayload.extras?.dropIn) {
-        const appliedAt = Number(
-          eventPayload.extras?.dropInBonusAppliedAt ??
-            eventPayload.turn_state?.dropInBonusAppliedAt ??
-            metaPayload.turn_state?.dropInBonusAppliedAt ??
-            Date.now()
+        const bonusSeconds = Number(
+          eventPayload.extras?.dropInBonusSeconds ??
+            eventPayload.turn_state?.dropInBonusSeconds ??
+            metaPayload.drop_in_bonus_seconds ??
+            0
         );
 
-        const timelineCandidate = buildDropInExtensionTimelineEvent({
-          extraSeconds: bonusSeconds,
-          appliedAt,
-          hasActiveDeadline:
-            Number.isFinite(Number(eventPayload.turn_state?.deadline)) &&
-            Number(eventPayload.turn_state.deadline) > 0,
-          dropInMeta: eventPayload.extras.dropIn,
-          arrivals: eventPayload.extras.dropIn.arrivals || [],
-          mode: metaPayload.realtime_mode,
-          turnNumber:
-            eventPayload.turn_number ??
-            eventPayload.turn_state?.turnNumber ??
-            metaPayload.turn_state?.turnNumber ??
-            null,
-        });
+        if (bonusSeconds > 0 && eventPayload.extras?.dropIn) {
+          const appliedAt = Number(
+            eventPayload.extras?.dropInBonusAppliedAt ??
+              eventPayload.turn_state?.dropInBonusAppliedAt ??
+              metaPayload.turn_state?.dropInBonusAppliedAt ??
+              Date.now()
+          );
 
-        if (timelineCandidate) {
-          const row = mapTimelineEventToRow(timelineCandidate, {
-            sessionId,
-            gameId: gameId || null,
+          const timelineCandidate = buildDropInExtensionTimelineEvent({
+            extraSeconds: bonusSeconds,
+            appliedAt,
+            hasActiveDeadline:
+              Number.isFinite(Number(eventPayload.turn_state?.deadline)) &&
+              Number(eventPayload.turn_state.deadline) > 0,
+            dropInMeta: eventPayload.extras.dropIn,
+            arrivals: eventPayload.extras.dropIn.arrivals || [],
+            mode: metaPayload.realtime_mode,
+            turnNumber:
+              eventPayload.turn_number ??
+              eventPayload.turn_state?.turnNumber ??
+              metaPayload.turn_state?.turnNumber ??
+              null,
           });
 
-          if (row) {
-            if (serviceRoleAuthFailed) {
-              console.warn('[session-meta] skipping timeline upsert due to service auth failure');
-            } else {
-              try {
-                const { error: timelineError } = await withTableQuery(
-                  supabaseAdmin,
-                  'rank_session_timeline_events',
-                  from =>
-                    from.upsert([row], {
-                      onConflict: 'event_id',
-                      ignoreDuplicates: false,
-                    })
-                );
+          if (timelineCandidate) {
+            const row = mapTimelineEventToRow(timelineCandidate, {
+              sessionId,
+              gameId: gameId || null,
+            });
 
-                if (!timelineError) {
-                  timelineEvent = timelineCandidate;
-                  await broadcastRealtimeTimeline(sessionId, [timelineCandidate], {
-                    turn: timelineCandidate.turn ?? null,
-                    gameId: gameId || null,
-                  });
-                  await notifyRealtimeTimelineWebhook([timelineCandidate], {
-                    sessionId,
-                    gameId: gameId || null,
-                  });
-                } else {
-                  if (isServiceRoleAuthError(timelineError)) {
-                    serviceRoleAuthFailed = true;
-                    console.warn('[session-meta] timeline upsert requires service role access');
+            if (row) {
+              if (serviceRoleAuthFailed) {
+                console.warn('[session-meta] skipping timeline upsert due to service auth failure');
+              } else {
+                try {
+                  const { error: timelineError } = await withTableQuery(
+                    supabaseAdmin,
+                    'rank_session_timeline_events',
+                    from =>
+                      from.upsert([row], {
+                        onConflict: 'event_id',
+                        ignoreDuplicates: false,
+                      })
+                  );
+
+                  if (!timelineError) {
+                    timelineEvent = timelineCandidate;
+                    await broadcastRealtimeTimeline(sessionId, [timelineCandidate], {
+                      turn: timelineCandidate.turn ?? null,
+                      gameId: gameId || null,
+                    });
+                    await notifyRealtimeTimelineWebhook([timelineCandidate], {
+                      sessionId,
+                      gameId: gameId || null,
+                    });
+                  } else {
+                    if (isServiceRoleAuthError(timelineError)) {
+                      serviceRoleAuthFailed = true;
+                      console.warn('[session-meta] timeline upsert requires service role access');
+                    }
+                    console.error('[session-meta] timeline upsert failed', timelineError);
                   }
-                  console.error('[session-meta] timeline upsert failed', timelineError);
+                } catch (timelineError) {
+                  console.error('[session-meta] timeline persistence error', timelineError);
                 }
-              } catch (timelineError) {
-                console.error('[session-meta] timeline persistence error', timelineError);
               }
             }
           }
         }
       }
     }
-  }
 
-  return res.status(200).json({
-    ok: true,
-    meta: Array.isArray(metaResult) ? metaResult[0] || null : metaResult || null,
-    event: Array.isArray(eventResult) ? eventResult[0] || null : eventResult || null,
-    timelineEvent,
-  });
+    return res.status(200).json({
+      ok: true,
+      meta: Array.isArray(metaResult) ? metaResult[0] || null : metaResult || null,
+      event: Array.isArray(eventResult) ? eventResult[0] || null : eventResult || null,
+      timelineEvent,
+    });
+  } catch (error) {
+    console.error('[session-meta] unexpected error:', error);
+    const supabaseError = serializeSupabaseError(error);
+    return res
+      .status(500)
+      .json(
+        supabaseError ? { error: 'internal_error', supabaseError } : { error: 'internal_error' }
+      );
+  }
 }

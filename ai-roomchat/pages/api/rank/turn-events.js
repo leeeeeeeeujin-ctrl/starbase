@@ -42,40 +42,47 @@ function sanitizeLimit(value) {
 }
 
 export default async function handler(req, res) {
-  if (req.method === 'OPTIONS') {
-    res.setHeader('Allow', ['GET']);
-    return res.status(204).end();
+  try {
+    if (req.method === 'OPTIONS') {
+      res.setHeader('Allow', ['GET']);
+      return res.status(204).end();
+    }
+
+    if (req.method !== 'GET') {
+      res.setHeader('Allow', ['GET']);
+      return res.status(405).json({ error: 'method_not_allowed' });
+    }
+
+    const sessionId = sanitizeSessionId(req.query.sessionId || req.query.session_id);
+    if (!sessionId) {
+      return res.status(400).json({ error: 'missing_session_id' });
+    }
+
+    const since = sanitizeSince(req.query.since || req.query.after || req.query.emittedAfter);
+    const limit = sanitizeLimit(req.query.limit);
+    if (limit === null) {
+      return res.status(400).json({ error: 'invalid_limit' });
+    }
+
+    const rpcPayload = {
+      p_session_id: sessionId,
+      p_since: since,
+      p_limit: limit,
+    };
+
+    const { data, error } = await supabaseAdmin.rpc('fetch_rank_turn_state_events', rpcPayload);
+
+    if (error) {
+      console.error('[turn-events] fetch failed:', error);
+      return res.status(500).json({ error: 'fetch_failed' });
+    }
+
+    const events = Array.isArray(data) ? data : [];
+    return res.status(200).json({ ok: true, events });
+  } catch (error) {
+    console.error('[turn-events] unexpected error:', error);
+    const message =
+      (error && typeof error.message === 'string' && error.message.trim()) || 'internal_error';
+    return res.status(500).json({ error: 'internal_error', message });
   }
-
-  if (req.method !== 'GET') {
-    res.setHeader('Allow', ['GET']);
-    return res.status(405).json({ error: 'method_not_allowed' });
-  }
-
-  const sessionId = sanitizeSessionId(req.query.sessionId || req.query.session_id);
-  if (!sessionId) {
-    return res.status(400).json({ error: 'missing_session_id' });
-  }
-
-  const since = sanitizeSince(req.query.since || req.query.after || req.query.emittedAfter);
-  const limit = sanitizeLimit(req.query.limit);
-  if (limit === null) {
-    return res.status(400).json({ error: 'invalid_limit' });
-  }
-
-  const rpcPayload = {
-    p_session_id: sessionId,
-    p_since: since,
-    p_limit: limit,
-  };
-
-  const { data, error } = await supabaseAdmin.rpc('fetch_rank_turn_state_events', rpcPayload);
-
-  if (error) {
-    console.error('[turn-events] fetch failed:', error);
-    return res.status(500).json({ error: 'fetch_failed' });
-  }
-
-  const events = Array.isArray(data) ? data : [];
-  return res.status(200).json({ ok: true, events });
 }
