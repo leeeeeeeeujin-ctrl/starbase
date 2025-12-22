@@ -27,6 +27,16 @@ const anonClient = createClient(url, anonKey, {
   },
 });
 
+function serializeError(error) {
+  if (!error) return null;
+  const base = {
+    name: error.name || undefined,
+    message: error.message || String(error),
+  };
+  if (error.stack) base.stack = error.stack;
+  return base;
+}
+
 function buildSessionSummary({ mode, role, matchCode, turnTimer, createdAt }) {
   const lines = ['랭크 세션이 시작되었습니다.'];
 
@@ -55,149 +65,61 @@ function buildSessionSummary({ mode, role, matchCode, turnTimer, createdAt }) {
 }
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    res.setHeader('Allow', ['POST']);
-    return res.status(405).json({ error: 'method_not_allowed' });
-  }
+  const debugId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
-  const authHeader = req.headers.authorization || '';
-  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-  if (!token) {
-    return res.status(401).json({ error: 'unauthorized' });
-  }
-
-  const { data: userData, error: userError } = await anonClient.auth.getUser(token);
-  const user = userData?.user || null;
-  if (userError || !user) {
-    return res.status(401).json({ error: 'unauthorized' });
-  }
-
-  let payload = req.body;
-  if (typeof payload === 'string') {
-    try {
-      payload = JSON.parse(payload || '{}');
-    } catch (error) {
-      return res.status(400).json({ error: 'invalid_payload' });
+  try {
+    if (req.method !== 'POST') {
+      res.setHeader('Allow', ['POST']);
+      return res.status(405).json({ error: 'method_not_allowed' });
     }
-  }
 
-  const { game_id, mode, role, match_code, turn_timer, session_policy } = payload || {};
-
-  if (!game_id) {
-    return res.status(400).json({ error: 'missing_game_id' });
-  }
-
-  const ownerId = user.id;
-  const now = new Date().toISOString();
-
-  const sessionPolicy =
-    typeof session_policy === 'string' && session_policy.trim()
-      ? session_policy.trim()
-      : '';
-  const forceNewSession = sessionPolicy === 'new_per_match';
-
-  const { data: participant, error: participantError } = await withTableQuery(
-    supabaseAdmin,
-    'rank_participants',
-    async from => {
-      const qRes = await from
-        .select('id, status, role, hero_id')
-        .eq('game_id', game_id)
-        .eq('owner_id', ownerId)
-        .limit(1);
-      return {
-        data: Array.isArray(qRes.data) ? qRes.data[0] || null : qRes.data,
-        error: qRes.error,
-      };
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    if (!token) {
+      return res.status(401).json({ error: 'unauthorized' });
     }
-  );
 
-  if (participantError) {
-    return res.status(400).json({ error: participantError.message });
-  }
-
-  if (!participant || !participant.hero_id) {
-    return res.status(403).json({ error: 'participant_not_found' });
-  }
-
-  if (participant.status && participant.status === 'out') {
-    return res.status(409).json({ error: 'participant_inactive' });
-  }
-
-  const { data: existingSession, error: existingError } = await withTableQuery(
-    supabaseAdmin,
-    'rank_sessions',
-    async from => {
-      const qRes = await from
-        .select('id, status, created_at, updated_at')
-        .eq('game_id', game_id)
-        .eq('owner_id', ownerId)
-        .order('created_at', { ascending: false })
-        .limit(1);
-      return {
-        data: Array.isArray(qRes.data) ? qRes.data[0] || null : qRes.data,
-        error: qRes.error,
-      };
+    const { data: userData, error: userError } = await anonClient.auth.getUser(token);
+    const user = userData?.user || null;
+    if (userError || !user) {
+      console.error('[start-session][auth]', debugId, serializeError(userError));
+      return res.status(401).json({ error: 'unauthorized' });
     }
-  );
 
-  if (existingError) {
-    return res.status(400).json({ error: existingError.message });
-  }
-
-  let session = existingSession || null;
-  let created = false;
-
-  // Determine whether an existing "active" session is still recent enough
-  // to be reused. If it's too old, we treat it as stale and create a new one.
-  let reuseExisting = false;
-  if (!forceNewSession && session && session.status === 'active') {
-    const thresholdMs = STALE_SESSION_THRESHOLD_MINUTES * 60 * 1000;
-    const updatedAtRaw = session.updated_at || session.created_at;
-    const updatedAtMs = updatedAtRaw ? Date.parse(updatedAtRaw) : NaN;
-    if (Number.isFinite(updatedAtMs)) {
-      const ageMs = Date.now() - updatedAtMs;
-      if (ageMs <= thresholdMs) {
-        reuseExisting = true;
+    let payload = req.body;
+    if (typeof payload === 'string') {
+      try {
+        payload = JSON.parse(payload || '{}');
+      } catch (error) {
+        console.error('[start-session][payload-parse]', debugId, serializeError(error));
+        return res.status(400).json({ error: 'invalid_payload' });
       }
     }
-  }
 
-  if (!session || !reuseExisting) {
-    // If there was a stale "active" session, mark it aborted so it no longer
-    // participates in future lookups or analytics as a live game.
-    if (session && session.status === 'active' && !reuseExisting) {
-      await withTableQuery(supabaseAdmin, 'rank_sessions', from =>
-        from
-          .update({ status: 'aborted', updated_at: now })
-          .eq('id', session.id)
-      );
+    const { game_id, mode, role, match_code, turn_timer, session_policy } = payload || {};
+
+    if (!game_id) {
+      return res.status(400).json({ error: 'missing_game_id' });
     }
 
-    const { data: inserted, error: insertError } = await withTableQuery(
+    const ownerId = user.id;
+    const now = new Date().toISOString();
+
+    const sessionPolicy =
+      typeof session_policy === 'string' && session_policy.trim()
+        ? session_policy.trim()
+        : '';
+    const forceNewSession = sessionPolicy === 'new_per_match';
+
+    const { data: participant, error: participantError } = await withTableQuery(
       supabaseAdmin,
-      'rank_sessions',
+      'rank_participants',
       async from => {
-        const insertResultOrChain = from.insert({
-          game_id,
-          owner_id: ownerId,
-          status: 'active',
-          turn: 0,
-          created_at: now,
-          updated_at: now,
-        });
-
-        let qRes;
-        // Some mocks return a Promise directly from insert(...). Other clients
-        // (real supabase) return a chain allowing .select(...).limit(...).
-        if (insertResultOrChain && typeof insertResultOrChain.then === 'function') {
-          qRes = await insertResultOrChain;
-        } else if (insertResultOrChain && typeof insertResultOrChain.select === 'function') {
-          qRes = await insertResultOrChain.select('id, status, created_at').limit(1);
-        } else {
-          qRes = { data: null, error: null };
-        }
-
+        const qRes = await from
+          .select('id, status, role, hero_id')
+          .eq('game_id', game_id)
+          .eq('owner_id', ownerId)
+          .limit(1);
         return {
           data: Array.isArray(qRes.data) ? qRes.data[0] || null : qRes.data,
           error: qRes.error,
@@ -205,77 +127,219 @@ export default async function handler(req, res) {
       }
     );
 
-    if (insertError) {
-      return res.status(400).json({ error: insertError.message });
+    if (participantError) {
+      console.error('[start-session][participant]', debugId, {
+        game_id,
+        ownerId,
+        error: serializeError(participantError),
+      });
+      return res.status(400).json({ error: participantError.message });
     }
 
-    session = inserted;
-    created = true;
-  } else {
-    const { error: touchError } = await withTableQuery(supabaseAdmin, 'rank_sessions', from =>
-      from.update({ updated_at: now }).eq('id', session.id)
+    if (!participant || !participant.hero_id) {
+      console.error('[start-session][participant-not-found]', debugId, {
+        game_id,
+        ownerId,
+        participant,
+      });
+      return res.status(403).json({ error: 'participant_not_found' });
+    }
+
+    if (participant.status && participant.status === 'out') {
+      console.error('[start-session][participant-inactive]', debugId, {
+        game_id,
+        ownerId,
+        status: participant.status,
+      });
+      return res.status(409).json({ error: 'participant_inactive' });
+    }
+
+    const { data: existingSession, error: existingError } = await withTableQuery(
+      supabaseAdmin,
+      'rank_sessions',
+      async from => {
+        const qRes = await from
+          .select('id, status, created_at, updated_at')
+          .eq('game_id', game_id)
+          .eq('owner_id', ownerId)
+          .order('created_at', { ascending: false })
+          .limit(1);
+        return {
+          data: Array.isArray(qRes.data) ? qRes.data[0] || null : qRes.data,
+          error: qRes.error,
+        };
+      }
     );
-    if (touchError) {
-      return res.status(400).json({ error: touchError.message });
+
+    if (existingError) {
+      console.error('[start-session][existing-session]', debugId, {
+        game_id,
+        ownerId,
+        error: serializeError(existingError),
+      });
+      return res.status(400).json({ error: existingError.message });
     }
-  }
 
-  if (created) {
-    const summary = buildSessionSummary({
-      mode,
-      role: role || participant.role,
-      matchCode: match_code,
-      turnTimer: turn_timer,
-      createdAt: session.created_at || now,
-    });
+    let session = existingSession || null;
+    let created = false;
 
-    const { error: turnError } = await withTableQuery(supabaseAdmin, 'rank_turns', from =>
-      from.insert({
-        session_id: session.id,
-        idx: 0,
-        role: 'system',
-        public: true,
-        content: summary,
-        created_at: now,
-      })
-    );
-
-    if (turnError) {
-      return res.status(400).json({ error: turnError.message });
+  // Determine whether an existing "active" session is still recent enough
+  // to be reused. If it's too old, we treat it as stale and create a new one.
+    let reuseExisting = false;
+    if (!forceNewSession && session && session.status === 'active') {
+      const thresholdMs = STALE_SESSION_THRESHOLD_MINUTES * 60 * 1000;
+      const updatedAtRaw = session.updated_at || session.created_at;
+      const updatedAtMs = updatedAtRaw ? Date.parse(updatedAtRaw) : NaN;
+      if (Number.isFinite(updatedAtMs)) {
+        const ageMs = Date.now() - updatedAtMs;
+        if (ageMs <= thresholdMs) {
+          reuseExisting = true;
+        }
+      }
     }
-  }
 
-  // Once a rank session is (re)started for this owner+game, any matched queue
-  // entries for the same owner/game are no longer needed. Mark them as
-  // consumed so subsequent enqueue attempts are not blocked by stale
-  // `status = 'matched'` rows.
-  try {
-    await withTableQuery(supabaseAdmin, 'rank_match_queue', async from => {
-      const qRes = await from
-        .update({ status: 'consumed', party_key: null, updated_at: now })
-        .eq('game_id', game_id)
-        .eq('owner_id', ownerId)
-        .eq('status', 'matched');
-      return {
-        data: qRes.data,
-        error: qRes.error,
-      };
+    if (!session || !reuseExisting) {
+      // If there was a stale "active" session, mark it aborted so it no longer
+      // participates in future lookups or analytics as a live game.
+      if (session && session.status === 'active' && !reuseExisting) {
+        try {
+          await withTableQuery(supabaseAdmin, 'rank_sessions', from =>
+            from
+              .update({ status: 'aborted', updated_at: now })
+              .eq('id', session.id)
+          );
+        } catch (abortError) {
+          console.error('[start-session][abort-stale-session]', debugId, {
+            game_id,
+            ownerId,
+            sessionId: session.id,
+            error: serializeError(abortError),
+          });
+        }
+      }
+
+      const { data: inserted, error: insertError } = await withTableQuery(
+        supabaseAdmin,
+        'rank_sessions',
+        async from => {
+          const insertResultOrChain = from.insert({
+            game_id,
+            owner_id: ownerId,
+            status: 'active',
+            turn: 0,
+            created_at: now,
+            updated_at: now,
+          });
+
+          let qRes;
+          // Some mocks return a Promise directly from insert(...). Other clients
+          // (real supabase) return a chain allowing .select(...).limit(...).
+          if (insertResultOrChain && typeof insertResultOrChain.then === 'function') {
+            qRes = await insertResultOrChain;
+          } else if (insertResultOrChain && typeof insertResultOrChain.select === 'function') {
+            qRes = await insertResultOrChain.select('id, status, created_at').limit(1);
+          } else {
+            qRes = { data: null, error: null };
+          }
+
+          return {
+            data: Array.isArray(qRes.data) ? qRes.data[0] || null : qRes.data,
+            error: qRes.error,
+          };
+        }
+      );
+
+      if (insertError) {
+        console.error('[start-session][insert-session]', debugId, {
+          game_id,
+          ownerId,
+          error: serializeError(insertError),
+        });
+        return res.status(400).json({ error: insertError.message });
+      }
+
+      session = inserted;
+      created = true;
+    } else {
+      const { error: touchError } = await withTableQuery(supabaseAdmin, 'rank_sessions', from =>
+        from.update({ updated_at: now }).eq('id', session.id)
+      );
+      if (touchError) {
+        console.error('[start-session][touch-session]', debugId, {
+          game_id,
+          ownerId,
+          sessionId: session.id,
+          error: serializeError(touchError),
+        });
+        return res.status(400).json({ error: touchError.message });
+      }
+    }
+
+    if (created) {
+      const summary = buildSessionSummary({
+        mode,
+        role: role || participant.role,
+        matchCode: match_code,
+        turnTimer: turn_timer,
+        createdAt: session.created_at || now,
+      });
+
+      const { error: turnError } = await withTableQuery(supabaseAdmin, 'rank_turns', from =>
+        from.insert({
+          session_id: session.id,
+          idx: 0,
+          role: 'system',
+          public: true,
+          content: summary,
+          created_at: now,
+        })
+      );
+
+      if (turnError) {
+        console.error('[start-session][insert-turn]', debugId, {
+          game_id,
+          ownerId,
+          sessionId: session.id,
+          error: serializeError(turnError),
+        });
+        return res.status(400).json({ error: turnError.message });
+      }
+    }
+
+    // Once a rank session is (re)started for this owner+game, any matched queue
+    // entries for the same owner/game are no longer needed. Mark them as
+    // consumed so subsequent enqueue attempts are not blocked by stale
+    // `status = 'matched'` rows.
+    try {
+      await withTableQuery(supabaseAdmin, 'rank_match_queue', async from => {
+        const qRes = await from
+          .update({ status: 'consumed', party_key: null, updated_at: now })
+          .eq('game_id', game_id)
+          .eq('owner_id', ownerId)
+          .eq('status', 'matched');
+        return {
+          data: qRes.data,
+          error: qRes.error,
+        };
+      });
+    } catch (queueCleanupError) {
+      // Best-effort: 큐 정리 실패는 세션 시작 자체를 막지 않는다.
+      console.warn('[start-session][queue-cleanup]', debugId, serializeError(queueCleanupError));
+    }
+
+    return res.status(200).json({
+      ok: true,
+      session: {
+        id: session.id,
+        status: session.status,
+        created_at: session.created_at,
+        reused: !created,
+        turn_timer:
+          Number.isFinite(Number(turn_timer)) && Number(turn_timer) > 0 ? Number(turn_timer) : null,
+      },
     });
-  } catch (queueCleanupError) {
-    // Best-effort: 큐 정리 실패는 세션 시작 자체를 막지 않는다.
-    // eslint-disable-next-line no-console
-    console.warn('[start-session] failed to consume matched queue entries:', queueCleanupError);
+  } catch (error) {
+    console.error('[start-session][fatal]', debugId, serializeError(error));
+    return res.status(500).json({ error: 'internal_error', debug_id: debugId });
   }
-
-  return res.status(200).json({
-    ok: true,
-    session: {
-      id: session.id,
-      status: session.status,
-      created_at: session.created_at,
-      reused: !created,
-      turn_timer:
-        Number.isFinite(Number(turn_timer)) && Number(turn_timer) > 0 ? Number(turn_timer) : null,
-    },
-  });
 }
