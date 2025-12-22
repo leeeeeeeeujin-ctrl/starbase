@@ -3191,6 +3191,12 @@ Supabase/SQL 작업 협업 메모:
         }
         ```
       - `game_id` 기준으로 upsert (없으면 insert, 있으면 update).
+      - 구현 상세:
+        - 런타임 설정은 `lib/runtime/runtimeConfig.js` 의
+          `defaultRuntimeConfig` / `parseRuntimeConfig(text)` / `stringifyRuntimeConfig(config)`
+          를 통해 생성·검증·직렬화된다.
+        - Maker, Rank 메인(StartClient), CodeWorkspaceProvider 의 기본 `/game/runtime.config.json`
+          은 이 헬퍼를 공유해 스키마와 기본값을 일관되게 유지한다.
   - API:
     - `GET /api/rank/game-workspace?gameId=...`
       - 구현: `ai-roomchat/ai-roomchat/pages/api/rank/game-workspace.js`

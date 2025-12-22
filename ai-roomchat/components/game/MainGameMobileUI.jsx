@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useIsMobile from '@/utils/useIsMobile';
-import { useWorkspace } from '../workspace/CodeWorkspaceProvider.jsx';
+import { useWorkspace } from '../workspace/CodeWorkspaceProvider';
+import { parseRuntimeConfig } from '@/lib/runtime/runtimeConfig';
 import DynamicSlot from './slots/DynamicSlot.jsx';
 import { attachCanvas2D } from '../../lib/runtime/adapters/rendererCanvas2D.js';
 import {
@@ -67,21 +68,28 @@ export default function MainGameMobileUI({
   const { files } = useWorkspace();
   const uiConfig = useMemo(() => readUiConfig(template), [template]);
 
+  function safeParseRuntimeConfig(text) {
+    const raw = String(text || '');
+    if (!raw.trim()) return null;
+    const { config, error } = parseRuntimeConfig(raw);
+    if (config && !error) return config;
+    try {
+      console.error('[JSON] Failed to parse /game/runtime.config.json (raw)', error, {
+        length: raw.length,
+        head: raw.slice(0, 200),
+        tail: raw.slice(-200),
+      });
+    } catch {}
+    return null;
+  }
+
   // Derive turn progression policy (nextBar) from template and /game/runtime.config.json.
   const runtimeTurnTimer = useMemo(() => {
-    try {
-      const cfgText = files?.['/game/runtime.config.json']?.content || '';
-      if (!cfgText) return null;
-      const cfg = JSON.parse(cfgText || '{}');
-      if (cfg && typeof cfg.turnTimer === 'object' && cfg.turnTimer !== null) {
-        return cfg.turnTimer;
-      }
-    } catch (err) {
-      try {
-        console.error('[JSON] Failed to parse /game/runtime.config.json', err, {
-          snippet: String(files?.['/game/runtime.config.json']?.content || '').slice(0, 200),
-        });
-      } catch {}
+    const cfgText = files?.['/game/runtime.config.json']?.content || '';
+    if (!cfgText) return null;
+    const cfg = safeParseRuntimeConfig(cfgText);
+    if (cfg && typeof cfg.turnTimer === 'object' && cfg.turnTimer !== null) {
+      return cfg.turnTimer;
     }
     return null;
   }, [files?.['/game/runtime.config.json']?.content]);

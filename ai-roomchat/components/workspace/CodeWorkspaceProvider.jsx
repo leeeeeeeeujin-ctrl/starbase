@@ -1,10 +1,11 @@
- "use client";
+"use client";
 
 import { createContext, useContext, useEffect, useMemo, useState, useRef } from "react";
 import { compressString, decompressToString } from "../../utils/compress.js";
 import { injectFilesWithFallback } from "../../lib/workspace/injectFilesFallback.js";
 import { contentSignature } from "../../lib/workspace/documentStore.js";
 import { isWorkspaceDebug } from "../../lib/workspace/debugFlags.js";
+import { defaultRuntimeConfig, stringifyRuntimeConfig } from "../../lib/runtime/runtimeConfig.js";
 // snapshot/local cache disabled in server-first mode
 
 const BASE_KEY = "workspace.vfs.v1";
@@ -81,28 +82,8 @@ const defaultFiles = {
     readonly: false,
   },
   "/game/runtime.config.json": {
-    content: JSON.stringify(
-      {
-        version: 1,
-        roles: ["players", "observers"],
-        // 기본 텍스트 배틀용 런타임 설정
-        engine: "builtin",
-        mode: "turn",
-        entryNode: "start",
-        ai: { model: "gemini-2.5-flash" },
-        // turnTimer: 턴 진행 ready 규칙(NextBar.policy와 동일 의미)
-        turnTimer: {
-          timeoutSec: 60,
-          roleThreshold: 0.5,
-          requiredRoles: ["players"],
-        },
-        // 기존 voteThreshold/durations는 하위 호환용(점진적 마이그레이션 대상)
-        voteThreshold: 0.6667,
-        durations: [30, 60, 90, 120, 180],
-      },
-      null,
-      2,
-    )+"\\n",
+    // 기본 텍스트 배틀용 런타임 설정 (/game/runtime.config.json)
+    content: stringifyRuntimeConfig(defaultRuntimeConfig),
     readonly: false,
   },
   "/game/hooks/automation.js": {
