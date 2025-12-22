@@ -227,12 +227,18 @@ export function GameRuntimeProvider({ roomId = "local-room", roles = { players: 
   useEffect(() => {
     try {
       window.__GAME_RUNTIME_CTX__ = {
-        graphRef, hooksRef, configRef,
+        graphRef,
+        hooksRef,
+        configRef,
+        filesRef,
+        hookWorkerRef,
         getCurrentId: () => currentNodeId,
         setCurrentId: (id) => setCurrentNodeId(id),
-        setWaiting: (b) => { waitingRef.current = !!b; },
-        getNode, neighborsOf,
-        filesRef,
+        setWaiting: (b) => {
+          waitingRef.current = !!b;
+        },
+        getNode,
+        neighborsOf,
         sendAI: (payload, fullPrompt, fullResponse) => api.sendAI(payload, fullPrompt, fullResponse),
         publish: (type, payload) => publish(type, payload),
       };
@@ -300,7 +306,17 @@ function step(reason){
   try {
     const ctx = window.__GAME_RUNTIME_CTX__;
     if (!ctx) return;
-    const { graphRef, hooksRef, configRef, indexById, edgesBySource, getNode, neighborsOf, setCurrentNodeId, sendAI, publish } = ctx;
+    const {
+      hooksRef,
+      configRef,
+      filesRef,
+      hookWorkerRef,
+      getNode,
+      neighborsOf,
+      setCurrentNodeId,
+      sendAI,
+      publish,
+    } = ctx;
     let currentId = ctx.getCurrentId();
     if (!currentId) return;
     let guard = 0;
