@@ -3233,10 +3233,19 @@ Supabase/SQL 작업 협업 메모:
     - `buildRankContext({ game, session, participants, room })`로 `rankContext`를 생성하고,
     - `engineState`에 `rankContext`, `textRuntimeEnabled: true`를 함께 저장한다.
     - 훅의 반환값으로 `graph`, `slotLayout`, `rankContext`, `textRuntimeEnabled`를 노출한다.
+    - **중요 불변식:** `textRuntimeEnabled === true` 인 경우,
+      - 레거시 랭크 엔진의 `advanceTurn` 경로는 사용하지 않고(`advanceTurn` 초반에 즉시 return),
+      - 메인 턴 진행은 전적으로 `coreRuntime`가 구동하는 텍스트 런타임에 의해 이루어진다.
   - UI: `components/rank/StartClient/index.js`
     - `textRuntimeEnabled === true`인 게임에 대해서:
       - 플레이 컬럼 전체를 `MainGameMobileUI + coreRuntime` 조합으로 사용하고,
       - 기존 `TurnInfoPanel + ManualResponsePanel` 엔진은 레거시 게임(비 텍스트‑런타임)에만 사용한다.
+    - **중요 불변식:** 텍스트 배틀(1P 비실시간) 수직선에서는,
+      - `/api/rank/start-session` / `/run-turn` / `/log-turn` / `/complete-session` + 텍스트 런타임 만이
+        턴 진행에 필수적인 경로이며,
+      - `/api/rank/session-meta`, Realtime 채널(`rank-session:*`, `rank_turn_state_events:*`)은
+        "메타데이터/타임라인 보조 채널"로만 사용되고,
+        실패(401, 채널 종료 등)가 메인 턴 진행을 막지 않도록 구현한다.
 - 동작 개요:
   - StartClient는 랭크 세션 입장 시:
     1. `rank_game_workspaces`에서 해당 `game_id`의 워크스페이스 스냅샷을 조회한다:
@@ -5557,13 +5566,15 @@ Status (2025-12-11 기준)
       - `runtime:turn-log` 이벤트와 `onBattleEnd(ctx)` 결과를 읽어  
         기존 StartClient 턴 로그/정산 파이프라인으로 전달하고, `battleOutcome` 상태를 구성한다.  
   - 현재 한계 / 상태:
-    - 이 브리지 경로는 “텍스트 런타임을 **옆에서 같이 돌려보는**” 수준까지만 구현되어 있다.
-    - 메인 턴 제어(다음 버튼, 수동 응답, 타임라인 진행)는 여전히 기존 랭크 엔진이 담당하며,  
-      coreRuntime의 진행 상태가 메인게임 UI 전체를 직접 지배하지는 않는다.
-    - 따라서 Play(코드 에디터 플래이)에서 보는 것과 **완전히 동일한 런타임/턴 흐름**은 아직 StartClient 메인 화면에 적용되지 않았고,  
-      후속 단계(B–D)에서 턴 제어·정산·요약 뷰를 점진적으로 coreRuntime 기준으로 이관해야 한다.
-    - **실행 환경 메모**: 레포 상 코드와 배포 번들 상태가 달라질 수 있으므로, 이 브리지는 “설계/초안 구현” 단계로 간주하고,  
-      실제 매칭 → StartClient 수직선 테스트가 안정적으로 통과한 뒤에만 다시 “완료”로 올린다.
+    - (이 레포 기준) `textRuntimeEnabled === true` 인 게임에서는
+      - 레거시 `advanceTurn` 는 이미 비활성화되어 있고,
+      - 메인 컬럼도 `MainGameMobileUI + coreRuntime` 를 사용하므로,
+      - "텍스트 런타임이 **옆에서만 도는**" 단계는 지나 **기본 경로**로 승격된 상태이다.
+    - 다만 `/api/rank/session-meta`, Realtime 채널 실패 시의 복원력, 턴 타임라인/정산 뷰 등은
+      여전히 추가 다듬기가 필요하므로,
+      - 메타/타임라인 기능이 일부 동작하지 않더라도 턴 진행이 멈추지 않는지,
+      - 프로덕션 배포 번들에서 동일하게 유지되는지
+      실제 매칭 → StartClient 수직선 테스트로 계속 검증해야 한다.
 
 - **[TODO] B. 랭크 정산 시 텍스트 배틀 정산 호출 연동 (StartClient 경로)**
   - StartClient 엔진에서 coreRuntime `onBattleEnd(ctx)` 결과(`finalizeSummary` 포함)를 감지하면:  

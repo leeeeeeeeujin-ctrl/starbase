@@ -1919,6 +1919,16 @@ export function useStartClientEngine(gameId, options = {}) {
     async function load() {
       patchEngineState({ loading: true, error: '' });
       try {
+        try {
+          console.info('[StartClient] loadGameBundle 시작', {
+            gameId,
+            matchInstanceId,
+            stagedRoomId,
+            hasRosterSnapshot: Array.isArray(rosterSnapshot) && rosterSnapshot.length > 0,
+          });
+        } catch {
+          // ignore console errors
+        }
         const bundle = await loadGameBundle(supabase, gameId, {
           rosterSnapshot,
           matchInstanceId,
@@ -1988,6 +1998,19 @@ export function useStartClientEngine(gameId, options = {}) {
           rankContext,
           textRuntimeEnabled: true,
         });
+        try {
+          console.info('[StartClient] loadGameBundle 완료', {
+            gameId,
+            nodeCount: Array.isArray(bundle.graph?.nodes) ? bundle.graph.nodes.length : 0,
+            edgeCount: Array.isArray(bundle.graph?.edges) ? bundle.graph.edges.length : 0,
+            participantCount: Array.isArray(hydratedParticipants)
+              ? hydratedParticipants.length
+              : 0,
+            slotCount: Array.isArray(finalSlotLayout) ? finalSlotLayout.length : 0,
+          });
+        } catch {
+          // ignore console errors
+        }
         if (Array.isArray(bundle.warnings) && bundle.warnings.length) {
           bundle.warnings.forEach(warning => {
             if (warning) console.warn('[StartClient] 프롬프트 변수 경고:', warning);
@@ -1998,7 +2021,11 @@ export function useStartClientEngine(gameId, options = {}) {
         }
       } catch (err) {
         if (!alive) return;
-        console.error(err);
+        try {
+          console.error('[StartClient] loadGameBundle 실패', err);
+        } catch {
+          // ignore console errors
+        }
         patchEngineState({
           error: err?.message || '게임 데이터를 불러오지 못했습니다.',
           slotLayout: [],

@@ -641,6 +641,10 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
 
     autoStartRef.current = true;
     try {
+      console.info('[StartClient] 자동 게임 시작 시도', {
+        gameId,
+        sessionId: sessionInfo?.id || null,
+      });
       handleStart();
     } catch (error) {
       console.warn('[StartClient] 자동 게임 시작 실패:', error);
@@ -709,6 +713,19 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
       !Array.isArray(effectiveGraph.nodes) ||
       effectiveGraph.nodes.length === 0
     ) {
+      // 텍스트 런타임 모드인데 그래프가 비어 있으면 런타임을 만들 수 없다.
+      // 이 경우에는 조용히 멈추지 말고, 워크스페이스/그래프 구성을 확인할 수 있도록
+      // 최소한의 경고만 남긴다.
+      try {
+        if (textRuntimeEnabled) {
+          console.warn('[StartClient] textRuntimeEnabled=true 이지만 유효한 그래프를 찾지 못했습니다.', {
+            hasWorkspaceGraph: Boolean(gameWorkspace && gameWorkspace.graph),
+            hasEngineGraph: Boolean(graph && Array.isArray(graph.nodes) && graph.nodes.length > 0),
+          });
+        }
+      } catch {
+        // ignore console errors
+      }
       runtimeRef.current = null;
       runtimeHooksRef.current = null;
       battleEndHandledRef.current = false;
@@ -1166,7 +1183,13 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
           source: 'start-client',
         });
       } catch (error) {
-        console.warn('[StartClient] 세션 메타 동기화 실패:', error);
+        // 세션 메타/턴 상태 동기화는 텍스트 배틀 1P 메인 진행에 필수적이지 않다.
+        // 여기서의 실패는 로그만 남기고, 진행/엔진 상태에는 영향을 주지 않는다.
+        try {
+          console.warn('[StartClient] 세션 메타 동기화 실패:', error);
+        } catch {
+          // ignore console errors
+        }
         if (!cancelled) {
           if (metaChanged) {
             sessionMetaSignatureRef.current = '';
