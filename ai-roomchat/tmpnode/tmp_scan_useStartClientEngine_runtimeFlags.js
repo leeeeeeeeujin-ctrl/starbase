@@ -1,0 +1,20 @@
+const fs = require('fs');
+
+const text = fs.readFileSync('components/rank/StartClient/useStartClientEngine.js', 'utf8');
+const needles = ['textRuntimeEnabled', 'builtin', 'useBuiltinRuntime', 'runtime'];
+
+needles.forEach((needle) => {
+  let idx = text.indexOf(needle);
+  if (idx === -1) {
+    console.log(`'${needle}' not found`);
+    return;
+  }
+  while (idx !== -1) {
+    const start = Math.max(0, idx - 260);
+    const end = Math.min(text.length, idx + 260);
+    console.log(`--- ${needle} at ${idx} ---`);
+    console.log(text.slice(start, end));
+    idx = text.indexOf(needle, idx + needle.length);
+  }
+});
+

@@ -709,7 +709,7 @@ export default function MakerEditor() {
     } finally {
       setSaveToRankBusy(false);
     }
-  }, [setInfo, filesRef]);
+  }, [setInfo]);
 
   // 🎮 게임 시뮬레이션 상태
 

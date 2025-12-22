@@ -482,6 +482,59 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
           // ignore console errors
         }
       }
+
+      // 텍스트 런타임 기반 전투도 랭크 세션 결과를 남기도록 complete-session을 호출한다.
+      try {
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) {
+          throw sessionError;
+        }
+        const token = sessionData?.session?.access_token;
+        if (!token) {
+          throw new Error('세션 토큰을 확인하지 못했습니다.');
+        }
+
+        let finalTurnNumber = null;
+        try {
+          const numericTurns = events
+            .map(entry => (Number.isFinite(Number(entry?.turn)) ? Number(entry.turn) : null))
+            .filter(value => value !== null);
+          if (numericTurns.length) {
+            finalTurnNumber = Math.max(...numericTurns);
+          }
+        } catch {
+          // turn 계산 실패는 결과 정산 자체를 막지 않는다.
+        }
+
+        const payload = {
+          sessionId,
+          gameId,
+          turnNumber: finalTurnNumber,
+          reason: 'text_runtime_battle_end',
+          outcome: outcome || {},
+          finalResponse: '',
+        };
+
+        const resp = await fetch('/api/rank/complete-session', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (!resp.ok) {
+          const detail = await resp.text().catch(() => '');
+          throw new Error(detail || '세션 결과 정산 요청에 실패했습니다.');
+        }
+      } catch (err) {
+        try {
+          console.warn('[StartClient] 텍스트 배틀 세션 결과 정산 실패:', err);
+        } catch {
+          // ignore console errors
+        }
+      }
     },
     [gameId, sessionId]
   );

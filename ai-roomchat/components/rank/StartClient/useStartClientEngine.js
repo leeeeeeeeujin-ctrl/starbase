@@ -818,6 +818,7 @@ export function useStartClientEngine(gameId, options = {}) {
   const {
     loading,
     error,
+    errorLayers,
     game,
     participants,
     slotLayout,
@@ -864,6 +865,7 @@ export function useStartClientEngine(gameId, options = {}) {
   const currentNodeIdRef = useRef(initialMainGameState.currentNodeId);
   const participantsRef = useRef([]);
   const statusMessageRef = useRef('');
+    const errorLayersRef = useRef([]);
   const turnRef = useRef(initialMainGameState.turn);
   const promptMetaWarningRef = useRef('');
   const winCountRef = useRef(initialMainGameState.winCount);
@@ -1491,6 +1493,10 @@ export function useStartClientEngine(gameId, options = {}) {
   }, [statusMessage]);
 
   useEffect(() => {
+    errorLayersRef.current = Array.isArray(errorLayers) ? errorLayers : [];
+  }, [errorLayers]);
+
+  useEffect(() => {
     turnRef.current = turn;
   }, [turn]);
 
@@ -1513,6 +1519,20 @@ export function useStartClientEngine(gameId, options = {}) {
   useEffect(() => {
     realtimeEventsRef.current = Array.isArray(realtimeEvents) ? realtimeEvents : [];
   }, [realtimeEvents]);
+
+  const pushErrorLayer = useCallback(
+    (layer, message, hint) => {
+      const entry = { layer, message, hint };
+      const prev = Array.isArray(errorLayersRef.current) ? errorLayersRef.current : [];
+      const next = [...prev, entry];
+      errorLayersRef.current = next;
+      patchEngineState({
+        errorLayers: next,
+        error: { message, layer, hint },
+      });
+    },
+    [patchEngineState]
+  );
 
   useEffect(() => {
     dropInSnapshotRef.current = dropInSnapshot || null;
@@ -3243,6 +3263,11 @@ export function useStartClientEngine(gameId, options = {}) {
       const message =
         error?.message || '전투 세션을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.';
       setStatusMessage(message);
+      pushErrorLayer(
+        'rank',
+        message,
+        '전투 세션 생성 API(/api/rank/start-session) 호출 중 오류가 발생했습니다. Supabase 인증/마이그레이션을 확인해 주세요.'
+      );
     } finally {
       setStartingSession(false);
     }
@@ -3263,7 +3288,13 @@ export function useStartClientEngine(gameId, options = {}) {
       });
 
       if (!sanitized || sanitized.length === 0) {
-        setStatusMessage('역할이 맞는 참가자를 찾을 수 없어 게임을 시작할 수 없습니다.');
+        const msg = '역할이 맞는 참가자를 찾을 수 없어 게임을 시작할 수 없습니다.';
+        setStatusMessage(msg);
+        pushErrorLayer(
+          'match',
+          msg,
+          'rank_match_roster와 rank_game_slots 구성이 올바른지 확인해 주세요. 최소 한 개 슬롯은 실제 플레이어에게 할당되어야 합니다.'
+        );
         return;
       }
 
@@ -3285,7 +3316,13 @@ export function useStartClientEngine(gameId, options = {}) {
       }
     } catch (error) {
       console.error('후보정 검증 실패:', error);
-      setStatusMessage('매칭 데이터를 검증하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+      const msg = '매칭 데이터를 검증하지 못했습니다. 잠시 후 다시 시도해 주세요.';
+      setStatusMessage(msg);
+      pushErrorLayer(
+        'match',
+        msg,
+        'rank_match_roster 또는 rank_game_slots 조회/후보정 중 오류가 발생했습니다. 서버 로그를 확인해 주세요.'
+      );
       return;
     }
 
@@ -3672,27 +3709,27 @@ export function useStartClientEngine(gameId, options = {}) {
             // Skip server call; mark as logged false (we'll log manually below).
           } else {
             res = await fetch('/api/rank/run-turn', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              apiKey: effectiveApiKey,
-              system: effectiveSystemPrompt,
-              prompt: effectivePrompt,
-              apiVersion,
-              geminiMode: apiVersion === 'gemini' ? normalizedGeminiMode : undefined,
-              geminiModel: apiVersion === 'gemini' ? normalizedGeminiModel : undefined,
-              session_id: sessionInfo.id,
-              game_id: gameId,
-              prompt_role: 'system',
-              response_role: historyRole,
-              response_public: true,
-              history: historyPayload,
-              local_sim: simulatedLocally ? localSimResult || null : undefined,
-              local_sim_verify: needServerVerification || undefined,
-            }),
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                apiKey: effectiveApiKey,
+                system: effectiveSystemPrompt,
+                prompt: effectivePrompt,
+                apiVersion,
+                geminiMode: apiVersion === 'gemini' ? normalizedGeminiMode : undefined,
+                geminiModel: apiVersion === 'gemini' ? normalizedGeminiModel : undefined,
+                session_id: sessionInfo.id,
+                game_id: gameId,
+                prompt_role: 'system',
+                response_role: historyRole,
+                response_public: true,
+                history: historyPayload,
+                local_sim: simulatedLocally ? localSimResult || null : undefined,
+                local_sim_verify: needServerVerification || undefined,
+              }),
             });
           }
 
@@ -3864,6 +3901,28 @@ export function useStartClientEngine(gameId, options = {}) {
             ],
             turnNumber: loggedTurnNumber ?? turn,
           });
+        }
+
+        // 단일 플레이 / 비실시간 모드에서도 현재 턴 정보를
+        // matchDataStore.sessionMeta.turnState 에 반영해
+        // 같은 브라우저 세션/다른 탭에서 일관된 상태를 볼 수 있도록 한다.
+        if (gameId) {
+          const effectiveTurnNumber = Number.isFinite(Number(loggedTurnNumber))
+            ? Math.floor(Number(loggedTurnNumber))
+            : Number.isFinite(Number(turn))
+              ? Math.floor(Number(turn))
+              : null;
+          if (effectiveTurnNumber !== null) {
+            setGameMatchSessionMeta(gameId, {
+              turnState: {
+                turnNumber: effectiveTurnNumber,
+                status: `completed:${advanceReason}`,
+                updatedAt: Date.now(),
+                source: 'client/run-turn',
+              },
+              source: 'client/run-turn',
+            });
+          }
         }
 
         setActiveLocal(outcomeVariables);
@@ -4222,7 +4281,13 @@ export function useStartClientEngine(gameId, options = {}) {
             note: err?.message || null,
           });
         } else {
-          setStatusMessage(err?.message || '턴 진행 중 오류가 발생했습니다.');
+          const msg = err?.message || '턴 진행 중 오류가 발생했습니다.';
+          setStatusMessage(msg);
+          pushErrorLayer(
+            'rank',
+            msg,
+            '랭크 턴 엔진(/api/rank/run-turn) 호출 또는 텍스트 런타임 처리 중 오류가 발생했습니다. Supabase 스키마와 서버 로그를 확인해 주세요.'
+          );
         }
       } finally {
         setIsAdvancing(false);

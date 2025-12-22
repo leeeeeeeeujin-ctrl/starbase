@@ -1,6 +1,7 @@
 export const initialMainGameState = {
   loading: true,
   error: '',
+  errorLayers: [],
   game: null,
   participants: [],
   slotLayout: [],

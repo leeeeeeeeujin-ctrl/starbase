@@ -11,6 +11,7 @@ import { sanitizeFileName } from '@/utils/characterAssets';
 import CharacterPlayPanel from './CharacterPlayPanel';
 import useHeroParticipations from '@/hooks/character/useHeroParticipations';
 import useHeroBattles from '@/hooks/character/useHeroBattles';
+import { useStartApiKeyManager } from '../rank/StartClient/hooks/useStartApiKeyManager';
 import {
   formatPlayNumber,
   formatPlayWinRate,
@@ -1427,6 +1428,10 @@ export default function CharacterBasicView({ hero }) {
   const [bgmError, setBgmError] = useState('');
   const [bgmCleared, setBgmCleared] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [apiKeyPanelOpen, setApiKeyPanelOpen] = useState(false);
+
+  const { apiKey, setApiKey, apiVersion, setApiVersion, apiKeyWarning, persistApiKeyOnServer } =
+    useStartApiKeyManager({});
 
   const participationState = useHeroParticipations({ hero: currentHero });
   const battleState = useHeroBattles({
@@ -3577,6 +3582,13 @@ export default function CharacterBasicView({ hero }) {
                       ))}
                     </div>
                     <div style={styles.dockActions}>
+                      <button
+                        type="button"
+                        style={styles.rosterButton}
+                        onClick={() => setApiKeyPanelOpen(true)}
+                      >
+                        AI 키 관리
+                      </button>
                       <Link href="/lobby" style={styles.lobbyButton}>
                         로비로
                       </Link>
@@ -3585,6 +3597,67 @@ export default function CharacterBasicView({ hero }) {
                       </Link>
                     </div>
                   </div>
+
+                  {apiKeyPanelOpen ? (
+                    <div style={styles.infoBlock}>
+                      <p style={styles.infoTitle}>AI API 키 관리</p>
+                      <p style={styles.listMeta}>
+                        이 계정에서 사용할 AI API 키를 등록합니다. 등록한 키는 이
+                        캐릭터뿐 아니라 랭크 전투 전반에 재사용됩니다.
+                      </p>
+                      <div style={styles.settingsGroup}>
+                        <div style={styles.formRow}>
+                          <label style={styles.sliderLabel}>
+                            제공자
+                            <select
+                              value={apiVersion}
+                              onChange={event => setApiVersion(event.target.value)}
+                              style={{ ...styles.textField, marginTop: 6 }}
+                            >
+                              <option value="gemini">Gemini</option>
+                              <option value="openai">OpenAI</option>
+                            </select>
+                          </label>
+                        </div>
+                        <div style={styles.formRow}>
+                          <label style={styles.sliderLabel}>
+                            API 키
+                            <input
+                              type="password"
+                              value={apiKey}
+                              onChange={event => setApiKey(event.target.value)}
+                              placeholder="키를 붙여넣어 주세요"
+                              style={{ ...styles.textField, marginTop: 6 }}
+                            />
+                          </label>
+                          {apiKeyWarning ? (
+                            <p style={styles.errorText}>{apiKeyWarning}</p>
+                          ) : null}
+                        </div>
+                        <div style={styles.formActions}>
+                          <button
+                            type="button"
+                            style={styles.primaryButton}
+                            onClick={async () => {
+                              const ok = await persistApiKeyOnServer(apiKey, apiVersion);
+                              if (ok) {
+                                setApiKeyPanelOpen(false);
+                              }
+                            }}
+                          >
+                            저장
+                          </button>
+                          <button
+                            type="button"
+                            style={styles.ghostButton}
+                            onClick={() => setApiKeyPanelOpen(false)}
+                          >
+                            닫기
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
 
                   {overlayBody}
                 </div>

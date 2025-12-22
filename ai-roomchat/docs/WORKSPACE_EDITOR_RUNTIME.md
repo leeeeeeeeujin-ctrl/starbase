@@ -275,15 +275,34 @@ Current high-level status (this repo copy)
   - Text runtime는 실사용 가능 수준, grid-basic은 프리뷰 + 간단 엔진까지 연결.
 - AI code chat dock (UX / actions): **in progress**
   - JSON 액션 파싱/게이팅, 자동 실행 슬라이더, 로그 표현 개선 일부 반영.
-- Text battle / rank vertical: **부분 완료 (2025-12-11 기준 프로토타입 → 2025-12-22 기준 1인 수직선 연결)**  
-  _※ 이전 버전 문서에는 “완료/실제 서비스 가능”으로 적혀 있었지만, 현재 레포/DB 상태 기준으로는 아래와 같이 단계별로 정리된다._
+- Text battle / rank vertical: **설계/코드 초안 있음 (실제 수직선 동작은 미검증/불안정)**  
+  _※ 이전 버전 문서에는 “완료/실제 서비스 가능”으로 적혀 있었지만, 현재 레포/DB 상태와 실행 환경 괴리 때문에, 아래 항목들은 “구현 방향/TODO” 기준으로 다시 보는 것이 안전하다._
+
+### 문서 상태/표기 정책 (앞으로의 기준)
+
+- 이 문서에서 수직선/기능 상태는 다음 네 단계로 구분한다.
+  - **설계/초안**: 개념/계약/SQL 스케치만 있고, 코드가 부분적으로이거나 분산되어 있음.
+  - **코드 초안**: 레포 안에 구현이 있으나, 단일 플레이 기준 e2e 검증이 부족하거나 환경 의존성이 크다.
+  - **단일 플레이 검증**: 이 레포 + Supabase 스키마 기준으로, 한 명이 “시작→한 판 종료→기록/정산”까지 직접 재현 가능하다.
+  - **멀티/운영 검증**: 다인 매칭/동기화, 실제 배포 환경에서의 동작까지 확인되었고, 회귀 시 치명 버그가 없는 수준이다.
+- `[완료]` 라벨은 원칙적으로 **“단일 플레이 검증 + 멀티/운영 검증”이 모두 끝난 작업에만** 붙인다.
+- Supabase RPC/SQL, 외부 배포 설정 등 이 레포 바깥 요소에 강하게 의존하는 경우:
+  - 이 문서에서는 “이 레포 + 공식 스키마만으로 재현 가능한 부분”만 완료로 표시하고,
+  - 나머지는 “설계/초안” 또는 `TODO` 항목으로 남긴 뒤, 필요한 외부 절차를 함께 적어 둔다.
+- 레포 소스와 실제 배포/번들 상태가 어긋났다고 판단되면,
+  - 해당 수직선의 상태를 보수적으로 한 단계 이상 낮추고,
+  - “코드/설계는 있으나 실제 수직선 동작은 재검증 필요”라는 메모를 남긴다.
+- Text battle / rank vertical, 범용 랭크 매칭 v2처럼 복잡한 축은,
+  - **“1인 수직선 검증”이 끝나기 전까지는 `TODO` 목록에 유지**하고,
+  - 실제로 “매칭 → 메인게임 → 정산”이 한 번이라도 레포 복사본 기준에서 끝까지 재현된 뒤에만
+    상태를 한 단계씩 올린다.
   - **엔진/훅 계약 자체는 정리됨**:
     - `coreRuntime` + `/graph/prompt-graph.json` + `/game/runtime.config.json` + `/game/hooks/automation.js` 조합으로 텍스트 배틀 그래프를 실행할 수 있고,
     - `workspace/hooks/automation.js:onBattleEnd` → `/api/rank/text-battle-runtime-settle` → `text_battle_sessions`/`text_battle_turns` → `/api/rank/settle` → `finalize_text_battle_rank` 로 이어지는 “판정/베틀로그 영속화 + 랭크 정산” 경로는 동작한다.
   - **Maker → Play 경로는 단일 플레이 기준으로 사용 가능**:
     - 코드 에디터 “Play” 버튼은 공유 엔진을 사용해 텍스트 런타임을 돌릴 수 있고,
     - starter pack 세트는 기본 텍스트 배틀 프리셋(`/graph` + `/game/runtime.config.json` + `/game/hooks/automation.js`)을 제공한다.
-  - **Maker → Rank 메인게임(StartClient) 경로는 “수동 publish” 기준으로 1인 플레이 수직선이 연결된 상태**:
+  - **Maker → Rank 메인게임(StartClient) 경로는 “수동 publish” 기준으로 1인 플레이 수직선을 목표로 설계된 상태**:
     - Maker/Workspace에서 워크스페이스 세트(그래프/템플릿/훅)를 편집한 뒤,
       `components/maker/editor/MakerEditor.js` 상단 툴바의 **랭크 메인게임 워크스페이스 저장(onSaveToRank)** 액션을 통해
       `/template.json`, `/graph/prompt-graph.json`, `/game/runtime.config.json`, `/game/hooks/automation.js` 를 하나의 스냅샷으로 묶어
@@ -298,7 +317,7 @@ Current high-level status (this repo copy)
       - `gameWorkspace.hooks_source` → `hooksSource`(onUserAction/onBattleEnd),
       - `gameWorkspace.ui_shell` → 메인게임 UI 패널/레이아웃 설정
       를 사용한다.
-    - 이 경로를 통해 **“Maker에서 정의한 텍스트 배틀 세트” → Rank 매칭 → 메인게임(StartClient) → 텍스트 배틀 실행 → settle** 까지 1인 기준 수직선은 실제로 돌릴 수 있다.
+    - 코드 상으로는 이 경로를 통해 **“Maker에서 정의한 텍스트 배틀 세트” → Rank 매칭 → 메인게임(StartClient) → 텍스트 배틀 실행 → settle** 까지 1인 기준 수직선을 구성해 두었으나, 최신 빌드/배포 기준 실제 동작 여부는 재검증이 필요하다.
     - 다만, Studio/Maker 세트와 rank_game_workspaces 스냅샷은 아직 자동 동기화가 아니므로,
       **그래프/프롬프트를 바꾼 뒤 Rank 메인게임에서 테스트하려면 매번 “랭크 메인게임 워크스페이스 저장”을 눌러 publish** 해야 한다.
   - **다중 참가자/완전한 랭크 경험은 여전히 제한적**:
@@ -974,6 +993,21 @@ useEffect(() => {
 - ~~모듈화 보강: PlayOverlayContent의 입력 처리/디버그/런타임 실행을 훅/컴포넌트로 더 분리해 유지보수·테스트 용이성 확보.~~ ✅ 완료 (2025-12-11)
 - 검증/가이드: `computeRuntimeFeatureIssues` 등 핵심 헬퍼의 경량 테스트 추가, 누락 파일 경고가 지속적으로 동작하는지 자동 확인.
 - GameShell 위젯/스타일 토큰: 현재 설계된 토큰을 위젯별로 더 일관되게 적용할 수 있게 모듈화(커스터마이즈성↑).
+
+### Next goals (rank main game)
+
+- 목표: 텍스트 배틀 기본 세트를 기반으로, **랭크 메인게임(StartClient) 기준 1인 수직선이 실제로 한 번 돈 뒤, 최대 12인까지 확장 가능한 턴 엔진을 제품 기준으로 완성**하는 것.
+- 1단계 (단일 플레이 E2E):
+  - `/rooms` → 매칭/스테이징 → `matchDataStore.sessionMeta.turnState` 에 `session_id`/`turn_index`/타이머 정보가 안정적으로 채워지는지 재검증.
+  - `StartClient` / `useStartClientEngine` 이 현재 설계된 대로 `matchFlow.readMatchFlowState` + `modules/rank/matchDataStore` 스냅샷을 사용해 **단일 플레이 세션에서 턴 진행 상태를 읽고, `/api/rank/run-turn` 호출을 트리거** 하도록 확인/보강.
+  - 한 명 기준으로 `run-turn` → `rank_turns` → 텍스트 런타임 로그/채팅 → `/api/rank/settle` → 랭크 세션/베틀로그까지 이어지는 흐름이 이 레포 복사본만으로 재현되면, 이 축을 "단일 플레이 검증" 단계로 올린다.
+- 2단계 (턴 드라이버 정리):
+  - `/api/rank/run-turn` / `/api/rank/log-turn` / `/api/rank/session-meta` 가 `matchDataStore.sessionMeta.turnState` 와 왕복하도록 계약을 명시하고, StartClient 가 **클라이언트 주도 턴 드라이버**로 동작하되, 서버 `rank_sessions`/`rank_turns` 와 항상 동기화되도록 한다.
+  - 비동기 로비/드롭인(`asyncFill`/`dropIn`) 메타와 턴 타이머 투표/확정(`vote`/`turnTimer`)을 StartClient 메인 루프에서 소비하는 최소 규칙을 정리한다.
+- 3단계 (멀티 슬롯/최대 12인):
+  - `rank_match_queue` + `rank_match_roster` + `rank_game_slots` + `matchDataStore.participation/slotTemplate` 조합으로 **최대 12인(예: 6v6 또는 12인 방)까지 매칭/슬롯 배치가 가능하도록** 룰을 고정한다.
+  - StartClient / GameShell / MainGameMobileUI 가 참가자/슬롯/역할/점수 패널을 동일한 `rankContext` + `matchState` 기반으로 렌더링하도록 정리하고, "어떤 참가자는 게임이 끝났는데 다른 쪽은 진행 중" 같은 불일치를 막는 이벤트 흐름(턴 종료 브로드캐스트 + 세션 종료 조건)을 문서/코드로 명시한다.
+  - 이 단계가 끝나면 텍스트 배틀은 "멀티/운영 검증" 후보가 되며, 이후 장르 확장(기타 게임 타입)은 동일 랭크/턴 엔진 위에서 프리셋만 바꾸는 방향으로 진행한다.
 
 ---
 
@@ -1730,6 +1764,90 @@ With this setup, the Play overlay:
   - 예전 매칭/세션이 제대로 종료되지 않아, 새 매칭이 “죽지 않은 세션”에 붙는 문제가 있었음.
   - 이 문서에서 정의한 텍스트 배틀 수직선(세션/턴/정산)이 안정된 뒤,
     랭크 전체 매칭/세션 수명 리팩토링을 별도 단계로 진행할 계획.
+
+#### 6.5 2+ 슬롯 비실시간 골든 패스 (플레이어 1 + AI)
+
+- 목적:
+  - “멀티 슬롯/역할” 설계를 유지한 채, **슬롯 2개 이상 + 실제 인간 플레이어 1명 + 나머지 AI/규칙 슬롯** 기준으로 한 판이 끝까지 도는 최소 골든 패스를 확보한다.
+  - 이 골든 패스는 이후 실시간/드롭인/멀티 인원 확장의 기준 시나리오가 된다.
+- 전제(데이터/구성):
+  - `rank_games`
+    - `slot_count >= 2`.
+    - `realtime_match = 'off'` (비실시간 기준), `async_fill_enabled = true` (또는 동등한 asyncFill 플래그) 권장.
+  - `rank_game_slots`
+    - 최소 2개 이상의 슬롯(row).
+    - 각 슬롯에는 `role`, `team`, `hero_template` 등 기본 메타가 정의되어 있고, “플레이어 슬롯” 1개는 사람이 들어올 수 있도록 `allow_human = true`/equivalent.
+  - `rank_match_roster`
+    - 매칭이 성사되면, 한 명의 실제 유저가 `owner_id` 로 한 슬롯에 배치된다.
+    - 나머지 슬롯은 `asyncFill` 또는 프리셋/AI 슬롯으로 채워진다(매칭 시점에 hero/role 이 결정되거나, StartClient 에서 텍스트 런타임/룰 훅이 채워넣는다).
+- 골든 패스 수직선(요약):
+  1) **매칭/세션 시작**
+     - Maker 가 준비한 위 조건의 `rank_game` 으로 큐/방을 세팅.
+     - `/api/rank/stage-room-match` → `rank_match_roster`/`rank_sessions` 생성, 한 명의 플레이어가 참가.
+  2) **게임 번들 로드**
+     - StartClient 가 `matchInstanceId`/`gameId` 로 `loadGameBundle` 호출.
+       - `rank_games` + `rank_match_roster` + `rank_game_slots` + `prompt_slots`/`prompt_bridges` 로부터:
+         - `game`(랭크 메타), `participants`(참가자/슬롯/hero/owner), `slotLayout`(역할/팀/표시용), `graph`(텍스트 런타임 그래프)를 조합.
+       - `buildRankContext({ game, session, participants, viewer })` 로 랭크 컨텍스트를 만들고, `textRuntimeEnabled: true` 인 경우 텍스트 런타임을 활성.
+  3) **턴 진행 (비실시간)**
+     - 플레이어 입력(텍스트/버튼 등) → StartClient → `useStartClientEngine.advanceTurn`.
+     - 서버:
+       - `/api/rank/run-turn` → LLM 호출/판정 → `rank_turns` insert + `rank_sessions.turn` 증가.
+       - `/api/rank/log-turn`(옵션) → 상세 로그/메타 기록.
+       - `/api/rank/session-meta` → `match_session_meta`/`rank_turn_state_events` 로 턴 상태와 타임라인을 브로드캐스트.
+     - 클라이언트:
+       - `matchDataStore.sessionMeta.turnState` 에 현재 턴 번호/데드라인/드롭인 상태 등을 반영(동일 게임의 다른 뷰와 공유).
+       - 텍스트 런타임(coreRuntime)이 `runtimeBus` 이벤트(`turn:next`, `player:chat`, `runtime:turn-log`)를 통해 턴 흐름을 업데이트.
+  4) **배틀 종료 / 정산**
+     - 텍스트 런타임 훅 `onBattleEnd(ctx)` 가 호출되면:
+       - `normalizeBattleOutcome` + `finalizeSummary` → `battleOutcome = { winner, final_score, ... }`.
+     - StartClient 가 `settleTextBattle`(작은 헬퍼)를 통해:
+       - `/api/rank/text-battle-runtime-settle` 로 텍스트 배틀 세션/요약을 Supabase 텍스트 배틀 스키마에 기록.
+       - `/api/rank/settle` 로 battleLog + 참가자/역할/요약을 랭크 정산 API에 전달.
+       - `/api/rank/complete-session` 으로 `finalize_rank_session_outcome` RPC 를 호출해 랭크 세션 결과를 확정.
+  5) **요약/결과 표시**
+     - StartClient/랭크 뷰에서 승패/점수/하이라이트 로그를 UI 에 노출.
+     - 플레이어는 방/히스토리 뷰에서 이 세션의 결과를 확인.
+
+- 이 골든 패스는 “2+ 슬롯, 플레이어 1명, 나머지 AI/고정 역할, 비실시간”을 기준으로 설계되어 있으며,
+  실시간 모드/멀티 플레이어/중도 이탈 재참여 등의 케이스는 이 수직선을 확장하는 형태로 다룬다.
+
+#### 6.6 사용자 에러 / 디버그 레일 (StartClient 기준)
+
+- 목표:
+  - 플레이어/제작자가 “겉모양만 있고 안 돈다”는 느낌을 받지 않도록,
+    **에러를 한 줄 요약 + 원인별/레이어별 세부 설명** 형태로 보여준다.
+  - 최소한 다음 네 축으로 에러를 나누고, StartClient 의 상태 배너/디버그 패널에 단계별로 표기한다.
+- 에러 축(레이어):
+  1) **환경/인증 레이어**
+     - Supabase URL/키, 환경변수, 인증 토큰 문제.
+     - 예: “Supabase 연결 실패(키/URL 확인 필요)”, “세션 토큰이 만료되었습니다. 다시 로그인해 주세요.”
+  2) **매칭/로스터 레이어**
+     - `rank_match_roster`/`rank_game_slots` 불일치, 참가자 구성이 유효하지 않은 경우.
+     - 예: “역할이 맞는 참가자를 찾을 수 없어 게임을 시작할 수 없습니다.”,
+       “매칭 데이터를 검증하지 못했습니다. 잠시 후 다시 시도해 주세요.”
+  3) **랭크 세션/DB 레이어**
+     - `/api/rank/run-turn`/`/api/rank/session-meta`/`/api/rank/settle`/`/api/rank/complete-session` 호출 실패,
+       랭크 스키마 미적용/마이그레이션 누락 등.
+     - 예: “턴 정보를 기록하지 못했습니다. 랭크 스키마/DB 설정을 확인해 주세요.”
+  4) **텍스트 런타임/게임 로직 레이어**
+     - 텍스트 런타임(graph/hooks) 오류, battle 훅 예외, 필수 파일 누락.
+     - 예: “게임 스크립트 실행 중 오류가 발생했습니다. `/game/runtime.config.json` 과 `/graph/prompt-graph.json` 을 확인해 주세요.”
+- 표기 방식(예시 계약):
+  - StartClient 엔진 상태에 다음 필드를 둔다:
+    - `statusMessage`: 상단 한 줄 요약(사용자 친화적 문구).
+    - `engineError`: 원시 에러/스택 또는 에러 코드.
+    - `errorLayers[]`: `{ layer: 'env' | 'match' | 'rank' | 'runtime', message, hint }` 배열.
+  - UI(Render):
+    - StatusBanner(상단 고정): `statusMessage` + 가장 중요한 `errorLayers[0]` 의 짧은 설명.
+    - 세부 디버그 패널(제작자용): 모든 `errorLayers` 목록을 레이어 순서대로 보여주고, 각 항목에 “무엇을 확인해야 하는지” 힌트를 포함.
+- 구현 방향 메모:
+  - `useStartClientEngine` 에서 주요 API 호출/검증 지점에 레이어 정보를 붙인다.
+    - 예: `/api/rank/run-turn` 실패 → `errorLayers.push({ layer: 'rank', message, hint })`.
+    - 매칭/로스터 검증 실패 → `layer: 'match'`.
+    - Supabase 인증/네트워크 오류 → `layer: 'env'`.
+    - 텍스트 런타임 예외 → `layer: 'runtime'`.
+  - 이 문서의 계약에 맞춰 엔진 상태를 채우면, StartClient UI 는 에러를 여러 부분으로 나눠서 표시할 수 있다.
 
 ---
 
@@ -5214,7 +5332,7 @@ Status (2025-12-11 기준)
 
 > 엔진 구조 요약: 메인게임은 기존 랭크/매칭/타임라인 엔진을 그대로 유지하고, 텍스트 배틀의 턴·판정·로그는 `coreRuntime` + `workspace/hooks/automation.js` + `/api/ai-battle-judge` 로 이루어진 공통 엔진이 담당한다. 메인게임은 이 공통 엔진을 “전투/판정 플러그인”처럼 호출하는 구조를 목표로 한다.
 
-- **[완료] A. 랭크 StartClient ↔ 텍스트 런타임 브리지 (기본 경로)**
+- **[TODO] A. 랭크 StartClient ↔ 텍스트 런타임 브리지 (기본 경로)**
   - `useStartClientEngine` 내부:  
     - 랭크 게임 번들을 `loadGameBundle(supabase, gameId, { rosterSnapshot, matchInstanceId, roomId })` 로 불러온 뒤,  
       로스터/슬롯 레이아웃을 정규화하고 `buildRankContext({ game, session, participants, room: null, viewer })` 로 `rankContext` 를 생성한다.  
@@ -5227,14 +5345,16 @@ Status (2025-12-11 기준)
       - `runtimeBus` 의 `turn:next` / `player:chat` 이벤트를 `runtime.step({ reason: 'auto' | 'user_action', ... })` 에 연결한다.  
       - `runtime:turn-log` 이벤트와 `onBattleEnd(ctx)` 결과를 읽어  
         기존 StartClient 턴 로그/정산 파이프라인으로 전달하고, `battleOutcome` 상태를 구성한다.  
-  - 현재 한계:
+  - 현재 한계 / 상태:
     - 이 브리지 경로는 “텍스트 런타임을 **옆에서 같이 돌려보는**” 수준까지만 구현되어 있다.
     - 메인 턴 제어(다음 버튼, 수동 응답, 타임라인 진행)는 여전히 기존 랭크 엔진이 담당하며,  
       coreRuntime의 진행 상태가 메인게임 UI 전체를 직접 지배하지는 않는다.
     - 따라서 Play(코드 에디터 플래이)에서 보는 것과 **완전히 동일한 런타임/턴 흐름**은 아직 StartClient 메인 화면에 적용되지 않았고,  
       후속 단계(B–D)에서 턴 제어·정산·요약 뷰를 점진적으로 coreRuntime 기준으로 이관해야 한다.
+    - **실행 환경 메모**: 레포 상 코드와 배포 번들 상태가 달라질 수 있으므로, 이 브리지는 “설계/초안 구현” 단계로 간주하고,  
+      실제 매칭 → StartClient 수직선 테스트가 안정적으로 통과한 뒤에만 다시 “완료”로 올린다.
 
-- **[완료] B. 랭크 정산 시 텍스트 배틀 정산 호출 연동 (StartClient 경로)**
+- **[TODO] B. 랭크 정산 시 텍스트 배틀 정산 호출 연동 (StartClient 경로)**
   - StartClient 엔진에서 coreRuntime `onBattleEnd(ctx)` 결과(`finalizeSummary` 포함)를 감지하면:  
     - 현재 랭크 세션 ID(`sessionInfo.id`) / 게임 ID(`gameId`)와  
       `runtime:turn-log` 로 쌓인 턴 이벤트 / 참가자 맵을 모아  
@@ -5245,6 +5365,9 @@ Status (2025-12-11 기준)
     - payload 또는 `battleLog.meta.textBattleSummary` 에 텍스트 배틀 요약이 있으면  
       이를 함께 저장하고, 필요 시 `finalize_text_battle_rank` RPC 와 연동할 수 있다.  
   - 실패 시에도 기존 랭크 세션 자체는 유지되며, 텍스트 배틀 정산은 best-effort 부가 계층으로 동작한다.
+  - **현재 상태/방향**:
+    - API/RPC/SQL 레이어는 설계·초안 구현이 되어 있지만, StartClient에서 텍스트 배틀이 실제로 끝까지 정상 동작하지 않는 환경에서는  
+      이 경로도 함께 실패할 수 있으므로, “정식 정산 경로”가 아니라 **향후 안정화 대상 TODO**로 유지한다.
 
 - **[TODO] C. MainGame UI와 텍스트 베틀 로그/정산 뷰 연결**
   - 텍스트 배틀이 끝난 랭크 세션에 대해:  
