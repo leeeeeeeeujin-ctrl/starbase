@@ -13,6 +13,18 @@ import useHeroParticipations from '@/hooks/character/useHeroParticipations';
 import useHeroBattles from '@/hooks/character/useHeroBattles';
 import { useStartApiKeyManager } from '../rank/StartClient/hooks/useStartApiKeyManager';
 import {
+  registerRankApiKey,
+  loadRankApiKeyring,
+  activateRankApiKey,
+  deactivateRankApiKey,
+  deleteRankApiKeyEntry,
+  normalizeKeyringEntry,
+  mergeKeyringEntries,
+  sanitizeKeyringStorageEntry,
+  formatKeyProviderLabel,
+} from '@/lib/rank/userApiKeyringClient';
+import { readRankAuthSnapshot, persistRankKeyringSnapshot } from '@/lib/rank/rankAuthStorage';
+import {
   formatPlayNumber,
   formatPlayWinRate,
   formatWinRateValue,
@@ -84,7 +96,7 @@ const pageStyles = {
 const overlayTabs = [
   { key: 'create', label: '게임 제작' },
   { key: 'register', label: '게임 등록' },
-  { key: 'ranking', label: '랭킹' },
+  { key: 'api-keys', label: 'AI 키 관리' },
   { key: 'settings', label: '설정' },
 ];
 
@@ -1429,9 +1441,50 @@ export default function CharacterBasicView({ hero }) {
   const [bgmCleared, setBgmCleared] = useState(false);
   const [saving, setSaving] = useState(false);
   const [apiKeyPanelOpen, setApiKeyPanelOpen] = useState(false);
+  const [newApiKey, setNewApiKey] = useState('');
+  const [keyringEntries, setKeyringEntries] = useState([]);
+  const [keyringLimit, setKeyringLimit] = useState(5);
+  const [keyringLoading, setKeyringLoading] = useState(false);
+  const [keyringSubmitting, setKeyringSubmitting] = useState(false);
+  const [keyringError, setKeyringError] = useState(null);
+  const [keyringMessage, setKeyringMessage] = useState('');
 
-  const { apiKey, setApiKey, apiVersion, setApiVersion, apiKeyWarning, persistApiKeyOnServer } =
-    useStartApiKeyManager({});
+  const { apiKey, apiVersion } = useStartApiKeyManager({});
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadKeyring() {
+      setKeyringLoading(true);
+      setKeyringError(null);
+      try {
+        const snapshot = readRankAuthSnapshot();
+        const payload = await loadRankApiKeyring({
+          context: {
+            userId: snapshot?.userId || null,
+            accessToken: snapshot?.accessToken,
+          },
+        });
+        if (cancelled) return;
+        const entries = Array.isArray(payload?.entries)
+          ? payload.entries.map(normalizeKeyringEntry)
+          : [];
+        setKeyringEntries(entries);
+        setKeyringLimit(
+          Number.isFinite(payload?.limit) ? Number(payload.limit) : keyringLimit
+        );
+      } catch (error) {
+        console.error('[Character] failed to load api keyring', error);
+        if (!cancelled) setKeyringError(error);
+      } finally {
+        if (!cancelled) setKeyringLoading(false);
+      }
+    }
+
+    loadKeyring();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const participationState = useHeroParticipations({ hero: currentHero });
   const battleState = useHeroBattles({
@@ -3575,20 +3628,20 @@ export default function CharacterBasicView({ hero }) {
                           key={tab.key}
                           type="button"
                           style={styles.dockTabButton(index === activeTab)}
-                          onClick={() => setActiveTab(index)}
+                          onClick={() => {
+                            setActiveTab(index);
+                            if (tab.key === 'api-keys') {
+                              setApiKeyPanelOpen(true);
+                            } else {
+                              setApiKeyPanelOpen(false);
+                            }
+                          }}
                         >
                           {tab.label}
                         </button>
                       ))}
                     </div>
                     <div style={styles.dockActions}>
-                      <button
-                        type="button"
-                        style={styles.rosterButton}
-                        onClick={() => setApiKeyPanelOpen(true)}
-                      >
-                        AI 키 관리
-                      </button>
                       <Link href="/lobby" style={styles.lobbyButton}>
                         로비로
                       </Link>
@@ -3597,55 +3650,68 @@ export default function CharacterBasicView({ hero }) {
                       </Link>
                     </div>
                   </div>
-
                   {apiKeyPanelOpen ? (
                     <div style={styles.infoBlock}>
                       <p style={styles.infoTitle}>AI API 키 관리</p>
                       <p style={styles.listMeta}>
-                        이 계정에서 사용할 AI API 키를 등록합니다. 등록한 키는 이
-                        캐릭터뿐 아니라 랭크 전투 전반에 재사용됩니다.
+                        이 계정의 AI 키를 등록하고 활성화합니다. 활성화된 키는 캐릭터 전투와
+                        랭크 세션 전반에 사용됩니다.
                       </p>
                       <div style={styles.settingsGroup}>
                         <div style={styles.formRow}>
-                          <label style={styles.sliderLabel}>
-                            제공자
-                            <select
-                              value={apiVersion}
-                              onChange={event => setApiVersion(event.target.value)}
-                              style={{ ...styles.textField, marginTop: 6 }}
-                            >
-                              <option value="gemini">Gemini</option>
-                              <option value="openai">OpenAI</option>
-                            </select>
-                          </label>
-                        </div>
-                        <div style={styles.formRow}>
-                          <label style={styles.sliderLabel}>
-                            API 키
-                            <input
-                              type="password"
-                              value={apiKey}
-                              onChange={event => setApiKey(event.target.value)}
-                              placeholder="키를 붙여넣어 주세요"
-                              style={{ ...styles.textField, marginTop: 6 }}
-                            />
-                          </label>
-                          {apiKeyWarning ? (
-                            <p style={styles.errorText}>{apiKeyWarning}</p>
-                          ) : null}
+                          <label style={styles.sliderLabel}>새 API 키</label>
+                          <input
+                            type="password"
+                            value={newApiKey}
+                            onChange={event => setNewApiKey(event.target.value)}
+                            placeholder="키를 붙여넣어 주세요"
+                            style={styles.textField}
+                          />
                         </div>
                         <div style={styles.formActions}>
                           <button
                             type="button"
                             style={styles.primaryButton}
+                            disabled={keyringSubmitting || !newApiKey.trim()}
                             onClick={async () => {
-                              const ok = await persistApiKeyOnServer(apiKey, apiVersion);
-                              if (ok) {
-                                setApiKeyPanelOpen(false);
+                              if (!newApiKey.trim() || keyringSubmitting) return;
+                              setKeyringSubmitting(true);
+                              setKeyringError(null);
+                              setKeyringMessage('');
+                              try {
+                                const snapshot = readRankAuthSnapshot();
+                                const payload = await registerRankApiKey({
+                                  apiKey: newApiKey.trim(),
+                                  context: {
+                                    userId: snapshot?.userId || null,
+                                    accessToken: snapshot?.accessToken,
+                                  },
+                                });
+                                const entry = normalizeKeyringEntry(payload?.entry);
+                                const entries = mergeKeyringEntries(
+                                  keyringEntries,
+                                  entry,
+                                  payload?.activated !== false
+                                );
+                                setKeyringEntries(entries);
+                                persistRankKeyringSnapshot({
+                                  userId: snapshot?.userId || '',
+                                  entries: entries.map(sanitizeKeyringStorageEntry),
+                                });
+                                setKeyringLimit(
+                                  Number.isFinite(payload?.limit) ? Number(payload.limit) : keyringLimit
+                                );
+                                setNewApiKey('');
+                                setKeyringMessage('API 키가 저장되었습니다.');
+                              } catch (error) {
+                                console.error('[Character] failed to store api key', error);
+                                setKeyringError(error);
+                              } finally {
+                                setKeyringSubmitting(false);
                               }
                             }}
                           >
-                            저장
+                            {keyringSubmitting ? '저장 중…' : 'API 키 저장'}
                           </button>
                           <button
                             type="button"
@@ -3654,6 +3720,126 @@ export default function CharacterBasicView({ hero }) {
                           >
                             닫기
                           </button>
+                        </div>
+                        {keyringError ? (
+                          <p style={styles.errorText}>
+                            {keyringError.message || 'API 키 작업 중 오류가 발생했습니다.'}
+                          </p>
+                        ) : null}
+                        {keyringMessage ? (
+                          <p style={styles.sectionHint}>{keyringMessage}</p>
+                        ) : null}
+                        {keyringLoading ? (
+                          <p style={styles.sectionHint}>키 목록을 불러오는 중…</p>
+                        ) : null}
+                        <div style={styles.settingsGroup}>
+                          <div style={styles.sectionHeader}>
+                            <p style={styles.sliderLabel}>등록된 키 목록</p>
+                            <p style={styles.sectionHint}>{`최대 ${keyringLimit}개까지 저장할 수 있습니다.`}</p>
+                          </div>
+                          <div style={styles.rankingList}>
+                            {keyringEntries.map(entry => (
+                              <div
+                                key={entry.id || entry.keySample}
+                                style={styles.keyringRow?.(entry.isActive) || styles.infoBlock}
+                              >
+                                <div>
+                                  <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                                    {formatKeyProviderLabel(entry.provider)}
+                                  </div>
+                                  <div style={{ color: '#94a3b8', fontSize: 12 }}>
+                                    {entry.keySample || '샘플 없음'}
+                                  </div>
+                                </div>
+                                <div style={styles.inlineActions}>
+                                  <button
+                                    type="button"
+                                    style={styles.primaryButton}
+                                    disabled={keyringSubmitting}
+                                    onClick={async () => {
+                                      if (!entry?.id || keyringSubmitting) return;
+                                      setKeyringSubmitting(true);
+                                      setKeyringError(null);
+                                      setKeyringMessage('');
+                                      try {
+                                        const snapshot = readRankAuthSnapshot();
+                                        const payload = entry.isActive
+                                          ? await deactivateRankApiKey({
+                                              entryId: entry.id,
+                                              context: {
+                                                userId: snapshot?.userId || null,
+                                                accessToken: snapshot?.accessToken,
+                                              },
+                                            })
+                                          : await activateRankApiKey({
+                                              entryId: entry.id,
+                                              context: {
+                                                userId: snapshot?.userId || null,
+                                                accessToken: snapshot?.accessToken,
+                                              },
+                                            });
+                                        const normalized = normalizeKeyringEntry(payload?.entry);
+                                        const entries = mergeKeyringEntries(
+                                          keyringEntries,
+                                          normalized,
+                                          !!normalized?.isActive
+                                        );
+                                        setKeyringEntries(entries);
+                                        persistRankKeyringSnapshot({
+                                          userId: snapshot?.userId || '',
+                                          entries: entries.map(sanitizeKeyringStorageEntry),
+                                        });
+                                      } catch (error) {
+                                        console.error('[Character] failed to toggle api key', error);
+                                        setKeyringError(error);
+                                      } finally {
+                                        setKeyringSubmitting(false);
+                                      }
+                                    }}
+                                  >
+                                    {entry.isActive ? '비활성화' : '사용하기'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    style={styles.ghostButton}
+                                    disabled={keyringSubmitting}
+                                    onClick={async () => {
+                                      if (!entry?.id || keyringSubmitting) return;
+                                      setKeyringSubmitting(true);
+                                      setKeyringError(null);
+                                      setKeyringMessage('');
+                                      try {
+                                        const snapshot = readRankAuthSnapshot();
+                                        await deleteRankApiKeyEntry({
+                                          entryId: entry.id,
+                                          context: {
+                                            userId: snapshot?.userId || null,
+                                            accessToken: snapshot?.accessToken,
+                                          },
+                                        });
+                                        const entries = keyringEntries.filter(item => item.id !== entry.id);
+                                        setKeyringEntries(entries);
+                                        persistRankKeyringSnapshot({
+                                          userId: snapshot?.userId || '',
+                                          entries: entries.map(sanitizeKeyringStorageEntry),
+                                        });
+                                      } catch (error) {
+                                        console.error('[Character] failed to delete api key', error);
+                                        setKeyringError(error);
+                                      } finally {
+                                        setKeyringSubmitting(false);
+                                      }
+                                    }}
+                                  >
+                                    삭제
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                            {!keyringEntries.length && !keyringLoading ? (
+                              <p style={styles.listMeta}>아직 등록된 키가 없습니다.</p>
+                            ) : null}
+                          </div>
                         </div>
                       </div>
                     </div>
