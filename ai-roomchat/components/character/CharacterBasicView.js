@@ -12,18 +12,19 @@ import CharacterPlayPanel from './CharacterPlayPanel';
 import useHeroParticipations from '@/hooks/character/useHeroParticipations';
 import useHeroBattles from '@/hooks/character/useHeroBattles';
 import { useStartApiKeyManager } from '../rank/StartClient/hooks/useStartApiKeyManager';
+import { readRankKeyringSnapshot, persistRankKeyringSnapshot } from '@/lib/rank/keyringStorage';
 import {
-  registerRankApiKey,
-  loadRankApiKeyring,
   activateRankApiKey,
   deactivateRankApiKey,
   deleteRankApiKeyEntry,
-  normalizeKeyringEntry,
-  mergeKeyringEntries,
-  sanitizeKeyringStorageEntry,
+  fetchRankUserKeyring,
   formatKeyProviderLabel,
-} from '@/lib/rank/userApiKeyringClient';
-import { readRankAuthSnapshot, persistRankKeyringSnapshot } from '@/lib/rank/rankAuthStorage';
+  KEYRING_LIMIT_FALLBACK,
+  mergeKeyringEntries,
+  normalizeKeyringEntry,
+  registerRankApiKey,
+  sanitizeKeyringStorageEntry,
+} from '@/lib/rank/keyringClient';
 import {
   formatPlayNumber,
   formatPlayWinRate,
@@ -1443,7 +1444,7 @@ export default function CharacterBasicView({ hero }) {
   const [apiKeyPanelOpen, setApiKeyPanelOpen] = useState(false);
   const [newApiKey, setNewApiKey] = useState('');
   const [keyringEntries, setKeyringEntries] = useState([]);
-  const [keyringLimit, setKeyringLimit] = useState(5);
+  const [keyringLimit, setKeyringLimit] = useState(KEYRING_LIMIT_FALLBACK);
   const [keyringLoading, setKeyringLoading] = useState(false);
   const [keyringSubmitting, setKeyringSubmitting] = useState(false);
   const [keyringError, setKeyringError] = useState(null);
@@ -1457,21 +1458,14 @@ export default function CharacterBasicView({ hero }) {
       setKeyringLoading(true);
       setKeyringError(null);
       try {
-        const snapshot = readRankAuthSnapshot();
-        const payload = await loadRankApiKeyring({
-          context: {
-            userId: snapshot?.userId || null,
-            accessToken: snapshot?.accessToken,
-          },
-        });
+        const snapshot = readRankKeyringSnapshot();
+        const { entries, limit } = await fetchRankUserKeyring();
         if (cancelled) return;
-        const entries = Array.isArray(payload?.entries)
-          ? payload.entries.map(normalizeKeyringEntry)
+        const normalized = Array.isArray(entries)
+          ? entries.map(normalizeKeyringEntry).filter(Boolean)
           : [];
-        setKeyringEntries(entries);
-        setKeyringLimit(
-          Number.isFinite(payload?.limit) ? Number(payload.limit) : keyringLimit
-        );
+        setKeyringEntries(normalized);
+        setKeyringLimit(Number.isFinite(limit) ? Number(limit) : KEYRING_LIMIT_FALLBACK);
       } catch (error) {
         console.error('[Character] failed to load api keyring', error);
         if (!cancelled) setKeyringError(error);
@@ -3679,13 +3673,9 @@ export default function CharacterBasicView({ hero }) {
                               setKeyringError(null);
                               setKeyringMessage('');
                               try {
-                                const snapshot = readRankAuthSnapshot();
                                 const payload = await registerRankApiKey({
                                   apiKey: newApiKey.trim(),
-                                  context: {
-                                    userId: snapshot?.userId || null,
-                                    accessToken: snapshot?.accessToken,
-                                  },
+                                  context: {},
                                 });
                                 const entry = normalizeKeyringEntry(payload?.entry);
                                 const entries = mergeKeyringEntries(
@@ -3695,7 +3685,7 @@ export default function CharacterBasicView({ hero }) {
                                 );
                                 setKeyringEntries(entries);
                                 persistRankKeyringSnapshot({
-                                  userId: snapshot?.userId || '',
+                                  userId: '',
                                   entries: entries.map(sanitizeKeyringStorageEntry),
                                 });
                                 setKeyringLimit(
@@ -3762,21 +3752,14 @@ export default function CharacterBasicView({ hero }) {
                                       setKeyringError(null);
                                       setKeyringMessage('');
                                       try {
-                                        const snapshot = readRankAuthSnapshot();
                                         const payload = entry.isActive
                                           ? await deactivateRankApiKey({
                                               entryId: entry.id,
-                                              context: {
-                                                userId: snapshot?.userId || null,
-                                                accessToken: snapshot?.accessToken,
-                                              },
+                                              context: {},
                                             })
                                           : await activateRankApiKey({
                                               entryId: entry.id,
-                                              context: {
-                                                userId: snapshot?.userId || null,
-                                                accessToken: snapshot?.accessToken,
-                                              },
+                                              context: {},
                                             });
                                         const normalized = normalizeKeyringEntry(payload?.entry);
                                         const entries = mergeKeyringEntries(
@@ -3786,7 +3769,7 @@ export default function CharacterBasicView({ hero }) {
                                         );
                                         setKeyringEntries(entries);
                                         persistRankKeyringSnapshot({
-                                          userId: snapshot?.userId || '',
+                                          userId: '',
                                           entries: entries.map(sanitizeKeyringStorageEntry),
                                         });
                                       } catch (error) {
@@ -3809,18 +3792,14 @@ export default function CharacterBasicView({ hero }) {
                                       setKeyringError(null);
                                       setKeyringMessage('');
                                       try {
-                                        const snapshot = readRankAuthSnapshot();
                                         await deleteRankApiKeyEntry({
                                           entryId: entry.id,
-                                          context: {
-                                            userId: snapshot?.userId || null,
-                                            accessToken: snapshot?.accessToken,
-                                          },
+                                          context: {},
                                         });
                                         const entries = keyringEntries.filter(item => item.id !== entry.id);
                                         setKeyringEntries(entries);
                                         persistRankKeyringSnapshot({
-                                          userId: snapshot?.userId || '',
+                                          userId: '',
                                           entries: entries.map(sanitizeKeyringStorageEntry),
                                         });
                                       } catch (error) {
