@@ -342,6 +342,14 @@ Current high-level status (this repo copy)
   - 요약: 텍스트 배틀용 엔진/훅/정산 경로는 Play/Rank settle 레벨에서 기본 동작까지는 맞춰져 있지만,  
     **“랭크 매칭 → 메인게임 → 멀티 참가자 동기화 → 정산까지 한 판을 완전히 플레이”하는 경험은 아직 프로토타입 단계**이며,  
     maker graph 편집기 ↔ `/graph`/`entryNode` 동기화와 `rank_match_queue` 소비/정리, 멀티뷰어 동기화가 추가로 필요하다.
+
+  #### 메인게임 재구성 태도 (2025-12-23)
+
+  - 현재 메인게임이 작동 불능인 원인은 **엔진 고장이라기보다, 준비된 재료를 잘못 조립한 상태**로 본다.
+  - 따라서 당장은 증상별 핫픽스보다, **공통 runtime / GameShell / StartClient 경계 정리와 단일 workspace 스냅샷 경로 확보** 같은 구조 개선을 먼저 진행한다.
+  - 구조가 정리된 뒤에, 그 위에서 **메인게임 진입 → 진행 → 정산 → 티켓 소모/보상** 흐름을 다시 조립·검증하는 것을 원칙으로 한다.
+  - 구조 개선 전까지의 메인게임 구현은 “프로토타입/레거시 조립물”로 취급하고, 
+    엔진 계약을 깨뜨리는 변경보다 **계약을 보존한 채 조립 방식을 교체하는 방향**을 우선한다.
   - **범용 랭크 매칭 v2(재구현 계획, 최대 12인)**:
     - 목표: 텍스트 베틀을 포함한 랭크 게임 전반에 대해 **최대 12명(예: 6vs6, 또는 12인 방)까지** 한 번에 매칭될 수 있는 **단일 범용 매칭 엔진/플로우**를 재구성한다.
     - 구현 축:
@@ -422,6 +430,9 @@ Current high-level status (this repo copy)
   - (2025-12-23) `useStartClientEngine` 내부에서 Realtime 복구 시 누락된 턴 이벤트를 백필하는 `backfillTurnEvents` 콜백이 
     `fetchTurnStateEvents` 를 자유 변수로 참조하고 있었는데, 실제로는 임포트가 빠져 런타임에서 `ReferenceError` 가 발생할 수 있었다.
     현재는 `lib/rank/sessionMetaClient.fetchTurnStateEvents` 를 명시적으로 임포트해 `/api/rank/turn-events` 와의 연동이 정상 동작한다.
+  - (2025-12-23) 랭크 메인게임에서 사용하는 핵심 API(`start-session` / `log-turn` / `complete-session`) 호출은 
+    `components/rank/StartClient/services/rankGameApiClient.js` 모듈로 분리되었고, 
+    `useStartClientEngine` 은 이 모듈을 통해 세션 토큰 조회 + fetch 를 위임하는 얇은 브리지만 유지한다.
   
 ### Rank 메인게임 코드 리뷰 플랜 (단일 플레이 / 비실시간)
 
@@ -510,6 +521,32 @@ Current high-level status (this repo copy)
      - 에러 처리, 응답 포맷(JSON 보장), best-effort 구분을 한번 정리·패치해 **“1인 비실시간 수직선이 끊기지 않도록”** 만드는 것을 **1순위**로 한다.
   2. 동시에 `useStartClientEngine` / `useTurnStateSync` 가 위 계약(필수/선택 API, 실패시 디그레이드)을 실제로 따르는지 점검해, 필요하면
      - Realtime/백필 쪽 실패를 조용히 무시하고 로컬 상태만으로 계속 진행하는 경로를 명시적으로 다듬는다.
+  3. `useStartClientEngine` 리팩터링은 아래 세 단계로 쪼개서 진행한다 (현재 이 레포 상태 기준):
+     - 3-1) **Rank API 브리지 분리**: `start-session` / `run-turn` / `log-turn` / `session-meta` / `turn-events` 호출과 응답 파싱을, 훅 바깥의 작은 서비스 모듈로 빼고
+       `useStartClientEngine` 에서는 `rankApi.startSession(...)`, `rankApi.runTurn(...)` 같은 얇은 호출만 쓰도록 정리한다.
+     - 3-2) **프롬프트/타임라인 엔진 어댑터 분리**: 기존 promptEngine + outcomeLedger + 브리지 관련 로직을, Rank에 독립적인 "런타임 어댑터" 함수 집합으로 뽑아낸다.
+       - 3-2-1) `advanceTurn` 내부에서 **순수 텍스트/프롬프트 빌드 단계**를 먼저 분리한다.
+         - 입력: `node`, `slots`, `history`, `aiMemory`, `activeGlobal`, `activeLocal`, `slotBinding`, `systemPrompt`, `actorContext`, `realtimeEnabled`.
+         - 출력: `promptText`, `historyPayload`, `effectiveSystemPrompt`, `effectivePrompt`, `pickedSlotId`(있다면).
+         - 구현: [components/rank/StartClient/engine/runtimeAdapter/prompt.js](../ai-roomchat/components/rank/StartClient/engine/runtimeAdapter/prompt.js)의 `buildTurnPrompt()` 로 분리되어 있음.
+       - 3-2-2) 응답 처리/정산을 담당하는 **결과 어댑터**를 분리한다.
+         - 입력: `responseText`, `node`, `slotIndex`, `endConditionVariable`, `activeGlobal`, `fallbackActorNames`, `promptText`, `historyRole`, `simulatedLocally`, `localSimResult`.
+         - 내부에서만 `parseOutcome` / `stripOutcomeFooter` / (필요한 보조 유틸)을 호출해,
+           - `outcome`, `outcomeVariables`, `visibleResponse`, `triggeredEnd`, `resolvedActorNames`, `nextActiveGlobal`, `fallbackSummary` 정도의 **요약 결과**를 반환한다.
+         - 구현: [components/rank/StartClient/engine/runtimeAdapter/outcome.js](../ai-roomchat/components/rank/StartClient/engine/runtimeAdapter/outcome.js)의 `processTurnOutcome()` 로 분리되어 있음.
+       - 3-2-3) 그래프 브리지/엣지 선택을 담당하는 **브리지 어댑터**를 분리한다.
+         - 입력: `graph`, `node`, `turn`, `history`, `visitedSlotIds`, `participantsStatus`, `activeGlobalNames`, `activeLocalNames`, `actorContext`, `brawlEnabled`, `gameVoided`, `winCount`, `lastDropInTurn`, `endTriggered`.
+         - 내부에서만 `createBridgeContext` / `pickNextEdge` 를 호출해,
+           - 브리지 컨텍스트와 `chosenEdge`(다음 노드/액션)가 결정된다.
+         - 구현: [components/rank/StartClient/engine/runtimeAdapter/bridge.js](../ai-roomchat/components/rank/StartClient/engine/runtimeAdapter/bridge.js)의 `pickNextEdgeForTurn()` 로 분리되어 있음.
+       - 3-2-4) 엣지에 매달린 **액션 디스패치 어댑터**를 분리한다.
+         - 입력: `edge`, `actorContext`, `participants`, `gameId`, `sessionInfo`, `patchEngineState`.
+         - 내부에서 `runClientAction`(로컬 액션) 혹은 `/api/rank/handle-action`(서버 액션)을 호출하고,
+           - participants 변경이 있으면 `patchEngineState({ participants })` 로 반영한다.
+           - 로컬 액션의 경우 `/api/rank/log-action` 으로 compact 요약을 best-effort 로 남긴다.
+         - 구현: [components/rank/StartClient/engine/runtimeAdapter/actions.js](../ai-roomchat/components/rank/StartClient/engine/runtimeAdapter/actions.js)의 `dispatchEdgeActionIfNeeded()` 로 분리되어 있음.
+     - 3-3) **Rank 호스트 얇게 만들기**: 위 두 분리가 끝나면 `useStartClientEngine` 내부에서 Rank 전용 상태(`matchFlow`/`matchDataStore`/티켓/티어 등)만 관리하고,
+       텍스트 배틀/다른 장르 런타임은 모두 coreRuntime/GameShell 쪽으로 위임해, 훅 파일 자체의 크기를 줄이고 책임을 명확히 한다.
   3. Maker ↔ `/graph` ↔ runtime.config ↔ rank_game_workspaces 구조 개선, `/api/rank/play` vs StartClient 플로우 통합 등은
      - 이 1인 수직선이 안정화된 뒤 “구조 개선” 턴으로 분리해 진행한다.
 
@@ -660,6 +697,82 @@ Current high-level status (this repo copy)
     - Rank 메인 엔진(StartClient)와 Studio/Maker를 어떻게 분리·연결할지  
       (각 게임의 기본 워크스페이스 세트/버전 관리, 자동 마이그레이션 전략 등)  
       에 대한 설계가 더 필요해서, **현재는 수동/부분 연동 단계**로 유지.
+
+### 8. StartClient 엔진 2차 구조개선 & 테스트 로드맵 (리스크 완화 버전)
+
+> 목표: 이미 1차로 계층화된 StartClient 메인게임 엔진을, "감당 가능한 리스크" 단위로 조금씩 정리하면서도, 매 단계마다 어디가 바뀌는지와 어떻게 검증할지를 명시해 둔다.
+
+#### 8-1. 현재 1차 구조개선 기준선 요약
+
+- Rank API 브리지:
+  - [components/rank/StartClient/services/rankGameApiClient.js](../ai-roomchat/components/rank/StartClient/services/rankGameApiClient.js)
+  - StartClient 훅은 `startRankSession/runRankTurn/logRankTurnEntries/completeRankSession` 같은 얇은 호출만 사용.
+- 텍스트 런타임 어댑터 계층:
+  - 프롬프트/히스토리 빌드: [engine/runtimeAdapter/prompt.js](../ai-roomchat/components/rank/StartClient/engine/runtimeAdapter/prompt.js) – `buildTurnPrompt()`
+  - 응답 파싱/변수/배우/요약: [engine/runtimeAdapter/outcome.js](../ai-roomchat/components/rank/StartClient/engine/runtimeAdapter/outcome.js) – `processTurnOutcome()`
+  - 브리지 컨텍스트 + 다음 엣지 선택: [engine/runtimeAdapter/bridge.js](../ai-roomchat/components/rank/StartClient/engine/runtimeAdapter/bridge.js) – `pickNextEdgeForTurn()`
+  - 엣지 액션 디스패치(로컬/서버): [engine/runtimeAdapter/actions.js](../ai-roomchat/components/rank/StartClient/engine/runtimeAdapter/actions.js) – `dispatchEdgeActionIfNeeded()`
+- `useStartClientEngine` 는 위 어댑터들을 조합해 Rank 전용 상태/세션/Realtime/티켓을 묶는 **호스트 레이어** 역할에 훨씬 가깝게 정리된 상태를 "1차 기준선"으로 삼는다.
+
+#### 8-2. 2차 구조개선: 세션 정산/티켓/turnState 경로
+
+> 범위: outcomeLedger + `finalizeSessionRemotely` + `matchDataStore.setGameMatchSessionMeta` + battleLogDraft 저장 흐름만을 대상으로, 순수 헬퍼와 호스트 상태 업데이트를 분리한다.
+
+- Step 1: 순수 헬퍼 도입 (행동 변화 없음) — ✅ turnState/상태 메시지 헬퍼 1차 적용 완료
+  - 대상 함수/로직:
+    - `buildOutcomeSnapshot(outcomeLedgerRef.current)` 호출 주변의 스냅샷/메시지 조합 로직
+    - `buildOutcomeStatusMessage(snapshot)` – 이미 순수 함수로 존재하므로 재사용
+    - `setGameMatchSessionMeta(gameId, { turnState: ... })` 에 전달되는 payload 조합 부분
+  - 작업 방식:
+    - 새로운 순수 유틸을 작은 모듈로 추가 (실제 구현: [components/rank/StartClient/engine/sessionOutcomeHelpers.js](../ai-roomchat/components/rank/StartClient/engine/sessionOutcomeHelpers.js)),
+      - 입력: outcomeLedger 스냅샷/turnNumber/reason 등
+      - 출력: `statusMessage`, `matchDataStorePayload`, `completeRankSessionPayload` 등
+    - 기존 코드에서 inline 조합하던 부분을, 이 헬퍼 호출로만 대체한다.
+  - 현재 적용 상태:
+    - `buildOutcomeStatusMessage(snapshot)` 를 StartClient 훅 파일에서 분리해, `sessionOutcomeHelpers.js`의 순수 함수로 사용.
+    - `setGameMatchSessionMeta(gameId, { turnState: ... })` 에 전달하던 payload 조합을 `buildTurnStateMeta({ loggedTurnNumber, turn, advanceReason })` 헬퍼로 중앙집중화.
+  - 검증:
+    - JS/TS 에러 스캔(`get_errors`)으로 새 모듈/임포트 누락·오타 확인.
+    - 단일 플레이(1P, 비실시간) 세션에서 **승리/패배/무승부/roles_resolved** 각각 한 번씩 수동으로 흘려 보면서:
+      - 화면 statusMessage 한국어 문구가 이전과 동일한지,
+      - battleLogDraft 저장이 여전히 정상 동작하는지,
+      - `rank_sessions/outcome` JSON 형식이 깨지지 않았는지 (DB/로그로 확인).
+
+- Step 2: `finalizeSessionRemotely` 경로 정리
+  - 목표: HTTP 호출 자체는 지금과 동일하게 유지하되, payload 생성과 에러 핸들링을 분리.
+  - 작업 방식:
+    - Step 1에서 만든 헬퍼 출력(`completeRankSessionPayload`)을 `finalizeSessionRemotely` 입력으로 전달하도록 변경.
+    - `finalizeSessionRemotely` 내부에서는
+      - Supabase 세션 토큰 획득
+      - `completeRankSession(...)` 호출 및 콘솔 경고
+      만 수행하도록 얇게 유지.
+  - 검증:
+    - 단일 세션에서 승/패/무/roles_resolved 각각 1회씩 돌려, 서버 로그/DB에서 `rank_sessions` 최종 outcome/turnNumber 가 기대값과 일치하는지 확인.
+    - 실패 시에는 콘솔 경고만 나가고 수직선이 끊기지 않는지 확인.
+
+- Step 3: turnState/matchDataStore 업데이트 경로 정리
+  - 목표: "세션 정산"과 "클라이언트 turnState/meta sync"를 느슨하게 분리해, 나중에 Studio/다른 클라이언트가 붙어도 계약이 명확해지도록 한다.
+  - 작업 방식:
+    - `setGameMatchSessionMeta(gameId, { turnState: ... })` 에 들어가는 payload 형식을 헬퍼 모듈에 명시적으로 정의.
+    - StartClient 훅에서는 "언제 이 헬퍼를 호출할지"만 결정하고, 실제 payload 내용은 헬퍼에 맡긴다.
+  - 검증:
+    - 같은 브라우저에서 탭을 두 개 열어, 한쪽에서 턴을 진행할 때 다른 쪽에서 turnState 표시가 계속 일관되게 갱신되는지 확인.
+    - 세션 정산 실패(네트워크 끊김 등) 상황에서도, 로컬 turnState 는 계속 업데이트되는지 확인.
+
+#### 8-3. 3차 구조개선(아이디어 수준) – coreRuntime/GameShell ↔ StartClient 수렴
+
+> 이 섹션은 여전히 "미래 설계 메모" 단계이며, 2차 구조개선이 안정화된 뒤 별도 턴으로 진행한다.
+
+- 목표:
+  - Play와 Rank가 `createCoreRuntime` + `GameShell` 을 공통으로 사용하도록 수렴시켜,
+    - 텍스트 런타임 로직은 모두 coreRuntime/GameShell 층으로,
+    - StartClient 훅은 Rank 전용 API·matchDataStore·UI 브리지에만 집중하게 만든다.
+- 제약/리스크:
+  - coreRuntime 자체는 여러 장르/모드를 대상으로 하고 있어, Rank 수직선만 보고 섣불리 변경하면 다른 워크스페이스에 영향을 줄 수 있다.
+  - 따라서, 3차 구조개선은 별도의 브랜치/플래그(예: `textRuntimeEnabled`)로 충분히 실험한 뒤, 눈에 보이는 수직선이 안정화된 후 병합해야 한다.
+- 진행 원칙:
+  - 1차/2차에서 만든 어댑터 계층과 Rank API 브리지를 그대로 재사용하면서,
+  - coreRuntime/GameShell 쪽에서 "동일한 인터페이스"를 받아 쓸 수 있도록 천천히 수렴시키는 것을 원칙으로 한다.
 
 ---
 

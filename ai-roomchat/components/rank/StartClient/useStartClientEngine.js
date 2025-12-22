@@ -5,23 +5,26 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 
 import { subscribeToBroadcastTopic } from '../../../lib/realtime/broadcast';
 import { supabase } from '../../../lib/supabase';
+import {
+  completeRankSession,
+  logRankTurnEntries,
+  runRankTurn,
+  startRankSession,
+} from './services/rankGameApiClient';
 import { withTable } from '../../../lib/supabaseTables';
 import { fetchTurnStateEvents } from '@/lib/rank/sessionMetaClient';
-import {
-  buildSlotsFromParticipants,
-  makeNodePrompt,
-  parseOutcome,
-} from '../../../lib/promptEngine';
+import { buildSlotsFromParticipants, makeNodePrompt } from '../../../lib/promptEngine';
 import { loadGameBundle } from './engine/loadGameBundle';
-import { pickNextEdge } from './engine/graph';
 import { buildSystemMessage, parseRules } from './engine/systemPrompt';
 import { resolveSlotBinding } from './engine/slotBindingResolver';
-import { createBridgeContext } from './engine/bridgeContext';
 import {
   buildUserActionPersona,
   normalizeHeroName,
   resolveActorContext,
 } from './engine/actorContext';
+import { pickNextEdgeForTurn } from './engine/runtimeAdapter/bridge';
+import { dispatchEdgeActionIfNeeded } from './engine/runtimeAdapter/actions';
+import { buildOutcomeStatusMessage, buildTurnStateMeta } from './engine/sessionOutcomeHelpers';
 import { buildBattleLogDraft } from './engine/battleLogBuilder';
 import { formatRealtimeReason } from './engine/timelineLogBuilder';
 import {
@@ -58,10 +61,9 @@ import { createDropInQueueService } from './services/dropInQueueService';
 import { createAsyncSessionManager } from './services/asyncSessionManager';
 import { mergeTimelineEvents, normalizeTimelineStatus } from '@/lib/rank/timelineEvents';
 import { buildDropInExtensionTimelineEvent } from '@/lib/rank/dropInTimeline';
-import { prepareHistoryPayload } from '@/lib/rank/chatHistory';
-import { presummarizeHistory } from '@/lib/client/offload/presummarize';
+import { processTurnOutcome } from './engine/runtimeAdapter/outcome';
+import { buildTurnPrompt } from './engine/runtimeAdapter/prompt';
 import { buildHistorySeedEntries } from '@/lib/rank/historySeeds';
-import { runClientAction } from '@/lib/rank/clientActions';
 import { runMatchWithFallback } from '@/lib/client/offload/ruleSim';
 import { fetchCached } from '@/lib/client/cache/fetchCached';
 import { useHistoryBuffer } from './hooks/useHistoryBuffer';
@@ -152,64 +154,7 @@ function sanitizeDropInArrivals(arrivals) {
     .filter(Boolean);
 }
 
-function stripOutcomeFooter(text = '') {
-  if (!text) return { body: '', footer: [] };
-  const working = String(text).split(/\r?\n/);
-  const footer = [];
-  let captured = 0;
-  let index = working.length - 1;
-
-  while (index >= 0 && captured < 3) {
-    const candidate = working[index];
-    if (!candidate.trim()) {
-      working.splice(index, 1);
-      index -= 1;
-      continue;
-    }
-    footer.unshift(candidate);
-    working.splice(index, 1);
-    captured += 1;
-
-    while (index - 1 >= 0 && !working[index - 1].trim()) {
-      working.splice(index - 1, 1);
-      index -= 1;
-    }
-
-    index = working.length - 1;
-  }
-
-  while (working.length && !working[working.length - 1].trim()) {
-    working.pop();
-  }
-
-  return { body: working.join('\n'), footer };
-}
-
-function buildOutcomeStatusMessage(snapshot) {
-  if (!snapshot) {
-    return '모든 역할군 결과가 확정되어 세션을 종료합니다.';
-  }
-  const summaries = Array.isArray(snapshot.roleSummaries) ? snapshot.roleSummaries : [];
-  const wins = summaries.filter(entry => entry.status === 'won').length;
-  const losses = summaries.filter(entry => entry.status === 'lost').length;
-  const baseLabel = (() => {
-    switch (snapshot.overallResult) {
-      case 'won':
-        return '승리';
-      case 'lost':
-        return '패배';
-      case 'draw':
-        return '무승부';
-      default:
-        return '종료';
-    }
-  })();
-  const pieces = [];
-  if (wins) pieces.push(`${wins}승`);
-  if (losses) pieces.push(`${losses}패`);
-  const summary = pieces.length ? ` (${pieces.join(' · ')})` : '';
-  return `모든 역할군 결과가 확정되어 세션을 ${baseLabel}로 마무리했습니다.${summary}`;
-}
+// buildOutcomeStatusMessage and buildTurnStateMeta moved to engine/sessionOutcomeHelpers
 
 function buildDropInMetaPayload({
   arrivals,
@@ -1952,44 +1897,13 @@ export function useStartClientEngine(gameId, options = {}) {
       }
 
       try {
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError) {
-          throw sessionError;
-        }
-        const token = sessionData?.session?.access_token;
-        if (!token) {
-          throw new Error('세션 토큰을 확인할 수 없습니다.');
-        }
-
-        const payload = {
-          session_id: sessionInfo.id,
-          game_id: gameId,
+        await logRankTurnEntries({
+          supabase,
+          sessionId: sessionInfo.id,
+          gameId,
           entries: normalized,
-        };
-        const numericTurn = Number(turnNumber);
-        if (Number.isFinite(numericTurn) && numericTurn > 0) {
-          payload.turn_number = numericTurn;
-        }
-
-        const response = await fetch('/api/rank/log-turn', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(payload),
+          turnNumber,
         });
-
-        if (!response.ok) {
-          let detail = null;
-          try {
-            detail = await response.json();
-          } catch (error) {
-            detail = null;
-          }
-          const message = detail?.error || '턴 기록에 실패했습니다.';
-          throw new Error(message);
-        }
       } catch (err) {
         console.error('턴 기록 실패:', err);
       }
@@ -2816,37 +2730,16 @@ export function useStartClientEngine(gameId, options = {}) {
     async ({ snapshot, reason, responseText, turnNumber }) => {
       if (!sessionInfo?.id || !gameId) return;
       try {
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError) {
-          throw sessionError;
-        }
-        const token = sessionData?.session?.access_token;
-        if (!token) {
-          throw new Error('세션 토큰을 확인하지 못했습니다.');
-        }
-
-        const payload = {
+        const outcome = snapshot || buildOutcomeSnapshot(outcomeLedgerRef.current);
+        await completeRankSession({
+          supabase,
           sessionId: sessionInfo.id,
           gameId,
           turnNumber,
-          reason: reason || 'roles_resolved',
-          outcome: snapshot || buildOutcomeSnapshot(outcomeLedgerRef.current),
-          finalResponse: responseText || '',
-        };
-
-        const response = await fetch('/api/rank/complete-session', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(payload),
+          reason,
+          outcome,
+          finalResponse: responseText,
         });
-
-        if (!response.ok) {
-          const detail = await response.text().catch(() => '');
-          throw new Error(detail || '세션 결과 정산 요청에 실패했습니다.');
-        }
       } catch (error) {
         console.warn('[StartClient] 세션 결과 정산 요청 실패:', error);
       }
@@ -3198,58 +3091,13 @@ export function useStartClientEngine(gameId, options = {}) {
     let sessionReady = false;
 
     try {
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError) {
-        throw sessionError;
-      }
-
-      const token = sessionData?.session?.access_token;
-      if (!token) {
-        throw new Error('세션 정보가 만료되었습니다. 다시 로그인해 주세요.');
-      }
-
-      const response = await fetch('/api/rank/start-session', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          game_id: gameId,
-          mode: realtimeEnabled ? 'realtime' : 'manual',
-          role: viewerParticipant?.role || null,
-          match_code: null,
-          // 새 매치 흐름에서 진입한 경우에는 항상
-          // 이전 세션을 재사용하지 않고 새 세션을 생성한다.
-          session_policy: matchSnapshotSeed ? 'new_per_match' : undefined,
-        }),
+      const { session: sessionPayload } = await startRankSession({
+        supabase,
+        gameId,
+        mode: realtimeEnabled ? 'realtime' : 'manual',
+        role: viewerParticipant?.role || null,
+        sessionPolicy: matchSnapshotSeed ? 'new_per_match' : undefined,
       });
-
-      let payload = {};
-      try {
-        payload = await response.json();
-      } catch (error) {
-        payload = {};
-      }
-
-      if (!response.ok) {
-        const message =
-          payload?.error ||
-          payload?.detail ||
-          '전투 세션을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.';
-        throw new Error(message);
-      }
-
-      if (!payload?.ok) {
-        const message =
-          payload?.error || '전투 세션을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.';
-        throw new Error(message);
-      }
-
-      const sessionPayload = payload?.session || null;
-      if (!sessionPayload?.id) {
-        throw new Error('세션 정보를 받지 못했습니다. 잠시 후 다시 시도해 주세요.');
-      }
 
       setSessionInfo({
         id: sessionPayload.id,
@@ -3580,30 +3428,27 @@ export function useStartClientEngine(gameId, options = {}) {
       setTimeRemaining(null);
 
       try {
-        const compiled = makeNodePrompt({
+        const {
+          promptText,
+          historyPayload,
+          effectiveSystemPrompt: adapterSystemPrompt,
+          effectivePrompt: adapterPrompt,
+          pickedSlotId,
+        } = buildTurnPrompt({
           node,
           slots,
-          historyText: history.joinedText({ onlyPublic: false, last: 12 }),
-          activeGlobalNames: activeGlobal,
-          activeLocalNames: activeLocal,
-          currentSlot: slotBinding.templateSlotRef,
+          history,
+          aiMemory,
+          activeGlobal,
+          activeLocal,
+          slotBinding,
+          systemPrompt,
+          actorContext,
+          realtimeEnabled,
         });
 
-        const promptText = compiled.text;
-        // Pre-summarization to reduce token usage: build compact summary and trim history
-        const historyPayloadRaw = prepareHistoryPayload(aiMemory, { limit: 28 });
-        const { summaryText: historySummary } = presummarizeHistory(historyPayloadRaw, {
-          maxChars: 600,
-          maxItems: 20,
-        });
-        const historyPayload = historySummary
-          ? [
-              { role: 'system', content: `[CONTEXT SUMMARY]\n${historySummary}` },
-              ...historyPayloadRaw.slice(-18),
-            ]
-          : historyPayloadRaw;
-        if (compiled.pickedSlot != null) {
-          visitedSlotIds.current.add(String(compiled.pickedSlot));
+        if (pickedSlotId) {
+          visitedSlotIds.current.add(pickedSlotId);
         }
 
         let responseText =
@@ -3615,14 +3460,8 @@ export function useStartClientEngine(gameId, options = {}) {
         let simulatedLocally = false;
         let localSimResult = null;
 
-        let effectiveSystemPrompt = systemPrompt;
-        let effectivePrompt = promptText;
-
-        if (!realtimeEnabled && isUserAction) {
-          const persona = buildUserActionPersona(actorContext);
-          effectiveSystemPrompt = [systemPrompt, persona.system].filter(Boolean).join('\n\n');
-          effectivePrompt = persona.prompt ? `${persona.prompt}\n\n${promptText}` : promptText;
-        }
+        let effectiveSystemPrompt = adapterSystemPrompt;
+        let effectivePrompt = adapterPrompt;
 
         // Attempt local rule simulation offload before hitting AI if:
         //  - no manual/override response
@@ -3691,31 +3530,17 @@ export function useStartClientEngine(gameId, options = {}) {
             geminiModel: normalizedGeminiModel,
           });
 
-          const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-          if (sessionError) {
-            throw sessionError;
-          }
-
-          const token = sessionData?.session?.access_token;
-          if (!token) {
-            throw new Error('세션 토큰을 확인할 수 없습니다.');
-          }
-
           // If we already simulated locally, decide if we want to skip server AI call entirely.
           // Sampling strategy: 20% of local sims still call server for verification/audit.
           const needServerVerification = simulatedLocally && Math.random() < 0.2;
 
-          let res = null;
+          let payload = {};
           if (simulatedLocally && !needServerVerification) {
             // Skip server call; mark as logged false (we'll log manually below).
           } else {
-            res = await fetch('/api/rank/run-turn', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`,
-              },
-              body: JSON.stringify({
+            payload = await runRankTurn({
+              supabase,
+              body: {
                 apiKey: effectiveApiKey,
                 system: effectiveSystemPrompt,
                 prompt: effectivePrompt,
@@ -3730,34 +3555,8 @@ export function useStartClientEngine(gameId, options = {}) {
                 history: historyPayload,
                 local_sim: simulatedLocally ? localSimResult || null : undefined,
                 local_sim_verify: needServerVerification || undefined,
-              }),
+              },
             });
-          }
-
-          let payload = {};
-          if (res) {
-            try {
-              payload = await res.json();
-            } catch (error) {
-              payload = {};
-            }
-          }
-
-          if (res && !res.ok) {
-            const error = new Error(payload?.error || payload?.detail || 'AI 호출에 실패했습니다.');
-            if (payload?.error) {
-              error.code = payload.error;
-            }
-            if (typeof payload?.detail === 'string' && payload.detail.trim()) {
-              error.detail = payload.detail.trim();
-            }
-            throw error;
-          }
-
-          if (res && payload?.error) {
-            const error = new Error(payload.error);
-            error.code = payload.error;
-            throw error;
           }
 
           if (!simulatedLocally || needServerVerification) {
@@ -3769,7 +3568,7 @@ export function useStartClientEngine(gameId, options = {}) {
               '';
           }
 
-          if (res && payload?.logged) {
+          if (payload?.logged) {
             loggedByServer = true;
             const numericTurn = Number(payload?.turn_number);
             if (Number.isFinite(numericTurn)) {
@@ -3834,14 +3633,26 @@ export function useStartClientEngine(gameId, options = {}) {
         });
         bumpHistoryVersion();
 
-        const outcome = parseOutcome(responseText);
-        const outcomeVariables = outcome.variables || [];
-        const { body: visibleResponse } = stripOutcomeFooter(responseText);
-        const triggeredEnd = endConditionVariable
-          ? outcomeVariables.includes(endConditionVariable)
-          : false;
-        const resolvedActorNames =
-          outcome.actors && outcome.actors.length ? outcome.actors : fallbackActorNames;
+        const {
+          outcome,
+          outcomeVariables,
+          visibleResponse,
+          triggeredEnd,
+          resolvedActorNames,
+          nextActiveGlobal,
+          fallbackSummary,
+        } = processTurnOutcome({
+          responseText,
+          node,
+          slotIndex,
+          endConditionVariable,
+          activeGlobal,
+          fallbackActorNames,
+          promptText,
+          historyRole,
+          simulatedLocally,
+          localSimResult,
+        });
         updateHeroAssets(resolvedActorNames, actorContext);
         if (promptEntry?.meta) {
           promptEntry.meta = { ...promptEntry.meta, actors: resolvedActorNames };
@@ -3849,30 +3660,7 @@ export function useStartClientEngine(gameId, options = {}) {
         if (responseEntry?.meta) {
           responseEntry.meta = { ...responseEntry.meta, actors: resolvedActorNames };
         }
-        const nextActiveGlobal = Array.from(
-          new Set([...activeGlobal, ...(outcome.variables || [])])
-        );
-
-        let fallbackSummary = null;
         if (!loggedByServer) {
-          fallbackSummary = {
-            preview: visibleResponse.slice(0, 240),
-            promptPreview: promptText.slice(0, 240),
-            outcome: {
-              lastLine: outcome.lastLine || undefined,
-              variables:
-                outcome.variables && outcome.variables.length ? outcome.variables : undefined,
-              actors:
-                resolvedActorNames && resolvedActorNames.length ? resolvedActorNames : undefined,
-            },
-            extra: {
-              slotIndex,
-              nodeId: node?.id ?? null,
-              source: 'fallback-log',
-              localSim: simulatedLocally ? localSimResult || null : undefined,
-            },
-          };
-
           await logTurnEntries({
             entries: [
               {
@@ -3908,50 +3696,35 @@ export function useStartClientEngine(gameId, options = {}) {
         // matchDataStore.sessionMeta.turnState 에 반영해
         // 같은 브라우저 세션/다른 탭에서 일관된 상태를 볼 수 있도록 한다.
         if (gameId) {
-          const effectiveTurnNumber = Number.isFinite(Number(loggedTurnNumber))
-            ? Math.floor(Number(loggedTurnNumber))
-            : Number.isFinite(Number(turn))
-              ? Math.floor(Number(turn))
-              : null;
-          if (effectiveTurnNumber !== null) {
-            setGameMatchSessionMeta(gameId, {
-              turnState: {
-                turnNumber: effectiveTurnNumber,
-                status: `completed:${advanceReason}`,
-                updatedAt: Date.now(),
-                source: 'client/run-turn',
-              },
-              source: 'client/run-turn',
-            });
+          const { turnNumber: effectiveTurnNumber, payload } = buildTurnStateMeta({
+            loggedTurnNumber,
+            turn,
+            advanceReason,
+          });
+          if (effectiveTurnNumber !== null && payload) {
+            setGameMatchSessionMeta(gameId, payload);
           }
         }
 
         setActiveLocal(outcomeVariables);
         setActiveGlobal(nextActiveGlobal);
 
-        const context = createBridgeContext({
+        const { chosenEdge } = pickNextEdgeForTurn({
+          graph,
+          node,
           turn,
-          historyUserText: history.joinedText({ onlyPublic: true, last: 5 }),
-          historyAiText: history.joinedText({ onlyPublic: false, last: 5 }),
+          history,
           visitedSlotIds: visitedSlotIds.current,
           participantsStatus,
           activeGlobalNames: nextActiveGlobal,
           activeLocalNames: outcomeVariables,
-          currentRole: actorContext?.participant?.role || actorContext?.heroSlot?.role || null,
-          sessionFlags: {
-            brawlEnabled,
-            gameVoided,
-            winCount,
-            lastDropInTurn,
-            endTriggered: triggeredEnd,
-            dropInGraceTurns: 0,
-          },
+          actorContext,
+          brawlEnabled,
+          gameVoided,
+          winCount,
+          lastDropInTurn,
+          endTriggered: triggeredEnd,
         });
-
-        const outgoing = graph.edges.filter(
-          edge => edge.from === String(node.id) || edge.from === node.id
-        );
-        const chosenEdge = pickNextEdge(outgoing, context);
 
         setLogs(prev => {
           const nextLogs = [
@@ -3977,116 +3750,15 @@ export function useStartClientEngine(gameId, options = {}) {
           return nextLogs;
         });
 
-        // If the chosen edge carries an action, dispatch it to the server (POC)
-        if (chosenEdge?.data?.action && chosenEdge.data.action !== 'continue') {
-          (async () => {
-            try {
-              // Prefer explicit action payload on the bridge if present, otherwise construct a small default payload
-              const explicitPayload =
-                chosenEdge.data.payload || chosenEdge.data.actionPayload || null;
-              const defaultPayload = {
-                ownerId: actorContext?.participant?.owner_id || null,
-                slotIndex: actorContext?.slotIndex ?? null,
-                amount: 1,
-              };
-              const actionPayload = explicitPayload || defaultPayload;
-
-              const runLocally = !!chosenEdge.data?.runLocally || !!chosenEdge.data?.run_local;
-              if (runLocally) {
-                try {
-                  const localResp = await runClientAction(chosenEdge.data.action, {
-                    payload: actionPayload,
-                    participants: participantsRef.current,
-                    actorContext,
-                  });
-                  if (localResp?.ok) {
-                    const updated = Array.isArray(localResp?.changes?.participants)
-                      ? localResp.changes.participants
-                      : null;
-                    if (updated) {
-                      patchEngineState({ participants: updated });
-                    }
-                    // best-effort: send compact audit summary to server
-                    try {
-                      const { data: sessionData, error: sessionError } =
-                        await supabase.auth.getSession();
-                      if (!sessionError && sessionData?.session?.access_token) {
-                        const token = sessionData.session.access_token;
-                        const requestId =
-                          typeof crypto !== 'undefined' && crypto.randomUUID
-                            ? crypto.randomUUID()
-                            : `${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
-                        // Fire-and-forget; don't block turn processing
-                        void fetch('/api/rank/log-action', {
-                          method: 'POST',
-                          headers: {
-                            'Content-Type': 'application/json',
-                            Authorization: `Bearer ${token}`,
-                          },
-                          body: JSON.stringify({
-                            action: chosenEdge.data.action,
-                            summary: localResp.summary || null,
-                            result: localResp.result || null,
-                            session_id: sessionInfo?.id || null,
-                            game_id: gameId || null,
-                            request_id: requestId,
-                          }),
-                        }).catch(err => console.warn('[StartClient] log-action fetch failed', err));
-                      }
-                    } catch (err) {
-                      console.warn('[StartClient] log-action error', err?.message || err);
-                    }
-                  } else {
-                    console.warn('[StartClient] local action failed', localResp);
-                  }
-                } catch (err) {
-                  console.warn('[StartClient] local action error:', err?.message || err);
-                }
-
-                // Do not dispatch to server when runLocally
-                return;
-              }
-
-              const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-              if (sessionError) throw sessionError;
-              const token = sessionData?.session?.access_token;
-              if (!token) throw new Error('missing_session_token');
-
-              const resp = await fetch('/api/rank/handle-action', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify({
-                  action: chosenEdge.data.action,
-                  payload: actionPayload,
-                  session_id: sessionInfo?.id || null,
-                  game_id: gameId || null,
-                }),
-              });
-
-              if (!resp.ok) {
-                const detail = await resp.json().catch(() => ({}));
-                console.warn('[StartClient] action dispatch failed', detail);
-                return;
-              }
-
-              const body = await resp.json().catch(() => ({}));
-              if (body?.changes && body.changes.participants) {
-                // Apply participant changes if returned (simple replace for POC)
-                const updated = Array.isArray(body.changes.participants)
-                  ? body.changes.participants
-                  : null;
-                if (updated) {
-                  patchEngineState({ participants: updated });
-                }
-              }
-            } catch (err) {
-              console.warn('[StartClient] action dispatch error:', err?.message || err);
-            }
-          })();
-        }
+        // If the chosen edge carries an action, delegate to the action adapter.
+        void dispatchEdgeActionIfNeeded({
+          edge: chosenEdge,
+          actorContext,
+          participants: participantsRef.current,
+          gameId,
+          sessionInfo,
+          patchEngineState,
+        });
 
         clearManualResponse();
 
