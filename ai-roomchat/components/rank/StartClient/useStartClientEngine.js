@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { subscribeToBroadcastTopic } from '../../../lib/realtime/broadcast';
 import { supabase } from '../../../lib/supabase';
 import { withTable } from '../../../lib/supabaseTables';
+import { fetchTurnStateEvents } from '@/lib/rank/sessionMetaClient';
 import {
   buildSlotsFromParticipants,
   makeNodePrompt,

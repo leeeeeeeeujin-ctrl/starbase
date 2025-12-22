@@ -419,6 +419,40 @@ Current high-level status (this repo copy)
     별도의 채널로 동작한다.  
   - Rank 정산 공식 경로는 기존 `/api/rank/settle` + `rank_session_battle_logs` 기준을 유지하고,  
     텍스트 배틀 세션 연동(`finalize_text_battle_rank`)은 선택적/후순위 작업으로 남겨 둔다.
+  - (2025-12-23) `useStartClientEngine` 내부에서 Realtime 복구 시 누락된 턴 이벤트를 백필하는 `backfillTurnEvents` 콜백이 
+    `fetchTurnStateEvents` 를 자유 변수로 참조하고 있었는데, 실제로는 임포트가 빠져 런타임에서 `ReferenceError` 가 발생할 수 있었다.
+    현재는 `lib/rank/sessionMetaClient.fetchTurnStateEvents` 를 명시적으로 임포트해 `/api/rank/turn-events` 와의 연동이 정상 동작한다.
+  
+### Rank 메인게임 코드 리뷰 플랜 (단일 플레이 / 비실시간)
+
+- **1. 범위·입출구 고정**
+  - 대상: 랭크 단일 플레이 비실시간 루프.
+  - 입구: `/rank/[id]/start` 화면 + `/api/rank/start-session` (세션 생성/재사용).
+  - 본게임: `components/rank/StartClient/useStartClientEngine.js` + `/api/rank/run-turn`, `/api/rank/log-turn`, `/api/rank/turn-events`.
+  - 저장/브로드캐스트: `rank_turn_state_events` + `/api/rank/session-meta` + Supabase Realtime 채널.
+
+- **2. 데이터 플로우 한 줄 요약 후 코드 추적**
+  - "뷰어가 Start 클릭 → StartClient/useStartClientEngine 훅 → start-session → run-turn/log-turn → session-meta/turn-events → matchDataStore 반영" 순서로 
+    한 줄 시퀀스를 문서에 먼저 적고, 이 순서를 따라 관련 파일을 차례로 코드 리뷰한다.
+
+- **3. 모듈별 체크리스트**
+  - API 라우트(`pages/api/rank/*.js`):
+    - 메서드/파라미터 검증, 토큰 처리(익명/뷰어/서비스 롤), 에러 응답 포맷(JSON 유지), 로그 태그 일관성 확인.
+  - 클라이언트 엔진(`useStartClientEngine`, `useTurnStateSync`, StartClient):
+    - 외부 유틸·함수는 모두 명시적으로 import 되었는지 확인 (free variable 방지).
+    - 비동기 경로마다 중단 조건(세션 ID 없음 등), AbortController 사용, 에러 로그 메시지 유무를 점검.
+    - `modules/rank/matchDataStore` 에 쓰는 지점은 최소 필드만 갱신하는지, 불필요한 루프/중복 write 가드가 있는지 확인.
+  - Supabase 스키마/RPC:
+    - 상태 필드(`status`, `source` 등)가 클라이언트/서버 쌍방에서 동일하게 가정되고 있는지 정리하고, 
+      RPC(`enqueue_rank_turn_state_event`, `fetch_rank_turn_state_events` 등)의 입력/출력 계약이 코드와 문서에 맞는지 검토.
+
+- **4. 테스트 시나리오 선 정의**
+  - 예: "단일 플레이로 1게임 시작 → 탭 새로고침 → Realtime 끊겼다 재연결 → `/api/rank/turn-events` 백필로 턴 상태가 자연스럽게 이어지는지" 와 같은 
+    시나리오를 몇 개 미리 적어 두고, 관련 코드 수정 시마다 이 시나리오들만 반복 검증한다.
+
+- **5. 문서·코드 리뷰 동시 진행**
+  - 위 시퀀스/체크리스트를 먼저 본 문서에 고정해 두고, 그 순서대로 코드 파일을 내려가며 가정과 다른 부분만 메모한다.
+  - 발견된 차이점은 묶어서 수정하고, 관련 테스트/수동 시나리오를 실행한 뒤 다시 이 섹션에 반영해 다음 타자에게 인계한다.
   - **rank_match_queue / 큐 수명**  
     - `lib/rank/matchmakingService.loadQueueEntries(...)` 는 `status = 'waiting'` 인 엔트리만 읽어 매칭 후보로 사용한다.
     - `/api/rank/match` 가 매칭을 성사시키면 `markAssignmentsMatched(...)` 를 통해 `status = 'matched'` 로 전환하고,  
@@ -427,6 +461,64 @@ Current high-level status (this repo copy)
     - `docs/sql/cleanup-rank-match-queue.sql` 의 `cleanup_rank_match_queue(...)` 를 통해  
       오래된 `waiting` 엔트리를 `expired` 로 바꾸고,  
       충분히 지난 `matched/consumed/abandoned/expired` 엔트리는 실제로 삭제해 큐를 슬림하게 유지한다.
+
+#### 단일 플레이 / 비실시간 Rank 수직선 계약 (현실적인 기준선)
+
+> 이 섹션은 “랭크 단일 플레이 비실시간 텍스트 배틀” 기준으로, 당분간 우리가 실제로 지켜야 할 최소 계약을 정의한다.
+
+- **목표 범위 (Scope)**
+  - 한 명의 뷰어가 `/rank/[id]/start` 에서 게임을 시작해, 같은 브라우저/세션 안에서 **세션 생성 → 여러 턴 진행 → 종료/배틀로그 저장** 까지 끊기지 않고 진행되는 것을 1차 목표로 삼는다.
+  - 멀티 뷰어, 난입, 완전한 랭크 정산(/api/rank/settle) 연동은 이 수직선이 안정화된 뒤의 2단계 작업으로 둔다.
+
+- **입·출구 계약**
+  - 입구:
+    - 페이지: `/rank/[id]/start` → `components/rank/StartClient/index.js`
+    - 세션 생성: `/api/rank/start-session` (viewer 액세스 토큰 기반, 1인 세션/재사용 중심)
+  - 본게임:
+    - 엔진: `components/rank/StartClient/useStartClientEngine.js`
+    - 필수 API: `/api/rank/run-turn` (AI 호출 + rank_turns 기록), `/api/rank/log-turn` (보조 로그)
+    - 선택 API: `/api/rank/session-meta`, `/api/rank/turn-events` (TurnState/타임라인 동기화, 실패해도 게임은 계속 진행 가능해야 함)
+  - 출구:
+    - 배틀 로그 저장: `/api/rank/save-battle-log` (best-effort)
+    - 선택적 정산: `/api/rank/settle` (이 수직선에서는 필수 아님)
+
+- **API 실패/에러 처리 원칙 (1인 비실시간 한정)**
+  - start-session / run-turn / log-turn:
+    - 최종적으로 **JSON 응답**을 반환하는 것을 원칙으로 하고, Next 기본 HTML 에러 페이지가 그대로 노출되지 않도록 방지한다.
+    - 인증 실패(401/403), 잘못된 입력(400)은 클라이언트에서 “다시 로그인/다시 시작” 수준의 안내로 처리할 수 있게, 에러 코드/메시지를 명시적으로 JSON에 담는다.
+    - Supabase 내부 에러(예: `.append` 관련)처럼 “세션은 유지 가능하지만 부가 업데이트만 실패한 경우”는 **best-effort** 로 처리하고, 수직선을 끊지 않는다.
+  - session-meta / turn-events:
+    - 이 수직선에서는 “있으면 좋고, 실패해도 게임은 계속 굴러가는 보조 채널”로 취급한다.
+    - fetch 실패/타임아웃 시 콘솔 경고만 남기고 조용히 무시하거나 다음 턴에서 다시 시도하며, 사용자에게는 치명적 에러로 보이지 않도록 한다.
+
+- **Runtime / matchDataStore 계약**
+  - `modules/rank/matchDataStore.setGameMatchSessionMeta(gameId, payload)` 는
+    - 최소한 `turnState.turnNumber`, `turnState.status`, `turnState.updatedAt` 정도만 정확히 유지하면 되고,
+    - Realtime/turn-events 로부터 오는 고급 메타(extras, dropIn 등)는 1인 비실시간에서는 있어도/없어도 수직선이 깨지지 않도록 설계한다.
+  - StartClient 엔진은 “1인 비실시간” 모드에서:
+    - Realtime이 꺼져 있거나 실패한 경우에도, `/api/rank/run-turn` / `/api/rank/log-turn` 응답만으로 로컬 `matchDataStore` 를 꾸준히 갱신해 뷰어에게 진행 상황을 보여줄 수 있어야 한다.
+
+- **현재 구조와의 괴리 (우선 인지해야 할 점)**
+  - Maker 그래프(studio) ↔ `/graph/prompt-graph.json` ↔ `/game/runtime.config.json.entryNode` 사이 동기화는 여전히 부분적이며,
+    - “이 세트의 그래프가 곧바로 Rank 수직선에 반영된다”는 보장은 없다.
+    - 단일 플레이 테스트용 세트 하나를 골라, 해당 세트만이라도 `/graph`·runtime.config·hooks·rank_game_workspaces 가 일치하도록 수동 정렬한 뒤 이 수직선 검증에 사용해야 한다.
+  - `/api/rank/play` 기반 전투 플로우와 StartClient 기반 메인게임 플로우가 공존하고 있고,
+    - 이 수직선에서는 **StartClient + start-session/run-turn/log-turn 경로만**을 대상으로 본다.
+
+- **실행 순서 제안 (구조 vs 당장 안정화)**
+  1. 이 섹션의 계약을 기준으로, `/api/rank/start-session`, `/api/rank/run-turn`, `/api/rank/log-turn`, `/api/rank/session-meta`, `/api/rank/turn-events` 의
+     - 에러 처리, 응답 포맷(JSON 보장), best-effort 구분을 한번 정리·패치해 **“1인 비실시간 수직선이 끊기지 않도록”** 만드는 것을 **1순위**로 한다.
+  2. 동시에 `useStartClientEngine` / `useTurnStateSync` 가 위 계약(필수/선택 API, 실패시 디그레이드)을 실제로 따르는지 점검해, 필요하면
+     - Realtime/백필 쪽 실패를 조용히 무시하고 로컬 상태만으로 계속 진행하는 경로를 명시적으로 다듬는다.
+  3. Maker ↔ `/graph` ↔ runtime.config ↔ rank_game_workspaces 구조 개선, `/api/rank/play` vs StartClient 플로우 통합 등은
+     - 이 1인 수직선이 안정화된 뒤 “구조 개선” 턴으로 분리해 진행한다.
+
+- **구조 개선을 축으로 한 다음 단계 (메모)**
+  - 위 단일 플레이 수직선이 최소 기준선으로 안정화된 이후의 Rank 메인게임 개선 작업은 **구조 개선(엔진/런타임 계층화)** 를 축으로 진행한다.
+  - 구체적으로는:
+   - Play와 Rank가 `createCoreRuntime` + `GameShell` 을 공통으로 사용하는 구조를 강화하고,
+   - `components/rank/StartClient/useStartClientEngine.js` 는 Rank 전용 API·matchDataStore·UI 브리지 역할만 담당하는 **얇은 호스트 레이어**로 정리한다.
+   - Maker/Workspace → `rank_game_workspaces` → `/game/runtime.config.json` → StartClient 까지 **단일 스냅샷 경로**를 우선시하고, `/api/rank/play` 기반의 중복 플로우는 이후 단계에서 통합/정리한다.
 
 ### Open tasks (dev notes) — 다음 타자 인계 사항
 
