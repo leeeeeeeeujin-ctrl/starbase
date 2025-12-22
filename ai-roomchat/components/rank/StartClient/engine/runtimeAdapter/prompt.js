@@ -1,7 +1,7 @@
 import { makeNodePrompt } from '@/lib/promptEngine';
 import { prepareHistoryPayload } from '@/lib/rank/chatHistory';
 import { presummarizeHistory } from '@/lib/client/offload/presummarize';
-import { buildUserActionPersona } from '@/lib/rank/userActionPersona';
+import { buildUserActionPersona } from '../actorContext';
 
 /**
  * Build effective system prompt, final prompt, and history payload

@@ -1,4 +1,4 @@
-import { supabase } from '../../../../lib/supabase';
+import { supabase } from '@/lib/supabase';
 import { runClientAction } from '@/lib/rank/clientActions';
 
 /**
