@@ -3,8 +3,17 @@
 import * as React from 'react';
 import UISchemaRenderer from "../ui/UISchemaRenderer.jsx";
 
-function safeParse(jsonStr){
-  try { return JSON.parse(String(jsonStr||'{}')); } catch { return {}; }
+function safeParse(jsonStr, context){
+  try {
+    return JSON.parse(String(jsonStr || '{}'));
+  } catch (err) {
+    try {
+      console.error('[JSON] Failed to parse', context || '(unknown)', err, {
+        snippet: String(jsonStr || '').slice(0, 200),
+      });
+    } catch {}
+    return {};
+  }
 }
 
 // def: { type: 'ui'|'script', path: '/game/pages/ui/...' }
@@ -29,7 +38,7 @@ function loadDefOutput(def, files){
 }
 
 export default function DynamicSlot({ slotId, files, resolveAsset, defaultRender }){
-  const tpl = safeParse(files?.['/template.json']?.content || '{}');
+  const tpl = safeParse(files?.['/template.json']?.content || '{}', '/template.json');
   const def = tpl?.ui?.overrides?.[slotId] || null;
   const [schema, setSchema] = React.useState(null);
   const handlersRef = React.useRef({});
@@ -44,9 +53,9 @@ export default function DynamicSlot({ slotId, files, resolveAsset, defaultRender
       }
       // Fallback: use /game/pages if present for widgets slot
       if (slotId === 'play.widgets') {
-        const idx = safeParse(files?.['/game/pages/index.json']?.content || '{}');
+        const idx = safeParse(files?.['/game/pages/index.json']?.content || '{}', '/game/pages/index.json');
         const mainPath = idx?.main?.path || '/game/pages/ui/main.json';
-        const sc = safeParse(files?.[mainPath]?.content || '{}');
+        const sc = safeParse(files?.[mainPath]?.content || '{}', mainPath);
         setSchema(sc || null);
         handlersRef.current = {};
         return;

@@ -1173,15 +1173,19 @@ export function CodeWorkspaceProvider({ children, storageNamespace, initialFiles
       if (typeof window !== 'undefined' && isWorkspaceDebug()) {
         try {
           window.__WORKSPACE_INSPECTOR__ = { ns, api };
-          // Optional mount log to trace remounts in dev
-          console.log('[Workspace] mount', { ns, filesCount: Object.keys(files||{}).length });
+          // Keep dev console quieter: only log when explicitly opted-in via flag.
+          if (window.__WORKSPACE_LOG_MOUNTS__ === true) {
+            console.log('[Workspace] mount', { ns, filesCount: Object.keys(files || {}).length });
+          }
         } catch {}
       }
     } catch {}
     return () => {
       try {
         if (typeof window !== 'undefined' && isWorkspaceDebug()) {
-          console.log('[Workspace] unmount', { ns });
+          if (window.__WORKSPACE_LOG_MOUNTS__ === true) {
+            console.log('[Workspace] unmount', { ns });
+          }
         }
       } catch {}
     };

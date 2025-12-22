@@ -76,8 +76,12 @@ export default function MainGameMobileUI({
       if (cfg && typeof cfg.turnTimer === 'object' && cfg.turnTimer !== null) {
         return cfg.turnTimer;
       }
-    } catch {
-      // ignore malformed runtime.config
+    } catch (err) {
+      try {
+        console.error('[JSON] Failed to parse /game/runtime.config.json', err, {
+          snippet: String(files?.['/game/runtime.config.json']?.content || '').slice(0, 200),
+        });
+      } catch {}
     }
     return null;
   }, [files?.['/game/runtime.config.json']?.content]);
