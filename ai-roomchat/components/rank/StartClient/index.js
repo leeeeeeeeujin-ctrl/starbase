@@ -702,10 +702,18 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
   }, [gameId]);
 
   useEffect(() => {
-    const effectiveGraph =
+    const workspaceGraph =
       gameWorkspace && gameWorkspace.graph && typeof gameWorkspace.graph === 'object'
         ? gameWorkspace.graph
-        : graph;
+        : null;
+    const engineGraph = graph && typeof graph === 'object' ? graph : null;
+
+    const workspaceGraphValid =
+      workspaceGraph && Array.isArray(workspaceGraph.nodes) && workspaceGraph.nodes.length > 0;
+    const engineGraphValid =
+      engineGraph && Array.isArray(engineGraph.nodes) && engineGraph.nodes.length > 0;
+
+    const effectiveGraph = workspaceGraphValid ? workspaceGraph : engineGraphValid ? engineGraph : null;
 
     if (
       !textRuntimeEnabled ||
@@ -719,8 +727,10 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
       try {
         if (textRuntimeEnabled) {
           console.warn('[StartClient] textRuntimeEnabled=true 이지만 유효한 그래프를 찾지 못했습니다.', {
-            hasWorkspaceGraph: Boolean(gameWorkspace && gameWorkspace.graph),
-            hasEngineGraph: Boolean(graph && Array.isArray(graph.nodes) && graph.nodes.length > 0),
+            hasWorkspaceGraph: Boolean(workspaceGraph),
+            hasWorkspaceGraphValid: Boolean(workspaceGraphValid),
+            hasEngineGraph: Boolean(engineGraph),
+            hasEngineGraphValid: Boolean(engineGraphValid),
           });
         }
       } catch {

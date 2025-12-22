@@ -3253,8 +3253,9 @@ Supabase/SQL 작업 협업 메모:
        - `graph`     → `/graph/prompt-graph.json`
        - `runtime_config` → `/game/runtime.config.json`
        - `hooks_source`  → `/game/hooks/automation.js`
-    2. 스냅샷이 있으면 이를 기준으로 coreRuntime를 구성한다:
-       - `graph`: 스냅샷 `graph` 또는 `loadGameBundle`의 `graph`.
+     2. 스냅샷이 있으면 이를 기준으로 coreRuntime를 구성한다:
+       - `graph`: **항상** `loadGameBundle`의 `graph`를 기준으로 하고,
+        워크스페이스 `graph`는 에디터/미리보기 전용으로만 사용한다.
        - `config`: 스냅샷 `runtime_config` (없으면 `{}`) + `entryNode` 보정:
          - `entryNode`가 비어 있으면, 그래프 첫 노드 id로 채운다.
        - `hooks`: `hooks_source`를 `loadHooksFromSource`로 로드한 훅 모듈(없으면 `null`).
