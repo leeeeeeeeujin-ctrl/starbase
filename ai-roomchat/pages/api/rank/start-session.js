@@ -265,13 +265,13 @@ export default async function handler(req, res) {
         from.update({ updated_at: now }).eq('id', session.id)
       );
       if (touchError) {
-        console.error('[start-session][touch-session]', debugId, {
+        // Best-effort: updated_at 갱신 실패는 세션 재사용 자체를 막지 않는다.
+        console.warn('[start-session][touch-session]', debugId, {
           game_id,
           ownerId,
           sessionId: session.id,
           error: serializeError(touchError),
         });
-        return res.status(400).json({ error: touchError.message });
       }
     }
 
