@@ -359,6 +359,30 @@ export async function onTurnStart(ctx) {
   } catch {}
   const result = await callBattleJudge(prompt, ctx);
 
+  // LLM 원본/정규화 응답을 한 번 콘솔에 찍어서 디버그에 활용
+  try {
+    const data = result && result.data ? result.data : null;
+    const raw = data && (data.response || data.raw || null);
+    // 너무 길어지는 것을 막기 위해 앞부분만 출력
+    const rawPreview =
+      typeof raw === 'string'
+        ? raw.length > 400
+          ? raw.slice(0, 400) + '…'
+          : raw
+        : raw;
+    // eslint-disable-next-line no-console
+    console.log('[TextBattle][onTurnStart] judge result', {
+      ok: !!result?.ok,
+      error: result?.error || null,
+      errorCategory: data?.errorCategory || null,
+      userHint: data?.userHint || null,
+      narrative: data?.narrative || null,
+      rawPreview,
+    });
+  } catch {
+    // 콘솔 로깅 실패는 무시
+  }
+
   if (!result.ok || !result.data) {
     try {
       console.warn('[onTurnStart] AI judge call failed:', result.error, result.message);
@@ -590,6 +614,29 @@ export async function onUserAction(ctx, input) {
       });
     } catch {}
     const result = await callBattleJudge(prompt, ctx);
+
+    // LLM 원본/정규화 응답을 한 번 콘솔에 찍어서 디버그에 활용
+    try {
+      const data = result && result.data ? result.data : null;
+      const raw = data && (data.response || data.raw || null);
+      const rawPreview =
+        typeof raw === 'string'
+          ? raw.length > 400
+            ? raw.slice(0, 400) + '…'
+            : raw
+          : raw;
+      // eslint-disable-next-line no-console
+      console.log('[TextBattle][onUserAction:auto] judge result', {
+        ok: !!result?.ok,
+        error: result?.error || null,
+        errorCategory: data?.errorCategory || null,
+        userHint: data?.userHint || null,
+        narrative: data?.narrative || null,
+        rawPreview,
+      });
+    } catch {
+      // 콘솔 로깅 실패는 무시
+    }
     if (!result.ok || !result.data) {
       try {
         console.warn('[onUserAction] AI judge call failed:', result.error, result.message);
