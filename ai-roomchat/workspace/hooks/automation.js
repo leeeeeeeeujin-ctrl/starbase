@@ -280,13 +280,34 @@ async function callBattleJudge(prompt, ctx) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
-    if (!res.ok) {
-      return { ok: false, error: `http_${res.status}` };
+
+    let payload = null;
+    try {
+      payload = await res.json();
+    } catch {
+      payload = null;
     }
-    const json = await res.json();
-    return { ok: true, data: json };
+
+    if (!res.ok) {
+      const code = payload && typeof payload.code === 'string' ? payload.code : null;
+      const message =
+        payload && typeof payload.message === 'string'
+          ? payload.message
+          : `AI 판정 호출 실패 (HTTP ${res.status})`;
+      return {
+        ok: false,
+        error: code || `http_${res.status}`,
+        message,
+      };
+    }
+
+    return { ok: true, data: payload || {} };
   } catch (e) {
-    return { ok: false, error: String(e?.message || e) };
+    return {
+      ok: false,
+      error: 'network_error',
+      message: String(e?.message || e),
+    };
   }
 }
 
@@ -337,10 +358,42 @@ export async function onTurnStart(ctx) {
     });
   } catch {}
   const result = await callBattleJudge(prompt, ctx);
-  
+
   if (!result.ok || !result.data) {
-    // 실패 시에도 진행은 계속됨 (에러는 로그에만 기록)
-    console.warn('[onTurnStart] AI judge call failed:', result.error);
+    try {
+      console.warn('[onTurnStart] AI judge call failed:', result.error, result.message);
+    } catch {
+      // ignore console errors
+    }
+
+    try {
+      const errorCode = result.error || '';
+      const isMissingKey = errorCode === 'missing_api_key';
+      const errorCategory = isMissingKey ? 'api_key' : 'provider';
+      const userHint =
+        typeof result.message === 'string' && result.message
+          ? result.message
+          : isMissingKey
+          ? 'AI API 키가 설정되지 않았습니다. 메이커/랭크 화면에서 API 키를 등록한 뒤 다시 시도하세요.'
+          : 'AI 판정 호출에 실패했습니다. 잠시 후 다시 시도하거나, 관리자에게 문의하세요.';
+
+      applyBattleOutcomeLocal(ctx, {
+        narrative: `⚠️ AI 판정 실패: ${userHint}`,
+        result: 'failure',
+        battleEnd: false,
+        winner: null,
+        effects: null,
+        timestamp: new Date().toISOString(),
+        fallback: true,
+        errorType: errorCode,
+        errorCategory,
+        errorMessage: result.message || null,
+        userHint,
+      });
+    } catch {
+      // outcome 적용 실패는 게임 진행을 막지 않는다.
+    }
+
     return;
   }
 
@@ -538,7 +591,41 @@ export async function onUserAction(ctx, input) {
     } catch {}
     const result = await callBattleJudge(prompt, ctx);
     if (!result.ok || !result.data) {
-      // 실패 시에는 그래프 기본 엣지에 맡긴다
+      try {
+        console.warn('[onUserAction] AI judge call failed:', result.error, result.message);
+      } catch {
+        // ignore console errors
+      }
+
+      try {
+        const errorCode = result.error || '';
+        const isMissingKey = errorCode === 'missing_api_key';
+        const errorCategory = isMissingKey ? 'api_key' : 'provider';
+        const userHint =
+          typeof result.message === 'string' && result.message
+            ? result.message
+            : isMissingKey
+            ? 'AI API 키가 설정되지 않았습니다. 메이커/랭크 화면에서 API 키를 등록한 뒤 다시 시도하세요.'
+            : 'AI 판정 호출에 실패했습니다. 잠시 후 다시 시도하거나, 관리자에게 문의하세요.';
+
+        applyBattleOutcomeLocal(ctx, {
+          narrative: `⚠️ AI 판정 실패: ${userHint}`,
+          result: 'failure',
+          battleEnd: false,
+          winner: null,
+          effects: null,
+          timestamp: new Date().toISOString(),
+          fallback: true,
+          errorType: errorCode,
+          errorCategory,
+          errorMessage: result.message || null,
+          userHint,
+        });
+      } catch {
+        // 실패해도 라우팅은 기본 그래프 엣지에 맡긴다.
+      }
+
+      // 에러 상황에서는 그래프의 기본 엣지(또는 노드 설정)에 따라 진행
       return null;
     }
     const data = result.data;

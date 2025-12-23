@@ -158,16 +158,26 @@ export default async function handler(req, res) {
 
     // 에러 타입에 따른 적절한 응답
     const status = error.name === 'ValidationError' ? 400 : 500;
+    const rawMessage = error?.message || String(error);
     const message =
       process.env.NODE_ENV === 'development'
-        ? error.message
+        ? rawMessage
         : 'AI 판정 처리 중 오류가 발생했습니다';
 
-    res.status(status).json({
+    // 특정 에러를 코드로 표준화해서 클라이언트 훅에서 구분 가능하게 만든다.
+    let code = null;
+    if (rawMessage && rawMessage.includes('AI API 키가 설정되지 않았습니다')) {
+      code = 'missing_api_key';
+    }
+
+    const payload = {
       error: 'AI processing failed',
       message,
+      ...(code ? { code } : null),
       ...(process.env.NODE_ENV === 'development' && { stack: error.stack }),
-    });
+    };
+
+    res.status(status).json(payload);
   }
 }
 

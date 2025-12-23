@@ -1,0 +1,40 @@
+=== effectiveApiKey index=66094
+        // 이렇게 하면 /api/ai-battle-judge → apiKeyRouting 이
+        // variables.rank.players 를 통해 적절한 키를 선택할 수 있다.
+        const rankContext = (() => {
+          if (!rankContextBase || typeof rankContextBase !== 'object') return rankContextBase;
+          const players = Array.isArray(rankContextBase.players)
+            ? rankContextBase.players
+            : [];
+          if (!players.length || !effectiveApiKey || !viewerKey) {
+            return rankContextBase;
+          }
+          const patchedPlayers = players.map(player => {
+            if (!player) return player;
+            const ownerId =
+              (player.ownerId != null ? String(player.ownerId).trim() : '') ||
+              (player.owner_id != null ? String(player.owner_id).trim() : '');
+            if (!ownerId || ownerId 
+=== buildRankContext index=3661
+tManualResponse } from './hooks/useStartManualResponse';
+import { useStartSessionWatchdog } from './hooks/useStartSessionWatchdog';
+import { consumeStartMatchMeta } from '../startConfig';
+import {
+  clearGameMatchData,
+  hydrateGameMatchData,
+  setGameMatchSessionMeta,
+} from '../../../modules/rank/matchDataStore';
+import { fetchLatestSessionRow } from '@/modules/rank/matchRealtimeSync';
+import { buildRankContext } from '@/lib/rank/rankContext';
+import { createCoreRuntime } from '@/lib/runtime/coreRuntime';
+import {
+  START_SESSION_KEYS,
+  readStartSessionValue,
+  readStartSessionValues,
+} from '@/lib/rank/startSessionChannel';
+import {
+  getConnectionEntriesForGame,
+  subscribeConnectionRegistry,
+} from '@/lib/rank/startConnectionRegistry';
+
+import { buildParticipantsFromRoster } from './
