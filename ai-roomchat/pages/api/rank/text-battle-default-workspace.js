@@ -22,11 +22,6 @@ export default function handler(req, res) {
       return JSON.parse(text || '{}');
     };
 
-    const readText = (file) => {
-      const full = path.join(exampleDir, file);
-      return fs.readFileSync(full, 'utf8');
-    };
-
     const template = readJson('template.json');
     const graph = readJson('graph.prompt-graph.json');
     const runtimeConfig = readJson('game.runtime.config.json');
@@ -36,7 +31,23 @@ export default function handler(req, res) {
     } catch {
       uiShell = null;
     }
-    const hooksSource = readText('game.hooks.automation.js');
+
+    // 훅 소스는 docs 예제가 아니라, 현재 워크스페이스용
+    // 텍스트 배틀 훅(automation.js)을 그대로 사용한다.
+    // 이렇게 하면 Maker / 메인게임 모두 동일한 텍스트 배틀 훅을 기준으로 동작한다.
+    let hooksSource = '';
+    try {
+      const hooksPath = path.join(baseDir, 'workspace', 'hooks', 'automation.js');
+      hooksSource = fs.readFileSync(hooksPath, 'utf8');
+    } catch {
+      // 워크스페이스 훅을 읽지 못하면 예전 예시 훅으로 폴백한다.
+      try {
+        const legacyHooksPath = path.join(exampleDir, 'game.hooks.automation.js');
+        hooksSource = fs.readFileSync(legacyHooksPath, 'utf8');
+      } catch {
+        hooksSource = '';
+      }
+    }
 
     return res.status(200).json({
       ok: true,
@@ -56,4 +67,3 @@ export default function handler(req, res) {
     });
   }
 }
-

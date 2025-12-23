@@ -330,17 +330,21 @@ export async function onTurnStart(ctx) {
   const node = ctx?.node || {};
   const nodeConfig = node.config || {};
 
+  // 그래프 상 타입(type) + 슬롯 타입(slot_type)을 모두 고려한다.
   const nodeType = node.type || nodeConfig.type || null;
+  const slotType =
+    (node.data && (node.data.slot_type || node.data.slotType)) || null;
 
   // AI 프롬프트 노드 판별:
   // - config.autoJudge === true 인 노드
-  // - 타입이 'ai_prompt' 인 노드
-  // - 텍스트 배틀 예제(graph.prompt-graph.json)에서 사용하는 타입 'battle' 노드
-  //   (opening / mid_round / judge 등)
+  // - 타입이 'ai_prompt' 또는 'battle' 인 노드
+  // - Maker 그래프에서 slot_type === 'ai' 인 노드
   const isAIPromptNode =
     nodeConfig.autoJudge === true ||
     nodeType === 'ai_prompt' ||
-    nodeType === 'battle';
+    nodeType === 'battle' ||
+    nodeType === 'ai' ||
+    slotType === 'ai';
 
   if (!isAIPromptNode) {
     // 유저 행동 노드나 시스템 노드는 자동 판정 스킵

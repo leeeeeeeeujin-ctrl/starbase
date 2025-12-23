@@ -376,7 +376,7 @@ export default function MakerEditor() {
   const { busy, saveAll, deletePrompt, addPromptNode, goToSetList, goToLobby } = persistence;
   // Unify saves: after Maker DB save, also persist workspace VFS files (including drafts) for this set
   // 그리고 rank_game_workspaces 에 텍스트 런타임 메타를 best‑effort 로 퍼블리시한다.
-  const { filesForSave: wsFiles, saveAll: markWorkspaceSaved } = useWorkspace();
+  const wsFiles = files || {};
   const unifiedSaveAll = useCallback(async () => {
     if (busy) return;
     const setKey = String(status?.setInfo?.id || status?.router?.query?.id || '').trim();
@@ -400,13 +400,10 @@ export default function MakerEditor() {
           console.warn('[MakerEditor] rank workspace publish failed', e);
         } catch {}
       }
-      try {
-        markWorkspaceSaved();
-      } catch {}
     } catch (e) {
       throw e;
     }
-  }, [busy, saveAll, wsFiles, markWorkspaceSaved, status?.setInfo, status?.router]);
+  }, [busy, saveAll, wsFiles, status?.setInfo, status?.router]);
 
   const {
     entries: saveHistory,
