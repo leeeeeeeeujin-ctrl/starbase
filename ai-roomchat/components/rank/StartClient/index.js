@@ -27,6 +27,42 @@ import {
 import { normalizeBattleOutcome } from '@/lib/runtime/battleLogHelpers';
 import { isApiKeyError } from './engine/apiKeyUtils';
 
+function isWorkspaceMeaningful(workspace) {
+  if (!workspace || typeof workspace !== 'object') return false;
+
+  const graph =
+    workspace.graph && typeof workspace.graph === 'object'
+      ? workspace.graph
+      : null;
+  const hasGraph =
+    graph && Array.isArray(graph.nodes) && graph.nodes.length > 0;
+
+  const templateKeys =
+    workspace.template && typeof workspace.template === 'object'
+      ? Object.keys(workspace.template)
+      : [];
+  const runtimeKeys =
+    workspace.runtime_config && typeof workspace.runtime_config === 'object'
+      ? Object.keys(workspace.runtime_config)
+      : [];
+  const uiShellKeys =
+    workspace.ui_shell && typeof workspace.ui_shell === 'object'
+      ? Object.keys(workspace.ui_shell)
+      : [];
+
+  const hasHooks =
+    typeof workspace.hooks_source === 'string' &&
+    workspace.hooks_source.trim().length > 0;
+
+  return (
+    hasGraph ||
+    templateKeys.length > 0 ||
+    runtimeKeys.length > 0 ||
+    uiShellKeys.length > 0 ||
+    hasHooks
+  );
+}
+
 // Ensure matchState is always defined in this module so
 // any legacy reads during render do not throw ReferenceError.
 let matchState = null;
@@ -151,6 +187,34 @@ function formatSlotSource({ standin = false, matchSource = '' } = {}) {
   if (normalized === 'requeue') return '재합류';
   if (normalized === 'matchmaking') return '매칭';
   return matchSource;
+}
+
+function isWorkspaceMeaningful(workspace) {
+  if (!workspace || typeof workspace !== 'object') return false;
+  try {
+    const hasGraphNodes =
+      workspace.graph &&
+      typeof workspace.graph === 'object' &&
+      Array.isArray(workspace.graph.nodes) &&
+      workspace.graph.nodes.length > 0;
+    const hasTemplate =
+      workspace.template &&
+      typeof workspace.template === 'object' &&
+      Object.keys(workspace.template).length > 0;
+    const hasRuntimeConfig =
+      workspace.runtime_config &&
+      typeof workspace.runtime_config === 'object' &&
+      Object.keys(workspace.runtime_config).length > 0;
+    const hasHooks =
+      typeof workspace.hooks_source === 'string' && workspace.hooks_source.trim().length > 0;
+    const hasUiShell =
+      workspace.ui_shell &&
+      typeof workspace.ui_shell === 'object' &&
+      Object.keys(workspace.ui_shell).length > 0;
+    return hasGraphNodes || hasTemplate || hasRuntimeConfig || hasHooks || hasUiShell;
+  } catch {
+    return false;
+  }
 }
 
 const LogsPanel = dynamic(() => import('./LogsPanel'), {
@@ -669,7 +733,8 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
         if (resp.ok) {
           const payload = await resp.json();
           if (payload && payload.ok && payload.workspace) {
-            workspace = payload.workspace;
+            const candidate = payload.workspace;
+            workspace = isWorkspaceMeaningful(candidate) ? candidate : null;
           }
         }
       } catch {

@@ -5510,6 +5510,24 @@ Status (2025-12-11 기준)
   - Play 전용 디버그 메시지(“게임이 시작되었습니다/종료되었습니다/다음 단계…”)는  
     - MainGame 모드에서는 숨기거나 별도 시스템 로그로만 사용.
 
+- **텍스트 배틀용 “약식 워크스페이스” 원칙 (정리)**  
+  - 그래프/프롬프트의 진리의 원천은 여전히 **Maker 쪽 프롬프트 세트**  
+    (`prompt_sets / prompt_slots / prompt_bridges` + 워크스페이스 세트)이며,  
+    `rank_game_workspaces.graph` 는 **필수가 아니고, 중복 정의를 만들지 않는다.**  
+  - `rank_game_workspaces` 는 텍스트 런타임을 위해 필요한 최소 메타데이터만 담는 **투영(projection)/캐시 계층**으로 취급한다:
+    - `runtime_config` – 턴 타이머, entryNode override, 모드 등 런타임 설정  
+    - `hooks_source` – `/game/hooks/automation.js` 에 해당하는 훅 소스 코드  
+    - `ui_shell` – MainGame UI 레이아웃/패널 구성  
+    - (옵션) `template` – 텍스트/이미지 등 UI 템플릿 일부  
+  - 그래프 자체는:
+    - Maker/Studio에서는 `WorkspaceFrame → syncPromptGraphToVfs` 를 통해  
+      Supabase 의 `prompt_slots/bridges` 에서 `/graph/prompt-graph.json` 으로 바로 만들어 쓰고,  
+    - MainGame(StartClient)에서는 랭크 엔진 번들(`bundle.graph`) 또는  
+      의미 있는 `gameWorkspace.graph` 가 있을 때 그 중 하나를 **effectiveGraph** 로 선택한다.  
+  - ⇒ “모든 기능을 위해 약식을 한 번 더 저장하는 구조”가 아니라,  
+    - **텍스트 런타임이 꼭 알아야 하는 설정/훅/UI만** `rank_game_workspaces` 로 투영하고,  
+    - 그래프/프롬프트는 한 곳(프롬프트 세트/워크스페이스)에서만 관리하는 방향으로 유지한다.
+
 - **2단계: 텍스트 배틀 종료 → 랭크/텍스트 배틀 정산 연동**  
   - Supabase SQL:  
     - `docs/sql/text-battle-sessions.sql` – `text_battle_sessions` / `text_battle_turns` 테이블.  
@@ -5619,9 +5637,17 @@ Status (2025-12-11 기준)
     - `patchEngineState({ game: bundle.game, participants: hydratedParticipants, slotLayout: finalSlotLayout, graph: bundle.graph, rankContext, textRuntimeEnabled: true })` 로  
       메인 엔진 상태에 `rankContext` 와 `textRuntimeEnabled` 플래그를 주입한다.  
   - `StartClient/index.js` 내부:  
-    - `textRuntimeEnabled === true` 이고 `rank_game_workspaces` 에서 로드한 `gameWorkspace` 스냅샷이 있을 때,  
-      - `gameWorkspace.graph/runtime_config/hooks_source/template` 를 바탕으로  
-        `createCoreRuntime({ graph: workspaceGraph, config, hooks, files, initialVariables: { rank: rankContext || {} } })` 를 생성하고,  
+    - `textRuntimeEnabled === true` 일 때,  
+      - 먼저 랭크 엔진 번들이 제공하는 `bundle.graph` 를 **기본 그래프**로 사용하고,  
+      - `rank_game_workspaces` 에서 로드한 `gameWorkspace` 가 “의미 있는 스냅샷”일 경우에만  
+        그 안의 `graph` 를 우선으로 쓰되,  
+        - 빈 오브젝트(`{}`) / 노드 없는 그래프처럼 사실상 비어 있는 스냅샷은  
+          `isWorkspaceMeaningful` 체크로 걸러내어 **무시**한다.  
+    - runtime 초기화 시:
+      - `createCoreRuntime({ graph: effectiveGraph, config, hooks, files, initialVariables: { rank: rankContext || {} } })` 를 생성하고,  
+        - `config` 는 `gameWorkspace.runtime_config` (있으면) + 기본 설정을 병합한 값  
+        - `hooks` 는 `gameWorkspace.hooks_source` 가 있을 때만 로드  
+        - `files` 는 `/template.json`, `/graph/prompt-graph.json`, `/game/runtime.config.json`, `/game/hooks/automation.js` 로 구성  
       - `runtimeBus` 의 `turn:next` / `player:chat` 이벤트를 `runtime.step({ reason: 'auto' | 'user_action', ... })` 에 연결한다.  
       - `runtime:turn-log` 이벤트와 `onBattleEnd(ctx)` 결과를 읽어  
         기존 StartClient 턴 로그/정산 파이프라인으로 전달하고, `battleOutcome` 상태를 구성한다.  
@@ -5630,6 +5656,15 @@ Status (2025-12-11 기준)
       - 레거시 `advanceTurn` 는 이미 비활성화되어 있고,
       - 메인 컬럼도 `MainGameMobileUI + coreRuntime` 를 사용하므로,
       - "텍스트 런타임이 **옆에서만 도는**" 단계는 지나 **기본 경로**로 승격된 상태이다.
+    - 다만 현재 프로덕션/테스트 환경에서는:
+      - 일부 `rank_game_workspaces` row 가 `{ template: {}, graph: {}, runtime_config: {}, hooks_source: '' }` 처럼  
+        사실상 “빈 스냅샷”으로 남아 있어,  
+        - 이 경우에는 `gameWorkspace` 를 무시하고 기본 그래프/디폴트 텍스트 배틀 예시로 폴백해야 한다.  
+      - Maker/Studio 에서 만든 게임을 랭크 메인게임과 1:1로 연결하려면
+        - “프롬프트 세트/워크스페이스 → rank_game_workspaces(runtime_config/hooks_source/ui_shell)” 로  
+          한 번에 퍼블리시하는 흐름(`/api/rank/save-game-workspace`)이 추가로 필요하며,  
+        - 이 부분은 **계획된 TODO** 이고, 구현 후에야 “개별 게임마다 커스텀 텍스트 런타임/훅/UI”를  
+          메인게임에서 그대로 소비할 수 있다.
     - 다만 `/api/rank/session-meta`, Realtime 채널 실패 시의 복원력, 턴 타임라인/정산 뷰 등은
       여전히 추가 다듬기가 필요하므로,
       - 메타/타임라인 기능이 일부 동작하지 않더라도 턴 진행이 멈추지 않는지,

@@ -7,6 +7,7 @@ import useIsMobile from '../../../utils/useIsMobile';
 import { useMakerEditor } from '../../../hooks/maker/useMakerEditor';
 import { useWorkspace } from '../../workspace/CodeWorkspaceProvider.jsx';
 import { saveSet } from '../../../lib/workspace/saveSet.js';
+import { publishRankWorkspaceForPromptSet } from '../../../lib/rank/saveGameWorkspaceClient.js';
 import { exportSet, importSet } from './importExport';
 import MakerEditorCanvas from './MakerEditorCanvas';
 import MinimalMakerHeader from './MinimalMakerHeader';
@@ -373,20 +374,30 @@ export default function MakerEditor() {
   } = variables;
 
   const { busy, saveAll, deletePrompt, addPromptNode, goToSetList, goToLobby } = persistence;
-  // Unify saves: after Maker DB save, also persist workspace VFS files (including drafts) for this set.
+  // Unify saves: after Maker DB save, also persist workspace VFS files (including drafts) for this set
+  // 그리고 rank_game_workspaces 에 텍스트 런타임 메타를 best‑effort 로 퍼블리시한다.
   const { filesForSave: wsFiles, saveAll: markWorkspaceSaved } = useWorkspace();
   const unifiedSaveAll = useCallback(async () => {
     if (busy) return;
+    const setKey = String(status?.setInfo?.id || status?.router?.query?.id || '').trim();
     try {
       await saveAll();
       try {
-        const setKey = String(status?.setInfo?.id || status?.router?.query?.id || '');
         if (setKey) {
           await saveSet(setKey, wsFiles);
         }
       } catch (e) {
         try {
           console.warn('[MakerEditor] workspace save failed', e);
+        } catch {}
+      }
+      try {
+        if (setKey) {
+          await publishRankWorkspaceForPromptSet(setKey, wsFiles);
+        }
+      } catch (e) {
+        try {
+          console.warn('[MakerEditor] rank workspace publish failed', e);
         } catch {}
       }
       try {
