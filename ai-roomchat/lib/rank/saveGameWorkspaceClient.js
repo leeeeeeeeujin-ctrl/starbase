@@ -40,11 +40,6 @@ function pickWorkspaceSnapshot(filesMap) {
       }
     }
 
-    const hooksMeta = filesMap['/game/hooks/automation.js'];
-    if (hooksMeta && typeof hooksMeta.content === 'string') {
-      snapshot.hooks_source = hooksMeta.content;
-    }
-
     const uiShellMeta = filesMap['/game/ui.shell.json'] || filesMap['/game/ui.shell.jsonc'];
     if (uiShellMeta && typeof uiShellMeta.content === 'string') {
       try {
@@ -61,7 +56,6 @@ function pickWorkspaceSnapshot(filesMap) {
     (snapshot.template && Object.keys(snapshot.template || {}).length > 0) ||
     (snapshot.graph && Object.keys(snapshot.graph || {}).length > 0) ||
     (snapshot.runtime_config && Object.keys(snapshot.runtime_config || {}).length > 0) ||
-    (typeof snapshot.hooks_source === 'string' && snapshot.hooks_source.trim().length > 0) ||
     (snapshot.ui_shell && Object.keys(snapshot.ui_shell || {}).length > 0);
 
   if (!hasAnyUsefulField) {
@@ -121,4 +115,3 @@ export async function publishRankWorkspaceForPromptSet(setId, filesForSave) {
     // best-effort publish; 실패해도 메이커 저장 흐름은 계속된다.
   }
 }
-
