@@ -27,42 +27,6 @@ import {
 import { normalizeBattleOutcome } from '@/lib/runtime/battleLogHelpers';
 import { isApiKeyError } from './engine/apiKeyUtils';
 
-function isWorkspaceMeaningful(workspace) {
-  if (!workspace || typeof workspace !== 'object') return false;
-
-  const graph =
-    workspace.graph && typeof workspace.graph === 'object'
-      ? workspace.graph
-      : null;
-  const hasGraph =
-    graph && Array.isArray(graph.nodes) && graph.nodes.length > 0;
-
-  const templateKeys =
-    workspace.template && typeof workspace.template === 'object'
-      ? Object.keys(workspace.template)
-      : [];
-  const runtimeKeys =
-    workspace.runtime_config && typeof workspace.runtime_config === 'object'
-      ? Object.keys(workspace.runtime_config)
-      : [];
-  const uiShellKeys =
-    workspace.ui_shell && typeof workspace.ui_shell === 'object'
-      ? Object.keys(workspace.ui_shell)
-      : [];
-
-  const hasHooks =
-    typeof workspace.hooks_source === 'string' &&
-    workspace.hooks_source.trim().length > 0;
-
-  return (
-    hasGraph ||
-    templateKeys.length > 0 ||
-    runtimeKeys.length > 0 ||
-    uiShellKeys.length > 0 ||
-    hasHooks
-  );
-}
-
 // Ensure matchState is always defined in this module so
 // any legacy reads during render do not throw ReferenceError.
 let matchState = null;
