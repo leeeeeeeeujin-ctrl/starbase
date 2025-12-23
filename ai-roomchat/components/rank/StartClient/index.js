@@ -939,6 +939,11 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
           result && result.variables && typeof result.variables === 'object'
             ? result.variables
             : null;
+
+        const turn =
+          result && Number.isFinite(Number(result.turn)) ? Number(result.turn) : null;
+        const nodeId = node && (node.id != null ? node.id : null);
+        const nodeLabel = node && typeof node.label === 'string' ? node.label : null;
         const battleLast =
           vars && vars.battleLast && typeof vars.battleLast === 'object'
             ? vars.battleLast
@@ -947,12 +952,24 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
         const baseLabel =
           node && typeof node.label === 'string' && node.label.trim().length
             ? node.label.trim()
-            : node && node.id
-              ? String(node.id)
-              : '';
+            : '';
 
         // 종료 시점: 별도 내레이션 중복 없이 종료 메시지만 표시
         if (!node) {
+          try {
+            runtimeBus.emit('runtime:turn-log', {
+              turn,
+              nodeId,
+              nodeLabel,
+              reason: null,
+              input: null,
+              prompt: '',
+              ui: result && result.ui ? result.ui : null,
+              variables: vars,
+            });
+          } catch {
+            // runtime:turn-log 발행 실패는 진행을 막지 않는다.
+          }
           runtimeBus.emit('system:message', '게임이 종료되었습니다.');
           return;
         }
@@ -973,7 +990,25 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
         } else if (runtimePrompt) {
           userText = runtimePrompt;
         } else {
+          // 마지막 fallback: 노드 라벨이나 id 만 출력하는 대신,
+          // 텍스트가 완전히 비어 있을 때는 조용히 넘어가거나
+          // 향후 별도 시스템 메시지로 대체할 수 있도록 빈 문자열을 유지한다.
           userText = baseLabel || '';
+        }
+
+        try {
+          runtimeBus.emit('runtime:turn-log', {
+            turn,
+            nodeId,
+            nodeLabel,
+            reason: null,
+            input: null,
+            prompt: userText || runtimePrompt || '',
+            ui: result && result.ui ? result.ui : null,
+            variables: vars,
+          });
+        } catch {
+          // runtime:turn-log 발행 실패는 진행을 막지 않는다.
         }
 
         if (userText) {

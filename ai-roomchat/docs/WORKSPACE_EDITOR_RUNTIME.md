@@ -5067,6 +5067,18 @@ Maker 쪽에서는 `/game/ui.shell.json`을 직접 편집하는 대신, 다음�
     플래이와 메인게임이 같은 엔진/같은 UI 셸 위에서 함께 진화한다.
 
 ## 추가 메모: API 키 라우팅
+- Rank StartClient(랭크 단일 플레이) 경로에서는:
+  - `useStartApiKeyManager`가 **유저별 API 키(effectiveApiKey)** 를 관리하고,
+  - `useStartClientEngine`이 `buildRankContext({...})` 결과에 대해
+    `rankContext.players[*].apiKey` 중 **뷰어(ownerId === viewerId)** 에 해당하는 플레이어에만
+    이 키를 주입한다.
+  - StartClient가 `createCoreRuntime`를 생성할 때 `initialVariables.rank = rankContext` 로
+    전달하므로, `/api/ai-battle-judge` → `selectParticipantForPrompt` → `apiKeyRouting.buildParticipantPool`
+    은 `variables.rank.players[*].apiKey` 를 통해 **랭크 참가자 기반 API 키 라우팅**을 수행한다.
+  - Rank 컨텍스트에 `viewer` 정보가 있을 경우, `apiKeyRouting.normalizeRankParticipants` 는
+    `viewer.ownerId` 와 일치하는 참가자만 키 후보로 사용하여, **매칭된 유저의 키**만 선택된다.
+  - 실시간/다인전에서는 각 클라이언트가 자신의 `viewer` 를 들고 동일한 규칙을 적용하므로,
+    각 플레이어는 자신의 클라이언트에서 **본인 키만** 사용하게 된다.
 - 텍스트 배틀 흐름에서 라우팅된 API 키는 현재 OpenAI 엔드포인트에만 전달됩니다.
 - 다른 프로바이더(Gemini, Claude 등) 키를 함께 쓸 경우 분기 처리가 없어 실패할 수 있으니, 추후 `provider` 필드를 받아 안전하게 분기하거나 OpenAI 전용임을 명시하는 경고를 UI/문서에 추가해야 합니다.
 

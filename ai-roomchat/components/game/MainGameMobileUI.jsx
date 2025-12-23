@@ -170,6 +170,7 @@ export default function MainGameMobileUI({
         : 0;
 
     const image =
+      primary.avatarUrl ||
       hero.avatar_url ||
       hero.image_url ||
       fallbackCharacter?.image ||

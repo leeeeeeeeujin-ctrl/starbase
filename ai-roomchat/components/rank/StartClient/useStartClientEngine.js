@@ -1974,7 +1974,7 @@ export function useStartClientEngine(gameId, options = {}) {
               }) || null
             : null;
 
-        const rankContext = buildRankContext({
+        const rankContextBase = buildRankContext({
           game: bundle.game,
           session: sessionInfo || null,
           participants: hydratedParticipants,
@@ -1989,6 +1989,38 @@ export function useStartClientEngine(gameId, options = {}) {
                 }
               : null),
         });
+
+        // 텍스트 런타임 경로에서 viewer의 유저 API 키를
+        // rankContext.players[*].apiKey 로 투영해 둔다.
+        // 이렇게 하면 /api/ai-battle-judge → apiKeyRouting 이
+        // variables.rank.players 를 통해 적절한 키를 선택할 수 있다.
+        const rankContext = (() => {
+          if (!rankContextBase || typeof rankContextBase !== 'object') return rankContextBase;
+          const players = Array.isArray(rankContextBase.players)
+            ? rankContextBase.players
+            : [];
+          if (!players.length || !effectiveApiKey || !viewerKey) {
+            return rankContextBase;
+          }
+          const patchedPlayers = players.map(player => {
+            if (!player) return player;
+            const ownerId =
+              (player.ownerId != null ? String(player.ownerId).trim() : '') ||
+              (player.owner_id != null ? String(player.owner_id).trim() : '');
+            if (!ownerId || ownerId !== viewerKey) {
+              return player;
+            }
+            // viewer 에 해당하는 참가자에만 apiKey 를 부여한다.
+            return {
+              ...player,
+              apiKey: player.apiKey || effectiveApiKey,
+            };
+          });
+          return {
+            ...rankContextBase,
+            players: patchedPlayers,
+          };
+        })();
 
         patchEngineState({
           game: bundle.game,

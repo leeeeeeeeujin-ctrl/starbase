@@ -41,17 +41,39 @@ function normalizeDebugParticipants(list) {
 
 function normalizeRankParticipants(rank) {
   if (!rank || typeof rank !== 'object') return [];
+
+  // Rank 컨텍스트에 viewer 가 있으면, 그 유저(ownerId)에 해당하는 참가자만
+  // API 키 후보로 허용한다. (랭크 1인용 텍스트 배틀에서 "매칭된 유저" 제한)
+  let viewerOwnerId = null;
+  try {
+    if (rank.viewer && typeof rank.viewer === 'object') {
+      viewerOwnerId =
+        toTrimmed(rank.viewer.ownerId) || toTrimmed(rank.viewer.owner_id) || null;
+    }
+  } catch {
+    viewerOwnerId = null;
+  }
+
   const players = Array.isArray(rank.players) ? rank.players : [];
   return players
     .map((p, index) => {
       if (!p || typeof p !== 'object') return null;
+
+      const ownerId = toTrimmed(p.ownerId || p.owner_id || null);
+      // viewerOwnerId 가 있으면, 그 유저가 아닌 참가자는 키 후보에서 제외한다.
+      if (viewerOwnerId && ownerId && ownerId !== viewerOwnerId) {
+        return null;
+      }
+
       // 실제 구현에서는 rank 쪽에서 별도 키 풀을 관리할 수도 있다.
       // 지금은 헬퍼 구조를 맞춰두기만 하고 apiKey 는 선택적이다.
       const apiKey = toTrimmed(p.apiKey || p.api_key || null);
+      if (!apiKey) return null;
+
       return {
         origin: 'rank',
         index,
-        apiKey: apiKey || null,
+        apiKey,
         name:
           toTrimmed(
             p.heroName ||
@@ -63,7 +85,7 @@ function normalizeRankParticipants(rank) {
           ) || null,
         slotNo: toInt(p.slotNo || p.slot_index),
         heroId: toTrimmed(p.heroId || p.hero_id || null),
-        ownerId: toTrimmed(p.ownerId || p.owner_id || null),
+        ownerId,
       };
     })
     .filter(Boolean);
@@ -95,11 +117,19 @@ export function buildParticipantPool({ ctx = null, gameState = null } = {}) {
     // ignore introspection failures
   }
 
-  const fromDebug = normalizeDebugParticipants(debugList);
   const fromRank = normalizeRankParticipants(rankVars);
+  let fromDebug = [];
 
-  // 디버그 참가자를 앞에 두고, 그 다음에 실제 랭크 참가자를 둔다.
-  return [...fromDebug, ...fromRank];
+  // Rank 컨텍스트에서 유효한 참가자(apiKey 보유)가 하나라도 있으면,
+  // 그 세션에서는 디버그 참가자 키는 사용하지 않는다.
+  // (랭크 텍스트 배틀에서 매칭된 유저의 키만 사용하기 위함)
+  if (!fromRank.length) {
+    fromDebug = normalizeDebugParticipants(debugList);
+  }
+
+  // 랭크 컨텍스트가 없을 때만 디버그 참가자를 사용하고,
+  // 랭크 컨텍스트가 있으면 항상 랭크 쪽(매칭된 유저)만 사용한다.
+  return [...fromRank, ...fromDebug];
 }
 
 function extractTokensFromPrompt(prompt) {
