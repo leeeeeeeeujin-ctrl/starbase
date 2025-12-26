@@ -975,6 +975,10 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
       if (stopped || !result) return;
       try {
         const node = result.current || null;
+        // 시작 노드는 초기화 전용으로, 메인 게임 채팅에는 표시하지 않는다.
+        if (node && node.is_start) {
+          return;
+        }
         const vars =
           result && result.variables && typeof result.variables === 'object'
             ? result.variables

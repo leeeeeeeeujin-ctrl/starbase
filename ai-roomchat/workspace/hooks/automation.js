@@ -328,6 +328,10 @@ async function callBattleJudge(prompt, ctx) {
  */
 export async function onTurnStart(ctx) {
   const node = ctx?.node || {};
+  if (node && node.is_start) {
+    // 시작 노드는 초기화 전용: AI 판정/출력은 스킵
+    return;
+  }
   const nodeConfig = node.config || {};
 
   // 그래프 상 타입(type) + 슬롯 타입(slot_type)을 모두 고려한다.
