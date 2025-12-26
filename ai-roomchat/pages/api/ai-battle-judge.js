@@ -5,14 +5,17 @@
  * 게임의 핵심이 되는 AI 심판 로직입니다.
  */
 
+import { createPagesServerClient } from '@supabase/ssr';
+
 import { supabaseAdmin } from '../../lib/supabaseAdmin.js';
 import {
   toTextBattleTurnRow,
   toTextBattleSessionRow,
 } from '../../lib/runtime/textBattlePersistence.js';
 import { selectParticipantForPrompt } from '../../lib/runtime/apiKeyRouting.js';
-import { callAIJudge } from '../../lib/providers/gameAIBattleProvider.js';
 import { parseAIResponse } from '../../lib/runtime/textBattleResponseContract.js';
+import { resolveUserSnapshotKey, resolveEnvFallbackKey } from '../../lib/rank/apiKeyResolver.js';
+import { callAIJudge } from '../../lib/providers/gameAIBattleProvider.js';
 
 function similarityScore(a, b) {
   try {
@@ -104,6 +107,55 @@ function computeBattleScoreSnapshot(existingScore, parsed) {
   return score;
 }
 
+async function resolveSupabaseUser(req, res) {
+  try {
+    const supabase = createPagesServerClient({ req, res });
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (user) {
+      return user;
+    }
+  } catch (error) {
+    console.warn('[ai-battle-judge] Failed to resolve Supabase user from cookies:', error);
+  }
+  return null;
+}
+
+async function resolveEffectiveApiKey({ supabaseUser, routing }) {
+  // 1) 참가자에서 직접 전달된 API 키가 있으면 우선 사용
+  if (routing && routing.apiKey) {
+    return {
+      apiKey: routing.apiKey,
+      provider: null,
+      source: 'participant',
+    };
+  }
+
+  // 2) 현재 로그인 유저의 스냅샷 키
+  try {
+    const userId = supabaseUser && supabaseUser.id;
+    if (userId) {
+      const snapshot = await resolveUserSnapshotKey({
+        userId,
+      });
+      if (snapshot && snapshot.apiKey) {
+        return snapshot;
+      }
+    }
+  } catch (error) {
+    console.warn('[ai-battle-judge] failed to resolve snapshot key:', error);
+  }
+
+  // 3) 마지막으로 환경 변수 기반 키 (운영용 백업)
+  const envKey = resolveEnvFallbackKey();
+  if (envKey && envKey.apiKey) {
+    return envKey;
+  }
+
+  return null;
+}
+
 export default async function handler(req, res) {
   // CORS 헤더 추가
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -172,6 +224,9 @@ export default async function handler(req, res) {
   }
 
   try {
+    // 가능한 경우 Supabase 세션 기반 사용자 정보를 구해둔다.
+    const supabaseUser = await resolveSupabaseUser(req, res);
+
     let battleResult;
 
     if (prompt && gameState) {
@@ -180,6 +235,7 @@ export default async function handler(req, res) {
         prompt,
         gameState,
         character,
+        supabaseUser,
       });
     } else {
       // 기존 배틀 시스템에서의 호출
@@ -223,7 +279,7 @@ export default async function handler(req, res) {
 
 // 통합 게임 시스템용 프롬프트 처리
 async function processUnifiedGamePrompt(context) {
-  const { prompt, gameState, character } = context;
+  const { prompt, gameState, character, supabaseUser } = context;
 
   let routing = null;
   try {
@@ -306,10 +362,9 @@ async function processUnifiedGamePrompt(context) {
   };
 
   try {
-    // 참가자 라우팅에서 전달된 API 키(있다면)를 우선 사용한다.
-    // callAIJudge 쪽에서 키 패턴(예: sk- / AIza 등)을 보고
-    // OpenAI / Gemini 등 적절한 프로바이더를 선택한다.
-    const overrideKey = routing && routing.apiKey ? routing.apiKey : null;
+    // 참가자 라우팅 및 사용자 스냅샷/ENV를 통해 API 키를 우선 찾는다.
+    const keyInfo = await resolveEffectiveApiKey({ supabaseUser, routing });
+    const overrideKey = keyInfo && keyInfo.apiKey ? keyInfo.apiKey : null;
 
     let result = null;
 

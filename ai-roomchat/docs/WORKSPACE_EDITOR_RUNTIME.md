@@ -678,7 +678,54 @@ Current high-level status (this repo copy)
 - **파일**: [useBuiltinRuntime.js](../../components/workspace/hooks/useBuiltinRuntime.js#L323-L369)
 - **커밋**: `ae12b6227` (첫 시도, 실패), `722f41bd1` (최종 수정)
 
-### 7. 장기 계획 (부분 완료, 일부 미구현)
+### 7. 텍스트 배틀 / 랭크 메인게임 AI 키 경로 정리 ✅
+- **문제 요약**:
+  - AI 코드 채팅, Studio AIPanel과는 별개로, 텍스트 배틀(Play/메인게임)의 `/api/ai-battle-judge` 경로가
+    사용자 키 대신 환경변수(또는 잘못된 키)를 우선 사용하면서
+    LLM 응답 대신 `⚠️ AI 판정 오류: 디버그 패널에서 AI API 키를 확인하세요.` 만 빠르게 반환하던 상태.
+  - `selectParticipantForPrompt`가 rank 컨텍스트에서 `apiKey` 를 찾지 못하면
+    참가자 키 풀이 비어 버리고, 결국 `callAIJudge()` 가 env 기반 키로만 시도 → provider 에러 텍스트를 그대로 내보냄.
+- **현재 정리된 원칙**:
+  - **키링(rank_user_api_keyring)** 이 API 키의 단일 소스 오브 트루스.
+  - `rank_user_api_keys` 는 keyring 기반의 “활성 키 스냅샷” 테이블로만 사용.
+  - 텍스트 배틀/랭크 메인게임에서도, 참가자 라우팅이 실패하면 **스냅샷 기반 사용자 키**를 fallback 으로 사용.
+- **구현 사항**:
+  - `/api/ai-battle-judge`:
+    - `@supabase/ssr`의 `createPagesServerClient` 를 이용해 Supabase 세션 사용자(`supabaseUser`)를 해석.
+    - `lib/rank/userApiKeys.js` 의 `fetchUserApiKey(userId, { includeSecret: true })` 로
+      rank_user_api_keys 스냅샷에서 복호화된 사용자 키를 조회.
+    - `processUnifiedGamePrompt()` 내에서:
+      - 우선 `selectParticipantForPrompt()` 의 `routing.apiKey` 를 검사.
+      - 없으면 `fetchUserApiKey` 로 얻은 사용자 키를 overrideKey 로 사용.
+      - 둘 다 없을 때만 env 기반 키로 시도.
+  - 에러 분류는 기존대로 `classifyInlineError()` 가 담당하되,
+    실제로는 “유효한 사용자 키/키링 없이 env 키만 있는 경우”에만  
+    `errorCategory: 'api_key' + 디버그 패널 안내` 로 떨어지도록 강도 완화.
+- **효과**:
+  - 같은 Supabase 사용자에게 저장된 키링/스냅샷만 정상이라면,
+    텍스트 배틀(Play/메인게임)도 AI 코드 채팅과 마찬가지로 **“유저가 넣은 키를 우선 사용하는” 경로**가 됨.
+  - 참가자 기반 API 키 라우팅(`variables.rank.players[*].apiKey`)은 그대로 유지하고,
+    아직 그 부분이 완전히 연결되지 않았더라도 최소한 “유효한 사용자 키”로는 계속 시도할 수 있는 구조 확보.
+
+#### 7-1. “입력하지 않은 키가 늘어나는” 현상
+- **증상**:
+  - 게임(텍스트 배틀/랭크 메인게임)을 한 판 돌릴 때마다,
+    사용자가 직접 입력하지 않은 API 키 엔트리가 keyring/스냅샷에 하나씩 증가하는 현상.
+- **가설**:
+  - 예전 흐름에서 남아 있는 “단일 키 스냅샷 API” 또는 env 기반 기본 키가
+    - 매 세션 시작 시 `upsert` 형태로 스냅샷 테이블에 쓰이거나,
+    - keyring API가 env 키를 기반으로 자동 엔트리를 추가하는 코드가 아직 제거되지 않은 상태일 가능성.
+  - 즉, “키를 읽기만 해야 하는 경로”에서 **키를 작성/갱신까지 하는 책임을 동시에 가지고 있는 구조**가
+    중복·유령 키를 만들어 내는 구조적 원인에 가깝다.
+- **정책 방향**:
+  - 키 생성/등록은 **명시적인 UI 동작(키 입력 후 ‘저장/활성화’ 버튼)** 에서만 일어나도록 한정.
+  - `/api/ai-battle-judge`, `/api/ai/gemini` 등 런타임 경로는
+    - keyring/스냅샷에서 **읽기만** 하고,
+    - 어떤 경우에도 env 키나 자동 감지 결과를 다시 keyring/스냅샷에 써 넣지 않도록 유지.
+  - env 기반 키는 “운영상 서버 키”로만 사용하고,
+    사용자 keyring에 새 엔트리를 생성하는 데 절대 사용하지 않는 것을 원칙으로 삼는다.
+
+### 8. 장기 계획 (부분 완료, 일부 미구현)
 - ⚠️ **Maker 그래프(Supabase) ↔ workspace 동기화**
   - **완료 (워크스페이스 VFS 기준)**:
     - `/template.json` 직접 수정 → `/graph/prompt-graph.json` 제한적 sync  
@@ -5725,6 +5772,153 @@ Status (2025-12-11 기준)
     - DB 스키마 변경은 “퍼시스턴스 레이어”만 수정하도록 경계를 명확히 유지한다.
 
 이 TODO 섹션은 “턴 단위로 어디까지 할 수 있는지”를 정리한 것이므로,  
+
+## 7-2. API 키 라우팅/호출 구조 재설계 계획
+
+> TL;DR: 모든 AI 호출은 **유저 키링 → 스냅샷 → (선택) 운영용 ENV 키** 순서로만 키를 고르고,  
+> 실행 레이어는 “키를 어떻게 구했는지 모른다”는 전제를 유지한다.
+
+### 7-2-1. 책임 계층 정리
+
+1. **저장소(Storage) 레이어**
+   - `rank_user_api_keyring`
+     - 진리의 원천(Single Source of Truth).
+     - 컬럼: `provider`, `model_label`, `key_enc_blob` 등.
+     - 유저가 UI에서 키를 “추가/삭제/비활성화” 할 때만 이 테이블이 수정된다.
+   - `rank_user_api_keys`
+     - *파생 스냅샷 테이블*.
+     - 현재 활성 키 1개(또는 소수)만 담는 캐시 용도.
+     - 키링에서만 생성/업데이트되며, 직접 쓰는 API는 제거/폐기 대상이다.
+
+2. **키 리졸버(Key Resolver) 레이어**
+   - 역할: “이 요청을 처리할 때 어떤 키를 쓸지”를 결정한다.
+   - 입력:
+     - `supabaseUser` (현재 로그인 사용자)
+     - `routingHint` (참가자/호스트 정보, prefer provider, model hint 등)
+   - 출력:
+     - `{ apiKey, provider, model, apiVersion, mode, source }`
+       - `source ∈ { 'keyring', 'snapshot', 'env', 'none' }`
+   - 구현 위치(계획):
+     - `lib/rank/apiKeyResolver.js` (신규 모듈)
+     - 주요 공개 함수:
+       - `resolveUserKey({ supabase, userId, preferProvider, requireKeyring })`
+       - `resolveParticipantKey({ rankSession, matchState, preferProvider })`
+       - `resolveForTextBattle({ supabaseUser, routingHint })`
+
+3. **LLM 라우터(LLM Router) 레이어**
+   - 역할: “어떤 프로바이더에 어떤 형식으로 호출할지”만 신경 쓴다.
+   - 입력:
+     - `{ prompt, contents, generationConfig, keyInfo, runtimeContext }`
+   - 출력:
+     - 공통 스키마:
+       - `data.candidates[0].content.parts[0].text` (Gemini 스타일)
+       - 메타: `_provider`, `_raw` 등
+   - 구현 위치(계획):
+     - `lib/ai/llmRouter.js`
+     - 내부에서 `callGemini`, `callOpenAIChat`, `callAnthropic` 등 구현을 감싸고,
+       각 라우트(`/api/ai/gemini`, `/api/ai-battle-judge`)는 LLM 라우터만 호출한다.
+
+4. **실행(Execution) 레이어**
+   - 예: `workspace/hooks/automation.js`, `pages/api/ai-battle-judge.js`
+   - 역할:
+     - 프롬프트/게임 상태를 조립하고,
+     - **키 리졸버 + LLM 라우터**를 호출한 뒤,
+     - 결과를 게임 변수/로그에 반영하는 것에만 집중한다.
+   - 이 레이어는 “키가 어디서 왔는지”를 몰라도 되어야 한다.
+
+### 7-2-2. 맥락별 사용 패턴
+
+1. **AI 코드 채팅(AIChatDock)**
+   - 키 입력/관리:
+     - 항상 `rank_user_api_keyring` 을 통해 읽고 쓴다.
+     - 키 추가/삭제/라벨 변경 모두 `user-api-keyring` API 한 군데로 모은다.
+   - 호출 흐름:
+     - 프론트: 활성 키의 `provider`/`model` 을 payload에 실어 보냄.
+     - 백엔드: `apiKeyResolver.resolveUserKey` → `llmRouter.call`.
+     - *스튜디오/메이커와 무관하게* “실험용 샌드박스”로 동작한다.
+
+2. **플레이(코드 에디터 텍스트 배틀)**
+   - 디버그 전용 참가자/키:
+     - 현재처럼 “로컬 디버그 전용 참가자/키”를 유지하되,
+     - 실제 키 사용은 꼭 `apiKeyResolver.resolveUserKey` 를 거치게 만든다.
+   - 호출 흐름:
+     - `automation.js` 에서 프롬프트 생성 → `/api/ai-battle-judge`.
+     - `/api/ai-battle-judge`:
+       - `resolveParticipantKey` (있으면) → 없으면 `resolveUserKey` → 없으면 `source: 'none'`.
+       - 키가 없다면 **즉시** `errorCategory: 'missing_key'` 로 단락(LLM 호출 시도 안 함).
+       - 키가 있다면 `llmRouter.call` 로 통일.
+
+3. **랭크 메인게임(StartClient)**
+   - 참가자/매칭 정보:
+     - `matchState`, `rank_sessions`, `rank_match_queue` 를 기반으로
+       “이 턴의 판정을 담당할 참가자(owner)”를 정한다.
+   - 키 사용 규칙:
+     - 비실시간: **매칭을 건 사람(호스트/방장)** 의 키를 우선 사용.
+     - 실시간: 방장/참가자 중 공개 동의를 받은 owner 들의 키 중 하나를 라운드로빈.
+   - 호출 흐름:
+     - 메인게임도 텍스트 배틀과 같은 `/api/ai-battle-judge` 경로를 쓰되,
+     - `routingHint` 에 `mode: 'rank_main'`, `hostOwnerId`, `viewerOwnerId` 등 메타를 얹어 보낸다.
+     - 서버는 같은 `apiKeyResolver`/`llmRouter` 를 사용하므로,
+       “플레이는 되는데 메인게임은 안 된다” 식의 키 불일치를 최소화한다.
+
+4. **스튜디오/캐릭터 페이지**
+   - 별도의 실시간/랭크 컨텍스트가 없는 단독 호출.
+   - 항상 `resolveUserKey` 를 사용하고,  
+     키가 없으면 즉시 “키를 먼저 등록해 달라”는 안내를 반환한다.
+
+### 7-2-3. 마이그레이션 단계
+
+1. **1단계 – 쓰기 경로 정리 (현재 진행 중)**
+   - `rank_user_api_keys` 를 직접 쓰는 API를 모두 찾는다.
+     - `/api/rank/user-api-key` 의 POST/PUT/PATCH 를 점진적으로 제거.
+   - 키 추가/삭제는 모두 `/api/rank/user-api-keyring` 로 통일한다.
+   - 스튜디오/캐릭터/오버레이의 키 관리 UI가 모두 키링 API를 사용하게 맞춘다.
+
+2. **2단계 – 읽기 경로 통합**
+   - `/api/ai/gemini`, `/api/ai-battle-judge` 에서 직접 테이블을 읽지 않고  
+     `apiKeyResolver` 만 통해서 키를 얻도록 리팩터링한다.
+   - env 키(`OPENAI_API_KEY`, `GEMINI_API_KEY` 등)는:
+     - “운영용 백업 키”로만 사용하고,
+     - 유저 키가 있는 경우에는 절대 사용하지 않는다.
+
+3. **3단계 – 로그/모니터링 추가**
+   - 디버그 빌드에서만 다음 로그를 남긴다:
+     - `source` 가 `env` 인 호출 비율
+     - `errorCategory: 'api_key'`가 발생한 시점의 `provider`, `source`, `routingHint`
+   - “입력하지 않은 키가 늘어나는 현상”이  
+     어디서 발생하는지 추적하기 위해 키 생성/삭제 API에 감사 로그를 추가한다.
+
+4. **4단계 – 레거시 경로 폐기**
+   - `rank_user_api_keys` 테이블은 “읽기 전용 스냅샷”으로만 사용하거나,
+     충분히 안정화되면 완전히 제거한다.
+   - env 키 기반 자동 삽입/업데이트 코드는 전부 삭제한다.
+
+### 7-2-4. 현재 단계에서의 목표
+
+- **단일 유저 기준 목표**
+  - 같은 유저가:
+    - AI 코드 채팅,
+    - Play 텍스트 배틀,
+    - 랭크 메인게임
+    을 사용할 때 **동일한 키/프로바이더**를 쓰도록 만드는 것.
+
+- **구조적 목표**
+  - “키가 왜/어디서 잘못되었는지”를  
+    LLM 응답이 아닌 **우리 쪽 디버그 정보만으로 판단할 수 있게** 하는 것.
+  - 키링/스냅샷/ENV 키의 역할을 명확히 나누어,
+    새 기능을 붙일 때 “키를 어디서 읽어야 하지?”를 다시 고민하지 않도록 하는 것.
+
+- **현재까지 실제로 적용된 부분(2025-12 기준)**
+  - `/api/ai/gemini` 는 `llmRouter.callWithContents` 를 사용해  
+    Gemini/OpenAI 호출 방식을 공용 레이어로 통합했다.
+  - `apiKeyResolver` 모듈을 도입해:
+    - 유저 스냅샷 키(`rank_user_api_keys`) → 없으면 ENV 키 순으로 키를 고르는 헬퍼를 분리했다.
+  - `/api/ai-battle-judge` 에서는:
+    - 참가자 키 → 유저 스냅샷 키 → ENV 키 순으로 고르는 `resolveEffectiveApiKey` 골격을 추가한 상태다.
+
+이 7-2 섹션은 **구조/정책**을 정리한 것이고,  
+구체 구현은 `/api/ai/gemini`, `/api/ai-battle-judge`, `apiKeyResolver`, `llmRouter` 단계에서  
+턴을 나누어 진행한다.
 
 ## Copilot 외주용 작업 메모
 

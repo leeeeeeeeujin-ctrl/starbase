@@ -6,6 +6,7 @@ import { createClient } from '@supabase/supabase-js';
 
 import { decryptParts, fetchLatestGeminiKey } from '../../../lib/rank/userApiKeys';
 import { sanitizeSupabaseUrl } from '../../../lib/supabaseEnv';
+import { callWithContents } from '../../../lib/ai/llmRouter';
 
 export const config = {
   api: {
@@ -51,11 +52,16 @@ class HandlerError extends Error {
   }
 }
 
-async function resolveApiKey({ req, prefer, supabaseUser, accessToken }) {
+async function resolveApiKey({ req, prefer, supabaseUser, accessToken, providerHint }) {
   const directKey = req.headers['x-ai-api-key'] || (req.body && req.body.apiKey);
   if (prefer === 'direct' && directKey) {
     return { apiKey: String(directKey), source: 'direct' };
   }
+
+  const normalizedProvider =
+    typeof providerHint === 'string' && providerHint.trim()
+      ? providerHint.trim().toLowerCase()
+      : null;
 
   if (prefer === 'keyring' || !prefer) {
     if (!supabaseUser) {
@@ -80,7 +86,10 @@ async function resolveApiKey({ req, prefer, supabaseUser, accessToken }) {
 
       let latest = null;
       try {
-        latest = await fetchLatestGeminiKey({ userId: supabaseUser.id });
+        latest = await fetchLatestGeminiKey({
+          userId: supabaseUser.id,
+          provider: normalizedProvider || undefined,
+        });
       } catch (err) {
         console.warn('[ai/gemini] Failed to fetch keyring via admin client', err);
       }
@@ -126,6 +135,7 @@ async function resolveApiKey({ req, prefer, supabaseUser, accessToken }) {
         }
         return {
           apiKey,
+          provider: latest.provider || normalizedProvider || 'gemini',
           model: latest.model,
           mode: latest.geminiMode || 'v1beta',
           source: 'keyring',
@@ -138,7 +148,9 @@ async function resolveApiKey({ req, prefer, supabaseUser, accessToken }) {
         error: 'missing_keyring',
         status: 404,
         code: 'missing_keyring',
-        detail: 'No Gemini keyring entry found for this user',
+        detail:
+          'No keyring entry found for this user' +
+          (normalizedProvider ? ` (provider: ${normalizedProvider})` : ''),
       };
     }
   }
@@ -152,7 +164,13 @@ async function resolveApiKey({ req, prefer, supabaseUser, accessToken }) {
   };
 }
 
-async function callGemini({ apiKey, model = 'gemini-2.5-flash', mode = 'v1beta', contents, generationConfig }) {
+async function callGemini({
+  apiKey,
+  model = 'gemini-2.5-flash',
+  mode = 'v1beta',
+  contents,
+  generationConfig,
+}) {
   const endpoint = `https://generativelanguage.googleapis.com/${mode}/models/${encodeURIComponent(
     model
   )}:generateContent?key=${encodeURIComponent(apiKey)}`;
@@ -200,10 +218,104 @@ async function callGemini({ apiKey, model = 'gemini-2.5-flash', mode = 'v1beta',
   return data || { raw: text };
 }
 
+function convertContentsToOpenAIMessages(contents) {
+  const messages = [];
+  const list = Array.isArray(contents) ? contents : [];
+  list.forEach((entry) => {
+    if (!entry) return;
+    const roleRaw = entry.role || 'user';
+    const role =
+      roleRaw === 'model'
+        ? 'assistant'
+        : roleRaw === 'assistant' || roleRaw === 'user' || roleRaw === 'system'
+        ? roleRaw
+        : 'user';
+    const parts = Array.isArray(entry.parts) ? entry.parts : [];
+    const text = parts
+      .map((p) => (p && typeof p.text === 'string' ? p.text : ''))
+      .filter(Boolean)
+      .join('\n\n')
+      .trim();
+    if (!text) return;
+    messages.push({ role, content: text });
+  });
+  return messages;
+}
+
+async function callOpenAIChat({ apiKey, model, contents }) {
+  const messages = convertContentsToOpenAIMessages(contents);
+  const effectiveModel = model || process.env.OPENAI_MODEL || 'gpt-4o-mini';
+
+  let response;
+  try {
+    response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: effectiveModel,
+        messages,
+        temperature: 0.2,
+      }),
+    });
+  } catch (err) {
+    throw new HandlerError({
+      message: 'Failed to reach OpenAI API',
+      status: 502,
+      code: 'openai_fetch_failed',
+      detail: err?.message || String(err),
+    });
+  }
+
+  const text = await response.text();
+  let data = null;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    // keep raw fallback
+  }
+
+  if (!response.ok) {
+    const detail = data || { error: text };
+    let code = 'openai_error';
+    if (response.status === 403 || response.status === 429) {
+      code = 'model_quota_exceeded';
+    } else if (response.status === 400 || response.status === 401) {
+      code = 'invalid_openai_request';
+    }
+    throw new HandlerError({
+      message: detail?.error?.message || 'OpenAI call failed',
+      status: response.status,
+      code,
+      detail,
+    });
+  }
+
+  const choice = Array.isArray(data?.choices) ? data.choices[0] : null;
+  const content = choice?.message?.content || '';
+  const assistantText = typeof content === 'string' ? content : '';
+
+  // Wrap OpenAI response in a Gemini-like envelope so callers
+  // can continue to use extractGeminiText without changes.
+  return {
+    candidates: [
+      {
+        content: {
+          parts: [{ text: assistantText || text }],
+        },
+      },
+    ],
+    _provider: 'openai',
+    _raw: data || text,
+  };
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return json(res, 405, { error: 'Method Not Allowed' });
   try {
-    const { prefer, contents, generationConfig, model } = req.body || {};
+    const { prefer, contents, generationConfig, model, provider: providerHint } = req.body || {};
     const accessToken = await getUserAccessTokenFromAuthHeader(req);
     let supabaseUser = null;
     if (accessToken) {
@@ -216,7 +328,13 @@ export default async function handler(req, res) {
         console.warn('[ai/gemini] Failed to verify Supabase user from token', err);
       }
     }
-    const resolved = await resolveApiKey({ req, prefer, supabaseUser, accessToken });
+    const resolved = await resolveApiKey({
+      req,
+      prefer,
+      supabaseUser,
+      accessToken,
+      providerHint,
+    });
     if (!resolved || !resolved.apiKey) {
       return json(res, resolved?.status || 401, {
         error: resolved?.error || 'No API key available',
@@ -224,14 +342,24 @@ export default async function handler(req, res) {
         detail: resolved?.detail || null,
       });
     }
-    const out = await callGemini({
+    const provider = resolved.provider || providerHint || 'gemini';
+    const effectiveModel = model || resolved.model || null;
+
+    const out = await callWithContents({
+      provider,
       apiKey: resolved.apiKey,
-      model: model || resolved.model || 'gemini-2.5-flash',
-      mode: resolved.mode || 'v1beta',
+      model: effectiveModel,
       contents,
       generationConfig,
     });
-    return json(res, 200, { ok: true, model: model || resolved.model, source: resolved.source, data: out });
+
+    return json(res, 200, {
+      ok: true,
+      provider,
+      model: effectiveModel,
+      source: resolved.source,
+      data: out,
+    });
   } catch (e) {
     return json(res, e.status || 500, {
       error: e.message || String(e),

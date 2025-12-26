@@ -178,7 +178,8 @@ export async function decryptParts({ ciphertextB64, ivB64, tagB64 }, secret) {
 }
 
 export async function fetchLatestGeminiKey(options = {}) {
-  const { userId, supabaseUrl, anonKey, accessToken } = options;
+  const { userId, supabaseUrl, anonKey, accessToken, provider } = options;
+  const normalizedProvider = String(provider || 'gemini').trim().toLowerCase();
 
   if (userId) {
     const { data, error } = await supabaseAdmin
@@ -197,7 +198,7 @@ export async function fetchLatestGeminiKey(options = {}) {
         ].join(', ')
       )
       .eq('user_id', userId)
-      .eq('provider', 'gemini')
+      .eq('provider', normalizedProvider)
       .order('updated_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -211,6 +212,7 @@ export async function fetchLatestGeminiKey(options = {}) {
     }
 
     return {
+      provider: data.provider || normalizedProvider,
       model: data.gemini_model || data.model_label || 'gemini-2.5-flash',
       apiVersion: data.api_version || null,
       geminiMode: data.gemini_mode || 'v1beta',
@@ -226,7 +228,7 @@ export async function fetchLatestGeminiKey(options = {}) {
 
   const url = new URL('/rest/v1/rank_user_api_keyring', supabaseUrl);
   url.searchParams.set('select', '*');
-  url.searchParams.set('provider', 'eq.gemini');
+  url.searchParams.set('provider', `eq.${normalizedProvider}`);
   url.searchParams.set('order', 'updated_at.desc');
   url.searchParams.set('limit', '1');
 
@@ -247,6 +249,7 @@ export async function fetchLatestGeminiKey(options = {}) {
   }
   const row = rows[0] || {};
   return {
+    provider: row.provider || normalizedProvider,
     model: row.gemini_model || row.model_label || 'gemini-2.5-flash',
     apiVersion: row.api_version || null,
     geminiMode: row.gemini_mode || 'v1beta',

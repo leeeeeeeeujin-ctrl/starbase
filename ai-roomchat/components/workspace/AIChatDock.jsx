@@ -827,6 +827,18 @@ export default function AIChatDock({ onClose }) {
         memoryHeader,
       });
 
+      // 활성 키링 엔트리가 있다면 provider 힌트를 함께 보낸다.
+      const activeKey =
+        Array.isArray(keyringEntries) && keyringEntries.length
+          ? keyringEntries.find((entry) => entry && entry.isActive) || keyringEntries[0]
+          : null;
+      if (activeKey && typeof activeKey.provider === 'string') {
+        const providerHint = activeKey.provider.trim().toLowerCase();
+        if (providerHint) {
+          payload.provider = providerHint;
+        }
+      }
+
       const token = tokenForMem || (await getSessionToken({ optional: false }));
       const res = await fetch('/api/ai/gemini', {
         method: 'POST',
