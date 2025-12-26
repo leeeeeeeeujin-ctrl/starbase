@@ -26,6 +26,7 @@ import {
 } from '@/lib/runtime/rankStandardSlots';
 import { normalizeBattleOutcome } from '@/lib/runtime/battleLogHelpers';
 import { isApiKeyError } from './engine/apiKeyUtils';
+import * as textBattleHooks from '@/workspace/hooks/automation.js';
 
 // Ensure matchState is always defined in this module so
 // any legacy reads during render do not throw ReferenceError.
@@ -791,11 +792,21 @@ export default function StartClient({ gameId: gameIdProp, onRequestClose }) {
       typeof gameWorkspace?.hooks_source === 'string' ? gameWorkspace.hooks_source : '';
 
     let hooks = null;
-    if (hooksSource.trim()) {
+    if (hooksSource && hooksSource.trim()) {
       try {
         hooks = loadHooksFromSource(hooksSource);
       } catch (err) {
         console.warn('[StartClient] hooks 로드 실패:', err);
+        hooks = null;
+      }
+    }
+
+    // rank_game_workspaces.hooks_source가 비어 있거나 파싱 실패한 경우,
+    // 워크스페이스 공용 텍스트 배틀 훅 모듈을 기본값으로 사용한다.
+    if (!hooks) {
+      try {
+        hooks = textBattleHooks;
+      } catch {
         hooks = null;
       }
     }

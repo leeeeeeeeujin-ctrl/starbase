@@ -36,16 +36,27 @@ export default async function handler(req, res) {
 
     let row = Array.isArray(data) && data.length ? data[0] : null;
 
-    // hooks_source 가 비어 있으면, 워크스페이스 공용 텍스트 배틀 훅을
-    // 기본값으로 주입해서 메인게임에서 항상 동일한 훅을 사용할 수 있게 한다.
-    if (row && (!row.hooks_source || !String(row.hooks_source).trim())) {
-      try {
-        const baseDir = process.cwd();
-        const hooksPath = path.join(baseDir, 'workspace', 'hooks', 'automation.js');
-        const hooksSource = fs.readFileSync(hooksPath, 'utf8');
-        row = { ...row, hooks_source: hooksSource };
-      } catch {
-        // 훅 소스를 읽지 못해도 rank_game_workspaces 행 자체는 그대로 반환한다.
+    // hooks_source 가 비어 있거나, 기본 워크스페이스 스텁(/game/hooks/automation.js)에서
+    // 그대로 복사된 경우라면, 워크스페이스 공용 텍스트 배틀 훅을 기본값으로 주입한다.
+    if (row) {
+      const rawHooks = typeof row.hooks_source === 'string' ? row.hooks_source : '';
+      const trimmed = rawHooks.trim();
+
+      // CodeWorkspaceProvider 기본 훅 스텁의 시그니처 조각들
+      const isStub =
+        trimmed.length > 0 &&
+        (trimmed.includes('기본 텍스트 배틀용 /game/hooks/automation.js') ||
+          trimmed.includes('User automation hooks for the prompt-graph runtime.'));
+
+      if (!trimmed || isStub) {
+        try {
+          const baseDir = process.cwd();
+          const hooksPath = path.join(baseDir, 'workspace', 'hooks', 'automation.js');
+          const hooksSource = fs.readFileSync(hooksPath, 'utf8');
+          row = { ...row, hooks_source: hooksSource };
+        } catch {
+          // 훅 소스를 읽지 못해도 rank_game_workspaces 행 자체는 그대로 반환한다.
+        }
       }
     }
 

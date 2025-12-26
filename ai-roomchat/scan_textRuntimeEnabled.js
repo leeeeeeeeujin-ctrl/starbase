@@ -1,0 +1,4 @@
+const fs = require('fs');  
+const src = fs.readFileSync('components/rank/StartClient/useStartClientEngine.js','utf8');  
+const lines = src.split(/\r?\n/);  
+lines.forEach(function(line, idx) { if (line.includes('textRuntimeEnabled')) console.log((idx+1) + ':' + line); }); 
