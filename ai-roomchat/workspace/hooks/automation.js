@@ -331,14 +331,19 @@ export async function onTurnStart(ctx) {
   const nodeConfig = node.config || {};
 
   // 그래프 상 타입(type) + 슬롯 타입(slot_type)을 모두 고려한다.
+  // - CodeWorkspace 기반 그래프: node.type / node.data.slot_type
+  // - 랭크 메인게임(prompt_slots→prompt-graph): node.slot_type / node.slotType
   const nodeType = node.type || nodeConfig.type || null;
   const slotType =
-    (node.data && (node.data.slot_type || node.data.slotType)) || null;
+    (node.data && (node.data.slot_type || node.data.slotType)) ||
+    node.slot_type ||
+    node.slotType ||
+    null;
 
   // AI 프롬프트 노드 판별:
   // - config.autoJudge === true 인 노드
   // - 타입이 'ai_prompt' 또는 'battle' 인 노드
-  // - Maker 그래프에서 slot_type === 'ai' 인 노드
+  // - Maker / 랭크 그래프에서 slot_type === 'ai' 인 노드
   const isAIPromptNode =
     nodeConfig.autoJudge === true ||
     nodeType === 'ai_prompt' ||
@@ -480,13 +485,20 @@ export function transformPrompt(ctx) {
   const sides = Array.isArray(battle.sides) ? battle.sides : [];
   const rank = getRankContext(ctx);
 
+  // 노드 템플릿은 두 가지 형태를 모두 지원한다.
+  // - CodeWorkspace 그래프: node.data.template
+  // - 랭크 메인게임(prompt_slots 기반): node.template
+  const rawTemplate =
+    typeof data.template === 'string' && data.template.trim()
+      ? data.template
+      : typeof node.template === 'string'
+      ? node.template
+      : '';
+
   // 0) 텍스트 배틀 설정이 없다면, 노드 템플릿을 그대로 사용
   //    (단일 노드/간단 디버그용: 프롬프트-노드 에디터에서 작성한 텍스트를 그대로 AI에게 전달)
-  if ((!battle || Object.keys(battle).length === 0) && typeof data.template === 'string') {
-    const raw = data.template;
-    if (raw && raw.trim()) {
-      return raw;
-    }
+  if ((!battle || Object.keys(battle).length === 0) && rawTemplate.trim()) {
+    return rawTemplate.trim();
   }
 
   const stage = profile.stage || node.id || 'battle_stage';
@@ -540,7 +552,7 @@ export function transformPrompt(ctx) {
       ? profile.varGuide.trim()
       : '변수(variables)는 이 응답의 메타 정보(만족된 변수명, 캐릭터 결과)를 기반으로 훅에서 업데이트됩니다. 여기서는 변수 이름만 일관되게 사용하면 됩니다.';
 
-  const templateText = typeof data.template === 'string' ? data.template.trim() : '';
+  const templateText = rawTemplate.trim();
 
   const promptLines = [
     `보내는 프롬프트 규칙`,
