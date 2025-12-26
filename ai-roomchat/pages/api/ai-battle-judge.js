@@ -107,14 +107,54 @@ function computeBattleScoreSnapshot(existingScore, parsed) {
 export default async function handler(req, res) {
   // CORS 헤더 추가
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
-  if (req.method !== 'POST') {
+  // 레거시 GET 기반 호출을 위한 호환 레이어:
+  // - /api/ai-battle-judge?prompt=...&gameState=... 형태를
+  //   POST 본문 형태로 변환해 아래 공통 로직을 재사용한다.
+  let effectiveMethod = req.method;
+  if (effectiveMethod === 'GET') {
+    const {
+      character: qCharacter,
+      action: qAction,
+      turn: qTurn,
+      gameSettings: qGameSettings,
+      previousTurns: qPreviousTurns,
+      prompt: qPrompt,
+      gameState: qGameState,
+    } = req.query || {};
+
+    const parseMaybeJSON = (value) => {
+      if (value === undefined || value === null) return undefined;
+      if (typeof value !== 'string') return value;
+      const trimmed = value.trim();
+      if (!trimmed) return undefined;
+      try {
+        return JSON.parse(trimmed);
+      } catch {
+        return value;
+      }
+    };
+
+    req.body = {
+      character: parseMaybeJSON(qCharacter),
+      action: parseMaybeJSON(qAction),
+      turn: qTurn !== undefined ? Number(qTurn) : undefined,
+      gameSettings: parseMaybeJSON(qGameSettings),
+      previousTurns: parseMaybeJSON(qPreviousTurns),
+      prompt: parseMaybeJSON(qPrompt),
+      gameState: parseMaybeJSON(qGameState),
+    };
+
+    effectiveMethod = 'POST';
+  }
+
+  if (effectiveMethod !== 'POST') {
     return res.status(405).json({
       error: 'Method not allowed',
       message: 'Only POST requests are accepted',

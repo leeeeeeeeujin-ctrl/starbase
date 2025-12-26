@@ -1999,7 +1999,7 @@ export function useStartClientEngine(gameId, options = {}) {
           const players = Array.isArray(rankContextBase.players)
             ? rankContextBase.players
             : [];
-          if (!players.length || !effectiveApiKey || !viewerKey) {
+          if (!players.length || !effectiveApiKey) {
             return rankContextBase;
           }
           const patchedPlayers = players.map(player => {
@@ -2007,14 +2007,21 @@ export function useStartClientEngine(gameId, options = {}) {
             const ownerId =
               (player.ownerId != null ? String(player.ownerId).trim() : '') ||
               (player.owner_id != null ? String(player.owner_id).trim() : '');
-            if (!ownerId || ownerId !== viewerKey) {
-              return player;
+            // 1) viewerKey 가 있으면 해당 owner 에만 키를 부여한다.
+            if (viewerKey && ownerId && ownerId === viewerKey) {
+              return {
+                ...player,
+                apiKey: player.apiKey || effectiveApiKey,
+              };
             }
-            // viewer 에 해당하는 참가자에만 apiKey 를 부여한다.
-            return {
-              ...player,
-              apiKey: player.apiKey || effectiveApiKey,
-            };
+            // 2) viewerKey 가 없고 단일 플레이어인 경우, 해당 플레이어를 viewer 로 간주한다.
+            if (!viewerKey && players.length === 1) {
+              return {
+                ...player,
+                apiKey: player.apiKey || effectiveApiKey,
+              };
+            }
+            return player;
           });
           return {
             ...rankContextBase,
