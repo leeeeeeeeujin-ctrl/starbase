@@ -303,6 +303,10 @@ export function useStartApiKeyManager({
         return false;
       }
 
+      // NOTE:
+      // - 서버 측 저장은 키링(/api/rank/user-api-keyring)을 기준으로 한다.
+      // - 단일 스냅샷(rank_user_api_keys)은 user-api-keyring 라우트가 활성 키를
+      //   업데이트할 때만 갱신되도록 두고, 여기서는 별도로 건드리지 않는다.
       const normalizedVersion = typeof version === 'string' ? version : '';
       const normalizedMode = options.geminiMode ? normalizeGeminiMode(options.geminiMode) : null;
       const normalizedModel = options.geminiModel
@@ -327,7 +331,9 @@ export function useStartApiKeyManager({
           throw new Error('세션 토큰을 확인할 수 없습니다.');
         }
 
-        const response = await fetch('/api/rank/user-api-key', {
+        // 키링 API를 통해 키를 등록 + 활성화한다.
+        // 서버는 내부적으로 rank_user_api_keyring + rank_user_api_keys 를 함께 갱신한다.
+        const response = await fetch('/api/rank/user-api-keyring', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -335,9 +341,7 @@ export function useStartApiKeyManager({
           },
           body: JSON.stringify({
             apiKey: trimmed,
-            apiVersion: normalizedVersion || undefined,
-            geminiMode: normalizedVersion === 'gemini' ? normalizedMode || undefined : undefined,
-            geminiModel: normalizedVersion === 'gemini' ? normalizedModel || undefined : undefined,
+            activate: true,
           }),
         });
 
