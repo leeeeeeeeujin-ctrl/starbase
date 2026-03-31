@@ -1,99 +1,20 @@
-'use client';
-
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/router';
-
-import DuoRoomClient from '../../../../components/rank/DuoRoomClient';
-import { useGameRoom } from '../../../../hooks/useGameRoom';
-import { loadActiveRoles } from '../../../../lib/rank/matchmakingService';
-import { supabase } from '../../../../lib/supabase';
+import Link from 'next/link';
 
 export default function DuoRoomPage() {
-  const router = useRouter();
-  const { id, action } = router.query;
-  const [mounted, setMounted] = useState(false);
-  const [roleDetails, setRoleDetails] = useState([]);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  const handleRequireLogin = useCallback(() => {
-    router.replace('/');
-  }, [router]);
-
-  const handleGameMissing = useCallback(() => {
-    alert('게임을 찾을 수 없습니다.');
-    router.replace('/rank');
-  }, [router]);
-
-  const handleDeleted = useCallback(() => {
-    router.replace('/rank');
-  }, [router]);
-
-  const {
-    state: { loading, game, roles, myHero, user },
-    derived: { myEntry, roleOccupancy },
-  } = useGameRoom(id, {
-    onRequireLogin: handleRequireLogin,
-    onGameMissing: handleGameMissing,
-    onDeleted: handleDeleted,
-  });
-
-  useEffect(() => {
-    if (!mounted || !id) return;
-    let cancelled = false;
-    loadActiveRoles(supabase, id)
-      .then(list => {
-        if (!cancelled && Array.isArray(list)) {
-          setRoleDetails(list);
-        }
-      })
-      .catch(cause => {
-        console.warn('역할 정보를 불러오지 못했습니다:', cause);
-        if (!cancelled) setRoleDetails([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [id, mounted]);
-
-  const handleExit = useCallback(() => {
-    if (!id) {
-      router.replace('/rank');
-      return;
-    }
-    router.replace(`/rank/${id}`);
-  }, [id, router]);
-
-  const handleLaunch = useCallback(() => {
-    if (!id) return;
-    router.push({ pathname: `/rank/${id}/duo-match` });
-  }, [id, router]);
-
-  const ready = mounted && !loading;
-  const initialAction = useMemo(() => (typeof action === 'string' ? action : undefined), [action]);
-
-  if (!ready) {
-    return <div style={{ padding: 24, color: '#f4f6fb' }}>듀오 방을 준비하는 중…</div>;
-  }
-
-  if (!game) {
-    return <div style={{ padding: 24, color: '#f4f6fb' }}>게임 정보를 찾을 수 없습니다.</div>;
-  }
-
   return (
-    <DuoRoomClient
-      game={game}
-      roleDetails={roleDetails}
-      roles={roles}
-      roleOccupancy={roleOccupancy}
-      myHero={myHero}
-      myEntry={myEntry}
-      user={user}
-      initialAction={initialAction}
-      onExit={handleExit}
-      onLaunch={handleLaunch}
-    />
+    <div style={{ minHeight: '100vh', padding: '40px 24px', background: '#111827', color: '#e5e7eb' }}>
+      <div style={{ maxWidth: 720, margin: '0 auto', display: 'grid', gap: 16 }}>
+        <p style={{ margin: 0, fontSize: 12, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#9ca3af' }}>
+          Legacy Duo Room Disabled
+        </p>
+        <h1 style={{ margin: 0, fontSize: 32 }}>듀오 룸 경로를 비활성화했습니다.</h1>
+        <p style={{ margin: 0, lineHeight: 1.7, color: '#d1d5db' }}>
+          기존 듀오 룸과 역할 점유 흐름은 새 매칭 구조로 다시 만들 예정입니다.
+        </p>
+        <Link href="/match" style={{ color: '#93c5fd' }}>
+          매치 화면으로 이동
+        </Link>
+      </div>
+    </div>
   );
 }

@@ -1,16 +1,20 @@
-import Head from 'next/head';
-import { ArcadeLayout } from '@/components/arena/ArcadeLayout';
-import { QueuePanel } from '@/components/arena/QueuePanel';
+import Link from 'next/link';
 
-export default function QueuePage() {
+export default function ArenaQueuePage() {
   return (
-    <>
-      <Head>
-        <title>Rank Arcade – 큐</title>
-      </Head>
-      <ArcadeLayout title="큐 대기">
-        <QueuePanel />
-      </ArcadeLayout>
-    </>
+    <div style={{ minHeight: '100vh', padding: '40px 24px', background: '#111827', color: '#e5e7eb' }}>
+      <div style={{ maxWidth: 720, margin: '0 auto', display: 'grid', gap: 16 }}>
+        <p style={{ margin: 0, fontSize: 12, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#9ca3af' }}>
+          Legacy Arena Disabled
+        </p>
+        <h1 style={{ margin: 0, fontSize: 32 }}>아레나 큐 화면을 비활성화했습니다.</h1>
+        <p style={{ margin: 0, lineHeight: 1.7, color: '#d1d5db' }}>
+          별도 아레나 계층은 새 텍스트 배틀 매칭 구조에 포함하지 않습니다.
+        </p>
+        <Link href="/match" style={{ color: '#93c5fd' }}>
+          매치 화면으로 이동
+        </Link>
+      </div>
+    </div>
   );
 }
