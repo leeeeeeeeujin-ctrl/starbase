@@ -9,33 +9,47 @@ import {
   submitBattleTurn,
 } from '../../lib/battle/session.js';
 
-function getDemoParticipants() {
-  return [
-    {
-      id: 'player-1',
-      ownerId: 'player-1',
-      heroId: 'hero-1',
-      team: 'alpha',
-      role: 'captain',
-      name: '내 캐릭터',
-      meta: {
-        description: '플레이어가 조작하는 대표 캐릭터',
-        abilities: ['능력 1', '능력 2'],
-      },
+function buildParticipant(index, role, team, isActor = false) {
+  return {
+    id: `player-${index + 1}`,
+    ownerId: `player-${index + 1}`,
+    heroId: `hero-${index + 1}`,
+    team: team || (index % 2 === 0 ? 'alpha' : 'beta'),
+    role: role || (isActor ? 'player' : 'opponent'),
+    name: isActor ? '내 캐릭터' : `참가자 ${index + 1}`,
+    meta: {
+      description: isActor ? '플레이어가 조작하는 대표 캐릭터' : `${index + 1}번 프리뷰 참가자`,
+      abilities: isActor ? ['능력 1', '능력 2'] : [`능력 ${index + 1}A`, `능력 ${index + 1}B`],
     },
-    {
-      id: 'player-2',
-      ownerId: 'player-2',
-      heroId: 'hero-2',
-      team: 'beta',
-      role: 'challenger',
-      name: '상대 캐릭터',
-      meta: {
-        description: '매칭된 상대를 가정한 프리뷰 참가자',
-        abilities: ['능력 A', '능력 B'],
-      },
-    },
-  ];
+  };
+}
+
+function getDemoParticipants(definition) {
+  const maxPlayers = Math.max(1, Math.min(12, Number(definition?.maxPlayers) || 2));
+  const roles = Array.isArray(definition?.roles) ? definition.roles : [];
+  const participants = [];
+
+  if (roles.length) {
+    roles.forEach(role => {
+      const limit = Math.max(1, Number(role?.limit) || 1);
+      for (let count = 0; count < limit && participants.length < maxPlayers; count += 1) {
+        participants.push(
+          buildParticipant(
+            participants.length,
+            role?.name || role?.id || '',
+            role?.team || '',
+            participants.length === 0
+          )
+        );
+      }
+    });
+  }
+
+  while (participants.length < maxPlayers) {
+    participants.push(buildParticipant(participants.length, '', '', participants.length === 0));
+  }
+
+  return participants;
 }
 
 function getInputPlaceholder(turn) {
@@ -89,11 +103,14 @@ function renderParticipantMeta(meta) {
 }
 
 export default function MobileTextBattlePlayer({ definition }) {
-  const participants = useMemo(() => getDemoParticipants(), []);
   const normalizedDefinition = useMemo(() => {
     if (!definition || !Array.isArray(definition.turns)) return null;
     return definition;
   }, [definition]);
+  const participants = useMemo(
+    () => getDemoParticipants(normalizedDefinition),
+    [normalizedDefinition]
+  );
 
   const [session, setSession] = useState(() =>
     createBattleSession({
@@ -201,6 +218,46 @@ export default function MobileTextBattlePlayer({ definition }) {
         </div>
         <div style={{ fontSize: 13, lineHeight: 1.6, color: '#cbd5e1' }}>
           {normalizedDefinition.description || '메이커에서 정의한 턴 순서를 모바일 우선 화면으로 미리 실행합니다.'}
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          <span
+            style={{
+              borderRadius: 999,
+              padding: '5px 10px',
+              background: 'rgba(148, 163, 184, 0.2)',
+              fontSize: 12,
+              color: '#e2e8f0',
+            }}
+          >
+            {normalizedDefinition.mode === 'multi' ? '멀티' : '싱글'}
+          </span>
+          <span
+            style={{
+              borderRadius: 999,
+              padding: '5px 10px',
+              background: 'rgba(148, 163, 184, 0.2)',
+              fontSize: 12,
+              color: '#e2e8f0',
+            }}
+          >
+            인원 {normalizedDefinition.minPlayers || 1} - {normalizedDefinition.maxPlayers || participants.length}
+          </span>
+          {(normalizedDefinition.roles || []).slice(0, 4).map(role => (
+            <span
+              key={role.id || role.name}
+              style={{
+                borderRadius: 999,
+                padding: '5px 10px',
+                background: 'rgba(59, 130, 246, 0.18)',
+                fontSize: 12,
+                color: '#dbeafe',
+              }}
+            >
+              {role.name}
+              {role.team ? ` · ${role.team}` : ''}
+              {role.limit ? ` x${role.limit}` : ''}
+            </span>
+          ))}
         </div>
       </div>
 
