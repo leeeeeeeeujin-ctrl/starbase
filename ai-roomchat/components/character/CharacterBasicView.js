@@ -8,6 +8,15 @@ import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
 import { withTable } from '@/lib/supabaseTables';
 import { getHeroAudioManager } from '@/lib/audio/heroAudioManager';
+import {
+  clampHeroProfileDraft,
+  HERO_ABILITY_MAX_LENGTH,
+  HERO_DESCRIPTION_MAX_LENGTH,
+  HERO_NAME_MAX_LENGTH,
+  isGifFile,
+  normalizeHeroProfilePayload,
+  validateHeroProfileDraft,
+} from '@/lib/characters/profileRules';
 import { sanitizeFileName } from '@/utils/characterAssets';
 import CharacterPlayPanel from './CharacterPlayPanel';
 import useHeroParticipations from '@/hooks/character/useHeroParticipations';
@@ -2077,14 +2086,14 @@ export default function CharacterBasicView({ hero }) {
     setInfoPanelIndex(0);
     setDraftHero(
       hero
-        ? {
+        ? clampHeroProfileDraft({
             name: hero.name || '',
             description: hero.description || '',
             ability1: hero.ability1 || '',
             ability2: hero.ability2 || '',
             ability3: hero.ability3 || '',
             ability4: hero.ability4 || '',
-          }
+          })
         : null
     );
     setImagePreview(hero?.image_url || '');
@@ -2246,6 +2255,12 @@ export default function CharacterBasicView({ hero }) {
       event.target.value = '';
       return;
     }
+    if (isGifFile(file)) {
+      alert('캐릭터 이미지는 GIF를 사용할 수 없습니다.');
+
+      event.target.value = '';
+      return;
+    }
     if (file.size > MAX_IMAGE_SIZE) {
       alert('이미지는 5MB를 넘을 수 없습니다.');
 
@@ -2268,6 +2283,12 @@ export default function CharacterBasicView({ hero }) {
     if (!file) return;
     if (!file.type.startsWith('image/')) {
       alert('배경은 이미지 파일만 업로드할 수 있습니다.');
+
+      event.target.value = '';
+      return;
+    }
+    if (isGifFile(file)) {
+      alert('배경 이미지는 GIF를 사용할 수 없습니다.');
 
       event.target.value = '';
       return;
@@ -2376,28 +2397,30 @@ export default function CharacterBasicView({ hero }) {
   );
 
   const handleDraftChange = (field, value) => {
-    setDraftHero(prev => ({
-      name: prev?.name || currentHero?.name || '',
-      description: prev?.description || currentHero?.description || '',
-      ability1: prev?.ability1 || currentHero?.ability1 || '',
-      ability2: prev?.ability2 || currentHero?.ability2 || '',
-      ability3: prev?.ability3 || currentHero?.ability3 || '',
-      ability4: prev?.ability4 || currentHero?.ability4 || '',
-      [field]: value,
-    }));
+    setDraftHero(prev =>
+      clampHeroProfileDraft({
+        name: prev?.name || currentHero?.name || '',
+        description: prev?.description || currentHero?.description || '',
+        ability1: prev?.ability1 || currentHero?.ability1 || '',
+        ability2: prev?.ability2 || currentHero?.ability2 || '',
+        ability3: prev?.ability3 || currentHero?.ability3 || '',
+        ability4: prev?.ability4 || currentHero?.ability4 || '',
+        [field]: value,
+      })
+    );
   };
 
   const resetDraftToHero = useCallback(() => {
     setDraftHero(
       currentHero
-        ? {
+        ? clampHeroProfileDraft({
             name: currentHero.name || '',
             description: currentHero.description || '',
             ability1: currentHero.ability1 || '',
             ability2: currentHero.ability2 || '',
             ability3: currentHero.ability3 || '',
             ability4: currentHero.ability4 || '',
-          }
+          })
         : null
     );
   }, [currentHero]);
@@ -2408,16 +2431,15 @@ export default function CharacterBasicView({ hero }) {
       return;
     }
 
+    const validationErrors = validateHeroProfileDraft(draftHero);
+    if (validationErrors.length) {
+      alert(validationErrors[0]);
+      return;
+    }
+
     setSaving(true);
     try {
-      const payload = {
-        name: draftHero.name?.trim() || DEFAULT_HERO_NAME,
-        description: draftHero.description || '',
-        ability1: draftHero.ability1 || '',
-        ability2: draftHero.ability2 || '',
-        ability3: draftHero.ability3 || '',
-        ability4: draftHero.ability4 || '',
-      };
+      const payload = normalizeHeroProfilePayload(draftHero, DEFAULT_HERO_NAME);
 
       let imageUrl = currentHero.image_url || null;
       if (imageFile) {
@@ -2962,16 +2984,20 @@ export default function CharacterBasicView({ hero }) {
                   <input
                     style={styles.textField}
                     value={draftHero.name}
+                    maxLength={HERO_NAME_MAX_LENGTH}
                     onChange={event => handleDraftChange('name', event.target.value)}
                   />
+                  <span style={styles.sectionHint}>{`${draftHero.name.length}/${HERO_NAME_MAX_LENGTH}`}</span>
                 </div>
                 <div style={styles.formRow}>
                   <label style={styles.sliderLabel}>설명</label>
                   <textarea
                     style={styles.textareaField}
                     value={draftHero.description}
+                    maxLength={HERO_DESCRIPTION_MAX_LENGTH}
                     onChange={event => handleDraftChange('description', event.target.value)}
                   />
+                  <span style={styles.sectionHint}>{`${draftHero.description.length}/${HERO_DESCRIPTION_MAX_LENGTH}`}</span>
                 </div>
                 {['ability1', 'ability2', 'ability3', 'ability4'].map((field, index) => (
                   <div key={field} style={styles.formRow}>
@@ -2979,8 +3005,10 @@ export default function CharacterBasicView({ hero }) {
                     <textarea
                       style={styles.textareaField}
                       value={draftHero[field]}
+                      maxLength={HERO_ABILITY_MAX_LENGTH}
                       onChange={event => handleDraftChange(field, event.target.value)}
                     />
+                    <span style={styles.sectionHint}>{`${draftHero[field].length}/${HERO_ABILITY_MAX_LENGTH}`}</span>
                   </div>
                 ))}
 
