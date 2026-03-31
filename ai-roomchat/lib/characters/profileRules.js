@@ -5,6 +5,8 @@ export const HERO_MEMORY_SLOT_MAX = 10;
 export const HERO_MEMORY_ENTRY_MAX_LENGTH = 240;
 export const HERO_RECENT_CHAT_MAX = 15;
 export const HERO_CHAT_INPUT_MAX_LENGTH = 800;
+export const HERO_ARCHIVE_MAX = 24;
+export const HERO_ARCHIVE_ENTRY_MAX_LENGTH = 800;
 
 const trimText = value => (typeof value === 'string' ? value.trim() : '');
 

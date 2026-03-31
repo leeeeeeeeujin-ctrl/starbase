@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { supabase } from '@/lib/supabase';
+import { buildHeroAgentPrompt } from '@/lib/characters/agentContext';
 import {
   appendRecentChat,
   applyMemoryAction,
@@ -13,6 +14,7 @@ import {
 } from '@/lib/characters/agentProfileStorage';
 import {
   HERO_CHAT_INPUT_MAX_LENGTH,
+  HERO_ARCHIVE_MAX,
   HERO_MEMORY_ENTRY_MAX_LENGTH,
   HERO_MEMORY_SLOT_MAX,
   HERO_RECENT_CHAT_MAX,
@@ -64,37 +66,13 @@ export default function CharacterAgentScreen({ hero }) {
   );
 
   const buildPrompt = useCallback(
-    userInput => {
-      const recentChats = profile.recentChats
-        .slice(-HERO_RECENT_CHAT_MAX)
-        .map(entry => `${entry.role === 'assistant' ? 'AI' : 'USER'}: ${entry.text}`)
-        .join('\n');
-      const memories = profile.memories
-        .map((entry, index) => `${index}. ${entry.text}`)
-        .join('\n');
-
-      return [
-        '너는 유저가 육성하는 캐릭터 AI다.',
-        '캐릭터의 기본 정보는 이미 사실로 알고 있으며, 그 성격과 말투를 대화로 함께 다듬는다.',
-        `이름: ${profileSummary.name}`,
-        `설명: ${profileSummary.description || '없음'}`,
-        `능력: ${profileSummary.abilities.length ? profileSummary.abilities.join(' / ') : '없음'}`,
-        `기본 프롬프트: ${profile.systemPrompt || '없음'}`,
-        `말투/어조: ${profile.speakingStyle || '없음'}`,
-        `행동 원칙: ${profile.behaviorRules || '없음'}`,
-        `메모리 슬롯 제한: ${HERO_MEMORY_SLOT_MAX}개`,
-        `메모리 한 칸 길이 제한: ${HERO_MEMORY_ENTRY_MAX_LENGTH}자`,
-        '중요한 사실은 메모리로 추가/수정/삭제할 수 있다.',
-        '불필요하거나 오래된 메모리는 스스로 정리해도 된다.',
-        '응답은 반드시 JSON 하나만 반환한다.',
-        '형식:',
-        '{"reply":"유저에게 보일 답변","memoryAction":{"type":"none|add|update|delete","index":0,"text":"메모리 내용"}}',
-        `현재 메모리:\n${memories || '없음'}`,
-        `최근 대화:\n${recentChats || '없음'}`,
-        `유저 입력:\n${userInput}`,
-      ].join('\n\n');
-    },
-    [profile.behaviorRules, profile.memories, profile.recentChats, profile.speakingStyle, profile.systemPrompt, profileSummary]
+    userInput =>
+      buildHeroAgentPrompt({
+        heroSummary: profileSummary,
+        profile,
+        userInput,
+      }),
+    [profile, profileSummary]
   );
 
   const handleSend = useCallback(async () => {
@@ -400,6 +378,7 @@ export default function CharacterAgentScreen({ hero }) {
               <div>{`메모리 슬롯 ${HERO_MEMORY_SLOT_MAX}개`}</div>
               <div>{`메모리 1칸 ${HERO_MEMORY_ENTRY_MAX_LENGTH}자`}</div>
               <div>{`최근 대화 ${HERO_RECENT_CHAT_MAX}개 유지`}</div>
+              <div>{`장기 아카이브 ${HERO_ARCHIVE_MAX}개 보관`}</div>
               <div>{`입력 최대 ${HERO_CHAT_INPUT_MAX_LENGTH}자`}</div>
             </div>
           </section>
@@ -442,6 +421,47 @@ export default function CharacterAgentScreen({ hero }) {
               </div>
             ) : (
               <div style={{ color: '#94a3b8', fontSize: 13 }}>아직 저장된 메모리가 없습니다.</div>
+            )}
+          </section>
+
+          <section
+            style={{
+              padding: 16,
+              borderRadius: 24,
+              background: 'rgba(2, 6, 23, 0.78)',
+              border: '1px solid rgba(148, 163, 184, 0.22)',
+              display: 'grid',
+              gap: 10,
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
+              <strong style={{ fontSize: 15 }}>장기 요약</strong>
+              <span style={{ color: '#94a3b8', fontSize: 12 }}>{`${profile.archives?.length || 0}/${HERO_ARCHIVE_MAX}`}</span>
+            </div>
+            {profile.archives?.length ? (
+              <div style={{ display: 'grid', gap: 8 }}>
+                {profile.archives
+                  .slice()
+                  .reverse()
+                  .map(entry => (
+                    <div
+                      key={entry.id}
+                      style={{
+                        borderRadius: 16,
+                        padding: '12px 14px',
+                        background: 'rgba(15,23,42,0.72)',
+                        border: '1px solid rgba(148,163,184,0.18)',
+                        display: 'grid',
+                        gap: 6,
+                      }}
+                    >
+                      <span style={{ fontSize: 11, color: '#94a3b8' }}>{new Date(entry.createdAt).toLocaleString('ko-KR')}</span>
+                      <div style={{ color: '#e2e8f0', fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{entry.summary}</div>
+                    </div>
+                  ))}
+              </div>
+            ) : (
+              <div style={{ color: '#94a3b8', fontSize: 13 }}>아직 쌓인 장기 요약이 없습니다.</div>
             )}
           </section>
         </div>

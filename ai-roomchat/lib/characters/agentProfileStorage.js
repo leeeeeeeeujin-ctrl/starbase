@@ -1,4 +1,6 @@
 import {
+  HERO_ARCHIVE_ENTRY_MAX_LENGTH,
+  HERO_ARCHIVE_MAX,
   HERO_CHAT_INPUT_MAX_LENGTH,
   HERO_MEMORY_ENTRY_MAX_LENGTH,
   HERO_MEMORY_SLOT_MAX,
@@ -37,6 +39,7 @@ export function writeHeroAgentProfile(heroId, value) {
 }
 
 export function sanitizeHeroAgentProfile(profile = {}) {
+  const archives = Array.isArray(profile.archives) ? profile.archives : [];
   const memories = Array.isArray(profile.memories) ? profile.memories : [];
   const recentChats = Array.isArray(profile.recentChats) ? profile.recentChats : [];
 
@@ -44,6 +47,14 @@ export function sanitizeHeroAgentProfile(profile = {}) {
     systemPrompt: clampText(profile.systemPrompt || '', 2000),
     speakingStyle: clampText(profile.speakingStyle || '', 400),
     behaviorRules: clampText(profile.behaviorRules || '', 1000),
+    archives: archives
+      .map((entry, index) => ({
+        id: entry?.id || `archive-${Date.now()}-${index}`,
+        summary: clampText(entry?.summary || '', HERO_ARCHIVE_ENTRY_MAX_LENGTH),
+        createdAt: entry?.createdAt || new Date().toISOString(),
+      }))
+      .filter(entry => entry.summary)
+      .slice(-HERO_ARCHIVE_MAX),
     memories: memories
       .map((entry, index) => ({
         id: entry?.id || `memory-${Date.now()}-${index}`,
@@ -66,7 +77,25 @@ export function sanitizeHeroAgentProfile(profile = {}) {
 
 export function appendRecentChat(profile, message) {
   const next = sanitizeHeroAgentProfile(profile);
-  next.recentChats = [...next.recentChats, message].slice(-HERO_RECENT_CHAT_MAX);
+  const appended = [...next.recentChats, message];
+  const overflowCount = Math.max(0, appended.length - HERO_RECENT_CHAT_MAX);
+  if (overflowCount > 0) {
+    const overflow = appended.slice(0, overflowCount);
+    const summary = overflow
+      .map(entry => `${entry.role === 'assistant' ? 'AI' : 'USER'}: ${entry.text}`)
+      .join(' / ');
+    if (summary) {
+      next.archives = [
+        ...next.archives,
+        {
+          id: `archive-${Date.now()}`,
+          summary: clampText(summary, HERO_ARCHIVE_ENTRY_MAX_LENGTH),
+          createdAt: new Date().toISOString(),
+        },
+      ].slice(-HERO_ARCHIVE_MAX);
+    }
+  }
+  next.recentChats = appended.slice(-HERO_RECENT_CHAT_MAX);
   return next;
 }
 
