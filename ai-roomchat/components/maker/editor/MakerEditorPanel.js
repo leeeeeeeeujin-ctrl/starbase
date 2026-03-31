@@ -4,6 +4,7 @@ import SidePanel from '../SidePanel';
 import EditorMonaco from '../../EditorMonaco.jsx';
 import { useStudioTemplate } from '../../../contexts/StudioStore';
 import { parseTurnTemplate, serializeTurnTemplate } from '../../../lib/battle/turnTemplate';
+import { normalizeBattleConfig } from '../../../lib/battle/definition';
 
 // Keep lightweight and avoid window globals in render path
 export default function MakerEditorPanel({
@@ -28,6 +29,55 @@ export default function MakerEditorPanel({
   try {
     studio = useStudioTemplate();
   } catch {}
+
+  const battleConfig = (() => {
+    try {
+      const parsed = JSON.parse(studio?.templateText || '{}');
+      return normalizeBattleConfig(parsed?.battleConfig);
+    } catch {
+      return normalizeBattleConfig();
+    }
+  })();
+
+  const updateBattleConfig = partial => {
+    if (!studio || typeof studio.setTemplateText !== 'function') return;
+    try {
+      const parsed = JSON.parse(studio.templateText || '{}');
+      const nextConfig = normalizeBattleConfig({
+        ...(parsed?.battleConfig || {}),
+        ...partial,
+      });
+      studio.setTemplateText(
+        JSON.stringify(
+          {
+            ...(parsed || {}),
+            battleConfig: nextConfig,
+          },
+          null,
+          2
+        )
+      );
+    } catch {}
+  };
+
+  const updateRoleText = value => {
+    const roles = value
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean)
+      .map((line, index) => {
+        const [namePart, teamPart = '', limitPart = '1'] = line.split('|').map(entry => entry.trim());
+        if (!namePart) return null;
+        return {
+          id: `role-${index + 1}`,
+          name: namePart,
+          team: teamPart,
+          limit: Number.isFinite(Number(limitPart)) ? Number(limitPart) : 1,
+        };
+      })
+      .filter(Boolean);
+    updateBattleConfig({ roles });
+  };
 
   const updateSelectedNodeTemplate = nextTemplate => {
     if (!selectedNodeId) return;
@@ -359,7 +409,7 @@ export default function MakerEditorPanel({
 
                     <div style={{ display: 'grid', gap: 4 }}>
                       <label style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
-                        참가자 범위
+                        AI 참가자 범위
                       </label>
                       <input
                         type="text"
@@ -381,7 +431,35 @@ export default function MakerEditorPanel({
                         }}
                       />
                       <div style={{ fontSize: 11, color: '#6b7280', lineHeight: 1.4 }}>
-                        쉼표로 구분합니다. 예: `self`, `opponent`, `allies`, `team:red`
+                        AI 프롬프트에 넣을 대상을 쉼표로 구분합니다. 예: `self`, `allies`, `team:red`
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gap: 4 }}>
+                      <label style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
+                        문구 가시 범위
+                      </label>
+                      <input
+                        type="text"
+                        value={(turnMeta.visibilityScope || []).join(', ')}
+                        onChange={event =>
+                          updateTurnMeta({
+                            visibilityScope: event.target.value
+                              .split(',')
+                              .map(value => value.trim())
+                              .filter(Boolean),
+                          })
+                        }
+                        style={{
+                          borderRadius: 10,
+                          border: '1px solid #cbd5f5',
+                          padding: '6px 10px',
+                          fontSize: 13,
+                          background: '#fff',
+                        }}
+                      />
+                      <div style={{ fontSize: 11, color: '#6b7280', lineHeight: 1.4 }}>
+                        이 턴 안내문을 누가 보는지 지정합니다. 예: `all`, `self`, `role:healer`, `team:blue`
                       </div>
                     </div>
                   </div>
@@ -418,6 +496,76 @@ export default function MakerEditorPanel({
 
         {activeTab === 'guide' && (
           <div style={{ display: 'grid', gap: 8, color: '#475569', fontSize: 13, lineHeight: 1.6 }}>
+            <div
+              style={{
+                display: 'grid',
+                gap: 10,
+                border: '1px solid #e2e8f0',
+                borderRadius: 12,
+                background: '#f8fafc',
+                padding: 12,
+              }}
+            >
+              <strong style={{ color: '#0f172a', fontSize: 14 }}>게임 설정</strong>
+              <div style={{ display: 'grid', gap: 6, gridTemplateColumns: '1fr 1fr 1fr' }}>
+                <label style={{ display: 'grid', gap: 4 }}>
+                  <span style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>모드</span>
+                  <select
+                    value={battleConfig.mode}
+                    onChange={event => updateBattleConfig({ mode: event.target.value })}
+                    style={{ borderRadius: 10, border: '1px solid #cbd5f5', padding: '6px 10px', fontSize: 13, background: '#fff' }}
+                  >
+                    <option value="single">싱글</option>
+                    <option value="multi">멀티</option>
+                  </select>
+                </label>
+                <label style={{ display: 'grid', gap: 4 }}>
+                  <span style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>최소 인원</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="12"
+                    value={battleConfig.minPlayers}
+                    onChange={event => updateBattleConfig({ minPlayers: Number(event.target.value) || 1 })}
+                    style={{ borderRadius: 10, border: '1px solid #cbd5f5', padding: '6px 10px', fontSize: 13, background: '#fff' }}
+                  />
+                </label>
+                <label style={{ display: 'grid', gap: 4 }}>
+                  <span style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>최대 인원</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="12"
+                    value={battleConfig.maxPlayers}
+                    onChange={event => updateBattleConfig({ maxPlayers: Number(event.target.value) || 1 })}
+                    style={{ borderRadius: 10, border: '1px solid #cbd5f5', padding: '6px 10px', fontSize: 13, background: '#fff' }}
+                  />
+                </label>
+              </div>
+              <label style={{ display: 'grid', gap: 4 }}>
+                <span style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>역할 목록</span>
+                <textarea
+                  rows={5}
+                  value={(battleConfig.roles || [])
+                    .map(role => [role.name, role.team || '', role.limit || 1].join('|'))
+                    .join('\n')}
+                  onChange={event => updateRoleText(event.target.value)}
+                  style={{
+                    borderRadius: 10,
+                    border: '1px solid #cbd5f5',
+                    padding: '8px 10px',
+                    fontSize: 13,
+                    background: '#fff',
+                    resize: 'vertical',
+                    fontFamily: 'Menlo, ui-monospace, SFMono-Regular, monospace',
+                  }}
+                />
+                <span style={{ fontSize: 11, color: '#6b7280' }}>
+                  한 줄에 `역할명|팀|인원수` 형식으로 적습니다. 예: `healer|blue|2`
+                </span>
+              </label>
+            </div>
+
             <p style={{ margin: 0 }}>
               • 턴을 선택해 AI에 보낼 내용, 유저에게 보여줄 안내, 입력이 필요한 시점을 구성하세요.
             </p>

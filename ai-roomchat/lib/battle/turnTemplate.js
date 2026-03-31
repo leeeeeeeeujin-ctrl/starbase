@@ -11,6 +11,7 @@ export function getDefaultTurnMeta(slotType = 'ai') {
     inputPlaceholder: '',
     resultKey: '',
     participantScope: [],
+    visibilityScope: ['all'],
   };
 
   if (slotType === 'user_action') {
@@ -40,6 +41,9 @@ export function normalizeTurnMeta(rawMeta, slotType = 'ai') {
   const participantScope = Array.isArray(source.participantScope)
     ? source.participantScope.map(value => String(value || '').trim()).filter(Boolean)
     : [];
+  const visibilityScope = Array.isArray(source.visibilityScope)
+    ? source.visibilityScope.map(value => String(value || '').trim()).filter(Boolean)
+    : base.visibilityScope;
   const inputMode = TURN_INPUT_MODES.includes(source.inputMode) ? source.inputMode : base.inputMode;
 
   return {
@@ -53,6 +57,7 @@ export function normalizeTurnMeta(rawMeta, slotType = 'ai') {
     inputPlaceholder: String(source.inputPlaceholder ?? ''),
     resultKey: String(source.resultKey ?? ''),
     participantScope,
+    visibilityScope,
   };
 }
 
@@ -100,4 +105,3 @@ export function serializeTurnTemplate(meta, body, slotType = 'ai') {
 export function createDefaultTurnTemplate(slotType = 'ai') {
   return serializeTurnTemplate(getDefaultTurnMeta(slotType), '', slotType);
 }
-

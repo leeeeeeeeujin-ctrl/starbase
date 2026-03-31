@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useStudioTemplate } from '../../../contexts/StudioStore';
 import useIsMobile from '../../../utils/useIsMobile';
 
@@ -14,6 +14,7 @@ import MakerEditorPanel from './MakerEditorPanel';
 import AddPromptFab from './AddPromptFab';
 import VariableDrawer from './VariableDrawer';
 import MobileTextBattlePreviewOverlay from '../../battle/MobileTextBattlePreviewOverlay.jsx';
+import { normalizeBattleConfig } from '../../../lib/battle/definition.js';
 import { isWorkspaceDebug } from '../../../lib/workspace/debugFlags.js';
 
 export default function MakerEditor() {
@@ -48,6 +49,21 @@ export default function MakerEditor() {
 
   const { isReady, loading } = status;
   const { writeFile, files } = useWorkspace();
+  const battleConfig = useMemo(() => {
+    try {
+      const parsed = JSON.parse(templateText || '{}');
+      return normalizeBattleConfig(parsed?.battleConfig);
+    } catch {
+      return normalizeBattleConfig();
+    }
+  }, [templateText]);
+  const resolvedBattleDefinition = useMemo(
+    () => ({
+      ...battleDefinition,
+      ...battleConfig,
+    }),
+    [battleConfig, battleDefinition]
+  );
 
   const {
     nodes,
@@ -207,7 +223,7 @@ export default function MakerEditor() {
         };
 
         writeFile('/graph/prompt-graph.json', JSON.stringify(graphData, null, 2) + '\n');
-        writeFile('/battle/definition.json', JSON.stringify(battleDefinition, null, 2) + '\n');
+        writeFile('/battle/definition.json', JSON.stringify(resolvedBattleDefinition, null, 2) + '\n');
 
         const startNode = nodes.find(node => node.data?.isStart);
         if (startNode && files) {
@@ -227,7 +243,7 @@ export default function MakerEditor() {
     }, 300);
 
     return () => clearTimeout(timeoutId);
-  }, [nodes, edges, writeFile, files]);
+  }, [nodes, edges, writeFile, files, resolvedBattleDefinition]);
 
   const {
     selectedNode,
@@ -683,7 +699,7 @@ export default function MakerEditor() {
 
       {battlePreviewOpen && (
         <MobileTextBattlePreviewOverlay
-          definition={battleDefinition}
+          definition={resolvedBattleDefinition}
           onClose={() => setBattlePreviewOpen(false)}
         />
       )}

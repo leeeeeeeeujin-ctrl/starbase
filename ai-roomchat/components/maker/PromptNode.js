@@ -49,7 +49,7 @@ export default function PromptNode({ id, data, selected }) {
   }, [selected]);
 
   const previewText = useMemo(() => {
-    const { meta, body } = parseTurnTemplate(d.template ?? d.label ?? '');
+    const { meta, body } = parseTurnTemplate(d.template ?? d.label ?? '', d.slot_type || 'ai');
     const src = (meta?.display || body || d.label || '').toString();
     const trimmed = src.replace(/\s+/g, ' ').trim();
     if (!trimmed) return '';
@@ -65,6 +65,13 @@ export default function PromptNode({ id, data, selected }) {
     color: '#0b1220',
     background: d.slot_type === 'user_action' ? '#93c5fd' : d.slot_type === 'system' ? '#fca5a5' : '#86efac'
   }), [d.slot_type]);
+
+  const visibilityLabel = useMemo(() => {
+    const { meta } = parseTurnTemplate(d.template ?? d.label ?? '', d.slot_type || 'ai');
+    const scope = Array.isArray(meta?.visibilityScope) ? meta.visibilityScope : [];
+    if (!scope.length || (scope.length === 1 && scope[0] === 'all')) return null;
+    return `공개 ${scope.join(', ')}`;
+  }, [d.label, d.slot_type, d.template]);
 
   const stopDrag = (e) => { e.stopPropagation(); };
   const onNameChange = (e) => {
@@ -113,6 +120,11 @@ export default function PromptNode({ id, data, selected }) {
           <span style={typeBadgeStyle}>{typeLabel}</span>
           {slotLabel && (
             <span style={{ padding: '2px 6px', borderRadius: 999, background: 'rgba(148,163,184,0.25)', color: '#e2e8f0', fontSize: 11, fontWeight: 700 }}>{slotLabel}</span>
+          )}
+          {visibilityLabel && (
+            <span style={{ padding: '2px 6px', borderRadius: 999, background: 'rgba(191,219,254,0.15)', color: '#bfdbfe', fontSize: 10, fontWeight: 700 }}>
+              {visibilityLabel}
+            </span>
           )}
           {isStart && (
             <span style={{ marginLeft: 'auto', padding: '2px 8px', borderRadius: 999, background: '#fde68a', color: '#7c2d12', fontSize: 10, fontWeight: 900 }}>시작</span>
