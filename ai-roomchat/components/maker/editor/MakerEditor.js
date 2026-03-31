@@ -37,7 +37,7 @@ export default function MakerEditor() {
     };
   }, []);
 
-  const { status, graph, selection, variables, persistence, history, version } = useMakerEditor();
+  const { status, graph, selection, variables, persistence, history, version, definition: battleDefinition } = useMakerEditor();
 
   let templateText = '';
   let setTemplateText = () => {};
@@ -61,7 +61,6 @@ export default function MakerEditor() {
     setNodes,
     setEdges,
   } = graph;
-
   const syncingRef = useRef(false);
   const hydratedRef = useRef(false);
 
@@ -209,6 +208,7 @@ export default function MakerEditor() {
         };
 
         writeFile('/graph/prompt-graph.json', JSON.stringify(graphData, null, 2) + '\n');
+        writeFile('/battle/definition.json', JSON.stringify(battleDefinition, null, 2) + '\n');
 
         const startNode = nodes.find(node => node.data?.isStart);
         if (startNode && files) {
