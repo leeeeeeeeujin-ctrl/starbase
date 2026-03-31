@@ -95,8 +95,8 @@ const pageStyles = {
 };
 
 const overlayTabs = [
-  { key: 'create', label: '게임 제작' },
-  { key: 'register', label: '게임 등록' },
+  { key: 'agent', label: '캐릭터 AI' },
+  { key: 'play', label: '게임 시작' },
   { key: 'api-keys', label: 'AI 키 관리' },
   { key: 'settings', label: '설정' },
 ];
@@ -114,6 +114,44 @@ const styles = {
     width: '100%',
     maxWidth: 500,
     position: 'relative',
+  },
+  heroCardRow: {
+    width: '100%',
+    display: 'grid',
+    gridTemplateColumns: '56px minmax(0, 1fr) 56px',
+    alignItems: 'center',
+    gap: 10,
+  },
+  heroSideLink: {
+    width: 56,
+    height: 220,
+    borderRadius: 24,
+    border: '1px solid rgba(96,165,250,0.24)',
+    background: 'rgba(15,23,42,0.72)',
+    color: '#e2e8f0',
+    textDecoration: 'none',
+    display: 'grid',
+    placeItems: 'center',
+    boxShadow: '0 24px 60px -42px rgba(15,23,42,0.88)',
+  },
+  heroSideLinkInner: {
+    display: 'grid',
+    gap: 10,
+    justifyItems: 'center',
+    textAlign: 'center',
+  },
+  heroSideArrow: {
+    fontSize: 22,
+    fontWeight: 900,
+    lineHeight: 1,
+    color: '#7dd3fc',
+  },
+  heroSideLabel: {
+    writingMode: 'vertical-rl',
+    textOrientation: 'mixed',
+    fontSize: 12,
+    fontWeight: 800,
+    letterSpacing: '0.06em',
   },
   heroCard: {
     position: 'relative',
@@ -2612,24 +2650,43 @@ export default function CharacterBasicView({ hero }) {
   );
 
   const overlayBody = (() => {
-    if (activeTabKey === 'create') {
+    if (activeTabKey === 'agent') {
       return (
         <div style={styles.tabContent}>
           <div style={styles.infoBlock}>
-            <p style={styles.infoTitle}>게임 제작 허브</p>
+            <p style={styles.infoTitle}>캐릭터 AI 허브</p>
             <p style={styles.infoText}>
-              프롬프트 세트부터 플레이 테스트까지, 제작 과정 전반을 한눈에 살펴볼 수 있습니다. 아래
-              단계를 확인하고 Maker로 이동해 세트를 정비하세요.
+              이 캐릭터와 대화하면서 성격, 말투, 행동 원칙을 정리하는 전용 공간입니다. 캐릭터 카드를
+              기준으로 왼쪽 페이지에 해당하는 흐름입니다.
             </p>
             <div style={styles.quickLinkRow}>
-              <Link href="/maker" style={styles.primaryLinkButton}>
-                Maker 열기
+              <Link href={`/character/${currentHero?.id}/agent`} style={styles.primaryLinkButton}>
+                캐릭터 AI 열기
               </Link>
             </div>
           </div>
 
           <div style={styles.creationGrid}>
-            {creationHighlights.map(item => (
+            {[
+              {
+                id: 'agent-chat',
+                badge: 'STEP 01',
+                title: '캐릭터와 대화',
+                description: '질문과 응답을 통해 성격과 말투를 정리합니다.',
+              },
+              {
+                id: 'agent-summary',
+                badge: 'STEP 02',
+                title: '요약 저장',
+                description: '긴 대화를 전부 쓰지 않고 요약 프로필만 게임에 넘깁니다.',
+              },
+              {
+                id: 'agent-rules',
+                badge: 'STEP 03',
+                title: '행동 규칙 설정',
+                description: '전투 성향, 금기, 우선 행동 원칙을 붙입니다.',
+              },
+            ].map(item => (
               <div key={item.id} style={styles.creationCard}>
                 <span style={styles.creationBadge}>{item.badge}</span>
                 <p style={styles.creationCardTitle}>{item.title}</p>
@@ -2641,7 +2698,7 @@ export default function CharacterBasicView({ hero }) {
       );
     }
 
-    if (activeTabKey === 'register') {
+    if (activeTabKey === 'play') {
       const registerBackdropStyle = styles.registerBackdrop(
         backgroundPreview || currentHero?.background_url || ''
       );
@@ -2651,15 +2708,15 @@ export default function CharacterBasicView({ hero }) {
           <div style={registerBackdropStyle}>
             <div style={{ display: 'grid', gap: 16 }}>
               <div style={{ display: 'grid', gap: 6 }}>
-                <p style={styles.registerIntroTitle}>게임 등록 허브</p>
+                <p style={styles.registerIntroTitle}>통계 · 게임 시작</p>
                 <p style={styles.registerIntroText}>
-                  다양한 제작 흐름을 정리했어요. 세트를 다듬은 뒤 등록 화면으로 이동하면 난투 옵션과
-                  체크리스트를 한 번에 확인할 수 있습니다.
+                  참여한 게임, 기본 통계, 게임 시작 흐름을 분리한 화면입니다. 캐릭터 카드를 기준으로
+                  오른쪽 페이지에 해당합니다.
                 </p>
               </div>
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                <Link href="/rank/new" style={styles.primaryLinkButton}>
-                  게임 등록 화면 열기
+                <Link href={`/character/${currentHero?.id}/play`} style={styles.primaryLinkButton}>
+                  통계·게임 화면 열기
                 </Link>
               </div>
             </div>
@@ -3444,85 +3501,101 @@ export default function CharacterBasicView({ hero }) {
   }, [battleDetails, resolveBattleOutcome]);
 
   const heroSlide = (
-    <div style={styles.heroCardShell}>
-      <div
-        role="button"
-        tabIndex={0}
-        style={styles.heroCard}
-        onClick={handleTap}
-        onKeyUp={event => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            handleTap();
-          }
-        }}
-      >
-        <div style={styles.cornerIcon} aria-hidden="true">
-          {Array.from({ length: 9 }).map((_, index) => (
-            <span key={`dot-${index}`} style={styles.cornerDot} />
-          ))}
+    <div style={styles.heroCardRow}>
+      <Link href={`/character/${currentHero?.id}/agent`} style={styles.heroSideLink}>
+        <div style={styles.heroSideLinkInner}>
+          <span style={styles.heroSideArrow}>‹</span>
+          <span style={styles.heroSideLabel}>캐릭터 AI</span>
         </div>
+      </Link>
 
-        {hero?.image_url ? (
-          <img src={hero.image_url} alt={heroName} style={imageStyle} />
-        ) : (
-          <div style={styles.heroFallback}>{heroName.slice(0, 2)}</div>
-        )}
-
-        {currentOverlayMode === 'name' ? (
-          <div style={styles.heroNameOverlay}>
-            <p style={styles.heroNameBadge}>{heroName}</p>
+      <div style={styles.heroCardShell}>
+        <div
+          role="button"
+          tabIndex={0}
+          style={styles.heroCard}
+          onClick={handleTap}
+          onKeyUp={event => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              handleTap();
+            }
+          }}
+        >
+          <div style={styles.cornerIcon} aria-hidden="true">
+            {Array.from({ length: 9 }).map((_, index) => (
+              <span key={`dot-${index}`} style={styles.cornerDot} />
+            ))}
           </div>
-        ) : null}
 
-        {currentOverlayMode === 'stats' ? (
-          <div style={styles.overlaySurface}>
-            <div style={styles.overlayContent}>
-              <p style={styles.overlayHeading}>전투 통계</p>
-              <div style={styles.overlayStatsGrid}>
-                <div style={styles.overlayStatsRow}>
-                  <div style={styles.overlayStatCard}>
-                    <p style={styles.overlayStatLabel}>전체 최고 랭킹</p>
-                    <p style={styles.overlayStatValue}>
-                      {overallHeroStats.bestRank != null ? `#${overallHeroStats.bestRank}` : '—'}
-                    </p>
+          {hero?.image_url ? (
+            <img src={hero.image_url} alt={heroName} style={imageStyle} />
+          ) : (
+            <div style={styles.heroFallback}>{heroName.slice(0, 2)}</div>
+          )}
+
+          {currentOverlayMode === 'name' ? (
+            <div style={styles.heroNameOverlay}>
+              <p style={styles.heroNameBadge}>{heroName}</p>
+            </div>
+          ) : null}
+
+          {currentOverlayMode === 'stats' ? (
+            <div style={styles.overlaySurface}>
+              <div style={styles.overlayContent}>
+                <p style={styles.overlayHeading}>전투 통계</p>
+                <div style={styles.overlayStatsGrid}>
+                  <div style={styles.overlayStatsRow}>
+                    <div style={styles.overlayStatCard}>
+                      <p style={styles.overlayStatLabel}>전체 최고 랭킹</p>
+                      <p style={styles.overlayStatValue}>
+                        {overallHeroStats.bestRank != null ? `#${overallHeroStats.bestRank}` : '—'}
+                      </p>
+                    </div>
+                    <div style={styles.overlayStatCard}>
+                      <p style={styles.overlayStatLabel}>전체 최고 점수</p>
+                      <p style={styles.overlayStatValue}>
+                        {overallHeroStats.bestScore != null
+                          ? formatPlayNumber(overallHeroStats.bestScore)
+                          : '—'}
+                      </p>
+                    </div>
                   </div>
-                  <div style={styles.overlayStatCard}>
-                    <p style={styles.overlayStatLabel}>전체 최고 점수</p>
-                    <p style={styles.overlayStatValue}>
-                      {overallHeroStats.bestScore != null
-                        ? formatPlayNumber(overallHeroStats.bestScore)
-                        : '—'}
-                    </p>
-                  </div>
-                </div>
-                <div style={styles.overlayStatsRow}>
-                  <div style={styles.overlayStatCard}>
-                    <p style={styles.overlayStatLabel}>전체 평균 승률</p>
-                    <p style={styles.overlayStatValue}>
-                      {overallHeroStats.averageWinRate != null
-                        ? formatWinRateValue(overallHeroStats.averageWinRate)
-                        : '—'}
-                    </p>
-                  </div>
-                  <div style={styles.overlayStatCard}>
-                    <p style={styles.overlayStatLabel}>전체 전투 수</p>
-                    <p style={styles.overlayStatValue}>
-                      {overallHeroStats.totalBattles != null
-                        ? formatPlayNumber(overallHeroStats.totalBattles)
-                        : '—'}
-                    </p>
+                  <div style={styles.overlayStatsRow}>
+                    <div style={styles.overlayStatCard}>
+                      <p style={styles.overlayStatLabel}>전체 평균 승률</p>
+                      <p style={styles.overlayStatValue}>
+                        {overallHeroStats.averageWinRate != null
+                          ? formatWinRateValue(overallHeroStats.averageWinRate)
+                          : '—'}
+                      </p>
+                    </div>
+                    <div style={styles.overlayStatCard}>
+                      <p style={styles.overlayStatLabel}>전체 전투 수</p>
+                      <p style={styles.overlayStatValue}>
+                        {overallHeroStats.totalBattles != null
+                          ? formatPlayNumber(overallHeroStats.totalBattles)
+                          : '—'}
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-        ) : null}
+          ) : null}
 
-        <div style={styles.tapHint} aria-hidden="true">
-          {currentOverlayMode === 'name' ? '탭해서 통계 보기' : '탭해서 카드 보기'}
+          <div style={styles.tapHint} aria-hidden="true">
+            {currentOverlayMode === 'name' ? '탭해서 통계 보기' : '탭해서 카드 보기'}
+          </div>
         </div>
       </div>
+
+      <Link href={`/character/${currentHero?.id}/play`} style={styles.heroSideLink}>
+        <div style={styles.heroSideLinkInner}>
+          <span style={styles.heroSideArrow}>›</span>
+          <span style={styles.heroSideLabel}>게임 시작</span>
+        </div>
+      </Link>
     </div>
   );
 
