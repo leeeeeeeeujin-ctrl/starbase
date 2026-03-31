@@ -15,6 +15,7 @@ import AddPromptFab from './AddPromptFab';
 import VariableDrawer from './VariableDrawer';
 import AdvancedToolsPanel from './AdvancedToolsPanel';
 import AutoUpdateListener from '../../infra/AutoUpdateListener.jsx';
+import MobileTextBattlePreviewOverlay from '../../battle/MobileTextBattlePreviewOverlay.jsx';
 import { isWorkspaceDebug } from '../../../lib/workspace/debugFlags.js';
 
 export default function MakerEditor() {
@@ -334,6 +335,7 @@ export default function MakerEditor() {
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [advancedToolsOpen, setAdvancedToolsOpen] = useState(false);
   const [receiptVisible, setReceiptVisible] = useState(null);
+  const [battlePreviewOpen, setBattlePreviewOpen] = useState(false);
 
   const openInspector = useCallback(
     tabId => {
@@ -475,6 +477,7 @@ export default function MakerEditor() {
         <MinimalMakerHeader
           busy={busy}
           onBack={goToSetList}
+          onPreview={() => setBattlePreviewOpen(true)}
           onOpenVariables={() => setVariableDrawerOpen(true)}
           onSave={unifiedSaveAll}
         />
@@ -799,6 +802,13 @@ export default function MakerEditor() {
             저장 중입니다... 잠시만 기다려 주세요.
           </div>
         </div>
+      )}
+
+      {battlePreviewOpen && (
+        <MobileTextBattlePreviewOverlay
+          definition={battleDefinition}
+          onClose={() => setBattlePreviewOpen(false)}
+        />
       )}
     </div>
   );

@@ -3,6 +3,7 @@
 export default function MinimalMakerHeader({
   busy,
   onBack,
+  onPreview,
   onSave,
 }) {
   const btn = (label, onClick, style = {}) => (
@@ -41,6 +42,11 @@ export default function MinimalMakerHeader({
         <strong style={{ fontSize: 14 }}>배틀 메이커</strong>
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        {btn('미리보기', onPreview, {
+          background: '#1d4ed8',
+          color: '#fff',
+          borderColor: '#1d4ed8',
+        })}
         {btn('저장', onSave, {
           background: busy ? 'rgba(148,163,184,0.2)' : '#16a34a',
           color: '#fff',
