@@ -7,33 +7,12 @@ import {
   sanitizeVariableRules,
   variableRulesEqual,
 } from '../../../lib/variableRules';
+import { parseTurnTemplate, serializeTurnTemplate } from '../../../lib/battle/turnTemplate';
 import { normalizeVisibleList } from './graphTransforms';
 
 const TAB_LABELS = { selection: '선택', guide: '가이드', history: '히스토리' };
 
 export const variablePanelTabs = ['selection', 'guide', 'history'];
-
-function splitTurnTemplate(rawTemplate) {
-  const text = typeof rawTemplate === 'string' ? rawTemplate : '';
-  if (!text.startsWith('---\n')) {
-    return { body: text };
-  }
-
-  const closingIndex = text.indexOf('\n---\n', 4);
-  if (closingIndex < 0) {
-    return { body: text };
-  }
-
-  return {
-    metaBlock: text.slice(4, closingIndex),
-    body: text.slice(closingIndex + 5),
-  };
-}
-
-function joinTurnTemplate(metaBlock, body) {
-  if (!metaBlock) return body || '';
-  return `---\n${metaBlock}\n---\n${body || ''}`;
-}
 
 export function useGraphSelection(nodes, setNodes) {
   const [selectedNodeId, setSelectedNodeId] = useState(null);
@@ -194,7 +173,7 @@ export function useGraphSelection(nodes, setNodes) {
   const characterSuggestions = useMemo(() => {
     const suggestions = new Map();
     nodes.forEach(node => {
-      const templateBody = splitTurnTemplate(node?.data?.template).body;
+      const templateBody = parseTurnTemplate(node?.data?.template).body;
       templateBody
         .split(/\s+/)
         .filter(word => word.startsWith('@'))
@@ -215,12 +194,16 @@ export function useGraphSelection(nodes, setNodes) {
         existing.map(node =>
           node.id === selectedNodeId
             ? (() => {
-                const { metaBlock, body } = splitTurnTemplate(node.data?.template);
+                const current = parseTurnTemplate(node.data?.template, node.data?.slot_type || 'ai');
                 return {
                   ...node,
                   data: {
                     ...node.data,
-                    template: joinTurnTemplate(metaBlock, `${body || ''}${token}`),
+                    template: serializeTurnTemplate(
+                      current.meta,
+                      `${current.body || ''}${token}`,
+                      node.data?.slot_type || 'ai'
+                    ),
                   },
                 };
               })()

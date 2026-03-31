@@ -1,27 +1,7 @@
 // components/maker/PromptNode.js
 import React, { useMemo, useRef } from 'react';
 import { Handle, Position } from 'reactflow';
-
-function parseTurnTemplate(rawTemplate) {
-  const text = typeof rawTemplate === 'string' ? rawTemplate : '';
-  if (!text.startsWith('---\n')) {
-    return { meta: null, body: text };
-  }
-
-  const closingIndex = text.indexOf('\n---\n', 4);
-  if (closingIndex < 0) {
-    return { meta: null, body: text };
-  }
-
-  try {
-    return {
-      meta: JSON.parse(text.slice(4, closingIndex)),
-      body: text.slice(closingIndex + 5),
-    };
-  } catch {
-    return { meta: null, body: text };
-  }
-}
+import { parseTurnTemplate } from '../../lib/battle/turnTemplate';
 
 export default function PromptNode({ id, data, selected }) {
   const d = data || {};

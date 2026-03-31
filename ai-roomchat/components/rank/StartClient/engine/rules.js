@@ -1,25 +1,5 @@
 import { sanitizeVariableRules, VARIABLE_RULES_VERSION } from '../../../../lib/variableRules';
-
-function parseTurnTemplate(rawTemplate = '') {
-  const text = typeof rawTemplate === 'string' ? rawTemplate : '';
-  if (!text.startsWith('---\n')) {
-    return { body: text, meta: null };
-  }
-
-  const closingIndex = text.indexOf('\n---\n', 4);
-  if (closingIndex < 0) {
-    return { body: text, meta: null };
-  }
-
-  try {
-    return {
-      meta: JSON.parse(text.slice(4, closingIndex)),
-      body: text.slice(closingIndex + 5),
-    };
-  } catch {
-    return { body: text, meta: null };
-  }
-}
+import { parseTurnTemplate } from '../../../../lib/battle/turnTemplate';
 
 function extractVersion(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;

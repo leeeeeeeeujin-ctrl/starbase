@@ -7,6 +7,8 @@ import { useMakerEditorGraph } from './editor/useMakerEditorGraph';
 import { useMakerEditorLoader } from './editor/useMakerEditorLoader';
 import { useMakerEditorPersistence } from './editor/useMakerEditorPersistence';
 import { useMakerEditorShortcuts } from './editor/useMakerEditorShortcuts';
+import { buildBattleDefinitionFromGraph } from '../../lib/battle/definition';
+import { createDefaultTurnTemplate } from '../../lib/battle/turnTemplate';
 import {
   createActiveRule,
   createAutoRule,
@@ -19,28 +21,6 @@ import {
   VARIABLE_RULE_SUBJECTS,
   VARIABLE_RULES_VERSION,
 } from '../../lib/variableRules';
-
-function createDefaultTurnTemplate(slotType = 'ai') {
-  const base = {
-    version: 1,
-    title: 'AI 턴',
-    display: '',
-    inputMode: 'none',
-    inputLabel: '',
-    inputPlaceholder: '',
-    resultKey: '',
-    participantScope: [],
-  };
-
-  if (slotType === 'user_action') {
-    base.title = '유저 입력 턴';
-    base.inputMode = 'text';
-  } else if (slotType === 'system') {
-    base.title = '시스템 턴';
-  }
-
-  return `---\n${JSON.stringify(base, null, 2)}\n---\n`;
-}
 
 export function useMakerEditor() {
   const router = useRouter();
@@ -342,6 +322,11 @@ export function useMakerEditor() {
     [selectedVisibility]
   );
 
+  const battleDefinition = useMemo(
+    () => buildBattleDefinitionFromGraph({ setInfo, nodes, edges }),
+    [edges, nodes, setInfo]
+  );
+
   return {
     status: {
       router,
@@ -386,6 +371,7 @@ export function useMakerEditor() {
       slotSuggestions,
       characterSuggestions,
     },
+    definition: battleDefinition,
     persistence: {
       busy,
       saveAll,

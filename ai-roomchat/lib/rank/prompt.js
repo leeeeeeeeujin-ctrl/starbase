@@ -1,4 +1,5 @@
 // lib/rank/prompt.js
+import { parseTurnTemplate } from '../battle/turnTemplate';
 
 const DEFEATED_STATUS_SET = new Set(['defeated', 'lost', 'dead']);
 const RETIRED_STATUS_SET = new Set([
@@ -9,27 +10,6 @@ const RETIRED_STATUS_SET = new Set([
   'spectator',
   'observer',
 ]);
-
-function parseTurnTemplate(rawTemplate = '') {
-  const text = typeof rawTemplate === 'string' ? rawTemplate : '';
-  if (!text.startsWith('---\n')) {
-    return { body: text, meta: null };
-  }
-
-  const closingIndex = text.indexOf('\n---\n', 4);
-  if (closingIndex < 0) {
-    return { body: text, meta: null };
-  }
-
-  try {
-    return {
-      meta: JSON.parse(text.slice(4, closingIndex)),
-      body: text.slice(closingIndex + 5),
-    };
-  } catch {
-    return { body: text, meta: null };
-  }
-}
 
 function normalizeStatus(value) {
   if (!value && value !== 0) return 'unknown';
