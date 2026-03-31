@@ -45,6 +45,9 @@ const INITIAL_HERO_DRAFT = {
   ability4: '',
 };
 
+const CHAT_PAGE_SIZE = 8;
+const CHAT_AUTO_SCROLL_THRESHOLD = 72;
+
 export default function CharacterAgentScreen({ hero }) {
   const heroId = hero?.id ? String(hero.id) : '';
   const heroImage = hero?.image_url || hero?.background_url || '';
@@ -59,8 +62,13 @@ export default function CharacterAgentScreen({ hero }) {
   const [hasActiveApiKey, setHasActiveApiKey] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [apiSubmitting, setApiSubmitting] = useState(false);
+  const [visibleChatCount, setVisibleChatCount] = useState(CHAT_PAGE_SIZE);
+  const [pendingJumpPreview, setPendingJumpPreview] = useState('');
   const abortControllerRef = useRef(null);
   const requestIdRef = useRef(0);
+  const chatLogRef = useRef(null);
+  const previousChatCountRef = useRef(0);
+  const preserveScrollRef = useRef(null);
 
   useEffect(() => {
     if (!heroId) return;
@@ -84,6 +92,9 @@ export default function CharacterAgentScreen({ hero }) {
     setStatus('');
     setSaveStatus('');
     setLoading(false);
+    setVisibleChatCount(CHAT_PAGE_SIZE);
+    setPendingJumpPreview('');
+    previousChatCountRef.current = 0;
   }, [hero?.ability1, hero?.ability2, hero?.ability3, hero?.ability4, hero?.description, hero?.name, heroId]);
 
   useEffect(
@@ -172,6 +183,73 @@ export default function CharacterAgentScreen({ hero }) {
     ]
   );
 
+  const totalChats = profile.recentChats.length;
+  const visibleChats = useMemo(
+    () => profile.recentChats.slice(-Math.max(visibleChatCount, CHAT_PAGE_SIZE)),
+    [profile.recentChats, visibleChatCount]
+  );
+
+  const getMessagePreview = useCallback(text => {
+    const normalized = String(text || '').replace(/\s+/g, ' ').trim();
+    if (!normalized) return '새 응답이 도착했습니다.';
+    return normalized.length > 30 ? `${normalized.slice(0, 30)}...` : normalized;
+  }, []);
+
+  const scrollToBottom = useCallback((behavior = 'smooth') => {
+    const node = chatLogRef.current;
+    if (!node) return;
+    node.scrollTo({ top: node.scrollHeight, behavior });
+    setPendingJumpPreview('');
+  }, []);
+
+  const isNearBottom = useCallback(() => {
+    const node = chatLogRef.current;
+    if (!node) return true;
+    return node.scrollHeight - node.scrollTop - node.clientHeight < CHAT_AUTO_SCROLL_THRESHOLD;
+  }, []);
+
+  useEffect(() => {
+    const node = chatLogRef.current;
+    if (!node) return;
+
+    if (preserveScrollRef.current) {
+      const { previousHeight, previousTop } = preserveScrollRef.current;
+      preserveScrollRef.current = null;
+      const nextHeight = node.scrollHeight;
+      node.scrollTop = nextHeight - previousHeight + previousTop;
+      return;
+    }
+
+    const previousCount = previousChatCountRef.current;
+    const nextCount = profile.recentChats.length;
+
+    if (nextCount === 0) {
+      previousChatCountRef.current = 0;
+      return;
+    }
+
+    if (previousCount === 0) {
+      requestAnimationFrame(() => {
+        scrollToBottom('auto');
+      });
+      previousChatCountRef.current = nextCount;
+      return;
+    }
+
+    if (nextCount > previousCount) {
+      const latest = profile.recentChats[nextCount - 1];
+      if (isNearBottom()) {
+        requestAnimationFrame(() => {
+          scrollToBottom('smooth');
+        });
+      } else {
+        setPendingJumpPreview(getMessagePreview(latest?.text));
+      }
+    }
+
+    previousChatCountRef.current = nextCount;
+  }, [getMessagePreview, isNearBottom, profile.recentChats, scrollToBottom]);
+
   const buildPrompt = useCallback(
     userInput =>
       buildHeroAgentPrompt({
@@ -244,6 +322,7 @@ export default function CharacterAgentScreen({ hero }) {
         parsed = JSON.parse(data?.text || '{}');
       } catch {
         parsed = { reply: data?.text || '', memoryAction: { type: 'none' } };
+        setStatus('JSON 응답을 해석하지 못해 일반 텍스트로 표시했습니다.');
       }
 
       const assistantMessage = {
@@ -346,6 +425,21 @@ export default function CharacterAgentScreen({ hero }) {
     }
   }, [apiKeyInput, apiSubmitting, syncKeyState]);
 
+  const handleChatScroll = useCallback(() => {
+    const node = chatLogRef.current;
+    if (!node) return;
+    if (node.scrollTop <= 8 && visibleChatCount < totalChats) {
+      preserveScrollRef.current = {
+        previousHeight: node.scrollHeight,
+        previousTop: node.scrollTop,
+      };
+      setVisibleChatCount(count => Math.min(totalChats, count + CHAT_PAGE_SIZE));
+    }
+    if (node.scrollHeight - node.scrollTop - node.clientHeight < CHAT_AUTO_SCROLL_THRESHOLD) {
+      setPendingJumpPreview('');
+    }
+  }, [totalChats, visibleChatCount]);
+
   const sectionButtons = [
     { key: 'profile', label: '캐릭터' },
     { key: 'prompt', label: '프롬프트' },
@@ -383,10 +477,13 @@ export default function CharacterAgentScreen({ hero }) {
             </button>
           </div>
 
-          <div style={styles.chatLog}>
-            {profile.recentChats.length ? (
+          <div ref={chatLogRef} style={styles.chatLog} onScroll={handleChatScroll}>
+            {visibleChats.length ? (
               <>
-                {profile.recentChats.map(entry => (
+                {visibleChatCount < totalChats ? (
+                  <div style={styles.historyHint}>{`위로 더 올리면 이전 대화 ${Math.min(CHAT_PAGE_SIZE, totalChats - visibleChatCount)}개를 불러옵니다.`}</div>
+                ) : null}
+                {visibleChats.map(entry => (
                   <div
                     key={entry.id}
                     style={styles.messageBubble(entry.role === 'assistant')}
@@ -400,6 +497,15 @@ export default function CharacterAgentScreen({ hero }) {
               <div style={styles.emptyState}>아직 대화가 없습니다.</div>
             )}
           </div>
+          {pendingJumpPreview ? (
+            <button
+              type="button"
+              onClick={() => scrollToBottom('smooth')}
+              style={styles.jumpBar}
+            >
+              {pendingJumpPreview}
+            </button>
+          ) : null}
 
           <div style={styles.inputArea}>
             <textarea
@@ -764,6 +870,16 @@ const styles = {
     padding: '10px 16px 18px',
     overflowY: 'auto',
     minHeight: 0,
+    height: 0,
+  },
+  historyHint: {
+    justifySelf: 'center',
+    padding: '8px 12px',
+    borderRadius: 999,
+    background: 'rgba(15,23,42,0.72)',
+    border: '1px solid rgba(148,163,184,0.18)',
+    color: '#94a3b8',
+    fontSize: 11,
   },
   messageBubble: isAssistant => ({
     justifySelf: isAssistant ? 'start' : 'end',
@@ -801,6 +917,24 @@ const styles = {
     padding: 16,
     borderTop: '1px solid rgba(148,163,184,0.16)',
     background: 'rgba(15,23,42,0.76)',
+  },
+  jumpBar: {
+    appearance: 'none',
+    border: '1px solid rgba(148,163,184,0.18)',
+    borderRadius: 999,
+    padding: '9px 14px',
+    background: 'rgba(2,6,23,0.76)',
+    color: '#e2e8f0',
+    fontSize: 12,
+    fontWeight: 700,
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: 158,
+    zIndex: 2,
+    backdropFilter: 'blur(10px)',
+    textAlign: 'left',
+    boxShadow: '0 18px 40px -28px rgba(2,6,23,0.9)',
   },
   inputBox: {
     minHeight: 116,
