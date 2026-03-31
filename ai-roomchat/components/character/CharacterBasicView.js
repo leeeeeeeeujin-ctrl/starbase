@@ -115,44 +115,6 @@ const styles = {
     maxWidth: 500,
     position: 'relative',
   },
-  heroCardRow: {
-    width: '100%',
-    display: 'grid',
-    gridTemplateColumns: '56px minmax(0, 1fr) 56px',
-    alignItems: 'center',
-    gap: 10,
-  },
-  heroSideLink: {
-    width: 56,
-    height: 220,
-    borderRadius: 24,
-    border: '1px solid rgba(96,165,250,0.24)',
-    background: 'rgba(15,23,42,0.72)',
-    color: '#e2e8f0',
-    textDecoration: 'none',
-    display: 'grid',
-    placeItems: 'center',
-    boxShadow: '0 24px 60px -42px rgba(15,23,42,0.88)',
-  },
-  heroSideLinkInner: {
-    display: 'grid',
-    gap: 10,
-    justifyItems: 'center',
-    textAlign: 'center',
-  },
-  heroSideArrow: {
-    fontSize: 22,
-    fontWeight: 900,
-    lineHeight: 1,
-    color: '#7dd3fc',
-  },
-  heroSideLabel: {
-    writingMode: 'vertical-rl',
-    textOrientation: 'mixed',
-    fontSize: 12,
-    fontWeight: 800,
-    letterSpacing: '0.06em',
-  },
   heroCard: {
     position: 'relative',
     width: '100%',
@@ -3501,14 +3463,6 @@ export default function CharacterBasicView({ hero }) {
   }, [battleDetails, resolveBattleOutcome]);
 
   const heroSlide = (
-    <div style={styles.heroCardRow}>
-      <Link href={`/character/${currentHero?.id}/agent`} style={styles.heroSideLink}>
-        <div style={styles.heroSideLinkInner}>
-          <span style={styles.heroSideArrow}>‹</span>
-          <span style={styles.heroSideLabel}>캐릭터 AI</span>
-        </div>
-      </Link>
-
       <div style={styles.heroCardShell}>
         <div
           role="button"
@@ -3589,14 +3543,6 @@ export default function CharacterBasicView({ hero }) {
           </div>
         </div>
       </div>
-
-      <Link href={`/character/${currentHero?.id}/play`} style={styles.heroSideLink}>
-        <div style={styles.heroSideLinkInner}>
-          <span style={styles.heroSideArrow}>›</span>
-          <span style={styles.heroSideLabel}>게임 시작</span>
-        </div>
-      </Link>
-    </div>
   );
 
   const showBgmBar = bgmEnabled;
@@ -3666,10 +3612,7 @@ export default function CharacterBasicView({ hero }) {
       {rankingOverlay}
       <div style={backgroundStyle}>
         <div style={styles.stage}>
-          {playSliderSection}
           {heroSlide}
-          {playStatsSection}
-          {playDetailsSection}
         </div>
 
         <div style={styles.hudContainer}>
