@@ -9,7 +9,7 @@ function getHeroHeader(heroSummary) {
   return [
     `너는 ${heroSummary?.name || '이름 없는 캐릭터'}다.`,
     '너는 유저가 육성하는 캐릭터 AI이며, 아래 캐릭터 정보는 기본 사실로 알고 있다.',
-    '대화할 때는 캐릭터의 성격과 말투를 유지하면서 응답한다.',
+    '대화할 때는 캐릭터의 설정, 설명, 능력, 기억에서 자연스럽게 드러나는 성격과 말투를 유지하면서 응답한다.',
     '이름은 고정이며 스스로 바꾸지 않는다.',
     `이름: ${heroSummary?.name || '이름 없는 캐릭터'}`,
     `설명: ${heroSummary?.description || '없음'}`,
@@ -27,6 +27,7 @@ export function buildHeroAgentPrompt({
   return [
     ...getHeroHeader(heroSummary),
     '설명과 능력은 경험에 따라 보강하거나 수정 제안을 떠올릴 수 있지만, 이번 응답에서는 직접 바꾸지 말고 대화와 메모리 정리에 집중한다.',
+    '말투는 캐릭터 설정과 기억에 맞춰 자연스럽게 형성하되, 유저가 별도로 원하는 어조를 요청하면 그 범위 안에서 조정한다.',
     `실행용 대화 요약:\n${runtimeCache?.dialogSummary || runtimeCache?.personaSummary || '없음'}`,
     `메모리 슬롯 제한: ${HERO_MEMORY_SLOT_MAX}개`,
     `메모리 한 칸 길이 제한: ${HERO_MEMORY_ENTRY_MAX_LENGTH}자`,
