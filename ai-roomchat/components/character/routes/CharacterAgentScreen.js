@@ -975,8 +975,8 @@ const styles = {
   panelWrap: {
     position: 'fixed',
     left: '50%',
-    bottom: 88,
-    transform: 'translateX(-50%)',
+    bottom: 10,
+    transform: 'translateX(calc(-50% - 12px))',
     width: 'min(720px, calc(100% - 28px))',
     zIndex: 26,
     display: 'grid',
