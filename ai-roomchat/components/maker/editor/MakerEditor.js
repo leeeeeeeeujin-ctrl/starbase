@@ -8,12 +8,11 @@ import { useMakerEditor } from '../../../hooks/maker/useMakerEditor';
 import { useWorkspace } from '../../workspace/CodeWorkspaceProvider.jsx';
 import { saveSet } from '../../../lib/workspace/saveSet.js';
 import { publishRankWorkspaceForPromptSet } from '../../../lib/rank/saveGameWorkspaceClient.js';
-import MakerEditorCanvas from './MakerEditorCanvas';
+import MakerTurnBoard from './MakerTurnBoard';
 import MinimalMakerHeader from './MinimalMakerHeader';
 import MakerEditorPanel from './MakerEditorPanel';
 import AddPromptFab from './AddPromptFab';
 import VariableDrawer from './VariableDrawer';
-import MobileTextBattlePreviewOverlay from '../../battle/MobileTextBattlePreviewOverlay.jsx';
 import { normalizeBattleConfig } from '../../../lib/battle/definition.js';
 import { isWorkspaceDebug } from '../../../lib/workspace/debugFlags.js';
 
@@ -249,6 +248,8 @@ export default function MakerEditor() {
     selectedNode,
     selectedNodeId,
     selectedEdge,
+    setSelectedNodeId,
+    setSelectedEdge,
     onNodeClick,
     onEdgeClick,
     onPaneClick,
@@ -319,7 +320,6 @@ export default function MakerEditor() {
   const [variableDrawerOpen, setVariableDrawerOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [receiptVisible, setReceiptVisible] = useState(null);
-  const [battlePreviewOpen, setBattlePreviewOpen] = useState(false);
 
   const openInspector = useCallback(
     tabId => {
@@ -453,26 +453,24 @@ export default function MakerEditor() {
         <MinimalMakerHeader
           busy={busy}
           onBack={goToSetList}
-          onPreview={() => setBattlePreviewOpen(true)}
           onOpenVariables={() => setVariableDrawerOpen(true)}
           onSave={unifiedSaveAll}
         />
 
         <div style={{ flex: '1 1 auto', minHeight: 0, borderRadius: 20, overflow: 'hidden' }}>
-          <MakerEditorCanvas
+          <MakerTurnBoard
+            definition={resolvedBattleDefinition}
             nodes={nodes}
             edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            onNodeClick={onNodeClick}
-            onEdgeClick={onEdgeClick}
-            onNodeDoubleClick={handleNodeDoubleClick}
-            onEdgeDoubleClick={handleEdgeDoubleClick}
-            onPaneClick={onPaneClick}
-            onSelectionChange={onSelectionChange}
-            onNodesDelete={onNodesDelete}
-            onEdgesDelete={onEdgesDelete}
+            selectedNodeId={selectedNodeId}
+            onSelectNode={node => {
+              setSelectedNodeId(node?.id || null);
+              setSelectedEdge(null);
+            }}
+            onOpenInspector={openInspector}
+            onDeleteNode={deletePrompt}
+            onMarkAsStart={markAsStart}
+            setEdges={setEdges}
           />
         </div>
       </div>
@@ -695,13 +693,6 @@ export default function MakerEditor() {
             저장 중입니다... 잠시만 기다려 주세요.
           </div>
         </div>
-      )}
-
-      {battlePreviewOpen && (
-        <MobileTextBattlePreviewOverlay
-          definition={resolvedBattleDefinition}
-          onClose={() => setBattlePreviewOpen(false)}
-        />
       )}
     </div>
   );
