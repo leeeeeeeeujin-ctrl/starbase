@@ -199,7 +199,7 @@ export default function Lobby() {
           )}
         </LobbyLayout>
       </div>
-      <CharacterRouteHud hero={selectedHero} activeKey="lobby" />
+      <CharacterRouteHud hero={selectedHero} />
     </>
   );
 }

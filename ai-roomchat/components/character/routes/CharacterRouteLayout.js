@@ -158,7 +158,7 @@ export default function CharacterRouteLayout({
         </main>
       </div>
 
-      <CharacterRouteHud hero={hero} activeKey={activeTab} />
+      <CharacterRouteHud hero={hero} />
     </div>
   );
 }

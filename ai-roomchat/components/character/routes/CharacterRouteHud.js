@@ -1,15 +1,13 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 
 import { getHeroAudioManager } from '@/lib/audio/heroAudioManager';
 
-export default function CharacterRouteHud({ hero, activeKey = 'character' }) {
+export default function CharacterRouteHud({ hero }) {
   const audioManager = useMemo(() => getHeroAudioManager(), []);
   const [audioState, setAudioState] = useState(() => audioManager.getState());
   const [playerCollapsed, setPlayerCollapsed] = useState(false);
-  const [dockCollapsed, setDockCollapsed] = useState(true);
 
   useEffect(() => audioManager.subscribe(setAudioState), [audioManager]);
 
@@ -19,6 +17,7 @@ export default function CharacterRouteHud({ hero, activeKey = 'character' }) {
   const durationHint = hero?.bgm_duration_seconds || 0;
 
   useEffect(() => {
+    if (!heroId) return;
     audioManager.loadHeroTrack({
       heroId,
       heroName,
@@ -30,14 +29,6 @@ export default function CharacterRouteHud({ hero, activeKey = 'character' }) {
   }, [activeBgmUrl, audioManager, durationHint, heroId, heroName]);
 
   const progressRatio = audioState.duration ? audioState.progress / audioState.duration : 0;
-  const navHeroId = heroId ? String(heroId) : '';
-  const items = [
-    { key: 'lobby', label: '로비', href: navHeroId ? `/lobby?heroId=${navHeroId}` : '/lobby' },
-    { key: 'character', label: '캐릭터', href: navHeroId ? `/character/${navHeroId}` : '/roster' },
-    { key: 'agent', label: '캐릭터 AI', href: navHeroId ? `/character/${navHeroId}/agent` : '/roster' },
-    { key: 'play', label: '게임 시작', href: navHeroId ? `/character/${navHeroId}/play` : '/roster' },
-  ];
-
   const formatTime = value => {
     if (!value || Number.isNaN(value)) return '0:00';
     const minutes = Math.floor(value / 60);
@@ -60,18 +51,7 @@ export default function CharacterRouteHud({ hero, activeKey = 'character' }) {
         pointerEvents: 'auto',
       }}
     >
-      <div
-        style={{
-          borderRadius: 18,
-          padding: playerCollapsed ? '10px 12px' : '12px 14px',
-          background: 'rgba(15,23,42,0.82)',
-          border: '1px solid rgba(96,165,250,0.24)',
-          boxShadow: '0 24px 60px -34px rgba(15,23,42,0.92)',
-          backdropFilter: 'blur(14px)',
-          display: 'grid',
-          gap: playerCollapsed ? 0 : 10,
-        }}
-      >
+      <div style={shellStyle(playerCollapsed)}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button
             type="button"
@@ -108,63 +88,20 @@ export default function CharacterRouteHud({ hero, activeKey = 'character' }) {
           )
         ) : null}
       </div>
-
-      <div style={{ display: 'grid', gap: 8 }}>
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <button type="button" onClick={() => setDockCollapsed(prev => !prev)} style={miniButtonStyle}>
-            {dockCollapsed ? '▲ 패널 펼치기' : '▼ 패널 접기'}
-          </button>
-        </div>
-        {!dockCollapsed ? (
-          <div
-            style={{
-              borderRadius: 24,
-              padding: '16px 16px 18px',
-              background: 'rgba(15,23,42,0.86)',
-              border: '1px solid rgba(96,165,250,0.24)',
-              boxShadow: '0 30px 80px -48px rgba(15,23,42,0.94)',
-              backdropFilter: 'blur(16px)',
-              display: 'grid',
-              gap: 14,
-            }}
-          >
-            <div style={{ display: 'grid', gap: 4 }}>
-              <strong style={{ color: '#e2e8f0', fontSize: 15 }}>이동 패널</strong>
-              <span style={{ color: '#94a3b8', fontSize: 12 }}>
-                캐릭터를 기준으로 로비, AI 대화, 게임 시작 화면을 오갑니다.
-              </span>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
-              {items.map(item => {
-                const active = item.key === activeKey;
-                return (
-                  <Link
-                    key={item.key}
-                    href={item.href}
-                    style={{
-                      textDecoration: 'none',
-                      borderRadius: 16,
-                      padding: '12px 14px',
-                      background: active ? 'rgba(125,211,252,0.18)' : 'rgba(30,41,59,0.74)',
-                      border: active
-                        ? '1px solid rgba(125,211,252,0.36)'
-                        : '1px solid rgba(148,163,184,0.18)',
-                      color: active ? '#bae6fd' : '#e2e8f0',
-                      fontSize: 13,
-                      fontWeight: 800,
-                    }}
-                  >
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        ) : null}
-      </div>
     </div>
   );
 }
+
+const shellStyle = collapsed => ({
+  borderRadius: 18,
+  padding: collapsed ? '10px 12px' : '12px 14px',
+  background: 'rgba(15,23,42,0.82)',
+  border: '1px solid rgba(96,165,250,0.24)',
+  boxShadow: '0 24px 60px -34px rgba(15,23,42,0.92)',
+  backdropFilter: 'blur(14px)',
+  display: 'grid',
+  gap: collapsed ? 0 : 10,
+});
 
 const miniButtonStyle = {
   appearance: 'none',
