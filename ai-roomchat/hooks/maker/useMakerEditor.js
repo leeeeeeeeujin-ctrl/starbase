@@ -277,6 +277,18 @@ export function useMakerEditor() {
       const nextTemplate = typeof template === 'string' && template.length > 0
         ? template
         : createDefaultTurnTemplate(type);
+      const anchorNode = selectedNodeId
+        ? nodes.find(node => node.id === selectedNodeId) || null
+        : null;
+      const nextPosition = anchorNode
+        ? {
+            x: anchorNode.position?.x + 240,
+            y: anchorNode.position?.y,
+          }
+        : {
+            x: 160 + nodes.length * 200,
+            y: 120 + nodes.length * 50,
+          };
 
       setNodes(existing => {
         const slotNo = existing.length + 1;
@@ -285,7 +297,7 @@ export function useMakerEditor() {
           {
             id: flowId,
             type: 'prompt',
-            position: { x: 160 + existing.length * 200, y: 120 + existing.length * 50 },
+            position: nextPosition,
             data: {
               template: nextTemplate,
               slot_type: type,
@@ -309,9 +321,46 @@ export function useMakerEditor() {
         ];
       });
 
+      if (anchorNode) {
+        const edgeId = `edge_${anchorNode.id}_${flowId}`;
+        setEdges(existing => {
+          if (existing.some(edge => edge.id === edgeId)) return existing;
+          return [
+            ...existing,
+            {
+              id: edgeId,
+              source: anchorNode.id,
+              target: flowId,
+              type: 'default',
+              animated: false,
+              data: {
+                trigger_words: [],
+                conditions: [],
+                priority: 0,
+                probability: 1,
+                fallback: false,
+                action: 'continue',
+              },
+            },
+          ];
+        });
+      }
+
       setSelectedNodeId(flowId);
+      setSelectedEdge(null);
+      setActivePanelTab('selection');
     },
-    [handleDeletePrompt, markAsStart, setNodes, setSelectedNodeId]
+    [
+      handleDeletePrompt,
+      markAsStart,
+      nodes,
+      selectedNodeId,
+      setActivePanelTab,
+      setEdges,
+      setNodes,
+      setSelectedEdge,
+      setSelectedNodeId,
+    ]
   );
 
   const characterVisibility = useMemo(

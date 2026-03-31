@@ -151,7 +151,11 @@ export default function SidePanel({
     // 엣지 패널
     return (
       <div style={{ padding: 12, display: 'grid', gap: 12 }}>
-        <h3 style={{ marginTop: 0 }}>브릿지 조건</h3>
+        <h3 style={{ marginTop: 0 }}>다음 턴 조건</h3>
+        <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>
+          현재 연결선이 언제 다음 턴으로 넘어가는지 정합니다. 조건이 비어 있으면 기본 경로로 처리되고,
+          `Fallback`을 켜면 다른 분기가 모두 실패했을 때 마지막 경로가 됩니다.
+        </div>
         <ConditionBuilder selectedEdge={selectedEdge} setEdges={setEdges} pushToForm={pushToForm} />
 
         {/* JSON 직접 편집 */}
