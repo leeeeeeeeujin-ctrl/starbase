@@ -3,6 +3,27 @@
 import React, { useEffect, useRef } from 'react';
 import { useWorkspace } from './CodeWorkspaceProvider.jsx';
 
+function parseTurnTemplate(rawTemplate) {
+  const text = typeof rawTemplate === 'string' ? rawTemplate : '';
+  if (!text.startsWith('---\n')) {
+    return { meta: null, body: text };
+  }
+
+  const closingIndex = text.indexOf('\n---\n', 4);
+  if (closingIndex < 0) {
+    return { meta: null, body: text };
+  }
+
+  try {
+    return {
+      meta: JSON.parse(text.slice(4, closingIndex)),
+      body: text.slice(closingIndex + 5),
+    };
+  } catch {
+    return { meta: null, body: text };
+  }
+}
+
 function InnerSync({ text, setText }){
   const { files, writeFile } = useWorkspace();
   const current = files['/template.json']?.content ?? '';
@@ -30,9 +51,13 @@ function InnerSync({ text, setText }){
             // 나머지 필드는 그대로 유지해 런타임에서 참조할 수 있게 둔다.
             nodes: nodes.map((n) => {
               const data = n && typeof n.data === 'object' ? n.data : {};
+              const parsed = parseTurnTemplate(data.template);
               const label =
-                (typeof data.template === 'string' && data.template.length
-                  ? data.template
+                (typeof parsed.meta?.title === 'string' && parsed.meta.title.length
+                  ? parsed.meta.title
+                  : null) ||
+                (typeof parsed.body === 'string' && parsed.body.length
+                  ? parsed.body
                   : null) ||
                 (typeof data.name === 'string' && data.name.length ? data.name : null) ||
                 (typeof n.label === 'string' && n.label.length ? n.label : '');

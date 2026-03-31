@@ -2,6 +2,27 @@
 import React, { useMemo, useRef } from 'react';
 import { Handle, Position } from 'reactflow';
 
+function parseTurnTemplate(rawTemplate) {
+  const text = typeof rawTemplate === 'string' ? rawTemplate : '';
+  if (!text.startsWith('---\n')) {
+    return { meta: null, body: text };
+  }
+
+  const closingIndex = text.indexOf('\n---\n', 4);
+  if (closingIndex < 0) {
+    return { meta: null, body: text };
+  }
+
+  try {
+    return {
+      meta: JSON.parse(text.slice(4, closingIndex)),
+      body: text.slice(closingIndex + 5),
+    };
+  } catch {
+    return { meta: null, body: text };
+  }
+}
+
 export default function PromptNode({ id, data, selected }) {
   const d = data || {};
   const nameInputRef = useRef(null);
@@ -48,7 +69,8 @@ export default function PromptNode({ id, data, selected }) {
   }, [selected]);
 
   const previewText = useMemo(() => {
-    const src = (d.template ?? d.label ?? '').toString();
+    const { meta, body } = parseTurnTemplate(d.template ?? d.label ?? '');
+    const src = (meta?.display || body || d.label || '').toString();
     const trimmed = src.replace(/\s+/g, ' ').trim();
     if (!trimmed) return '';
     const max = 120;
