@@ -43,7 +43,7 @@ export default function CharacterRouteHud({ hero }) {
         position: 'fixed',
         left: '50%',
         bottom: 54,
-        transform: 'translateX(calc(-50% - 12px))',
+        transform: 'translateX(-50%)',
         width: 'min(560px, calc(100% - 24px))',
         zIndex: 25,
         display: 'grid',
