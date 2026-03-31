@@ -7,6 +7,7 @@ import TabBar from '../components/lobby/TabBar';
 import GameSearchPanel from '../components/lobby/GameSearchPanel';
 import MyGamesPanel from '../components/lobby/MyGamesPanel';
 import CharacterStatsPanel from '../components/lobby/CharacterStatsPanel';
+import CharacterBottomOverlayNav from '../components/character/routes/CharacterBottomOverlayNav';
 import useGameBrowser from '../components/lobby/hooks/useGameBrowser';
 import { LOBBY_TABS, NAV_LINKS } from '../components/lobby/constants';
 import useLobbyStats from '../components/lobby/hooks/useLobbyStats';
@@ -68,81 +69,84 @@ export default function Lobby() {
   );
 
   return (
-    <LobbyLayout
-      header={<LobbyHeader onBack={handleBack} navLinks={NAV_LINKS} />}
-      tabs={<TabBar tabs={LOBBY_TABS} activeTab={activeTab} onChange={setActiveTab} />}
-      backgroundUrl={backgroundUrl}
-    >
-      {activeTab === 'games' && (
-        <GameSearchPanel
-          query={gameBrowser.gameQuery}
-          onQueryChange={gameBrowser.setGameQuery}
-          sort={gameBrowser.gameSort}
-          onSortChange={gameBrowser.setGameSort}
-          sortOptions={gameBrowser.sortOptions}
-          rows={gameBrowser.gameRows}
-          loading={gameBrowser.gameLoading}
-          selectedGame={gameBrowser.selectedGame}
-          onSelectGame={gameBrowser.setSelectedGame}
-          detailLoading={gameBrowser.detailLoading}
-          roles={gameBrowser.gameRoles}
-          participants={gameBrowser.participants}
-          roleChoice={gameBrowser.roleChoice}
-          onRoleChange={gameBrowser.setRoleChoice}
-          roleSlots={gameBrowser.roleSlots}
-          onEnterGame={handleEnterGame}
-          viewerParticipant={gameBrowser.viewerParticipant}
-          viewerId={gameBrowser.viewerId}
-          onJoinGame={gameBrowser.joinSelectedGame}
-          joinLoading={gameBrowser.joinLoading}
-        />
-      )}
+    <>
+      <LobbyLayout
+        header={<LobbyHeader onBack={handleBack} navLinks={NAV_LINKS} />}
+        tabs={<TabBar tabs={LOBBY_TABS} activeTab={activeTab} onChange={setActiveTab} />}
+        backgroundUrl={backgroundUrl}
+      >
+        {activeTab === 'games' && (
+          <GameSearchPanel
+            query={gameBrowser.gameQuery}
+            onQueryChange={gameBrowser.setGameQuery}
+            sort={gameBrowser.gameSort}
+            onSortChange={gameBrowser.setGameSort}
+            sortOptions={gameBrowser.sortOptions}
+            rows={gameBrowser.gameRows}
+            loading={gameBrowser.gameLoading}
+            selectedGame={gameBrowser.selectedGame}
+            onSelectGame={gameBrowser.setSelectedGame}
+            detailLoading={gameBrowser.detailLoading}
+            roles={gameBrowser.gameRoles}
+            participants={gameBrowser.participants}
+            roleChoice={gameBrowser.roleChoice}
+            onRoleChange={gameBrowser.setRoleChoice}
+            roleSlots={gameBrowser.roleSlots}
+            onEnterGame={handleEnterGame}
+            viewerParticipant={gameBrowser.viewerParticipant}
+            viewerId={gameBrowser.viewerId}
+            onJoinGame={gameBrowser.joinSelectedGame}
+            joinLoading={gameBrowser.joinLoading}
+          />
+        )}
 
-      {activeTab === 'my-games' && (
-        <MyGamesPanel
-          query={myGamesBrowser.gameQuery}
-          onQueryChange={myGamesBrowser.setGameQuery}
-          sort={myGamesBrowser.gameSort}
-          onSortChange={myGamesBrowser.setGameSort}
-          sortOptions={myGamesBrowser.sortOptions}
-          rows={myGamesBrowser.gameRows}
-          loading={myGamesBrowser.gameLoading}
-          selectedGame={myGamesBrowser.selectedGame}
-          onSelectGame={myGamesBrowser.setSelectedGame}
-          detailLoading={myGamesBrowser.detailLoading}
-          roles={myGamesBrowser.gameRoles}
-          participants={myGamesBrowser.participants}
-          roleChoice={myGamesBrowser.roleChoice}
-          onRoleChange={myGamesBrowser.setRoleChoice}
-          roleSlots={myGamesBrowser.roleSlots}
-          onEnterGame={handleEnterGame}
-          viewerId={myGamesBrowser.viewerId}
-          tags={myGamesBrowser.gameTags}
-          onAddTag={myGamesBrowser.addGameTag}
-          onRemoveTag={myGamesBrowser.removeGameTag}
-          seasons={myGamesBrowser.gameSeasons}
-          onFinishSeason={myGamesBrowser.finishSeason}
-          onStartSeason={myGamesBrowser.startSeason}
-          stats={myGamesBrowser.gameStats}
-          battleLogs={myGamesBrowser.gameBattleLogs}
-          onRefreshDetail={myGamesBrowser.refreshSelectedGame}
-          onDeleteGame={myGamesBrowser.deleteGame}
-        />
-      )}
+        {activeTab === 'my-games' && (
+          <MyGamesPanel
+            query={myGamesBrowser.gameQuery}
+            onQueryChange={myGamesBrowser.setGameQuery}
+            sort={myGamesBrowser.gameSort}
+            onSortChange={myGamesBrowser.setGameSort}
+            sortOptions={myGamesBrowser.sortOptions}
+            rows={myGamesBrowser.gameRows}
+            loading={myGamesBrowser.gameLoading}
+            selectedGame={myGamesBrowser.selectedGame}
+            onSelectGame={myGamesBrowser.setSelectedGame}
+            detailLoading={myGamesBrowser.detailLoading}
+            roles={myGamesBrowser.gameRoles}
+            participants={myGamesBrowser.participants}
+            roleChoice={myGamesBrowser.roleChoice}
+            onRoleChange={myGamesBrowser.setRoleChoice}
+            roleSlots={myGamesBrowser.roleSlots}
+            onEnterGame={handleEnterGame}
+            viewerId={myGamesBrowser.viewerId}
+            tags={myGamesBrowser.gameTags}
+            onAddTag={myGamesBrowser.addGameTag}
+            onRemoveTag={myGamesBrowser.removeGameTag}
+            seasons={myGamesBrowser.gameSeasons}
+            onFinishSeason={myGamesBrowser.finishSeason}
+            onStartSeason={myGamesBrowser.startSeason}
+            stats={myGamesBrowser.gameStats}
+            battleLogs={myGamesBrowser.gameBattleLogs}
+            onRefreshDetail={myGamesBrowser.refreshSelectedGame}
+            onDeleteGame={myGamesBrowser.deleteGame}
+          />
+        )}
 
-      {activeTab === 'stats' && (
-        <CharacterStatsPanel
-          loading={stats.loading}
-          error={stats.error}
-          summary={stats.summary}
-          games={stats.games}
-          seasons={stats.seasons}
-          battles={stats.battles}
-          onLeaveGame={stats.leaveGame}
-          onRefresh={stats.refresh}
-        />
-      )}
-    </LobbyLayout>
+        {activeTab === 'stats' && (
+          <CharacterStatsPanel
+            loading={stats.loading}
+            error={stats.error}
+            summary={stats.summary}
+            games={stats.games}
+            seasons={stats.seasons}
+            battles={stats.battles}
+            onLeaveGame={stats.leaveGame}
+            onRefresh={stats.refresh}
+          />
+        )}
+      </LobbyLayout>
+      <CharacterBottomOverlayNav heroId={returnHeroId} activeKey="lobby" />
+    </>
   );
 }
 //

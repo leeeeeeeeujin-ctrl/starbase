@@ -1,22 +1,59 @@
 'use client';
 
+import Link from 'next/link';
+
 export default function CharacterAgentScreen({ hero }) {
+  const heroImage = hero?.image_url || hero?.background_url || '';
+
   return (
     <>
       <section
         style={{
-          padding: 16,
-          borderRadius: 24,
+          position: 'relative',
+          minHeight: 300,
+          padding: 18,
+          borderRadius: 28,
+          overflow: 'hidden',
           background: 'rgba(2, 6, 23, 0.78)',
           border: '1px solid rgba(148, 163, 184, 0.22)',
           display: 'grid',
-          gap: 12,
+          alignContent: 'space-between',
+          gap: 18,
         }}
       >
-        <strong style={{ fontSize: 18 }}>캐릭터 AI</strong>
-        <p style={{ margin: 0, fontSize: 14, lineHeight: 1.7, color: '#cbd5e1' }}>
-          여기서 <strong>{hero?.name || '이 캐릭터'}</strong> 와 대화하면서 성격, 말투, 행동 원칙을 다듬게 됩니다. 아직 실제 캐릭터 AI 대화는 붙이지 않았고, 이 페이지가 전용 작업 공간이 될 자리만 먼저 만든 상태입니다.
-        </p>
+        <div
+          aria-hidden
+          style={{
+            position: 'absolute',
+            inset: 0,
+            backgroundImage: heroImage
+              ? `linear-gradient(180deg, rgba(2,6,23,0.18) 0%, rgba(2,6,23,0.58) 40%, rgba(2,6,23,0.92) 100%), url(${heroImage})`
+              : 'linear-gradient(180deg, rgba(2,6,23,0.48) 0%, rgba(2,6,23,0.92) 100%)',
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+          }}
+        />
+        <div style={{ position: 'relative', zIndex: 1, display: 'grid', gap: 10, justifyItems: 'start' }}>
+          <Link
+            href={`/chat?heroId=${hero?.id || ''}`}
+            style={{
+              textDecoration: 'none',
+              padding: '10px 16px',
+              borderRadius: 999,
+              background: 'rgba(125,211,252,0.92)',
+              color: '#082f49',
+              fontSize: 13,
+              fontWeight: 900,
+              boxShadow: '0 18px 44px -28px rgba(125,211,252,0.72)',
+            }}
+          >
+            대화하기
+          </Link>
+          <strong style={{ fontSize: 24 }}>캐릭터 AI</strong>
+          <p style={{ margin: 0, fontSize: 14, lineHeight: 1.7, color: '#dbeafe', maxWidth: 340 }}>
+            <strong>{hero?.name || '이 캐릭터'}</strong> 와 대화하면서 성격, 말투, 행동 원칙을 다듬는 공간입니다. 캐릭터 카드의 분위기를 유지한 채 왼쪽 작업면으로 분리해 둔 상태입니다.
+          </p>
+        </div>
       </section>
 
       <section
