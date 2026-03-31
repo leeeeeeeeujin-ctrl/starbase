@@ -38,6 +38,8 @@ export default function MakerHomeContainer() {
   const [editingName, setEditingName] = useState('');
   const [savingRename, setSavingRename] = useState(false);
   const [actionSheetOpen, setActionSheetOpen] = useState(false);
+  const [creatingSet, setCreatingSet] = useState(false);
+  const [importingSet, setImportingSet] = useState(false);
   const [deleteDialog, setDeleteDialog] = useState({ open: false, id: null, name: '', busy: false, error: '', errorDetails: '' });
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -128,7 +130,9 @@ export default function MakerHomeContainer() {
   }, []);
 
   const handleCreateSet = useCallback(async () => {
+    if (creatingSet || importingSet) return;
     try {
+      setCreatingSet(true);
       const inserted = await createSet();
       setActionSheetOpen(false);
       if (inserted?.id) {
@@ -138,13 +142,17 @@ export default function MakerHomeContainer() {
     } catch (err) {
       console.error(err);
       alert(err instanceof Error ? err.message : '세트를 생성하지 못했습니다.');
+    } finally {
+      setCreatingSet(false);
     }
-  }, [createSet, router, setPromptSetId]);
+  }, [createSet, creatingSet, importingSet, router, setPromptSetId]);
 
   const handleImportFile = useCallback(
     async file => {
       if (!file) return;
+      if (creatingSet || importingSet) return;
       try {
+        setImportingSet(true);
         const inserted = await importFromFile(file);
         setActionSheetOpen(false);
         if (inserted?.id) {
@@ -154,9 +162,11 @@ export default function MakerHomeContainer() {
       } catch (err) {
         console.error(err);
         alert(err instanceof Error ? err.message : 'JSON을 불러오지 못했습니다.');
+      } finally {
+        setImportingSet(false);
       }
     },
-    [importFromFile, router, setPromptSetId]
+    [creatingSet, importingSet, importFromFile, router, setPromptSetId]
   );
 
   const handleExportSet = useCallback(
@@ -203,6 +213,7 @@ export default function MakerHomeContainer() {
         editingName={editingName}
         savingRename={savingRename}
         actionSheetOpen={actionSheetOpen}
+        actionBusy={creatingSet || importingSet}
         onEditingNameChange={setEditingName}
         onBeginRename={handleBeginRename}
         onSubmitRename={handleSubmitRename}

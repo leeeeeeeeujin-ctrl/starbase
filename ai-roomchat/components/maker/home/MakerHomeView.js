@@ -15,6 +15,7 @@ export default function MakerHomeView({
   editingName,
   savingRename,
   actionSheetOpen,
+  actionBusy,
   onEditingNameChange,
   onBeginRename,
   onSubmitRename,
@@ -183,6 +184,7 @@ export default function MakerHomeView({
       <button
         type="button"
         onClick={() => onToggleActionSheet(true)}
+        disabled={actionBusy}
         style={{
           position: 'fixed',
           right: 24,
@@ -191,7 +193,9 @@ export default function MakerHomeView({
           height: 64,
           borderRadius: '50%',
           border: 'none',
-          background: 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)',
+          background: actionBusy
+            ? 'linear-gradient(135deg, #94a3b8 0%, #cbd5e1 100%)'
+            : 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)',
           color: '#fff',
           fontSize: 28,
           fontWeight: 700,
@@ -205,6 +209,7 @@ export default function MakerHomeView({
 
       <QuickActionsSheet
         open={actionSheetOpen}
+        busy={actionBusy}
         promptSets={rows}
         onClose={() => onToggleActionSheet(false)}
         onCreateSet={onCreateSet}

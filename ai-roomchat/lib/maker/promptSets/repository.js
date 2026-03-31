@@ -3,10 +3,6 @@ import { withTableQuery } from '../../supabaseTables';
 import { failure, success, asError } from './result';
 import { sortPromptSets } from './sort';
 
-const CREATE_DEDUPE_WINDOW_MS = 3000;
-const inflightCreate = new Map(); // ownerId -> Promise
-const recentCreate = new Map(); // ownerId -> { at, data }
-
 export const promptSetsRepository = {
   async list(ownerId) {
     if (!ownerId) {
@@ -28,50 +24,15 @@ export const promptSetsRepository = {
     if (!ownerId) {
       return failure(new Error('Login is required to create a prompt set.'));
     }
+    const { data, error } = await withTableQuery(supabase, 'prompt_sets', from =>
+      from.insert({ name: 'New Prompt Set', owner_id: ownerId }).select().single()
+    );
 
-    const now = Date.now();
-    const recent = recentCreate.get(ownerId);
-    if (recent && now - recent.at < CREATE_DEDUPE_WINDOW_MS) {
-      return success(recent.data);
+    if (error || !data) {
+      return failure(asError(error, 'Failed to create a prompt set.'));
     }
 
-    if (inflightCreate.has(ownerId)) {
-      return inflightCreate.get(ownerId);
-    }
-
-    const createPromise = (async () => {
-      const { data, error } = await withTableQuery(supabase, 'prompt_sets', (from) =>
-        from.insert({ name: 'New Prompt Set', owner_id: ownerId }).select().single()
-      );
-
-      if (error || !data) {
-        return failure(asError(error, 'Failed to create a prompt set.'));
-      }
-
-      recentCreate.set(ownerId, { at: Date.now(), data });
-
-      try {
-        const cutoffIso = new Date(Date.now() - CREATE_DEDUPE_WINDOW_MS).toISOString();
-        await withTableQuery(supabase, 'prompt_sets', (from) =>
-          from
-            .delete()
-            .eq('owner_id', ownerId)
-            .neq('id', data.id)
-            .gte('created_at', cutoffIso)
-        );
-      } catch (cleanupError) {
-        console.warn('[promptSetsRepository] duplicate cleanup failed', cleanupError);
-      }
-
-      return success(data);
-    })();
-
-    inflightCreate.set(ownerId, createPromise);
-    try {
-      return await createPromise;
-    } finally {
-      inflightCreate.delete(ownerId);
-    }
+    return success(data);
   },
 
   async rename(id, nextName) {

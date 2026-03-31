@@ -2,6 +2,7 @@
 
 export default function QuickActionsSheet({
   open,
+  busy = false,
   promptSets = [],
   onClose,
   onCreateSet,
@@ -48,6 +49,7 @@ export default function QuickActionsSheet({
           <button
             type="button"
             onClick={onClose}
+            disabled={busy}
             style={{
               border: 'none',
               background: 'transparent',
@@ -63,10 +65,11 @@ export default function QuickActionsSheet({
         <button
           type="button"
           onClick={onCreateSet}
+          disabled={busy}
           style={{
             padding: '12px 14px',
             borderRadius: 16,
-            background: '#2563eb',
+            background: busy ? '#94a3b8' : '#2563eb',
             color: '#fff',
             fontWeight: 700,
             border: 'none',
@@ -91,6 +94,7 @@ export default function QuickActionsSheet({
           <input
             type="file"
             accept="application/json"
+            disabled={busy}
             onChange={async event => {
               const file = event.target.files?.[0];
               try {
