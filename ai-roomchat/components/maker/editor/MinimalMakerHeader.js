@@ -1,18 +1,9 @@
 "use client";
 
-import ToolsDropdown from './ToolsDropdown';
-
 export default function MinimalMakerHeader({
   busy,
   onBack,
-  onOpenVariables,
-  onStartSimulation,
   onSave,
-  onCreateWithAI,
-  onOpenCode,
-  onOpenUiSettings,
-  onOpenRolesConfig,
-  onOpenGameShell,
 }) {
   const btn = (label, onClick, style = {}) => (
     <button
@@ -47,18 +38,14 @@ export default function MinimalMakerHeader({
     >
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         {btn('← 목록', onBack)}
-        <strong style={{ fontSize: 14 }}>프롬프트 에디터</strong>
+        <strong style={{ fontSize: 14 }}>배틀 메이커</strong>
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        {btn('테스트', onStartSimulation, { background: 'rgba(34,197,94,0.15)', borderColor: '#10b981', color: '#bbf7d0' })}
-        {btn('저장', onSave, { background: busy ? 'rgba(148,163,184,0.2)' : '#16a34a', color: '#fff', borderColor: busy ? '#64748b' : '#16a34a' })}
-        {/* Tools dropdown at right; AI removed from header (moved into code panel) */}
-        <ToolsDropdown
-          onOpenCode={onOpenCode}
-          onOpenUiSettings={onOpenUiSettings}
-          onOpenRolesConfig={onOpenRolesConfig}
-          onOpenGameShell={onOpenGameShell}
-        />
+        {btn('저장', onSave, {
+          background: busy ? 'rgba(148,163,184,0.2)' : '#16a34a',
+          color: '#fff',
+          borderColor: busy ? '#64748b' : '#16a34a',
+        })}
       </div>
     </header>
   );
