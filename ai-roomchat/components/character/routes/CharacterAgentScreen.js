@@ -43,6 +43,58 @@ const INITIAL_HERO_DRAFT = {
 
 const CHAT_PAGE_SIZE = 8;
 const CHAT_AUTO_SCROLL_THRESHOLD = 72;
+const CHAT_JUMP_VISIBILITY_THRESHOLD = 120;
+
+function parseAgentPayload(text) {
+  const raw = String(text || '').trim();
+  if (!raw) {
+    return {
+      parsed: {
+        reply: '',
+        memoryAction: { type: 'none' },
+        profileAction: { type: 'none' },
+      },
+      usedFallback: false,
+    };
+  }
+
+  const candidates = [raw];
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced?.[1]) {
+    candidates.push(fenced[1].trim());
+  }
+
+  const objectStart = raw.indexOf('{');
+  const objectEnd = raw.lastIndexOf('}');
+  if (objectStart >= 0 && objectEnd > objectStart) {
+    candidates.push(raw.slice(objectStart, objectEnd + 1));
+  }
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      return {
+        parsed: {
+          reply: String(parsed?.reply || ''),
+          memoryAction: parsed?.memoryAction || { type: 'none' },
+          profileAction: parsed?.profileAction || { type: 'none' },
+        },
+        usedFallback: false,
+      };
+    } catch {
+      // Try the next candidate shape.
+    }
+  }
+
+  return {
+    parsed: {
+      reply: raw,
+      memoryAction: { type: 'none' },
+      profileAction: { type: 'none' },
+    },
+    usedFallback: true,
+  };
+}
 
 export default function CharacterAgentScreen({ hero }) {
   const heroId = hero?.id ? String(hero.id) : '';
@@ -63,6 +115,7 @@ export default function CharacterAgentScreen({ hero }) {
   const abortControllerRef = useRef(null);
   const requestIdRef = useRef(0);
   const chatLogRef = useRef(null);
+  const panelBodyRef = useRef(null);
   const previousChatCountRef = useRef(0);
   const preserveScrollRef = useRef(null);
   const profileHydratedRef = useRef(false);
@@ -120,6 +173,34 @@ export default function CharacterAgentScreen({ hero }) {
     },
     []
   );
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+
+    const root = document.documentElement;
+    const applyHeight = () => {
+      const panelHeight = panelOpen && panelBodyRef.current ? panelBodyRef.current.offsetHeight + 8 : 0;
+      root.style.setProperty('--character-agent-panel-height', `${panelHeight}px`);
+    };
+
+    applyHeight();
+
+    if (!panelOpen || !panelBodyRef.current || typeof ResizeObserver === 'undefined') {
+      return () => {
+        root.style.setProperty('--character-agent-panel-height', '0px');
+      };
+    }
+
+    const observer = new ResizeObserver(() => {
+      applyHeight();
+    });
+    observer.observe(panelBodyRef.current);
+
+    return () => {
+      observer.disconnect();
+      root.style.setProperty('--character-agent-panel-height', '0px');
+    };
+  }, [panelOpen]);
 
   useEffect(() => {
     if (!heroId || !supportsAgentProfile) {
@@ -286,7 +367,10 @@ export default function CharacterAgentScreen({ hero }) {
         requestAnimationFrame(() => {
           scrollToBottom('smooth');
         });
-      } else {
+      } else if (
+        node.scrollHeight - node.scrollTop - node.clientHeight >
+        CHAT_JUMP_VISIBILITY_THRESHOLD
+      ) {
         setPendingJumpPreview(getMessagePreview(latest?.text));
       }
     }
@@ -361,15 +445,8 @@ export default function CharacterAgentScreen({ hero }) {
         throw new Error(data?.error || 'AI 응답을 불러오지 못했습니다.');
       }
 
-      let parsed;
-      try {
-        parsed = JSON.parse(data?.text || '{}');
-      } catch {
-        parsed = {
-          reply: data?.text || '',
-          memoryAction: { type: 'none' },
-          profileAction: { type: 'none' },
-        };
+      const { parsed, usedFallback } = parseAgentPayload(data?.text);
+      if (usedFallback) {
         setStatus('JSON 응답을 해석하지 못해 일반 텍스트로 표시했습니다.');
       }
 
@@ -591,17 +668,8 @@ export default function CharacterAgentScreen({ hero }) {
       </section>
 
       <div style={styles.panelWrap} data-swipe-lock="true">
-        <div style={styles.panelToggleRow}>
-          <button
-            type="button"
-            onClick={() => setPanelOpen(prev => !prev)}
-            style={styles.panelToggle}
-          >
-            {panelOpen ? '▼ 패널 접기' : '▲ 패널 펼치기'}
-          </button>
-        </div>
         {panelOpen ? (
-          <section style={styles.panelBody}>
+          <section ref={panelBodyRef} style={styles.panelBody}>
             <div style={styles.sectionTabs}>
               {sectionButtons.map(button => (
                 <button
@@ -814,6 +882,15 @@ export default function CharacterAgentScreen({ hero }) {
             {saveStatus ? <div style={styles.footerStatus}>{saveStatus}</div> : null}
           </section>
         ) : null}
+        <div style={styles.panelToggleRow}>
+          <button
+            type="button"
+            onClick={() => setPanelOpen(prev => !prev)}
+            style={styles.panelToggle}
+          >
+            {panelOpen ? '▼ 패널 접기' : '▲ 패널 펼치기'}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -837,7 +914,7 @@ const styles = {
   chatCard: {
     position: 'relative',
     width: '100%',
-    minHeight: 620,
+    minHeight: 720,
     borderRadius: 32,
     overflow: 'hidden',
     border: '1px solid rgba(96,165,250,0.28)',
@@ -856,7 +933,7 @@ const styles = {
   chatInner: {
     position: 'relative',
     zIndex: 1,
-    minHeight: 620,
+    minHeight: 720,
     display: 'grid',
     gridTemplateRows: 'auto 1fr auto',
   },
@@ -917,8 +994,7 @@ const styles = {
     alignContent: 'start',
     padding: '10px 16px 18px',
     overflowY: 'auto',
-    minHeight: 0,
-    height: 0,
+    minHeight: 360,
   },
   historyHint: {
     justifySelf: 'center',
@@ -1034,7 +1110,7 @@ const styles = {
   panelWrap: {
     position: 'fixed',
     left: '50%',
-    bottom: 126,
+    bottom: 10,
     transform: 'translateX(-50%)',
     width: 'min(560px, calc(100% - 24px))',
     zIndex: 26,
