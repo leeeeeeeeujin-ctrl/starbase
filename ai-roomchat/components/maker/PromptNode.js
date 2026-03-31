@@ -32,16 +32,16 @@ export default function PromptNode({ id, data, selected }) {
       : '0 16px 40px -26px rgba(15, 23, 42, 0.65)';
     const bg = '#0b1220';
     return {
-      width: 220,
-      maxWidth: 260,
-      borderRadius: 14,
+      width: 252,
+      maxWidth: 292,
+      borderRadius: 16,
       background: bg,
       border,
       boxShadow: shadow,
       display: 'grid',
       gridTemplateRows: 'auto auto 1fr',
-      gap: 8,
-      padding: 10,
+      gap: 10,
+      padding: 12,
       color: '#e2e8f0',
       transition: 'transform 140ms ease, box-shadow 140ms ease, border 140ms ease',
       transform: selected ? 'translateY(-1px)' : 'none',
@@ -110,7 +110,7 @@ export default function PromptNode({ id, data, selected }) {
   return (
     <div
       style={{
-        minWidth: 240,
+        minWidth: 272,
         padding: 6,
         display: 'grid',
         justifyItems: 'center',
@@ -195,8 +195,8 @@ export default function PromptNode({ id, data, selected }) {
             background: 'rgba(2,6,23,0.5)',
             borderRadius: 10,
             padding: 8,
-            minHeight: 48,
-            maxHeight: 120,
+            minHeight: 68,
+            maxHeight: 140,
             overflow: 'hidden',
             color: '#cbd5e1',
             fontSize: 12,
