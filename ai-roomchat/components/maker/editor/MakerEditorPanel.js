@@ -155,6 +155,7 @@ export default function MakerEditorPanel({
             const active = tab.id === activeTab;
             return (
               <button
+                type="button"
                 key={tab.id}
                 onClick={() => onTabChange(tab.id)}
                 style={{
@@ -235,6 +236,7 @@ export default function MakerEditorPanel({
 
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button
+                type="button"
                 onClick={() => selectedNodeId && onMarkAsStart(selectedNodeId)}
                 disabled={!selectedNodeId}
                 style={{
@@ -250,6 +252,7 @@ export default function MakerEditorPanel({
                 시작 지정
               </button>
               <button
+                type="button"
                 onClick={onDeleteSelected}
                 disabled={!selectedNodeId}
                 style={{
@@ -273,6 +276,7 @@ export default function MakerEditorPanel({
                     턴 타입
                   </label>
                   <select
+                    name="turn-slot-type"
                     value={nodeData.slot_type || 'ai'}
                     onChange={event => nodeData.onChange?.({ slot_type: event.target.value })}
                     style={{
@@ -297,6 +301,7 @@ export default function MakerEditorPanel({
                         턴 이름
                       </label>
                       <input
+                        name="turn-title"
                         type="text"
                         value={turnMeta.title || ''}
                         onChange={event => updateTurnMeta({ title: event.target.value })}
@@ -314,6 +319,7 @@ export default function MakerEditorPanel({
                         유저 안내문
                       </label>
                       <textarea
+                        name="turn-display"
                         value={turnMeta.display || ''}
                         onChange={event => updateTurnMeta({ display: event.target.value })}
                         rows={3}
@@ -334,6 +340,7 @@ export default function MakerEditorPanel({
                           입력 방식
                         </label>
                         <select
+                          name="turn-input-mode"
                           value={turnMeta.inputMode || 'none'}
                           onChange={event => updateTurnMeta({ inputMode: event.target.value })}
                           style={{
@@ -356,6 +363,7 @@ export default function MakerEditorPanel({
                           결과 키
                         </label>
                         <input
+                          name="turn-result-key"
                           type="text"
                           value={turnMeta.resultKey || ''}
                           onChange={event => updateTurnMeta({ resultKey: event.target.value })}
@@ -376,6 +384,7 @@ export default function MakerEditorPanel({
                           입력 라벨
                         </label>
                         <input
+                          name="turn-input-label"
                           type="text"
                           value={turnMeta.inputLabel || ''}
                           onChange={event => updateTurnMeta({ inputLabel: event.target.value })}
@@ -393,6 +402,7 @@ export default function MakerEditorPanel({
                           입력 placeholder
                         </label>
                         <input
+                          name="turn-input-placeholder"
                           type="text"
                           value={turnMeta.inputPlaceholder || ''}
                           onChange={event => updateTurnMeta({ inputPlaceholder: event.target.value })}
@@ -412,6 +422,7 @@ export default function MakerEditorPanel({
                         AI 참가자 범위
                       </label>
                       <input
+                        name="turn-participant-scope"
                         type="text"
                         value={(turnMeta.participantScope || []).join(', ')}
                         onChange={event =>
@@ -440,6 +451,7 @@ export default function MakerEditorPanel({
                         문구 가시 범위
                       </label>
                       <input
+                        name="turn-visibility-scope"
                         type="text"
                         value={(turnMeta.visibilityScope || []).join(', ')}
                         onChange={event =>
@@ -511,6 +523,7 @@ export default function MakerEditorPanel({
                 <label style={{ display: 'grid', gap: 4 }}>
                   <span style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>모드</span>
                   <select
+                    name="battle-mode"
                     value={battleConfig.mode}
                     onChange={event => updateBattleConfig({ mode: event.target.value })}
                     style={{ borderRadius: 10, border: '1px solid #cbd5f5', padding: '6px 10px', fontSize: 13, background: '#fff' }}
@@ -522,6 +535,7 @@ export default function MakerEditorPanel({
                 <label style={{ display: 'grid', gap: 4 }}>
                   <span style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>최소 인원</span>
                   <input
+                    name="battle-min-players"
                     type="number"
                     min="1"
                     max="12"
@@ -533,6 +547,7 @@ export default function MakerEditorPanel({
                 <label style={{ display: 'grid', gap: 4 }}>
                   <span style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>최대 인원</span>
                   <input
+                    name="battle-max-players"
                     type="number"
                     min="1"
                     max="12"
@@ -545,6 +560,7 @@ export default function MakerEditorPanel({
               <label style={{ display: 'grid', gap: 4 }}>
                 <span style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>역할 목록</span>
                 <textarea
+                  name="battle-roles"
                   rows={5}
                   value={(battleConfig.roles || [])
                     .map(role => [role.name, role.team || '', role.limit || 1].join('|'))

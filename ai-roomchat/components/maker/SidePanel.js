@@ -162,6 +162,7 @@ export default function SidePanel({
         <div style={{ marginTop: 6, borderTop: '1px solid #eee', paddingTop: 10 }}>
           <label style={{ fontSize: 12 }}>조건(JSON 배열) 고급 편집</label>
           <textarea
+            name="edge-conditions"
             value={edgeForm.conditions}
             onChange={e => setEdgeForm(f => ({ ...f, conditions: e.target.value }))}
             rows={5}
@@ -174,6 +175,7 @@ export default function SidePanel({
           <label style={{ fontSize: 12 }}>
             트리거 단어(콤마)
             <input
+              name="edge-trigger-words"
               value={edgeForm.trigger_words}
               onChange={e => setEdgeForm(f => ({ ...f, trigger_words: e.target.value }))}
               style={{ width: '100%', marginTop: 4 }}
@@ -185,6 +187,7 @@ export default function SidePanel({
             <label style={{ fontSize: 12 }}>
               우선순위
               <input
+                name="edge-priority"
                 type="number"
                 value={edgeForm.priority}
                 onChange={e => setEdgeForm(f => ({ ...f, priority: e.target.value }))}
@@ -194,6 +197,7 @@ export default function SidePanel({
             <label style={{ fontSize: 12 }}>
               확률(0~1)
               <input
+                name="edge-probability"
                 type="number"
                 step="0.05"
                 min="0"
@@ -207,6 +211,7 @@ export default function SidePanel({
 
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
             <input
+              name="edge-fallback"
               type="checkbox"
               checked={edgeForm.fallback}
               onChange={e => setEdgeForm(f => ({ ...f, fallback: e.target.checked }))}
@@ -217,6 +222,7 @@ export default function SidePanel({
           <label style={{ fontSize: 12 }}>
             액션
             <select
+              name="edge-action"
               value={edgeForm.action}
               onChange={e => setEdgeForm(f => ({ ...f, action: e.target.value }))}
               style={{ width: '100%', marginTop: 4 }}
@@ -228,6 +234,7 @@ export default function SidePanel({
 
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
             <input
+              name="edge-run-local"
               type="checkbox"
               checked={edgeForm.run_local}
               onChange={e => setEdgeForm(f => ({ ...f, run_local: e.target.checked }))}
@@ -238,6 +245,7 @@ export default function SidePanel({
           <label style={{ fontSize: 12, display: 'grid', gap: 6 }}>
             Action Payload (JSON)
             <textarea
+              name="edge-action-payload"
               value={edgeForm.action_payload}
               onChange={e => setEdgeForm(f => ({ ...f, action_payload: e.target.value }))}
               rows={6}

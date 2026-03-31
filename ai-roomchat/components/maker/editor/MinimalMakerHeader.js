@@ -8,6 +8,7 @@ export default function MinimalMakerHeader({
 }) {
   const btn = (label, onClick, style = {}) => (
     <button
+      type="button"
       onClick={onClick}
       disabled={label === '저장' && busy}
       style={{
