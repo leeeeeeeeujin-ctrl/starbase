@@ -914,7 +914,9 @@ const styles = {
   chatCard: {
     position: 'relative',
     width: '100%',
-    minHeight: 720,
+    height: 'min(78svh, 820px)',
+    minHeight: 640,
+    maxHeight: 'min(78svh, 820px)',
     borderRadius: 32,
     overflow: 'hidden',
     border: '1px solid rgba(96,165,250,0.28)',
@@ -933,7 +935,8 @@ const styles = {
   chatInner: {
     position: 'relative',
     zIndex: 1,
-    minHeight: 720,
+    height: '100%',
+    minHeight: 0,
     display: 'grid',
     gridTemplateRows: 'auto 1fr auto',
   },
@@ -994,7 +997,8 @@ const styles = {
     alignContent: 'start',
     padding: '10px 16px 18px',
     overflowY: 'auto',
-    minHeight: 360,
+    minHeight: 0,
+    height: '100%',
   },
   historyHint: {
     justifySelf: 'center',
