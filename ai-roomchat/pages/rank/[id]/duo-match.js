@@ -1,50 +1,20 @@
-'use client';
-
-import { useCallback, useEffect, useState } from 'react';
-import { useRouter } from 'next/router';
-
-import DuoMatchClient from '../../../components/rank/DuoMatchClient';
-import { useGameRoom } from '../../../hooks/useGameRoom';
+import Link from 'next/link';
 
 export default function DuoRankMatchPage() {
-  const router = useRouter();
-  const { id } = router.query;
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  const handleRequireLogin = useCallback(() => {
-    router.replace('/');
-  }, [router]);
-
-  const handleGameMissing = useCallback(() => {
-    alert('게임을 찾을 수 없습니다.');
-    router.replace('/rank');
-  }, [router]);
-
-  const handleDeleted = useCallback(() => {
-    router.replace('/rank');
-  }, [router]);
-
-  const {
-    state: { loading, game, myHero },
-  } = useGameRoom(id, {
-    onRequireLogin: handleRequireLogin,
-    onGameMissing: handleGameMissing,
-    onDeleted: handleDeleted,
-  });
-
-  const ready = mounted && !loading;
-
-  if (!ready) {
-    return <div style={{ padding: 24, color: '#f4f6fb' }}>듀오 랭크 매칭 정보를 불러오는 중…</div>;
-  }
-
-  if (!game) {
-    return <div style={{ padding: 24, color: '#f4f6fb' }}>게임 정보를 찾을 수 없습니다.</div>;
-  }
-
-  return <DuoMatchClient gameId={game.id} initialHeroId={myHero?.id} />;
+  return (
+    <div style={{ minHeight: '100vh', padding: '40px 24px', background: '#111827', color: '#e5e7eb' }}>
+      <div style={{ maxWidth: 720, margin: '0 auto', display: 'grid', gap: 16 }}>
+        <p style={{ margin: 0, fontSize: 12, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#9ca3af' }}>
+          Legacy Match Route Disabled
+        </p>
+        <h1 style={{ margin: 0, fontSize: 32 }}>듀오 랭크 매칭 경로를 비활성화했습니다.</h1>
+        <p style={{ margin: 0, lineHeight: 1.7, color: '#d1d5db' }}>
+          구식 듀오 매칭 클라이언트는 새 기준선에 맞지 않아 더 이상 열지 않습니다.
+        </p>
+        <Link href="/match" style={{ color: '#93c5fd' }}>
+          매치 화면으로 이동
+        </Link>
+      </div>
+    </div>
+  );
 }

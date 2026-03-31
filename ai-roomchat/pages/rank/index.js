@@ -1,75 +1,25 @@
-// pages/rank/index.js
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
-import { supabase } from '../../lib/supabase';
-import GameListPanel from '../../components/rank/GameListPanel'; // ← 추가
 
-export default function RankHub() {
-  const [count, setCount] = useState(0);
-
-  // 총 게임 수(선택)
-  useEffect(() => {
-    (async () => {
-      const { count } = await supabase
-        .from('rank_games')
-        .select('id', { count: 'exact', head: true });
-      setCount(count ?? 0);
-    })();
-  }, []);
-
+export default function RankHubPage() {
   return (
-    <div
-      style={{
-        maxWidth: 1200,
-        margin: '24px auto',
-        padding: 12,
-        display: 'grid',
-        gridTemplateRows: 'auto 1fr auto',
-        gap: 12,
-      }}
-    >
-      {/* 상단 바: 기존 문구 유지 */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-          <h2 style={{ margin: 0 }}>랭킹</h2>
-          <span style={{ color: '#64748b' }}>
-            게임을 고르거나, 새 게임을 등록하세요 · 총 {count}개
-          </span>
+    <div style={{ minHeight: '100vh', padding: '40px 24px', background: '#020617', color: '#e2e8f0' }}>
+      <div style={{ maxWidth: 720, margin: '0 auto', display: 'grid', gap: 16 }}>
+        <p style={{ margin: 0, fontSize: 12, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#94a3b8' }}>
+          Legacy Rank Hub Disabled
+        </p>
+        <h1 style={{ margin: 0, fontSize: 32 }}>기존 랭크 허브는 정리 중입니다.</h1>
+        <p style={{ margin: 0, lineHeight: 1.7, color: '#cbd5e1' }}>
+          이 화면은 구식 등록, 대기열, 세션 조합 로직을 중심으로 짜여 있어 더 이상 기준선으로 두지 않습니다.
+          새 매칭 구조는 메이커 중심 텍스트 배틀 흐름에 맞춰 다시 연결합니다.
+        </p>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <Link href="/maker" style={{ color: '#f8fafc' }}>
+            메이커로 이동
+          </Link>
+          <Link href="/match" style={{ color: '#93c5fd' }}>
+            매치 화면으로 이동
+          </Link>
         </div>
-        <Link
-          href="/rank/new"
-          style={{
-            padding: '8px 12px',
-            borderRadius: 8,
-            background: '#111827',
-            color: '#fff',
-            fontWeight: 700,
-            display: 'inline-block',
-            textDecoration: 'none',
-          }}
-        >
-          + 게임 등록
-        </Link>
-      </div>
-
-      {/* 본문: 모바일 세로 최적화 스크롤 패널 */}
-      <GameListPanel />
-
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <Link
-          href="/chat"
-          style={{
-            padding: '10px 18px',
-            borderRadius: 999,
-            background: '#0f172a',
-            color: '#bae6fd',
-            fontWeight: 700,
-            border: '1px solid rgba(56, 189, 248, 0.4)',
-            textDecoration: 'none',
-          }}
-        >
-          공용 채팅 페이지로 이동
-        </Link>
       </div>
     </div>
   );
