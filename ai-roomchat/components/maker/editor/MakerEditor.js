@@ -41,6 +41,13 @@ export default function MakerEditor() {
     }),
     [battleConfig, battleDefinition]
   );
+  const roleText = useMemo(
+    () =>
+      (battleConfig.roles || [])
+        .map(role => [role.name, role.team || '', role.limit || 1].join('|'))
+        .join('\n'),
+    [battleConfig.roles]
+  );
 
   const {
     nodes,
@@ -215,6 +222,55 @@ export default function MakerEditor() {
     }
   }, [busy, saveAll, files, status?.setInfo, status?.router]);
 
+  const updateBattleConfig = useCallback(
+    partial => {
+      try {
+        const parsed = JSON.parse(templateText || '{}');
+        const next = {
+          ...(parsed || {}),
+          battleConfig: normalizeBattleConfig({
+            ...(parsed?.battleConfig || {}),
+            ...partial,
+          }),
+        };
+        setTemplateText(JSON.stringify(next, null, 2));
+      } catch {
+        setTemplateText(
+          JSON.stringify(
+            {
+              battleConfig: normalizeBattleConfig(partial),
+            },
+            null,
+            2
+          )
+        );
+      }
+    },
+    [templateText, setTemplateText]
+  );
+
+  const updateRoleText = useCallback(
+    value => {
+      const roles = String(value || '')
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean)
+        .map((line, index) => {
+          const [namePart, teamPart = '', limitPart = '1'] = line.split('|').map(entry => entry.trim());
+          if (!namePart) return null;
+          return {
+            id: `role-${index + 1}`,
+            name: namePart,
+            team: teamPart,
+            limit: Number.isFinite(Number(limitPart)) ? Math.max(1, Number(limitPart)) : 1,
+          };
+        })
+        .filter(Boolean);
+      updateBattleConfig({ roles });
+    },
+    [updateBattleConfig]
+  );
+
   const { receipt: saveReceipt, ackReceipt } = history;
   const [receiptVisible, setReceiptVisible] = useState(null);
 
@@ -274,6 +330,78 @@ export default function MakerEditor() {
       >
         <MinimalMakerHeader busy={busy} onBack={goToSetList} onSave={unifiedSaveAll} />
 
+        <section
+          style={{
+            background: '#ffffff',
+            borderRadius: 20,
+            padding: 16,
+            display: 'grid',
+            gap: 14,
+            border: '1px solid #cbd5e1',
+          }}
+        >
+          <div style={{ display: 'grid', gap: 4 }}>
+            <strong style={{ fontSize: 15, color: '#0f172a' }}>게임 설정</strong>
+            <span style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
+              이 게임에 몇 명까지 참가할지와 역할 구성을 메이커에서 직접 정합니다. 등록 페이지에서는 이 값을 읽기만 하게 맞춥니다.
+            </span>
+          </div>
+
+          <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+            <label style={{ display: 'grid', gap: 6 }}>
+              <span style={{ fontSize: 12, color: '#475569', fontWeight: 700 }}>모드</span>
+              <select
+                name="battle-mode"
+                value={battleConfig.mode}
+                onChange={event => updateBattleConfig({ mode: event.target.value })}
+                style={configInputStyle}
+              >
+                <option value="single">싱글</option>
+                <option value="multi">멀티</option>
+              </select>
+            </label>
+            <label style={{ display: 'grid', gap: 6 }}>
+              <span style={{ fontSize: 12, color: '#475569', fontWeight: 700 }}>최소 인원</span>
+              <input
+                name="battle-min-players"
+                type="number"
+                min="1"
+                max="12"
+                value={battleConfig.minPlayers}
+                onChange={event => updateBattleConfig({ minPlayers: Number(event.target.value) || 1 })}
+                style={configInputStyle}
+              />
+            </label>
+            <label style={{ display: 'grid', gap: 6 }}>
+              <span style={{ fontSize: 12, color: '#475569', fontWeight: 700 }}>최대 인원</span>
+              <input
+                name="battle-max-players"
+                type="number"
+                min="1"
+                max="12"
+                value={battleConfig.maxPlayers}
+                onChange={event => updateBattleConfig({ maxPlayers: Number(event.target.value) || 1 })}
+                style={configInputStyle}
+              />
+            </label>
+          </div>
+
+          <label style={{ display: 'grid', gap: 6 }}>
+            <span style={{ fontSize: 12, color: '#475569', fontWeight: 700 }}>역할 목록</span>
+            <textarea
+              name="battle-roles"
+              rows={5}
+              value={roleText}
+              onChange={event => updateRoleText(event.target.value)}
+              style={{ ...configInputStyle, resize: 'vertical', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}
+              placeholder={'공격|red|2\n수비|blue|2'}
+            />
+            <span style={{ fontSize: 11, color: '#6b7280' }}>
+              한 줄에 `역할명|팀|인원수` 형식으로 적습니다. 예: `healer|blue|2`
+            </span>
+          </label>
+        </section>
+
         <MakerEditorCanvas
           nodes={nodes}
           edges={edges}
@@ -331,3 +459,12 @@ export default function MakerEditor() {
     </div>
   );
 }
+
+const configInputStyle = {
+  borderRadius: 12,
+  border: '1px solid #cbd5e1',
+  background: '#f8fafc',
+  padding: '10px 12px',
+  fontSize: 13,
+  color: '#0f172a',
+};

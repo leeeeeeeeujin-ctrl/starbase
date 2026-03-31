@@ -7,7 +7,6 @@ import { supabase } from '../../lib/supabase';
 import { REALTIME_MODES } from '../../lib/rank/realtimeModes';
 import PromptSetPicker from '../../components/rank/PromptSetPicker';
 import SlotMatrix from '../../components/rank/SlotMatrix';
-import RolesEditor from '../../components/rank/RolesEditor';
 import RulesChecklist, { buildRulesPrefix } from '../../components/rank/RulesChecklist';
 import { uploadGameImage } from '../../lib/rank/storage';
 import { useSharedPromptSetStorage } from '../../hooks/shared/useSharedPromptSetStorage';
@@ -131,6 +130,33 @@ export default function RankNewClient() {
     setPromptSetId: setSharedPromptSetId,
   } = useSharedPromptSetStorage();
   const workspace = useWorkspaceOptional?.() || null;
+  const makerBattleConfig = useMemo(() => {
+    try {
+      const templateText = workspace?.files?.['/template.json']?.content || '{}';
+      const parsed = JSON.parse(templateText);
+      const raw = parsed?.battleConfig || {};
+      const maxPlayers = Number.isFinite(Number(raw.maxPlayers)) ? Number(raw.maxPlayers) : 2;
+      const minPlayers = Number.isFinite(Number(raw.minPlayers)) ? Number(raw.minPlayers) : 1;
+      const mode = String(raw.mode || '').trim() === 'multi' ? 'multi' : 'single';
+      const roles = Array.isArray(raw.roles)
+        ? raw.roles
+            .map((role, index) => {
+              const name = String(role?.name || role?.id || '').trim();
+              if (!name) return null;
+              return {
+                id: String(role?.id || `role-${index + 1}`),
+                name,
+                team: String(role?.team || '').trim(),
+                limit: Number.isFinite(Number(role?.limit)) ? Math.max(1, Number(role.limit)) : 1,
+              };
+            })
+            .filter(Boolean)
+        : [];
+      return { mode, minPlayers, maxPlayers, roles };
+    } catch {
+      return { mode: 'single', minPlayers: 1, maxPlayers: 2, roles: [] };
+    }
+  }, [workspace?.files]);
 
   useEffect(() => {
     let alive = true;
@@ -155,6 +181,17 @@ export default function RankNewClient() {
       setSetId(sharedPromptSetId);
     }
   }, [sharedPromptSetId]);
+
+  useEffect(() => {
+    if (!Array.isArray(makerBattleConfig.roles) || makerBattleConfig.roles.length === 0) return;
+    setRoles(
+      makerBattleConfig.roles.map(role => ({
+        name: role.name,
+        score_delta_min: 20,
+        score_delta_max: 40,
+      }))
+    );
+  }, [makerBattleConfig]);
 
   useEffect(() => {
     return () => {
@@ -809,10 +846,55 @@ export default function RankNewClient() {
 
       <RegistrationCard
         title="역할 정의"
-        description="게임에서 사용할 역할과 점수 범위를 정리하세요."
+        description="역할과 인원 제한은 메이커에서 관리합니다."
       >
         <div style={moduleShellStyle}>
-          <RolesEditor roles={roles} onChange={setRoles} />
+          <div style={{ display: 'grid', gap: 10 }}>
+            <div style={{ fontSize: 13, color: '#cbd5f5', lineHeight: 1.7 }}>
+              이 페이지에서는 역할을 직접 편집하지 않습니다. 메이커의 게임 설정에서 최대 인원과 역할 구성을 저장하면, 등록은 그 구성을 기준으로 진행됩니다.
+            </div>
+            <div
+              style={{
+                display: 'grid',
+                gap: 8,
+                padding: '12px 14px',
+                borderRadius: 14,
+                background: 'rgba(15,23,42,0.55)',
+                border: '1px solid rgba(148,163,184,0.35)',
+              }}
+            >
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 12, color: '#bfdbfe' }}>
+                <span>모드: {makerBattleConfig.mode === 'multi' ? '멀티' : '싱글'}</span>
+                <span>인원: {makerBattleConfig.minPlayers} - {makerBattleConfig.maxPlayers}</span>
+              </div>
+              {makerBattleConfig.roles.length ? (
+                <div style={{ display: 'grid', gap: 6 }}>
+                  {makerBattleConfig.roles.map(role => (
+                    <div
+                      key={role.id}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        gap: 12,
+                        padding: '8px 10px',
+                        borderRadius: 12,
+                        background: 'rgba(30,41,59,0.9)',
+                        color: '#e2e8f0',
+                        fontSize: 12,
+                      }}
+                    >
+                      <span>{role.name}</span>
+                      <span>{role.team || '-'} / {role.limit}명</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: '#94a3b8' }}>
+                  아직 메이커에 역할이 저장되지 않았습니다.
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </RegistrationCard>
 
