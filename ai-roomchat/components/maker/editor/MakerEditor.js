@@ -423,41 +423,24 @@ export default function MakerEditor() {
               setSelectedNodeId(node?.id || null);
               setSelectedEdge(null);
             }}
-            onOpenInspector={tabId => {
-              const hasTab = panelTabs?.some(tab => tab.id === tabId);
-              if (hasTab) {
-                setActivePanelTab(tabId);
-              }
-            }}
             onDeleteNode={deletePrompt}
             onMarkAsStart={markAsStart}
             setEdges={setEdges}
-          />
-
-          <div
-            style={{
-              background: '#ffffff',
-              borderRadius: 20,
-              padding: '8px 10px',
-              boxShadow: '0 22px 50px -36px rgba(15, 23, 42, 0.35)',
-              overflow: 'hidden',
+            panelProps={{
+              tabs: panelTabs,
+              activeTab: activePanelTab,
+              onTabChange: setActivePanelTab,
+              onOpenVariables: () => setVariableDrawerOpen(true),
+              selectedNode,
+              selectedNodeId,
+              selectedEdge,
+              onMarkAsStart: markAsStart,
+              onDeleteSelected: () => selectedNodeId && deletePrompt(selectedNodeId),
+              onInsertToken: appendTokenToSelected,
+              setNodes,
+              setEdges,
             }}
-          >
-            <MakerEditorPanel
-              tabs={panelTabs}
-              activeTab={activePanelTab}
-              onTabChange={setActivePanelTab}
-              onOpenVariables={() => setVariableDrawerOpen(true)}
-              selectedNode={selectedNode}
-              selectedNodeId={selectedNodeId}
-              selectedEdge={selectedEdge}
-              onMarkAsStart={markAsStart}
-              onDeleteSelected={() => selectedNodeId && deletePrompt(selectedNodeId)}
-              onInsertToken={appendTokenToSelected}
-              setNodes={setNodes}
-              setEdges={setEdges}
-            />
-          </div>
+          />
         </div>
       </div>
 

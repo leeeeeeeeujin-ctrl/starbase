@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 
 import MobileTextBattlePlayer from '../../battle/MobileTextBattlePlayer.jsx';
+import MakerEditorPanel from './MakerEditorPanel';
 import { parseTurnTemplate } from '../../../lib/battle/turnTemplate.js';
 
 function getTypeLabel(slotType) {
@@ -40,10 +41,10 @@ export default function MakerTurnBoard({
   edges,
   selectedNodeId,
   onSelectNode,
-  onOpenInspector,
   onDeleteNode,
   onMarkAsStart,
   setEdges,
+  panelProps,
 }) {
   const [connectTargets, setConnectTargets] = useState({});
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -226,6 +227,7 @@ export default function MakerTurnBoard({
             return (
               <div
                 key={node.id}
+                onClick={() => onSelectNode?.(node)}
                 style={{
                   display: 'grid',
                   gap: 10,
@@ -239,6 +241,7 @@ export default function MakerTurnBoard({
                     ? '0 24px 56px -38px rgba(37, 99, 235, 0.82)'
                     : 'none',
                   color: '#e2e8f0',
+                  cursor: 'pointer',
                 }}
               >
                 <div style={{ display: 'grid', gap: 12 }}>
@@ -280,8 +283,7 @@ export default function MakerTurnBoard({
                     <button
                       type="button"
                       onClick={() => {
-                        onSelectNode(node);
-                        onOpenInspector?.('selection');
+                        onSelectNode?.(node);
                       }}
                       style={{
                         padding: '7px 12px',
@@ -428,6 +430,25 @@ export default function MakerTurnBoard({
                     </button>
                   </div>
                 </div>
+
+                {selected && panelProps ? (
+                  <div
+                    onClick={event => event.stopPropagation()}
+                    style={{
+                      background: '#ffffff',
+                      borderRadius: 16,
+                      overflow: 'hidden',
+                      boxShadow: '0 18px 38px -26px rgba(15, 23, 42, 0.45)',
+                    }}
+                  >
+                    <MakerEditorPanel
+                      {...panelProps}
+                      selectedNodeId={panelProps.selectedNodeId}
+                      selectedNode={panelProps.selectedNode}
+                      selectedEdge={panelProps.selectedEdge}
+                    />
+                  </div>
+                ) : null}
               </div>
             );
           })}
