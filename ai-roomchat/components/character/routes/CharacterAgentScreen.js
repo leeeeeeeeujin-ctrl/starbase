@@ -5,7 +5,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { supabase } from '@/lib/supabase';
 import { buildHeroAgentPrompt } from '@/lib/characters/agentContext';
-import { hasActiveKeyInSnapshot, readRankKeyringSnapshot } from '@/lib/rank/keyringStorage';
 import {
   appendRecentChat,
   applyMemoryAction,
@@ -50,10 +49,24 @@ export default function CharacterAgentScreen({ hero }) {
     let mounted = true;
     const syncKeyState = async () => {
       const sessionResult = await supabase.auth.getSession();
-      const userId = sessionResult?.data?.session?.user?.id || '';
-      const snapshot = readRankKeyringSnapshot();
+      const token = sessionResult?.data?.session?.access_token || '';
+      if (!token) {
+        if (mounted) setHasActiveApiKey(false);
+        return;
+      }
+      const response = await fetch('/api/rank/user-api-keyring', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const payload = await response.json().catch(() => ({}));
       if (!mounted) return;
-      setHasActiveApiKey(hasActiveKeyInSnapshot(snapshot, userId));
+      if (!response.ok) {
+        setHasActiveApiKey(false);
+        return;
+      }
+      const entries = Array.isArray(payload?.entries) ? payload.entries : [];
+      setHasActiveApiKey(entries.some(entry => entry?.isActive));
     };
     syncKeyState().catch(() => {});
     const handleRefresh = () => syncKeyState().catch(() => {});
