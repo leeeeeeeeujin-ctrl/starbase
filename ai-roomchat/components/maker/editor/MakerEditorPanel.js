@@ -56,14 +56,14 @@ export default function MakerEditorPanel({
             onClick={() => addPrompt('ai', '')}
             style={{ padding: '6px 10px', borderRadius: 10, border: '1px solid #c7d2fe', background: '#eef2ff', color: '#3730a3', fontWeight: 700, fontSize: 12 }}
           >
-            + AI 프롬프트
+            + AI 턴
           </button>
           <button
             type="button"
             onClick={() => addPrompt('user_action', '')}
             style={{ padding: '6px 10px', borderRadius: 10, border: '1px solid #bae6fd', background: '#e0f2fe', color: '#075985', fontWeight: 700, fontSize: 12 }}
           >
-            + 유저 프롬프트
+            + 유저 입력 턴
           </button>
           <button
             type="button"
@@ -157,14 +157,14 @@ export default function MakerEditorPanel({
             </div>
             <span style={{ fontWeight: 700, color: '#0f172a' }}>
               {selectedNode
-                ? '선택한 프롬프트를 편집 중입니다.'
+                ? '선택한 턴 정의를 편집 중입니다.'
                 : selectedEdge
-                  ? '선택한 브릿지를 편집 중입니다.'
-                  : '편집할 프롬프트 또는 브릿지를 선택하세요.'}
+                  ? '선택한 흐름 연결을 편집 중입니다.'
+                  : '편집할 턴 또는 연결을 선택하세요.'}
             </span>
             <span style={{ fontSize: 11, color: '#6b7280', lineHeight: 1.4 }}>
-              그래프 구조와 노드 이름은 이 편집기가 진리의 원천입니다. 코드 에디터의 그래프 JSON 편집은 고급 사용자용이며,
-              여기서 저장한 내용이 최종적으로 워크스페이스 런타임에 반영됩니다.
+              메이커의 그래프는 배틀 흐름의 기준선입니다. 각 노드에서 유저 입력, AI 호출,
+              시스템 안내를 순서대로 정의하고 저장된 내용이 세션 런타임으로 전달됩니다.
             </span>
 
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -218,8 +218,8 @@ export default function MakerEditorPanel({
                       background: '#fff',
                     }}
                   >
-                    <option value="ai">AI</option>
-                    <option value="user_action">유저 행동</option>
+                    <option value="ai">AI 턴</option>
+                    <option value="user_action">유저 입력 턴</option>
                     <option value="system">시스템</option>
                   </select>
                 </div>
@@ -362,14 +362,13 @@ export default function MakerEditorPanel({
         {activeTab === 'guide' && (
           <div style={{ display: 'grid', gap: 8, color: '#475569', fontSize: 13, lineHeight: 1.6 }}>
             <p style={{ margin: 0 }}>
-              • 노드를 선택해 템플릿과 변수 규칙을 다듬고, 필요하면 Invisible 토글로 노출 범위를
-              조정하세요.
+              • 턴을 선택해 AI에 보낼 내용, 유저에게 보여줄 안내, 입력이 필요한 시점을 구성하세요.
             </p>
             <p style={{ margin: 0 }}>
-              • 브릿지를 선택하면 조건 빌더에서 턴/변수 조건과 확률을 설정할 수 있습니다.
+              • 연결을 선택하면 다음 턴으로 넘어가는 조건과 우선순위를 조정할 수 있습니다.
             </p>
             <p style={{ margin: 0 }}>
-              • 오른쪽 하단의 변수 버튼을 눌러 전역·로컬 변수 규칙을 언제든지 확인할 수 있습니다.
+              • 변수 설정에서 참가자 정보, 턴 입력, 숨김 상태처럼 런타임에 쓰일 값을 다듬을 수 있습니다.
             </p>
           </div>
         )}
