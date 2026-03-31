@@ -28,6 +28,8 @@ function normaliseHero(row) {
     bgm_url: row.bgm_url || null,
     bgm_duration_seconds: row.bgm_duration_seconds ?? null,
     bgm_mime: row.bgm_mime || null,
+    agent_profile:
+      row.agent_profile && typeof row.agent_profile === 'object' ? row.agent_profile : null,
     created_at: row.created_at || null,
     updated_at: row.updated_at || null,
   };
@@ -127,6 +129,7 @@ export function useCharacterDetail(heroId) {
               'bgm_url',
               'bgm_duration_seconds',
               'bgm_mime',
+              'agent_profile',
               'created_at',
               'updated_at',
             ].join(',')
