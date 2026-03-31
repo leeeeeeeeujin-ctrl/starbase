@@ -773,7 +773,7 @@ const styles = {
   page: {
     display: 'grid',
     gap: 16,
-    paddingBottom: 176,
+    paddingBottom: 96,
   },
   chatCard: {
     position: 'relative',
@@ -973,15 +973,19 @@ const styles = {
     cursor: disabled ? 'not-allowed' : 'pointer',
   }),
   panelWrap: {
-    position: 'sticky',
-    bottom: 72,
-    zIndex: 8,
+    position: 'fixed',
+    left: '50%',
+    bottom: 88,
+    transform: 'translateX(-50%)',
+    width: 'min(720px, calc(100% - 28px))',
+    zIndex: 26,
     display: 'grid',
     gap: 8,
+    pointerEvents: 'none',
   },
   panelToggleRow: {
     display: 'flex',
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
   },
   panelToggle: {
     appearance: 'none',
@@ -993,6 +997,8 @@ const styles = {
     fontSize: 12,
     fontWeight: 800,
     backdropFilter: 'blur(12px)',
+    pointerEvents: 'auto',
+    boxShadow: '0 20px 46px -30px rgba(2,6,23,0.92)',
   },
   panelBody: {
     borderRadius: 28,
@@ -1002,6 +1008,9 @@ const styles = {
     boxShadow: '0 32px 90px -58px rgba(15,23,42,0.92)',
     display: 'grid',
     gap: 14,
+    maxHeight: 'min(54svh, 480px)',
+    overflowY: 'auto',
+    pointerEvents: 'auto',
   },
   sectionTabs: {
     display: 'flex',
