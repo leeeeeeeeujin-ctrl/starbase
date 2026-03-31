@@ -42,6 +42,8 @@ export function sanitizeHeroAgentProfile(profile = {}) {
 
   return {
     systemPrompt: clampText(profile.systemPrompt || '', 2000),
+    speakingStyle: clampText(profile.speakingStyle || '', 400),
+    behaviorRules: clampText(profile.behaviorRules || '', 1000),
     memories: memories
       .map((entry, index) => ({
         id: entry?.id || `memory-${Date.now()}-${index}`,

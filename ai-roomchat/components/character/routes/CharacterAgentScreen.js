@@ -20,6 +20,8 @@ import {
 
 const INITIAL_PROFILE = {
   systemPrompt: '',
+  speakingStyle: '',
+  behaviorRules: '',
   memories: [],
   recentChats: [],
 };
@@ -77,6 +79,9 @@ export default function CharacterAgentScreen({ hero }) {
         `이름: ${profileSummary.name}`,
         `설명: ${profileSummary.description || '없음'}`,
         `능력: ${profileSummary.abilities.length ? profileSummary.abilities.join(' / ') : '없음'}`,
+        `기본 프롬프트: ${profile.systemPrompt || '없음'}`,
+        `말투/어조: ${profile.speakingStyle || '없음'}`,
+        `행동 원칙: ${profile.behaviorRules || '없음'}`,
         `메모리 슬롯 제한: ${HERO_MEMORY_SLOT_MAX}개`,
         `메모리 한 칸 길이 제한: ${HERO_MEMORY_ENTRY_MAX_LENGTH}자`,
         '중요한 사실은 메모리로 추가/수정/삭제할 수 있다.',
@@ -89,7 +94,7 @@ export default function CharacterAgentScreen({ hero }) {
         `유저 입력:\n${userInput}`,
       ].join('\n\n');
     },
-    [profile.memories, profile.recentChats, profileSummary]
+    [profile.behaviorRules, profile.memories, profile.recentChats, profile.speakingStyle, profile.systemPrompt, profileSummary]
   );
 
   const handleSend = useCallback(async () => {
@@ -318,6 +323,75 @@ export default function CharacterAgentScreen({ hero }) {
               background: 'rgba(2, 6, 23, 0.78)',
               border: '1px solid rgba(148, 163, 184, 0.22)',
               display: 'grid',
+              gap: 12,
+            }}
+          >
+            <div style={{ display: 'grid', gap: 4 }}>
+              <strong style={{ fontSize: 15 }}>고정 지침</strong>
+              <span style={{ color: '#94a3b8', fontSize: 12 }}>
+                대화보다 먼저 적용되는 캐릭터 AI의 기본층입니다.
+              </span>
+            </div>
+
+            <label style={{ display: 'grid', gap: 6 }}>
+              <span style={{ color: '#cbd5e1', fontSize: 12, fontWeight: 700 }}>기본 프롬프트</span>
+              <textarea
+                value={profile.systemPrompt}
+                maxLength={2000}
+                onChange={event =>
+                  persistProfile({
+                    ...profile,
+                    systemPrompt: event.target.value,
+                  })
+                }
+                placeholder="이 캐릭터가 자신을 어떤 존재로 인식하는지 적습니다."
+                style={textAreaStyle(120)}
+              />
+              <span style={hintStyle}>{`${profile.systemPrompt.length}/2000`}</span>
+            </label>
+
+            <label style={{ display: 'grid', gap: 6 }}>
+              <span style={{ color: '#cbd5e1', fontSize: 12, fontWeight: 700 }}>말투 / 어조</span>
+              <textarea
+                value={profile.speakingStyle}
+                maxLength={400}
+                onChange={event =>
+                  persistProfile({
+                    ...profile,
+                    speakingStyle: event.target.value,
+                  })
+                }
+                placeholder="짧고 냉정함, 존댓말, 도발적이지 않음 같은 식으로 적습니다."
+                style={textAreaStyle(88)}
+              />
+              <span style={hintStyle}>{`${profile.speakingStyle.length}/400`}</span>
+            </label>
+
+            <label style={{ display: 'grid', gap: 6 }}>
+              <span style={{ color: '#cbd5e1', fontSize: 12, fontWeight: 700 }}>행동 원칙</span>
+              <textarea
+                value={profile.behaviorRules}
+                maxLength={1000}
+                onChange={event =>
+                  persistProfile({
+                    ...profile,
+                    behaviorRules: event.target.value,
+                  })
+                }
+                placeholder="어떤 상황에서 무엇을 우선하는지, 금기와 성향을 적습니다."
+                style={textAreaStyle(120)}
+              />
+              <span style={hintStyle}>{`${profile.behaviorRules.length}/1000`}</span>
+            </label>
+          </section>
+
+          <section
+            style={{
+              padding: 16,
+              borderRadius: 24,
+              background: 'rgba(2, 6, 23, 0.78)',
+              border: '1px solid rgba(148, 163, 184, 0.22)',
+              display: 'grid',
               gap: 10,
             }}
           >
@@ -375,3 +449,20 @@ export default function CharacterAgentScreen({ hero }) {
     </>
   );
 }
+
+const textAreaStyle = minHeight => ({
+  minHeight,
+  resize: 'vertical',
+  borderRadius: 16,
+  border: '1px solid rgba(148,163,184,0.22)',
+  background: 'rgba(15,23,42,0.72)',
+  color: '#f8fafc',
+  padding: '12px 14px',
+  fontSize: 13,
+  lineHeight: 1.6,
+});
+
+const hintStyle = {
+  color: '#94a3b8',
+  fontSize: 11,
+};
