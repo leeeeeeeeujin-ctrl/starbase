@@ -87,15 +87,15 @@ export default function PromptNode({ id, data, selected }) {
             : meta.inputMode === 'target'
               ? '대상 선택'
               : meta.inputMode;
-      items.push(inputLabel);
+      items.push({ label: '입력', value: inputLabel });
     }
 
     if (meta?.resultKey) {
-      items.push(`저장 ${meta.resultKey}`);
+      items.push({ label: '저장', value: meta.resultKey });
     }
 
     if (Array.isArray(meta?.participantScope) && meta.participantScope.length) {
-      items.push(`AI ${meta.participantScope.join(', ')}`);
+      items.push({ label: 'AI', value: meta.participantScope.join(', ') });
     }
 
     return items;
@@ -208,21 +208,32 @@ export default function PromptNode({ id, data, selected }) {
           {previewText || <span style={{ color: '#64748b' }}>내용 없음</span>}
         </div>
         {turnSummary.length ? (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          <div
+            style={{
+              display: 'grid',
+              gap: 6,
+              borderTop: '1px solid rgba(148,163,184,0.18)',
+              paddingTop: 8,
+            }}
+          >
             {turnSummary.slice(0, 3).map(item => (
-              <span
-                key={item}
+              <div
+                key={`${item.label}:${item.value}`}
                 style={{
-                  padding: '3px 7px',
-                  borderRadius: 999,
-                  background: 'rgba(148,163,184,0.14)',
-                  color: '#cbd5e1',
-                  fontSize: 10,
-                  fontWeight: 700,
+                  display: 'grid',
+                  gap: 2,
+                  borderRadius: 10,
+                  background: 'rgba(148,163,184,0.08)',
+                  padding: '6px 8px',
                 }}
               >
-                {item}
-              </span>
+                <span style={{ fontSize: 10, fontWeight: 800, color: '#94a3b8', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                  {item.label}
+                </span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0', lineHeight: 1.4 }}>
+                  {item.value}
+                </span>
+              </div>
             ))}
           </div>
         ) : null}
