@@ -7,8 +7,10 @@ import { supabase } from '@/lib/supabase';
 import { withTable } from '@/lib/supabaseTables';
 import { buildHeroAgentPrompt } from '@/lib/characters/agentContext';
 import {
+  EMPTY_HERO_AGENT_PROFILE,
   appendRecentChat,
   applyMemoryAction,
+  mergeHeroAgentProfiles,
   readHeroAgentProfile,
   sanitizeHeroAgentProfile,
   writeHeroAgentProfile,
@@ -27,14 +29,7 @@ import {
   validateHeroProfileDraft,
 } from '@/lib/characters/profileRules';
 
-const INITIAL_PROFILE = {
-  systemPrompt: '',
-  speakingStyle: '',
-  behaviorRules: '',
-  memories: [],
-  recentChats: [],
-  archives: [],
-};
+const INITIAL_PROFILE = EMPTY_HERO_AGENT_PROFILE;
 
 const INITIAL_HERO_DRAFT = {
   name: '',
@@ -69,6 +64,13 @@ export default function CharacterAgentScreen({ hero }) {
   const chatLogRef = useRef(null);
   const previousChatCountRef = useRef(0);
   const preserveScrollRef = useRef(null);
+  const profileHydratedRef = useRef(false);
+  const remoteSaveTimerRef = useRef(null);
+
+  const supportsAgentProfile = useMemo(
+    () => Boolean(hero && Object.prototype.hasOwnProperty.call(hero, 'agent_profile')),
+    [hero]
+  );
 
   useEffect(() => {
     if (!heroId) return;
@@ -77,7 +79,9 @@ export default function CharacterAgentScreen({ hero }) {
       abortControllerRef.current = null;
     }
     const stored = readHeroAgentProfile(heroId);
-    setProfile(stored || INITIAL_PROFILE);
+    const remote = hero?.agent_profile && typeof hero.agent_profile === 'object' ? hero.agent_profile : null;
+    const nextProfile = mergeHeroAgentProfiles(remote, stored);
+    setProfile(nextProfile || INITIAL_PROFILE);
     setHeroDraft(
       clampHeroProfileDraft({
         name: hero?.name || '',
@@ -95,7 +99,12 @@ export default function CharacterAgentScreen({ hero }) {
     setVisibleChatCount(CHAT_PAGE_SIZE);
     setPendingJumpPreview('');
     previousChatCountRef.current = 0;
-  }, [hero?.ability1, hero?.ability2, hero?.ability3, hero?.ability4, hero?.description, hero?.name, heroId]);
+    profileHydratedRef.current = false;
+    if (remoteSaveTimerRef.current) {
+      clearTimeout(remoteSaveTimerRef.current);
+      remoteSaveTimerRef.current = null;
+    }
+  }, [hero?.ability1, hero?.ability2, hero?.ability3, hero?.ability4, hero?.agent_profile, hero?.description, hero?.name, heroId]);
 
   useEffect(
     () => () => {
@@ -103,9 +112,44 @@ export default function CharacterAgentScreen({ hero }) {
         abortControllerRef.current.abort();
         abortControllerRef.current = null;
       }
+      if (remoteSaveTimerRef.current) {
+        clearTimeout(remoteSaveTimerRef.current);
+        remoteSaveTimerRef.current = null;
+      }
     },
     []
   );
+
+  useEffect(() => {
+    if (!heroId || !supportsAgentProfile) {
+      profileHydratedRef.current = true;
+      return;
+    }
+    if (!profileHydratedRef.current) {
+      profileHydratedRef.current = true;
+      return;
+    }
+    if (remoteSaveTimerRef.current) {
+      clearTimeout(remoteSaveTimerRef.current);
+    }
+    remoteSaveTimerRef.current = setTimeout(async () => {
+      try {
+        const { error } = await supabase
+          .from(withTable('heroes'))
+          .update({ agent_profile: profile })
+          .eq('id', heroId);
+        if (error) throw error;
+      } catch (error) {
+        console.error('[CharacterAgent] failed to sync agent profile', error);
+      }
+    }, 700);
+    return () => {
+      if (remoteSaveTimerRef.current) {
+        clearTimeout(remoteSaveTimerRef.current);
+        remoteSaveTimerRef.current = null;
+      }
+    };
+  }, [heroId, profile, supportsAgentProfile]);
 
   const syncKeyState = useCallback(async () => {
     const sessionResult = await supabase.auth.getSession();

@@ -9,6 +9,16 @@ import {
 
 const PREFIX = 'hero-agent-profile:';
 
+export const EMPTY_HERO_AGENT_PROFILE = {
+  systemPrompt: '',
+  speakingStyle: '',
+  behaviorRules: '',
+  memories: [],
+  recentChats: [],
+  archives: [],
+  updatedAt: null,
+};
+
 const clampText = (value, limit) => String(value || '').trim().slice(0, limit);
 
 function getKey(heroId) {
@@ -139,6 +149,7 @@ export function sanitizeHeroAgentProfile(profile = {}) {
       }))
       .filter(entry => entry.text)
       .slice(-HERO_RECENT_CHAT_MAX),
+    updatedAt: profile?.updatedAt || new Date().toISOString(),
   };
 
   sanitized.runtimeCache = buildRuntimeCache(sanitized);
@@ -211,4 +222,14 @@ export function applyMemoryAction(profile, action) {
   }
 
   return next;
+}
+
+export function mergeHeroAgentProfiles(primary, secondary) {
+  const first = primary ? sanitizeHeroAgentProfile(primary) : null;
+  const second = secondary ? sanitizeHeroAgentProfile(secondary) : null;
+  if (!first) return second || sanitizeHeroAgentProfile(EMPTY_HERO_AGENT_PROFILE);
+  if (!second) return first;
+  const firstTime = Date.parse(first.updatedAt || 0) || 0;
+  const secondTime = Date.parse(second.updatedAt || 0) || 0;
+  return firstTime >= secondTime ? first : second;
 }

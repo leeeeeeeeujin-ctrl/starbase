@@ -91,9 +91,13 @@ create table if not exists public.heroes (
   bgm_url text,
   bgm_duration_seconds integer,
   bgm_mime text,
+  agent_profile jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.heroes
+  add column if not exists agent_profile jsonb not null default '{}'::jsonb;
 
 alter table public.heroes enable row level security;
 
