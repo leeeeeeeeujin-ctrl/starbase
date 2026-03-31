@@ -99,8 +99,13 @@ function toPromptHero(
   out.backgroundUrl = out.background_url;
   out.bgm_url = hero.bgm_url || hero.bgmUrl || null;
   out.bgmUrl = out.bgm_url;
+  out.image_url = hero.image_url || hero.imageUrl || null;
+  out.imageUrl = out.image_url;
   out.audio_profile = hero.audio_profile || hero.audioProfile || null;
   out.audioProfile = out.audio_profile;
+  out.agent_profile =
+    hero.agent_profile && typeof hero.agent_profile === 'object' ? hero.agent_profile : {};
+  out.agentProfile = out.agent_profile;
   out.name_or_role = out.name || out.role || '';
   out.display_name = out.name_or_role;
 

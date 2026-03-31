@@ -9,6 +9,72 @@ import { judgeOutcome } from '@/lib/rank/judge';
 import { recordBattle } from '@/lib/rank/persist';
 import { fetchUserApiKey, upsertUserApiKey } from '@/lib/rank/userApiKeys';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { buildHeroGameContext } from '@/lib/characters/agentContext';
+
+function buildHeroSummaryFromSlot(slot = {}) {
+  return {
+    name: slot.name || slot.display_name || '이름 없는 캐릭터',
+    description: slot.description || '',
+    abilities: Array.from({ length: 12 }, (_, index) => slot[`ability${index + 1}`]).filter(Boolean),
+  };
+}
+
+function buildProfileFromSlot(slot = {}) {
+  const profile =
+    slot.agent_profile && typeof slot.agent_profile === 'object'
+      ? slot.agent_profile
+      : slot.agentProfile && typeof slot.agentProfile === 'object'
+        ? slot.agentProfile
+        : {};
+
+  return {
+    systemPrompt: profile.systemPrompt || '',
+    speakingStyle: profile.speakingStyle || '',
+    behaviorRules: profile.behaviorRules || '',
+    memories: Array.isArray(profile.memories) ? profile.memories : [],
+    recentChats: Array.isArray(profile.recentChats) ? profile.recentChats : [],
+    archives: Array.isArray(profile.archives) ? profile.archives : [],
+    runtimeCache:
+      profile.runtimeCache && typeof profile.runtimeCache === 'object' ? profile.runtimeCache : {},
+  };
+}
+
+function buildParticipantPromptForSlot(slotNo, slotsMap = {}) {
+  return Object.entries(slotsMap)
+    .filter(([entrySlotNo]) => Number(entrySlotNo) !== Number(slotNo))
+    .map(([, entry]) => {
+      const summary = buildHeroSummaryFromSlot(entry);
+      return [
+        summary.name,
+        entry?.side ? `진영: ${entry.side}` : '',
+        entry?.role ? `역할: ${entry.role}` : '',
+        summary.description ? `설명: ${summary.description}` : '',
+        summary.abilities.length ? `능력: ${summary.abilities.join(' / ')}` : '',
+      ]
+        .filter(Boolean)
+        .join(' | ');
+    })
+    .filter(Boolean)
+    .join('\n');
+}
+
+function buildAgentContexts(slotsMap = {}, gamePrompt = '') {
+  return Object.entries(slotsMap)
+    .map(([slotNo, slot]) => {
+      const summary = buildHeroSummaryFromSlot(slot);
+      return {
+        slotNo: Number(slotNo),
+        name: summary.name,
+        context: buildHeroGameContext({
+          heroSummary: summary,
+          profile: buildProfileFromSlot(slot),
+          gamePrompt,
+          participantPrompt: buildParticipantPromptForSlot(slotNo, slotsMap),
+        }),
+      };
+    })
+    .filter(entry => entry.context);
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
@@ -117,12 +183,24 @@ export default async function handler(req, res) {
 
     const tpl = startSlot?.template || '상대와 전투를 시뮬레이션하라.';
     const { text: prompt } = compileTemplate({ template: tpl, slotsMap, historyText: '' });
+    const agentContexts = buildAgentContexts(slotsMap, prompt);
+    const runtimePrompt = [
+      agentContexts.length ? '아래는 각 참가 캐릭터 AI의 게임 실행 문맥이다.' : '',
+      ...agentContexts.map(
+        entry => `[슬롯 ${entry.slotNo + 1}: ${entry.name}]\n${entry.context}`
+      ),
+      '아래 템플릿 지시를 우선해 전투를 시뮬레이션하고 결과를 서술하라.',
+      prompt,
+    ]
+      .filter(Boolean)
+      .join('\n\n----------------\n\n');
 
     // AI 호출(유저 키)
     const ai = await callChat({
       userApiKey: effectiveApiKey,
-      system: '당신은 비동기 PvE 랭킹 전투의 심판/해설자 겸 시뮬레이터입니다.',
-      user: prompt,
+      system:
+        '당신은 비동기 PvE 랭킹 전투의 심판/해설자 겸 시뮬레이터입니다. 참가 캐릭터의 설정, 능력, 기억 요약을 반영해 전투를 전개하되 과도한 잡담보다 행동과 결과를 우선합니다.',
+      user: runtimePrompt,
       apiVersion: effectiveApiVersion || 'gemini',
       providerOptions:
         (effectiveApiVersion || 'gemini') === 'gemini'
@@ -166,6 +244,7 @@ export default async function handler(req, res) {
       delta,
       battleId: record.battleId,
       text: ai.text,
+      agentContexts,
       participantStatus: {
         attacker: record.attackerStatus,
         defender: record.defenderStatus,
