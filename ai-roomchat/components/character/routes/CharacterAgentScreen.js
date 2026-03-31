@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { supabase } from '@/lib/supabase';
 import { buildHeroAgentPrompt } from '@/lib/characters/agentContext';
@@ -36,14 +36,28 @@ export default function CharacterAgentScreen({ hero }) {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
   const [hasActiveApiKey, setHasActiveApiKey] = useState(false);
+  const abortControllerRef = useRef(null);
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
     if (!heroId) return;
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
     const stored = readHeroAgentProfile(heroId);
     setProfile(stored || INITIAL_PROFILE);
     setInput('');
     setStatus('');
+    setLoading(false);
   }, [heroId]);
+
+  useEffect(() => () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -114,17 +128,27 @@ export default function CharacterAgentScreen({ hero }) {
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
-    if (!text || loading || !heroId) return;
+    if (!text || !heroId) return;
     if (!hasActiveApiKey) {
       setStatus('활성 API 키가 필요합니다.');
       return;
     }
 
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    const requestId = Date.now();
+    requestIdRef.current = requestId;
+
     setLoading(true);
-    setStatus('');
+    setStatus(loading ? '이전 응답을 취소하고 새 질문을 보냈습니다.' : '');
 
     const userMessage = {
-      id: `chat-${Date.now()}-user`,
+      id: `chat-${requestId}-user`,
       role: 'user',
       text,
       createdAt: new Date().toISOString(),
@@ -146,6 +170,7 @@ export default function CharacterAgentScreen({ hero }) {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
+        signal: controller.signal,
         body: JSON.stringify({
           prompt: buildPrompt(text),
         }),
@@ -164,11 +189,15 @@ export default function CharacterAgentScreen({ hero }) {
       }
 
       const assistantMessage = {
-        id: `chat-${Date.now()}-assistant`,
+        id: `chat-${requestId}-assistant`,
         role: 'assistant',
         text: String(parsed?.reply || data?.text || '').slice(0, HERO_CHAT_INPUT_MAX_LENGTH),
         createdAt: new Date().toISOString(),
       };
+
+      if (requestIdRef.current !== requestId) {
+        return;
+      }
 
       let updatedProfile = appendRecentChat(nextProfile, assistantMessage);
       updatedProfile = applyMemoryAction(updatedProfile, parsed?.memoryAction);
@@ -178,10 +207,19 @@ export default function CharacterAgentScreen({ hero }) {
         setStatus('메모리가 갱신되었습니다.');
       }
     } catch (error) {
+      if (error?.name === 'AbortError') {
+        if (requestIdRef.current === requestId) {
+          setStatus('응답을 취소했습니다.');
+        }
+        return;
+      }
       console.error('[CharacterAgent] chat failed', error);
       setStatus(error.message || '대화를 처리하지 못했습니다.');
     } finally {
-      setLoading(false);
+      if (requestIdRef.current === requestId) {
+        setLoading(false);
+        abortControllerRef.current = null;
+      }
     }
   }, [buildPrompt, hasActiveApiKey, heroId, input, loading, persistProfile, profile]);
 
@@ -264,26 +302,45 @@ export default function CharacterAgentScreen({ hero }) {
 
           <div style={{ padding: 16, display: 'grid', gap: 10, alignContent: 'start', overflowY: 'auto' }}>
             {profile.recentChats.length ? (
-              profile.recentChats.map(entry => (
-                <div
-                  key={entry.id}
-                  style={{
-                    justifySelf: entry.role === 'assistant' ? 'start' : 'end',
-                    maxWidth: '88%',
-                    borderRadius: entry.role === 'assistant' ? '18px 18px 18px 8px' : '18px 18px 8px 18px',
-                    background: entry.role === 'assistant' ? 'rgba(15,23,42,0.92)' : 'rgba(56,189,248,0.18)',
-                    border: entry.role === 'assistant'
-                      ? '1px solid rgba(148,163,184,0.18)'
-                      : '1px solid rgba(125,211,252,0.26)',
-                    padding: '12px 14px',
-                    color: '#e2e8f0',
-                    lineHeight: 1.6,
-                    whiteSpace: 'pre-wrap',
-                  }}
-                >
-                  {entry.text}
-                </div>
-              ))
+              <>
+                {profile.recentChats.map(entry => (
+                  <div
+                    key={entry.id}
+                    style={{
+                      justifySelf: entry.role === 'assistant' ? 'start' : 'end',
+                      maxWidth: '88%',
+                      borderRadius: entry.role === 'assistant' ? '18px 18px 18px 8px' : '18px 18px 8px 18px',
+                      background: entry.role === 'assistant' ? 'rgba(15,23,42,0.92)' : 'rgba(56,189,248,0.18)',
+                      border: entry.role === 'assistant'
+                        ? '1px solid rgba(148,163,184,0.18)'
+                        : '1px solid rgba(125,211,252,0.26)',
+                      padding: '12px 14px',
+                      color: '#e2e8f0',
+                      lineHeight: 1.6,
+                      whiteSpace: 'pre-wrap',
+                    }}
+                  >
+                    {entry.text}
+                  </div>
+                ))}
+                {loading ? (
+                  <div
+                    style={{
+                      justifySelf: 'start',
+                      maxWidth: '88%',
+                      borderRadius: '18px 18px 18px 8px',
+                      background: 'rgba(15,23,42,0.92)',
+                      border: '1px solid rgba(148,163,184,0.18)',
+                      padding: '12px 14px',
+                      color: '#94a3b8',
+                      lineHeight: 1.6,
+                      letterSpacing: '0.2em',
+                    }}
+                  >
+                    ...
+                  </div>
+                ) : null}
+              </>
             ) : (
               <div style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', padding: '36px 12px' }}>
                 아직 대화가 없습니다.
