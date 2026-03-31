@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import ReactFlow, { Background, Controls, MiniMap } from 'reactflow';
 import 'reactflow/dist/style.css';
 
@@ -23,6 +24,30 @@ export default function MakerEditorCanvas({
   onEdgesDelete,
 }) {
   const hasNodes = Array.isArray(nodes) && nodes.length > 0;
+  const flowRef = useRef(null);
+  const previousNodeCountRef = useRef(Array.isArray(nodes) ? nodes.length : 0);
+
+  useEffect(() => {
+    const currentCount = Array.isArray(nodes) ? nodes.length : 0;
+    const previousCount = previousNodeCountRef.current;
+    previousNodeCountRef.current = currentCount;
+
+    if (!flowRef.current) return;
+    if (currentCount <= 0) return;
+    if (currentCount === previousCount) return;
+
+    const timeoutId = window.setTimeout(() => {
+      try {
+        flowRef.current.fitView({
+          padding: 0.28,
+          duration: 420,
+          maxZoom: 1.15,
+        });
+      } catch {}
+    }, 40);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [nodes]);
 
   return (
     <div
@@ -121,6 +146,9 @@ export default function MakerEditorCanvas({
       )}
 
       <ReactFlow
+        onInit={instance => {
+          flowRef.current = instance;
+        }}
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
