@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { buildHeroGameContext } from '../../lib/characters/agentContext';
 import {
   buildTurnPromptContext,
   createBattleSession,
@@ -20,8 +21,55 @@ function buildParticipant(index, role, team, isActor = false) {
     meta: {
       description: isActor ? '플레이어가 조작하는 대표 캐릭터' : `${index + 1}번 프리뷰 참가자`,
       abilities: isActor ? ['능력 1', '능력 2'] : [`능력 ${index + 1}A`, `능력 ${index + 1}B`],
+      speakingStyle: isActor ? '차분하지만 주도적으로 말함' : '자기 역할에 맞게 짧게 반응함',
+      behaviorRules: isActor ? '중요한 선택에서는 먼저 상황을 파악하고 행동한다.' : '현재 팀과 역할에 맞춰 반응한다.',
+      runtimeCache: {
+        gameSummary: isActor
+          ? '대표 캐릭터. 상황을 먼저 읽고, 능력 1과 능력 2를 중심으로 대응한다.'
+          : `${index + 1}번 프리뷰 참가자. 자신의 팀과 역할을 우선해 반응한다.`,
+      },
     },
   };
+}
+
+function buildHeroSummaryFromParticipant(participant) {
+  return {
+    name: participant?.name || participant?.id || '이름 없는 캐릭터',
+    description: participant?.meta?.description || '',
+    abilities: Array.isArray(participant?.meta?.abilities) ? participant.meta.abilities : [],
+  };
+}
+
+function buildProfileFromParticipant(participant) {
+  const meta = participant?.meta || {};
+  return {
+    systemPrompt: meta.systemPrompt || '',
+    speakingStyle: meta.speakingStyle || '',
+    behaviorRules: meta.behaviorRules || '',
+    memories: Array.isArray(meta.memories) ? meta.memories : [],
+    recentChats: Array.isArray(meta.recentChats) ? meta.recentChats : [],
+    archives: Array.isArray(meta.archives) ? meta.archives : [],
+    runtimeCache: meta.runtimeCache && typeof meta.runtimeCache === 'object' ? meta.runtimeCache : {},
+  };
+}
+
+function buildParticipantPrompt(participant, allParticipants) {
+  return allParticipants
+    .filter(entry => entry?.id !== participant?.id)
+    .map(entry => {
+      const summary = buildHeroSummaryFromParticipant(entry);
+      return [
+        `${summary.name}`,
+        entry?.team ? `팀 ${entry.team}` : '',
+        entry?.role ? `역할 ${entry.role}` : '',
+        summary.description ? `설명: ${summary.description}` : '',
+        summary.abilities?.length ? `능력: ${summary.abilities.join(' / ')}` : '',
+      ]
+        .filter(Boolean)
+        .join(' | ');
+    })
+    .filter(Boolean)
+    .join('\n');
 }
 
 function getDemoParticipants(definition) {
@@ -141,6 +189,21 @@ export default function MobileTextBattlePlayer({ definition }) {
     () => buildTurnPromptContext(session, currentTurn, session?.actorId),
     [session, currentTurn]
   );
+  const agentContexts = useMemo(() => {
+    const targets = scopedParticipants.length ? scopedParticipants : participants;
+    return targets.map(participant => ({
+      id: participant.id,
+      name: participant.name,
+      context: buildHeroGameContext({
+        heroSummary: buildHeroSummaryFromParticipant(participant),
+        profile: buildProfileFromParticipant(participant),
+        gamePrompt: [currentTurn?.display || '', currentTurn?.promptTemplate || '']
+          .filter(Boolean)
+          .join('\n\n'),
+        participantPrompt: buildParticipantPrompt(participant, participants),
+      }),
+    }));
+  }, [currentTurn, participants, scopedParticipants]);
 
   if (!normalizedDefinition || !normalizedDefinition.turns?.length) {
     return (
@@ -384,7 +447,11 @@ export default function MobileTextBattlePlayer({ definition }) {
                   color: '#0f172a',
                 }}
               >
-                {currentTurn.promptTemplate || '프롬프트 본문이 아직 없습니다.'}
+                {agentContexts.length
+                  ? agentContexts
+                      .map(entry => `[${entry.name}]\n${entry.context}`)
+                      .join('\n\n----------------\n\n')
+                  : currentTurn.promptTemplate || '프롬프트 본문이 아직 없습니다.'}
               </pre>
               <pre
                 style={{
@@ -396,7 +463,7 @@ export default function MobileTextBattlePlayer({ definition }) {
                   color: '#475569',
                 }}
               >
-                {JSON.stringify(promptContext, null, 2)}
+                {JSON.stringify({ ...promptContext, agentContexts }, null, 2)}
               </pre>
             </div>
           </details>
