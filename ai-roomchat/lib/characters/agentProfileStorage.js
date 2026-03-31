@@ -27,6 +27,18 @@ function buildRuntimeCache(profile) {
   const memories = Array.isArray(profile.memories) ? profile.memories : [];
   const recentChats = Array.isArray(profile.recentChats) ? profile.recentChats : [];
   const archives = Array.isArray(profile.archives) ? profile.archives : [];
+  const recentBehavior = recentChats
+    .slice(-4)
+    .map(entry => `${entry.role === 'assistant' ? 'AI' : 'USER'}: ${entry.text}`);
+  const stableMemory = memories
+    .slice(-4)
+    .map((entry, index) => `${index + 1}. ${entry.text}`);
+  const tacticalMemory = memories
+    .slice(-2)
+    .map((entry, index) => `${index + 1}. ${entry.text}`);
+  const archiveEntries = archives
+    .slice(-2)
+    .map((entry, index) => `${index + 1}. ${entry.summary}`);
 
   return {
     personaSummary: collapseLines(
@@ -37,23 +49,34 @@ function buildRuntimeCache(profile) {
       ],
       900
     ),
-    memorySummary: collapseLines(
-      memories
-        .slice(-6)
-        .map((entry, index) => `${index + 1}. ${entry.text}`),
-      900
-    ),
+    memorySummary: collapseLines(stableMemory, 900),
     recentSummary: collapseLines(
       recentChats
         .slice(-8)
         .map(entry => `${entry.role === 'assistant' ? 'AI' : 'USER'}: ${entry.text}`),
       1000
     ),
-    archiveSummary: collapseLines(
-      archives
-        .slice(-2)
-        .map((entry, index) => `${index + 1}. ${entry.summary}`),
-      700
+    archiveSummary: collapseLines(archiveEntries, 700),
+    dialogSummary: collapseLines(
+      [
+        profile.systemPrompt ? `기본: ${profile.systemPrompt}` : '',
+        profile.speakingStyle ? `말투: ${profile.speakingStyle}` : '',
+        profile.behaviorRules ? `원칙: ${profile.behaviorRules}` : '',
+        stableMemory.length ? `핵심 기억:\n${stableMemory.join('\n')}` : '',
+        recentBehavior.length ? `최근 대화:\n${recentBehavior.join('\n')}` : '',
+        archiveEntries.length ? `장기 요약:\n${archiveEntries.join('\n')}` : '',
+      ],
+      1800
+    ),
+    gameSummary: collapseLines(
+      [
+        profile.systemPrompt ? `기본: ${profile.systemPrompt}` : '',
+        profile.speakingStyle ? `말투: ${profile.speakingStyle}` : '',
+        profile.behaviorRules ? `원칙: ${profile.behaviorRules}` : '',
+        tacticalMemory.length ? `전투 기억:\n${tacticalMemory.join('\n')}` : '',
+        archiveEntries.length ? `장기 요약:\n${archiveEntries.join('\n')}` : '',
+      ],
+      1300
     ),
     updatedAt: new Date().toISOString(),
   };
