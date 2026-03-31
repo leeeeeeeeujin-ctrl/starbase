@@ -455,16 +455,45 @@ async function handleCreate(req, res, user) {
   }
 
   try {
-    const currentCount = await countUserApiKeyringEntries(user.id);
-    if (currentCount >= USER_API_KEYRING_LIMIT) {
-      return res.status(400).json({ error: 'keyring_limit_reached' });
-    }
-
     const detection = await detectProvider(trimmedKey);
     if (!detection.ok) {
       return res
         .status(400)
         .json({ error: detection.error || 'detect_failed', detail: detection.detail });
+    }
+
+    const existingEntries = await fetchUserApiKeyring(user.id, { includeSecret: true });
+    const duplicateEntry =
+      existingEntries.find(entry => {
+        if (!entry?.apiKey) return false;
+        const sameSecret = String(entry.apiKey).trim() === trimmedKey;
+        const sameProvider = String(entry.provider || 'unknown') === String(detection.provider || 'unknown');
+        return sameSecret && sameProvider;
+      }) || null;
+
+    if (duplicateEntry) {
+      if (activate !== false) {
+        await upsertUserApiKey({
+          userId: user.id,
+          apiKey: trimmedKey,
+          apiVersion: detection.apiVersion,
+          geminiMode: detection.geminiMode,
+          geminiModel: detection.geminiModel,
+        });
+      }
+
+      return res.status(200).json({
+        ok: true,
+        entry: normalizeEntryResponse(duplicateEntry, { isActive: activate !== false }),
+        activated: activate !== false,
+        detection,
+        deduped: true,
+      });
+    }
+
+    const currentCount = existingEntries.length;
+    if (currentCount >= USER_API_KEYRING_LIMIT) {
+      return res.status(400).json({ error: 'keyring_limit_reached' });
     }
 
     const entry = await insertUserApiKeyringEntry({
