@@ -430,7 +430,7 @@ export default function MakerEditor() {
     <div
       style={{
         height: '100svh',
-        background: '#f1f5f9',
+        background: '#e2e8f0',
         display: 'flex',
         flexDirection: 'column',
         width: '100vw',
@@ -442,12 +442,12 @@ export default function MakerEditor() {
           flex: '1 1 auto',
           display: 'flex',
           flexDirection: 'column',
-          maxWidth: isMobile ? '100%' : 900,
+          maxWidth: isMobile ? '100%' : 860,
           width: '100%',
           margin: isMobile ? 0 : '0 auto',
-          padding: isMobile ? '10px 12px calc(env(safe-area-inset-bottom) + 80px)' : '12px 16px 110px',
+          padding: isMobile ? '10px 10px calc(env(safe-area-inset-bottom) + 88px)' : '12px 16px 110px',
           boxSizing: 'border-box',
-          gap: 10,
+          gap: 12,
         }}
       >
         <MinimalMakerHeader
@@ -486,7 +486,7 @@ export default function MakerEditor() {
         }}
         style={{
           position: 'fixed',
-          left: 16,
+          right: 16,
           bottom: 'calc(env(safe-area-inset-bottom) + 28px)',
           padding: '10px 18px',
           borderRadius: 999,
@@ -507,13 +507,15 @@ export default function MakerEditor() {
         <div
           style={{
             position: 'fixed',
-            right: 16,
-            top: 'calc(env(safe-area-inset-top) + 72px)',
-            bottom: 'calc(env(safe-area-inset-bottom) + 24px)',
-            width: 'min(420px, calc(100vw - 32px))',
+            left: isMobile ? 0 : 'auto',
+            right: isMobile ? 0 : 16,
+            top: isMobile ? 'auto' : 'calc(env(safe-area-inset-top) + 72px)',
+            bottom: 0,
+            width: isMobile ? '100vw' : 'min(420px, calc(100vw - 32px))',
             zIndex: 55,
             display: 'grid',
             gap: 8,
+            padding: isMobile ? 0 : undefined,
           }}
           id="maker-editor-inspector"
         >
@@ -522,8 +524,8 @@ export default function MakerEditor() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              padding: '10px 16px',
-              borderRadius: 16,
+              padding: isMobile ? '14px 16px 10px' : '10px 16px',
+              borderRadius: isMobile ? '20px 20px 0 0' : 16,
               background: '#111827',
               color: '#f8fafc',
               boxShadow: '0 18px 45px -26px rgba(15, 23, 42, 0.75)',
@@ -566,10 +568,11 @@ export default function MakerEditor() {
           <div
             style={{
               background: '#ffffff',
-              borderRadius: 18,
-              padding: '8px 10px',
+              borderRadius: isMobile ? 0 : 18,
+              padding: isMobile ? '8px 10px calc(env(safe-area-inset-bottom) + 18px)' : '8px 10px',
               boxShadow: '0 22px 50px -36px rgba(15, 23, 42, 0.6)',
               overflow: 'hidden',
+              maxHeight: isMobile ? '72svh' : 'none',
             }}
           >
             <MakerEditorPanel

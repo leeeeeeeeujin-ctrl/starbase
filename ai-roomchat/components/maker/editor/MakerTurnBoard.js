@@ -112,18 +112,18 @@ export default function MakerTurnBoard({
         flex: '1 1 auto',
         minHeight: 0,
         display: 'grid',
-        gap: 14,
-        gridTemplateRows: 'minmax(280px, 42%) minmax(0, 1fr)',
+        gap: 12,
+        gridTemplateRows: 'minmax(240px, auto) minmax(0, 1fr)',
       }}
     >
       <div
         style={{
-          borderRadius: 22,
+          borderRadius: 20,
           overflow: 'hidden',
           background: '#0f172a',
           border: '1px solid rgba(148, 163, 184, 0.2)',
-          boxShadow: '0 26px 64px -44px rgba(15, 23, 42, 0.82)',
-          padding: 16,
+          boxShadow: '0 24px 58px -42px rgba(15, 23, 42, 0.82)',
+          padding: 10,
         }}
       >
         <MobileTextBattlePlayer definition={definition} />
@@ -132,11 +132,11 @@ export default function MakerTurnBoard({
       <div
         style={{
           minHeight: 0,
-          borderRadius: 22,
+          borderRadius: 20,
           overflow: 'hidden',
           background: 'linear-gradient(180deg, #020617 0%, #0f172a 100%)',
           border: '1px solid rgba(148, 163, 184, 0.18)',
-          boxShadow: '0 26px 64px -44px rgba(15, 23, 42, 0.82)',
+          boxShadow: '0 24px 58px -42px rgba(15, 23, 42, 0.82)',
           display: 'grid',
           gridTemplateRows: 'auto minmax(0, 1fr)',
         }}
@@ -147,7 +147,7 @@ export default function MakerTurnBoard({
             alignItems: 'center',
             justifyContent: 'space-between',
             gap: 12,
-            padding: '16px 18px 12px',
+            padding: '14px 14px 12px',
             borderBottom: '1px solid rgba(148, 163, 184, 0.16)',
             color: '#e2e8f0',
           }}
@@ -176,7 +176,7 @@ export default function MakerTurnBoard({
           style={{
             minHeight: 0,
             overflowY: 'auto',
-            padding: 16,
+            padding: 12,
             display: 'grid',
             gap: 12,
             alignContent: 'start',
@@ -213,8 +213,8 @@ export default function MakerTurnBoard({
                 style={{
                   display: 'grid',
                   gap: 10,
-                  padding: 16,
-                  borderRadius: 18,
+                  padding: 14,
+                  borderRadius: 16,
                   background: selected ? 'rgba(30, 41, 59, 0.92)' : 'rgba(15, 23, 42, 0.78)',
                   border: selected
                     ? '1px solid rgba(59, 130, 246, 0.75)'
@@ -225,7 +225,7 @@ export default function MakerTurnBoard({
                   color: '#e2e8f0',
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+                <div style={{ display: 'grid', gap: 12 }}>
                   <div style={{ display: 'grid', gap: 6 }}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                       <span
@@ -260,7 +260,7 @@ export default function MakerTurnBoard({
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     <button
                       type="button"
                       onClick={() => {
