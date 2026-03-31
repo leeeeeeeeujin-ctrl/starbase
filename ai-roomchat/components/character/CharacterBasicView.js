@@ -40,7 +40,6 @@ import useHeroProfileInfo, {
 } from '@/hooks/character/useHeroProfileInfo';
 import useParticipationCarousel from '@/hooks/character/useParticipationCarousel';
 import useInfoSlider from '@/hooks/character/useInfoSlider';
-import CharacterBottomOverlayNav from './routes/CharacterBottomOverlayNav';
 
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 const MAX_BACKGROUND_SIZE = 8 * 1024 * 1024;
@@ -138,11 +137,13 @@ const styles = {
     textDecoration: 'none',
     padding: '10px 15px',
     borderRadius: 999,
-    background: 'rgba(125,211,252,0.92)',
-    color: '#082f49',
+    background: 'rgba(2, 6, 23, 0.62)',
+    color: '#e2e8f0',
     fontSize: 13,
     fontWeight: 900,
-    boxShadow: '0 18px 44px -28px rgba(125,211,252,0.72)',
+    border: '1px solid rgba(148, 163, 184, 0.26)',
+    backdropFilter: 'blur(10px)',
+    boxShadow: '0 18px 44px -28px rgba(15,23,42,0.72)',
   },
   heroImage: {
     position: 'absolute',
@@ -3644,7 +3645,6 @@ export default function CharacterBasicView({ hero }) {
           {bgmBar}
           <div style={{ ...styles.hudSection }}>
             <div style={styles.dockContainer}>
-              <CharacterBottomOverlayNav heroId={currentHero?.id ? String(currentHero.id) : ''} activeKey="character" fixed={false} />
               <div style={styles.dockToggleRow}>
                 <button
                   type="button"
