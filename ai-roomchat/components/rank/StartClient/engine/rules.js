@@ -1,5 +1,26 @@
 import { sanitizeVariableRules, VARIABLE_RULES_VERSION } from '../../../../lib/variableRules';
 
+function parseTurnTemplate(rawTemplate = '') {
+  const text = typeof rawTemplate === 'string' ? rawTemplate : '';
+  if (!text.startsWith('---\n')) {
+    return { body: text, meta: null };
+  }
+
+  const closingIndex = text.indexOf('\n---\n', 4);
+  if (closingIndex < 0) {
+    return { body: text, meta: null };
+  }
+
+  try {
+    return {
+      meta: JSON.parse(text.slice(4, closingIndex)),
+      body: text.slice(closingIndex + 5),
+    };
+  } catch {
+    return { body: text, meta: null };
+  }
+}
+
 function extractVersion(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const parsed = Number(raw.version);
@@ -103,6 +124,7 @@ function convertScopeRules(
 export function createNodeFromSlot(slot) {
   const warnings = [];
   const slotLabel = slot?.slot_no != null ? `#${slot.slot_no}` : null;
+  const parsedTemplate = parseTurnTemplate(slot?.template || '');
   const globalRules = convertScopeRules(slot?.var_rules_global, {
     scopeLabel: '전역',
     slotLabel,
@@ -117,7 +139,7 @@ export function createNodeFromSlot(slot) {
   return {
     id: String(slot.id),
     slot_no: slot.slot_no ?? null,
-    template: slot.template || '',
+    template: parsedTemplate.body,
     slot_type: slot.slot_type || 'ai',
     is_start: !!slot.is_start,
     options: {
@@ -125,6 +147,7 @@ export function createNodeFromSlot(slot) {
       visible_slots: Array.isArray(slot.visible_slots)
         ? slot.visible_slots.map(value => Number(value))
         : [],
+      turn_meta: parsedTemplate.meta,
       manual_vars_global: globalRules.manual,
       manual_vars_local: localRules.manual,
       active_vars_global: globalRules.active,

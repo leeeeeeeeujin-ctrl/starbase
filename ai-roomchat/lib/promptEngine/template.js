@@ -1,5 +1,26 @@
 import { buildVariableRules } from './variables';
 
+function parseTurnTemplate(rawTemplate = '') {
+  const text = typeof rawTemplate === 'string' ? rawTemplate : '';
+  if (!text.startsWith('---\n')) {
+    return { body: text, meta: null };
+  }
+
+  const closingIndex = text.indexOf('\n---\n', 4);
+  if (closingIndex < 0) {
+    return { body: text, meta: null };
+  }
+
+  try {
+    return {
+      meta: JSON.parse(text.slice(4, closingIndex)),
+      body: text.slice(closingIndex + 5),
+    };
+  } catch {
+    return { body: text, meta: null };
+  }
+}
+
 export function compileTemplate({
   template = '',
   slots = [],
@@ -9,7 +30,8 @@ export function compileTemplate({
   activeLocalNames = [],
   currentSlot = null,
 } = {}) {
-  let out = template;
+  const parsedTemplate = parseTurnTemplate(template);
+  let out = parsedTemplate.body;
 
   out = out.replace(/\{\{slot(\d+)\.(\w+)\}\}/g, (match, rawIndex, field) => {
     const index = Number(rawIndex);
@@ -43,7 +65,13 @@ export function compileTemplate({
     out = `${out}\n\n[변수/규칙]\n${variableRules}`;
   }
 
-  return { text: out, meta: { pickedSlot: currentSlot } };
+  return {
+    text: out,
+    meta: {
+      pickedSlot: currentSlot,
+      turnMeta: parsedTemplate.meta,
+    },
+  };
 }
 
 export function makeNodePrompt({

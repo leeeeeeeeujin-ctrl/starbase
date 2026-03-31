@@ -10,6 +10,27 @@ const RETIRED_STATUS_SET = new Set([
   'observer',
 ]);
 
+function parseTurnTemplate(rawTemplate = '') {
+  const text = typeof rawTemplate === 'string' ? rawTemplate : '';
+  if (!text.startsWith('---\n')) {
+    return { body: text, meta: null };
+  }
+
+  const closingIndex = text.indexOf('\n---\n', 4);
+  if (closingIndex < 0) {
+    return { body: text, meta: null };
+  }
+
+  try {
+    return {
+      meta: JSON.parse(text.slice(4, closingIndex)),
+      body: text.slice(closingIndex + 5),
+    };
+  } catch {
+    return { body: text, meta: null };
+  }
+}
+
 function normalizeStatus(value) {
   if (!value && value !== 0) return 'unknown';
   if (typeof value === 'string') {
@@ -218,7 +239,8 @@ function resolveSlotHero({ slotNo, baseHero, pools }) {
 export function compileTemplate({ template, slotsMap = {}, historyText = '' }) {
   if (!template) return { text: '', meta: {} };
 
-  let out = template;
+  const parsedTemplate = parseTurnTemplate(template);
+  let out = parsedTemplate.body;
   const lines = (historyText || '').split(/\r?\n/);
   const last1 = lines.slice(-1).join('\n');
   const last2 = lines.slice(-2).join('\n');
@@ -356,7 +378,13 @@ export function compileTemplate({ template, slotsMap = {}, historyText = '' }) {
     })()
   );
 
-  return { text: out, meta: { slots: slotMeta } };
+  return {
+    text: out,
+    meta: {
+      slots: slotMeta,
+      turnMeta: parsedTemplate.meta,
+    },
+  };
 }
 
 function stringifyValue(value) {
