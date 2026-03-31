@@ -4,6 +4,102 @@ import SidePanel from '../SidePanel';
 import EditorMonaco from '../../EditorMonaco.jsx';
 import { useStudioTemplate } from '../../../contexts/StudioStore';
 
+const TURN_META_VERSION = 1;
+const TURN_INPUT_MODES = ['none', 'text', 'choice', 'ability', 'target'];
+
+function getDefaultTurnMeta(slotType = 'ai') {
+  const common = {
+    version: TURN_META_VERSION,
+    title: '',
+    display: '',
+    inputMode: 'none',
+    inputLabel: '',
+    inputPlaceholder: '',
+    resultKey: '',
+    participantScope: [],
+  };
+
+  if (slotType === 'user_action') {
+    return {
+      ...common,
+      title: '유저 입력 턴',
+      inputMode: 'text',
+    };
+  }
+
+  if (slotType === 'system') {
+    return {
+      ...common,
+      title: '시스템 턴',
+    };
+  }
+
+  return {
+    ...common,
+    title: 'AI 턴',
+  };
+}
+
+function normalizeTurnMeta(rawMeta, slotType = 'ai') {
+  const base = getDefaultTurnMeta(slotType);
+  const source = rawMeta && typeof rawMeta === 'object' ? rawMeta : {};
+  const participantScope = Array.isArray(source.participantScope)
+    ? source.participantScope
+        .map(value => String(value || '').trim())
+        .filter(Boolean)
+    : [];
+
+  const inputMode = TURN_INPUT_MODES.includes(source.inputMode) ? source.inputMode : base.inputMode;
+
+  return {
+    ...base,
+    ...source,
+    version: TURN_META_VERSION,
+    title: String(source.title ?? base.title),
+    display: String(source.display ?? ''),
+    inputMode,
+    inputLabel: String(source.inputLabel ?? ''),
+    inputPlaceholder: String(source.inputPlaceholder ?? ''),
+    resultKey: String(source.resultKey ?? ''),
+    participantScope,
+  };
+}
+
+function parseTurnTemplate(rawTemplate, slotType = 'ai') {
+  const text = typeof rawTemplate === 'string' ? rawTemplate : '';
+  const fallback = {
+    meta: getDefaultTurnMeta(slotType),
+    body: text,
+  };
+
+  if (!text.startsWith('---\n')) {
+    return fallback;
+  }
+
+  const closingIndex = text.indexOf('\n---\n', 4);
+  if (closingIndex < 0) {
+    return fallback;
+  }
+
+  const rawMeta = text.slice(4, closingIndex).trim();
+  const body = text.slice(closingIndex + 5);
+
+  try {
+    const parsedMeta = JSON.parse(rawMeta);
+    return {
+      meta: normalizeTurnMeta(parsedMeta, slotType),
+      body,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function serializeTurnTemplate(meta, body, slotType = 'ai') {
+  const normalizedMeta = normalizeTurnMeta(meta, slotType);
+  return `---\n${JSON.stringify(normalizedMeta, null, 2)}\n---\n${body || ''}`;
+}
+
 // Keep lightweight and avoid window globals in render path
 export default function MakerEditorPanel({
   tabs,
@@ -22,6 +118,8 @@ export default function MakerEditorPanel({
   onAddPrompt,
 }) {
   const nodeData = selectedNode?.data || null;
+  const parsedTurn = nodeData ? parseTurnTemplate(nodeData.template || '', nodeData.slot_type || 'ai') : null;
+  const turnMeta = parsedTurn?.meta || null;
   // Optional: unify edits with Studio template JSON if provider exists
   let studio = null;
   try {
@@ -34,6 +132,56 @@ export default function MakerEditorPanel({
     : (typeof window !== 'undefined' && window.__makerActions && typeof window.__makerActions.addPromptNode === 'function'
         ? window.__makerActions.addPromptNode
         : null);
+
+  const updateSelectedNodeTemplate = nextTemplate => {
+    if (!selectedNodeId) return;
+
+    setNodes(current =>
+      current.map(node =>
+        node.id === selectedNodeId
+          ? { ...node, data: { ...node.data, template: nextTemplate } }
+          : node
+      )
+    );
+
+    if (studio && typeof studio.setTemplateText === 'function') {
+      try {
+        const obj = JSON.parse(studio.templateText || '{}');
+        if (Array.isArray(obj.nodes)) {
+          const idx = obj.nodes.findIndex(node => node?.id === selectedNodeId);
+          if (idx >= 0) {
+            const node = obj.nodes[idx] || {};
+            const data = { ...(node.data || {}), template: nextTemplate };
+            obj.nodes[idx] = { ...node, data };
+            studio.setTemplateText(JSON.stringify(obj, null, 2));
+          }
+        }
+      } catch {}
+    }
+  };
+
+  const updateTurnMeta = partial => {
+    if (!nodeData) return;
+    const current = parseTurnTemplate(nodeData.template || '', nodeData.slot_type || 'ai');
+    updateSelectedNodeTemplate(
+      serializeTurnTemplate(
+        {
+          ...current.meta,
+          ...partial,
+        },
+        current.body,
+        nodeData.slot_type || 'ai'
+      )
+    );
+  };
+
+  const updateTurnBody = value => {
+    if (!nodeData) return;
+    const current = parseTurnTemplate(nodeData.template || '', nodeData.slot_type || 'ai');
+    updateSelectedNodeTemplate(
+      serializeTurnTemplate(current.meta, value, nodeData.slot_type || 'ai')
+    );
+  };
 
   return (
     <section
@@ -204,7 +352,7 @@ export default function MakerEditorPanel({
               <div style={{ display: 'grid', gap: 12 }}>
                 <div style={{ display: 'grid', gap: 6 }}>
                   <label style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
-                    슬롯 타입
+                    턴 타입
                   </label>
                   <select
                     value={nodeData.slot_type || 'ai'}
@@ -224,59 +372,16 @@ export default function MakerEditorPanel({
                   </select>
                 </div>
 
-                <div style={{ display: 'grid', gap: 6 }}>
-                  <label style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
-                    API 키 라우팅 힌트
-                  </label>
-                  <div style={{ display: 'grid', gap: 6, gridTemplateColumns: '1fr 1fr' }}>
+                {turnMeta && (
+                  <div style={{ display: 'grid', gap: 10 }}>
                     <div style={{ display: 'grid', gap: 4 }}>
-                      <span style={{ fontSize: 11, color: '#6b7280' }}>apiKeySlot (번호)</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        value={
-                          Number.isFinite(nodeData?.config?.apiKeySlot)
-                            ? nodeData.config.apiKeySlot
-                            : ''
-                        }
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          const num = val === '' ? null : Number(val);
-                          const safe =
-                            num === null || Number.isFinite(num) ? num : nodeData?.config?.apiKeySlot || null;
-                          nodeData.onChange?.({
-                            config: {
-                              ...(nodeData.config || {}),
-                              apiKeySlot: safe,
-                            },
-                          });
-                        }}
-                        placeholder="예: 1"
-                        style={{
-                          borderRadius: 10,
-                          border: '1px solid #cbd5f5',
-                          padding: '6px 10px',
-                          fontSize: 13,
-                          background: '#fff',
-                        }}
-                      />
-                    </div>
-                    <div style={{ display: 'grid', gap: 4 }}>
-                      <span style={{ fontSize: 11, color: '#6b7280' }}>apiKeyToken (토큰)</span>
+                      <label style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
+                        턴 이름
+                      </label>
                       <input
                         type="text"
-                        value={nodeData?.config?.apiKeyToken || ''}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          nodeData.onChange?.({
-                            config: {
-                              ...(nodeData.config || {}),
-                              apiKeyToken: val,
-                            },
-                          });
-                        }}
-                        placeholder="예: hero"
+                        value={turnMeta.title || ''}
+                        onChange={event => updateTurnMeta({ title: event.target.value })}
                         style={{
                           borderRadius: 10,
                           border: '1px solid #cbd5f5',
@@ -286,16 +391,137 @@ export default function MakerEditorPanel({
                         }}
                       />
                     </div>
+                    <div style={{ display: 'grid', gap: 4 }}>
+                      <label style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
+                        유저 안내문
+                      </label>
+                      <textarea
+                        value={turnMeta.display || ''}
+                        onChange={event => updateTurnMeta({ display: event.target.value })}
+                        rows={3}
+                        style={{
+                          borderRadius: 10,
+                          border: '1px solid #cbd5f5',
+                          padding: '6px 10px',
+                          fontSize: 13,
+                          background: '#fff',
+                          resize: 'vertical',
+                        }}
+                      />
+                    </div>
+
+                    <div style={{ display: 'grid', gap: 6, gridTemplateColumns: '1fr 1fr' }}>
+                      <div style={{ display: 'grid', gap: 4 }}>
+                        <label style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
+                          입력 방식
+                        </label>
+                        <select
+                          value={turnMeta.inputMode || 'none'}
+                          onChange={event => updateTurnMeta({ inputMode: event.target.value })}
+                          style={{
+                            borderRadius: 10,
+                            border: '1px solid #cbd5f5',
+                            padding: '6px 10px',
+                            fontSize: 13,
+                            background: '#fff',
+                          }}
+                        >
+                          <option value="none">입력 없음</option>
+                          <option value="text">텍스트 입력</option>
+                          <option value="choice">선택지</option>
+                          <option value="ability">능력 선택</option>
+                          <option value="target">대상 선택</option>
+                        </select>
+                      </div>
+                      <div style={{ display: 'grid', gap: 4 }}>
+                        <label style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
+                          결과 키
+                        </label>
+                        <input
+                          type="text"
+                          value={turnMeta.resultKey || ''}
+                          onChange={event => updateTurnMeta({ resultKey: event.target.value })}
+                          style={{
+                            borderRadius: 10,
+                            border: '1px solid #cbd5f5',
+                            padding: '6px 10px',
+                            fontSize: 13,
+                            background: '#fff',
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gap: 6, gridTemplateColumns: '1fr 1fr' }}>
+                      <div style={{ display: 'grid', gap: 4 }}>
+                        <label style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
+                          입력 라벨
+                        </label>
+                        <input
+                          type="text"
+                          value={turnMeta.inputLabel || ''}
+                          onChange={event => updateTurnMeta({ inputLabel: event.target.value })}
+                          style={{
+                            borderRadius: 10,
+                            border: '1px solid #cbd5f5',
+                            padding: '6px 10px',
+                            fontSize: 13,
+                            background: '#fff',
+                          }}
+                        />
+                      </div>
+                      <div style={{ display: 'grid', gap: 4 }}>
+                        <label style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
+                          입력 placeholder
+                        </label>
+                        <input
+                          type="text"
+                          value={turnMeta.inputPlaceholder || ''}
+                          onChange={event => updateTurnMeta({ inputPlaceholder: event.target.value })}
+                          style={{
+                            borderRadius: 10,
+                            border: '1px solid #cbd5f5',
+                            padding: '6px 10px',
+                            fontSize: 13,
+                            background: '#fff',
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gap: 4 }}>
+                      <label style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
+                        참가자 범위
+                      </label>
+                      <input
+                        type="text"
+                        value={(turnMeta.participantScope || []).join(', ')}
+                        onChange={event =>
+                          updateTurnMeta({
+                            participantScope: event.target.value
+                              .split(',')
+                              .map(value => value.trim())
+                              .filter(Boolean),
+                          })
+                        }
+                        style={{
+                          borderRadius: 10,
+                          border: '1px solid #cbd5f5',
+                          padding: '6px 10px',
+                          fontSize: 13,
+                          background: '#fff',
+                        }}
+                      />
+                      <div style={{ fontSize: 11, color: '#6b7280', lineHeight: 1.4 }}>
+                        쉼표로 구분합니다. 예: `self`, `opponent`, `allies`, `team:red`
+                      </div>
+                    </div>
                   </div>
-                  <div style={{ fontSize: 11, color: '#6b7280', lineHeight: 1.4 }}>
-                    • `apiKeySlot`: 이 노드에서 AI 호출 시 슬롯 번호 힌트(예: 공격/수비 슬롯 번호)로 사용됩니다.<br />
-                    • `apiKeyToken`: 프롬프트 안 `@토큰`과 매칭해 참가자를 고를 때 우선순위를 주는 문자열 힌트입니다.
-                  </div>
-                </div>
+                )}
 
                 <div style={{ display: 'grid', gap: 6 }}>
                   <label style={{ fontSize: 12, color: '#475569', fontWeight: 600 }}>
-                    프롬프트 내용
+                    AI 프롬프트 본문
                   </label>
                   {nodeData.isStart ? (
                     <div style={{ padding: 12, border: '1px solid #334155', borderRadius: 10, background: '#0f172a', color: '#94a3b8', fontSize: 12, lineHeight: 1.6 }}>
@@ -306,46 +532,9 @@ export default function MakerEditorPanel({
                   ) : (
                     <div style={{ height: 180, border: '1px solid #1f2937', borderRadius: 10, overflow: 'hidden', background:'#020617' }}>
                       <EditorMonaco
-                        value={nodeData.template || ''}
+                        value={parsedTurn?.body || ''}
                         onChange={val => {
-                          console.log('[MakerEditorPanel] Monaco onChange', {
-                            selectedNodeId,
-                            newTemplateLength: val.length,
-                            oldTemplateLength: (nodeData.template || '').length,
-                            newValue: val.substring(0, 50)
-                          });
-                          
-                          // Direct update to nodes state (bypassing onChange callback closure issues)
-                          setNodes(current => {
-                            const updated = current.map(n =>
-                              n.id === selectedNodeId
-                                ? { ...n, data: { ...n.data, template: val } }
-                                : n
-                            );
-                            
-                            console.log('[MakerEditorPanel] setNodes result', {
-                              nodeCount: updated.length,
-                              updatedNodeTemplate: updated.find(n => n.id === selectedNodeId)?.data?.template?.substring(0, 50)
-                            });
-                            
-                            return updated;
-                          });
-                          
-                          // Also update studio JSON if available
-                          if (studio && typeof studio.setTemplateText === 'function') {
-                            try {
-                              const obj = JSON.parse(studio.templateText || '{}');
-                              if (Array.isArray(obj.nodes)) {
-                                const idx = obj.nodes.findIndex(n => n?.id === selectedNodeId);
-                                if (idx >= 0) {
-                                  const n = obj.nodes[idx] || {};
-                                  const data = { ...(n.data || {}), template: val };
-                                  obj.nodes[idx] = { ...n, data };
-                                  studio.setTemplateText(JSON.stringify(obj, null, 2));
-                                }
-                              }
-                            } catch {}
-                          }
+                          updateTurnBody(val);
                         }}
                         language="markdown"
                         theme="vs-dark"
@@ -363,6 +552,9 @@ export default function MakerEditorPanel({
           <div style={{ display: 'grid', gap: 8, color: '#475569', fontSize: 13, lineHeight: 1.6 }}>
             <p style={{ margin: 0 }}>
               • 턴을 선택해 AI에 보낼 내용, 유저에게 보여줄 안내, 입력이 필요한 시점을 구성하세요.
+            </p>
+            <p style={{ margin: 0 }}>
+              • 턴 설정은 프롬프트 본문과 함께 저장되며, 이후 런타임이 그대로 읽을 수 있는 형태를 목표로 정리 중입니다.
             </p>
             <p style={{ margin: 0 }}>
               • 연결을 선택하면 다음 턴으로 넘어가는 조건과 우선순위를 조정할 수 있습니다.

@@ -20,6 +20,28 @@ import {
   VARIABLE_RULES_VERSION,
 } from '../../lib/variableRules';
 
+function createDefaultTurnTemplate(slotType = 'ai') {
+  const base = {
+    version: 1,
+    title: 'AI 턴',
+    display: '',
+    inputMode: 'none',
+    inputLabel: '',
+    inputPlaceholder: '',
+    resultKey: '',
+    participantScope: [],
+  };
+
+  if (slotType === 'user_action') {
+    base.title = '유저 입력 턴';
+    base.inputMode = 'text';
+  } else if (slotType === 'system') {
+    base.title = '시스템 턴';
+  }
+
+  return `---\n${JSON.stringify(base, null, 2)}\n---\n`;
+}
+
 export function useMakerEditor() {
   const router = useRouter();
   const { id: setId } = router.query || {};
@@ -272,6 +294,9 @@ export function useMakerEditor() {
   const addPromptNode = useCallback(
     (type = 'ai', template = '') => {
       const flowId = `tmp_${Date.now()}`;
+      const nextTemplate = typeof template === 'string' && template.length > 0
+        ? template
+        : createDefaultTurnTemplate(type);
 
       setNodes(existing => {
         const slotNo = existing.length + 1;
@@ -282,7 +307,7 @@ export function useMakerEditor() {
             type: 'prompt',
             position: { x: 160 + existing.length * 200, y: 120 + existing.length * 50 },
             data: {
-              template: template,
+              template: nextTemplate,
               slot_type: type,
               slot_pick: '1',
               isStart: false,
