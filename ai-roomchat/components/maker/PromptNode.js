@@ -73,6 +73,34 @@ export default function PromptNode({ id, data, selected }) {
     return `공개 ${scope.join(', ')}`;
   }, [d.label, d.slot_type, d.template]);
 
+  const turnSummary = useMemo(() => {
+    const { meta } = parseTurnTemplate(d.template ?? d.label ?? '', d.slot_type || 'ai');
+    const items = [];
+
+    if (meta?.inputMode && meta.inputMode !== 'none') {
+      const inputLabel = meta.inputMode === 'text'
+        ? '텍스트 입력'
+        : meta.inputMode === 'choice'
+          ? '선택지 입력'
+          : meta.inputMode === 'ability'
+            ? '능력 선택'
+            : meta.inputMode === 'target'
+              ? '대상 선택'
+              : meta.inputMode;
+      items.push(inputLabel);
+    }
+
+    if (meta?.resultKey) {
+      items.push(`저장 ${meta.resultKey}`);
+    }
+
+    if (Array.isArray(meta?.participantScope) && meta.participantScope.length) {
+      items.push(`AI ${meta.participantScope.join(', ')}`);
+    }
+
+    return items;
+  }, [d.label, d.slot_type, d.template]);
+
   const stopDrag = (e) => { e.stopPropagation(); };
   const onNameChange = (e) => {
     const val = e.target.value || '';
@@ -179,6 +207,25 @@ export default function PromptNode({ id, data, selected }) {
         >
           {previewText || <span style={{ color: '#64748b' }}>내용 없음</span>}
         </div>
+        {turnSummary.length ? (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {turnSummary.slice(0, 3).map(item => (
+              <span
+                key={item}
+                style={{
+                  padding: '3px 7px',
+                  borderRadius: 999,
+                  background: 'rgba(148,163,184,0.14)',
+                  color: '#cbd5e1',
+                  fontSize: 10,
+                  fontWeight: 700,
+                }}
+              >
+                {item}
+              </span>
+            ))}
+          </div>
+        ) : null}
       </div>
     </div>
   );

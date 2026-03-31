@@ -67,11 +67,17 @@ export function describeBridge(data) {
   if (data?.probability != null && data.probability !== 1) {
     parts.push(`확률 ${Math.round(Number(data.probability) * 100)}%`);
   }
+  if (Array.isArray(data?.trigger_words) && data.trigger_words.length) {
+    parts.push(`입력 ${data.trigger_words.join(', ')}`);
+  }
+  if (data?.fallback) {
+    parts.push('기본 분기');
+  }
   if (data?.action && data.action !== 'continue') {
     parts.push(`→ ${data.action}`);
   }
 
-  return parts.join(' | ');
+  return parts.join(' | ') || '다음 턴';
 }
 
 export function buildPromptNode(slot, index) {
