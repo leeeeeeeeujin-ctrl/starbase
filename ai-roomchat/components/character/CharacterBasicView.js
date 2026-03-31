@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -1426,6 +1427,7 @@ const styles = {
 };
 
 export default function CharacterBasicView({ hero }) {
+  const router = useRouter();
   const { currentHero, setCurrentHero, heroName, description, abilityEntries } =
     useHeroProfileInfo(hero);
 
@@ -1438,6 +1440,7 @@ export default function CharacterBasicView({ hero }) {
   const [activeTab, setActiveTab] = useState(0);
   const [playerCollapsed, setPlayerCollapsed] = useState(true);
   const [dockCollapsed, setDockCollapsed] = useState(true);
+  const swipeStartRef = useRef(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [overlayHeroStep, setOverlayHeroStep] = useState(0);
   const [rankingAudioSnapshot, setRankingAudioSnapshot] = useState(null);
@@ -3573,6 +3576,37 @@ export default function CharacterBasicView({ hero }) {
 
   const showBgmBar = bgmEnabled;
 
+  const handlePageTouchStart = useCallback(event => {
+    if (event.target?.closest?.('[data-swipe-lock="true"]')) {
+      swipeStartRef.current = null;
+      return;
+    }
+    const touch = event.touches?.[0];
+    if (!touch) return;
+    swipeStartRef.current = { x: touch.clientX, y: touch.clientY };
+  }, []);
+
+  const handlePageTouchEnd = useCallback(
+    event => {
+      if (!swipeStartRef.current || !currentHero?.id) return;
+      const touch = event.changedTouches?.[0];
+      if (!touch) {
+        swipeStartRef.current = null;
+        return;
+      }
+      const dx = touch.clientX - swipeStartRef.current.x;
+      const dy = touch.clientY - swipeStartRef.current.y;
+      swipeStartRef.current = null;
+      if (Math.abs(dx) < 54 || Math.abs(dx) < Math.abs(dy) * 1.2) return;
+      if (dx > 0) {
+        router.push(`/lobby?heroId=${currentHero.id}`);
+        return;
+      }
+      router.push(`/character/${currentHero.id}/play`);
+    },
+    [currentHero?.id, router]
+  );
+
   const bgmBar = !showBgmBar ? null : (
     <div style={{ ...styles.hudSection }}>
       <div
@@ -3636,12 +3670,12 @@ export default function CharacterBasicView({ hero }) {
   return (
     <>
       {rankingOverlay}
-      <div style={backgroundStyle}>
+      <div style={backgroundStyle} onTouchStart={handlePageTouchStart} onTouchEnd={handlePageTouchEnd}>
         <div style={styles.stage}>
           {heroSlide}
         </div>
 
-        <div style={styles.hudContainer}>
+        <div style={styles.hudContainer} data-swipe-lock="true">
           {bgmBar}
           <div style={{ ...styles.hudSection }}>
             <div style={styles.dockContainer}>

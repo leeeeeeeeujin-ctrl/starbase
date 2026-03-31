@@ -90,7 +90,7 @@ export default function CharacterPlayScreen({ hero }) {
 
   return (
     <>
-      <section style={shellStyle}>
+      <section style={shellStyle} data-swipe-lock="true">
         <div style={{ display: 'grid', gap: 4 }}>
           <strong style={{ fontSize: 18 }}>참여한 게임</strong>
           <span style={{ fontSize: 13, color: '#94a3b8' }}>

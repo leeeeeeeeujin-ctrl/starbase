@@ -40,11 +40,13 @@ export default function CharacterAgentScreen({ hero }) {
               textDecoration: 'none',
               padding: '10px 16px',
               borderRadius: 999,
-              background: 'rgba(125,211,252,0.92)',
-              color: '#082f49',
+              background: 'rgba(2, 6, 23, 0.62)',
+              color: '#e2e8f0',
               fontSize: 13,
               fontWeight: 900,
-              boxShadow: '0 18px 44px -28px rgba(125,211,252,0.72)',
+              border: '1px solid rgba(148, 163, 184, 0.26)',
+              backdropFilter: 'blur(10px)',
+              boxShadow: '0 18px 44px -28px rgba(15,23,42,0.72)',
             }}
           >
             대화하기

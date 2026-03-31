@@ -4,6 +4,8 @@ import { useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 
+import CharacterRouteHud from './CharacterRouteHud';
+
 export default function CharacterRouteLayout({
   hero,
   activeTab = 'character',
@@ -27,6 +29,10 @@ export default function CharacterRouteLayout({
   );
 
   const handleTouchStart = useCallback(event => {
+    if (event.target?.closest?.('[data-swipe-lock="true"]')) {
+      startRef.current = null;
+      return;
+    }
     const touch = event.touches?.[0];
     if (!touch) return;
     startRef.current = { x: touch.clientX, y: touch.clientY };
@@ -84,7 +90,7 @@ export default function CharacterRouteLayout({
           zIndex: 1,
           width: 'min(720px, 100%)',
           margin: '0 auto',
-          padding: '18px 14px 112px',
+          padding: '18px 14px 176px',
         }}
       >
         <header
@@ -152,6 +158,7 @@ export default function CharacterRouteLayout({
         </main>
       </div>
 
+      <CharacterRouteHud hero={hero} activeKey={activeTab} />
     </div>
   );
 }
