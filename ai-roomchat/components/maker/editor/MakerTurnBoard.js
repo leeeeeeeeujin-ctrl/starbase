@@ -46,6 +46,7 @@ export default function MakerTurnBoard({
   setEdges,
 }) {
   const [connectTargets, setConnectTargets] = useState({});
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const orderedNodes = useMemo(() => {
     const list = Array.isArray(nodes) ? [...nodes] : [];
@@ -109,36 +110,53 @@ export default function MakerTurnBoard({
   return (
     <div
       style={{
-        flex: '1 1 auto',
-        minHeight: 0,
         display: 'grid',
         gap: 12,
-        gridTemplateRows: 'minmax(240px, auto) minmax(0, 1fr)',
       }}
     >
       <div
         style={{
           borderRadius: 20,
-          overflow: 'hidden',
           background: '#0f172a',
           border: '1px solid rgba(148, 163, 184, 0.2)',
           boxShadow: '0 24px 58px -42px rgba(15, 23, 42, 0.82)',
-          padding: 10,
+          padding: 12,
+          display: 'grid',
+          gap: 10,
         }}
       >
-        <MobileTextBattlePlayer definition={definition} />
+        <button
+          type="button"
+          onClick={() => setPreviewOpen(current => !current)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            width: '100%',
+            border: '1px solid rgba(148, 163, 184, 0.18)',
+            background: 'rgba(255,255,255,0.04)',
+            color: '#f8fafc',
+            borderRadius: 14,
+            padding: '10px 12px',
+            fontWeight: 700,
+          }}
+        >
+          <span>실행 프리뷰</span>
+          <span style={{ fontSize: 12, color: '#93c5fd' }}>{previewOpen ? '접기' : '펼치기'}</span>
+        </button>
+        {previewOpen ? <MobileTextBattlePlayer definition={definition} /> : null}
       </div>
 
       <div
         style={{
-          minHeight: 0,
           borderRadius: 20,
           overflow: 'hidden',
           background: 'linear-gradient(180deg, #020617 0%, #0f172a 100%)',
           border: '1px solid rgba(148, 163, 184, 0.18)',
           boxShadow: '0 24px 58px -42px rgba(15, 23, 42, 0.82)',
           display: 'grid',
-          gridTemplateRows: 'auto minmax(0, 1fr)',
+          gridTemplateRows: 'auto auto',
         }}
       >
         <div
@@ -174,8 +192,6 @@ export default function MakerTurnBoard({
 
         <div
           style={{
-            minHeight: 0,
-            overflowY: 'auto',
             padding: 12,
             display: 'grid',
             gap: 12,

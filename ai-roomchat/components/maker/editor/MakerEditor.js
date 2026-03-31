@@ -250,10 +250,6 @@ export default function MakerEditor() {
     selectedEdge,
     setSelectedNodeId,
     setSelectedEdge,
-    onNodeClick,
-    onEdgeClick,
-    onPaneClick,
-    onSelectionChange,
     panelTabs,
     activePanelTab,
     setActivePanelTab,
@@ -318,46 +314,7 @@ export default function MakerEditor() {
   }, []);
 
   const [variableDrawerOpen, setVariableDrawerOpen] = useState(false);
-  const [inspectorOpen, setInspectorOpen] = useState(false);
   const [receiptVisible, setReceiptVisible] = useState(null);
-
-  const openInspector = useCallback(
-    tabId => {
-      if (tabId) {
-        const hasTab = panelTabs?.some(tab => tab.id === tabId);
-        if (hasTab) {
-          setActivePanelTab(tabId);
-        } else if (panelTabs?.length) {
-          setActivePanelTab(panelTabs[0].id);
-        }
-      } else if (panelTabs?.length) {
-        setActivePanelTab(panelTabs[0].id);
-      }
-
-      setInspectorOpen(true);
-    },
-    [panelTabs, setActivePanelTab]
-  );
-
-  const handleNodeDoubleClick = useCallback(
-    (event, node) => {
-      if (typeof onNodeClick === 'function') {
-        onNodeClick(event, node);
-      }
-      openInspector('selection');
-    },
-    [onNodeClick, openInspector]
-  );
-
-  const handleEdgeDoubleClick = useCallback(
-    (event, edge) => {
-      if (typeof onEdgeClick === 'function') {
-        onEdgeClick(event, edge);
-      }
-      openInspector('selection');
-    },
-    [onEdgeClick, openInspector]
-  );
 
   useEffect(() => {
     if (!saveReceipt) {
@@ -429,17 +386,16 @@ export default function MakerEditor() {
   return (
     <div
       style={{
-        height: '100svh',
+        minHeight: '100svh',
         background: '#e2e8f0',
         display: 'flex',
         flexDirection: 'column',
         width: '100vw',
-        overflow: 'hidden',
+        overflowX: 'hidden',
       }}
     >
       <div
         style={{
-          flex: '1 1 auto',
           display: 'flex',
           flexDirection: 'column',
           maxWidth: isMobile ? '100%' : 860,
@@ -457,7 +413,7 @@ export default function MakerEditor() {
           onSave={unifiedSaveAll}
         />
 
-        <div style={{ flex: '1 1 auto', minHeight: 0, borderRadius: 20, overflow: 'hidden' }}>
+        <div style={{ display: 'grid', gap: 12 }}>
           <MakerTurnBoard
             definition={resolvedBattleDefinition}
             nodes={nodes}
@@ -467,112 +423,24 @@ export default function MakerEditor() {
               setSelectedNodeId(node?.id || null);
               setSelectedEdge(null);
             }}
-            onOpenInspector={openInspector}
+            onOpenInspector={tabId => {
+              const hasTab = panelTabs?.some(tab => tab.id === tabId);
+              if (hasTab) {
+                setActivePanelTab(tabId);
+              }
+            }}
             onDeleteNode={deletePrompt}
             onMarkAsStart={markAsStart}
             setEdges={setEdges}
           />
-        </div>
-      </div>
 
-      <button
-        type="button"
-        onClick={() => {
-          if (inspectorOpen) {
-            setInspectorOpen(false);
-            return;
-          }
-          openInspector();
-        }}
-        style={{
-          position: 'fixed',
-          right: 16,
-          bottom: 'calc(env(safe-area-inset-bottom) + 28px)',
-          padding: '10px 18px',
-          borderRadius: 999,
-          background: inspectorOpen ? '#1d4ed8' : '#111827',
-          color: '#fff',
-          fontWeight: 700,
-          border: 'none',
-          boxShadow: '0 18px 42px -18px rgba(17, 24, 39, 0.7)',
-          zIndex: 56,
-        }}
-        aria-expanded={inspectorOpen}
-        aria-controls="maker-editor-inspector"
-      >
-        {inspectorOpen ? '패널 닫기' : '패널 열기'}
-      </button>
-
-      {inspectorOpen && (
-        <div
-          style={{
-            position: 'fixed',
-            left: isMobile ? 0 : 'auto',
-            right: isMobile ? 0 : 16,
-            top: isMobile ? 'auto' : 'calc(env(safe-area-inset-top) + 72px)',
-            bottom: 0,
-            width: isMobile ? '100vw' : 'min(420px, calc(100vw - 32px))',
-            zIndex: 55,
-            display: 'grid',
-            gap: 8,
-            padding: isMobile ? 0 : undefined,
-          }}
-          id="maker-editor-inspector"
-        >
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: isMobile ? '14px 16px 10px' : '10px 16px',
-              borderRadius: isMobile ? '20px 20px 0 0' : 16,
-              background: '#111827',
-              color: '#f8fafc',
-              boxShadow: '0 18px 45px -26px rgba(15, 23, 42, 0.75)',
-            }}
-          >
-            <strong style={{ fontSize: 14 }}>배틀 편집</strong>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                type="button"
-                onClick={() => openInspector('guide')}
-                style={{
-                  padding: '4px 10px',
-                  borderRadius: 10,
-                  background: '#1d4ed8',
-                  color: '#fff',
-                  fontWeight: 600,
-                  border: 'none',
-                }}
-              >
-                가이드
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setInspectorOpen(false);
-                }}
-                style={{
-                  padding: '4px 10px',
-                  borderRadius: 10,
-                  background: 'rgba(15, 23, 42, 0.6)',
-                  color: '#e2e8f0',
-                  fontWeight: 600,
-                  border: '1px solid rgba(148, 163, 184, 0.35)',
-                }}
-              >
-                닫기
-              </button>
-            </div>
-          </div>
           <div
             style={{
               background: '#ffffff',
-              borderRadius: isMobile ? 0 : 18,
-              padding: isMobile ? '8px 10px calc(env(safe-area-inset-bottom) + 18px)' : '8px 10px',
-              boxShadow: '0 22px 50px -36px rgba(15, 23, 42, 0.6)',
+              borderRadius: 20,
+              padding: '8px 10px',
+              boxShadow: '0 22px 50px -36px rgba(15, 23, 42, 0.35)',
               overflow: 'hidden',
-              maxHeight: isMobile ? '72svh' : 'none',
             }}
           >
             <MakerEditorPanel
@@ -591,7 +459,7 @@ export default function MakerEditor() {
             />
           </div>
         </div>
-      )}
+      </div>
 
       <AddPromptFab onAdd={(type, template) => addPromptNode(type, template)} />
 
