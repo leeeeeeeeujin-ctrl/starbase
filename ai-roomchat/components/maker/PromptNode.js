@@ -35,7 +35,7 @@ export default function PromptNode({ id, data, selected }) {
       width: 252,
       maxWidth: 292,
       borderRadius: 16,
-      background: bg,
+      background: 'linear-gradient(180deg, #0b1220 0%, #0f172a 100%)',
       border,
       boxShadow: shadow,
       display: 'grid',
@@ -44,7 +44,7 @@ export default function PromptNode({ id, data, selected }) {
       padding: 12,
       color: '#e2e8f0',
       transition: 'transform 140ms ease, box-shadow 140ms ease, border 140ms ease',
-      transform: selected ? 'translateY(-1px)' : 'none',
+      transform: selected ? 'translateY(-2px) scale(1.01)' : 'none',
     };
   }, [selected]);
 
@@ -143,8 +143,8 @@ export default function PromptNode({ id, data, selected }) {
         }}
       />
       <div style={cardStyle}>
-        {/* Top row: badges */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ display: 'grid', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={typeBadgeStyle}>{typeLabel}</span>
           {slotLabel && (
             <span style={{ padding: '2px 6px', borderRadius: 999, background: 'rgba(148,163,184,0.25)', color: '#e2e8f0', fontSize: 11, fontWeight: 700 }}>{slotLabel}</span>
@@ -160,8 +160,9 @@ export default function PromptNode({ id, data, selected }) {
           {isInvisible && (
             <span style={{ marginLeft: isStart ? 6 : 'auto', padding: '2px 8px', borderRadius: 999, background: 'rgba(251,191,36,0.18)', color: '#fbbf24', fontSize: 10, fontWeight: 800 }}>숨김</span>
           )}
+          </div>
+          <div style={{ height: 2, borderRadius: 999, background: d.slot_type === 'user_action' ? '#38bdf8' : d.slot_type === 'system' ? '#f87171' : '#4ade80' }} />
         </div>
-        {/* Name input */}
         <input
           ref={nameInputRef}
           defaultValue={d.name || d.title || ''}
@@ -188,11 +189,10 @@ export default function PromptNode({ id, data, selected }) {
           }}
           aria-label="노드 이름"
         />
-        {/* Preview content */}
         <div
           style={{
             border: '1px solid rgba(148,163,184,0.35)',
-            background: 'rgba(2,6,23,0.5)',
+            background: 'rgba(2,6,23,0.58)',
             borderRadius: 10,
             padding: 8,
             minHeight: 68,
