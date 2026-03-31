@@ -1,42 +1,23 @@
 "use client";
 
-import { useEffect, useMemo, useState } from 'react';
-import dynamic from 'next/dynamic';
+import Link from 'next/link';
 
-const MainGameMobileUI = dynamic(() => import('@/components/game/MainGameMobileUI.jsx'), { ssr: false });
-
-export default function MobileGamePage(){
-  const [tpl, setTpl] = useState(null);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const url = new URL(window.location.href);
-        const tplUrl = url.searchParams.get('tpl');
-        if (tplUrl) {
-          const res = await fetch(tplUrl);
-          const obj = await res.json();
-          if (!alive) return;
-          setTpl(obj);
-        } else {
-          // Fallback: minimal template
-          setTpl({ nodes: [], edges: [], resources: { files: [] } });
-        }
-      } catch (e) {
-        if (!alive) return;
-        setError(String(e?.message || e));
-        setTpl({ nodes: [], edges: [], resources: { files: [] } });
-      }
-    })();
-    return () => { alive = false; };
-  }, []);
-
-  if (!tpl) return <div style={{ padding: 20 }}>불러오는 중…</div>;
-  if (error) {
-    return <div style={{ padding:20, color:'#b91c1c' }}>로드 오류: {error}</div>;
-  }
-
-  return <MainGameMobileUI template={tpl} />;
+export default function LegacyMobileGamePage() {
+  return (
+    <div style={{ minHeight: '100vh', padding: '40px 24px', background: '#020617', color: '#e2e8f0' }}>
+      <div style={{ maxWidth: 720, margin: '0 auto', display: 'grid', gap: 16 }}>
+        <p style={{ margin: 0, fontSize: 12, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#94a3b8' }}>
+          Legacy Route Disabled
+        </p>
+        <h1 style={{ margin: 0, fontSize: 32 }}>모바일 게임 미리보기는 중단되었습니다.</h1>
+        <p style={{ margin: 0, lineHeight: 1.7, color: '#cbd5e1' }}>
+          현재 모바일 게임 프리뷰는 레거시 UI에 의존하고 있어 비활성화했습니다.
+          이후 새 실행환경이 준비되면 이 경로도 그 기준으로 다시 연결합니다.
+        </p>
+        <Link href="/maker" style={{ color: '#93c5fd' }}>
+          메이커로 이동
+        </Link>
+      </div>
+    </div>
+  );
 }

@@ -1,44 +1,18 @@
 "use client";
 
-import dynamic from 'next/dynamic';
-import { useEffect, useMemo } from 'react';
-import { CodeWorkspaceProvider, useWorkspace } from '@/components/workspace/CodeWorkspaceProvider.jsx';
-
-const MainGameMobileUI = dynamic(() => import('@/components/game/MainGameMobileUI.jsx'), { ssr: false });
-
-function LocalTemplateRunner(){
-  const { files } = useWorkspace();
-  const tpl = useMemo(() => {
-    try {
-      const txt = String(files?.['/template.json']?.content || '{}');
-      return JSON.parse(txt || '{}');
-    } catch {
-      return {};
-    }
-  }, [files]);
-
-  return <MainGameMobileUI template={tpl} />;
-}
-
-export default function DevLocalGamePage(){
-  // Ensure mobile-friendly viewport sizing
-  useEffect(() => {
-    try {
-      const setVh = () => {
-        const vh = window.innerHeight * 0.01;
-        document.documentElement.style.setProperty('--vh', `${vh}px`);
-      };
-      setVh();
-      window.addEventListener('resize', setVh);
-      return () => window.removeEventListener('resize', setVh);
-    } catch {}
-  }, []);
-
+export default function LegacyLocalGameDevPage() {
   return (
-    <div style={{ height: 'calc(var(--vh, 1vh) * 100)', background:'#0b1220' }}>
-      <CodeWorkspaceProvider>
-        <LocalTemplateRunner />
-      </CodeWorkspaceProvider>
+    <div style={{ minHeight: '100vh', padding: '40px 24px', background: '#111827', color: '#e5e7eb' }}>
+      <div style={{ maxWidth: 720, margin: '0 auto', display: 'grid', gap: 16 }}>
+        <p style={{ margin: 0, fontSize: 12, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#9ca3af' }}>
+          Legacy Dev Route Disabled
+        </p>
+        <h1 style={{ margin: 0, fontSize: 32 }}>로컬 게임 개발 프리뷰를 비활성화했습니다.</h1>
+        <p style={{ margin: 0, lineHeight: 1.7, color: '#d1d5db' }}>
+          이 페이지는 제거 예정인 구식 게임 런타임 실험 경로입니다.
+          새 텍스트 배틀 실행기가 준비되기 전까지는 사용하지 않습니다.
+        </p>
+      </div>
     </div>
   );
 }

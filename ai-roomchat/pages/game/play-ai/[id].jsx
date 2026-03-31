@@ -1,53 +1,28 @@
-import React, { useEffect, useState } from "react";
-import { useRouter } from "next/router";
-import PlayScaffold from "../../../components/game/PlayScaffold.jsx";
-import WorkspaceFrame from '@/components/workspace/WorkspaceFrame.jsx';
+"use client";
 
-export default function PlayAIPage() {
-  const router = useRouter();
-  const { id } = router.query || {};
-  const sessionId = React.useMemo(() => `s_${id || 'dev'}`, [id]);
-  const gameId = id || "dev";
+import Link from 'next/link';
 
-  // Placeholder user; replace with real auth/session.
-  const user = { id: "u_demo", name: "Demo", role: "player", characterId: "c_demo" };
-  const character = null; // GameSessionShell will auto load reference sample when null
-
-  // Network adapter can be plugged in later; for now null.
-  const network = null;
-
-  // Slot config can inject a custom adapterFactory; exampleAdapter is default if omitted.
-  const slotConfig = { adapterFactory: undefined, options: {} };
-
-  const [initFiles, setInitFiles] = useState(null);
-
-  // Load server-first workspace set files for this set id
-  useEffect(() => {
-    let alive = true;
-    if (!id) return;
-    (async () => {
-      try {
-        let r = await fetch(`/api/workspace/sets/${encodeURIComponent(id)}`);
-        if (!alive) return;
-        if (r.ok) {
-          const json = await r.json();
-          setInitFiles(Array.isArray(json.files) ? json.files : []);
-          return;
-        }
-        if (r.status === 404) { setInitFiles([]); return; }
-      } catch {}
-    })();
-    return () => { alive = false; };
-  }, [id]);
-
-  if (!id) return <div style={{ padding: 20 }}>게임 ID 확인 중…</div>;
-  if (!initFiles) return <div style={{ padding: 20 }}>작업공간 불러오는 중…</div>;
-
+export default function LegacyAIGamePlayPage() {
   return (
-    <WorkspaceFrame id={id}>
-      <div style={{ position:'fixed', inset:0 }}>
-        <PlayScaffold sessionId={sessionId} gameId={gameId} user={user} character={character} network={network} slotConfig={slotConfig} />
+    <div style={{ minHeight: '100vh', padding: '40px 24px', background: '#111827', color: '#e5e7eb' }}>
+      <div style={{ maxWidth: 720, margin: '0 auto', display: 'grid', gap: 16 }}>
+        <p style={{ margin: 0, fontSize: 12, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#9ca3af' }}>
+          Legacy Route Disabled
+        </p>
+        <h1 style={{ margin: 0, fontSize: 32 }}>기존 AI 플레이 경로를 비활성화했습니다.</h1>
+        <p style={{ margin: 0, lineHeight: 1.7, color: '#d1d5db' }}>
+          이 경로는 구식 게임 엔진에 묶여 있어 유지하지 않습니다.
+          새 텍스트 배틀 런타임이 들어오기 전까지는 열리지 않습니다.
+        </p>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <Link href="/maker" style={{ color: '#f9fafb' }}>
+            메이커로 이동
+          </Link>
+          <Link href="/match" style={{ color: '#93c5fd' }}>
+            매치 화면으로 이동
+          </Link>
+        </div>
       </div>
-    </WorkspaceFrame>
+    </div>
   );
 }

@@ -1,133 +1,28 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import dynamic from 'next/dynamic';
-import { useRouter } from 'next/router';
-import { GameRuntimeProvider, useGameRuntime } from '@/components/game/GameRuntimeProvider.jsx';
-import WorkspaceFrame from '@/components/workspace/WorkspaceFrame.jsx';
-import { useWorkspace } from '@/components/workspace/CodeWorkspaceProvider.jsx';
-import { loadHooksFromSource } from '@/lib/runtime/safeEvalHookModule.js';
+import Link from 'next/link';
 
-const MainGameMobileUI = dynamic(() => import('@/components/game/MainGameMobileUI.jsx'), { ssr: false });
-
-function Runner({ tpl }){
-  const api = useGameRuntime();
-  const { files } = useWorkspace();
-  // derive graph from template.nodes/edges if present
-  const graph = useMemo(() => {
-    // Prefer workspace graph
-    try {
-      const node = files?.['/graph/prompt-graph.json'];
-      if (node && typeof node.content === 'string' && node.content.trim()) {
-        const obj = JSON.parse(node.content);
-        const nodes = Array.isArray(obj?.nodes) ? obj.nodes : [];
-        const edges = Array.isArray(obj?.edges) ? obj.edges : [];
-        return { nodes, edges };
-      }
-    } catch {}
-    // Fallback to template
-    try {
-      const nodes = Array.isArray(tpl?.nodes) ? tpl.nodes.map(n => ({ id: n.id, type: n.type || 'system', label: n.label || n.text || '' })) : [];
-      const edges = Array.isArray(tpl?.edges) ? tpl.edges.map(e => ({ id: e.id || `${e.source}-${e.target}`, source: e.source, target: e.target, label: e.label || '' })) : [];
-      return { nodes, edges };
-    } catch { return { nodes: [], edges: [] }; }
-  }, [tpl, files]);
-
-  useEffect(() => {
-    if (!tpl) return;
-    // hooks from workspace
-    let hooks = {};
-    try {
-      const hnode = files?.['/game/hooks/automation.js'];
-      const src = typeof hnode?.content === 'string' ? hnode.content : '';
-      if (src.trim()) {
-        hooks = loadHooksFromSource(src);
-      }
-    } catch {}
-    // runtime config
-    let config = tpl?.runtime?.config || {};
-    try {
-      const cnode = files?.['/game/runtime.config.json'];
-      const raw = typeof cnode?.content === 'string' ? cnode.content : '';
-      if (raw.trim()) config = JSON.parse(raw);
-    } catch {}
-    api.setRuntime({ graph, hooks, config, files: files || {} });
-  }, [tpl, graph, files, api]);
-
+export default function LegacyGamePlayPage() {
   return (
-    <MainGameMobileUI
-      template={tpl}
-      runtimeFeed={api.aiMessages}
-      runtimeSecondsLeft={api.secondsLeft}
-      onForceNext={() => api.forceNext()}
-      onPlayerChat={({ text }) => api.sendChat({ id:`c_${Date.now()}`, from:'player', to:'all', text, ts:Date.now() })}
-    />
-  );
-}
-
-export default function PlayByIdPage(){
-  const router = useRouter();
-  const { id } = router.query || {};
-  const [tpl, setTpl] = useState(null);
-  const [error, setError] = useState('');
-  const [initFiles, setInitFiles] = useState(null);
-
-  useEffect(() => {
-    let alive = true;
-    if (!id) return;
-    (async () => {
-      try {
-        const res = await fetch(`/api/game/register?id=${encodeURIComponent(id)}`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        const url = data?.url || null;
-        if (!alive) return;
-        if (url) {
-          const r2 = await fetch(url);
-          const obj = await r2.json();
-          if (!alive) return;
-          setTpl(obj || { nodes: [], edges: [], resources: { files: [] } });
-        } else {
-          setTpl({ nodes: [], edges: [], resources: { files: [] } });
-        }
-      } catch (e) {
-        if (!alive) return;
-        setError(String(e?.message || e));
-        setTpl({ nodes: [], edges: [], resources: { files: [] } });
-      }
-    })();
-    return () => { alive = false; };
-  }, [id]);
-  // Load server-first workspace set files for this set id
-  useEffect(() => {
-    let alive = true;
-    if (!id) return;
-    (async () => {
-      try {
-        let r = await fetch(`/api/workspace/sets/${encodeURIComponent(id)}`);
-        if (!alive) return;
-        if (r.ok) {
-          const json = await r.json();
-          setInitFiles(Array.isArray(json.files) ? json.files : []);
-          return;
-        }
-        if (r.status === 404) { setInitFiles([]); return; }
-      } catch {}
-    })();
-    return () => { alive = false; };
-  }, [id]);
-
-  if (!id) return <div style={{ padding: 20 }}>게임 ID 확인 중…</div>;
-  if (!tpl) return <div style={{ padding: 20 }}>불러오는 중…</div>;
-  if (error) {
-    return <div style={{ padding:20, color:'#b91c1c' }}>로드 오류: {error}</div>;
-  }
-
-  return (
-    <WorkspaceFrame id={id}>
-      <GameRuntimeProvider>
-        <Runner tpl={tpl} />
-      </GameRuntimeProvider>
-    </WorkspaceFrame>
+    <div style={{ minHeight: '100vh', padding: '40px 24px', background: '#0f172a', color: '#e2e8f0' }}>
+      <div style={{ maxWidth: 720, margin: '0 auto', display: 'grid', gap: 16 }}>
+        <p style={{ margin: 0, fontSize: 12, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#94a3b8' }}>
+          Legacy Route Disabled
+        </p>
+        <h1 style={{ margin: 0, fontSize: 32 }}>이 게임 실행 경로는 정리 중입니다.</h1>
+        <p style={{ margin: 0, lineHeight: 1.7, color: '#cbd5e1' }}>
+          기존 게임 런타임은 제거 대상이라 이 페이지에서 더 이상 실행하지 않습니다.
+          메이커 중심의 새 텍스트 배틀 실행 흐름으로 교체하는 중입니다.
+        </p>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <Link href="/maker" style={{ color: '#f8fafc' }}>
+            메이커로 이동
+          </Link>
+          <Link href="/match" style={{ color: '#93c5fd' }}>
+            매치 화면으로 이동
+          </Link>
+        </div>
+      </div>
+    </div>
   );
 }
