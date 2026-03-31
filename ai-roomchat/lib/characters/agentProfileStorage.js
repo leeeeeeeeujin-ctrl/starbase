@@ -15,6 +15,50 @@ function getKey(heroId) {
   return `${PREFIX}${heroId}`;
 }
 
+function collapseLines(values, limit, prefix = '') {
+  const text = values
+    .map(value => clampText(value, limit))
+    .filter(Boolean)
+    .join(prefix ? `\n${prefix}` : '\n');
+  return clampText(prefix && text ? `${prefix}${text}` : text, limit);
+}
+
+function buildRuntimeCache(profile) {
+  const memories = Array.isArray(profile.memories) ? profile.memories : [];
+  const recentChats = Array.isArray(profile.recentChats) ? profile.recentChats : [];
+  const archives = Array.isArray(profile.archives) ? profile.archives : [];
+
+  return {
+    personaSummary: collapseLines(
+      [
+        profile.systemPrompt ? `기본: ${profile.systemPrompt}` : '',
+        profile.speakingStyle ? `말투: ${profile.speakingStyle}` : '',
+        profile.behaviorRules ? `원칙: ${profile.behaviorRules}` : '',
+      ],
+      900
+    ),
+    memorySummary: collapseLines(
+      memories
+        .slice(-6)
+        .map((entry, index) => `${index + 1}. ${entry.text}`),
+      900
+    ),
+    recentSummary: collapseLines(
+      recentChats
+        .slice(-8)
+        .map(entry => `${entry.role === 'assistant' ? 'AI' : 'USER'}: ${entry.text}`),
+      1000
+    ),
+    archiveSummary: collapseLines(
+      archives
+        .slice(-2)
+        .map((entry, index) => `${index + 1}. ${entry.summary}`),
+      700
+    ),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 export function readHeroAgentProfile(heroId) {
   if (typeof window === 'undefined' || !heroId) return null;
   try {
@@ -43,7 +87,7 @@ export function sanitizeHeroAgentProfile(profile = {}) {
   const memories = Array.isArray(profile.memories) ? profile.memories : [];
   const recentChats = Array.isArray(profile.recentChats) ? profile.recentChats : [];
 
-  return {
+  const sanitized = {
     systemPrompt: clampText(profile.systemPrompt || '', 2000),
     speakingStyle: clampText(profile.speakingStyle || '', 400),
     behaviorRules: clampText(profile.behaviorRules || '', 1000),
@@ -73,6 +117,9 @@ export function sanitizeHeroAgentProfile(profile = {}) {
       .filter(entry => entry.text)
       .slice(-HERO_RECENT_CHAT_MAX),
   };
+
+  sanitized.runtimeCache = buildRuntimeCache(sanitized);
+  return sanitized;
 }
 
 export function appendRecentChat(profile, message) {

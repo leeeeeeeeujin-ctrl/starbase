@@ -13,6 +13,7 @@ export function buildHeroAgentPrompt({
   const recentChats = Array.isArray(profile?.recentChats) ? profile.recentChats : [];
   const memories = Array.isArray(profile?.memories) ? profile.memories : [];
   const archives = Array.isArray(profile?.archives) ? profile.archives : [];
+  const runtimeCache = profile?.runtimeCache || {};
 
   const memoryText = memories.map((entry, index) => `${index}. ${entry.text}`).join('\n');
   const recentText = recentChats
@@ -33,9 +34,7 @@ export function buildHeroAgentPrompt({
     `이름: ${heroSummary?.name || '이름 없는 캐릭터'}`,
     `설명: ${heroSummary?.description || '없음'}`,
     `능력: ${heroSummary?.abilities?.length ? heroSummary.abilities.join(' / ') : '없음'}`,
-    `기본 프롬프트: ${profile?.systemPrompt || '없음'}`,
-    `말투/어조: ${profile?.speakingStyle || '없음'}`,
-    `행동 원칙: ${profile?.behaviorRules || '없음'}`,
+    `실행용 성격 요약: ${runtimeCache?.personaSummary || '없음'}`,
     `메모리 슬롯 제한: ${HERO_MEMORY_SLOT_MAX}개`,
     `메모리 한 칸 길이 제한: ${HERO_MEMORY_ENTRY_MAX_LENGTH}자`,
     `장기 아카이브 보관 제한: ${HERO_ARCHIVE_MAX}개`,
@@ -46,9 +45,9 @@ export function buildHeroAgentPrompt({
     '응답은 반드시 JSON 하나만 반환한다.',
     '형식:',
     '{"reply":"유저에게 보일 답변","memoryAction":{"type":"none|add|update|delete","index":0,"text":"메모리 내용"}}',
-    `현재 메모리:\n${memoryText || '없음'}`,
-    `최근 대화:\n${recentText || '없음'}`,
-    `장기 아카이브 요약:\n${archiveText || '없음'}`,
+    `현재 메모리 요약:\n${runtimeCache?.memorySummary || memoryText || '없음'}`,
+    `최근 대화 요약:\n${runtimeCache?.recentSummary || recentText || '없음'}`,
+    `장기 아카이브 요약:\n${runtimeCache?.archiveSummary || archiveText || '없음'}`,
     `유저 입력:\n${userInput}`,
   ].join('\n\n');
 }
