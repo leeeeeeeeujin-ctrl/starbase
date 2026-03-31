@@ -396,7 +396,9 @@ export function useMakerEditor() {
     },
     selection: {
       selectedNodeId,
+      setSelectedNodeId,
       selectedEdge,
+      setSelectedEdge,
       selectedNode,
       onNodeClick,
       onEdgeClick,
