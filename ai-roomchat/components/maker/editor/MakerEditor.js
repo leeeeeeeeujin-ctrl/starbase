@@ -13,8 +13,6 @@ import MinimalMakerHeader from './MinimalMakerHeader';
 import MakerEditorPanel from './MakerEditorPanel';
 import AddPromptFab from './AddPromptFab';
 import VariableDrawer from './VariableDrawer';
-import AdvancedToolsPanel from './AdvancedToolsPanel';
-import AutoUpdateListener from '../../infra/AutoUpdateListener.jsx';
 import MobileTextBattlePreviewOverlay from '../../battle/MobileTextBattlePreviewOverlay.jsx';
 import { isWorkspaceDebug } from '../../../lib/workspace/debugFlags.js';
 
@@ -38,7 +36,7 @@ export default function MakerEditor() {
     };
   }, []);
 
-  const { status, graph, selection, variables, persistence, history, version, definition: battleDefinition } = useMakerEditor();
+  const { status, graph, selection, variables, persistence, history, definition: battleDefinition } = useMakerEditor();
 
   let templateText = '';
   let setTemplateText = () => {};
@@ -284,36 +282,7 @@ export default function MakerEditor() {
     }
   }, [busy, saveAll, files, status?.setInfo, status?.router]);
 
-  const {
-    entries: saveHistory,
-    storageKey: historyStorageKey,
-    exportEntries: exportHistory,
-    clearEntries: clearHistory,
-    receipt: saveReceipt,
-    ackReceipt,
-  } = history;
-
-  const { alert: versionAlert, clearAlert: clearVersionAlert } = version;
-
-  useEffect(() => {
-    try {
-      if (typeof window !== 'undefined') {
-        window.__makerActions = {
-          addPromptNode,
-          saveAll: unifiedSaveAll,
-          unifiedSaveAll,
-        };
-      }
-    } catch {}
-
-    return () => {
-      try {
-        if (typeof window !== 'undefined' && window.__makerActions) {
-          delete window.__makerActions;
-        }
-      } catch {}
-    };
-  }, [addPromptNode, unifiedSaveAll]);
+  const { receipt: saveReceipt, ackReceipt } = history;
 
   useEffect(() => {
     try {
@@ -333,7 +302,6 @@ export default function MakerEditor() {
 
   const [variableDrawerOpen, setVariableDrawerOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
-  const [advancedToolsOpen, setAdvancedToolsOpen] = useState(false);
   const [receiptVisible, setReceiptVisible] = useState(null);
   const [battlePreviewOpen, setBattlePreviewOpen] = useState(false);
 
@@ -343,9 +311,6 @@ export default function MakerEditor() {
         const hasTab = panelTabs?.some(tab => tab.id === tabId);
         if (hasTab) {
           setActivePanelTab(tabId);
-          if (tabId === 'history') {
-            setAdvancedToolsOpen(true);
-          }
         } else if (panelTabs?.length) {
           setActivePanelTab(panelTabs[0].id);
         }
@@ -377,10 +342,6 @@ export default function MakerEditor() {
     },
     [onEdgeClick, openInspector]
   );
-
-  const handleDismissVersionAlert = useCallback(() => {
-    clearVersionAlert();
-  }, [clearVersionAlert]);
 
   useEffect(() => {
     if (!saveReceipt) {
@@ -460,7 +421,6 @@ export default function MakerEditor() {
         overflow: 'hidden',
       }}
     >
-      <AutoUpdateListener intervalMs={60000} auto={false} />
       <div
         style={{
           flex: '1 1 auto',
@@ -481,62 +441,6 @@ export default function MakerEditor() {
           onOpenVariables={() => setVariableDrawerOpen(true)}
           onSave={unifiedSaveAll}
         />
-
-        {versionAlert && (
-          <div
-            style={{
-              borderRadius: 14,
-              background: '#fff7ed',
-              border: '1px solid #fdba74',
-              padding: '14px 16px',
-              display: 'grid',
-              gap: 10,
-            }}
-          >
-            <div style={{ display: 'grid', gap: 4 }}>
-              <strong style={{ color: '#9a3412', fontSize: 14 }}>저장된 버전 알림</strong>
-              <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6 }}>{versionAlert.summary}</p>
-              {Array.isArray(versionAlert.details) && versionAlert.details.length > 0 && (
-                <ul style={{ margin: '0 0 0 18px', padding: 0, fontSize: 12, lineHeight: 1.5 }}>
-                  {versionAlert.details.map(detail => (
-                    <li key={detail}>{detail}</li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                onClick={unifiedSaveAll}
-                style={{
-                  padding: '6px 14px',
-                  borderRadius: 10,
-                  border: 'none',
-                  background: '#c2410c',
-                  color: '#fff',
-                  fontWeight: 600,
-                  opacity: busy ? 0.6 : 1,
-                }}
-              >
-                {busy ? '저장 중…' : '지금 자동 갱신'}
-              </button>
-              <button
-                type="button"
-                onClick={handleDismissVersionAlert}
-                style={{
-                  padding: '6px 12px',
-                  borderRadius: 10,
-                  border: '1px solid #fdba74',
-                  background: '#fffbeb',
-                  color: '#9a3412',
-                  fontWeight: 500,
-                }}
-              >
-                나중에 다시 보기
-              </button>
-            </div>
-          </div>
-        )}
 
         <div style={{ flex: '1 1 auto', minHeight: 0, borderRadius: 20, overflow: 'hidden' }}>
           <MakerEditorCanvas
@@ -562,7 +466,6 @@ export default function MakerEditor() {
         onClick={() => {
           if (inspectorOpen) {
             setInspectorOpen(false);
-            setAdvancedToolsOpen(false);
             return;
           }
           openInspector();
@@ -632,7 +535,6 @@ export default function MakerEditor() {
                 type="button"
                 onClick={() => {
                   setInspectorOpen(false);
-                  setAdvancedToolsOpen(false);
                 }}
                 style={{
                   padding: '4px 10px',
@@ -669,15 +571,6 @@ export default function MakerEditor() {
               onInsertToken={appendTokenToSelected}
               setNodes={setNodes}
               setEdges={setEdges}
-              onRequestAdvancedTools={() => setAdvancedToolsOpen(prev => !prev)}
-            />
-            <AdvancedToolsPanel
-              expanded={advancedToolsOpen}
-              onToggle={() => setAdvancedToolsOpen(prev => !prev)}
-              storageKey={historyStorageKey}
-              historyEntries={saveHistory}
-              onExport={exportHistory}
-              onClear={clearHistory}
             />
           </div>
         </div>
@@ -731,22 +624,6 @@ export default function MakerEditor() {
           >
             <strong style={{ fontSize: 14 }}>저장 완료</strong>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                onClick={() => openInspector('history')}
-                style={{
-                  appearance: 'none',
-                  border: '1px solid rgba(148, 163, 184, 0.45)',
-                  background: 'rgba(15, 23, 42, 0.2)',
-                  color: '#bfdbfe',
-                  borderRadius: 12,
-                  fontSize: 12,
-                  padding: '4px 10px',
-                  cursor: 'pointer',
-                }}
-              >
-                히스토리 보기
-              </button>
               <button
                 type="button"
                 onClick={() => ackReceipt(receiptVisible.id)}

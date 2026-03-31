@@ -10,9 +10,9 @@ import {
 import { parseTurnTemplate, serializeTurnTemplate } from '../../../lib/battle/turnTemplate';
 import { normalizeVisibleList } from './graphTransforms';
 
-const TAB_LABELS = { selection: '선택', guide: '가이드', history: '히스토리' };
+const TAB_LABELS = { selection: '선택', guide: '가이드' };
 
-export const variablePanelTabs = ['selection', 'guide', 'history'];
+export const variablePanelTabs = ['selection', 'guide'];
 
 export function useGraphSelection(nodes, setNodes) {
   const [selectedNodeId, setSelectedNodeId] = useState(null);

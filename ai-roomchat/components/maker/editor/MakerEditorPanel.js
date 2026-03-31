@@ -19,8 +19,6 @@ export default function MakerEditorPanel({
   onInsertToken,
   setNodes,
   setEdges,
-  onRequestAdvancedTools = () => {},
-  onAddPrompt,
 }) {
   const nodeData = selectedNode?.data || null;
   const parsedTurn = nodeData ? parseTurnTemplate(nodeData.template || '', nodeData.slot_type || 'ai') : null;
@@ -30,13 +28,6 @@ export default function MakerEditorPanel({
   try {
     studio = useStudioTemplate();
   } catch {}
-
-  // Fallback to global actions if prop not provided
-  const addPrompt = typeof onAddPrompt === 'function'
-    ? onAddPrompt
-    : (typeof window !== 'undefined' && window.__makerActions && typeof window.__makerActions.addPromptNode === 'function'
-        ? window.__makerActions.addPromptNode
-        : null);
 
   const updateSelectedNodeTemplate = nextTemplate => {
     if (!selectedNodeId) return;
@@ -100,34 +91,6 @@ export default function MakerEditorPanel({
         width: '100%',
       }}
     >
-      {/* 코드 패널은 상위 MakerEditor에서 렌더되며, 여기서는 프롬프트·노드 UI만 관리 */}
-      {/* 프롬프트 생성 툴바 (패널 열기 버튼 위) */}
-      {addPrompt && (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <button
-            type="button"
-            onClick={() => addPrompt('ai', '')}
-            style={{ padding: '6px 10px', borderRadius: 10, border: '1px solid #c7d2fe', background: '#eef2ff', color: '#3730a3', fontWeight: 700, fontSize: 12 }}
-          >
-            + AI 턴
-          </button>
-          <button
-            type="button"
-            onClick={() => addPrompt('user_action', '')}
-            style={{ padding: '6px 10px', borderRadius: 10, border: '1px solid #bae6fd', background: '#e0f2fe', color: '#075985', fontWeight: 700, fontSize: 12 }}
-          >
-            + 유저 입력 턴
-          </button>
-          <button
-            type="button"
-            onClick={() => addPrompt('system', '')}
-            style={{ padding: '6px 10px', borderRadius: 10, border: '1px solid #fecaca', background: '#fee2e2', color: '#991b1b', fontWeight: 700, fontSize: 12 }}
-          >
-            + 시스템
-          </button>
-        </div>
-      )}
-
       <div
         style={{
           display: 'flex',
@@ -216,8 +179,8 @@ export default function MakerEditorPanel({
                   : '편집할 턴 또는 연결을 선택하세요.'}
             </span>
             <span style={{ fontSize: 11, color: '#6b7280', lineHeight: 1.4 }}>
-              메이커의 그래프는 배틀 흐름의 기준선입니다. 각 노드에서 유저 입력, AI 호출,
-              시스템 안내를 순서대로 정의하고 저장된 내용이 세션 런타임으로 전달됩니다.
+              각 노드는 한 턴입니다. 유저 안내문, 입력 방식, AI 프롬프트 본문을 정하고
+              연결선으로 다음 턴 흐름을 만듭니다.
             </span>
 
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -470,32 +433,6 @@ export default function MakerEditorPanel({
           </div>
         )}
 
-        {activeTab === 'history' && (
-          <div
-            style={{ display: 'grid', gap: 12, fontSize: 13, lineHeight: 1.6, color: '#475569' }}
-          >
-            <p style={{ margin: 0 }}>
-              자동 버전 업그레이드 히스토리는 이제 고급 도구 패널에서 확인하고 내보낼 수 있습니다.
-              아래 버튼을 눌러 고급 도구를 열어보세요.
-            </p>
-            <button
-              type="button"
-              onClick={onRequestAdvancedTools}
-              style={{
-                padding: '6px 12px',
-                borderRadius: 10,
-                border: '1px solid #94a3b8',
-                background: '#f1f5f9',
-                color: '#0f172a',
-                fontWeight: 600,
-                fontSize: 12,
-                justifySelf: 'start',
-              }}
-            >
-              고급 도구 열기
-            </button>
-          </div>
-        )}
       </div>
     </section>
   );
