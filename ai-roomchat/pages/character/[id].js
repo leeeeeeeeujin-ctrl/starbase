@@ -3,8 +3,7 @@
 import { useEffect, useMemo } from 'react';
 import { useRouter } from 'next/router';
 
-import CharacterRouteLayout from '@/components/character/routes/CharacterRouteLayout';
-import CharacterOverviewScreen from '@/components/character/routes/CharacterOverviewScreen';
+import CharacterBasicView from '@/components/character/CharacterBasicView';
 import { useCharacterDetail } from '@/hooks/character/useCharacterDetail';
 import { persistHeroSelection } from '@/lib/heroes/selectedHeroStorage';
 
@@ -125,14 +124,5 @@ export default function CharacterDetailPage() {
     );
   }
 
-  return (
-    <CharacterRouteLayout
-      hero={hero}
-      activeTab="overview"
-      title={hero?.name || '캐릭터'}
-      subtitle="가운데 영역을 좌우로 밀어 캐릭터 AI와 통계·게임 페이지로 이동할 수 있습니다."
-    >
-      <CharacterOverviewScreen hero={hero} />
-    </CharacterRouteLayout>
-  );
+  return <CharacterBasicView hero={hero} />;
 }
