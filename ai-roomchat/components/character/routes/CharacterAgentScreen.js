@@ -135,10 +135,9 @@ export default function CharacterAgentScreen({ hero }) {
     }
     remoteSaveTimerRef.current = setTimeout(async () => {
       try {
-        const { error } = await supabase
-          .from(withTable('heroes'))
-          .update({ agent_profile: profile })
-          .eq('id', heroId);
+        const { error } = await withTable(supabase, 'heroes', tableName =>
+          supabase.from(tableName).update({ agent_profile: profile }).eq('id', heroId)
+        );
         if (error) throw error;
       } catch (error) {
         console.error('[CharacterAgent] failed to sync agent profile', error);
@@ -394,7 +393,9 @@ export default function CharacterAgentScreen({ hero }) {
 
       if (heroChanged) {
         const payload = normalizeHeroProfilePayload(nextHeroDraft, hero?.name || '이름 없는 영웅');
-        const { error } = await supabase.from(withTable('heroes')).update(payload).eq('id', heroId);
+        const { error } = await withTable(supabase, 'heroes', tableName =>
+          supabase.from(tableName).update(payload).eq('id', heroId)
+        );
         if (error) throw error;
         setHeroDraft(clampHeroProfileDraft(payload));
       }
@@ -438,10 +439,9 @@ export default function CharacterAgentScreen({ hero }) {
     const payload = normalizeHeroProfilePayload(clamped, hero?.name || '이름 없는 영웅');
     setSaveStatus('저장 중…');
     try {
-      const { error } = await supabase
-        .from(withTable('heroes'))
-        .update(payload)
-        .eq('id', heroId);
+      const { error } = await withTable(supabase, 'heroes', tableName =>
+        supabase.from(tableName).update(payload).eq('id', heroId)
+      );
       if (error) throw error;
       setHeroDraft(clampHeroProfileDraft(payload));
       setSaveStatus('캐릭터 정보를 저장했습니다.');
@@ -534,13 +534,6 @@ export default function CharacterAgentScreen({ hero }) {
                 </span>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => setPanelOpen(prev => !prev)}
-              style={styles.headerAction}
-            >
-              {panelOpen ? '패널 접기' : '패널 펼치기'}
-            </button>
           </div>
 
           <div ref={chatLogRef} style={styles.chatLog} onScroll={handleChatScroll}>
@@ -581,17 +574,17 @@ export default function CharacterAgentScreen({ hero }) {
               placeholder="캐릭터와 대화하듯 입력합니다."
               style={styles.inputBox}
             />
+            <button
+              type="button"
+              onClick={handleSend}
+              disabled={!input.trim() || !hasActiveApiKey}
+              style={styles.sendButton(!input.trim() || !hasActiveApiKey)}
+            >
+              {loading ? '응답 중…' : hasActiveApiKey ? '보내기' : '키 필요'}
+            </button>
             <div style={styles.inputMetaRow}>
               <span style={styles.metaText}>{`${input.length}/${HERO_CHAT_INPUT_MAX_LENGTH}`}</span>
               {status ? <span style={styles.statusText}>{status}</span> : null}
-              <button
-                type="button"
-                onClick={handleSend}
-                disabled={!input.trim() || !hasActiveApiKey}
-                style={styles.sendButton(!input.trim() || !hasActiveApiKey)}
-              >
-                {loading ? '응답 중…' : hasActiveApiKey ? '보내기' : '키 필요'}
-              </button>
             </div>
           </div>
         </div>
@@ -870,9 +863,9 @@ const styles = {
   chatHeader: {
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     gap: 14,
-    padding: '18px 18px 12px',
+    padding: '18px 18px 10px',
     background: 'linear-gradient(180deg, rgba(15,23,42,0.78) 0%, rgba(15,23,42,0.18) 100%)',
   },
   identityRow: {
@@ -917,17 +910,6 @@ const styles = {
   identityMeta: {
     fontSize: 12,
     color: '#cbd5e1',
-  },
-  headerAction: {
-    appearance: 'none',
-    border: '1px solid rgba(148,163,184,0.3)',
-    borderRadius: 999,
-    padding: '10px 14px',
-    background: 'rgba(2,6,23,0.48)',
-    color: '#e2e8f0',
-    fontSize: 12,
-    fontWeight: 800,
-    flex: '0 0 auto',
   },
   chatLog: {
     display: 'grid',
@@ -979,6 +961,9 @@ const styles = {
   },
   inputArea: {
     display: 'grid',
+    gridTemplateColumns: '1fr auto',
+    gridTemplateRows: 'auto auto',
+    alignItems: 'end',
     gap: 10,
     padding: 16,
     borderTop: '1px solid rgba(148,163,184,0.16)',
@@ -1003,21 +988,26 @@ const styles = {
     boxShadow: '0 18px 40px -28px rgba(2,6,23,0.9)',
   },
   inputBox: {
-    minHeight: 116,
-    resize: 'vertical',
+    minHeight: 52,
+    maxHeight: 88,
+    resize: 'none',
     borderRadius: 18,
     border: '1px solid rgba(148,163,184,0.24)',
     background: 'rgba(15,23,42,0.72)',
     color: '#f8fafc',
     padding: '14px 16px',
     fontSize: 14,
-    lineHeight: 1.6,
+    lineHeight: 1.45,
+    gridColumn: '1 / 2',
+    gridRow: '1 / 2',
   },
   inputMetaRow: {
     display: 'flex',
     alignItems: 'center',
     gap: 10,
     flexWrap: 'wrap',
+    gridColumn: '1 / 3',
+    gridRow: '2 / 3',
   },
   metaText: {
     color: '#94a3b8',
@@ -1028,20 +1018,23 @@ const styles = {
     fontSize: 12,
   },
   sendButton: disabled => ({
-    marginLeft: 'auto',
     appearance: 'none',
     border: '1px solid rgba(125,211,252,0.24)',
     borderRadius: 999,
-    padding: '10px 16px',
+    padding: '0 16px',
+    minHeight: 52,
     background: disabled ? 'rgba(51,65,85,0.64)' : 'rgba(125,211,252,0.92)',
     color: disabled ? '#94a3b8' : '#082f49',
     fontWeight: 900,
     cursor: disabled ? 'not-allowed' : 'pointer',
+    gridColumn: '2 / 3',
+    gridRow: '1 / 2',
+    alignSelf: 'stretch',
   }),
   panelWrap: {
     position: 'fixed',
     left: '50%',
-    bottom: 10,
+    bottom: 126,
     transform: 'translateX(-50%)',
     width: 'min(560px, calc(100% - 24px))',
     zIndex: 26,

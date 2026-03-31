@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useRef } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/router';
 
 import CharacterRouteHud from './CharacterRouteHud';
@@ -9,8 +8,6 @@ import CharacterRouteHud from './CharacterRouteHud';
 export default function CharacterRouteLayout({
   hero,
   activeTab = 'character',
-  title,
-  subtitle,
   children,
 }) {
   const router = useRouter();
@@ -93,63 +90,10 @@ export default function CharacterRouteLayout({
           padding: '18px 14px 176px',
         }}
       >
-        <header
-          style={{
-            display: 'grid',
-            gap: 10,
-            padding: '14px 16px',
-            borderRadius: 24,
-            background: 'rgba(2, 6, 23, 0.72)',
-            border: '1px solid rgba(148, 163, 184, 0.22)',
-            boxShadow: '0 30px 70px -50px rgba(15, 23, 42, 0.9)',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-            <Link
-              href="/roster"
-              style={{
-                textDecoration: 'none',
-                color: '#cbd5e1',
-                fontSize: 13,
-                fontWeight: 700,
-                padding: '8px 12px',
-                borderRadius: 999,
-                background: 'rgba(15,23,42,0.78)',
-                border: '1px solid rgba(148,163,184,0.24)',
-              }}
-            >
-              ← 로스터
-            </Link>
-            {heroId ? (
-              <Link
-                href={`/character/${heroId}`}
-                style={{
-                  textDecoration: 'none',
-                  color: '#cbd5e1',
-                  fontSize: 13,
-                  fontWeight: 700,
-                  padding: '8px 12px',
-                  borderRadius: 999,
-                  background: 'rgba(15,23,42,0.78)',
-                  border: '1px solid rgba(148,163,184,0.24)',
-                }}
-              >
-                캐릭터로
-              </Link>
-            ) : null}
-          </div>
-
-          <div style={{ display: 'grid', gap: 4 }}>
-            <strong style={{ fontSize: 22, lineHeight: 1.25 }}>{title}</strong>
-            <span style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.6 }}>{subtitle}</span>
-          </div>
-        </header>
-
         <main
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
           style={{
-            marginTop: 14,
             display: 'grid',
             gap: 14,
           }}
