@@ -17,21 +17,11 @@ import { isWorkspaceDebug } from '../../lib/workspace/debugFlags.js';
 import { useWorkspace } from './CodeWorkspaceProvider.jsx';
 import FileTree from './FileTree.jsx';
 import EditorMonaco from '../EditorMonaco.jsx';
-import dynamic from 'next/dynamic';
 import SyncTemplateToVfs from './SyncTemplateToVfs.jsx';
 import AICodeChatPanel from './AICodeChatPanel.jsx';
 import PlayDebugPanel from './PlayDebugPanel.jsx';
 import { useBuiltinRuntime } from './hooks/useBuiltinRuntime.js';
 import { useGridEngine } from './hooks/useGridEngine.js';
-
-const GameShell = dynamic(() => import('../game/GameShell.jsx'), {
-  ssr: false,
-  loading: () => (
-    <div style={{ display: 'grid', placeItems: 'center', height: '100%', color: '#94a3b8' }}>
-      <div>플레이 화면 로딩 중…</div>
-    </div>
-  ),
-});
 
 async function setupRuntimeAdapters({ setId, files, cfg, bus }) {
   const meta = await loadCapabilitiesMeta(String(setId)).catch(() => ({ capabilities: [] }));
@@ -542,24 +532,32 @@ function PlayOverlayContent({ templateBinding }) {
       {issuesPanel}
       {debugPanel}
       <ErrorBoundary onRetry={() => { try { window.dispatchEvent(new Event('play:retry')); } catch {} }}>
-        <GameShell
-          template={tpl}
-          runtimeBus={bus}
-          runtimeFeatures={runtimeFeatures}
-          shellConfig={
-            files?.['/game/ui.shell.json']
-              ? (() => {
-                  try {
-                    return JSON.parse(files['/game/ui.shell.json'].content || '{}');
-                  } catch {
-                    return null;
-                  }
-                })()
-              : null
-          }
-          mode="play"
-          rankContext={debugRankContext}
-        />
+        <div
+          style={{
+            display: 'grid',
+            placeItems: 'center',
+            minHeight: '100%',
+            padding: 32,
+            border: '1px solid rgba(148,163,184,0.24)',
+            borderRadius: 20,
+            background: 'rgba(2,6,23,0.72)',
+            color: '#cbd5e1',
+            textAlign: 'center',
+          }}
+        >
+          <div style={{ maxWidth: 560, display: 'grid', gap: 10 }}>
+            <div style={{ fontSize: 12, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#94a3b8' }}>
+              Legacy Play Disabled
+            </div>
+            <div style={{ fontSize: 28, fontWeight: 700, color: '#f8fafc' }}>
+              워크스페이스 플레이 프리뷰는 정리 중입니다.
+            </div>
+            <div style={{ fontSize: 14, lineHeight: 1.7 }}>
+              기존 `GameShell` 기반 프리뷰는 새 텍스트 배틀 실행기로 교체할 예정입니다.
+              지금은 메이커와 데이터 구조를 먼저 정리합니다.
+            </div>
+          </div>
+        </div>
       </ErrorBoundary>
     </div>
   );

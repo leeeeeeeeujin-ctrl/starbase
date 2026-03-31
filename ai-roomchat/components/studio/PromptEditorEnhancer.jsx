@@ -102,17 +102,18 @@ function Inner({ children, externalText, onExternalChange }){
           <div style={{ position:'absolute', top:8, right:8 }}>
             <button onClick={() => setShowPlay(false)}>닫기</button>
           </div>
-          {/* Embedding via dynamic import to avoid SSR */}
-          <div style={{ height:'100%' }}>
-            {(() => {
-              const Comp = dynamic(() => import('../game/MainGameMobileUI.jsx'), { ssr:false });
-              try {
-                const obj = JSON.parse(templateText || '{}');
-                return <Comp template={obj} />;
-              } catch {
-                return <Comp template={{}} />;
-              }
-            })()}
+          <div style={{ height:'100%', display:'grid', placeItems:'center', padding:32, background:'#020617', color:'#e2e8f0' }}>
+            <div style={{ maxWidth:560, display:'grid', gap:10, textAlign:'center' }}>
+              <div style={{ fontSize:12, letterSpacing:'0.08em', textTransform:'uppercase', color:'#94a3b8' }}>
+                Legacy Play Disabled
+              </div>
+              <div style={{ fontSize:28, fontWeight:700 }}>
+                프롬프트 편집기 플레이 프리뷰는 비활성화되었습니다.
+              </div>
+              <div style={{ fontSize:14, lineHeight:1.7, color:'#cbd5e1' }}>
+                기존 게임 미리보기는 새 텍스트 배틀 실행기로 교체할 예정입니다.
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -202,4 +203,3 @@ export default function PromptEditorEnhancer({ children, templateText, onTemplat
     </StudioPersistentProvider>
   );
 }
-

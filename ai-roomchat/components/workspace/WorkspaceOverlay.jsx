@@ -4,8 +4,6 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useWorkspace } from "./CodeWorkspaceProvider.jsx";
 import FileTree from "./FileTree.jsx";
 import EditorMonaco from "../EditorMonaco.jsx";
-import dynamic from 'next/dynamic';
-const MainGameMobileUI = dynamic(() => import('../game/MainGameMobileUI.jsx'), { ssr: false });
 import SyncTemplateToVfs from './SyncTemplateToVfs.jsx';
 import AIChatDock from './AIChatDock.jsx';
 import { usePersistentState } from './hooks/usePersistentState';
@@ -269,17 +267,17 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
       <div style={{ display: 'grid', gridTemplateRows: toolbarCollapsed ? 'auto' : 'auto auto auto', gap: 6, padding: '8px', borderBottom: '1px solid #25314a', background: 'rgba(2,6,23,0.5)' }}>
         {/* 1?? ?꾨쾭嫄?/ ?뚯씪 硫붾돱 / AI 肄붾뵫 / ?뚯뒪??*/}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button onClick={() => { setFileMenuOpen(false); setShowTree(v=>!v); }} title="?뚯씪?몃━" style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: showTree ? '#172033' : '#0b1220', color: '#e2e8f0' }}>??/button>
+          <button onClick={() => { setFileMenuOpen(false); setShowTree(v=>!v); }} title="파일 트리" style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #334155', background: showTree ? '#172033' : '#0b1220', color: '#e2e8f0' }}>트리</button>
           <div ref={fileMenuRef} style={{ position:'relative' }}>
             <MenuButton onClick={() => setFileMenuOpen(v=>{ const next=!v; if (next) {  setShowTree(false); } return next; })} active={fileMenuOpen} label="?뚯씪" />
             {fileMenuOpen && (
               <div style={{ position:'absolute', zIndex: 20, background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, display:'grid', gap:6, minWidth:180 }}>
                 <button onClick={doNewFile} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>???뚯씪</button>
                 <button onClick={doNewFolder} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>???대뜑</button>
-                <button onClick={doRename} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>?대쫫 蹂寃?/button>
+                <button onClick={doRename} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>이름 변경</button>
                 <button onClick={doDelete} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #7f1d1d', background:'#0b1220', color:'#fecaca', whiteSpace:'nowrap' }}>??젣</button>
                 <div style={{ height:1, background:'rgba(148,163,184,0.2)', margin:'4px 2px' }} />
-                <button onClick={doSaveAll} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #10b981', background:'#064e3b', color:'#d1fae5', whiteSpace:'nowrap' }}>紐⑤몢 ???/button>
+                <button onClick={doSaveAll} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #10b981', background:'#064e3b', color:'#d1fae5', whiteSpace:'nowrap' }}>모두 저장</button>
                 <button onClick={doLoadSample} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #2563eb', background:'#0b1220', color:'#93c5fd', whiteSpace:'nowrap' }}>?섑뵆 洹몃옒??遺덈윭?ㅺ린</button>
               </div>
             )}
@@ -300,15 +298,15 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
               {keyringStatus.ready ? `AI keys ${keyringStatus.count}` : 'No AI key'}
             </span>
           </div>
-          <MenuButton onClick={() => setShowPlay(true)} active={showPlay} label="?뚮젅?? />
+          <MenuButton onClick={() => setShowPlay(true)} active={showPlay} label="플레이" />
           <div ref={toolsMenuRef} style={{ position:'relative' }}>
-            <MenuButton onClick={() => setToolsMenuOpen(v=>{ const next=!v; if (next) { setFileMenuOpen(false); setShowTree(false); } return next; })} active={toolsMenuOpen} label="?꾧뎄" />
+            <MenuButton onClick={() => setToolsMenuOpen(v=>{ const next=!v; if (next) { setFileMenuOpen(false); setShowTree(false); } return next; })} active={toolsMenuOpen} label="도구" />
             {toolsMenuOpen && (
               <div style={{ position:'absolute', zIndex: 20, background:'#0b1220', border:'1px solid #334155', borderRadius:8, padding:6, display:'grid', gap:6, minWidth:200 }}>
-                <button onClick={() => { try { window.location.href = '/prompts'; } catch {} finally { setToolsMenuOpen(false); } }} data-test-id="open-prompt-editor" style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>?꾨＼?꾪듃 ?먮뵒??/button>
+                <button onClick={() => { try { window.location.href = '/prompts'; } catch {} finally { setToolsMenuOpen(false); } }} data-test-id="open-prompt-editor" style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>프롬프트 에디터</button>
                 <button onClick={() => { try { open('/graph/prompt-graph.json'); } catch {} finally { setToolsMenuOpen(false); } }} data-test-id="open-prompt-graph" style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>?꾨＼?꾪듃 洹몃옒???닿린</button>
                 <button onClick={() => { try { open('/game/runtime.config.json'); } catch {} finally { setToolsMenuOpen(false); } }} data-test-id="open-runtime-config" style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>?고????ㅼ젙 ?닿린</button>
-                <button onClick={() => { try { window.location.href = '/studio?mode=ui'; } catch {} finally { setToolsMenuOpen(false); } }} data-test-id="open-ui-editor" style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>UI ?몄쭛湲?/button>
+                <button onClick={() => { try { window.location.href = '/studio?mode=ui'; } catch {} finally { setToolsMenuOpen(false); } }} data-test-id="open-ui-editor" style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>UI 편집기</button>
                 <div style={{ height:1, background:'rgba(148,163,184,0.2)', margin:'4px 2px' }} />
                 <button onClick={() => { setChatDockOpen(true); setToolsMenuOpen(false); }} data-test-id="open-ai-agent" style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #2563eb', background:'#0b1220', color:'#93c5fd', whiteSpace:'nowrap' }}>AI 梨꾪똿</button>
                 <button onClick={() => { try { window.location.href = '/game/dev-local'; } catch {} finally { setToolsMenuOpen(false); } }} style={{ textAlign:'left', padding:'6px 10px', borderRadius:6, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', whiteSpace:'nowrap' }}>硫붿씤寃뚯엫 (dev-local)</button>
@@ -317,8 +315,8 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
             )}
           </div>
           <div style={{ marginLeft:'auto', display:'flex', gap:8 }}>
-            <MenuButton onClick={onSaveServer} active={false} label={saving ? '??μ쨷?? : '???} />
-            <MenuButton onClick={() => setToolbarCollapsed(v=>!v)} active={toolbarCollapsed} label={toolbarCollapsed?'?쇱튂湲?:'?묎린'} />
+            <MenuButton onClick={onSaveServer} active={false} label={saving ? '저장중…' : '저장'} />
+            <MenuButton onClick={() => setToolbarCollapsed(v=>!v)} active={toolbarCollapsed} label={toolbarCollapsed ? '펼치기' : '접기'} />
           </div>
         </div>
 
@@ -368,7 +366,7 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
     {templateBinding ? (
       <SyncTemplateToVfs text={templateBinding.text} setText={templateBinding.setText} />
     ) : null}
-      <div style={{ position:'relative', display: "flex", height: "calc(var(--vh, 1vh) * 100)", background: "#0b1220" }}>
+      <div style={{ position: 'relative', display: 'flex', height: 'calc(var(--vh, 1vh) * 100)', background: '#0b1220' }}>
         {!overlayTree && (
           <div
             ref={treeRef}
@@ -415,11 +413,40 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
       </div>
       {/* Fullscreen Play Overlay */}
       {showPlay && (
-        <div style={{ position:'fixed', inset:0, zIndex: 1600, background:'rgba(2,6,23,0.94)' }}>
-          <div style={{ position:'absolute', left:0, top:0, right:0, bottom:0, paddingTop:'env(safe-area-inset-top)', paddingBottom:'env(safe-area-inset-bottom)', paddingLeft:'env(safe-area-inset-left)', paddingRight:'env(safe-area-inset-right)' }}>
-            <button onClick={() => setShowPlay(false)} title="?リ린" style={{ position:'absolute', top:'calc(env(safe-area-inset-top) + 10px)', right:'calc(env(safe-area-inset-right) + 10px)', zIndex: 10, padding:'8px 10px', borderRadius:10, border:'1px solid #334155', background:'#0b1220', color:'#e2e8f0', boxShadow:'0 8px 24px rgba(0,0,0,0.5)' }}>?リ린</button>
-            <div style={{ height:'calc(var(--vh, 1vh) * 100)', display:'flex', alignItems:'stretch', justifyContent:'center' }}>
-              <div style={{ flex:1, minWidth:0 }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1600, background: 'rgba(2,6,23,0.94)' }}>
+          <div
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              right: 0,
+              bottom: 0,
+              paddingTop: 'env(safe-area-inset-top)',
+              paddingBottom: 'env(safe-area-inset-bottom)',
+              paddingLeft: 'env(safe-area-inset-left)',
+              paddingRight: 'env(safe-area-inset-right)',
+            }}
+          >
+            <button
+              onClick={() => setShowPlay(false)}
+              title="닫기"
+              style={{
+                position: 'absolute',
+                top: 'calc(env(safe-area-inset-top) + 10px)',
+                right: 'calc(env(safe-area-inset-right) + 10px)',
+                zIndex: 10,
+                padding: '8px 10px',
+                borderRadius: 10,
+                border: '1px solid #334155',
+                background: '#0b1220',
+                color: '#e2e8f0',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+              }}
+            >
+              닫기
+            </button>
+            <div style={{ height: 'calc(var(--vh, 1vh) * 100)', display: 'flex', alignItems: 'stretch', justifyContent: 'center' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <PlayOverlayContent templateBinding={templateBinding} />
               </div>
             </div>
@@ -436,19 +463,39 @@ export default function WorkspaceOverlay({ gameData, templateBinding }) {
 }
 
 function PlayOverlayContent({ templateBinding }){
-  const { files } = useWorkspace();
-  try {
-    const tplText = (typeof templateBinding?.text === 'string' && templateBinding.text.length > 0)
-      ? templateBinding.text
-      : (files?.['/template.json']?.content || '{}');
-    const tpl = JSON.parse(tplText || '{}');
-    return (
-      <div style={{ height:'100%', width:'100%' }}>
-        <MainGameMobileUI template={tpl} />
+  return (
+    <div
+      style={{
+        height: '100%',
+        width: '100%',
+        display: 'grid',
+        placeItems: 'center',
+        padding: 32,
+      }}
+    >
+      <div
+        style={{
+          maxWidth: 560,
+          display: 'grid',
+          gap: 10,
+          padding: 24,
+          borderRadius: 20,
+          border: '1px solid rgba(148,163,184,0.24)',
+          background: 'rgba(2,6,23,0.72)',
+          color: '#cbd5e1',
+          textAlign: 'center',
+        }}
+      >
+        <div style={{ fontSize: 12, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#94a3b8' }}>
+          Legacy Play Disabled
+        </div>
+        <div style={{ fontSize: 28, fontWeight: 700, color: '#f8fafc' }}>
+          워크스페이스 플레이 프리뷰는 중단되었습니다.
+        </div>
+        <div style={{ fontSize: 14, lineHeight: 1.7 }}>
+          기존 `MainGameMobileUI` 프리뷰는 새 텍스트 배틀 실행기로 다시 연결할 예정입니다.
+        </div>
       </div>
-    );
-  } catch (e) {
-    return <div style={{ padding:16, color:'#94a3b8' }}>?쒗뵆由우쓣 遺덈윭?????놁뒿?덈떎.</div>;
-  }
+    </div>
+  );
 }
-

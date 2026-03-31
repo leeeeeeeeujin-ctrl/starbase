@@ -8,8 +8,6 @@ import useGameBrowser from '@/components/lobby/hooks/useGameBrowser';
 
 import EditHeroModal from './sections/EditHeroModal';
 import { CharacterDashboardProvider, useCharacterDashboardContext } from './context';
-import AIBattleGameController from '../arena/AIBattleGameController';
-import UnifiedGameSystem from '../game/UnifiedGameSystem';
 import QuotaExceededNotice from '@/components/common/QuotaExceededNotice';
 
 const NAV_ITEMS = [
@@ -35,7 +33,6 @@ export default function CharacterDashboard({
   const [editOpen, setEditOpen] = useState(false);
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [gameSearchEnabled, setGameSearchEnabled] = useState(false);
-  const [unifiedGameOpen, setUnifiedGameOpen] = useState(false);
   const swipeViewportRef = useRef(null);
   const animatingRef = useRef(false);
   const animationTimeoutRef = useRef(null);
@@ -104,7 +101,7 @@ export default function CharacterDashboard({
       scoreboardRows: participation.scoreboard,
       openEditPanel: () => setEditOpen(true),
       closeEditPanel: () => setEditOpen(false),
-      openUnifiedGame: () => setUnifiedGameOpen(true),
+      openUnifiedGame: () => {},
       onStartBattle,
     }),
     [
@@ -453,46 +450,6 @@ export default function CharacterDashboard({
       <EditHeroModal open={editOpen} onClose={() => setEditOpen(false)} />
       <QuotaExceededNotice />
 
-      {/* 통합 게임 시스템 */}
-      {unifiedGameOpen && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            zIndex: 1000,
-            background: '#0f172a',
-          }}
-        >
-          <UnifiedGameSystem
-            initialCharacter={profile.hero}
-            onGameEnd={result => {
-              console.log('게임 종료:', result);
-              setUnifiedGameOpen(false);
-            }}
-          />
-          <button
-            onClick={() => setUnifiedGameOpen(false)}
-            style={{
-              position: 'fixed',
-              top: '20px',
-              right: '20px',
-              padding: '8px 16px',
-              background: 'rgba(239, 68, 68, 0.9)',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              zIndex: 1001,
-            }}
-          >
-            ✕ 닫기
-          </button>
-        </div>
-      )}
-
       <OverviewSheet
         open={overviewOpen}
         onClose={closeOverview}
@@ -665,11 +622,15 @@ function CharacterPanel() {
 
       {/* 통합 게임 시스템 실행 버튼 */}
       <div style={styles.gameSystemSection}>
-        <button type="button" onClick={openUnifiedGame} style={styles.unifiedGameButton}>
-          🎮 AI 배틀 게임 제작 & 실행
+        <button
+          type="button"
+          disabled
+          style={{ ...styles.unifiedGameButton, opacity: 0.55, cursor: 'not-allowed' }}
+        >
+          AI 배틀 실행 준비 중
         </button>
         <p style={styles.gameSystemDesc}>
-          캐릭터 정보를 활용한 프롬프트 기반 게임을 제작하고 실행하세요
+          기존 통합 게임 실행 버튼은 비활성화했습니다. 새 텍스트 배틀 실행기는 메이커 기준으로 다시 연결할 예정입니다.
         </p>
       </div>
 
