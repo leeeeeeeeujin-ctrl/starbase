@@ -65,3 +65,39 @@ export function isGifFile(file) {
   const name = String(file.name || '').toLowerCase();
   return type === 'image/gif' || name.endsWith('.gif');
 }
+
+export function applyHeroProfileAction(draft = {}, action) {
+  const next = clampHeroProfileDraft(draft);
+  if (!action || typeof action !== 'object') return next;
+
+  const type = String(action.type || 'none').toLowerCase();
+  const field = String(action.field || '').trim();
+  const value = String(action.value || '');
+
+  if (type === 'none' || !field || field === 'name') {
+    return next;
+  }
+
+  const allowedFields = new Set(['description', 'ability1', 'ability2', 'ability3', 'ability4']);
+  if (!allowedFields.has(field)) {
+    return next;
+  }
+
+  if (type === 'replace') {
+    return clampHeroProfileDraft({
+      ...next,
+      [field]: value,
+    });
+  }
+
+  if (type === 'append') {
+    const current = String(next[field] || '').trim();
+    const combined = current ? `${current}\n${value}` : value;
+    return clampHeroProfileDraft({
+      ...next,
+      [field]: combined,
+    });
+  }
+
+  return next;
+}

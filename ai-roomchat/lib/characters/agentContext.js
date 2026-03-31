@@ -35,9 +35,11 @@ export function buildHeroAgentPrompt({
     '중요한 사실은 메모리로 추가/수정/삭제할 수 있다.',
     '메모리는 대화 전체 복붙이 아니라 짧은 판단 덩어리나 관계, 성향, 중요한 사실만 남긴다.',
     '비슷한 메모리는 합치고, 오래됐거나 덜 중요한 메모리는 정리해도 된다.',
+    '필요하면 설명 또는 능력에 대한 보강 제안을 profileAction으로 낼 수 있다.',
+    '이름은 절대 수정하지 않는다.',
     '응답은 반드시 JSON 하나만 반환한다.',
     '형식:',
-    '{"reply":"유저에게 보일 답변","memoryAction":{"type":"none|add|update|delete","index":0,"text":"메모리 내용"}}',
+    '{"reply":"유저에게 보일 답변","memoryAction":{"type":"none|add|update|delete","index":0,"text":"메모리 내용"},"profileAction":{"type":"none|replace|append","field":"description|ability1|ability2|ability3|ability4","value":"변경 내용"}}',
     `유저 입력:\n${userInput}`,
   ].join('\n\n');
 }

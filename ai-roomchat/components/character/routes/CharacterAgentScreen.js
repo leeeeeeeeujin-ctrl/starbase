@@ -16,6 +16,7 @@ import {
   writeHeroAgentProfile,
 } from '@/lib/characters/agentProfileStorage';
 import {
+  applyHeroProfileAction,
   clampHeroProfileDraft,
   HERO_ABILITY_MAX_LENGTH,
   HERO_ARCHIVE_MAX,
@@ -365,7 +366,11 @@ export default function CharacterAgentScreen({ hero }) {
       try {
         parsed = JSON.parse(data?.text || '{}');
       } catch {
-        parsed = { reply: data?.text || '', memoryAction: { type: 'none' } };
+        parsed = {
+          reply: data?.text || '',
+          memoryAction: { type: 'none' },
+          profileAction: { type: 'none' },
+        };
         setStatus('JSON 응답을 해석하지 못해 일반 텍스트로 표시했습니다.');
       }
 
@@ -384,8 +389,25 @@ export default function CharacterAgentScreen({ hero }) {
       updatedProfile = applyMemoryAction(updatedProfile, parsed?.memoryAction);
       persistProfile(updatedProfile);
 
+      const nextHeroDraft = applyHeroProfileAction(heroDraft, parsed?.profileAction);
+      const heroChanged = JSON.stringify(nextHeroDraft) !== JSON.stringify(heroDraft);
+
+      if (heroChanged) {
+        const payload = normalizeHeroProfilePayload(nextHeroDraft, hero?.name || '이름 없는 영웅');
+        const { error } = await supabase.from(withTable('heroes')).update(payload).eq('id', heroId);
+        if (error) throw error;
+        setHeroDraft(clampHeroProfileDraft(payload));
+      }
+
+      const statusParts = [];
       if (parsed?.memoryAction?.type && parsed.memoryAction.type !== 'none') {
-        setStatus('메모리가 갱신되었습니다.');
+        statusParts.push('메모리가 갱신되었습니다.');
+      }
+      if (heroChanged) {
+        statusParts.push('설명 또는 능력 변경안이 반영되었습니다.');
+      }
+      if (statusParts.length) {
+        setStatus(statusParts.join(' '));
       }
     } catch (error) {
       if (error?.name === 'AbortError') {
@@ -402,7 +424,7 @@ export default function CharacterAgentScreen({ hero }) {
         abortControllerRef.current = null;
       }
     }
-  }, [buildPrompt, hasActiveApiKey, heroId, input, loading, persistProfile, profile]);
+  }, [buildPrompt, hasActiveApiKey, hero?.name, heroDraft, heroId, input, loading, persistProfile, profile]);
 
   const handleSaveHero = useCallback(async () => {
     if (!heroId) return;
