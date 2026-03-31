@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { supabase } from '@/lib/supabase';
 import { buildHeroAgentPrompt } from '@/lib/characters/agentContext';
+import { hasActiveKeyInSnapshot, readRankKeyringSnapshot } from '@/lib/rank/keyringStorage';
 import {
   appendRecentChat,
   applyMemoryAction,
@@ -35,6 +36,7 @@ export default function CharacterAgentScreen({ hero }) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState('');
+  const [hasActiveApiKey, setHasActiveApiKey] = useState(false);
 
   useEffect(() => {
     if (!heroId) return;
@@ -43,6 +45,28 @@ export default function CharacterAgentScreen({ hero }) {
     setInput('');
     setStatus('');
   }, [heroId]);
+
+  useEffect(() => {
+    let mounted = true;
+    const syncKeyState = async () => {
+      const sessionResult = await supabase.auth.getSession();
+      const userId = sessionResult?.data?.session?.user?.id || '';
+      const snapshot = readRankKeyringSnapshot();
+      if (!mounted) return;
+      setHasActiveApiKey(hasActiveKeyInSnapshot(snapshot, userId));
+    };
+    syncKeyState().catch(() => {});
+    const handleRefresh = () => syncKeyState().catch(() => {});
+    if (typeof window !== 'undefined') {
+      window.addEventListener('rank-keyring:refresh', handleRefresh);
+    }
+    return () => {
+      mounted = false;
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('rank-keyring:refresh', handleRefresh);
+      }
+    };
+  }, []);
 
   const persistProfile = useCallback(
     next => {
@@ -78,6 +102,10 @@ export default function CharacterAgentScreen({ hero }) {
   const handleSend = useCallback(async () => {
     const text = input.trim();
     if (!text || loading || !heroId) return;
+    if (!hasActiveApiKey) {
+      setStatus('활성 API 키가 필요합니다.');
+      return;
+    }
 
     setLoading(true);
     setStatus('');
@@ -142,7 +170,7 @@ export default function CharacterAgentScreen({ hero }) {
     } finally {
       setLoading(false);
     }
-  }, [buildPrompt, heroId, input, loading, persistProfile, profile]);
+  }, [buildPrompt, hasActiveApiKey, heroId, input, loading, persistProfile, profile]);
 
   return (
     <>
@@ -274,20 +302,27 @@ export default function CharacterAgentScreen({ hero }) {
               <button
                 type="button"
                 onClick={handleSend}
-                disabled={loading || !input.trim()}
+                disabled={loading || !input.trim() || !hasActiveApiKey}
                 style={{
                   marginLeft: 'auto',
                   appearance: 'none',
                   border: '1px solid rgba(125,211,252,0.24)',
                   borderRadius: 999,
                   padding: '10px 16px',
-                  background: loading || !input.trim() ? 'rgba(51,65,85,0.64)' : 'rgba(125,211,252,0.92)',
-                  color: loading || !input.trim() ? '#94a3b8' : '#082f49',
+                  background:
+                    loading || !input.trim() || !hasActiveApiKey
+                      ? 'rgba(51,65,85,0.64)'
+                      : 'rgba(125,211,252,0.92)',
+                  color:
+                    loading || !input.trim() || !hasActiveApiKey
+                      ? '#94a3b8'
+                      : '#082f49',
                   fontWeight: 900,
-                  cursor: loading || !input.trim() ? 'not-allowed' : 'pointer',
+                  cursor:
+                    loading || !input.trim() || !hasActiveApiKey ? 'not-allowed' : 'pointer',
                 }}
               >
-                {loading ? '응답 중…' : '보내기'}
+                {loading ? '응답 중…' : hasActiveApiKey ? '보내기' : '키 필요'}
               </button>
             </div>
           </div>
@@ -361,6 +396,56 @@ export default function CharacterAgentScreen({ hero }) {
               />
               <span style={hintStyle}>{`${profile.behaviorRules.length}/1000`}</span>
             </label>
+          </section>
+
+          <section
+            style={{
+              padding: 16,
+              borderRadius: 24,
+              background: 'rgba(2, 6, 23, 0.78)',
+              border: '1px solid rgba(148, 163, 184, 0.22)',
+              display: 'grid',
+              gap: 10,
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
+              <strong style={{ fontSize: 15 }}>API 키 상태</strong>
+              <span
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: 999,
+                  background: hasActiveApiKey ? 'rgba(34,197,94,0.18)' : 'rgba(248,113,113,0.16)',
+                  color: hasActiveApiKey ? '#86efac' : '#fecaca',
+                  fontSize: 12,
+                  fontWeight: 800,
+                }}
+              >
+                {hasActiveApiKey ? '활성 키 있음' : '활성 키 없음'}
+              </span>
+            </div>
+            <div style={{ color: '#cbd5e1', fontSize: 13, lineHeight: 1.7 }}>
+              {hasActiveApiKey
+                ? '현재 계정의 활성 API 키를 사용해 캐릭터 AI와 대화합니다.'
+                : '활성 API 키가 없으면 캐릭터 AI 대화를 보낼 수 없습니다.'}
+            </div>
+            {!hasActiveApiKey ? (
+              <Link
+                href={`/character/${heroId}`}
+                style={{
+                  textDecoration: 'none',
+                  justifySelf: 'start',
+                  padding: '10px 14px',
+                  borderRadius: 999,
+                  background: 'rgba(15,23,42,0.72)',
+                  color: '#e2e8f0',
+                  border: '1px solid rgba(148,163,184,0.22)',
+                  fontSize: 12,
+                  fontWeight: 800,
+                }}
+              >
+                캐릭터 페이지에서 키 관리
+              </Link>
+            ) : null}
           </section>
 
           <section
