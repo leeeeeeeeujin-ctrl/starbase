@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../../../lib/supabaseAdmin.js';
+import { buildHeroGameContext } from '../../../lib/characters/agentContext.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -54,10 +55,96 @@ export default async function handler(req, res) {
       });
     }
 
+    const heroIds = Array.from(
+      new Set(
+        (Array.isArray(turns) ? turns : [])
+          .flatMap(turn => [turn?.hero_id, turn?.rival_id])
+          .filter(Boolean)
+          .map(value => String(value))
+      )
+    );
+
+    let participants = [];
+    let agentContexts = [];
+
+    if (heroIds.length) {
+      const { data: heroRows, error: heroError } = await supabaseAdmin
+        .from('heroes')
+        .select(
+          [
+            'id',
+            'name',
+            'description',
+            'ability1',
+            'ability2',
+            'ability3',
+            'ability4',
+            'image_url',
+            'background_url',
+            'bgm_url',
+            'agent_profile',
+          ].join(',')
+        )
+        .in('id', heroIds);
+
+      if (heroError) {
+        return res.status(500).json({
+          ok: false,
+          error: 'heroes_query_failed',
+          detail: heroError.message || null,
+        });
+      }
+
+      participants = Array.isArray(heroRows)
+        ? heroRows.map(row => ({
+            id: row.id,
+            name: row.name || '이름 없는 캐릭터',
+            description: row.description || '',
+            abilities: [row.ability1, row.ability2, row.ability3, row.ability4].filter(Boolean),
+            image_url: row.image_url || null,
+            background_url: row.background_url || null,
+            bgm_url: row.bgm_url || null,
+            agent_profile:
+              row.agent_profile && typeof row.agent_profile === 'object' ? row.agent_profile : {},
+          }))
+        : [];
+
+      const participantPrompt = participants
+        .map(entry =>
+          [
+            entry.name,
+            entry.description ? `설명: ${entry.description}` : '',
+            entry.abilities.length ? `능력: ${entry.abilities.join(' / ')}` : '',
+          ]
+            .filter(Boolean)
+            .join(' | ')
+        )
+        .join('\n');
+
+      const latestTurn = Array.isArray(turns) && turns.length ? turns[turns.length - 1] : null;
+
+      agentContexts = participants.map(entry => ({
+        heroId: entry.id,
+        name: entry.name,
+        context: buildHeroGameContext({
+          heroSummary: {
+            name: entry.name,
+            description: entry.description,
+            abilities: entry.abilities,
+          },
+          profile: entry.agent_profile || {},
+          gamePrompt: [latestTurn?.prompt || '', latestTurn?.ai_response || ''].filter(Boolean).join('\n\n'),
+          participantPrompt,
+        }),
+      }));
+    }
+
     return res.status(200).json({
       ok: true,
       session,
       turns: Array.isArray(turns) ? turns : [],
+      participants,
+      agentContexts,
     });
   } catch (e) {
     return res.status(500).json({
@@ -67,4 +154,3 @@ export default async function handler(req, res) {
     });
   }
 }
-

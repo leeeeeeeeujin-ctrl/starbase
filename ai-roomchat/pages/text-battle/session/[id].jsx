@@ -74,7 +74,7 @@ export default function TextBattleSessionPage() {
     );
   }
 
-  const { session, turns } = state.payload || {};
+  const { session, turns, participants, agentContexts } = state.payload || {};
   const finalScore = session?.final_score || null;
   const winner = session?.winner || null;
   const createdAt = session?.created_at || null;
@@ -193,6 +193,117 @@ export default function TextBattleSessionPage() {
               </div>
             )}
           </div>
+        </section>
+
+        <section
+          style={{
+            borderRadius: 16,
+            padding: '12px 14px',
+            background: '#020617',
+            border: '1px solid rgba(55,65,81,0.8)',
+            display: 'grid',
+            gap: 8,
+          }}
+        >
+          <h2
+            style={{
+              margin: 0,
+              fontSize: 15,
+              fontWeight: 700,
+              color: '#e5e7eb',
+            }}
+          >
+            참가 캐릭터
+          </h2>
+          {Array.isArray(participants) && participants.length ? (
+            <div style={{ display: 'grid', gap: 8 }}>
+              {participants.map(participant => (
+                <div
+                  key={participant.id}
+                  style={{
+                    borderRadius: 12,
+                    border: '1px solid rgba(31,41,55,0.9)',
+                    padding: '10px 12px',
+                    display: 'grid',
+                    gap: 4,
+                  }}
+                >
+                  <strong style={{ fontSize: 14, color: '#f8fafc' }}>{participant.name}</strong>
+                  {participant.description ? (
+                    <div style={{ fontSize: 12, color: '#cbd5e1', lineHeight: 1.6 }}>
+                      {participant.description}
+                    </div>
+                  ) : null}
+                  {participant.abilities?.length ? (
+                    <div style={{ fontSize: 12, color: '#93c5fd' }}>
+                      능력: {participant.abilities.join(' / ')}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p style={{ fontSize: 13, color: '#9ca3af' }}>
+              연결된 캐릭터 정보가 없습니다.
+            </p>
+          )}
+        </section>
+
+        <section
+          style={{
+            borderRadius: 16,
+            padding: '12px 14px',
+            background: '#020617',
+            border: '1px solid rgba(55,65,81,0.8)',
+            display: 'grid',
+            gap: 8,
+          }}
+        >
+          <h2
+            style={{
+              margin: 0,
+              fontSize: 15,
+              fontWeight: 700,
+              color: '#e5e7eb',
+            }}
+          >
+            캐릭터 AI 게임 문맥
+          </h2>
+          {Array.isArray(agentContexts) && agentContexts.length ? (
+            <div style={{ display: 'grid', gap: 8 }}>
+              {agentContexts.map(entry => (
+                <details
+                  key={entry.heroId}
+                  style={{
+                    borderRadius: 12,
+                    border: '1px solid rgba(31,41,55,0.9)',
+                    padding: '10px 12px',
+                    background: '#020617',
+                  }}
+                >
+                  <summary style={{ cursor: 'pointer', fontSize: 13, color: '#bfdbfe', fontWeight: 700 }}>
+                    {entry.name}
+                  </summary>
+                  <pre
+                    style={{
+                      margin: '10px 0 0',
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                      fontSize: 11,
+                      lineHeight: 1.6,
+                      color: '#cbd5e1',
+                    }}
+                  >
+                    {entry.context}
+                  </pre>
+                </details>
+              ))}
+            </div>
+          ) : (
+            <p style={{ fontSize: 13, color: '#9ca3af' }}>
+              생성된 게임 문맥이 없습니다.
+            </p>
+          )}
         </section>
 
         <section
