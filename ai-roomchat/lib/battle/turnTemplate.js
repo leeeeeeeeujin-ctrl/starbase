@@ -1,15 +1,20 @@
 export const TURN_META_VERSION = 1;
 export const TURN_INPUT_MODES = ['none', 'text', 'choice', 'ability', 'target'];
+export const TURN_EXECUTION_TYPES = ['ai_prompt', 'user_response'];
 
 export function getDefaultTurnMeta(slotType = 'ai') {
   const common = {
     version: TURN_META_VERSION,
     title: '',
     display: '',
+    executionType: 'ai_prompt',
+    actorScope: 'self',
     inputMode: 'none',
     inputLabel: '',
     inputPlaceholder: '',
     resultKey: '',
+    outputFormat: 'json',
+    outputSchema: '',
     participantScope: [],
     visibilityScope: ['all'],
   };
@@ -17,21 +22,23 @@ export function getDefaultTurnMeta(slotType = 'ai') {
   if (slotType === 'user_action') {
     return {
       ...common,
-      title: '유저 입력 턴',
+      title: '유저 응답',
+      executionType: 'user_response',
       inputMode: 'text',
+      outputFormat: 'text',
     };
   }
 
   if (slotType === 'system') {
     return {
       ...common,
-      title: '시스템 턴',
+      title: 'AI 실행',
     };
   }
 
   return {
     ...common,
-    title: 'AI 턴',
+    title: 'AI 실행',
   };
 }
 
@@ -45,6 +52,9 @@ export function normalizeTurnMeta(rawMeta, slotType = 'ai') {
     ? source.visibilityScope.map(value => String(value || '').trim()).filter(Boolean)
     : base.visibilityScope;
   const inputMode = TURN_INPUT_MODES.includes(source.inputMode) ? source.inputMode : base.inputMode;
+  const executionType = TURN_EXECUTION_TYPES.includes(source.executionType)
+    ? source.executionType
+    : base.executionType;
 
   return {
     ...base,
@@ -52,10 +62,14 @@ export function normalizeTurnMeta(rawMeta, slotType = 'ai') {
     version: TURN_META_VERSION,
     title: String(source.title ?? base.title),
     display: String(source.display ?? ''),
+    executionType,
+    actorScope: String(source.actorScope ?? base.actorScope).trim() || base.actorScope,
     inputMode,
     inputLabel: String(source.inputLabel ?? ''),
     inputPlaceholder: String(source.inputPlaceholder ?? ''),
     resultKey: String(source.resultKey ?? ''),
+    outputFormat: String(source.outputFormat ?? base.outputFormat).trim() || base.outputFormat,
+    outputSchema: String(source.outputSchema ?? ''),
     participantScope,
     visibilityScope,
   };

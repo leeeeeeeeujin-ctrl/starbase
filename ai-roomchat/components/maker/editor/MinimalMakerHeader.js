@@ -39,7 +39,7 @@ export default function MinimalMakerHeader({
     >
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         {btn('← 목록', onBack)}
-        <strong style={{ fontSize: 14 }}>배틀 메이커</strong>
+        <strong style={{ fontSize: 14 }}>실행 플로우 메이커</strong>
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         {btn('저장', onSave, {

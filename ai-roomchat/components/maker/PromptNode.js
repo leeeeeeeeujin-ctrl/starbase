@@ -1,242 +1,124 @@
-// components/maker/PromptNode.js
-import React, { useMemo, useRef } from 'react';
+import React, { useMemo } from 'react';
 import { Handle, Position } from 'reactflow';
 import { parseTurnTemplate } from '../../lib/battle/turnTemplate';
 
-export default function PromptNode({ id, data, selected }) {
-  const d = data || {};
-  const nameInputRef = useRef(null);
+function summarizePrompt(text) {
+  const value = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!value) return '프롬프트 없음';
+  return value.length > 84 ? `${value.slice(0, 83)}…` : value;
+}
 
-  const slotLabel = useMemo(() => {
-    if (!d.slotNo) return null;
-    return `#${d.slotNo}`;
-  }, [d.slotNo]);
-
-  const typeLabel = useMemo(() => {
-    if (!d.slot_type) return 'AI';
-    if (d.slot_type === 'user_action') return '유저';
-    if (d.slot_type === 'system') return '시스템';
-    return 'AI';
-  }, [d.slot_type]);
-
-  const isInvisible = !!d.invisible;
-  const isStart = !!d.isStart;
-
-  // Card styles replacing the old sphere/star icon
-  const cardStyle = useMemo(() => {
-    const border = selected
-      ? '1px solid rgba(37, 99, 235, 0.85)'
-      : '1px solid rgba(148, 163, 184, 0.45)';
-    const shadow = selected
-      ? '0 14px 36px -20px rgba(29, 78, 216, 0.55)'
-      : '0 16px 40px -26px rgba(15, 23, 42, 0.65)';
-    const bg = '#0b1220';
-    return {
-      width: 252,
-      maxWidth: 292,
-      borderRadius: 16,
-      background: 'linear-gradient(180deg, #0b1220 0%, #0f172a 100%)',
-      border,
-      boxShadow: shadow,
-      display: 'grid',
-      gridTemplateRows: 'auto auto 1fr',
-      gap: 10,
-      padding: 12,
-      color: '#e2e8f0',
-      transition: 'transform 140ms ease, box-shadow 140ms ease, border 140ms ease',
-      transform: selected ? 'translateY(-2px) scale(1.01)' : 'none',
-    };
-  }, [selected]);
-
-  const previewText = useMemo(() => {
-    const { meta, body } = parseTurnTemplate(d.template ?? d.label ?? '', d.slot_type || 'ai');
-    const src = (meta?.display || body || d.label || '').toString();
-    const trimmed = src.replace(/\s+/g, ' ').trim();
-    if (!trimmed) return '';
-    const max = 120;
-    return trimmed.length > max ? trimmed.slice(0, max - 1) + '…' : trimmed;
-  }, [d.template, d.label]);
-
-  const typeBadgeStyle = useMemo(() => ({
-    padding: '2px 8px',
-    borderRadius: 999,
-    fontSize: 11,
-    fontWeight: 800,
-    color: '#0b1220',
-    background: d.slot_type === 'user_action' ? '#93c5fd' : d.slot_type === 'system' ? '#fca5a5' : '#86efac'
-  }), [d.slot_type]);
-
-  const visibilityLabel = useMemo(() => {
-    const { meta } = parseTurnTemplate(d.template ?? d.label ?? '', d.slot_type || 'ai');
-    const scope = Array.isArray(meta?.visibilityScope) ? meta.visibilityScope : [];
-    if (!scope.length || (scope.length === 1 && scope[0] === 'all')) return null;
-    return `공개 ${scope.join(', ')}`;
-  }, [d.label, d.slot_type, d.template]);
-
-  const turnSummary = useMemo(() => {
-    const { meta } = parseTurnTemplate(d.template ?? d.label ?? '', d.slot_type || 'ai');
-    const items = [];
-
-    if (meta?.inputMode && meta.inputMode !== 'none') {
-      const inputLabel = meta.inputMode === 'text'
-        ? '텍스트 입력'
-        : meta.inputMode === 'choice'
-          ? '선택지 입력'
-          : meta.inputMode === 'ability'
-            ? '능력 선택'
-            : meta.inputMode === 'target'
-              ? '대상 선택'
-              : meta.inputMode;
-      items.push({ label: '입력', value: inputLabel });
-    }
-
-    if (meta?.resultKey) {
-      items.push({ label: '저장', value: meta.resultKey });
-    }
-
-    if (Array.isArray(meta?.participantScope) && meta.participantScope.length) {
-      items.push({ label: 'AI', value: meta.participantScope.join(', ') });
-    }
-
-    return items;
-  }, [d.label, d.slot_type, d.template]);
-
-  const stopDrag = (e) => { e.stopPropagation(); };
-  const onNameChange = (e) => {
-    const val = e.target.value || '';
-    try { d.onChange?.({ name: val }); } catch {}
-  };
+export default function PromptNode({ data, selected }) {
+  const slotType = data?.slot_type || 'ai';
+  const parsed = useMemo(
+    () => parseTurnTemplate(data?.template || '', slotType),
+    [data?.template, slotType]
+  );
+  const meta = parsed.meta || {};
+  const isUserNode = meta.executionType === 'user_response' || slotType === 'user_action';
+  const title = meta.title || (isUserNode ? '유저 응답' : 'AI 실행');
+  const actorLabel = meta.actorScope || 'self';
+  const saveLabel = meta.resultKey || '-';
+  const outputLabel = meta.outputFormat || 'json';
+  const cardBorder = selected ? '#2563eb' : '#334155';
 
   return (
     <div
       style={{
-        minWidth: 272,
-        padding: 6,
-        display: 'grid',
-        justifyItems: 'center',
-        alignItems: 'center',
-        gap: 6,
-        background: 'transparent',
-        touchAction: 'none',
+        minWidth: 300,
+        maxWidth: 320,
+        background: '#0f172a',
+        border: `1px solid ${cardBorder}`,
+        borderRadius: 18,
+        color: '#e2e8f0',
+        padding: 14,
+        boxShadow: selected
+          ? '0 22px 44px -28px rgba(37, 99, 235, 0.75)'
+          : '0 18px 36px -28px rgba(15, 23, 42, 0.7)',
       }}
     >
       <Handle
         type="target"
         position={Position.Left}
-        style={{
-          width: 14,
-          height: 14,
-          borderRadius: '50%',
-          background: '#38bdf8',
-          border: '3px solid #0f172a',
-        }}
+        style={{ width: 12, height: 12, background: '#38bdf8', border: '2px solid #0f172a' }}
       />
       <Handle
         type="source"
         position={Position.Right}
-        style={{
-          width: 14,
-          height: 14,
-          borderRadius: '50%',
-          background: '#f97316',
-          border: '3px solid #0f172a',
-        }}
+        style={{ width: 12, height: 12, background: '#f59e0b', border: '2px solid #0f172a' }}
       />
-      <div style={cardStyle}>
-        <div style={{ display: 'grid', gap: 8 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={typeBadgeStyle}>{typeLabel}</span>
-          {slotLabel && (
-            <span style={{ padding: '2px 6px', borderRadius: 999, background: 'rgba(148,163,184,0.25)', color: '#e2e8f0', fontSize: 11, fontWeight: 700 }}>{slotLabel}</span>
-          )}
-          {visibilityLabel && (
-            <span style={{ padding: '2px 6px', borderRadius: 999, background: 'rgba(191,219,254,0.15)', color: '#bfdbfe', fontSize: 10, fontWeight: 700 }}>
-              {visibilityLabel}
-            </span>
-          )}
-          {isStart && (
-            <span style={{ marginLeft: 'auto', padding: '2px 8px', borderRadius: 999, background: '#fde68a', color: '#7c2d12', fontSize: 10, fontWeight: 900 }}>시작</span>
-          )}
-          {isInvisible && (
-            <span style={{ marginLeft: isStart ? 6 : 'auto', padding: '2px 8px', borderRadius: 999, background: 'rgba(251,191,36,0.18)', color: '#fbbf24', fontSize: 10, fontWeight: 800 }}>숨김</span>
-          )}
-          </div>
-          <div style={{ height: 2, borderRadius: 999, background: d.slot_type === 'user_action' ? '#38bdf8' : d.slot_type === 'system' ? '#f87171' : '#4ade80' }} />
-        </div>
-        <input
-          ref={nameInputRef}
-          defaultValue={d.name || d.title || ''}
-          onPointerDown={stopDrag}
-          onMouseDown={stopDrag}
-          onTouchStart={stopDrag}
-          onDoubleClick={stopDrag}
-          onChange={onNameChange}
-          placeholder={isStart ? '시작 노드 (초기화 전용)' : '이름 없음'}
-          spellCheck={false}
-          disabled={isStart}
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <span
           style={{
-            width: '100%',
-            boxSizing: 'border-box',
-            padding: '6px 8px',
-            borderRadius: 10,
-            border: '1px solid #334155',
-            background: isStart ? '#1e293b' : '#0b1220',
-            color: isStart ? '#64748b' : '#e2e8f0',
-            fontSize: 12,
-            fontWeight: 700,
-            outline: 'none',
-            cursor: isStart ? 'not-allowed' : 'text',
+            padding: '4px 8px',
+            borderRadius: 999,
+            background: isUserNode ? '#dbeafe' : '#dcfce7',
+            color: isUserNode ? '#1d4ed8' : '#166534',
+            fontSize: 11,
+            fontWeight: 800,
           }}
-          aria-label="노드 이름"
-        />
-        <div
-          style={{
-            border: '1px solid rgba(148,163,184,0.35)',
-            background: 'rgba(2,6,23,0.58)',
-            borderRadius: 10,
-            padding: 8,
-            minHeight: 68,
-            maxHeight: 140,
-            overflow: 'hidden',
-            color: '#cbd5e1',
-            fontSize: 12,
-            lineHeight: 1.45,
-            whiteSpace: 'normal',
-          }}
-          title={previewText}
         >
-          {previewText || <span style={{ color: '#64748b' }}>내용 없음</span>}
-        </div>
-        {turnSummary.length ? (
-          <div
+          {isUserNode ? '유저 응답' : 'AI 실행'}
+        </span>
+        {data?.isStart ? (
+          <span
             style={{
-              display: 'grid',
-              gap: 6,
-              borderTop: '1px solid rgba(148,163,184,0.18)',
-              paddingTop: 8,
+              padding: '4px 8px',
+              borderRadius: 999,
+              background: '#fef3c7',
+              color: '#92400e',
+              fontSize: 11,
+              fontWeight: 800,
             }}
           >
-            {turnSummary.slice(0, 3).map(item => (
-              <div
-                key={`${item.label}:${item.value}`}
-                style={{
-                  display: 'grid',
-                  gap: 2,
-                  borderRadius: 10,
-                  background: 'rgba(148,163,184,0.08)',
-                  padding: '6px 8px',
-                }}
-              >
-                <span style={{ fontSize: 10, fontWeight: 800, color: '#94a3b8', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                  {item.label}
-                </span>
-                <span style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0', lineHeight: 1.4 }}>
-                  {item.value}
-                </span>
-              </div>
-            ))}
-          </div>
+            시작
+          </span>
         ) : null}
+      </div>
+
+      <div style={{ display: 'grid', gap: 10 }}>
+        <div style={{ display: 'grid', gap: 4 }}>
+          <strong style={{ fontSize: 16, lineHeight: 1.3 }}>{title}</strong>
+          <span style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.5 }}>
+            {meta.display || '설명 없음'}
+          </span>
+        </div>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+            gap: 8,
+          }}
+        >
+          <div style={{ background: '#111827', borderRadius: 12, padding: 8, display: 'grid', gap: 3 }}>
+            <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 800 }}>주체</span>
+            <span style={{ fontSize: 12, color: '#f8fafc', fontWeight: 700 }}>{actorLabel}</span>
+          </div>
+          <div style={{ background: '#111827', borderRadius: 12, padding: 8, display: 'grid', gap: 3 }}>
+            <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 800 }}>저장</span>
+            <span style={{ fontSize: 12, color: '#f8fafc', fontWeight: 700 }}>{saveLabel}</span>
+          </div>
+          <div style={{ background: '#111827', borderRadius: 12, padding: 8, display: 'grid', gap: 3 }}>
+            <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 800 }}>출력</span>
+            <span style={{ fontSize: 12, color: '#f8fafc', fontWeight: 700 }}>{outputLabel}</span>
+          </div>
+        </div>
+
+        <div
+          style={{
+            borderRadius: 12,
+            border: '1px solid #1e293b',
+            background: '#020617',
+            padding: 10,
+            fontSize: 12,
+            lineHeight: 1.55,
+            color: '#cbd5e1',
+          }}
+        >
+          {summarizePrompt(parsed.body)}
+        </div>
       </div>
     </div>
   );

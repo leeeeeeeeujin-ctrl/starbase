@@ -72,6 +72,12 @@ function buildTurnDefinition(node) {
     kind: mapSlotTypeToTurnKind(slotType),
     slotType,
     isStart: Boolean(node?.data?.isStart ?? node?.is_start),
+    execution: {
+      type: meta.executionType || 'ai_prompt',
+      actorScope: meta.actorScope || 'self',
+      outputFormat: meta.outputFormat || 'json',
+      outputSchema: meta.outputSchema || '',
+    },
     promptTemplate: template,
     display: meta.display || '',
     input: {
