@@ -20,12 +20,70 @@ import { loadMatchFlowSnapshot } from '@/modules/rank/matchRealtimeSync';
 import { readActiveSession, subscribeActiveSession } from '@/lib/rank/activeSessionStorage';
 import { normalizeRealtimeMode, isRealtimeEnabled } from '@/lib/rank/realtimeModes';
 import { formatPlayNumber } from '@/utils/characterPlayFormatting';
+import { buildBattleDefinitionFromGraph } from '@/lib/battle/definition';
 import {
   MATCH_DEBUG_HOLD_ENABLED,
   buildDebugHoldSnapshot,
 } from '@/components/rank/matchDebugUtils';
 
 const ASYNC_MATCH_ENDPOINT = '/api/rank/match';
+
+function buildTextBattleHeroIds(hero, selectedScoreboard = [], definition = null) {
+  const maxPlayers = Math.max(1, Math.min(12, Number(definition?.maxPlayers) || 2));
+  const ids = [];
+  const pushId = value => {
+    const normalized = value != null ? String(value).trim() : '';
+    if (!normalized || ids.includes(normalized)) return;
+    ids.push(normalized);
+  };
+
+  pushId(hero?.id);
+  (Array.isArray(selectedScoreboard) ? selectedScoreboard : []).forEach(entry => {
+    pushId(entry?.hero_id ?? entry?.heroId ?? null);
+  });
+
+  return ids.slice(0, maxPlayers);
+}
+
+async function fetchWorkspaceDefinition(gameId, gameName) {
+  const response = await fetch(`/api/rank/game-workspace?gameId=${encodeURIComponent(gameId)}`);
+  const json = await response.json().catch(() => null);
+
+  if (!response.ok || !json?.ok) {
+    throw new Error(json?.detail || json?.error || '게임 워크스페이스를 불러오지 못했습니다.');
+  }
+
+  const workspace = json.workspace || null;
+  const graph = workspace?.graph && typeof workspace.graph === 'object' ? workspace.graph : {};
+  const nodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
+  const edges = Array.isArray(graph?.edges) ? graph.edges : [];
+  const rawConfig =
+    workspace?.template?.battleConfig ||
+    workspace?.template?.battle_config ||
+    workspace?.runtime_config?.battleConfig ||
+    workspace?.runtime_config?.battle_config ||
+    {};
+
+  if (!nodes.length) {
+    return { workspace, definition: null };
+  }
+
+  const definition = buildBattleDefinitionFromGraph({
+    setInfo: {
+      id: workspace?.prompt_set_id || '',
+      name: gameName || workspace?.game_name || '새 텍스트 배틀',
+      description:
+        workspace?.template?.description ||
+        workspace?.runtime_config?.description ||
+        '',
+    },
+    nodes,
+    edges,
+    config: rawConfig,
+  });
+
+  return { workspace, definition };
+}
 
 const panelStyles = {
   root: {
@@ -1388,6 +1446,7 @@ export default function CharacterPlayPanel({ hero, playData }) {
     selectedEntry = null,
     selectedGame = null,
     selectedGameId = null,
+    selectedScoreboard = [],
     battleDetails = [],
     battleSummary = null,
     visibleBattles = 0,
@@ -2422,6 +2481,110 @@ export default function CharacterPlayPanel({ hero, playData }) {
     };
   }, [handleProceedMatching, matchingState.open, matchingState.phase, matchingState.queueMode]);
 
+  const startTextBattleSession = useCallback(async () => {
+    if (!selectedGameId || !hero?.id) {
+      return false;
+    }
+
+    appendDebug('text-battle:prepare', {
+      gameId: selectedGameId,
+      heroId: hero.id,
+    });
+
+    const {
+      data: { session: authSession },
+      error: authError,
+    } = await supabase.auth.getSession();
+
+    if (authError || !authSession?.access_token) {
+      throw new Error('로그인 세션을 확인하지 못했습니다.');
+    }
+
+    const { workspace, definition } = await fetchWorkspaceDefinition(
+      selectedGameId,
+      selectedGame?.name || ''
+    );
+
+    if (!definition || !Array.isArray(definition.turns) || !definition.turns.length) {
+      appendDebug('text-battle:skip', {
+        gameId: selectedGameId,
+        reason: 'missing_definition',
+      });
+      return false;
+    }
+
+    const heroIds = buildTextBattleHeroIds(hero, selectedScoreboard, definition);
+    if (!heroIds.length) {
+      throw new Error('참가할 캐릭터를 찾지 못했습니다.');
+    }
+
+    setMatchingState(prev => ({
+      ...prev,
+      open: true,
+      phase: 'queue',
+      progress: 18,
+      message: '텍스트 배틀 세션을 준비 중입니다.',
+      error: '',
+      sessionId: null,
+      matchCode: null,
+      countdown: null,
+    }));
+
+    const response = await fetch('/api/text-battle/start', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${authSession.access_token}`,
+      },
+      body: JSON.stringify({
+        definition,
+        heroIds,
+        gameName: selectedGame?.name || workspace?.game_name || '',
+        promptSetId: workspace?.prompt_set_id || null,
+      }),
+    });
+
+    const json = await response.json().catch(() => null);
+
+    if (!response.ok || !json?.ok) {
+      throw new Error(json?.detail || json?.error || '텍스트 배틀 세션을 시작하지 못했습니다.');
+    }
+
+    const textSessionId = json?.textSession?.id || null;
+    if (!textSessionId) {
+      throw new Error('생성된 텍스트 배틀 세션 ID를 받지 못했습니다.');
+    }
+
+    appendDebug('text-battle:started', {
+      gameId: selectedGameId,
+      textSessionId,
+      heroIds,
+    });
+
+    setMatchingState(prev => ({
+      ...prev,
+      open: true,
+      phase: 'ready',
+      progress: 100,
+      message: '텍스트 배틀 세션으로 이동합니다…',
+      error: '',
+      sessionId: textSessionId,
+      queueMode: 'text-battle',
+      matchCode: null,
+      countdown: null,
+    }));
+
+    router.push(`/text-battle/session/${encodeURIComponent(textSessionId)}`);
+    return true;
+  }, [
+    appendDebug,
+    hero,
+    router,
+    selectedGame?.name,
+    selectedGameId,
+    selectedScoreboard,
+  ]);
+
   const runAutoMatch = useCallback(
     async () => {
       if (hasBlockingActiveSession) {
@@ -2481,6 +2644,27 @@ export default function CharacterPlayPanel({ hero, playData }) {
         role: roleLabel,
         score,
       });
+
+      try {
+        const started = await startTextBattleSession();
+        if (started) {
+          return;
+        }
+      } catch (error) {
+        const friendly =
+          error?.message || '텍스트 배틀 세션을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.';
+        appendDebug('text-battle:error', { error: friendly });
+        setMatchingState(prev => ({
+          ...prev,
+          open: true,
+          phase: 'error',
+          progress: 0,
+          message: '',
+          error: friendly,
+          countdown: null,
+        }));
+        return;
+      }
 
       clearQueueWatch();
       setMatchingState({
@@ -2654,7 +2838,10 @@ export default function CharacterPlayPanel({ hero, playData }) {
       selectedEntry?.rating,
       selectedEntry?.role,
       selectedEntry?.score,
+      selectedGame?.name,
       selectedGameId,
+      selectedScoreboard,
+      startTextBattleSession,
       hasBlockingActiveSession,
       activeSessionBlockMessage,
       activeSessionInfo?.gameId,
