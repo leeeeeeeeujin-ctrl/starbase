@@ -1,9 +1,12 @@
 import { supabase } from '../../lib/supabase';
 import { withTable } from '../../lib/supabaseTables';
+import { includesHeroId } from '../../utils/characterStats';
 
 const SLOT_COLUMNS = 'id,game_id,hero_id,slot_index,role';
 const GAME_COLUMNS = 'id,name,image_url,description,owner_id,created_at,realtime_match';
 const SESSION_COLUMNS = 'id,game_id,created_at,mode,started_by,version_id';
+const BATTLE_COLUMNS =
+  'id,game_id,result,score_delta,attacker_hero_ids,defender_hero_ids,created_at';
 const HERO_LOOKUP_COLUMNS =
   'id,name,image_url,description,ability1,ability2,ability3,ability4,background_url,bgm_url,bgm_mime,bgm_duration_seconds,owner_id';
 const PARTICIPANT_COLUMNS =
@@ -98,6 +101,14 @@ function mapHeroLookup(rows = []) {
     };
   });
   return lookup;
+}
+
+function isMeaningfulBattle(row, logs = []) {
+  if (Array.isArray(logs) && logs.length > 0) return true;
+  const result = typeof row?.result === 'string' ? row.result.trim() : '';
+  if (result) return true;
+  const scoreDelta = Number(row?.score_delta);
+  return Number.isFinite(scoreDelta) && scoreDelta !== 0;
 }
 
 export async function fetchHeroParticipationBundle(heroId, { heroSeed } = {}) {
@@ -196,7 +207,8 @@ export async function fetchHeroParticipationBundle(heroId, { heroSeed } = {}) {
     };
   }
 
-  const [allSlotsResult, gamesResult, sessionsResult, gameParticipantsResult] = await Promise.all([
+  const [allSlotsResult, gamesResult, sessionsResult, gameParticipantsResult, battlesResult] =
+    await Promise.all([
     withTable(supabase, 'rank_game_slots', table =>
       supabase.from(table).select(SLOT_COLUMNS).in('game_id', gameIds)
     ),
@@ -212,6 +224,13 @@ export async function fetchHeroParticipationBundle(heroId, { heroSeed } = {}) {
     ),
     withTable(supabase, 'rank_participants', table =>
       supabase.from(table).select(SCOREBOARD_PARTICIPANT_COLUMNS).in('game_id', gameIds)
+    ),
+    withTable(supabase, 'rank_battles', table =>
+      supabase
+        .from(table)
+        .select(BATTLE_COLUMNS)
+        .in('game_id', gameIds)
+        .order('created_at', { ascending: false })
     ),
   ]);
 
@@ -233,6 +252,10 @@ export async function fetchHeroParticipationBundle(heroId, { heroSeed } = {}) {
   const { data: allParticipantsRaw, error: allParticipantsError } = gameParticipantsResult;
   if (allParticipantsError) {
     throw allParticipantsError;
+  }
+  const { data: battlesRaw, error: battlesError } = battlesResult;
+  if (battlesError) {
+    throw battlesError;
   }
 
   const allSlots = (Array.isArray(allSlotsRaw) ? allSlotsRaw : []).map(normaliseSlot);
@@ -265,6 +288,46 @@ export async function fetchHeroParticipationBundle(heroId, { heroSeed } = {}) {
       participantsByGame.set(participant.game_id, []);
     }
     participantsByGame.get(participant.game_id).push({ ...participant });
+  });
+
+  const allBattles = Array.isArray(battlesRaw) ? battlesRaw : [];
+  const battleIds = allBattles.map(row => row?.id).filter(Boolean);
+  const logsByBattleId = new Map();
+  if (battleIds.length) {
+    const { data: battleLogsRaw, error: battleLogsError } = await withTable(
+      supabase,
+      'rank_battle_logs',
+      table =>
+        supabase
+          .from(table)
+          .select('battle_id')
+          .in('battle_id', battleIds)
+    );
+    if (battleLogsError) {
+      throw battleLogsError;
+    }
+    (Array.isArray(battleLogsRaw) ? battleLogsRaw : []).forEach(log => {
+      if (!log?.battle_id) return;
+      if (!logsByBattleId.has(log.battle_id)) {
+        logsByBattleId.set(log.battle_id, []);
+      }
+      logsByBattleId.get(log.battle_id).push(log);
+    });
+  }
+
+  const heroBattleCountByGame = new Map();
+  allBattles.forEach(battle => {
+    if (!battle?.game_id) return;
+    const involvesHero =
+      includesHeroId(battle.attacker_hero_ids, heroId) ||
+      includesHeroId(battle.defender_hero_ids, heroId);
+    if (!involvesHero) return;
+    const logs = logsByBattleId.get(battle.id) || [];
+    if (!isMeaningfulBattle(battle, logs)) return;
+    heroBattleCountByGame.set(
+      battle.game_id,
+      (heroBattleCountByGame.get(battle.game_id) || 0) + 1
+    );
   });
 
   const scoreboardMap = {};
@@ -380,11 +443,7 @@ export async function fetchHeroParticipationBundle(heroId, { heroSeed } = {}) {
   const participations = heroParticipationSlots.map(slot => {
     const sessions = sessionsByGame.get(slot.game_id) || [];
     const participant = heroParticipantByGame.get(slot.game_id) || null;
-    const participantBattles =
-      participant?.battles != null && Number.isFinite(Number(participant.battles))
-        ? Number(participant.battles)
-        : null;
-    const sessionCount = participantBattles != null ? participantBattles : 0;
+    const sessionCount = heroBattleCountByGame.get(slot.game_id) || 0;
     const latestSession = sessions[0]?.created_at || null;
     const oldestSession = sessions.length ? sessions[sessions.length - 1]?.created_at : null;
     const primaryMode = buildModeFrequency(sessions);

@@ -2,6 +2,107 @@ import fs from 'fs';
 import path from 'path';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 
+function buildFallbackNode(slot, index) {
+  return {
+    id: `n${slot.id}`,
+    type: 'prompt',
+    position: {
+      x: typeof slot?.canvas_x === 'number' ? slot.canvas_x : 120 + (index % 3) * 380,
+      y: typeof slot?.canvas_y === 'number' ? slot.canvas_y : 120 + Math.floor(index / 3) * 260,
+    },
+    data: {
+      template: slot?.template || '',
+      slot_type: slot?.slot_type || 'ai',
+      slot_pick: slot?.slot_pick || '1',
+      isStart: !!slot?.is_start,
+      invisible: !!slot?.invisible,
+      visible_slots: Array.isArray(slot?.visible_slots) ? slot.visible_slots : [],
+      slotNo: Number.isFinite(Number(slot?.slot_no)) ? Number(slot.slot_no) : index + 1,
+      var_rules_global: slot?.var_rules_global ?? null,
+      var_rules_local: slot?.var_rules_local ?? null,
+    },
+  };
+}
+
+function buildFallbackEdge(bridge) {
+  return {
+    id: `e${bridge.id}`,
+    source: `n${bridge.from_slot_id}`,
+    target: `n${bridge.to_slot_id}`,
+    label: '',
+    data: {
+      bridgeId: bridge.id,
+      trigger_words: Array.isArray(bridge?.trigger_words) ? bridge.trigger_words : [],
+      conditions: Array.isArray(bridge?.conditions) ? bridge.conditions : [],
+      priority: Number.isFinite(Number(bridge?.priority)) ? Number(bridge.priority) : 0,
+      probability: Number.isFinite(Number(bridge?.probability)) ? Number(bridge.probability) : 1,
+      fallback: !!bridge?.fallback,
+      action: bridge?.action || 'continue',
+    },
+  };
+}
+
+async function buildWorkspaceFromPromptSet(gameId) {
+  const { data: gameRow, error: gameError } = await supabaseAdmin
+    .from('rank_games')
+    .select('id,name,prompt_set_id')
+    .eq('id', gameId)
+    .maybeSingle();
+
+  if (gameError || !gameRow?.prompt_set_id) {
+    return null;
+  }
+
+  const [{ data: promptSetRow }, { data: slotRows }, { data: bridgeRows }] = await Promise.all([
+    supabaseAdmin
+      .from('prompt_sets')
+      .select('id,name,description,battle_config')
+      .eq('id', gameRow.prompt_set_id)
+      .maybeSingle(),
+    supabaseAdmin
+      .from('prompt_slots')
+      .select('*')
+      .eq('set_id', gameRow.prompt_set_id)
+      .order('slot_no', { ascending: true }),
+    supabaseAdmin
+      .from('prompt_bridges')
+      .select('*')
+      .eq('from_set', gameRow.prompt_set_id)
+      .order('priority', { ascending: false }),
+  ]);
+
+  const nodes = Array.isArray(slotRows) ? slotRows.map(buildFallbackNode) : [];
+  const edges = Array.isArray(bridgeRows) ? bridgeRows.map(buildFallbackEdge) : [];
+  if (!nodes.length) {
+    return null;
+  }
+
+  return {
+    game_id: gameId,
+    prompt_set_id: gameRow.prompt_set_id,
+    game_name: gameRow.name || promptSetRow?.name || '새 게임',
+    template: {
+      description: promptSetRow?.description || '',
+      battleConfig:
+        promptSetRow?.battle_config && typeof promptSetRow.battle_config === 'object'
+          ? promptSetRow.battle_config
+          : {},
+    },
+    graph: {
+      nodes,
+      edges,
+    },
+    runtime_config: {
+      battleConfig:
+        promptSetRow?.battle_config && typeof promptSetRow.battle_config === 'object'
+          ? promptSetRow.battle_config
+          : {},
+    },
+    hooks_source: null,
+    ui_shell: null,
+  };
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
     res.setHeader('Allow', ['GET']);
@@ -36,6 +137,9 @@ export default async function handler(req, res) {
     }
 
     let row = Array.isArray(data) && data.length ? data[0] : null;
+    if (!row) {
+      row = await buildWorkspaceFromPromptSet(gameId);
+    }
 
     // hooks_source 가 비어 있거나, 기본 워크스페이스 스텁(/game/hooks/automation.js)에서
     // 그대로 복사된 경우라면, 워크스페이스 공용 텍스트 배틀 훅을 기본값으로 주입한다.

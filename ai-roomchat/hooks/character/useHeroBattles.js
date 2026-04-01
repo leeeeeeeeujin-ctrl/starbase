@@ -6,6 +6,14 @@ import { buildBattleSummary, includesHeroId } from '../../utils/characterStats';
 
 const LOGS_SLICE = 5;
 
+function isMeaningfulBattle(row, logs = []) {
+  if (Array.isArray(logs) && logs.length > 0) return true;
+  const result = typeof row?.result === 'string' ? row.result.trim() : '';
+  if (result) return true;
+  const scoreDelta = Number(row?.score_delta);
+  return Number.isFinite(scoreDelta) && scoreDelta !== 0;
+}
+
 export default function useHeroBattles({ hero, selectedGameId }) {
   const [battleDetails, setBattleDetails] = useState([]);
   const [visibleBattles, setVisibleBattles] = useState(LOGS_SLICE);
@@ -117,10 +125,14 @@ export default function useHeroBattles({ hero, selectedGameId }) {
         logsMap.get(log.battle_id).push(log);
       });
 
-      const detailed = battles.map(battle => ({
-        ...battle,
-        logs: (logsMap.get(battle.id) || []).sort((a, b) => (a.turn_no ?? 0) - (b.turn_no ?? 0)),
-      }));
+      const detailed = battles
+        .map(battle => ({
+          ...battle,
+          logs: (logsMap.get(battle.id) || []).sort(
+            (a, b) => (a.turn_no ?? 0) - (b.turn_no ?? 0)
+          ),
+        }))
+        .filter(battle => isMeaningfulBattle(battle, battle.logs));
 
       if (!active) return;
       setBattleDetails(detailed);
