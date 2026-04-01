@@ -16,6 +16,10 @@ function cloneJson(value) {
   }
 }
 
+function toObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
 function indexTurns(turns = []) {
   const map = new Map();
   toList(turns).forEach(turn => {
@@ -315,8 +319,17 @@ export function submitBattleTurn(session, payload = {}) {
     result: payload.result ?? null,
     display: currentTurn.display || '',
     promptTemplate: currentTurn.promptTemplate || '',
+    reply: payload.reply ?? null,
+    rawResult: payload.rawResult ?? null,
+    gameResult: payload.gameResult ?? null,
+    teamOutcomes: payload.teamOutcomes ?? null,
+    participantOutcomes: payload.participantOutcomes ?? null,
     createdAt: Date.now(),
   };
+
+  if (payload.valuesPatch && typeof payload.valuesPatch === 'object') {
+    Object.assign(nextValues, payload.valuesPatch);
+  }
 
   const nextTransition = pickNextTransition({
     definition: session.definition,
@@ -330,12 +343,22 @@ export function submitBattleTurn(session, payload = {}) {
     ? resolveTurnActorId(session, nextTurn, payload.actorId || session.actorId)
     : toId(payload.actorId || session.actorId);
 
+  const participantOutcomes = toObject(nextValues.participantOutcomes);
+  const actorOutcome = toId(participantOutcomes[nextActorId]).toLowerCase();
+  const actorBlocked =
+    actorOutcome === 'eliminated' || actorOutcome === 'retired';
+  const normalizedGameResult = toId(nextValues.gameResult).toLowerCase();
+  const completedByResult =
+    normalizedGameResult === 'ended' ||
+    normalizedGameResult === 'abandoned' ||
+    normalizedGameResult === 'timed_out';
+
   return {
     ...session,
     actorId: nextActorId,
     currentTurnId: nextTurn?.id || '',
     turnIndex: nextTurn ? session.turnIndex + 1 : session.turnIndex,
-    status: nextTurn ? 'running' : 'completed',
+    status: completedByResult ? 'completed' : nextTurn && !actorBlocked ? 'running' : 'completed',
     values: nextValues,
     logs: [...toList(session.logs), logEntry],
     updatedAt: Date.now(),

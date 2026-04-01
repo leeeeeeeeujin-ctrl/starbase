@@ -13,6 +13,7 @@ import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { sanitizeSupabaseUrl } from '@/lib/supabaseEnv';
 import { writeBattleDebugLog } from '@/lib/battle/debugLog';
 import { settleTextBattleSession } from '@/lib/battle/textBattleSettlement';
+import { applyBattleResultToValues, parseStructuredBattleResult } from '@/lib/battle/resultSchema';
 
 const url = sanitizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL);
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -144,10 +145,19 @@ export default async function handler(req, res) {
       resolvedActorId
     );
 
+    const parsedResult = parseStructuredBattleResult(payload?.result || null);
+    const valuesPatch = applyBattleResultToValues(session?.values || {}, parsedResult);
+
     const nextSession = submitBattleTurn(session, {
       actorId: resolvedActorId,
       input,
       result: payload?.result || null,
+      rawResult: parsedResult.raw,
+      reply: parsedResult.reply,
+      gameResult: parsedResult.gameResult,
+      teamOutcomes: parsedResult.teamOutcomes,
+      participantOutcomes: parsedResult.participantOutcomes,
+      valuesPatch,
     });
 
     if (textSessionId) {
@@ -198,10 +208,16 @@ export default async function handler(req, res) {
           },
           variables: {
             lastPrompt: runtimePrompt,
-            aiResponseRaw: payload?.result || null,
+            aiResponseRaw: parsedResult.reply || payload?.result || null,
             battleLast: {
-              result: payload?.result || null,
-              narrative: payload?.result || null,
+              result: parsedResult.reply || payload?.result || null,
+              narrative: parsedResult.reply || payload?.result || null,
+              battleEnd:
+                nextSession?.status === 'completed' ||
+                ['ended', 'abandoned', 'timed_out'].includes(
+                  String(parsedResult?.gameResult || '').toLowerCase()
+                ),
+              winner: nextSession?.values?.battleWinner || null,
             },
           },
         },
@@ -265,6 +281,9 @@ export default async function handler(req, res) {
         nodeId: currentTurn?.id || null,
         nodeTitle: currentTurn?.title || null,
         input: input || null,
+        parsedGameResult: parsedResult.gameResult || null,
+        parsedTeamOutcomes: parsedResult.teamOutcomes || {},
+        parsedParticipantOutcomes: parsedResult.participantOutcomes || {},
         nextTurnId: nextSession?.currentTurnId || null,
         valueKeys: Object.keys(nextSession?.values || {}),
         participantCount: Array.isArray(session?.participants?.list)

@@ -79,10 +79,17 @@ export function buildTurnAgentContexts(session, turn, actorId = session?.actorId
 
 export function buildRuntimePromptFromTurn(session, turn, actorId = session?.actorId) {
   const agentContexts = buildTurnAgentContexts(session, turn, actorId);
+  const resultContract = [
+    '응답은 가능하면 JSON 하나로 반환한다.',
+    '형식:',
+    '{"reply":"서술","gameResult":"ongoing|ended|abandoned|timed_out","teamOutcomes":{"팀명":"win|lose"},"participantOutcomes":{"참가자ID":"survived|eliminated|retired"}}',
+    '아직 전투가 끝나지 않았다면 gameResult는 "ongoing"로 둔다.',
+  ].join('\n');
   const runtimePrompt = [
     agentContexts.length ? '아래는 현재 턴에 참여하는 캐릭터 AI들의 실행 문맥이다.' : '',
     ...agentContexts.map(entry => `[${entry.name}]\n${entry.context}`),
     turn?.promptTemplate || '',
+    resultContract,
   ]
     .filter(Boolean)
     .join('\n\n----------------\n\n');

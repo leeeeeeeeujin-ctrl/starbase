@@ -228,4 +228,26 @@ describe('battle session runtime', () => {
     expect(next.status).toBe('completed');
     expect(next.logs).toHaveLength(1);
   });
+
+  test('marks session completed when structured result ends the game', () => {
+    const session = createBattleSession({
+      definition: createDefinition(),
+      participants,
+      actorId: 'hero-1',
+    });
+
+    const next = submitBattleTurn(session, {
+      actorId: 'hero-1',
+      input: 'attack',
+      gameResult: 'ended',
+      valuesPatch: {
+        gameResult: 'ended',
+        teamOutcomes: { blue: 'win', red: 'lose' },
+      },
+    });
+
+    expect(next.status).toBe('completed');
+    expect(next.values.gameResult).toBe('ended');
+    expect(next.values.teamOutcomes.blue).toBe('win');
+  });
 });

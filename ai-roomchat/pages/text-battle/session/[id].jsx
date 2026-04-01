@@ -42,6 +42,38 @@ function shortText(value, limit = 90) {
   return `${text.slice(0, limit).trim()}…`;
 }
 
+function getBattleRunErrorMessage(error) {
+  const message = String(error?.message || '').toLowerCase();
+  if (
+    message.includes('invalid api key') ||
+    message.includes('api key') ||
+    message.includes('authentication') ||
+    message.includes('unauthorized') ||
+    message.includes('401') ||
+    message.includes('403')
+  ) {
+    return 'API 키를 확인해주세요. 캐릭터 AI 페이지에서 교체할 수 있습니다.';
+  }
+  if (
+    message.includes('timeout') ||
+    message.includes('timed out') ||
+    message.includes('network') ||
+    message.includes('fetch failed') ||
+    message.includes('connection')
+  ) {
+    return '연결이 불안정합니다. 잠시 후 다시 시도해주세요.';
+  }
+  if (
+    message.includes('json') ||
+    message.includes('format') ||
+    message.includes('schema') ||
+    message.includes('parse')
+  ) {
+    return '응답 형식이 맞지 않습니다. 다시 시도해주세요.';
+  }
+  return String(error?.message || '턴을 진행하지 못했습니다.');
+}
+
 function hydrateRuntimeSession(value) {
   if (!value || typeof value !== 'object') return null;
   return rehydrateBattleSession(value);
@@ -265,7 +297,7 @@ export default function TextBattleSessionPage() {
       setRuntimeState(prev => ({
         ...prev,
         running: false,
-        error: error?.message || String(error),
+        error: getBattleRunErrorMessage(error),
         status: '',
       }));
     }
@@ -316,7 +348,7 @@ export default function TextBattleSessionPage() {
       setRuntimeState(prev => ({
         ...prev,
         running: false,
-        error: error?.message || String(error),
+        error: getBattleRunErrorMessage(error),
         status: '',
       }));
     }
