@@ -6,30 +6,21 @@ import { useRouter } from 'next/router';
 import { supabase } from '../../lib/supabase';
 import { REALTIME_MODES } from '../../lib/rank/realtimeModes';
 import PromptSetPicker from '../../components/rank/PromptSetPicker';
-import SlotMatrix from '../../components/rank/SlotMatrix';
-import RulesChecklist, { buildRulesPrefix } from '../../components/rank/RulesChecklist';
 import { uploadGameImage } from '../../lib/rank/storage';
 import { useSharedPromptSetStorage } from '../../hooks/shared/useSharedPromptSetStorage';
 import RegistrationLayout from './registration/RegistrationLayout';
 import RegistrationCard from './registration/RegistrationCard';
-import SidebarCard from './registration/SidebarCard';
-import {
-  brawlModeCopy,
-  imageFieldCopy,
-  registrationOverviewCopy,
-  realtimeModeCopy,
-} from '../../data/rankRegistrationContent';
+import { imageFieldCopy } from '../../data/rankRegistrationContent';
 import { prepareRegistrationPayload } from '../../lib/rank/registrationValidation';
-import { loadRolesConfig, toRegisterRankRolesPayload } from '../../lib/rank/rolesConfig';
 import { useWorkspaceOptional } from '../workspace/CodeWorkspaceProvider.jsx';
 import { MATCH_MODE_KEYS } from '../../lib/rank/matchModes';
 
 const MAX_IMAGE_SIZE_BYTES = 3 * 1024 * 1024;
 
-const REALTIME_MODE_OPTIONS = (realtimeModeCopy?.options || []).map(option => ({
-  value: REALTIME_MODES?.[option.value] ?? option.value,
-  label: option.label,
-}));
+const REALTIME_MODE_OPTIONS = [
+  { value: REALTIME_MODES.OFF, label: '비실시간' },
+  { value: REALTIME_MODES.STANDARD, label: '실시간' },
+];
 
 async function registerGame(payload) {
   const {
@@ -98,7 +89,7 @@ export default function RankNewClient() {
   const [setId, setSetId] = useState('');
   const [realtimeMode, setRealtimeMode] = useState(REALTIME_MODES.STANDARD);
 
-  // 역할/슬롯
+  // 역할
   const DEFAULT_ROLES = useMemo(
     () => [
       { name: '공격', score_delta_min: 20, score_delta_max: 40 },
@@ -107,20 +98,6 @@ export default function RankNewClient() {
     []
   );
   const [roles, setRoles] = useState(DEFAULT_ROLES);
-  const [slotMap, setSlotMap] = useState([]);
-
-  // 규칙
-  const [rules, setRules] = useState({
-    nerf_insight: false,
-    ban_kindness: false,
-    nerf_peace: false,
-    nerf_ultimate_injection: true,
-    fair_power_balance: true,
-    char_limit: 0,
-  });
-  const [brawlEnabled, setBrawlEnabled] = useState(false);
-  const [endCondition, setEndCondition] = useState('');
-  const [showBrawlHelp, setShowBrawlHelp] = useState(false);
   const [submitStatus, setSubmitStatus] = useState('idle');
   const [submitError, setSubmitError] = useState('');
   const [lastCreatedGame, setLastCreatedGame] = useState(null);
@@ -249,22 +226,6 @@ export default function RankNewClient() {
     [handleClearImage]
   );
 
-  const activeSlots = useMemo(
-    () => (slotMap || []).filter(s => s.active && s.role && s.role.trim()),
-    [slotMap]
-  );
-
-  const handleToggleBrawl = () => {
-    setBrawlEnabled(prev => {
-      const next = !prev;
-      if (!next) {
-        setShowBrawlHelp(false);
-        setEndCondition('');
-      }
-      return next;
-    });
-  };
-
   const resetForm = useCallback(() => {
     setName('');
     setDesc('');
@@ -273,18 +234,6 @@ export default function RankNewClient() {
     setSharedPromptSetId('');
     setRealtimeMode(REALTIME_MODES.STANDARD);
     setRoles(DEFAULT_ROLES);
-    setSlotMap([]);
-    setRules({
-      nerf_insight: false,
-      ban_kindness: false,
-      nerf_peace: false,
-      nerf_ultimate_injection: true,
-      fair_power_balance: true,
-      char_limit: 0,
-    });
-    setBrawlEnabled(false);
-    setEndCondition('');
-    setShowBrawlHelp(false);
     setSubmitStatus('idle');
     setSubmitError('');
   }, [DEFAULT_ROLES, handleClearImage, setSharedPromptSetId]);
@@ -295,7 +244,6 @@ export default function RankNewClient() {
     }
     if (!user) return alert('로그인이 필요합니다.');
     if (!setId) return alert('프롬프트 세트를 선택하세요.');
-    if (activeSlots.length === 0) return alert('최소 1개의 슬롯을 활성화하고 역할을 지정하세요.');
     if (imgError) return alert(imgError);
 
     setSubmitStatus('submitting');
@@ -311,55 +259,12 @@ export default function RankNewClient() {
       }
     }
 
-    const trimmedEndCondition = endCondition.trim();
-    if (brawlEnabled && !trimmedEndCondition) {
-      return alert('난입 허용 시 종료 조건 변수를 입력해야 합니다.');
-    }
-    const compiledRules = {
-      ...rules,
-      brawl_rule: brawlEnabled ? 'allow-brawl' : 'banish-on-loss',
-      end_condition_variable: brawlEnabled ? trimmedEndCondition || null : null,
-    };
-
-    // 1) roles.rank.json 이 존재하면 그 값을 우선한다.
-    let rolePayload = null;
-    try {
-      const files = workspace?.files || {};
-      const cfgFromFile = loadRolesConfig(files, '/game/roles.rank.json');
-      const fromFile = toRegisterRankRolesPayload(cfgFromFile);
-      if (Array.isArray(fromFile) && fromFile.length) {
-        rolePayload = fromFile;
-      }
-    } catch {
-      // 워크스페이스 파일 파싱 실패는 폼 기반 역할 정의로 폴백한다.
-    }
-
-    // 2) 폴백: 기존 폼 기반 역할/점수 정의
-    if (!rolePayload) {
-      const slotCountMap = activeSlots.reduce((acc, slot) => {
-        const key = slot.role ? String(slot.role).trim() : '';
-        if (!key) return acc;
-        acc[key] = (acc[key] || 0) + 1;
-        return acc;
-      }, {});
-
-      rolePayload = roles.map(role => {
-        const name = role?.name ? String(role.name).trim() : '역할';
-        const rawMin = Number(role?.score_delta_min);
-        const rawMax = Number(role?.score_delta_max);
-        const min = Number.isFinite(rawMin) ? rawMin : 20;
-        const max = Number.isFinite(rawMax) ? rawMax : 40;
-        const slotCount = Number.isFinite(Number(slotCountMap[name]))
-          ? Number(slotCountMap[name])
-          : 0;
-        return {
-          name,
-          slot_count: Math.max(0, slotCount),
-          score_delta_min: min,
-          score_delta_max: max,
-        };
-      });
-    }
+    const rolePayload = (makerBattleConfig.roles || []).map(role => ({
+      name: role.name,
+      slot_count: Number.isFinite(Number(role.limit)) ? Math.max(1, Number(role.limit)) : 1,
+      score_delta_min: 20,
+      score_delta_max: 40,
+    }));
 
     const res = await registerGame({
       name: name || '새 게임',
@@ -367,10 +272,10 @@ export default function RankNewClient() {
       image_url,
       prompt_set_id: setId,
       roles: rolePayload,
-      rules: compiledRules,
-      rules_prefix: buildRulesPrefix(compiledRules),
+      rules: {},
+      rules_prefix: '',
       realtime_match: realtimeMode,
-      slots: slotMap,
+      slots: [],
     });
 
     if (!res.ok) {
@@ -468,22 +373,6 @@ export default function RankNewClient() {
     borderRadius: 16,
     padding: '12px 14px',
   };
-
-  const sidebarCards = [
-    <SidebarCard key="overview-checklist" title={registrationOverviewCopy.checklist.title}>
-      <ul style={{ margin: 0, paddingLeft: 18, display: 'grid', gap: 6, color: '#cbd5f5' }}>
-        {registrationOverviewCopy.checklist.items.map(item => (
-          <li key={item.id}>{item.text}</li>
-        ))}
-      </ul>
-    </SidebarCard>,
-    <SidebarCard key="overview-guide" title={registrationOverviewCopy.guide.title}>
-      <p style={{ margin: 0, color: '#cbd5f5' }}>{registrationOverviewCopy.guide.description}</p>
-    </SidebarCard>,
-    <SidebarCard key="realtime-helper" title={realtimeModeCopy.label}>
-      <p style={{ margin: 0, color: '#bfdbfe' }}>{realtimeModeCopy.helper}</p>
-    </SidebarCard>,
-  ];
 
   const renderSuccessCard = () => {
     if (!lastCreatedGame) return null;
@@ -604,9 +493,9 @@ export default function RankNewClient() {
     <RegistrationLayout
       backgroundImage={backgroundUrl}
       title="게임 등록"
-      subtitle="역할과 슬롯, 규칙을 채운 뒤 등록을 완료하세요."
+      subtitle="기본 정보와 실시간 여부를 정하고 메이커 역할 구성을 확인한 뒤 등록하세요."
       onBack={() => router.back()}
-      sidebar={sidebarCards}
+      sidebar={[]}
       footer={
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
           <button
@@ -737,11 +626,11 @@ export default function RankNewClient() {
 
       <RegistrationCard
         title="모드 설정"
-        description="실시간 여부와 난입 조건을 구성합니다."
+        description="매칭과 세션을 실시간으로 돌릴지 여부만 정합니다."
         contentGap={16}
       >
         <label style={labelStyle}>
-          <span style={{ color: '#cbd5f5' }}>{realtimeModeCopy.label}</span>
+          <span style={{ color: '#cbd5f5' }}>진행 방식</span>
           <select
             value={realtimeMode}
             onChange={event => setRealtimeMode(event.target.value)}
@@ -754,93 +643,11 @@ export default function RankNewClient() {
             ))}
           </select>
         </label>
-
-        <div
-          style={{
-            display: 'grid',
-            gap: 10,
-            padding: '16px 18px',
-            borderRadius: 18,
-            border: '1px solid rgba(96,165,250,0.35)',
-            background: 'rgba(30,64,175,0.28)',
-            boxShadow: '0 16px 36px -28px rgba(37, 99, 235, 0.65)',
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              gap: 12,
-              flexWrap: 'wrap',
-            }}
-          >
-            <div style={{ display: 'grid', gap: 4, minWidth: 240 }}>
-              <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>
-                {brawlModeCopy.title}
-              </p>
-              <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: '#dbeafe' }}>
-                {brawlModeCopy.summary}
-              </p>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <button
-                type="button"
-                onClick={() => setShowBrawlHelp(prev => !prev)}
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: '50%',
-                  border: '1px solid rgba(148,163,184,0.45)',
-                  background: 'rgba(15,23,42,0.55)',
-                  color: '#f8fafc',
-                  fontWeight: 700,
-                }}
-              >
-                ?
-              </button>
-              <button
-                type="button"
-                style={togglePillStyle(brawlEnabled)}
-                onClick={handleToggleBrawl}
-              >
-                {brawlEnabled ? 'ON' : 'OFF'}
-              </button>
-            </div>
-          </div>
-
-          {showBrawlHelp ? (
-            <div
-              style={{
-                background: 'rgba(15,23,42,0.55)',
-                borderRadius: 14,
-                padding: '12px 14px',
-                fontSize: 13,
-                lineHeight: 1.6,
-                color: '#e2e8f0',
-              }}
-            >
-              {brawlModeCopy.tooltip}
-            </div>
-          ) : null}
-
-          {brawlEnabled ? (
-            <label style={labelStyle}>
-              <span style={{ color: '#dbeafe' }}>{brawlModeCopy.endCondition.label}</span>
-              <input
-                type="text"
-                value={endCondition}
-                onChange={event => setEndCondition(event.target.value)}
-                placeholder={brawlModeCopy.endCondition.placeholder}
-                style={inputStyle}
-              />
-              <span style={{ fontSize: 12, color: '#bfdbfe' }}>
-                {brawlModeCopy.endCondition.helper}
-              </span>
-            </label>
-          ) : (
-            <p style={{ margin: 0, fontSize: 13, color: '#cbd5f5' }}>{brawlModeCopy.offHint}</p>
-          )}
+        <div style={moduleShellStyle}>
+          <p style={{ margin: 0, fontSize: 13, color: '#cbd5f5', lineHeight: 1.7 }}>
+            세부 규칙과 난입, 슬롯 구조는 이 화면에서 다루지 않습니다. 우선은 실시간 여부만 정하고,
+            실제 역할/인원 구조는 메이커 설정을 기준으로 등록합니다.
+          </p>
         </div>
       </RegistrationCard>
 
@@ -898,27 +705,6 @@ export default function RankNewClient() {
         </div>
       </RegistrationCard>
 
-      <RegistrationCard
-        title="슬롯 매핑"
-        description="역할과 슬롯을 연결해 매칭 시나리오를 구성합니다."
-      >
-        <div style={moduleShellStyle}>
-          <SlotMatrix
-            value={slotMap}
-            onChange={setSlotMap}
-            roleOptions={roles.map(role => role.name)}
-          />
-        </div>
-      </RegistrationCard>
-
-      <RegistrationCard
-        title="체크리스트 · 세부 규칙"
-        description="규칙을 검토하고 세부 설정을 마무리합니다."
-      >
-        <div style={moduleShellStyle}>
-          <RulesChecklist value={rules} onChange={setRules} />
-        </div>
-      </RegistrationCard>
     </RegistrationLayout>
   );
 }
