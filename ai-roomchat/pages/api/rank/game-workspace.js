@@ -103,6 +103,20 @@ async function buildWorkspaceFromPromptSet(gameId) {
   };
 }
 
+async function loadGamePromptSetId(gameId) {
+  if (!gameId) return null;
+  const { data, error } = await supabaseAdmin
+    .from('rank_games')
+    .select('id,prompt_set_id,name')
+    .eq('id', gameId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return {
+    promptSetId: data.prompt_set_id || null,
+    gameName: data.name || '',
+  };
+}
+
 async function loadPromptSetBattleConfig(promptSetId) {
   if (!promptSetId) return null;
   const { data, error } = await supabaseAdmin
@@ -148,8 +162,23 @@ export default async function handler(req, res) {
     }
 
     let row = Array.isArray(data) && data.length ? data[0] : null;
-    if (!row) {
+    const gameMeta = await loadGamePromptSetId(gameId);
+    const resolvedPromptSetId =
+      row?.prompt_set_id || gameMeta?.promptSetId || null;
+
+    const rowHasGraph =
+      Array.isArray(row?.graph?.nodes) && row.graph.nodes.length > 0;
+
+    if (!row || !rowHasGraph) {
       row = await buildWorkspaceFromPromptSet(gameId);
+    }
+
+    if (row) {
+      row = {
+        ...row,
+        prompt_set_id: row?.prompt_set_id || resolvedPromptSetId || null,
+        game_name: row?.game_name || gameMeta?.gameName || row?.template?.name || '새 게임',
+      };
     }
 
     if (row?.prompt_set_id) {
