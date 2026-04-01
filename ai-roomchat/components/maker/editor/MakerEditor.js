@@ -62,7 +62,7 @@ export default function MakerEditor() {
   } = graph;
   const syncingRef = useRef(false);
   const hydratedRef = useRef(false);
-  const templateHydratedRef = useRef(false);
+  const lastWorkspaceTemplateRef = useRef(null);
 
   const toTemplateObject = useCallback(() => {
     const template = (() => {
@@ -137,10 +137,10 @@ export default function MakerEditor() {
   useEffect(() => {
     const workspaceTemplate = files?.['/template.json']?.content;
     if (typeof workspaceTemplate !== 'string') return;
-    if (templateHydratedRef.current && templateText === workspaceTemplate) return;
-    templateHydratedRef.current = true;
+    if (lastWorkspaceTemplateRef.current === workspaceTemplate) return;
+    lastWorkspaceTemplateRef.current = workspaceTemplate;
     setTemplateText(workspaceTemplate);
-  }, [files, setTemplateText, templateText]);
+  }, [files, setTemplateText]);
 
   useEffect(() => {
     if (syncingRef.current) return;
