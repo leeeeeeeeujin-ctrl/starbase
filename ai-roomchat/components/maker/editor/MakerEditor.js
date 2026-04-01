@@ -13,6 +13,7 @@ import MakerEditorPanel from './MakerEditorPanel';
 import AddPromptFab from './AddPromptFab';
 import { normalizeBattleConfig } from '../../../lib/battle/definition.js';
 import { writeStoredBattleConfig } from '../../../lib/battle/battleConfigStorage.js';
+import { supabase } from '../../../lib/supabase';
 
 export default function MakerEditor() {
   const { status, graph, selection, persistence, history, definition: battleDefinition } = useMakerEditor();
@@ -226,6 +227,20 @@ export default function MakerEditor() {
 
     try {
       if (setKey) {
+        await supabase
+          .from('prompt_sets')
+          .update({
+            battle_config: battleConfig,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', setKey);
+      }
+    } catch (error) {
+      console.warn('[MakerEditor] battle_config save failed', error);
+    }
+
+    try {
+      if (setKey) {
         await saveSet(setKey, files || {});
       }
     } catch (error) {
@@ -239,7 +254,7 @@ export default function MakerEditor() {
     } catch (error) {
       console.warn('[MakerEditor] rank workspace publish failed', error);
     }
-  }, [busy, saveAll, files, status?.setInfo, status?.router]);
+  }, [battleConfig, busy, saveAll, files, status?.setInfo, status?.router]);
 
   const updateBattleConfig = useCallback(
     partial => {

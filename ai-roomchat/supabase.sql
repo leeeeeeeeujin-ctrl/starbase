@@ -165,10 +165,14 @@ create table if not exists public.prompt_sets (
   owner_id uuid not null references auth.users(id) on delete cascade,
   name text not null default '새 세트',
   description text default '' not null,
+  battle_config jsonb not null default '{}'::jsonb,
   is_public boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.prompt_sets
+  add column if not exists battle_config jsonb not null default '{}'::jsonb;
 
 alter table public.prompt_sets enable row level security;
 

@@ -207,6 +207,24 @@ export default function RankNewClient() {
 
     (async () => {
       try {
+        const { data: promptSetRow } = await supabase
+          .from('prompt_sets')
+          .select('battle_config')
+          .eq('id', setId)
+          .maybeSingle();
+        if (cancelled) return;
+        const dbBattleConfig = normalizeMakerBattleConfig(promptSetRow?.battle_config);
+        const hasDbBattleConfig =
+          (dbBattleConfig.roles && dbBattleConfig.roles.length > 0) ||
+          dbBattleConfig.minPlayers !== 1 ||
+          dbBattleConfig.maxPlayers !== 2 ||
+          dbBattleConfig.mode !== 'single';
+
+        if (hasDbBattleConfig) {
+          setWorkspaceBattleConfig(dbBattleConfig);
+          return;
+        }
+
         const response = await fetch(`/api/workspace/sets/${encodeURIComponent(setId)}`);
         const json = await response.json().catch(() => null);
         if (cancelled) return;
