@@ -8,9 +8,11 @@ function normalizeBootstrapSession(value) {
 }
 
 function buildRuntimeParticipantMap(runtimeSession) {
-  const participants = Array.isArray(runtimeSession?.participants)
-    ? runtimeSession.participants
-    : [];
+  const participants = Array.isArray(runtimeSession?.participants?.list)
+    ? runtimeSession.participants.list
+    : Array.isArray(runtimeSession?.participants)
+      ? runtimeSession.participants
+      : [];
   return new Map(
     participants
       .filter(participant => participant?.heroId)
@@ -77,6 +79,14 @@ export default async function handler(req, res) {
       : null;
     const runtimeSession = normalizeBootstrapSession(bootstrapTurn?.effects?.session || null);
     const runtimeParticipantMap = buildRuntimeParticipantMap(runtimeSession);
+    const bootstrapParticipants = Array.isArray(bootstrapTurn?.effects?.participants)
+      ? bootstrapTurn.effects.participants
+      : [];
+    const bootstrapParticipantMap = new Map(
+      bootstrapParticipants
+        .filter(participant => participant?.heroId)
+        .map(participant => [String(participant.heroId), participant])
+    );
     const visibleTurns = Array.isArray(turns)
       ? turns.filter(turn => Number(turn?.turn_index) >= 0)
       : [];
@@ -126,7 +136,10 @@ export default async function handler(req, res) {
 
       participants = Array.isArray(heroRows)
         ? heroRows.map(row => {
-            const runtimeParticipant = runtimeParticipantMap.get(String(row.id)) || null;
+            const runtimeParticipant =
+              runtimeParticipantMap.get(String(row.id)) ||
+              bootstrapParticipantMap.get(String(row.id)) ||
+              null;
             const runtimeMeta =
               runtimeParticipant?.meta && typeof runtimeParticipant.meta === 'object'
                 ? runtimeParticipant.meta
