@@ -190,7 +190,7 @@ export function useCharacterDetail(heroId) {
       let gamesById = new Map();
 
       if (gameIds.length) {
-        const { data: games, error: gamesError } = await withTable(supabase, 'games', table =>
+        const { data: games, error: gamesError } = await withTable(supabase, 'rank_games', table =>
           supabase.from(table).select('id, name, created_at').in('id', gameIds)
         );
 

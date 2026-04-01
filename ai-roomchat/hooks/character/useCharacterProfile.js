@@ -20,7 +20,7 @@ function normaliseAppearance(row, gamesById) {
     slotNo: row.slot_index ?? null,
     gameId: row.game_id || null,
     gameName: game?.name || '비공개 게임',
-    gameCover: game?.cover_path || null,
+    gameCover: game?.image_url || null,
     gameDescription: game?.description || '',
     gameCreatedAt: game?.created_at || null,
   };
@@ -170,8 +170,8 @@ export function useCharacterProfile(heroId) {
       let gamesById = new Map();
 
       if (gameIds.length) {
-        const { data: games, error: gamesError } = await withTable(supabase, 'games', table =>
-          supabase.from(table).select('id,name,cover_path,description,created_at').in('id', gameIds)
+        const { data: games, error: gamesError } = await withTable(supabase, 'rank_games', table =>
+          supabase.from(table).select('id,name,image_url,description,created_at').in('id', gameIds)
         );
 
         if (gamesError && gamesError.code !== 'PGRST116') {
