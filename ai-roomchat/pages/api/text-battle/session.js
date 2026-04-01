@@ -1,13 +1,10 @@
 import { supabaseAdmin } from '../../../lib/supabaseAdmin.js';
 import { buildHeroGameContext } from '../../../lib/characters/agentContext.js';
+import { rehydrateBattleSession } from '../../../lib/battle/session.js';
 
 function normalizeBootstrapSession(value) {
   if (!value || typeof value !== 'object') return null;
-  const participants = Array.isArray(value.participants) ? value.participants : [];
-  return {
-    ...value,
-    participants,
-  };
+  return rehydrateBattleSession(value);
 }
 
 export default async function handler(req, res) {

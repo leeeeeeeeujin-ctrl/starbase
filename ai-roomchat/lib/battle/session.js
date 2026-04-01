@@ -222,6 +222,32 @@ export function createBattleSession({
   };
 }
 
+export function rehydrateBattleSession(session = {}) {
+  const rebuilt = createBattleSession({
+    definition: session?.definition,
+    participants: Array.isArray(session?.participants?.list)
+      ? session.participants.list
+      : Array.isArray(session?.participants)
+        ? session.participants
+        : [],
+    sessionId: session?.id || '',
+    actorId: session?.actorId || '',
+    values: session?.values && typeof session.values === 'object' ? session.values : {},
+  });
+
+  return {
+    ...rebuilt,
+    status: session?.status || rebuilt.status,
+    currentTurnId: toId(session?.currentTurnId) || rebuilt.currentTurnId,
+    turnIndex: Number.isFinite(Number(session?.turnIndex))
+      ? Number(session.turnIndex)
+      : rebuilt.turnIndex,
+    logs: Array.isArray(session?.logs) ? session.logs : rebuilt.logs,
+    createdAt: session?.createdAt || rebuilt.createdAt,
+    updatedAt: session?.updatedAt || rebuilt.updatedAt,
+  };
+}
+
 export function getCurrentTurn(session) {
   if (!session?.definition?.turnMap) return null;
   return session.definition.turnMap.get(session.currentTurnId) || null;

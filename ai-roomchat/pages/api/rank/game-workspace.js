@@ -24,6 +24,7 @@ export default async function handler(req, res) {
       .from('rank_game_workspaces')
       .select('*')
       .eq('game_id', gameId)
+      .order('updated_at', { ascending: false })
       .limit(1);
 
     if (error) {

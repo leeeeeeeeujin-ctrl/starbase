@@ -3,7 +3,12 @@
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { getCurrentTurn, buildTurnPromptContext, resolveTurnActorId } from '@/lib/battle/session';
+import {
+  getCurrentTurn,
+  buildTurnPromptContext,
+  resolveTurnActorId,
+  rehydrateBattleSession,
+} from '@/lib/battle/session';
 import { buildRuntimePromptFromTurn } from '@/lib/battle/agentRuntime';
 import {
   readStoredTextBattleSession,
@@ -30,6 +35,11 @@ function shortText(value, limit = 90) {
   if (!text) return '';
   if (text.length <= limit) return text;
   return `${text.slice(0, limit).trim()}…`;
+}
+
+function hydrateRuntimeSession(value) {
+  if (!value || typeof value !== 'object') return null;
+  return rehydrateBattleSession(value);
 }
 
 export default function TextBattleSessionPage() {
@@ -66,7 +76,8 @@ export default function TextBattleSessionPage() {
           });
           return;
         }
-        const storedSession = readStoredTextBattleSession(id);
+        const storedSession = hydrateRuntimeSession(readStoredTextBattleSession(id));
+        const remoteSession = hydrateRuntimeSession(json?.runtimeSession);
         setState({
           loading: false,
           error: null,
@@ -77,8 +88,8 @@ export default function TextBattleSessionPage() {
           session:
             storedSession && typeof storedSession === 'object'
               ? storedSession
-              : json?.runtimeSession && typeof json.runtimeSession === 'object'
-                ? json.runtimeSession
+              : remoteSession && typeof remoteSession === 'object'
+                ? remoteSession
                 : prev.session,
         }));
       })
@@ -205,7 +216,7 @@ export default function TextBattleSessionPage() {
       writeStoredTextBattleSession(id, json.session);
       setRuntimeState(prev => ({
         ...prev,
-        session: json.session,
+        session: hydrateRuntimeSession(json.session),
         input: '',
         running: false,
         status:
