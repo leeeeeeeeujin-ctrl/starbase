@@ -43,12 +43,19 @@ runNodeScript('run-matching-simulations.js');
 console.log('[matching-samples] running failure breakdown...');
 runNodeScript('run-matching-simulations-breakdown.js');
 
+console.log('[matching-samples] running suspicious-success scan...');
+runNodeScript('run-matching-anomaly-scan.js');
+
 const latestAggregate = findLatestReport('matching-simulations-');
 const latestBreakdown = findLatestReport('matching-simulations-breakdown-');
+const latestAnomalies = findLatestReport('matching-anomaly-scan-');
 
 if (latestAggregate) {
   console.log('[matching-samples] latest aggregate report:', latestAggregate);
 }
 if (latestBreakdown) {
   console.log('[matching-samples] latest breakdown report:', latestBreakdown);
+}
+if (latestAnomalies) {
+  console.log('[matching-samples] latest anomaly report:', latestAnomalies);
 }
