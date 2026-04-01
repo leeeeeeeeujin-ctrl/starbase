@@ -7,13 +7,6 @@ function toObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
 
-function buildParticipantKeys(participant = {}) {
-  return [participant?.id, participant?.heroId, participant?.hero_id, participant?.name]
-    .filter(Boolean)
-    .map(value => String(value).trim())
-    .filter(Boolean);
-}
-
 export function parseStructuredBattleResult(raw) {
   const text = typeof raw === 'string' ? raw.trim() : '';
   if (!text) {
@@ -62,69 +55,6 @@ export function parseStructuredBattleResult(raw) {
     gameResult: '',
     teamOutcomes: {},
     participantOutcomes: {},
-  };
-}
-
-export function inferBattleResultFromNarrative(reply, participants = []) {
-  const text = typeof reply === 'string' ? reply.trim() : '';
-  const list = Array.isArray(participants) ? participants : [];
-  if (!text || list.length !== 2) {
-    return {
-      gameResult: '',
-      teamOutcomes: {},
-      participantOutcomes: {},
-      battleWinner: '',
-    };
-  }
-
-  const normalized = text.replace(/\s+/g, ' ');
-  const winner = list.find(participant => {
-    const keys = buildParticipantKeys(participant);
-    return keys.some(name => {
-      if (!name) return false;
-      return (
-        normalized.includes(`${name}가 승리`) ||
-        normalized.includes(`${name}이 승리`) ||
-        normalized.includes(`${name}의 승리`) ||
-        normalized.includes(`${name} 승리`) ||
-        normalized.includes(`${name}가 이겼`) ||
-        normalized.includes(`${name}이 이겼`) ||
-        normalized.includes(`${name}의 승리로`) ||
-        normalized.includes(`${name} winner`)
-      );
-    });
-  }) || null;
-
-  if (!winner) {
-    return {
-      gameResult: '',
-      teamOutcomes: {},
-      participantOutcomes: {},
-      battleWinner: '',
-    };
-  }
-
-  const loser = list.find(participant => participant !== winner) || null;
-  const participantOutcomes = {
-    [winner.id || winner.heroId || winner.name]: 'survived',
-  };
-  if (loser) {
-    participantOutcomes[loser.id || loser.heroId || loser.name] = 'eliminated';
-  }
-
-  const teamOutcomes =
-    winner?.team && loser?.team
-      ? {
-          [winner.team]: 'win',
-          [loser.team]: 'lose',
-        }
-      : {};
-
-  return {
-    gameResult: 'ended',
-    teamOutcomes,
-    participantOutcomes,
-    battleWinner: winner.heroId || winner.id || winner.name || '',
   };
 }
 
@@ -189,10 +119,6 @@ export function applyBattleResultToValues(values = {}, parsedResult = {}) {
     if (survivingParticipants.length === 1) {
       nextValues.battleWinner = survivingParticipants[0];
     }
-  }
-
-  if (!nextValues.battleWinner && parsedResult?.battleWinner) {
-    nextValues.battleWinner = toId(parsedResult.battleWinner);
   }
 
   return nextValues;

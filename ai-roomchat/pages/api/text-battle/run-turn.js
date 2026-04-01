@@ -15,7 +15,6 @@ import { writeBattleDebugLog } from '@/lib/battle/debugLog';
 import { settleTextBattleSession } from '@/lib/battle/textBattleSettlement';
 import {
   applyBattleResultToValues,
-  inferBattleResultFromNarrative,
   parseStructuredBattleResult,
 } from '@/lib/battle/resultSchema';
 
@@ -150,20 +149,7 @@ export default async function handler(req, res) {
     );
 
     const parsedResult = parseStructuredBattleResult(payload?.result || null);
-    const narrativeFallback =
-      !parsedResult.gameResult &&
-      !Object.keys(parsedResult.teamOutcomes || {}).length &&
-      !Object.keys(parsedResult.participantOutcomes || {}).length
-        ? inferBattleResultFromNarrative(
-            parsedResult.reply || payload?.result || '',
-            Array.isArray(session?.participants?.list) ? session.participants.list : []
-          )
-        : null;
     const valuesPatch = applyBattleResultToValues(session?.values || {}, parsedResult);
-    const finalValuesPatch =
-      narrativeFallback && (narrativeFallback.gameResult || Object.keys(narrativeFallback.participantOutcomes || {}).length)
-        ? applyBattleResultToValues(valuesPatch, narrativeFallback)
-        : valuesPatch;
 
     const nextSession = submitBattleTurn(session, {
       actorId: resolvedActorId,
@@ -174,7 +160,7 @@ export default async function handler(req, res) {
       gameResult: parsedResult.gameResult,
       teamOutcomes: parsedResult.teamOutcomes,
       participantOutcomes: parsedResult.participantOutcomes,
-      valuesPatch: finalValuesPatch,
+      valuesPatch,
     });
 
     if (textSessionId) {
@@ -298,15 +284,9 @@ export default async function handler(req, res) {
         nodeId: currentTurn?.id || null,
         nodeTitle: currentTurn?.title || null,
         input: input || null,
-        parsedGameResult: parsedResult.gameResult || narrativeFallback?.gameResult || null,
-        parsedTeamOutcomes:
-          Object.keys(parsedResult.teamOutcomes || {}).length
-            ? parsedResult.teamOutcomes
-            : narrativeFallback?.teamOutcomes || {},
-        parsedParticipantOutcomes:
-          Object.keys(parsedResult.participantOutcomes || {}).length
-            ? parsedResult.participantOutcomes
-            : narrativeFallback?.participantOutcomes || {},
+        parsedGameResult: parsedResult.gameResult || null,
+        parsedTeamOutcomes: parsedResult.teamOutcomes || {},
+        parsedParticipantOutcomes: parsedResult.participantOutcomes || {},
         nextTurnId: nextSession?.currentTurnId || null,
         valueKeys: Object.keys(nextSession?.values || {}),
         participantCount: Array.isArray(session?.participants?.list)
