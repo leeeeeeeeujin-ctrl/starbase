@@ -14,6 +14,7 @@ import { imageFieldCopy } from '../../data/rankRegistrationContent';
 import { prepareRegistrationPayload } from '../../lib/rank/registrationValidation';
 import { useWorkspaceOptional } from '../workspace/CodeWorkspaceProvider.jsx';
 import { MATCH_MODE_KEYS } from '../../lib/rank/matchModes';
+import { readStoredBattleConfig } from '../../lib/battle/battleConfigStorage';
 
 const MAX_IMAGE_SIZE_BYTES = 3 * 1024 * 1024;
 
@@ -54,6 +55,15 @@ function parseBattleConfigFromFiles(filesMap) {
   } catch {
     return normalizeMakerBattleConfig();
   }
+}
+
+function mergeWithStoredBattleConfig(setId, config) {
+  const stored = readStoredBattleConfig(setId);
+  if (!stored || typeof stored !== 'object') return config;
+  return normalizeMakerBattleConfig({
+    ...config,
+    ...stored,
+  });
 }
 
 async function registerGame(payload) {
@@ -201,7 +211,9 @@ export default function RankNewClient() {
         const json = await response.json().catch(() => null);
         if (cancelled) return;
         if (!response.ok || !json?.files) {
-          setWorkspaceBattleConfig(normalizeMakerBattleConfig());
+          setWorkspaceBattleConfig(
+            mergeWithStoredBattleConfig(setId, normalizeMakerBattleConfig())
+          );
           return;
         }
         const filesMap = Array.isArray(json.files)
@@ -215,10 +227,14 @@ export default function RankNewClient() {
               return acc;
             }, {})
           : {};
-        setWorkspaceBattleConfig(parseBattleConfigFromFiles(filesMap));
+        setWorkspaceBattleConfig(
+          mergeWithStoredBattleConfig(setId, parseBattleConfigFromFiles(filesMap))
+        );
       } catch {
         if (cancelled) return;
-        setWorkspaceBattleConfig(normalizeMakerBattleConfig());
+        setWorkspaceBattleConfig(
+          mergeWithStoredBattleConfig(setId, normalizeMakerBattleConfig())
+        );
       }
     })();
 

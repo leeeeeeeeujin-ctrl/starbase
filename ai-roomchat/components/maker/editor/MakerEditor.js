@@ -12,6 +12,7 @@ import MakerEditorCanvas from './MakerEditorCanvas';
 import MakerEditorPanel from './MakerEditorPanel';
 import AddPromptFab from './AddPromptFab';
 import { normalizeBattleConfig } from '../../../lib/battle/definition.js';
+import { writeStoredBattleConfig } from '../../../lib/battle/battleConfigStorage.js';
 
 export default function MakerEditor() {
   const { status, graph, selection, persistence, history, definition: battleDefinition } = useMakerEditor();
@@ -141,6 +142,12 @@ export default function MakerEditor() {
     lastWorkspaceTemplateRef.current = workspaceTemplate;
     setTemplateText(workspaceTemplate);
   }, [files, setTemplateText]);
+
+  useEffect(() => {
+    const setId = String(status?.setInfo?.id || status?.router?.query?.id || '').trim();
+    if (!setId) return;
+    writeStoredBattleConfig(setId, battleConfig);
+  }, [battleConfig, status?.router?.query?.id, status?.setInfo?.id]);
 
   useEffect(() => {
     if (syncingRef.current) return;
