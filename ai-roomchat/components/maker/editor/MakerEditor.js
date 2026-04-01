@@ -147,6 +147,7 @@ export default function MakerEditor() {
     if (syncingRef.current || !writeFile) return;
     const timeoutId = setTimeout(() => {
       try {
+        const templateObject = toTemplateObject();
         const graphData = {
           nodes: nodes.map(node => ({
             id: node.id,
@@ -162,6 +163,7 @@ export default function MakerEditor() {
           })),
         };
 
+        writeFile('/template.json', JSON.stringify(templateObject, null, 2) + '\n');
         writeFile('/graph/prompt-graph.json', JSON.stringify(graphData, null, 2) + '\n');
         writeFile('/battle/definition.json', JSON.stringify(resolvedBattleDefinition, null, 2) + '\n');
 
