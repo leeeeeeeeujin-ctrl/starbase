@@ -274,8 +274,12 @@ function pickNextTransition({ definition, currentTurnId, resultKey, sessionValue
       if (!condition || typeof condition !== 'object') return true;
       const key = toId(condition.key || condition.resultKey || condition.variable);
       if (!key) return true;
+      const op = toId(condition.op || 'equals') || 'equals';
       const expected = condition.equals ?? condition.value ?? condition.is ?? null;
       const actual = getValueAtPath(sessionValues, key);
+      if (op === 'exists') return actual != null && String(actual).trim() !== '';
+      if (op === 'not_exists') return actual == null || String(actual).trim() === '';
+      if (op === 'not_equals') return expected == null ? actual == null : actual !== expected;
       return expected == null ? actual != null : actual === expected;
     });
   });

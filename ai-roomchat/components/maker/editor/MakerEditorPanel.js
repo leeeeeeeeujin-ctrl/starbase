@@ -15,6 +15,12 @@ const ACTOR_SCOPE_OPTIONS = [
   { value: 'role:', label: '특정 역할' },
   { value: 'custom', label: '직접 입력' },
 ];
+const CONDITION_OPERATORS = [
+  { value: 'equals', label: '같다' },
+  { value: 'not_equals', label: '다르다' },
+  { value: 'exists', label: '값이 있다' },
+  { value: 'not_exists', label: '값이 없다' },
+];
 
 function parseCsv(value) {
   return String(value || '')
@@ -168,6 +174,28 @@ export default function MakerEditorPanel({
                       placeholder="예: state.enemyDown"
                     />
                   </Field>
+                  <Field label="비교 방식">
+                    <select
+                      name={`route-condition-op-${index}`}
+                      value={condition?.op || 'equals'}
+                      onChange={event =>
+                        updateEdge(data => ({
+                          ...data,
+                          conditions: (Array.isArray(data.conditions) ? data.conditions : []).map(
+                            (entry, conditionIndex) =>
+                              conditionIndex === index ? { ...entry, op: event.target.value } : entry
+                          ),
+                        }))
+                      }
+                      style={inputStyle}
+                    >
+                      {CONDITION_OPERATORS.map(option => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
                   <Field label="만족 값">
                     <input
                       name={`route-condition-value-${index}`}
@@ -183,7 +211,12 @@ export default function MakerEditorPanel({
                         }))
                       }
                       style={inputStyle}
-                      placeholder="예: true / win / attack"
+                      placeholder={
+                        condition?.op === 'exists' || condition?.op === 'not_exists'
+                          ? '이 비교 방식에선 비워둡니다'
+                          : '예: true / win / attack'
+                      }
+                      disabled={condition?.op === 'exists' || condition?.op === 'not_exists'}
                     />
                   </Field>
                 </div>
@@ -722,6 +755,10 @@ function buildRouteLabel(data) {
   if (data?.fallback) return 'fallback';
   const first = Array.isArray(data?.conditions) ? data.conditions[0] : null;
   if (!first?.key) return '다음';
+  const op = first?.op || 'equals';
+  if (op === 'exists') return `${first.key} 있음`;
+  if (op === 'not_exists') return `${first.key} 없음`;
+  if (op === 'not_equals') return `${first.key} != ${first.equals ?? ''}`.trim();
   return `${first.key} = ${first.equals ?? ''}`.trim();
 }
 
