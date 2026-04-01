@@ -16,9 +16,8 @@ function toFiniteNumber(value, fallback = 0) {
 
 function sanitizeSlots(slots) {
   if (!Array.isArray(slots)) {
-    return { error: '최소 1개의 슬롯을 활성화하고 역할을 지정하세요.' };
+    return { slots: [], slotCountMap: new Map(), activeCount: 0 };
   }
-
   const sanitized = [];
   const slotCountMap = new Map();
   let activeCount = 0;
@@ -48,11 +47,7 @@ function sanitizeSlots(slots) {
 
   sanitized.sort((a, b) => a.slot_index - b.slot_index);
 
-  if (activeCount === 0) {
-    return { error: '최소 1개의 슬롯을 활성화하고 역할을 지정하세요.' };
-  }
-
-  return { slots: sanitized, slotCountMap };
+  return { slots: sanitized, slotCountMap, activeCount };
 }
 
 function sanitizeRole(role, slotCountMap) {
@@ -113,18 +108,35 @@ export function prepareRegistrationPayload(raw) {
     return { ok: false, error: sanitizedRules.error };
   }
 
-  const sanitizedSlots = sanitizeSlots(raw.slots ?? raw.slot_map);
-  if (sanitizedSlots?.error) {
-    return { ok: false, error: sanitizedSlots.error };
-  }
-
   const trimmedName = typeof raw.name === 'string' ? raw.name.trim() : '';
   const trimmedDescription = typeof raw.description === 'string' ? raw.description.trim() : '';
   const imageUrl = typeof raw.image_url === 'string' ? raw.image_url : '';
   const realtime = normalizeRealtimeMode(raw.realtime_match ?? REALTIME_MODES.OFF);
 
   const roleList = Array.isArray(raw.roles) ? raw.roles : [];
+  if (!roleList.length) {
+    return { ok: false, error: '최소 1개의 역할을 메이커에서 지정하세요.' };
+  }
+
+  const sanitizedSlots = sanitizeSlots(raw.slots ?? raw.slot_map);
   const sanitizedRoles = roleList.map(role => sanitizeRole(role, sanitizedSlots.slotCountMap));
+  const synthesizedSlots =
+    sanitizedSlots.activeCount > 0
+      ? sanitizedSlots.slots
+      : (() => {
+          let nextSlotIndex = 0;
+          return sanitizedRoles.flatMap(role =>
+            Array.from({ length: Math.max(0, Number(role.slot_count) || 0) }, () => ({
+              slot_index: nextSlotIndex++,
+              role: role.name,
+              active: true,
+            }))
+          );
+        })();
+
+  if (!synthesizedSlots.length) {
+    return { ok: false, error: '최소 1개의 역할 인원을 메이커에서 지정하세요.' };
+  }
 
   const roleNameOrder = [];
   const roleNameSet = new Set();
@@ -155,6 +167,6 @@ export function prepareRegistrationPayload(raw) {
     ok: true,
     game: gameInsert,
     roles: sanitizedRoles,
-    slots: sanitizedSlots.slots,
+    slots: synthesizedSlots,
   };
 }
