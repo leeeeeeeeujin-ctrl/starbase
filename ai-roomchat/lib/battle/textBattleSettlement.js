@@ -248,7 +248,7 @@ export async function settleTextBattleSession({ session, sessionRow, winnerParti
       defender_owner_id: settlement.defender.ownerId,
       defender_hero_ids: [settlement.defender.heroId],
       result: settlement.outcome,
-      score_delta: settlement.delta,
+      score_delta: settlement.delta.attacker,
       hidden: false,
       created_at: now,
     })
