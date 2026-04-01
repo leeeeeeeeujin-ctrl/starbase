@@ -13,6 +13,24 @@ function toObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
 
+function buildZeroSumDelta(outcome, reason) {
+  if (outcome !== 'win' && outcome !== 'lose') {
+    return { attacker: 0, defender: 0 };
+  }
+
+  let base = 10;
+  if (reason === 'surrender') {
+    base = 8;
+  } else if (reason === 'abandoned' || reason === 'timed_out') {
+    base = 0;
+  }
+
+  if (outcome === 'win') {
+    return { attacker: base, defender: -base };
+  }
+  return { attacker: -base, defender: base };
+}
+
 function normalizeTurnLogs(session = {}, gameId, battleId, outcome) {
   const logs = Array.isArray(session?.logs) ? session.logs : [];
   if (!logs.length) {
@@ -160,7 +178,6 @@ function buildSettlementPayload({ session, winnerParticipant, loserParticipant, 
   const winnerHeroId = toId(winnerParticipant?.heroId);
   const loserHeroId = toId(loserParticipant?.heroId);
   let outcome = 'draw';
-  let delta = 0;
 
   if (toId(attackerTeamOutcome).toLowerCase() === 'win' && toId(defenderTeamOutcome).toLowerCase() === 'lose') {
     outcome = 'win';
@@ -180,14 +197,7 @@ function buildSettlementPayload({ session, winnerParticipant, loserParticipant, 
     outcome = winnerHeroId === toId(attacker.heroId) ? 'win' : 'lose';
   }
 
-  if (outcome === 'win' || outcome === 'lose') {
-    delta = outcome === 'win' ? 10 : -10;
-    if (reason === 'surrender') {
-      delta = outcome === 'win' ? 8 : -8;
-    } else if (reason === 'abandoned' || reason === 'timed_out') {
-      delta = 0;
-    }
-  }
+  const delta = buildZeroSumDelta(outcome, reason);
 
   return {
     gameId,
@@ -259,14 +269,14 @@ export async function settleTextBattleSession({ session, sessionRow, winnerParti
     gameId: settlement.gameId,
     ownerId: settlement.attacker.ownerId,
     heroId: settlement.attacker.heroId,
-    delta: settlement.delta,
+    delta: settlement.delta.attacker,
     status: settlement.attackerStatus,
   });
   await upsertParticipantOutcome({
     gameId: settlement.gameId,
     ownerId: settlement.defender.ownerId,
     heroId: settlement.defender.heroId,
-    delta: -settlement.delta,
+    delta: settlement.delta.defender,
     status: settlement.defenderStatus,
   });
 
@@ -278,7 +288,8 @@ export async function settleTextBattleSession({ session, sessionRow, winnerParti
     battleId: battleRow.id,
     gameId: settlement.gameId,
     outcome: settlement.outcome,
-    delta: settlement.delta,
+    delta: settlement.delta.attacker,
+    deltas: settlement.delta,
     winner: toId(winnerParticipant?.heroId || winnerParticipant?.name) || null,
     loser: toId(loserParticipant?.heroId || loserParticipant?.name) || null,
   };

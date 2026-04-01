@@ -84,6 +84,10 @@ export function buildRuntimePromptFromTurn(session, turn, actorId = session?.act
     '형식:',
     '{"reply":"서술","gameResult":"ongoing|ended|abandoned|timed_out","teamOutcomes":{"팀명":"win|lose"},"participantOutcomes":{"참가자ID":"survived|eliminated|retired"}}',
     '아직 전투가 끝나지 않았다면 gameResult는 "ongoing"로 둔다.',
+    '전투가 끝났다면 반드시 누가 승리했고 누가 패배했는지 teamOutcomes 또는 participantOutcomes 중 하나 이상으로 명확히 적는다.',
+    '개인 결과는 보통 survived, eliminated, retired 중 하나를 쓴다.',
+    '게임이 유야무야 끝났다면 gameResult를 "abandoned" 또는 "timed_out"으로 두고 승패를 억지로 만들지 않는다.',
+    '승패는 현재 게임 규칙, 장면, 누적된 상태값을 기준으로 판단하고, 확정되지 않았다면 ongoing을 유지한다.',
   ].join('\n');
   const runtimePrompt = [
     agentContexts.length ? '아래는 현재 턴에 참여하는 캐릭터 AI들의 실행 문맥이다.' : '',
