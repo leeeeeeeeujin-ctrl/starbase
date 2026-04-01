@@ -88,23 +88,6 @@ async function hydrateRoleSlotsFromWorkspace(gameId) {
     roles = normalizeBattleConfigRoles(promptSetRow?.battle_config || {});
   }
 
-  if (!roles.length) {
-    const { data: workspaceRow } = await supabaseAdmin
-      .from('rank_game_workspaces')
-      .select('template, runtime_config')
-      .eq('game_id', gameId)
-      .order('updated_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    const rawConfig =
-      workspaceRow?.template?.battleConfig ||
-      workspaceRow?.template?.battle_config ||
-      workspaceRow?.runtime_config?.battleConfig ||
-      workspaceRow?.runtime_config?.battle_config ||
-      {};
-    roles = normalizeBattleConfigRoles(rawConfig);
-  }
-
   const roleRows = buildRoleRows(gameId, roles);
   if (!roleRows.length) {
     return { ok: false };

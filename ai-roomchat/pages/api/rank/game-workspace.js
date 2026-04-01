@@ -43,31 +43,24 @@ function buildFallbackEdge(bridge) {
 }
 
 async function buildWorkspaceFromPromptSet(gameId) {
-  const { data: gameRow, error: gameError } = await supabaseAdmin
-    .from('rank_games')
-    .select('id,name,prompt_set_id')
-    .eq('id', gameId)
-    .maybeSingle();
-
-  if (gameError || !gameRow?.prompt_set_id) {
-    return null;
-  }
+  const gameMeta = await loadGamePromptSetId(gameId);
+  if (!gameMeta?.promptSetId) return null;
 
   const [{ data: promptSetRow }, { data: slotRows }, { data: bridgeRows }] = await Promise.all([
     supabaseAdmin
       .from('prompt_sets')
       .select('id,name,description,battle_config')
-      .eq('id', gameRow.prompt_set_id)
+      .eq('id', gameMeta.promptSetId)
       .maybeSingle(),
     supabaseAdmin
       .from('prompt_slots')
       .select('*')
-      .eq('set_id', gameRow.prompt_set_id)
+      .eq('set_id', gameMeta.promptSetId)
       .order('slot_no', { ascending: true }),
     supabaseAdmin
       .from('prompt_bridges')
       .select('*')
-      .eq('from_set', gameRow.prompt_set_id)
+      .eq('from_set', gameMeta.promptSetId)
       .order('priority', { ascending: false }),
   ]);
 
@@ -79,8 +72,8 @@ async function buildWorkspaceFromPromptSet(gameId) {
 
   return {
     game_id: gameId,
-    prompt_set_id: gameRow.prompt_set_id,
-    game_name: gameRow.name || promptSetRow?.name || '새 게임',
+    prompt_set_id: gameMeta.promptSetId,
+    game_name: gameMeta.gameName || promptSetRow?.name || '새 게임',
     template: {
       description: promptSetRow?.description || '',
       battleConfig:
@@ -146,40 +139,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { data, error } = await supabaseAdmin
-      .from('rank_game_workspaces')
-      .select('*')
-      .eq('game_id', gameId)
-      .order('updated_at', { ascending: false })
-      .limit(1);
-
-    if (error) {
-      // Missing table or other DB error – surface as generic failure.
-      // This API should be best-effort; 메인게임 동작을 막지는 않는다.
-      return res
-        .status(500)
-        .json({ ok: false, error: 'db_error', detail: error.message });
-    }
-
-    let row = Array.isArray(data) && data.length ? data[0] : null;
-    const gameMeta = await loadGamePromptSetId(gameId);
-    const resolvedPromptSetId =
-      row?.prompt_set_id || gameMeta?.promptSetId || null;
-
-    const rowHasGraph =
-      Array.isArray(row?.graph?.nodes) && row.graph.nodes.length > 0;
-
-    if (!row || !rowHasGraph) {
-      row = await buildWorkspaceFromPromptSet(gameId);
-    }
-
-    if (row) {
-      row = {
-        ...row,
-        prompt_set_id: row?.prompt_set_id || resolvedPromptSetId || null,
-        game_name: row?.game_name || gameMeta?.gameName || row?.template?.name || '새 게임',
-      };
-    }
+    let row = await buildWorkspaceFromPromptSet(gameId);
 
     if (row?.prompt_set_id) {
       const latestBattleConfig = await loadPromptSetBattleConfig(row.prompt_set_id);
