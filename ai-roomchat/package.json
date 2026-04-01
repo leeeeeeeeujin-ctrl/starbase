@@ -42,6 +42,7 @@
     "test:ai-workers": "node scripts/test-ai-workers.js",
     "experiment:main": "node scripts/experiment-main-flow.js",
     "experiment:matrix": "node scripts/experiment-matrix.js",
+    "simulate:text-battle": "node scripts/simulate-text-battle-runtime.mjs",
     "wasm:build": "node scripts/wasm_build.js",
     "blockly:convert": "node scripts/blockly_poc.js workflows/blockly-sample.json workflows/blockly-sample.out.js",
     "test:blockly": "node scripts/test_blockly.js",

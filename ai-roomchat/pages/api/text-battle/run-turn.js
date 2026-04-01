@@ -71,6 +71,16 @@ function serializeSession(session) {
   };
 }
 
+function buildSessionUpdateRow(session) {
+  const winner = session?.values?.battleWinner || null;
+  const finalScore = session?.values?.battleScore || null;
+  return {
+    status: winner || session?.status === 'completed' ? 'completed' : 'active',
+    winner,
+    final_score: finalScore && typeof finalScore === 'object' ? finalScore : null,
+  };
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -160,6 +170,19 @@ export default async function handler(req, res) {
           ok: false,
           error: 'text_turn_insert_failed',
           detail: turnInsertError.message || null,
+        });
+      }
+
+      const { error: sessionUpdateError } = await supabaseAdmin
+        .from('text_battle_sessions')
+        .update(buildSessionUpdateRow(nextSession))
+        .eq('id', textSessionId);
+
+      if (sessionUpdateError) {
+        return res.status(502).json({
+          ok: false,
+          error: 'text_session_update_failed',
+          detail: sessionUpdateError.message || null,
         });
       }
     }

@@ -2,6 +2,13 @@
 
 import { useRouter } from 'next/router';
 import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
+import { getCurrentTurn, buildTurnPromptContext } from '@/lib/battle/session';
+import { buildRuntimePromptFromTurn } from '@/lib/battle/agentRuntime';
+import {
+  readStoredTextBattleSession,
+  writeStoredTextBattleSession,
+} from '@/lib/battle/clientSessionStorage';
 
 export default function TextBattleSessionPage() {
   const router = useRouter();
@@ -10,6 +17,13 @@ export default function TextBattleSessionPage() {
     loading: true,
     error: null,
     payload: null,
+  });
+  const [runtimeState, setRuntimeState] = useState({
+    session: null,
+    input: '',
+    running: false,
+    status: '',
+    error: '',
   });
 
   useEffect(() => {
@@ -28,11 +42,16 @@ export default function TextBattleSessionPage() {
           });
           return;
         }
+        const storedSession = readStoredTextBattleSession(id);
         setState({
           loading: false,
           error: null,
           payload: json,
         });
+        setRuntimeState(prev => ({
+          ...prev,
+          session: storedSession && typeof storedSession === 'object' ? storedSession : prev.session,
+        }));
       })
       .catch(err => {
         if (cancelled) return;
@@ -75,11 +94,116 @@ export default function TextBattleSessionPage() {
   }
 
   const { session, turns, participants, agentContexts } = state.payload || {};
+  const runtimeSession = runtimeState.session || null;
+  const currentTurn = runtimeSession ? getCurrentTurn(runtimeSession) : null;
+  const livePromptContext =
+    runtimeSession && currentTurn
+      ? buildTurnPromptContext(runtimeSession, currentTurn, runtimeSession.actorId)
+      : null;
+  const liveRuntime =
+    runtimeSession && currentTurn
+      ? buildRuntimePromptFromTurn(runtimeSession, currentTurn, runtimeSession.actorId)
+      : { agentContexts: [], runtimePrompt: '' };
   const finalScore = session?.final_score || null;
   const winner = session?.winner || null;
   const createdAt = session?.created_at || null;
   const lastTurn =
     Array.isArray(turns) && turns.length ? turns[turns.length - 1] : null;
+
+  async function refreshPayload() {
+    const response = await fetch(`/api/text-battle/session?id=${encodeURIComponent(id)}`);
+    const json = await response.json().catch(() => null);
+    if (!response.ok || !json?.ok) {
+      throw new Error(json?.detail || json?.error || 'failed_to_refresh');
+    }
+    setState({
+      loading: false,
+      error: null,
+      payload: json,
+    });
+  }
+
+  async function handleRunTurn() {
+    if (!id || !runtimeSession || !currentTurn || runtimeState.running) return;
+    setRuntimeState(prev => ({
+      ...prev,
+      running: true,
+      status: '턴을 실행하는 중입니다…',
+      error: '',
+    }));
+
+    try {
+      const {
+        data: { session: authSession },
+        error: authError,
+      } = await supabase.auth.getSession();
+      if (authError || !authSession?.access_token) {
+        throw new Error('로그인 세션을 확인하지 못했습니다.');
+      }
+
+      let resultText = '';
+      const inputValue = runtimeState.input.trim();
+      if ((currentTurn?.input?.mode || 'none') === 'none') {
+        const aiResponse = await fetch('/api/chat/ai-proxy', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${authSession.access_token}`,
+          },
+          body: JSON.stringify({
+            prompt: liveRuntime.runtimePrompt,
+          }),
+        });
+        const aiJson = await aiResponse.json().catch(() => null);
+        if (!aiResponse.ok || !aiJson?.ok) {
+          throw new Error(aiJson?.detail || aiJson?.error || 'ai_proxy_failed');
+        }
+        resultText = typeof aiJson?.text === 'string' ? aiJson.text : '';
+      } else {
+        resultText = inputValue;
+      }
+
+      const response = await fetch('/api/text-battle/run-turn', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authSession.access_token}`,
+        },
+        body: JSON.stringify({
+          textSessionId: id,
+          actorId: runtimeSession.actorId,
+          session: runtimeSession,
+          input: inputValue || null,
+          result: resultText,
+        }),
+      });
+      const json = await response.json().catch(() => null);
+      if (!response.ok || !json?.ok) {
+        throw new Error(json?.detail || json?.error || 'run_turn_failed');
+      }
+
+      writeStoredTextBattleSession(id, json.session);
+      setRuntimeState(prev => ({
+        ...prev,
+        session: json.session,
+        input: '',
+        running: false,
+        status:
+          json.session?.status === 'completed'
+            ? '세션이 종료되었습니다.'
+            : '다음 턴으로 진행했습니다.',
+        error: '',
+      }));
+      await refreshPayload();
+    } catch (error) {
+      setRuntimeState(prev => ({
+        ...prev,
+        running: false,
+        error: error?.message || String(error),
+        status: '',
+      }));
+    }
+  }
 
   return (
     <div
@@ -147,6 +271,133 @@ export default function TextBattleSessionPage() {
             padding: '12px 14px',
             background: '#020617',
             border: '1px solid rgba(30,64,175,0.7)',
+            display: 'grid',
+            gap: 8,
+          }}
+        >
+          <h2
+            style={{
+              margin: 0,
+              fontSize: 15,
+              fontWeight: 700,
+              color: '#e5e7eb',
+            }}
+          >
+            세션 진행
+          </h2>
+          {runtimeSession ? (
+            <div style={{ display: 'grid', gap: 10 }}>
+              <div style={{ fontSize: 13, color: '#cbd5e1', lineHeight: 1.6 }}>
+                현재 상태: <strong style={{ color: '#f8fafc' }}>{runtimeSession.status || 'active'}</strong>
+                {currentTurn ? (
+                  <>
+                    {' '}
+                    · 현재 턴: <strong style={{ color: '#93c5fd' }}>{currentTurn.title || currentTurn.id}</strong>
+                  </>
+                ) : null}
+              </div>
+              {currentTurn?.display ? (
+                <div
+                  style={{
+                    whiteSpace: 'pre-wrap',
+                    fontSize: 13,
+                    lineHeight: 1.6,
+                    padding: '10px 12px',
+                    borderRadius: 12,
+                    background: '#020617',
+                    border: '1px solid rgba(31,41,55,0.9)',
+                  }}
+                >
+                  {currentTurn.display}
+                </div>
+              ) : null}
+              {(currentTurn?.input?.mode || 'none') !== 'none' ? (
+                <textarea
+                  value={runtimeState.input}
+                  onChange={event =>
+                    setRuntimeState(prev => ({ ...prev, input: event.target.value }))
+                  }
+                  rows={3}
+                  placeholder={currentTurn?.input?.placeholder || '응답을 입력하세요'}
+                  style={{
+                    width: '100%',
+                    borderRadius: 12,
+                    border: '1px solid rgba(75,85,99,0.95)',
+                    background: '#020617',
+                    color: '#e2e8f0',
+                    padding: '10px 12px',
+                    resize: 'vertical',
+                  }}
+                />
+              ) : null}
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={handleRunTurn}
+                  disabled={runtimeState.running || !currentTurn}
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: 12,
+                    border: 'none',
+                    background: runtimeState.running ? '#334155' : '#38bdf8',
+                    color: runtimeState.running ? '#cbd5e1' : '#020617',
+                    fontWeight: 800,
+                    cursor: runtimeState.running ? 'wait' : 'pointer',
+                  }}
+                >
+                  {runtimeState.running ? '실행 중…' : '다음 턴 실행'}
+                </button>
+                {runtimeState.status ? (
+                  <span style={{ fontSize: 12, color: '#93c5fd', alignSelf: 'center' }}>
+                    {runtimeState.status}
+                  </span>
+                ) : null}
+                {runtimeState.error ? (
+                  <span style={{ fontSize: 12, color: '#fca5a5', alignSelf: 'center' }}>
+                    {runtimeState.error}
+                  </span>
+                ) : null}
+              </div>
+              {liveRuntime.runtimePrompt ? (
+                <details
+                  style={{
+                    borderRadius: 12,
+                    border: '1px solid rgba(31,41,55,0.9)',
+                    padding: '10px 12px',
+                    background: '#020617',
+                  }}
+                >
+                  <summary style={{ cursor: 'pointer', fontSize: 13, color: '#bfdbfe', fontWeight: 700 }}>
+                    현재 턴 실행 프롬프트
+                  </summary>
+                  <pre
+                    style={{
+                      margin: '10px 0 0',
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                      fontSize: 11,
+                      lineHeight: 1.6,
+                      color: '#cbd5e1',
+                    }}
+                  >
+                    {liveRuntime.runtimePrompt}
+                  </pre>
+                </details>
+              ) : null}
+            </div>
+          ) : (
+            <p style={{ fontSize: 13, color: '#9ca3af' }}>
+              이 기기에 저장된 실행 세션이 없습니다. 게임 시작 페이지에서 새 세션을 연 뒤 이어서 진행해 주세요.
+            </p>
+          )}
+        </section>
+
+        <section
+          style={{
+            borderRadius: 16,
+            padding: '12px 14px',
+            background: '#020617',
+            border: '1px solid rgba(55,65,81,0.8)',
             display: 'grid',
             gap: 8,
           }}
@@ -269,11 +520,11 @@ export default function TextBattleSessionPage() {
           >
             캐릭터 AI 게임 문맥
           </h2>
-          {Array.isArray(agentContexts) && agentContexts.length ? (
+          {(liveRuntime.agentContexts?.length || agentContexts?.length) ? (
             <div style={{ display: 'grid', gap: 8 }}>
-              {agentContexts.map(entry => (
+              {(liveRuntime.agentContexts?.length ? liveRuntime.agentContexts : agentContexts).map(entry => (
                 <details
-                  key={entry.heroId}
+                  key={entry.heroId || entry.id}
                   style={{
                     borderRadius: 12,
                     border: '1px solid rgba(31,41,55,0.9)',

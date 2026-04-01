@@ -21,6 +21,7 @@ import { readActiveSession, subscribeActiveSession } from '@/lib/rank/activeSess
 import { normalizeRealtimeMode, isRealtimeEnabled } from '@/lib/rank/realtimeModes';
 import { formatPlayNumber } from '@/utils/characterPlayFormatting';
 import { buildBattleDefinitionFromGraph } from '@/lib/battle/definition';
+import { writeStoredTextBattleSession } from '@/lib/battle/clientSessionStorage';
 import {
   MATCH_DEBUG_HOLD_ENABLED,
   buildDebugHoldSnapshot,
@@ -2560,6 +2561,8 @@ export default function CharacterPlayPanel({ hero, playData }) {
       textSessionId,
       heroIds,
     });
+
+    writeStoredTextBattleSession(textSessionId, json?.session || null);
 
     setMatchingState(prev => ({
       ...prev,

@@ -3,15 +3,16 @@ import {
   HERO_MEMORY_ENTRY_MAX_LENGTH,
   HERO_MEMORY_SLOT_MAX,
   HERO_RECENT_CHAT_MAX,
-} from './profileRules';
+} from './profileRules.js';
 
 function getHeroHeader(heroSummary) {
+  const heroName = heroSummary?.name || '이름 없는 캐릭터';
   return [
-    `너는 ${heroSummary?.name || '이름 없는 캐릭터'}다.`,
+    `너는 캐릭터 "${heroName}"이다.`,
     '너는 유저가 육성하는 캐릭터 AI이며, 아래 캐릭터 정보는 기본 사실로 알고 있다.',
     '대화할 때는 캐릭터의 설정, 설명, 능력, 기억에서 자연스럽게 드러나는 성격과 말투를 유지하면서 응답한다.',
     '이름은 고정이며 스스로 바꾸지 않는다.',
-    `이름: ${heroSummary?.name || '이름 없는 캐릭터'}`,
+    `이름: ${heroName}`,
     `설명: ${heroSummary?.description || '없음'}`,
     `능력: ${heroSummary?.abilities?.length ? heroSummary.abilities.join(' / ') : '없음'}`,
   ];

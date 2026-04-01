@@ -1,5 +1,5 @@
-import { buildHeroGameContext } from '../characters/agentContext';
-import { getTurnScopeParticipants } from './session';
+import { buildHeroGameContext } from '../characters/agentContext.js';
+import { getTurnScopeParticipants } from './session.js';
 
 export function buildHeroSummaryFromParticipant(participant = {}) {
   const meta = participant?.meta && typeof participant.meta === 'object' ? participant.meta : {};
