@@ -1,6 +1,7 @@
 const {
   parseStructuredBattleResult,
   applyBattleResultToValues,
+  inferBattleResultFromNarrative,
 } = require('../../../lib/battle/resultSchema');
 
 describe('battle result schema', () => {
@@ -51,5 +52,18 @@ describe('battle result schema', () => {
     expect(values.losingTeams).toEqual(['22']);
     expect(values.eliminatedParticipantIds).toEqual(['hero-2']);
     expect(values.battleWinner).toBe('11');
+  });
+
+  test('infers 1v1 winner from plain narrative', () => {
+    const inferred = inferBattleResultFromNarrative('이자요이 사쿠야가 승리했다.', [
+      { id: 'p1', heroId: 'h1', name: '이자요이 사쿠야', team: '11' },
+      { id: 'p2', heroId: 'h2', name: '1', team: '22' },
+    ]);
+
+    expect(inferred.gameResult).toBe('ended');
+    expect(inferred.teamOutcomes['11']).toBe('win');
+    expect(inferred.participantOutcomes.p1).toBe('survived');
+    expect(inferred.participantOutcomes.p2).toBe('eliminated');
+    expect(inferred.battleWinner).toBe('h1');
   });
 });
