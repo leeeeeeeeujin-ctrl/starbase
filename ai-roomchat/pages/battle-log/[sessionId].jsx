@@ -1,15 +1,268 @@
 "use client";
 
 import { useRouter } from 'next/router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 function formatDate(value) {
   if (!value) return '-';
   try {
     return new Date(value).toLocaleString('ko-KR');
-  } catch (err) {
+  } catch (error) {
     return value;
   }
+}
+
+function shortText(value, limit = 280) {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!text) return '';
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit).trim()}…`;
+}
+
+function ResultPortrait({ participant, tone = 'neutral' }) {
+  const borderColor =
+    tone === 'win'
+      ? 'rgba(96,165,250,0.96)'
+      : tone === 'lose'
+        ? 'rgba(248,113,113,0.92)'
+        : 'rgba(148,163,184,0.5)';
+  const shadowColor =
+    tone === 'win'
+      ? 'rgba(59,130,246,0.4)'
+      : tone === 'lose'
+        ? 'rgba(239,68,68,0.35)'
+        : 'rgba(15,23,42,0.35)';
+
+  return (
+    <article
+      style={{
+        display: 'grid',
+        gap: 10,
+        justifyItems: 'center',
+      }}
+    >
+      <div
+        style={{
+          width: 136,
+          height: 180,
+          borderRadius: 24,
+          border: `3px solid ${borderColor}`,
+          boxShadow: `0 26px 50px -34px ${shadowColor}`,
+          background: participant?.image_url
+            ? `linear-gradient(180deg, rgba(15,23,42,0.18), rgba(2,6,23,0.72)), url(${participant.image_url}) center/cover no-repeat`
+            : 'linear-gradient(180deg, rgba(30,41,59,0.96), rgba(15,23,42,0.98))',
+          display: 'grid',
+          alignItems: 'end',
+          overflow: 'hidden',
+        }}
+      >
+        <div
+          style={{
+            width: '100%',
+            padding: '12px 12px 10px',
+            background: 'linear-gradient(180deg, rgba(2,6,23,0), rgba(2,6,23,0.86))',
+            fontSize: 11,
+            color: '#cbd5e1',
+            boxSizing: 'border-box',
+          }}
+        >
+          {participant?.team ? `팀 ${participant.team}` : '팀 미지정'}
+        </div>
+      </div>
+      <div style={{ display: 'grid', gap: 4, justifyItems: 'center' }}>
+        <strong style={{ color: '#f8fafc', fontSize: 15 }}>{participant?.name || '이름 없음'}</strong>
+        {participant?.role ? (
+          <div style={{ fontSize: 12, color: '#93c5fd' }}>{participant.role}</div>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
+function TextBattleResultView({ payload, sessionId }) {
+  const session = payload?.session || {};
+  const participants = Array.isArray(payload?.participants) ? payload.participants : [];
+  const turns = Array.isArray(payload?.turns) ? payload.turns : [];
+  const finalScore =
+    session?.final_score && typeof session.final_score === 'object'
+      ? session.final_score
+      : {};
+
+  const winnerKey = String(finalScore?.winner || session?.winner || '').trim();
+  const loserKey = String(finalScore?.loser || '').trim();
+
+  const winner = participants.find(participant =>
+    [participant?.hero_id, participant?.id, participant?.name]
+      .filter(Boolean)
+      .map(value => String(value))
+      .includes(winnerKey)
+  ) || participants[0] || null;
+
+  const loser = participants.find(participant => {
+    const keys = [participant?.hero_id, participant?.id, participant?.name]
+      .filter(Boolean)
+      .map(value => String(value));
+    if (!loserKey) {
+      return winner && participant?.hero_id !== winner.hero_id;
+    }
+    return keys.includes(loserKey);
+  }) || participants.find(participant => participant?.hero_id !== winner?.hero_id) || participants[1] || null;
+
+  const winnerDelta = Number.isFinite(Number(finalScore?.delta)) ? Number(finalScore.delta) : null;
+  const loserDelta = winnerDelta == null ? null : winnerDelta * -1;
+
+  const logRows = turns.map((turn, index) => {
+    const actor = participants.find(participant =>
+      [participant?.hero_id, participant?.id]
+        .filter(Boolean)
+        .map(value => String(value))
+        .includes(String(turn?.hero_id || ''))
+    );
+    return {
+      id: turn?.id || `${turn?.session_id || sessionId}:${index}`,
+      turnIndex: Number.isFinite(Number(turn?.turn_index)) ? Number(turn.turn_index) + 1 : index + 1,
+      actorName: actor?.name || '시스템',
+      summary: shortText(turn?.ai_response || turn?.prompt || turn?.result || '기록이 없습니다.', 420),
+      raw: turn?.ai_response || turn?.prompt || turn?.result || '',
+    };
+  });
+
+  return (
+    <div
+      style={{
+        minHeight: '100vh',
+        background:
+          'radial-gradient(circle at top, rgba(59,130,246,0.18), transparent 24%), linear-gradient(180deg, #020617 0%, #0f172a 100%)',
+        color: '#e2e8f0',
+        padding: '20px 14px 42px',
+        boxSizing: 'border-box',
+      }}
+    >
+      <div
+        style={{
+          maxWidth: 820,
+          margin: '0 auto',
+          display: 'grid',
+          gap: 16,
+        }}
+      >
+        <header
+          style={{
+            borderRadius: 24,
+            padding: '18px 18px 16px',
+            background: 'rgba(2,6,23,0.82)',
+            border: '1px solid rgba(59,130,246,0.22)',
+            display: 'grid',
+            gap: 8,
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#f8fafc' }}>베틀로그</h1>
+            <div style={{ fontSize: 12, color: '#93c5fd' }}>
+              세션 {sessionId} · {formatDate(session?.updated_at || session?.created_at)}
+            </div>
+          </div>
+          <div style={{ fontSize: 13, color: '#cbd5e1' }}>
+            종료 사유: <strong style={{ color: '#f8fafc' }}>{finalScore?.reason || session?.status || 'completed'}</strong>
+          </div>
+        </header>
+
+        <section
+          style={{
+            borderRadius: 28,
+            padding: '22px 18px',
+            background: 'rgba(2,6,23,0.78)',
+            border: '1px solid rgba(71,85,105,0.4)',
+          }}
+        >
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'minmax(0, 1fr) auto minmax(0, 1fr)',
+              alignItems: 'center',
+              gap: 16,
+            }}
+          >
+            <ResultPortrait participant={winner} tone="win" />
+            <div
+              style={{
+                display: 'grid',
+                gap: 8,
+                justifyItems: 'center',
+                minWidth: 90,
+              }}
+            >
+              <div style={{ fontSize: 12, color: '#94a3b8', letterSpacing: '0.06em' }}>점수 변동</div>
+              <div
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: 18,
+                  background: 'rgba(15,23,42,0.92)',
+                  border: '1px solid rgba(71,85,105,0.65)',
+                  display: 'grid',
+                  gap: 6,
+                  justifyItems: 'center',
+                }}
+              >
+                <div style={{ fontSize: 20, fontWeight: 900, color: '#60a5fa' }}>
+                  {winnerDelta == null ? '-' : `${winnerDelta > 0 ? '+' : ''}${winnerDelta}`}
+                </div>
+                <div style={{ fontSize: 12, color: '#475569' }}>vs</div>
+                <div style={{ fontSize: 20, fontWeight: 900, color: '#f87171' }}>
+                  {loserDelta == null ? '-' : `${loserDelta > 0 ? '+' : ''}${loserDelta}`}
+                </div>
+              </div>
+            </div>
+            <ResultPortrait participant={loser} tone="lose" />
+          </div>
+        </section>
+
+        <section
+          style={{
+            borderRadius: 22,
+            padding: '16px 16px 18px',
+            background: 'rgba(2,6,23,0.84)',
+            border: '1px solid rgba(71,85,105,0.34)',
+            display: 'grid',
+            gap: 12,
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+            <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: '#f8fafc' }}>전투 로그</h2>
+            <div style={{ fontSize: 12, color: '#94a3b8' }}>{logRows.length}개 기록</div>
+          </div>
+          <div style={{ display: 'grid', gap: 10 }}>
+            {logRows.length ? (
+              logRows.map(row => (
+                <article
+                  key={row.id}
+                  style={{
+                    borderRadius: 18,
+                    padding: '12px 14px',
+                    background: 'rgba(15,23,42,0.78)',
+                    border: '1px solid rgba(51,65,85,0.82)',
+                    display: 'grid',
+                    gap: 6,
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+                    <div style={{ fontSize: 12, color: '#93c5fd' }}>
+                      턴 {row.turnIndex} · {row.actorName}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 13, lineHeight: 1.75, color: '#e2e8f0', whiteSpace: 'pre-wrap' }}>
+                    {row.summary}
+                  </div>
+                </article>
+              ))
+            ) : (
+              <div style={{ fontSize: 13, color: '#94a3b8' }}>기록된 베틀로그가 없습니다.</div>
+            )}
+          </div>
+        </section>
+      </div>
+    </div>
+  );
 }
 
 function EventRow({ ev }) {
@@ -19,7 +272,16 @@ function EventRow({ ev }) {
     ev.summary ||
     (typeof ev.prompt === 'string' ? ev.prompt.split(/\r?\n/)[0] : ev.nodeLabel || ev.nodeId || '');
   return (
-    <div style={{ padding: '8px 10px', borderRadius: 10, border: '1px solid rgba(148,163,184,0.35)', background: 'rgba(15,23,42,0.6)', display: 'grid', gap: 4 }}>
+    <div
+      style={{
+        padding: '8px 10px',
+        borderRadius: 10,
+        border: '1px solid rgba(148,163,184,0.35)',
+        background: 'rgba(15,23,42,0.6)',
+        display: 'grid',
+        gap: 4,
+      }}
+    >
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, color: '#93c5fd' }}>
         {turn != null ? <span>턴 {turn}</span> : null}
         {ev.type ? <span>{ev.type}</span> : null}
@@ -30,56 +292,7 @@ function EventRow({ ev }) {
   );
 }
 
-export default function BattleLogPage() {
-  const router = useRouter();
-  const { sessionId, view: viewParam } = router.query || {};
-  const [data, setData] = useState(null);
-  const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!sessionId) return;
-    let canceled = false;
-    const load = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await fetch(`/api/rank/history?sessionId=${encodeURIComponent(sessionId)}`);
-        const json = await res.json();
-        if (!res.ok || !json?.ok) {
-          throw new Error(json?.error || 'load_failed');
-        }
-        if (!canceled) setData(json);
-      } catch (err) {
-        if (!canceled) setError(err.message || 'load_failed');
-      } finally {
-        if (!canceled) setLoading(false);
-      }
-    };
-    load();
-    return () => {
-      canceled = true;
-    };
-  }, [sessionId]);
-
-  if (!sessionId) {
-    return <div style={{ padding: 24, color: '#e2e8f0' }}>세션 ID가 없습니다.</div>;
-  }
-
-  if (loading && !data) {
-    return <div style={{ padding: 24, color: '#e2e8f0' }}>불러오는 중…</div>;
-  }
-  if (error) {
-    return (
-      <div style={{ padding: 24, color: '#e2e8f0' }}>
-        베틀로그를 불러오지 못했습니다: {error}
-      </div>
-    );
-  }
-  if (!data) {
-    return null;
-  }
-
+function LegacyBattleLogView({ data, sessionId, viewParam }) {
   const battleLog = data.battleLog || {};
   const events = Array.isArray(battleLog?.events) ? battleLog.events : [];
   const highlights = data.result?.highlightIds || data.battleLog?.highlightIds || [];
@@ -109,15 +322,6 @@ export default function BattleLogPage() {
   const showScoreboardCard = viewId === 'default' || viewId === 'scores' || viewId === 'summary';
   const showHighlights = viewId === 'default' || viewId === 'summary' || viewId === 'highlights';
   const showFullLog = viewId === 'default' || viewId === 'log' || viewId === 'timeline';
-
-  const templateId =
-    data.result?.meta?.templateId ||
-    data.battleLog?.meta?.templateId ||
-    null;
-  const templateVars =
-    data.result?.meta?.templateVars ||
-    data.battleLog?.meta?.templateVars ||
-    null;
 
   return (
     <div style={{ padding: 24, color: '#e2e8f0', background: '#0b1220', minHeight: '100vh' }}>
@@ -237,13 +441,6 @@ export default function BattleLogPage() {
                             역할: <span style={{ color: '#e5e7eb' }}>{role}</span>
                           </span>
                         ) : null}
-                        {tone === 'win' ? (
-                          <span style={{ fontSize: 11, color: '#bbf7d0' }}>승리</span>
-                        ) : tone === 'lose' ? (
-                          <span style={{ fontSize: 11, color: '#fecaca' }}>패배</span>
-                        ) : tone === 'draw' ? (
-                          <span style={{ fontSize: 11, color: '#fde68a' }}>무승부</span>
-                        ) : null}
                       </div>
                     </div>
                     {scoreText != null || deltaLabel ? (
@@ -267,36 +464,6 @@ export default function BattleLogPage() {
                 );
               })}
             </div>
-          </div>
-        ) : null}
-
-        {templateId || templateVars ? (
-          <div style={{ border: '1px solid rgba(129,140,248,0.5)', borderRadius: 12, padding: 14, background: 'rgba(30,64,175,0.25)' }}>
-            <div style={{ fontSize: 13, color: '#c7d2fe', marginBottom: 6 }}>템플릿 요약</div>
-            <div style={{ fontSize: 13, color: '#e5e7eb', marginBottom: 4 }}>
-              템플릿 ID: {templateId || '지정되지 않음'}
-            </div>
-            {templateVars && templateVars.finalScore ? (
-              <div style={{ fontSize: 13, color: '#e5e7eb' }}>
-                최종 점수: hero {templateVars.finalScore.hero ?? '-'} vs rival{' '}
-                {templateVars.finalScore.rival ?? '-'}
-              </div>
-            ) : null}
-            {templateVars && (templateVars.winner || templateVars.draw) ? (
-              <div style={{ fontSize: 13, color: '#e5e7eb', marginTop: 2 }}>
-                {templateVars.draw
-                  ? '템플릿 기준: 무승부'
-                  : `템플릿 기준 승자: ${templateVars.winner}`}
-              </div>
-            ) : null}
-            {templateVars &&
-            !templateVars.finalScore &&
-            !templateVars.winner &&
-            !templateVars.draw ? (
-              <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 4 }}>
-                템플릿 변수: {JSON.stringify(templateVars)}
-              </div>
-            ) : null}
           </div>
         ) : null}
 
@@ -326,4 +493,72 @@ export default function BattleLogPage() {
       </div>
     </div>
   );
+}
+
+export default function BattleLogPage() {
+  const router = useRouter();
+  const { sessionId, view: viewParam } = router.query || {};
+  const [data, setData] = useState(null);
+  const [mode, setMode] = useState('loading');
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    let cancelled = false;
+    const load = async () => {
+      setMode('loading');
+      setError(null);
+      try {
+        const textRes = await fetch(`/api/text-battle/session?id=${encodeURIComponent(sessionId)}`);
+        const textJson = await textRes.json().catch(() => null);
+        if (!cancelled && textRes.ok && textJson?.ok) {
+          setData(textJson);
+          setMode('text-battle');
+          return;
+        }
+
+        const legacyRes = await fetch(`/api/rank/history?sessionId=${encodeURIComponent(sessionId)}`);
+        const legacyJson = await legacyRes.json().catch(() => null);
+        if (!legacyRes.ok || !legacyJson?.ok) {
+          throw new Error(legacyJson?.error || textJson?.error || 'load_failed');
+        }
+        if (!cancelled) {
+          setData(legacyJson);
+          setMode('legacy');
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(loadError?.message || 'load_failed');
+          setMode('error');
+        }
+      }
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId]);
+
+  const content = useMemo(() => {
+    if (!sessionId) {
+      return <div style={{ padding: 24, color: '#e2e8f0' }}>세션 ID가 없습니다.</div>;
+    }
+    if (mode === 'loading') {
+      return <div style={{ padding: 24, color: '#e2e8f0' }}>불러오는 중…</div>;
+    }
+    if (mode === 'error') {
+      return (
+        <div style={{ padding: 24, color: '#e2e8f0' }}>
+          베틀로그를 불러오지 못했습니다: {error}
+        </div>
+      );
+    }
+    if (!data) return null;
+    if (mode === 'text-battle') {
+      return <TextBattleResultView payload={data} sessionId={String(sessionId)} />;
+    }
+    return <LegacyBattleLogView data={data} sessionId={String(sessionId)} viewParam={viewParam} />;
+  }, [data, error, mode, sessionId, viewParam]);
+
+  return content;
 }

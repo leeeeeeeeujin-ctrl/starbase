@@ -257,6 +257,8 @@ export default function TextBattleSessionPage() {
       }));
       if (json.session?.status === 'completed') {
         clearActiveSessionRecord();
+        router.replace(`/battle-log/${encodeURIComponent(String(id))}?source=text-battle`);
+        return;
       }
       await refreshPayload();
     } catch (error) {
@@ -309,7 +311,7 @@ export default function TextBattleSessionPage() {
         status: '항복으로 전투가 종료되었습니다.',
         error: '',
       }));
-      await refreshPayload();
+      router.replace(`/battle-log/${encodeURIComponent(String(id))}?source=text-battle`);
     } catch (error) {
       setRuntimeState(prev => ({
         ...prev,
