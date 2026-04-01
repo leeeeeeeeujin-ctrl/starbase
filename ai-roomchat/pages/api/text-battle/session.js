@@ -7,6 +7,17 @@ function normalizeBootstrapSession(value) {
   return rehydrateBattleSession(value);
 }
 
+function buildRuntimeParticipantMap(runtimeSession) {
+  const participants = Array.isArray(runtimeSession?.participants)
+    ? runtimeSession.participants
+    : [];
+  return new Map(
+    participants
+      .filter(participant => participant?.heroId)
+      .map(participant => [String(participant.heroId), participant])
+  );
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
     res.setHeader('Allow', 'GET');
@@ -65,6 +76,7 @@ export default async function handler(req, res) {
       ? turns.find(turn => Number(turn?.turn_index) < 0 && turn?.node_id === '__bootstrap__')
       : null;
     const runtimeSession = normalizeBootstrapSession(bootstrapTurn?.effects?.session || null);
+    const runtimeParticipantMap = buildRuntimeParticipantMap(runtimeSession);
     const visibleTurns = Array.isArray(turns)
       ? turns.filter(turn => Number(turn?.turn_index) >= 0)
       : [];
@@ -113,17 +125,45 @@ export default async function handler(req, res) {
       }
 
       participants = Array.isArray(heroRows)
-        ? heroRows.map(row => ({
-            id: row.id,
-            name: row.name || '이름 없는 캐릭터',
-            description: row.description || '',
-            abilities: [row.ability1, row.ability2, row.ability3, row.ability4].filter(Boolean),
-            image_url: row.image_url || null,
-            background_url: row.background_url || null,
-            bgm_url: row.bgm_url || null,
-            agent_profile:
-              row.agent_profile && typeof row.agent_profile === 'object' ? row.agent_profile : {},
-          }))
+        ? heroRows.map(row => {
+            const runtimeParticipant = runtimeParticipantMap.get(String(row.id)) || null;
+            const runtimeMeta =
+              runtimeParticipant?.meta && typeof runtimeParticipant.meta === 'object'
+                ? runtimeParticipant.meta
+                : {};
+            return {
+              id: runtimeParticipant?.id || row.id,
+              hero_id: row.id,
+              name:
+                runtimeParticipant?.name ||
+                row.name ||
+                '이름 없는 캐릭터',
+              role: runtimeParticipant?.role || null,
+              team: runtimeParticipant?.team || null,
+              description:
+                row.description ||
+                runtimeMeta.description ||
+                '',
+              abilities: [row.ability1, row.ability2, row.ability3, row.ability4]
+                .filter(Boolean)
+                .length
+                ? [row.ability1, row.ability2, row.ability3, row.ability4].filter(Boolean)
+                : Array.isArray(runtimeMeta.abilities)
+                  ? runtimeMeta.abilities.filter(Boolean)
+                  : [],
+              image_url: row.image_url || runtimeMeta.image_url || null,
+              background_url:
+                row.background_url || runtimeMeta.background_url || null,
+              bgm_url: row.bgm_url || runtimeMeta.bgm_url || null,
+              agent_profile:
+                row.agent_profile && typeof row.agent_profile === 'object'
+                  ? row.agent_profile
+                  : runtimeMeta.agent_profile &&
+                      typeof runtimeMeta.agent_profile === 'object'
+                    ? runtimeMeta.agent_profile
+                    : {},
+            };
+          })
         : [];
 
       const participantPrompt = participants
