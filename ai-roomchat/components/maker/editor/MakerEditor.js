@@ -497,6 +497,21 @@ export default function MakerEditor() {
                     ))}
                   </select>
                 </label>
+                <label style={{ display: 'grid', gap: 6 }}>
+                  <span style={{ fontSize: 12, color: '#475569', fontWeight: 700 }}>허용 점수 편차</span>
+                  <select
+                    name="battle-score-range"
+                    value={battleConfig.scoreRange || 0}
+                    onChange={event => updateBattleConfig({ scoreRange: Number(event.target.value) })}
+                    style={configInputStyle}
+                  >
+                    <option value={0}>제한 없음</option>
+                    <option value={100}>100</option>
+                    <option value={200}>200</option>
+                    <option value={300}>300</option>
+                    <option value={500}>500</option>
+                  </select>
+                </label>
               </div>
 
               <div style={{ display: 'grid', gap: 10 }}>

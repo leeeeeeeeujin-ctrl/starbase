@@ -50,11 +50,15 @@ export function normalizeBattleConfig(rawConfig = {}) {
         .map((role, index) => normalizeRoleEntry(role, index))
         .filter(Boolean)
     : [];
+  const scoreRange = Number.isFinite(Number(source.scoreRange))
+    ? Math.max(0, Number(source.scoreRange))
+    : 0;
 
   return {
     mode,
     minPlayers,
     maxPlayers,
+    scoreRange,
     roles,
   };
 }
@@ -140,6 +144,7 @@ export function buildBattleDefinitionFromGraph({ setInfo = null, nodes = [], edg
     mode: battleConfig.mode,
     minPlayers: battleConfig.minPlayers,
     maxPlayers: battleConfig.maxPlayers,
+    scoreRange: battleConfig.scoreRange,
     roles: battleConfig.roles,
     entryTurnId: startTurn?.id || '',
     turns: turnDefinitions,

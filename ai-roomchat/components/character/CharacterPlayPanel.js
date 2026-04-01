@@ -2647,6 +2647,8 @@ export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) 
             ? `부족한 역할: ${readiness.missingRoles
                 .map(role => `${role.name} ${role.missing}명`)
                 .join(', ')}`
+            : !readiness.scoreReady
+              ? `현재 선발 후보의 점수 차(${readiness.scoreGap ?? '알 수 없음'})가 허용 범위(${readiness.scoreRange})를 넘었습니다.`
             : `최소 인원 ${readiness.minPlayers}명이 필요합니다.`;
       throw new Error(`아직 매칭을 시작할 수 없습니다. ${missingMessage}`);
     }
@@ -2905,11 +2907,22 @@ export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) 
           <p style={panelStyles.lockedGame}>
             모드 {workspaceDefinition.mode === 'multi' ? '멀티' : '싱글'} · 최소 {workspaceDefinition.minPlayers}명 · 최대 {workspaceDefinition.maxPlayers}명
           </p>
+          {battleReadiness.scoreRange ? (
+            <p style={panelStyles.lockedGame}>
+              점수 편차 제한: {battleReadiness.scoreRange}
+              {battleReadiness.scoreGap != null ? ` · 현재 ${battleReadiness.scoreGap}` : ''}
+            </p>
+          ) : null}
           {battleReadiness.roleSummary.length ? (
             <p style={panelStyles.lockedGame}>
               역할 현황: {battleReadiness.roleSummary
                 .map(role => `${role.name} ${role.occupied}/${role.limit}`)
                 .join(' · ')}
+            </p>
+          ) : null}
+          {!battleReadiness.scoreReady ? (
+            <p style={panelStyles.lockedGame}>
+              현재 선발 후보의 점수 차가 너무 큽니다.
             </p>
           ) : null}
         </div>

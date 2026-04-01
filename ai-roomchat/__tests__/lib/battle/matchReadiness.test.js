@@ -115,4 +115,31 @@ describe('battle match readiness', () => {
     expect(result.maxPlayers).toBe(4);
     expect(result.heroIds).toEqual(['h1', 'h2', 'h3', 'h4']);
   });
+
+  test('blocks readiness when selected participants exceed configured score gap', () => {
+    const result = evaluateBattleReadiness({
+      definition: {
+        ...definition,
+        minPlayers: 2,
+        maxPlayers: 2,
+        roles: [
+          { name: 'attacker', limit: 1, team: 'red' },
+          { name: 'defender', limit: 1, team: 'blue' },
+        ],
+        scoreRange: 100,
+      },
+      hero: { id: 'h1' },
+      heroLookup,
+      scoreboard: [
+        { hero_id: 'h1', role: 'attacker', slot_no: 1, rating: 1000 },
+        { hero_id: 'h2', role: 'defender', slot_no: 2, rating: 1305 },
+      ],
+    });
+
+    expect(result.roleReady).toBe(true);
+    expect(result.enoughPlayers).toBe(true);
+    expect(result.scoreReady).toBe(false);
+    expect(result.scoreGap).toBe(305);
+    expect(result.ready).toBe(false);
+  });
 });

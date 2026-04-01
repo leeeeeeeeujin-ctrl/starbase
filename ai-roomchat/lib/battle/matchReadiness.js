@@ -16,6 +16,9 @@ export function buildJoinedParticipants(scoreboard = [], heroLookup = {}) {
         id: heroId,
         heroId,
         role: normalizeId(entry?.role),
+        rating: Number.isFinite(Number(entry?.rating ?? entry?.score))
+          ? Number(entry?.rating ?? entry?.score)
+          : null,
         slotNo:
           Number.isFinite(Number(entry?.slot_no ?? entry?.slotNo))
             ? Number(entry.slot_no ?? entry.slotNo)
@@ -86,6 +89,9 @@ export function evaluateBattleReadiness({
   const maxPlayers = Math.max(1, Math.min(12, Number(definition?.maxPlayers) || 2));
   const minPlayers = Math.max(1, Math.min(maxPlayers, Number(definition?.minPlayers) || 1));
   const roles = Array.isArray(definition?.roles) ? definition.roles : [];
+  const scoreRange = Number.isFinite(Number(definition?.scoreRange))
+    ? Math.max(0, Number(definition.scoreRange))
+    : 0;
 
   const roleCounts = new Map();
   joinedParticipants.forEach(participant => {
@@ -122,15 +128,28 @@ export function evaluateBattleReadiness({
     .slice(0, maxPlayers);
   const joinedCount = joinedParticipants.length;
   const tooManyPlayers = joinedCount > maxPlayers;
+  const scoredParticipants = selectedParticipants.filter(participant =>
+    Number.isFinite(Number(participant?.rating))
+  );
+  const ratings = scoredParticipants.map(participant => Number(participant.rating));
+  const scoreMin = ratings.length ? Math.min(...ratings) : null;
+  const scoreMax = ratings.length ? Math.max(...ratings) : null;
+  const scoreGap =
+    scoreMin != null && scoreMax != null ? Math.max(0, scoreMax - scoreMin) : null;
 
   const includesActiveHero = !activeHeroId || heroIds.includes(activeHeroId);
   const enoughPlayers = heroIds.length >= minPlayers;
   const roleReady = !roles.length || missingRoles.length === 0;
+  const scoreReady = !scoreRange || scoreGap == null || scoreGap <= scoreRange;
 
   return {
-    ready: enoughPlayers && roleReady && includesActiveHero,
+    ready: enoughPlayers && roleReady && includesActiveHero && scoreReady,
     maxPlayers,
     minPlayers,
+    scoreRange,
+    scoreGap,
+    scoreMin,
+    scoreMax,
     heroIds,
     joinedCount,
     joinedParticipants,
@@ -138,6 +157,7 @@ export function evaluateBattleReadiness({
     includesActiveHero,
     enoughPlayers,
     roleReady,
+    scoreReady,
     tooManyPlayers,
     roleSummary,
     missingRoles,
