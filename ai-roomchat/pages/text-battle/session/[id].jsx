@@ -42,38 +42,6 @@ function hydrateRuntimeSession(value) {
   return rehydrateBattleSession(value);
 }
 
-function pickPreferredRuntimeSession(storedSession, remoteSession) {
-  if (!storedSession && !remoteSession) return null;
-  if (!storedSession) return remoteSession;
-  if (!remoteSession) return storedSession;
-
-  const storedUpdatedAt = Number(storedSession?.updatedAt || 0);
-  const remoteUpdatedAt = Number(remoteSession?.updatedAt || 0);
-
-  if (remoteUpdatedAt >= storedUpdatedAt) {
-    return remoteSession;
-  }
-
-  const storedParticipants = Array.isArray(storedSession?.participants?.list)
-    ? storedSession.participants.list
-    : Array.isArray(storedSession?.participants)
-      ? storedSession.participants
-      : [];
-  const remoteParticipants = Array.isArray(remoteSession?.participants?.list)
-    ? remoteSession.participants.list
-    : Array.isArray(remoteSession?.participants)
-      ? remoteSession.participants
-      : [];
-
-  const remoteHasTeams = remoteParticipants.some(participant => participant?.team);
-  const storedHasTeams = storedParticipants.some(participant => participant?.team);
-  if (remoteHasTeams && !storedHasTeams) {
-    return remoteSession;
-  }
-
-  return storedSession;
-}
-
 export default function TextBattleSessionPage() {
   const router = useRouter();
   const { id } = router.query || {};
@@ -117,16 +85,23 @@ export default function TextBattleSessionPage() {
         });
         setRuntimeState(prev => ({
           ...prev,
-          session: pickPreferredRuntimeSession(storedSession, remoteSession) || prev.session,
+          session: remoteSession || prev.session,
         }));
       })
       .catch(err => {
         if (cancelled) return;
+        const storedSession = hydrateRuntimeSession(readStoredTextBattleSession(id));
         setState({
           loading: false,
           error: err?.message || String(err),
           payload: null,
         });
+        if (storedSession) {
+          setRuntimeState(prev => ({
+            ...prev,
+            session: prev.session || storedSession,
+          }));
+        }
       });
     return () => {
       cancelled = true;
