@@ -192,6 +192,8 @@ export default async function handler(req, res) {
       (typeof payload?.gameName === 'string' && payload.gameName.trim()) ||
       (typeof definition?.name === 'string' && definition.name.trim()) ||
       '새 텍스트 배틀';
+    const gameId =
+      (typeof payload?.gameId === 'string' && payload.gameId.trim()) || null;
     const promptSetId =
       (typeof payload?.promptSetId === 'string' && payload.promptSetId.trim()) || null;
 
@@ -233,6 +235,10 @@ export default async function handler(req, res) {
       definition,
       participants,
       actorId: participants[0]?.id || '',
+      values: {
+        gameId: gameId || '',
+        promptSetId: promptSetId || '',
+      },
     });
     const currentTurn = getCurrentTurn(session);
     const actorId = resolveTurnActorId(session, currentTurn, session.actorId);

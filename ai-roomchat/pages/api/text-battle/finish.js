@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { supabaseAdmin } from '../../../lib/supabaseAdmin.js';
 import { rehydrateBattleSession } from '../../../lib/battle/session.js';
 import { writeBattleDebugLog } from '../../../lib/battle/debugLog.js';
+import { settleTextBattleSession } from '../../../lib/battle/textBattleSettlement.js';
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -140,6 +141,15 @@ export default async function handler(req, res) {
       ],
     };
 
+    const settledScore = await settleTextBattleSession({
+      session: nextSession,
+      sessionRow,
+      winnerParticipant: winner,
+      loserParticipant: surrendering,
+      reason: action === 'surrender' ? 'surrender' : 'completed',
+    });
+    nextSession.values.battleScore = settledScore;
+
     const { error: turnInsertError } = await supabaseAdmin.from('text_battle_turns').insert({
       session_id: textSessionId,
       turn_index: Number.isFinite(Number(session?.turnIndex)) ? Number(session.turnIndex) + 1 : 0,
@@ -166,7 +176,7 @@ export default async function handler(req, res) {
       .update({
         status: 'completed',
         winner: winner?.heroId || winner?.name || null,
-        final_score: nextSession.values?.battleScore || null,
+        final_score: settledScore || null,
       })
       .eq('id', textSessionId);
 

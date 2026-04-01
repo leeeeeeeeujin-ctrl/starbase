@@ -12,6 +12,7 @@ import { toTextBattleTurnRow } from '@/lib/runtime/textBattlePersistence';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { sanitizeSupabaseUrl } from '@/lib/supabaseEnv';
 import { writeBattleDebugLog } from '@/lib/battle/debugLog';
+import { settleTextBattleSession } from '@/lib/battle/textBattleSettlement';
 
 const url = sanitizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL);
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -150,6 +151,43 @@ export default async function handler(req, res) {
     });
 
     if (textSessionId) {
+      const { data: sessionRow, error: sessionLookupError } = await supabaseAdmin
+        .from('text_battle_sessions')
+        .select('*')
+        .eq('id', textSessionId)
+        .maybeSingle();
+
+      if (sessionLookupError) {
+        return res.status(502).json({
+          ok: false,
+          error: 'text_session_lookup_failed',
+          detail: sessionLookupError.message || null,
+        });
+      }
+
+      if (nextSession?.status === 'completed') {
+        const participants = Array.isArray(nextSession?.participants?.list)
+          ? nextSession.participants.list
+          : [];
+        const winnerHeroId = nextSession?.values?.battleWinner || null;
+        const winnerParticipant =
+          participants.find(participant => participant?.heroId === winnerHeroId || participant?.id === winnerHeroId) ||
+          null;
+        const loserParticipant =
+          participants.find(participant => participant?.id !== winnerParticipant?.id) || null;
+        const settledScore = await settleTextBattleSession({
+          session: nextSession,
+          sessionRow,
+          winnerParticipant,
+          loserParticipant,
+          reason: 'completed',
+        });
+        nextSession.values = {
+          ...(nextSession.values && typeof nextSession.values === 'object' ? nextSession.values : {}),
+          battleScore: settledScore,
+        };
+      }
+
       const turnRow = toTextBattleTurnRow({
         sessionId: textSessionId,
         turnIndex: Number.isFinite(Number(session?.turnIndex)) ? Number(session.turnIndex) : 0,

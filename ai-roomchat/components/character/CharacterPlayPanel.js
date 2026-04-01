@@ -2673,6 +2673,7 @@ export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) 
         definition,
         heroIds,
         participantOverrides,
+        gameId: selectedGameId,
         gameName: selectedGame?.name || workspace?.game_name || '',
         promptSetId: workspace?.prompt_set_id || null,
       }),
