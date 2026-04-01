@@ -338,6 +338,40 @@ create index if not exists rank_user_error_reports_severity_idx
 
 alter table public.rank_user_error_reports enable row level security;
 
+create table if not exists public.battle_debug_logs (
+  id uuid primary key default gen_random_uuid(),
+  scope text not null default 'battle',
+  event_type text not null,
+  owner_id uuid references auth.users(id) on delete set null,
+  game_id text,
+  hero_id uuid references public.heroes(id) on delete set null,
+  text_session_id uuid references public.text_battle_sessions(id) on delete set null,
+  status text,
+  payload jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists battle_debug_logs_created_at_idx
+  on public.battle_debug_logs (created_at desc);
+
+create index if not exists battle_debug_logs_scope_event_idx
+  on public.battle_debug_logs (scope, event_type, created_at desc);
+
+create index if not exists battle_debug_logs_text_session_idx
+  on public.battle_debug_logs (text_session_id, created_at desc);
+
+alter table public.battle_debug_logs enable row level security;
+
+drop policy if exists battle_debug_logs_select_owner on public.battle_debug_logs;
+create policy battle_debug_logs_select_owner
+on public.battle_debug_logs for select
+using (auth.uid() = owner_id or auth.role() = 'service_role');
+
+drop policy if exists battle_debug_logs_insert_owner on public.battle_debug_logs;
+create policy battle_debug_logs_insert_owner
+on public.battle_debug_logs for insert to authenticated
+with check (auth.uid() = owner_id or auth.role() = 'service_role');
+
 drop policy if exists prompt_library_entries_update on public.prompt_library_entries;
 create policy prompt_library_entries_update
 on public.prompt_library_entries for update

@@ -11,6 +11,7 @@ import { toTextBattleSessionRow } from '@/lib/runtime/textBattlePersistence';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { sanitizeSupabaseUrl } from '@/lib/supabaseEnv';
 import { withTableQuery } from '@/lib/supabaseTables';
+import { writeBattleDebugLog } from '@/lib/battle/debugLog';
 
 const url = sanitizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL);
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -212,6 +213,29 @@ export default async function handler(req, res) {
         });
       }
     }
+
+    await writeBattleDebugLog({
+      scope: 'text-battle',
+      eventType: 'start-session',
+      ownerId: viewer.id,
+      gameId: promptSetId,
+      heroId: heroes[0]?.id || null,
+      textSessionId: inserted?.id || null,
+      status: 'started',
+      payload: {
+        gameName,
+        heroIds,
+        participantCount: participants.length,
+        currentTurnId: currentTurn?.id || null,
+        actorId,
+        roleSummary: participants.map(participant => ({
+          heroId: participant.heroId,
+          role: participant.role,
+          team: participant.team,
+        })),
+        promptPreview: runtimePrompt?.slice?.(0, 600) || null,
+      },
+    });
 
     return res.status(200).json({
       ok: true,

@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { sanitizeSupabaseUrl } from '@/lib/supabaseEnv';
 import { buildBattleDefinitionFromGraph } from '@/lib/battle/definition';
+import { writeBattleDebugLog } from '@/lib/battle/debugLog';
 
 const url = sanitizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL);
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -285,6 +286,24 @@ export default async function handler(req, res) {
     }
     return res.status(400).json({ error: upsertError.message });
   }
+
+  await writeBattleDebugLog({
+    scope: 'rank',
+    eventType: 'join-game',
+    ownerId,
+    gameId: game_id,
+    heroId: hero_id,
+    status: claimedSlot ? 'joined' : 'overflow',
+    payload: {
+      role: trimmedRole,
+      slotId: claimedSlot?.id || null,
+      slotIndex: claimedSlot?.slot_index || null,
+      occupiedSlotCount: activeSlots.filter(slot => Boolean(slot?.hero_id)).length,
+      activeSlotCount: activeSlots.length,
+      participantId: upsertedParticipant?.id || null,
+      participantStatus: upsertedParticipant?.status || null,
+    },
+  });
 
   return res.status(200).json({
     ok: true,

@@ -11,6 +11,7 @@ import { buildRuntimePromptFromTurn } from '@/lib/battle/agentRuntime';
 import { toTextBattleTurnRow } from '@/lib/runtime/textBattlePersistence';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { sanitizeSupabaseUrl } from '@/lib/supabaseEnv';
+import { writeBattleDebugLog } from '@/lib/battle/debugLog';
 
 const url = sanitizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL);
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -212,6 +213,29 @@ export default async function handler(req, res) {
         });
       }
     }
+
+    await writeBattleDebugLog({
+      scope: 'text-battle',
+      eventType: 'run-turn',
+      ownerId: viewer.id,
+      heroId: agentContexts?.[0]?.heroId || null,
+      textSessionId,
+      status: nextSession?.status || 'active',
+      payload: {
+        actorId: resolvedActorId,
+        turnIndex: Number.isFinite(Number(session?.turnIndex)) ? Number(session.turnIndex) : 0,
+        nodeId: currentTurn?.id || null,
+        nodeTitle: currentTurn?.title || null,
+        input: input || null,
+        nextTurnId: nextSession?.currentTurnId || null,
+        valueKeys: Object.keys(nextSession?.values || {}),
+        participantCount: Array.isArray(session?.participants?.list)
+          ? session.participants.list.length
+          : Array.isArray(session?.participants)
+            ? session.participants.length
+            : 0,
+      },
+    });
 
     return res.status(200).json({
       ok: true,
