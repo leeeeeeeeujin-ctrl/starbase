@@ -21,6 +21,7 @@ import { readActiveSession, subscribeActiveSession } from '@/lib/rank/activeSess
 import { normalizeRealtimeMode, isRealtimeEnabled } from '@/lib/rank/realtimeModes';
 import { formatPlayNumber } from '@/utils/characterPlayFormatting';
 import { buildBattleDefinitionFromGraph } from '@/lib/battle/definition';
+import { evaluateBattleReadiness } from '@/lib/battle/matchReadiness';
 import { writeStoredTextBattleSession } from '@/lib/battle/clientSessionStorage';
 import {
   MATCH_DEBUG_HOLD_ENABLED,
@@ -1440,7 +1441,7 @@ function normalizeQueueTicket(row) {
   };
 }
 
-export default function CharacterPlayPanel({ hero, playData }) {
+export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) {
   const router = useRouter();
 
   const {
@@ -1711,12 +1712,52 @@ export default function CharacterPlayPanel({ hero, playData }) {
   ]);
 
   const currentRole = selectedEntry?.role ? selectedEntry.role : null;
+  const [workspaceDefinition, setWorkspaceDefinition] = useState(null);
+  const [workspaceDefinitionLoading, setWorkspaceDefinitionLoading] = useState(false);
 
   const gameDescription = useMemo(() => {
     const raw = selectedGame?.description;
     if (typeof raw === 'string' && raw.trim()) return raw.trim();
     return '아직 등록된 설명이 없습니다.';
   }, [selectedGame?.description]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedGameId) {
+      setWorkspaceDefinition(null);
+      setWorkspaceDefinitionLoading(false);
+      return undefined;
+    }
+
+    setWorkspaceDefinitionLoading(true);
+    fetchWorkspaceDefinition(selectedGameId, selectedGame?.name || '')
+      .then(({ definition }) => {
+        if (cancelled) return;
+        setWorkspaceDefinition(definition || null);
+        setWorkspaceDefinitionLoading(false);
+      })
+      .catch(error => {
+        if (cancelled) return;
+        console.warn('[CharacterPlayPanel] failed to load workspace definition', error);
+        setWorkspaceDefinition(null);
+        setWorkspaceDefinitionLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedGame?.name, selectedGameId]);
+
+  const battleReadiness = useMemo(
+    () =>
+      evaluateBattleReadiness({
+        definition: workspaceDefinition,
+        scoreboard: selectedScoreboard,
+        heroLookup,
+        hero,
+      }),
+    [workspaceDefinition, selectedScoreboard, heroLookup, hero]
+  );
 
   useEffect(() => {
     if (!selectedGameId) return;
@@ -2514,9 +2555,25 @@ export default function CharacterPlayPanel({ hero, playData }) {
       return false;
     }
 
-    const heroIds = buildTextBattleHeroIds(hero, selectedScoreboard, definition);
+    const readiness = evaluateBattleReadiness({
+      definition,
+      scoreboard: selectedScoreboard,
+      heroLookup,
+      hero,
+    });
+    const heroIds = readiness.heroIds.length
+      ? readiness.heroIds
+      : buildTextBattleHeroIds(hero, selectedScoreboard, definition);
     if (!heroIds.length) {
       throw new Error('참가할 캐릭터를 찾지 못했습니다.');
+    }
+    if (!readiness.ready) {
+      const missingMessage = readiness.missingRoles.length
+        ? `부족한 역할: ${readiness.missingRoles
+            .map(role => `${role.name} ${role.missing}명`)
+            .join(', ')}`
+        : `최소 인원 ${readiness.minPlayers}명이 필요합니다.`;
+      throw new Error(`아직 매칭을 시작할 수 없습니다. ${missingMessage}`);
     }
 
     setMatchingState(prev => ({
@@ -2583,6 +2640,8 @@ export default function CharacterPlayPanel({ hero, playData }) {
     appendDebug,
     hero,
     router,
+    hero,
+    heroLookup,
     selectedGame?.name,
     selectedGameId,
     selectedScoreboard,
@@ -2876,7 +2935,15 @@ export default function CharacterPlayPanel({ hero, playData }) {
     matchingState.open &&
     ['queue', 'awaiting-room', 'staging', 'sampling', 'assembling'].includes(matchingState.phase);
 
-  const startButtonDisabled = !selectedGameId || isMatchingBusy || hasBlockingActiveSession;
+  const readinessBlocked =
+    Boolean(workspaceDefinition) &&
+    (!battleReadiness.ready || !battleReadiness.includesActiveHero);
+  const startButtonDisabled =
+    !selectedGameId ||
+    isMatchingBusy ||
+    hasBlockingActiveSession ||
+    workspaceDefinitionLoading ||
+    readinessBlocked;
 
   const startButton = (
     <section style={panelStyles.section}>
@@ -2887,6 +2954,22 @@ export default function CharacterPlayPanel({ hero, playData }) {
       <p style={panelStyles.subtitle}>
         {selectedGame ? selectedGame.name : '게임을 선택해주세요.'}
       </p>
+      {workspaceDefinition ? (
+        <div style={panelStyles.lockedNotice}>
+          <p style={panelStyles.lockedText}>
+            {battleReadiness.ready
+              ? `참가 인원 ${battleReadiness.heroIds.length}/${battleReadiness.maxPlayers} · 역할 조건 충족`
+              : battleReadiness.missingRoles.length
+                ? `아직 부족한 역할이 있습니다: ${battleReadiness.missingRoles
+                    .map(role => `${role.name} ${role.missing}명`)
+                    .join(', ')}`
+                : `최소 인원 ${battleReadiness.minPlayers}명이 필요합니다. 현재 ${battleReadiness.heroIds.length}명`}
+          </p>
+          <p style={panelStyles.lockedGame}>
+            모드 {workspaceDefinition.mode === 'multi' ? '멀티' : '싱글'} · 최소 {workspaceDefinition.minPlayers}명 · 최대 {workspaceDefinition.maxPlayers}명
+          </p>
+        </div>
+      ) : null}
       <button
         type="button"
         style={{
@@ -2896,7 +2979,7 @@ export default function CharacterPlayPanel({ hero, playData }) {
         onClick={startButtonDisabled ? undefined : runAutoMatch}
         disabled={startButtonDisabled}
       >
-        게임 시작
+        {workspaceDefinitionLoading ? '게임 조건 확인 중…' : '게임 시작'}
       </button>
       {hasBlockingActiveSession ? (
         <div style={panelStyles.lockedNotice}>
