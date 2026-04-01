@@ -13,6 +13,66 @@ function toObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
 
+function normalizeOutcomeKey(value) {
+  return toId(value)
+    .normalize('NFC')
+    .replace(/\s+/g, '')
+    .replace(/^팀(?=\S)/, '')
+    .toLowerCase();
+}
+
+export function lookupTeamOutcome(teamOutcomes = {}, team = '') {
+  const entries = Object.entries(toObject(teamOutcomes));
+  if (!entries.length) return '';
+
+  const teamId = toId(team);
+  if (!teamId) return '';
+
+  const direct = teamOutcomes[teamId];
+  if (direct) return direct;
+  const prefixed = teamOutcomes[`팀 ${teamId}`];
+  if (prefixed) return prefixed;
+
+  const normalizedTeam = normalizeOutcomeKey(teamId);
+  if (!normalizedTeam) return '';
+
+  const matched = entries.find(([key]) => normalizeOutcomeKey(key) === normalizedTeam);
+  return matched?.[1] || '';
+}
+
+export function lookupParticipantOutcome(participantOutcomes = {}, participant = {}) {
+  const outcomes = toObject(participantOutcomes);
+  const entries = Object.entries(outcomes);
+  if (!entries.length || !participant || typeof participant !== 'object') return '';
+
+  const directCandidates = [
+    participant.id,
+    participant.heroId,
+    participant.ownerId,
+    participant.name,
+    participant.heroName,
+    participant.displayName,
+  ]
+    .map(toId)
+    .filter(Boolean);
+
+  for (const candidate of directCandidates) {
+    if (Object.prototype.hasOwnProperty.call(outcomes, candidate)) {
+      return outcomes[candidate];
+    }
+  }
+
+  const normalizedCandidates = new Set(
+    directCandidates
+      .map(normalizeOutcomeKey)
+      .filter(Boolean)
+  );
+  if (!normalizedCandidates.size) return '';
+
+  const matched = entries.find(([key]) => normalizedCandidates.has(normalizeOutcomeKey(key)));
+  return matched?.[1] || '';
+}
+
 function buildZeroSumDelta(outcome, reason) {
   if (outcome !== 'win' && outcome !== 'lose') {
     return { attacker: 0, defender: 0 };
@@ -163,18 +223,10 @@ function buildSettlementPayload({ session, winnerParticipant, loserParticipant, 
 
   const teamOutcomes = toObject(session?.values?.teamOutcomes);
   const participantOutcomes = toObject(session?.values?.participantOutcomes);
-  const attackerOutcome =
-    participantOutcomes[attacker.id] ||
-    participantOutcomes[attacker.heroId] ||
-    participantOutcomes[attacker.ownerId] ||
-    '';
-  const defenderOutcome =
-    participantOutcomes[defender.id] ||
-    participantOutcomes[defender.heroId] ||
-    participantOutcomes[defender.ownerId] ||
-    '';
-  const attackerTeamOutcome = attacker?.team ? teamOutcomes[attacker.team] || '' : '';
-  const defenderTeamOutcome = defender?.team ? teamOutcomes[defender.team] || '' : '';
+  const attackerOutcome = lookupParticipantOutcome(participantOutcomes, attacker);
+  const defenderOutcome = lookupParticipantOutcome(participantOutcomes, defender);
+  const attackerTeamOutcome = lookupTeamOutcome(teamOutcomes, attacker?.team || '');
+  const defenderTeamOutcome = lookupTeamOutcome(teamOutcomes, defender?.team || '');
   const winnerHeroId = toId(winnerParticipant?.heroId);
   const loserHeroId = toId(loserParticipant?.heroId);
   let outcome = 'draw';
