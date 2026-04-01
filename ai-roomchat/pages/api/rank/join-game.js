@@ -2,7 +2,6 @@ import { createClient } from '@supabase/supabase-js';
 
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { sanitizeSupabaseUrl } from '@/lib/supabaseEnv';
-import { buildBattleDefinitionFromGraph } from '@/lib/battle/definition';
 import { writeBattleDebugLog } from '@/lib/battle/debugLog';
 
 const url = sanitizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL);
@@ -22,21 +21,32 @@ const anonClient = createClient(url, anonKey, {
   },
 });
 
-function buildRoleRowsFromDefinition(gameId, definition) {
-  const roles = Array.isArray(definition?.roles) ? definition.roles : [];
+function normalizeBattleConfigRoles(rawConfig = {}) {
+  const roles = Array.isArray(rawConfig?.roles) ? rawConfig.roles : [];
   return roles
     .map(role => {
-      const name = String(role?.name || '').trim();
+      const name = String(role?.name || role?.id || '').trim();
       if (!name) return null;
-      const slotCount = Number.isFinite(Number(role?.limit)) ? Math.max(1, Number(role.limit)) : 1;
+      const slotCount = Number.isFinite(Number(role?.limit ?? role?.slot_count ?? role?.slotCount))
+        ? Math.max(1, Number(role?.limit ?? role?.slot_count ?? role?.slotCount))
+        : 1;
       return {
-        game_id: gameId,
         name,
         slot_count: slotCount,
-        active: true,
+        team: String(role?.team || '').trim(),
       };
     })
     .filter(Boolean);
+}
+
+function buildRoleRows(gameId, roles = []) {
+  return roles
+    .map(role => ({
+      game_id: gameId,
+      name: role.name,
+      slot_count: role.slot_count,
+      active: true,
+    }));
 }
 
 function buildSlotRowsFromRoleRows(gameId, roleRows) {
@@ -58,41 +68,44 @@ function buildSlotRowsFromRoleRows(gameId, roleRows) {
 }
 
 async function hydrateRoleSlotsFromWorkspace(gameId) {
-  const { data: workspaceRow, error: workspaceError } = await supabaseAdmin
-    .from('rank_game_workspaces')
-    .select('game_id, game_name, prompt_set_id, graph, template, runtime_config')
-    .eq('game_id', gameId)
-    .order('updated_at', { ascending: false })
-    .limit(1)
+  const { data: gameRow, error: gameError } = await supabaseAdmin
+    .from('rank_games')
+    .select('id,name,prompt_set_id')
+    .eq('id', gameId)
     .maybeSingle();
 
-  if (workspaceError || !workspaceRow) {
+  if (gameError || !gameRow) {
     return { ok: false };
   }
 
-  const graph = workspaceRow.graph && typeof workspaceRow.graph === 'object' ? workspaceRow.graph : {};
-  const nodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
-  const edges = Array.isArray(graph?.edges) ? graph.edges : [];
-  const rawConfig =
-    workspaceRow?.template?.battleConfig ||
-    workspaceRow?.template?.battle_config ||
-    workspaceRow?.runtime_config?.battleConfig ||
-    workspaceRow?.runtime_config?.battle_config ||
-    {};
+  let roles = [];
+  if (gameRow?.prompt_set_id) {
+    const { data: promptSetRow } = await supabaseAdmin
+      .from('prompt_sets')
+      .select('battle_config')
+      .eq('id', gameRow.prompt_set_id)
+      .maybeSingle();
+    roles = normalizeBattleConfigRoles(promptSetRow?.battle_config || {});
+  }
 
-  const definition = buildBattleDefinitionFromGraph({
-    setInfo: {
-      id: workspaceRow?.prompt_set_id || '',
-      name: workspaceRow?.game_name || '이름 없는 게임',
-      description:
-        workspaceRow?.template?.description || workspaceRow?.runtime_config?.description || '',
-    },
-    nodes,
-    edges,
-    config: rawConfig,
-  });
+  if (!roles.length) {
+    const { data: workspaceRow } = await supabaseAdmin
+      .from('rank_game_workspaces')
+      .select('template, runtime_config')
+      .eq('game_id', gameId)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const rawConfig =
+      workspaceRow?.template?.battleConfig ||
+      workspaceRow?.template?.battle_config ||
+      workspaceRow?.runtime_config?.battleConfig ||
+      workspaceRow?.runtime_config?.battle_config ||
+      {};
+    roles = normalizeBattleConfigRoles(rawConfig);
+  }
 
-  const roleRows = buildRoleRowsFromDefinition(gameId, definition);
+  const roleRows = buildRoleRows(gameId, roles);
   if (!roleRows.length) {
     return { ok: false };
   }
