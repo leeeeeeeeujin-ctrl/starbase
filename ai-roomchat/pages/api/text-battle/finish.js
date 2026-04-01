@@ -120,6 +120,18 @@ export default async function handler(req, res) {
         ...(session.values && typeof session.values === 'object' ? session.values : {}),
         battleWinner: winner?.heroId || winner?.name || null,
         battleEndReason: action === 'surrender' ? 'surrender' : 'completed',
+        gameResult: 'ended',
+        teamOutcomes:
+          winner?.team && surrendering?.team
+            ? {
+                [winner.team]: 'win',
+                [surrendering.team]: 'lose',
+              }
+            : {},
+        participantOutcomes: {
+          ...(winner?.id ? { [winner.id]: 'survived' } : {}),
+          ...(surrendering?.id ? { [surrendering.id]: 'retired' } : {}),
+        },
         battleScore: {
           outcome: action === 'surrender' ? 'surrender' : 'completed',
           winner: winner?.heroId || winner?.name || null,

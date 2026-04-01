@@ -111,5 +111,15 @@ export function applyBattleResultToValues(values = {}, parsedResult = {}) {
     nextValues.battleWinner = winningTeams[0];
   }
 
+  if (!nextValues.battleWinner) {
+    const survivingParticipants = Object.entries(participantOutcomes)
+      .filter(([, outcome]) => toId(outcome).toLowerCase() === 'survived')
+      .map(([participantId]) => toId(participantId))
+      .filter(Boolean);
+    if (survivingParticipants.length === 1) {
+      nextValues.battleWinner = survivingParticipants[0];
+    }
+  }
+
   return nextValues;
 }

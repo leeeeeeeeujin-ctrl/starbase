@@ -9,6 +9,10 @@ function toNumber(value, fallback = 0) {
   return Number.isFinite(numeric) ? numeric : fallback;
 }
 
+function toObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
 function normalizeTurnLogs(session = {}, gameId, battleId, outcome) {
   const logs = Array.isArray(session?.logs) ? session.logs : [];
   if (!logs.length) {
@@ -59,6 +63,15 @@ function resolveParticipantStatus(outcome, side) {
     return outcome === 'win' ? 'victory' : 'defeated';
   }
   return outcome === 'win' ? 'defeated' : 'victory';
+}
+
+function resolveStatusFromOutcome(outcome = '') {
+  const normalized = toId(outcome).toLowerCase();
+  if (normalized === 'survived' || normalized === 'win' || normalized === 'victory') return 'victory';
+  if (normalized === 'eliminated') return 'eliminated';
+  if (normalized === 'retired') return 'retired';
+  if (normalized === 'lose' || normalized === 'defeated') return 'defeated';
+  return 'active';
 }
 
 async function upsertParticipantOutcome({
@@ -130,16 +143,49 @@ function buildSettlementPayload({ session, winnerParticipant, loserParticipant, 
     return null;
   }
 
+  const teamOutcomes = toObject(session?.values?.teamOutcomes);
+  const participantOutcomes = toObject(session?.values?.participantOutcomes);
+  const attackerOutcome =
+    participantOutcomes[attacker.id] ||
+    participantOutcomes[attacker.heroId] ||
+    participantOutcomes[attacker.ownerId] ||
+    '';
+  const defenderOutcome =
+    participantOutcomes[defender.id] ||
+    participantOutcomes[defender.heroId] ||
+    participantOutcomes[defender.ownerId] ||
+    '';
+  const attackerTeamOutcome = attacker?.team ? teamOutcomes[attacker.team] || '' : '';
+  const defenderTeamOutcome = defender?.team ? teamOutcomes[defender.team] || '' : '';
   const winnerHeroId = toId(winnerParticipant?.heroId);
   const loserHeroId = toId(loserParticipant?.heroId);
   let outcome = 'draw';
   let delta = 0;
 
-  if (winnerHeroId && loserHeroId) {
+  if (toId(attackerTeamOutcome).toLowerCase() === 'win' && toId(defenderTeamOutcome).toLowerCase() === 'lose') {
+    outcome = 'win';
+  } else if (toId(attackerTeamOutcome).toLowerCase() === 'lose' && toId(defenderTeamOutcome).toLowerCase() === 'win') {
+    outcome = 'lose';
+  } else if (
+    ['survived', 'win', 'victory'].includes(toId(attackerOutcome).toLowerCase()) &&
+    ['eliminated', 'retired', 'lose', 'defeated'].includes(toId(defenderOutcome).toLowerCase())
+  ) {
+    outcome = 'win';
+  } else if (
+    ['survived', 'win', 'victory'].includes(toId(defenderOutcome).toLowerCase()) &&
+    ['eliminated', 'retired', 'lose', 'defeated'].includes(toId(attackerOutcome).toLowerCase())
+  ) {
+    outcome = 'lose';
+  } else if (winnerHeroId && loserHeroId) {
     outcome = winnerHeroId === toId(attacker.heroId) ? 'win' : 'lose';
+  }
+
+  if (outcome === 'win' || outcome === 'lose') {
     delta = outcome === 'win' ? 10 : -10;
     if (reason === 'surrender') {
       delta = outcome === 'win' ? 8 : -8;
+    } else if (reason === 'abandoned' || reason === 'timed_out') {
+      delta = 0;
     }
   }
 
@@ -149,6 +195,8 @@ function buildSettlementPayload({ session, winnerParticipant, loserParticipant, 
     defender,
     outcome,
     delta,
+    attackerStatus: attackerOutcome ? resolveStatusFromOutcome(attackerOutcome) : resolveParticipantStatus(outcome, 'attacker'),
+    defenderStatus: defenderOutcome ? resolveStatusFromOutcome(defenderOutcome) : resolveParticipantStatus(outcome, 'defender'),
   };
 }
 
@@ -212,14 +260,14 @@ export async function settleTextBattleSession({ session, sessionRow, winnerParti
     ownerId: settlement.attacker.ownerId,
     heroId: settlement.attacker.heroId,
     delta: settlement.delta,
-    status: resolveParticipantStatus(settlement.outcome, 'attacker'),
+    status: settlement.attackerStatus,
   });
   await upsertParticipantOutcome({
     gameId: settlement.gameId,
     ownerId: settlement.defender.ownerId,
     heroId: settlement.defender.heroId,
     delta: -settlement.delta,
-    status: resolveParticipantStatus(settlement.outcome, 'defender'),
+    status: settlement.defenderStatus,
   });
 
   return {
