@@ -22,6 +22,40 @@ const REALTIME_MODE_OPTIONS = [
   { value: REALTIME_MODES.STANDARD, label: '실시간' },
 ];
 
+function normalizeMakerBattleConfig(rawConfig) {
+  const raw = rawConfig && typeof rawConfig === 'object' ? rawConfig : {};
+  const maxPlayers = Number.isFinite(Number(raw.maxPlayers)) ? Number(raw.maxPlayers) : 2;
+  const minPlayers = Number.isFinite(Number(raw.minPlayers)) ? Number(raw.minPlayers) : 1;
+  const mode = String(raw.mode || '').trim() === 'multi' ? 'multi' : 'single';
+  const roles = Array.isArray(raw.roles)
+    ? raw.roles
+        .map((role, index) => {
+          const name = String(role?.name || role?.id || '').trim();
+          if (!name) return null;
+          return {
+            id: String(role?.id || `role-${index + 1}`),
+            name,
+            team: String(role?.team || '').trim(),
+            limit: Number.isFinite(Number(role?.limit))
+              ? Math.max(1, Number(role.limit))
+              : 1,
+          };
+        })
+        .filter(Boolean)
+    : [];
+  return { mode, minPlayers, maxPlayers, roles };
+}
+
+function parseBattleConfigFromFiles(filesMap) {
+  const templateText = filesMap?.['/template.json']?.content || '{}';
+  try {
+    const parsed = JSON.parse(templateText);
+    return normalizeMakerBattleConfig(parsed?.battleConfig);
+  } catch {
+    return normalizeMakerBattleConfig();
+  }
+}
+
 async function registerGame(payload) {
   const {
     data: { session },
@@ -107,33 +141,15 @@ export default function RankNewClient() {
     setPromptSetId: setSharedPromptSetId,
   } = useSharedPromptSetStorage();
   const workspace = useWorkspaceOptional?.() || null;
+  const [workspaceBattleConfig, setWorkspaceBattleConfig] = useState(() =>
+    normalizeMakerBattleConfig()
+  );
   const makerBattleConfig = useMemo(() => {
-    try {
-      const templateText = workspace?.files?.['/template.json']?.content || '{}';
-      const parsed = JSON.parse(templateText);
-      const raw = parsed?.battleConfig || {};
-      const maxPlayers = Number.isFinite(Number(raw.maxPlayers)) ? Number(raw.maxPlayers) : 2;
-      const minPlayers = Number.isFinite(Number(raw.minPlayers)) ? Number(raw.minPlayers) : 1;
-      const mode = String(raw.mode || '').trim() === 'multi' ? 'multi' : 'single';
-      const roles = Array.isArray(raw.roles)
-        ? raw.roles
-            .map((role, index) => {
-              const name = String(role?.name || role?.id || '').trim();
-              if (!name) return null;
-              return {
-                id: String(role?.id || `role-${index + 1}`),
-                name,
-                team: String(role?.team || '').trim(),
-                limit: Number.isFinite(Number(role?.limit)) ? Math.max(1, Number(role.limit)) : 1,
-              };
-            })
-            .filter(Boolean)
-        : [];
-      return { mode, minPlayers, maxPlayers, roles };
-    } catch {
-      return { mode: 'single', minPlayers: 1, maxPlayers: 2, roles: [] };
+    if (workspace?.files?.['/template.json']?.content) {
+      return parseBattleConfigFromFiles(workspace.files);
     }
-  }, [workspace?.files]);
+    return workspaceBattleConfig;
+  }, [workspace?.files, workspaceBattleConfig]);
 
   useEffect(() => {
     let alive = true;
@@ -169,6 +185,47 @@ export default function RankNewClient() {
       }))
     );
   }, [makerBattleConfig]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!setId) {
+      setWorkspaceBattleConfig(normalizeMakerBattleConfig());
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    (async () => {
+      try {
+        const response = await fetch(`/api/workspace/sets/${encodeURIComponent(setId)}`);
+        const json = await response.json().catch(() => null);
+        if (cancelled) return;
+        if (!response.ok || !json?.files) {
+          setWorkspaceBattleConfig(normalizeMakerBattleConfig());
+          return;
+        }
+        const filesMap = Array.isArray(json.files)
+          ? json.files.reduce((acc, file) => {
+              if (!file?.path) return acc;
+              acc[file.path] = {
+                content: typeof file.content === 'string' ? file.content : '',
+                readonly: !!file.readonly,
+                dir: !!file.dir,
+              };
+              return acc;
+            }, {})
+          : {};
+        setWorkspaceBattleConfig(parseBattleConfigFromFiles(filesMap));
+      } catch {
+        if (cancelled) return;
+        setWorkspaceBattleConfig(normalizeMakerBattleConfig());
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [setId]);
 
   useEffect(() => {
     return () => {
