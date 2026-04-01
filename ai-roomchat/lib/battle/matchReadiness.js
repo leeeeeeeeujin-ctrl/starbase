@@ -3,6 +3,11 @@ function normalizeId(value) {
   return String(value).trim();
 }
 
+function toNumberOrNull(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
 export function buildJoinedParticipants(scoreboard = [], heroLookup = {}) {
   return (Array.isArray(scoreboard) ? scoreboard : [])
     .map((entry, index) => {
@@ -30,10 +35,96 @@ export function buildJoinedParticipants(scoreboard = [], heroLookup = {}) {
     .sort((left, right) => left.slotNo - right.slotNo);
 }
 
-function selectParticipantsForSession(joinedParticipants = [], roles = [], maxPlayers = 2, activeHeroId = '') {
+function buildWeightedCandidates(candidates = [], referenceRating = null, scoreRange = 0) {
+  return candidates.map((participant, index) => {
+    const rating = toNumberOrNull(participant?.rating);
+    let weight = 1;
+
+    if (referenceRating != null && rating != null) {
+      const gap = Math.abs(referenceRating - rating);
+      const window = scoreRange > 0 ? scoreRange : 300;
+      const closeness = Math.max(0.15, 1 + Math.max(0, window - gap) / Math.max(1, window));
+      weight *= closeness;
+    }
+
+    const slotBias = Number.isFinite(Number(participant?.slotNo))
+      ? Math.max(0.2, 1 - Math.min(0.35, (Number(participant.slotNo) - 1) * 0.02))
+      : 1;
+    weight *= slotBias;
+
+    return {
+      participant,
+      weight: Math.max(0.01, weight),
+      index,
+    };
+  });
+}
+
+function pickWeightedParticipant(candidates = [], randomFn = Math.random) {
+  if (!Array.isArray(candidates) || !candidates.length) return null;
+  if (candidates.length === 1) return candidates[0]?.participant || null;
+
+  const total = candidates.reduce((sum, entry) => sum + Math.max(0, Number(entry?.weight) || 0), 0);
+  if (!Number.isFinite(total) || total <= 0) {
+    return candidates[0]?.participant || null;
+  }
+
+  const random = typeof randomFn === 'function' ? randomFn() : Math.random();
+  let cursor = Math.max(0, Math.min(0.999999, Number.isFinite(random) ? random : 0)) * total;
+  for (const entry of candidates) {
+    cursor -= Math.max(0, Number(entry?.weight) || 0);
+    if (cursor <= 0) {
+      return entry.participant || null;
+    }
+  }
+  return candidates[candidates.length - 1]?.participant || null;
+}
+
+function pickParticipantsWithWeights({
+  candidates = [],
+  limit = 1,
+  randomFn = Math.random,
+  referenceRating = null,
+  scoreRange = 0,
+} = {}) {
+  const remaining = Array.isArray(candidates) ? [...candidates] : [];
+  const picked = [];
+  while (remaining.length && picked.length < limit) {
+    const weighted = buildWeightedCandidates(remaining, referenceRating, scoreRange);
+    const chosen = pickWeightedParticipant(weighted, randomFn);
+    if (!chosen) break;
+    picked.push(chosen);
+    const chosenId = normalizeId(chosen?.heroId || chosen?.id);
+    const chosenIndex = remaining.findIndex(candidate => {
+      return normalizeId(candidate?.heroId || candidate?.id) === chosenId;
+    });
+    if (chosenIndex >= 0) {
+      remaining.splice(chosenIndex, 1);
+    } else {
+      break;
+    }
+  }
+  return picked;
+}
+
+function selectParticipantsForSession(
+  joinedParticipants = [],
+  roles = [],
+  maxPlayers = 2,
+  activeHeroId = '',
+  options = {}
+) {
   const sorted = Array.isArray(joinedParticipants) ? [...joinedParticipants] : [];
   const selected = [];
   const selectedIds = new Set();
+  const activeParticipant = activeHeroId
+    ? sorted.find(participant => participant.heroId === activeHeroId) || null
+    : null;
+  const activeRating = toNumberOrNull(activeParticipant?.rating);
+  const randomFn = typeof options?.randomFn === 'function' ? options.randomFn : Math.random;
+  const scoreRange = Number.isFinite(Number(options?.scoreRange))
+    ? Math.max(0, Number(options.scoreRange))
+    : 0;
 
   const pushParticipant = participant => {
     if (!participant?.heroId || selectedIds.has(participant.heroId)) return false;
@@ -59,8 +150,17 @@ function selectParticipantsForSession(joinedParticipants = [], roles = [], maxPl
       matching.forEach(participant => {
         if (!preferred.includes(participant)) preferred.push(participant);
       });
-
-      preferred.slice(0, limit).forEach(pushParticipant);
+      const required = Math.max(0, limit - preferred.filter(participant => participant.heroId === activeHeroId).length);
+      preferred
+        .filter(participant => participant.heroId === activeHeroId)
+        .forEach(pushParticipant);
+      pickParticipantsWithWeights({
+        candidates: preferred.filter(participant => participant.heroId !== activeHeroId),
+        limit: required,
+        randomFn,
+        referenceRating: activeRating,
+        scoreRange,
+      }).forEach(pushParticipant);
     });
   }
 
@@ -73,10 +173,20 @@ function selectParticipantsForSession(joinedParticipants = [], roles = [], maxPl
     sorted.forEach(participant => {
       if (!preferred.includes(participant)) preferred.push(participant);
     });
-    preferred.forEach(pushParticipant);
+    pickParticipantsWithWeights({
+      candidates: preferred.filter(participant => !selectedIds.has(participant.heroId)),
+      limit: Math.max(0, maxPlayers - selected.length),
+      randomFn,
+      referenceRating: activeRating,
+      scoreRange,
+    }).forEach(pushParticipant);
   }
 
-  return selected;
+  return selected
+    .slice()
+    .sort((left, right) => {
+      return (Number(left?.slotNo) || 0) - (Number(right?.slotNo) || 0);
+    });
 }
 
 export function evaluateBattleReadiness({
@@ -84,6 +194,7 @@ export function evaluateBattleReadiness({
   scoreboard = [],
   heroLookup = {},
   hero = null,
+  randomFn = Math.random,
 } = {}) {
   const joinedParticipants = buildJoinedParticipants(scoreboard, heroLookup);
   const maxPlayers = Math.max(1, Math.min(12, Number(definition?.maxPlayers) || 2));
@@ -120,7 +231,8 @@ export function evaluateBattleReadiness({
     joinedParticipants,
     roles,
     maxPlayers,
-    activeHeroId
+    activeHeroId,
+    { randomFn, scoreRange }
   );
   const heroIds = selectedParticipants
     .map(participant => participant.heroId)

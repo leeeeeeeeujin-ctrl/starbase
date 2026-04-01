@@ -113,7 +113,9 @@ describe('battle match readiness', () => {
     expect(result.tooManyPlayers).toBe(true);
     expect(result.joinedCount).toBe(5);
     expect(result.maxPlayers).toBe(4);
-    expect(result.heroIds).toEqual(['h1', 'h2', 'h3', 'h4']);
+    expect(result.heroIds).toHaveLength(4);
+    expect(result.heroIds).toEqual(expect.arrayContaining(['h1', 'h2']));
+    expect(result.heroIds.filter(heroId => ['h3', 'h4', 'h5'].includes(heroId))).toHaveLength(2);
   });
 
   test('blocks readiness when selected participants exceed configured score gap', () => {
@@ -141,5 +143,41 @@ describe('battle match readiness', () => {
     expect(result.scoreReady).toBe(false);
     expect(result.scoreGap).toBe(305);
     expect(result.ready).toBe(false);
+  });
+
+  test('weighted selection can vary repeated pairing candidates', () => {
+    const definitionWithSingleRoles = {
+      minPlayers: 2,
+      maxPlayers: 2,
+      scoreRange: 400,
+      roles: [
+        { name: 'attacker', limit: 1, team: 'red' },
+        { name: 'defender', limit: 1, team: 'blue' },
+      ],
+    };
+    const scoreboard = [
+      { hero_id: 'h1', role: 'attacker', slot_no: 1, rating: 1000 },
+      { hero_id: 'h2', role: 'defender', slot_no: 2, rating: 1010 },
+      { hero_id: 'h3', role: 'defender', slot_no: 3, rating: 1040 },
+    ];
+
+    const lowRoll = evaluateBattleReadiness({
+      definition: definitionWithSingleRoles,
+      hero: { id: 'h1' },
+      heroLookup,
+      scoreboard,
+      randomFn: () => 0.01,
+    });
+    const highRoll = evaluateBattleReadiness({
+      definition: definitionWithSingleRoles,
+      hero: { id: 'h1' },
+      heroLookup,
+      scoreboard,
+      randomFn: () => 0.99,
+    });
+
+    expect(lowRoll.heroIds[0]).toBe('h1');
+    expect(highRoll.heroIds[0]).toBe('h1');
+    expect(lowRoll.heroIds[1]).not.toBe(highRoll.heroIds[1]);
   });
 });
