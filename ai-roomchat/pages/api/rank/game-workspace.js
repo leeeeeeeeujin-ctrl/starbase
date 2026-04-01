@@ -103,6 +103,17 @@ async function buildWorkspaceFromPromptSet(gameId) {
   };
 }
 
+async function loadPromptSetBattleConfig(promptSetId) {
+  if (!promptSetId) return null;
+  const { data, error } = await supabaseAdmin
+    .from('prompt_sets')
+    .select('id,battle_config')
+    .eq('id', promptSetId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return data?.battle_config && typeof data.battle_config === 'object' ? data.battle_config : null;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
     res.setHeader('Allow', ['GET']);
@@ -139,6 +150,25 @@ export default async function handler(req, res) {
     let row = Array.isArray(data) && data.length ? data[0] : null;
     if (!row) {
       row = await buildWorkspaceFromPromptSet(gameId);
+    }
+
+    if (row?.prompt_set_id) {
+      const latestBattleConfig = await loadPromptSetBattleConfig(row.prompt_set_id);
+      if (latestBattleConfig) {
+        row = {
+          ...row,
+          template: {
+            ...(row?.template && typeof row.template === 'object' ? row.template : {}),
+            battleConfig: latestBattleConfig,
+          },
+          runtime_config: {
+            ...(row?.runtime_config && typeof row.runtime_config === 'object'
+              ? row.runtime_config
+              : {}),
+            battleConfig: latestBattleConfig,
+          },
+        };
+      }
     }
 
     // hooks_source 가 비어 있거나, 기본 워크스페이스 스텁(/game/hooks/automation.js)에서
