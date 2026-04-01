@@ -98,6 +98,38 @@ function buildSessionUpdateRow(session) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
+    res.setHeader('Cache-Control', 'no-store');
+
+    try {
+      await writeBattleDebugLog({
+        scope: 'text-battle',
+        eventType: 'run-turn-get',
+        status: 'method_not_allowed',
+        payload: {
+          method: req.method || null,
+          referer: req.headers.referer || null,
+          secFetchMode: req.headers['sec-fetch-mode'] || null,
+          secFetchDest: req.headers['sec-fetch-dest'] || null,
+          accept: req.headers.accept || null,
+          userAgent: req.headers['user-agent'] || null,
+        },
+      });
+    } catch {}
+
+    const referer = typeof req.headers.referer === 'string' ? req.headers.referer : '';
+    const accept = typeof req.headers.accept === 'string' ? req.headers.accept : '';
+    const secFetchMode =
+      typeof req.headers['sec-fetch-mode'] === 'string' ? req.headers['sec-fetch-mode'] : '';
+
+    if (
+      req.method === 'GET' &&
+      secFetchMode === 'navigate' &&
+      accept.includes('text/html') &&
+      referer
+    ) {
+      return res.redirect(303, referer);
+    }
+
     return res.status(405).json({ ok: false, error: 'method_not_allowed' });
   }
 
