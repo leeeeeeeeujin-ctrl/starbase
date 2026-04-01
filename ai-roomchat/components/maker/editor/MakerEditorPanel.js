@@ -195,7 +195,7 @@ export default function MakerEditorPanel({
           />
         </Field>
 
-        <Field label="실행 종류">
+        <Field label="실행 방식">
           <select
             name="execute-type"
             value={meta.executionType || 'ai_prompt'}
@@ -223,7 +223,7 @@ export default function MakerEditorPanel({
           />
         </Field>
 
-        <Field label="저장 키">
+        <Field label="결과 이름">
           <input
             name="execute-result-key"
             type="text"
@@ -235,7 +235,7 @@ export default function MakerEditorPanel({
         </Field>
       </div>
 
-      <Field label="설명 문구">
+      <Field label="플레이어에게 보여줄 문구">
         <textarea
           name="execute-display"
           value={meta.display || ''}
@@ -260,7 +260,7 @@ export default function MakerEditorPanel({
             <option value="target">대상 선택</option>
           </select>
         </Field>
-        <Field label="출력 형식">
+        <Field label="결과 형식">
           <select
             name="execute-output-format"
             value={meta.outputFormat || 'json'}
@@ -271,7 +271,7 @@ export default function MakerEditorPanel({
             <option value="text">텍스트</option>
           </select>
         </Field>
-        <Field label="입력 라벨">
+        <Field label="입력 안내">
           <input
             name="execute-input-label"
             type="text"
@@ -280,7 +280,7 @@ export default function MakerEditorPanel({
             style={inputStyle}
           />
         </Field>
-        <Field label="입력 placeholder">
+        <Field label="입력 예시 문구">
           <input
             name="execute-input-placeholder"
             type="text"
@@ -291,7 +291,7 @@ export default function MakerEditorPanel({
         </Field>
       </div>
 
-      <Field label="AI에 같이 넘길 참가자 범위">
+      <Field label="같이 참조할 참가자">
         <input
           name="execute-participant-scope"
           type="text"
@@ -302,7 +302,7 @@ export default function MakerEditorPanel({
         />
       </Field>
 
-      <Field label="문구를 보여줄 범위">
+      <Field label="문구 공개 범위">
         <input
           name="execute-visibility-scope"
           type="text"
@@ -313,16 +313,30 @@ export default function MakerEditorPanel({
         />
       </Field>
 
-      <Field label="기대하는 JSON 구조 설명">
-        <textarea
-          name="execute-output-schema"
-          value={meta.outputSchema || ''}
-          onChange={event => updateMeta({ outputSchema: event.target.value })}
-          rows={4}
-          style={{ ...inputStyle, resize: 'vertical' }}
-          placeholder='예: {"branch_hint":"attack|defend","narration":"..."}'
-        />
-      </Field>
+      <details
+        style={{
+          borderRadius: 14,
+          border: '1px solid #cbd5e1',
+          background: '#f8fafc',
+          padding: '10px 12px',
+        }}
+      >
+        <summary style={{ cursor: 'pointer', fontSize: 12, color: '#475569', fontWeight: 700 }}>
+          고급 설정: AI 결과 예시
+        </summary>
+        <div style={{ marginTop: 10 }}>
+          <Field label="AI가 돌려주길 기대하는 예시 형태">
+            <textarea
+              name="execute-output-schema"
+              value={meta.outputSchema || ''}
+              onChange={event => updateMeta({ outputSchema: event.target.value })}
+              rows={4}
+              style={{ ...inputStyle, resize: 'vertical' }}
+              placeholder='예: {"branch_hint":"attack","gameResult":"ongoing"}'
+            />
+          </Field>
+        </div>
+      </details>
 
       <div style={{ display: 'grid', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>

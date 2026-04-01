@@ -588,10 +588,17 @@ export default function TextBattleSessionPage() {
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                  <strong style={{ color: '#f8fafc', fontSize: 14 }}>{participant.name}</strong>
-                  <span style={{ color: '#93c5fd', fontSize: 11 }}>
-                    {participant.role || 'role'}
-                  </span>
+                  <div style={{ display: 'grid', gap: 2 }}>
+                    <strong style={{ color: '#f8fafc', fontSize: 14 }}>{participant.name}</strong>
+                    <span style={{ color: '#93c5fd', fontSize: 11 }}>
+                      {participant.slot_label || participant.role || 'slot'}
+                    </span>
+                  </div>
+                  {participant.role ? (
+                    <span style={{ color: '#94a3b8', fontSize: 11 }}>
+                      {participant.role}
+                    </span>
+                  ) : null}
                 </div>
                 <div style={{ fontSize: 12, color: '#94a3b8' }}>
                   {participant.team ? `팀 ${participant.team}` : '팀 미지정'}

@@ -25,6 +25,24 @@ function hasBattleConfigValue(config) {
   );
 }
 
+function buildRoleSlotPreview(roles = []) {
+  const normalized = Array.isArray(roles) ? roles : [];
+  const lines = [];
+  normalized.forEach((role, roleIndex) => {
+    const limit = Number.isFinite(Number(role?.limit)) ? Math.max(1, Number(role.limit)) : 1;
+    const roleName = String(role?.name || `역할 ${roleIndex + 1}`).trim();
+    const team = String(role?.team || '').trim();
+    for (let index = 0; index < limit; index += 1) {
+      lines.push({
+        roleName,
+        team,
+        slotLabel: `${roleIndex + 1}역할-${index + 1}슬롯`,
+      });
+    }
+  });
+  return lines;
+}
+
 export default function MakerEditor() {
   const { status, graph, selection, persistence, history, definition: battleDefinition } = useMakerEditor();
   const { writeFile, files } = useWorkspace();
@@ -68,6 +86,7 @@ export default function MakerEditor() {
     () => Array.from({ length: 12 }, (_, index) => index + 1),
     []
   );
+  const roleSlotPreview = useMemo(() => buildRoleSlotPreview(battleConfig.roles), [battleConfig.roles]);
 
   const {
     nodes,
@@ -600,6 +619,38 @@ export default function MakerEditor() {
                     <span style={{ fontSize: 11, color: '#6b7280' }}>아직 추가된 역할이 없습니다.</span>
                   )}
                 </div>
+                {roleSlotPreview.length ? (
+                  <div
+                    style={{
+                      display: 'grid',
+                      gap: 6,
+                      borderRadius: 14,
+                      border: '1px solid #cbd5e1',
+                      background: '#f8fafc',
+                      padding: 12,
+                    }}
+                  >
+                    <strong style={{ fontSize: 12, color: '#0f172a' }}>슬롯 배치 미리보기</strong>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {roleSlotPreview.map(entry => (
+                        <span
+                          key={`${entry.slotLabel}:${entry.roleName}:${entry.team}`}
+                          style={{
+                            padding: '6px 10px',
+                            borderRadius: 999,
+                            background: '#e2e8f0',
+                            color: '#0f172a',
+                            fontSize: 11,
+                            fontWeight: 700,
+                          }}
+                        >
+                          {entry.slotLabel} · {entry.roleName}
+                          {entry.team ? ` · 팀 ${entry.team}` : ''}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </div>
           ) : null}

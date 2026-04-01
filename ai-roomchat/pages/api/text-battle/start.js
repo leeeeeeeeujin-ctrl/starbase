@@ -77,6 +77,7 @@ function normalizeParticipantsFromHeroes(
       })
       .filter(Boolean)
   );
+  const roleSlotCounts = new Map();
 
   return orderedHeroes.map((hero, index) => {
     const heroId = String(hero?.id || '').trim();
@@ -88,10 +89,24 @@ function normalizeParticipantsFromHeroes(
     const resolvedTeam = String(
       override?.team || assignedRole?.team || (resolvedRole ? roleMetaByName.get(resolvedRole)?.team : '') || ''
     ).trim();
+    const nextRoleSlotNo = resolvedRole ? (roleSlotCounts.get(resolvedRole) || 0) + 1 : 0;
+    if (resolvedRole) {
+      roleSlotCounts.set(resolvedRole, nextRoleSlotNo);
+    }
+    const slotNo =
+      Number.isFinite(Number(override?.slotNo)) && Number(override.slotNo) > 0
+        ? Number(override.slotNo)
+        : index + 1;
+    const slotLabel = resolvedRole
+      ? `${resolvedRole} ${nextRoleSlotNo}슬롯`
+      : `${slotNo}슬롯`;
     return {
       id: `participant-${hero.id || index + 1}`,
       ownerId: hero.owner_id || '',
       heroId: hero.id || '',
+      slotNo,
+      roleSlotNo: nextRoleSlotNo || null,
+      slotLabel,
       team: resolvedTeam || (index % 2 === 0 ? 'alpha' : 'beta'),
       role: resolvedRole || (index === 0 ? 'player' : 'opponent'),
       name: hero.name || `참가자 ${index + 1}`,

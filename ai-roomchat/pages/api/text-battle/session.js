@@ -147,6 +147,17 @@ export default async function handler(req, res) {
             return {
               id: runtimeParticipant?.id || row.id,
               hero_id: row.id,
+              slot_no:
+                Number.isFinite(Number(runtimeParticipant?.slotNo))
+                  ? Number(runtimeParticipant.slotNo)
+                  : null,
+              role_slot_no:
+                Number.isFinite(Number(runtimeParticipant?.roleSlotNo))
+                  ? Number(runtimeParticipant.roleSlotNo)
+                  : null,
+              slot_label:
+                runtimeParticipant?.slotLabel ||
+                null,
               name:
                 runtimeParticipant?.name ||
                 row.name ||
