@@ -1,6 +1,30 @@
 export const TURN_META_VERSION = 1;
 export const TURN_INPUT_MODES = ['none', 'text', 'choice', 'ability', 'target'];
 export const TURN_EXECUTION_TYPES = ['ai_prompt', 'user_response'];
+export const TURN_STATE_WRITE_SOURCES = [
+  'always',
+  'input',
+  'gameResult',
+  'teamOutcome',
+  'participantOutcome',
+];
+
+function normalizeStateWriteRule(rule, index = 0) {
+  const source = rule && typeof rule === 'object' ? rule : {};
+  const sourceType = TURN_STATE_WRITE_SOURCES.includes(source.sourceType)
+    ? source.sourceType
+    : 'always';
+  const key = String(source.key || '').trim();
+  if (!key) return null;
+
+  return {
+    id: String(source.id || `state-write-${index + 1}`).trim(),
+    sourceType,
+    sourceKey: String(source.sourceKey || '').trim(),
+    equals: String(source.equals ?? '').trim(),
+    value: String(source.value ?? '').trim(),
+  };
+}
 
 export function getDefaultTurnMeta(slotType = 'ai') {
   const common = {
@@ -17,6 +41,7 @@ export function getDefaultTurnMeta(slotType = 'ai') {
     outputSchema: '',
     participantScope: [],
     visibilityScope: ['all'],
+    stateWrites: [],
   };
 
   if (slotType === 'user_action') {
@@ -55,6 +80,11 @@ export function normalizeTurnMeta(rawMeta, slotType = 'ai') {
   const executionType = TURN_EXECUTION_TYPES.includes(source.executionType)
     ? source.executionType
     : base.executionType;
+  const stateWrites = Array.isArray(source.stateWrites)
+    ? source.stateWrites
+        .map((rule, index) => normalizeStateWriteRule(rule, index))
+        .filter(Boolean)
+    : [];
 
   return {
     ...base,
@@ -72,6 +102,7 @@ export function normalizeTurnMeta(rawMeta, slotType = 'ai') {
     outputSchema: String(source.outputSchema ?? ''),
     participantScope,
     visibilityScope,
+    stateWrites,
   };
 }
 

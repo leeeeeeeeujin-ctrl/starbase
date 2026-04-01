@@ -1,7 +1,11 @@
 'use client';
 
 import EditorMonaco from '../../EditorMonaco.jsx';
-import { parseTurnTemplate, serializeTurnTemplate } from '../../../lib/battle/turnTemplate';
+import {
+  parseTurnTemplate,
+  serializeTurnTemplate,
+  TURN_STATE_WRITE_SOURCES,
+} from '../../../lib/battle/turnTemplate';
 
 function parseCsv(value) {
   return String(value || '')
@@ -49,6 +53,12 @@ export default function MakerEditorPanel({
   const updateBody = nextBody => {
     if (!meta || !nodeData) return;
     updateNodeTemplate(serializeTurnTemplate(meta, nextBody, nodeData.slot_type || 'ai'));
+  };
+
+  const updateStateWrites = updater => {
+    if (!meta || !nodeData) return;
+    const currentRules = Array.isArray(meta.stateWrites) ? meta.stateWrites : [];
+    updateMeta({ stateWrites: updater(currentRules) });
   };
 
   const updateEdge = updater => {
@@ -314,6 +324,169 @@ export default function MakerEditorPanel({
         />
       </Field>
 
+      <div style={{ display: 'grid', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <label style={labelStyle}>기록 슬롯</label>
+          <button
+            type="button"
+            onClick={() =>
+              updateStateWrites(current => [
+                ...current,
+                {
+                  id: `state-write-${Date.now()}`,
+                  sourceType: 'always',
+                  sourceKey: '',
+                  equals: '',
+                  key: '',
+                  value: '',
+                },
+              ])
+            }
+            style={chipButtonStyle('#dbeafe', '#1d4ed8')}
+          >
+            슬롯 추가
+          </button>
+        </div>
+        {(meta.stateWrites || []).length ? (
+          <div style={{ display: 'grid', gap: 10 }}>
+            {(meta.stateWrites || []).map((rule, index) => (
+              <div
+                key={rule.id || `state-write-${index}`}
+                style={{
+                  border: '1px solid #cbd5e1',
+                  borderRadius: 14,
+                  background: '#f8fafc',
+                  padding: 12,
+                  display: 'grid',
+                  gap: 10,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                  <strong style={{ fontSize: 12, color: '#0f172a' }}>기록 슬롯 {index + 1}</strong>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateStateWrites(current => current.filter((_, currentIndex) => currentIndex !== index))
+                    }
+                    style={chipButtonStyle('#fee2e2', '#b91c1c')}
+                  >
+                    삭제
+                  </button>
+                </div>
+
+                <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
+                  <Field label="기록 시점">
+                    <select
+                      name={`state-write-source-${index}`}
+                      value={rule.sourceType || 'always'}
+                      onChange={event =>
+                        updateStateWrites(current =>
+                          current.map((entry, currentIndex) =>
+                            currentIndex === index ? { ...entry, sourceType: event.target.value } : entry
+                          )
+                        )
+                      }
+                      style={inputStyle}
+                    >
+                      {TURN_STATE_WRITE_SOURCES.map(sourceType => (
+                        <option key={sourceType} value={sourceType}>
+                          {formatStateWriteSourceLabel(sourceType)}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+
+                  <Field label="대상 키">
+                    <input
+                      name={`state-write-source-key-${index}`}
+                      type="text"
+                      value={rule.sourceKey || ''}
+                      onChange={event =>
+                        updateStateWrites(current =>
+                          current.map((entry, currentIndex) =>
+                            currentIndex === index ? { ...entry, sourceKey: event.target.value } : entry
+                          )
+                        )
+                      }
+                      style={inputStyle}
+                      placeholder="team 1 / participant-1"
+                    />
+                  </Field>
+
+                  <Field label="조건 값">
+                    <input
+                      name={`state-write-equals-${index}`}
+                      type="text"
+                      value={rule.equals || ''}
+                      onChange={event =>
+                        updateStateWrites(current =>
+                          current.map((entry, currentIndex) =>
+                            currentIndex === index ? { ...entry, equals: event.target.value } : entry
+                          )
+                        )
+                      }
+                      style={inputStyle}
+                      placeholder="win / eliminated / attack"
+                    />
+                  </Field>
+                </div>
+
+                <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+                  <Field label="기록 변수">
+                    <input
+                      name={`state-write-key-${index}`}
+                      type="text"
+                      value={rule.key || ''}
+                      onChange={event =>
+                        updateStateWrites(current =>
+                          current.map((entry, currentIndex) =>
+                            currentIndex === index ? { ...entry, key: event.target.value } : entry
+                          )
+                        )
+                      }
+                      style={inputStyle}
+                      placeholder="state.enemyDown"
+                    />
+                  </Field>
+
+                  <Field label="기록 값">
+                    <input
+                      name={`state-write-value-${index}`}
+                      type="text"
+                      value={rule.value || ''}
+                      onChange={event =>
+                        updateStateWrites(current =>
+                          current.map((entry, currentIndex) =>
+                            currentIndex === index ? { ...entry, value: event.target.value } : entry
+                          )
+                        )
+                      }
+                      style={inputStyle}
+                      placeholder="true / 1 / red"
+                    />
+                  </Field>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div
+            style={{
+              borderRadius: 14,
+              border: '1px dashed #cbd5e1',
+              background: '#f8fafc',
+              padding: 12,
+              fontSize: 12,
+              color: '#64748b',
+              lineHeight: 1.6,
+            }}
+          >
+            결과를 변수로 남겨 분기에 재사용할 수 있습니다. 예: 팀 1이 승리하면
+            <code style={{ marginLeft: 4 }}>result.winnerTeam = 1</code>
+          </div>
+        )}
+      </div>
+
       <Field label="실행 본문">
         <div style={{ height: 220, borderRadius: 14, overflow: 'hidden', border: '1px solid #cbd5e1' }}>
           <EditorMonaco
@@ -327,6 +500,14 @@ export default function MakerEditorPanel({
       </Field>
     </section>
   );
+}
+
+function formatStateWriteSourceLabel(sourceType) {
+  if (sourceType === 'input') return '입력값';
+  if (sourceType === 'gameResult') return '게임 결과';
+  if (sourceType === 'teamOutcome') return '팀 결과';
+  if (sourceType === 'participantOutcome') return '참가자 결과';
+  return '항상 기록';
 }
 
 function Field({ label, children }) {

@@ -92,6 +92,7 @@ function buildTurnDefinition(node) {
     },
     participantScope: normalizeParticipantScope(meta.participantScope),
     visibilityScope: normalizeVisibilityScope(meta.visibilityScope),
+    stateWrites: Array.isArray(meta.stateWrites) ? meta.stateWrites : [],
     visibility: {
       invisible: Boolean(node?.data?.invisible ?? node?.invisible),
       visibleSlots: Array.isArray(node?.data?.visible_slots ?? node?.visible_slots)

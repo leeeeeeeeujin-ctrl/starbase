@@ -20,6 +20,97 @@ function toObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
 
+function splitPath(key = '') {
+  return String(key || '')
+    .split('.')
+    .map(part => part.trim())
+    .filter(Boolean);
+}
+
+function getValueAtPath(source, key = '') {
+  const path = splitPath(key);
+  if (!path.length) return undefined;
+  let current = source;
+  for (const part of path) {
+    if (!current || typeof current !== 'object' || Array.isArray(current)) return undefined;
+    current = current[part];
+  }
+  return current;
+}
+
+function setValueAtPath(target, key = '', value) {
+  const path = splitPath(key);
+  if (!path.length) return target;
+  const nextTarget = target && typeof target === 'object' && !Array.isArray(target) ? target : {};
+  let cursor = nextTarget;
+  for (let index = 0; index < path.length; index += 1) {
+    const part = path[index];
+    if (index === path.length - 1) {
+      cursor[part] = value;
+      break;
+    }
+    const current = cursor[part];
+    if (!current || typeof current !== 'object' || Array.isArray(current)) {
+      cursor[part] = {};
+    }
+    cursor = cursor[part];
+  }
+  return nextTarget;
+}
+
+function coerceStateValue(rawValue) {
+  const value = String(rawValue ?? '').trim();
+  if (!value) return '';
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  if (value === 'null') return null;
+  if (/^-?\d+(\.\d+)?$/.test(value)) return Number(value);
+  if ((value.startsWith('{') && value.endsWith('}')) || (value.startsWith('[') && value.endsWith(']'))) {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value;
+    }
+  }
+  return value;
+}
+
+function resolveRuleSourceValue(rule, payload = {}) {
+  const sourceType = toId(rule?.sourceType || 'always');
+  const sourceKey = toId(rule?.sourceKey || '');
+
+  if (sourceType === 'always') return '__always__';
+  if (sourceType === 'input') return payload?.input ?? '';
+  if (sourceType === 'gameResult') return payload?.gameResult ?? '';
+  if (sourceType === 'teamOutcome') {
+    const teamOutcomes = toObject(payload?.teamOutcomes);
+    return teamOutcomes[sourceKey];
+  }
+  if (sourceType === 'participantOutcome') {
+    const participantOutcomes = toObject(payload?.participantOutcomes);
+    return participantOutcomes[sourceKey];
+  }
+  return undefined;
+}
+
+function applyStateWriteRules(nextValues, currentTurn, payload = {}) {
+  const rules = Array.isArray(currentTurn?.stateWrites) ? currentTurn.stateWrites : [];
+  rules.forEach(rule => {
+    const key = toId(rule?.key);
+    if (!key) return;
+    const actual = resolveRuleSourceValue(rule, payload);
+    const expected = String(rule?.equals ?? '').trim();
+    const matches =
+      toId(rule?.sourceType) === 'always'
+        ? true
+        : expected
+          ? String(actual ?? '').trim() === expected
+          : actual != null && String(actual).trim() !== '';
+    if (!matches) return;
+    setValueAtPath(nextValues, key, coerceStateValue(rule?.value));
+  });
+}
+
 function indexTurns(turns = []) {
   const map = new Map();
   toList(turns).forEach(turn => {
@@ -184,7 +275,7 @@ function pickNextTransition({ definition, currentTurnId, resultKey, sessionValue
       const key = toId(condition.key || condition.resultKey || condition.variable);
       if (!key) return true;
       const expected = condition.equals ?? condition.value ?? condition.is ?? null;
-      const actual = sessionValues[key];
+      const actual = getValueAtPath(sessionValues, key);
       return expected == null ? actual != null : actual === expected;
     });
   });
@@ -306,7 +397,7 @@ export function submitBattleTurn(session, payload = {}) {
 
   const resultKey = currentTurn?.input?.resultKey || '';
   if (resultKey && payload.input != null) {
-    nextValues[resultKey] = payload.input;
+    setValueAtPath(nextValues, resultKey, payload.input);
   }
 
   const logEntry = {
@@ -330,6 +421,8 @@ export function submitBattleTurn(session, payload = {}) {
   if (payload.valuesPatch && typeof payload.valuesPatch === 'object') {
     Object.assign(nextValues, payload.valuesPatch);
   }
+
+  applyStateWriteRules(nextValues, currentTurn, payload);
 
   const nextTransition = pickNextTransition({
     definition: session.definition,

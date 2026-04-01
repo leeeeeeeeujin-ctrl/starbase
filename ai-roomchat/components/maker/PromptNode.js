@@ -20,6 +20,7 @@ export default function PromptNode({ data, selected }) {
   const actorLabel = meta.actorScope || 'self';
   const saveLabel = meta.resultKey || '-';
   const outputLabel = meta.outputFormat || 'json';
+  const stateWriteCount = Array.isArray(meta.stateWrites) ? meta.stateWrites.length : 0;
   const cardBorder = selected ? '#2563eb' : '#334155';
 
   return (
@@ -88,7 +89,7 @@ export default function PromptNode({ data, selected }) {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+            gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
             gap: 8,
           }}
         >
@@ -103,6 +104,10 @@ export default function PromptNode({ data, selected }) {
           <div style={{ background: '#111827', borderRadius: 12, padding: 8, display: 'grid', gap: 3 }}>
             <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 800 }}>출력</span>
             <span style={{ fontSize: 12, color: '#f8fafc', fontWeight: 700 }}>{outputLabel}</span>
+          </div>
+          <div style={{ background: '#111827', borderRadius: 12, padding: 8, display: 'grid', gap: 3 }}>
+            <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 800 }}>기록</span>
+            <span style={{ fontSize: 12, color: '#f8fafc', fontWeight: 700 }}>{stateWriteCount}개</span>
           </div>
         </div>
 

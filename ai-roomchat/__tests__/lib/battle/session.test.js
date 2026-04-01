@@ -71,6 +71,24 @@ describe('battle session runtime', () => {
             resultKey: '',
           },
           participantScope: ['self', 'allies'],
+          stateWrites: [
+            {
+              id: 'write-enemy-down',
+              sourceType: 'participantOutcome',
+              sourceKey: 'hero-2',
+              equals: 'eliminated',
+              key: 'state.enemyDown',
+              value: 'true',
+            },
+            {
+              id: 'write-winner-team',
+              sourceType: 'teamOutcome',
+              sourceKey: 'red',
+              equals: 'lose',
+              key: 'result.winnerTeam',
+              value: 'blue',
+            },
+          ],
         },
         {
           id: 'turn-support',
@@ -249,5 +267,35 @@ describe('battle session runtime', () => {
     expect(next.status).toBe('completed');
     expect(next.values.gameResult).toBe('ended');
     expect(next.values.teamOutcomes.blue).toBe('win');
+  });
+
+  test('writes state slot values from structured outcomes', () => {
+    const session = createBattleSession({
+      definition: createDefinition(),
+      participants,
+      actorId: 'hero-1',
+    });
+
+    const next = submitBattleTurn(
+      submitBattleTurn(session, {
+        actorId: 'hero-1',
+        input: 'attack',
+      }),
+      {
+        actorId: 'hero-2',
+        gameResult: 'ended',
+        teamOutcomes: { blue: 'win', red: 'lose' },
+        participantOutcomes: { 'hero-2': 'eliminated' },
+        valuesPatch: {
+          gameResult: 'ended',
+          teamOutcomes: { blue: 'win', red: 'lose' },
+          participantOutcomes: { 'hero-2': 'eliminated' },
+        },
+      }
+    );
+
+    expect(next.values.state.enemyDown).toBe(true);
+    expect(next.values.result.winnerTeam).toBe('blue');
+    expect(next.status).toBe('completed');
   });
 });
