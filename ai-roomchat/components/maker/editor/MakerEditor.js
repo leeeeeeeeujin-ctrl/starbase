@@ -15,6 +15,16 @@ import { normalizeBattleConfig } from '../../../lib/battle/definition.js';
 import { writeStoredBattleConfig } from '../../../lib/battle/battleConfigStorage.js';
 import { supabase } from '../../../lib/supabase';
 
+function hasBattleConfigValue(config) {
+  const normalized = normalizeBattleConfig(config);
+  return (
+    normalized.mode !== 'single' ||
+    normalized.minPlayers !== 1 ||
+    normalized.maxPlayers !== 2 ||
+    (normalized.roles || []).length > 0
+  );
+}
+
 export default function MakerEditor() {
   const { status, graph, selection, persistence, history, definition: battleDefinition } = useMakerEditor();
   const { writeFile, files } = useWorkspace();
@@ -31,14 +41,22 @@ export default function MakerEditor() {
   } catch {}
 
   const { isReady, loading } = status;
+  const dbBattleConfig = useMemo(
+    () => normalizeBattleConfig(status?.setInfo?.battle_config),
+    [status?.setInfo?.battle_config]
+  );
   const battleConfig = useMemo(() => {
     try {
       const parsed = JSON.parse(templateText || '{}');
-      return normalizeBattleConfig(parsed?.battleConfig);
+      const templateConfig = normalizeBattleConfig(parsed?.battleConfig);
+      if (!hasBattleConfigValue(templateConfig) && hasBattleConfigValue(dbBattleConfig)) {
+        return dbBattleConfig;
+      }
+      return templateConfig;
     } catch {
-      return normalizeBattleConfig();
+      return hasBattleConfigValue(dbBattleConfig) ? dbBattleConfig : normalizeBattleConfig();
     }
-  }, [templateText]);
+  }, [dbBattleConfig, templateText]);
   const resolvedBattleDefinition = useMemo(
     () => ({
       ...battleDefinition,
@@ -143,6 +161,25 @@ export default function MakerEditor() {
     lastWorkspaceTemplateRef.current = workspaceTemplate;
     setTemplateText(workspaceTemplate);
   }, [files, setTemplateText]);
+
+  useEffect(() => {
+    if (!status?.setInfo?.id) return;
+    if (!hasBattleConfigValue(dbBattleConfig)) return;
+
+    try {
+      const parsed = JSON.parse(templateText || '{}');
+      const templateConfig = normalizeBattleConfig(parsed?.battleConfig);
+      if (hasBattleConfigValue(templateConfig)) return;
+
+      const next = {
+        ...(parsed && typeof parsed === 'object' ? parsed : {}),
+        battleConfig: dbBattleConfig,
+      };
+      setTemplateText(JSON.stringify(next, null, 2));
+    } catch {
+      setTemplateText(JSON.stringify({ battleConfig: dbBattleConfig }, null, 2));
+    }
+  }, [dbBattleConfig, setTemplateText, status?.setInfo?.id, templateText]);
 
   useEffect(() => {
     const setId = String(status?.setInfo?.id || status?.router?.query?.id || '').trim();
