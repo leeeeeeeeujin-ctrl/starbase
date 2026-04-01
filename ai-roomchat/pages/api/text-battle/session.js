@@ -1,6 +1,15 @@
 import { supabaseAdmin } from '../../../lib/supabaseAdmin.js';
 import { buildHeroGameContext } from '../../../lib/characters/agentContext.js';
 
+function normalizeBootstrapSession(value) {
+  if (!value || typeof value !== 'object') return null;
+  const participants = Array.isArray(value.participants) ? value.participants : [];
+  return {
+    ...value,
+    participants,
+  };
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
     res.setHeader('Allow', 'GET');
@@ -55,10 +64,21 @@ export default async function handler(req, res) {
       });
     }
 
+    const bootstrapTurn = Array.isArray(turns)
+      ? turns.find(turn => Number(turn?.turn_index) < 0 && turn?.node_id === '__bootstrap__')
+      : null;
+    const runtimeSession = normalizeBootstrapSession(bootstrapTurn?.effects?.session || null);
+    const visibleTurns = Array.isArray(turns)
+      ? turns.filter(turn => Number(turn?.turn_index) >= 0)
+      : [];
+
     const heroIds = Array.from(
       new Set(
-        (Array.isArray(turns) ? turns : [])
-          .flatMap(turn => [turn?.hero_id, turn?.rival_id])
+        [
+          ...visibleTurns.flatMap(turn => [turn?.hero_id, turn?.rival_id]),
+          ...((Array.isArray(runtimeSession?.participants) ? runtimeSession.participants : [])
+            .map(participant => participant?.heroId || null)),
+        ]
           .filter(Boolean)
           .map(value => String(value))
       )
@@ -121,7 +141,7 @@ export default async function handler(req, res) {
         )
         .join('\n');
 
-      const latestTurn = Array.isArray(turns) && turns.length ? turns[turns.length - 1] : null;
+      const latestTurn = visibleTurns.length ? visibleTurns[visibleTurns.length - 1] : null;
 
       agentContexts = participants.map(entry => ({
         heroId: entry.id,
@@ -142,7 +162,8 @@ export default async function handler(req, res) {
     return res.status(200).json({
       ok: true,
       session,
-      turns: Array.isArray(turns) ? turns : [],
+      runtimeSession,
+      turns: visibleTurns,
       participants,
       agentContexts,
     });

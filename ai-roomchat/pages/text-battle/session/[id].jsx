@@ -74,7 +74,12 @@ export default function TextBattleSessionPage() {
         });
         setRuntimeState(prev => ({
           ...prev,
-          session: storedSession && typeof storedSession === 'object' ? storedSession : prev.session,
+          session:
+            storedSession && typeof storedSession === 'object'
+              ? storedSession
+              : json?.runtimeSession && typeof json.runtimeSession === 'object'
+                ? json.runtimeSession
+                : prev.session,
         }));
       })
       .catch(err => {

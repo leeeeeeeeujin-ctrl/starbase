@@ -72,6 +72,13 @@ function serializeSession(session) {
   };
 }
 
+function buildBootstrapSessionEffects(session) {
+  return {
+    session: serializeSession(session),
+    participants: Array.isArray(session?.participants?.list) ? session.participants.list : [],
+  };
+}
+
 function buildSessionUpdateRow(session) {
   const winner = session?.values?.battleWinner || null;
   const finalScore = session?.values?.battleScore || null;
@@ -185,6 +192,23 @@ export default async function handler(req, res) {
           ok: false,
           error: 'text_session_update_failed',
           detail: sessionUpdateError.message || null,
+        });
+      }
+
+      const { error: bootstrapUpdateError } = await supabaseAdmin
+        .from('text_battle_turns')
+        .update({
+          effects: buildBootstrapSessionEffects(nextSession),
+        })
+        .eq('session_id', textSessionId)
+        .eq('turn_index', -1)
+        .eq('node_id', '__bootstrap__');
+
+      if (bootstrapUpdateError) {
+        return res.status(502).json({
+          ok: false,
+          error: 'text_session_bootstrap_update_failed',
+          detail: bootstrapUpdateError.message || null,
         });
       }
     }

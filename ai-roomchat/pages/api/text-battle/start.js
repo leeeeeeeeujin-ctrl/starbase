@@ -69,6 +69,28 @@ function serializeSession(session, participants) {
   };
 }
 
+function buildBootstrapTurnRow({ sessionId, session, participants }) {
+  return {
+    session_id: sessionId,
+    turn_index: -1,
+    node_id: '__bootstrap__',
+    node_label: 'session-bootstrap',
+    hero_id: participants?.[0]?.heroId || null,
+    rival_id: participants?.[1]?.heroId || null,
+    prompt: 'session bootstrap',
+    ai_response: null,
+    result: 'bootstrap',
+    battle_end: false,
+    winner: null,
+    effects: {
+      session: serializeSession(session, participants),
+      participants,
+    },
+    score: null,
+    duration_ms: null,
+  };
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -171,6 +193,24 @@ export default async function handler(req, res) {
         error: 'text_session_insert_failed',
         detail: insertError.message || null,
       });
+    }
+
+    if (inserted?.id) {
+      const { error: bootstrapError } = await supabaseAdmin
+        .from('text_battle_turns')
+        .insert(buildBootstrapTurnRow({
+          sessionId: inserted.id,
+          session,
+          participants,
+        }));
+
+      if (bootstrapError) {
+        return res.status(502).json({
+          ok: false,
+          error: 'text_session_bootstrap_failed',
+          detail: bootstrapError.message || null,
+        });
+      }
     }
 
     return res.status(200).json({
