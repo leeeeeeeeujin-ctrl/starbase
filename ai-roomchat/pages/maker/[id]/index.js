@@ -26,7 +26,7 @@ export default function MakerEditorPage() {
     : <div style={{ padding: 24 }}>Preparing workspace...</div>;
 
   return (
-    <StudioPersistentProvider>
+    <StudioPersistentProvider key={id}>
       <WorkspaceFrame id={id} onReady={handleWorkspaceReady}>
         {renderWorkbench}
       </WorkspaceFrame>
