@@ -47,6 +47,34 @@ function buildTextBattleHeroIds(hero, selectedScoreboard = [], definition = null
   return ids.slice(0, maxPlayers);
 }
 
+function buildTextBattleParticipantOverrides(readiness = {}, definition = null) {
+  const selected = Array.isArray(readiness?.selectedParticipants)
+    ? readiness.selectedParticipants
+    : [];
+  const roleTeamMap = new Map(
+    (Array.isArray(definition?.roles) ? definition.roles : [])
+      .map(role => {
+        const name = String(role?.name || role?.id || '').trim();
+        if (!name) return null;
+        return [name, String(role?.team || '').trim()];
+      })
+      .filter(Boolean)
+  );
+
+  return selected.map((participant, index) => {
+    const heroId = String(participant?.heroId || '').trim();
+    const role = String(participant?.role || '').trim();
+    const mappedTeam = role ? roleTeamMap.get(role) || '' : '';
+    return {
+      order: index,
+      heroId,
+      role,
+      team: mappedTeam,
+      slotNo: Number.isFinite(Number(participant?.slotNo)) ? Number(participant.slotNo) : index + 1,
+    };
+  }).filter(entry => entry.heroId);
+}
+
 async function fetchWorkspaceDefinition(gameId, gameName) {
   const response = await fetch(`/api/rank/game-workspace?gameId=${encodeURIComponent(gameId)}`);
   const json = await response.json().catch(() => null);
@@ -2564,6 +2592,7 @@ export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) 
     const heroIds = readiness.heroIds.length
       ? readiness.heroIds
       : buildTextBattleHeroIds(hero, selectedScoreboard, definition);
+    const participantOverrides = buildTextBattleParticipantOverrides(readiness, definition);
     if (!heroIds.length) {
       throw new Error('참가할 캐릭터를 찾지 못했습니다.');
     }
@@ -2597,6 +2626,7 @@ export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) 
       body: JSON.stringify({
         definition,
         heroIds,
+        participantOverrides,
         gameName: selectedGame?.name || workspace?.game_name || '',
         promptSetId: workspace?.prompt_set_id || null,
       }),

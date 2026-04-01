@@ -30,16 +30,66 @@ const anonClient = createClient(url, anonKey, {
   },
 });
 
-function normalizeParticipantsFromHeroes(heroRows = [], definition = {}) {
+function buildOrderedHeroRows(heroRows = [], heroIds = []) {
+  const order = new Map(
+    (Array.isArray(heroIds) ? heroIds : [])
+      .map((value, index) => {
+        const id = String(value || '').trim();
+        if (!id) return null;
+        return [id, index];
+      })
+      .filter(Boolean)
+  );
+  return [...(Array.isArray(heroRows) ? heroRows : [])].sort((left, right) => {
+    const leftIndex = order.has(String(left?.id || '')) ? order.get(String(left.id)) : Number.MAX_SAFE_INTEGER;
+    const rightIndex = order.has(String(right?.id || '')) ? order.get(String(right.id)) : Number.MAX_SAFE_INTEGER;
+    return leftIndex - rightIndex;
+  });
+}
+
+function normalizeParticipantsFromHeroes(
+  heroRows = [],
+  definition = {},
+  participantOverrides = [],
+  orderedHeroIds = []
+) {
   const roles = Array.isArray(definition?.roles) ? definition.roles : [];
-  return heroRows.map((hero, index) => {
-    const assignedRole = roles[index] || null;
+  const orderedHeroes = buildOrderedHeroRows(heroRows, orderedHeroIds);
+  const overrideMap = new Map(
+    (Array.isArray(participantOverrides) ? participantOverrides : [])
+      .map(entry => {
+        const heroId = String(entry?.heroId || '').trim();
+        if (!heroId) return null;
+        return [heroId, entry];
+      })
+      .filter(Boolean)
+  );
+  const roleMetaByName = new Map(
+    roles
+      .map(role => {
+        const name = String(role?.name || role?.id || '').trim();
+        if (!name) return null;
+        return [name, role];
+      })
+      .filter(Boolean)
+  );
+
+  return orderedHeroes.map((hero, index) => {
+    const heroId = String(hero?.id || '').trim();
+    const override = overrideMap.get(heroId) || null;
+    const indexedRole = roles[index] || null;
+    const namedRole = override?.role ? roleMetaByName.get(String(override.role).trim()) || null : null;
+    const assignedRole = namedRole || indexedRole || null;
+    const resolvedRole = String(override?.role || assignedRole?.name || assignedRole?.id || '').trim();
+    const resolvedTeam = String(
+      override?.team || assignedRole?.team || (resolvedRole ? roleMetaByName.get(resolvedRole)?.team : '') || ''
+    ).trim();
     return {
       id: `participant-${hero.id || index + 1}`,
       ownerId: hero.owner_id || '',
       heroId: hero.id || '',
-      team: assignedRole?.team || (index % 2 === 0 ? 'alpha' : 'beta'),
-      role: assignedRole?.name || assignedRole?.id || (index === 0 ? 'player' : 'opponent'),
+      team: resolvedTeam || (index % 2 === 0 ? 'alpha' : 'beta'),
+      role: resolvedRole || (index === 0 ? 'player' : 'opponent'),
       name: hero.name || `참가자 ${index + 1}`,
       meta: {
         description: hero.description || '',
@@ -122,6 +172,9 @@ export default async function handler(req, res) {
 
     const definition = payload?.definition && typeof payload.definition === 'object' ? payload.definition : null;
     const heroIds = Array.isArray(payload?.heroIds) ? payload.heroIds.filter(Boolean) : [];
+    const participantOverrides = Array.isArray(payload?.participantOverrides)
+      ? payload.participantOverrides
+      : [];
     const gameName =
       (typeof payload?.gameName === 'string' && payload.gameName.trim()) ||
       (typeof definition?.name === 'string' && definition.name.trim()) ||
@@ -157,7 +210,12 @@ export default async function handler(req, res) {
       return res.status(404).json({ ok: false, error: 'heroes_not_found' });
     }
 
-    const participants = normalizeParticipantsFromHeroes(heroes, definition);
+    const participants = normalizeParticipantsFromHeroes(
+      heroes,
+      definition,
+      participantOverrides,
+      heroIds
+    );
     const session = createBattleSession({
       definition,
       participants,
