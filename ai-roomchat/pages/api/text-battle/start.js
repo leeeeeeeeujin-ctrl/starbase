@@ -12,6 +12,10 @@ import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { sanitizeSupabaseUrl } from '@/lib/supabaseEnv';
 import { withTableQuery } from '@/lib/supabaseTables';
 import { writeBattleDebugLog } from '@/lib/battle/debugLog';
+import {
+  findActiveTextBattleSessionForOwner,
+  formatActiveTextBattleSessionRecord,
+} from '@/lib/battle/activeTextSession';
 
 const url = sanitizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL);
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -159,6 +163,15 @@ export default async function handler(req, res) {
     const viewer = authData?.user || null;
     if (authError || !viewer) {
       return res.status(401).json({ ok: false, error: 'unauthorized' });
+    }
+
+    const existingActiveSession = await findActiveTextBattleSessionForOwner(viewer.id);
+    if (existingActiveSession) {
+      return res.status(409).json({
+        ok: false,
+        error: 'active_session_exists',
+        existingSession: formatActiveTextBattleSessionRecord(existingActiveSession),
+      });
     }
 
     let payload = req.body;

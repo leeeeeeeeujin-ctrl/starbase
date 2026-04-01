@@ -17,7 +17,12 @@ import {
   setGameMatchSnapshot,
 } from '@/modules/rank/matchDataStore';
 import { loadMatchFlowSnapshot } from '@/modules/rank/matchRealtimeSync';
-import { readActiveSession, subscribeActiveSession } from '@/lib/rank/activeSessionStorage';
+import {
+  clearActiveSessionRecord,
+  readActiveSession,
+  storeActiveSessionRecord,
+  subscribeActiveSession,
+} from '@/lib/rank/activeSessionStorage';
 import { normalizeRealtimeMode, isRealtimeEnabled } from '@/lib/rank/realtimeModes';
 import { formatPlayNumber } from '@/utils/characterPlayFormatting';
 import { buildBattleDefinitionFromGraph } from '@/lib/battle/definition';
@@ -1498,6 +1503,47 @@ export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) 
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function syncActiveSessionFromServer() {
+      try {
+        const {
+          data: { session: authSession },
+          error: authError,
+        } = await supabase.auth.getSession();
+        if (authError || !authSession?.access_token) return;
+
+        const response = await fetch('/api/text-battle/active', {
+          headers: {
+            Authorization: `Bearer ${authSession.access_token}`,
+          },
+        });
+        const json = await response.json().catch(() => null);
+        if (cancelled || !response.ok || !json?.ok) return;
+
+        const sessionRecord = json?.session || null;
+        if (sessionRecord) {
+          setActiveSession(prev => ({
+            ...(prev && typeof prev === 'object' ? prev : {}),
+            ...sessionRecord,
+          }));
+          return;
+        }
+
+        clearActiveSessionRecord();
+        setActiveSession(null);
+      } catch (error) {
+        console.warn('[CharacterPlayPanel] 활성 세션 동기화 실패:', error);
+      }
+    }
+
+    syncActiveSessionFromServer();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const activeSessionInfo = useMemo(() => {
     if (!activeSession || typeof activeSession !== 'object') {
       return null;
@@ -2635,6 +2681,20 @@ export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) 
     const json = await response.json().catch(() => null);
 
     if (!response.ok || !json?.ok) {
+      if (response.status === 409 && json?.existingSession) {
+        const existingSession = json.existingSession;
+        storeActiveSessionRecord(selectedGameId, {
+          ...existingSession,
+          gameId: existingSession.gameId || selectedGameId,
+          gameName:
+            existingSession.gameName ||
+            selectedGame?.name ||
+            workspace?.game_name ||
+            '',
+          status: existingSession.status || 'active',
+          sessionId: existingSession.sessionId || null,
+        });
+      }
       throw new Error(json?.detail || json?.error || '텍스트 배틀 세션을 시작하지 못했습니다.');
     }
 
@@ -2650,6 +2710,17 @@ export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) 
     });
 
     writeStoredTextBattleSession(textSessionId, json?.session || null);
+    storeActiveSessionRecord(selectedGameId, {
+      href: `/text-battle/session/${encodeURIComponent(textSessionId)}`,
+      gameName: selectedGame?.name || workspace?.game_name || '',
+      description: selectedGame?.description || '',
+      status: 'active',
+      sessionId: textSessionId,
+      actorNames: Array.isArray(json?.participants)
+        ? json.participants.map(participant => participant?.name).filter(Boolean)
+        : [],
+      turn: Number.isFinite(Number(json?.session?.turnIndex)) ? Number(json.session.turnIndex) + 1 : 1,
+    });
 
     setMatchingState(prev => ({
       ...prev,

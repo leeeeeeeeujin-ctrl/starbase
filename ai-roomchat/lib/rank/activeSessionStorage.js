@@ -48,6 +48,7 @@ function writeSession(payload) {
 export function storeActiveSessionRecord(gameId, data = {}) {
   if (!isBrowser() || !gameId) return;
   const next = {
+    ...data,
     gameId,
     href: data.href || `/rank/${gameId}/start`,
     gameName: data.gameName || '',

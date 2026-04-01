@@ -14,6 +14,11 @@ import {
   readStoredTextBattleSession,
   writeStoredTextBattleSession,
 } from '@/lib/battle/clientSessionStorage';
+import {
+  clearActiveSessionRecord,
+  readActiveSession,
+  updateActiveSessionRecord,
+} from '@/lib/rank/activeSessionStorage';
 
 function buildStatusTone(status = '') {
   if (status === 'completed') {
@@ -138,6 +143,29 @@ export default function TextBattleSessionPage() {
   );
   const statusTone = buildStatusTone(runtimeSession?.status || dbSession?.status || '');
   const lastTurn = turns.length ? turns[turns.length - 1] : null;
+  const sessionStatus = runtimeSession?.status || dbSession?.status || '';
+  const isEnded = ['completed', 'abandoned', 'defeated', 'closed', 'ended', 'cancelled', 'canceled'].includes(
+    String(sessionStatus || '').toLowerCase()
+  );
+
+  useEffect(() => {
+    if (!id) return;
+    const active = readActiveSession();
+    if (!active) return;
+    if (active.sessionId && String(active.sessionId) !== String(id)) return;
+    if (isEnded) {
+      clearActiveSessionRecord(active.gameId || undefined);
+      return;
+    }
+    if (active.gameId) {
+      updateActiveSessionRecord(active.gameId, {
+        href: `/text-battle/session/${encodeURIComponent(String(id))}`,
+        status: 'active',
+        turn: Number.isFinite(Number(runtimeSession?.turnIndex)) ? Number(runtimeSession.turnIndex) + 1 : active.turn || 1,
+        actorNames: Array.isArray(participants) ? participants.map(participant => participant?.name).filter(Boolean) : active.actorNames || [],
+      });
+    }
+  }, [id, isEnded, participants, runtimeSession?.turnIndex]);
 
   async function refreshPayload() {
     const response = await fetch(`/api/text-battle/session?id=${encodeURIComponent(id)}`);
@@ -225,6 +253,60 @@ export default function TextBattleSessionPage() {
           json.session?.status === 'completed'
             ? '전투가 종료되었습니다.'
             : '다음 장면으로 진행했습니다.',
+        error: '',
+      }));
+      if (json.session?.status === 'completed') {
+        clearActiveSessionRecord();
+      }
+      await refreshPayload();
+    } catch (error) {
+      setRuntimeState(prev => ({
+        ...prev,
+        running: false,
+        error: error?.message || String(error),
+        status: '',
+      }));
+    }
+  }
+
+  async function handleSurrender() {
+    if (!id || runtimeState.running || isEnded) return;
+    setRuntimeState(prev => ({
+      ...prev,
+      running: true,
+      status: '항복 처리 중입니다…',
+      error: '',
+    }));
+    try {
+      const {
+        data: { session: authSession },
+        error: authError,
+      } = await supabase.auth.getSession();
+      if (authError || !authSession?.access_token) {
+        throw new Error('로그인 세션을 확인하지 못했습니다.');
+      }
+      const response = await fetch('/api/text-battle/finish', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authSession.access_token}`,
+        },
+        body: JSON.stringify({
+          textSessionId: id,
+          action: 'surrender',
+        }),
+      });
+      const json = await response.json().catch(() => null);
+      if (!response.ok || !json?.ok) {
+        throw new Error(json?.detail || json?.error || 'finish_failed');
+      }
+      writeStoredTextBattleSession(id, json.session);
+      clearActiveSessionRecord();
+      setRuntimeState(prev => ({
+        ...prev,
+        session: hydrateRuntimeSession(json.session),
+        running: false,
+        status: '항복으로 전투가 종료되었습니다.',
         error: '',
       }));
       await refreshPayload();
@@ -421,6 +503,24 @@ export default function TextBattleSessionPage() {
                   ? 'AI 턴 실행'
                   : '행동 제출'}
             </button>
+            {!isEnded ? (
+              <button
+                type="button"
+                onClick={handleSurrender}
+                disabled={runtimeState.running}
+                style={{
+                  padding: '12px 16px',
+                  borderRadius: 14,
+                  border: '1px solid rgba(248,113,113,0.45)',
+                  background: 'rgba(127,29,29,0.42)',
+                  color: '#fecaca',
+                  fontWeight: 800,
+                  cursor: runtimeState.running ? 'wait' : 'pointer',
+                }}
+              >
+                항복
+              </button>
+            ) : null}
             {runtimeState.status ? (
               <span style={{ fontSize: 12, color: '#93c5fd' }}>{runtimeState.status}</span>
             ) : null}
@@ -562,6 +662,41 @@ export default function TextBattleSessionPage() {
           <div style={{ fontSize: 13, lineHeight: 1.7, color: '#cbd5e1', whiteSpace: 'pre-wrap' }}>
             {lastTurn?.ai_response || lastTurn?.prompt || '마지막 장면 요약이 아직 없습니다.'}
           </div>
+          {isEnded ? (
+            <div
+              style={{
+                borderRadius: 16,
+                padding: '12px 14px',
+                background: 'rgba(20,83,45,0.2)',
+                border: '1px solid rgba(74,222,128,0.24)',
+                display: 'grid',
+                gap: 6,
+              }}
+            >
+              <strong style={{ color: '#dcfce7', fontSize: 14 }}>
+                전투 종료
+              </strong>
+              <div style={{ fontSize: 12, color: '#bbf7d0' }}>
+                상태: {sessionStatus || 'completed'}
+              </div>
+              {dbSession?.winner ? (
+                <div style={{ fontSize: 12, color: '#bbf7d0' }}>승자: {String(dbSession.winner)}</div>
+              ) : null}
+              {dbSession?.final_score ? (
+                <pre
+                  style={{
+                    margin: 0,
+                    fontSize: 11,
+                    lineHeight: 1.5,
+                    color: '#d1fae5',
+                    whiteSpace: 'pre-wrap',
+                  }}
+                >
+                  {JSON.stringify(dbSession.final_score, null, 2)}
+                </pre>
+              ) : null}
+            </div>
+          ) : null}
           {runtimeState.showDebug ? (
             <div style={{ display: 'grid', gap: 10 }}>
               <details
