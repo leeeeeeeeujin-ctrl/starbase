@@ -5,7 +5,6 @@ import MakerEditor from '../../../components/maker/editor/MakerEditor';
 import StudioPersistentProvider from '../../../contexts/StudioPersistentProvider.jsx';
 import { useCallback, useEffect, useState } from 'react';
 import WorkspaceFrame from '../../../components/workspace/WorkspaceFrame.jsx';
-import LoginDebugOverlay from '../../../components/common/LoginDebugOverlay.jsx';
 
 export default function MakerEditorPage() {
   const router = useRouter();
@@ -20,18 +19,6 @@ export default function MakerEditorPage() {
     setWorkspaceReady(false);
   }, [id]);
 
-  // Debug mount/unmount for the page wrapper
-  useEffect(() => {
-    try {
-      console.log('[MakerEditorPage] mount', { id });
-    } catch {}
-    return () => {
-      try {
-        console.log('[MakerEditorPage] unmount', { id });
-      } catch {}
-    };
-  }, [id]);
-
   if (!id || typeof id !== 'string') return <div style={{ padding: 20 }}>Checking workspace id...</div>;
 
   const renderWorkbench = workspaceReady
@@ -43,7 +30,6 @@ export default function MakerEditorPage() {
       <WorkspaceFrame id={id} onReady={handleWorkspaceReady}>
         {renderWorkbench}
       </WorkspaceFrame>
-      {workspaceReady && <LoginDebugOverlay scope={`maker:${id}`} />}
     </StudioPersistentProvider>
   );
 }

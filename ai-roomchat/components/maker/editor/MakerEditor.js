@@ -16,6 +16,9 @@ import { normalizeBattleConfig } from '../../../lib/battle/definition.js';
 export default function MakerEditor() {
   const { status, graph, selection, persistence, history, definition: battleDefinition } = useMakerEditor();
   const { writeFile, files } = useWorkspace();
+  const [showGameConfig, setShowGameConfig] = useState(false);
+  const [roleDraft, setRoleDraft] = useState({ name: '', team: '', limit: '1' });
+  const editorPanelRef = useRef(null);
 
   let templateText = '';
   let setTemplateText = () => {};
@@ -41,12 +44,9 @@ export default function MakerEditor() {
     }),
     [battleConfig, battleDefinition]
   );
-  const roleText = useMemo(
-    () =>
-      (battleConfig.roles || [])
-        .map(role => [role.name, role.team || '', role.limit || 1].join('|'))
-        .join('\n'),
-    [battleConfig.roles]
+  const playerCountOptions = useMemo(
+    () => Array.from({ length: 12 }, (_, index) => index + 1),
+    []
   );
 
   const {
@@ -195,6 +195,7 @@ export default function MakerEditor() {
     onSelectionChange,
     setSelectedEdge,
     markAsStart,
+    setActivePanelTab,
   } = selection;
 
   const { busy, saveAll, deletePrompt, addPromptNode, goToSetList } = persistence;
@@ -249,26 +250,32 @@ export default function MakerEditor() {
     [templateText, setTemplateText]
   );
 
-  const updateRoleText = useCallback(
-    value => {
-      const roles = String(value || '')
-        .split('\n')
-        .map(line => line.trim())
-        .filter(Boolean)
-        .map((line, index) => {
-          const [namePart, teamPart = '', limitPart = '1'] = line.split('|').map(entry => entry.trim());
-          if (!namePart) return null;
-          return {
-            id: `role-${index + 1}`,
-            name: namePart,
-            team: teamPart,
-            limit: Number.isFinite(Number(limitPart)) ? Math.max(1, Number(limitPart)) : 1,
-          };
-        })
-        .filter(Boolean);
-      updateBattleConfig({ roles });
+  const addRoleEntry = useCallback(() => {
+    const name = String(roleDraft.name || '').trim();
+    if (!name) return;
+    const team = String(roleDraft.team || '').trim();
+    const limit = Number.isFinite(Number(roleDraft.limit)) ? Math.max(1, Number(roleDraft.limit)) : 1;
+    const nextRoles = [...(battleConfig.roles || []), { id: `role-${Date.now()}`, name, team, limit }];
+    updateBattleConfig({ roles: nextRoles });
+    setRoleDraft({ name: '', team: '', limit: '1' });
+  }, [battleConfig.roles, roleDraft, updateBattleConfig]);
+
+  const removeRoleEntry = useCallback(
+    roleId => {
+      updateBattleConfig({ roles: (battleConfig.roles || []).filter(role => role.id !== roleId) });
     },
-    [updateBattleConfig]
+    [battleConfig.roles, updateBattleConfig]
+  );
+
+  const handleNodeDoubleClick = useCallback(
+    (event, node) => {
+      onNodeClick?.(event, node);
+      setActivePanelTab('selection');
+      window.setTimeout(() => {
+        editorPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 40);
+    },
+    [onNodeClick, setActivePanelTab]
   );
 
   const { receipt: saveReceipt, ackReceipt } = history;
@@ -330,76 +337,181 @@ export default function MakerEditor() {
       >
         <MinimalMakerHeader busy={busy} onBack={goToSetList} onSave={unifiedSaveAll} />
 
-        <section
-          style={{
-            background: '#ffffff',
-            borderRadius: 20,
-            padding: 16,
-            display: 'grid',
-            gap: 14,
-            border: '1px solid #cbd5e1',
-          }}
-        >
-          <div style={{ display: 'grid', gap: 4 }}>
-            <strong style={{ fontSize: 15, color: '#0f172a' }}>게임 설정</strong>
-            <span style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
-              이 게임에 몇 명까지 참가할지와 역할 구성을 메이커에서 직접 정합니다. 등록 페이지에서는 이 값을 읽기만 하게 맞춥니다.
+        <section style={{ display: 'grid', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+            <button
+              type="button"
+              onClick={() => setShowGameConfig(prev => !prev)}
+              style={{
+                border: '1px solid #cbd5e1',
+                background: '#ffffff',
+                color: '#0f172a',
+                borderRadius: 999,
+                padding: '10px 16px',
+                fontSize: 13,
+                fontWeight: 800,
+                cursor: 'pointer',
+              }}
+            >
+              {showGameConfig ? '게임 설정 접기' : '게임 설정 열기'}
+            </button>
+            <span style={{ fontSize: 12, color: '#64748b' }}>
+              {battleConfig.mode === 'multi' ? '멀티' : '싱글'} · {battleConfig.minPlayers}~{battleConfig.maxPlayers}명 · 역할 {(battleConfig.roles || []).length}개
             </span>
           </div>
 
-          <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
-            <label style={{ display: 'grid', gap: 6 }}>
-              <span style={{ fontSize: 12, color: '#475569', fontWeight: 700 }}>모드</span>
-              <select
-                name="battle-mode"
-                value={battleConfig.mode}
-                onChange={event => updateBattleConfig({ mode: event.target.value })}
-                style={configInputStyle}
-              >
-                <option value="single">싱글</option>
-                <option value="multi">멀티</option>
-              </select>
-            </label>
-            <label style={{ display: 'grid', gap: 6 }}>
-              <span style={{ fontSize: 12, color: '#475569', fontWeight: 700 }}>최소 인원</span>
-              <input
-                name="battle-min-players"
-                type="number"
-                min="1"
-                max="12"
-                value={battleConfig.minPlayers}
-                onChange={event => updateBattleConfig({ minPlayers: Number(event.target.value) || 1 })}
-                style={configInputStyle}
-              />
-            </label>
-            <label style={{ display: 'grid', gap: 6 }}>
-              <span style={{ fontSize: 12, color: '#475569', fontWeight: 700 }}>최대 인원</span>
-              <input
-                name="battle-max-players"
-                type="number"
-                min="1"
-                max="12"
-                value={battleConfig.maxPlayers}
-                onChange={event => updateBattleConfig({ maxPlayers: Number(event.target.value) || 1 })}
-                style={configInputStyle}
-              />
-            </label>
-          </div>
+          {showGameConfig ? (
+            <div
+              style={{
+                background: '#ffffff',
+                borderRadius: 20,
+                padding: 16,
+                display: 'grid',
+                gap: 14,
+                border: '1px solid #cbd5e1',
+              }}
+            >
+              <div style={{ display: 'grid', gap: 4 }}>
+                <strong style={{ fontSize: 15, color: '#0f172a' }}>게임 설정</strong>
+                <span style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
+                  이 게임에 몇 명까지 참가할지와 역할 구성을 메이커에서 직접 정합니다. 등록 페이지에서는 이 값을 읽기만 하게 맞춥니다.
+                </span>
+              </div>
 
-          <label style={{ display: 'grid', gap: 6 }}>
-            <span style={{ fontSize: 12, color: '#475569', fontWeight: 700 }}>역할 목록</span>
-            <textarea
-              name="battle-roles"
-              rows={5}
-              value={roleText}
-              onChange={event => updateRoleText(event.target.value)}
-              style={{ ...configInputStyle, resize: 'vertical', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}
-              placeholder={'공격|red|2\n수비|blue|2'}
-            />
-            <span style={{ fontSize: 11, color: '#6b7280' }}>
-              한 줄에 `역할명|팀|인원수` 형식으로 적습니다. 예: `healer|blue|2`
-            </span>
-          </label>
+              <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+                <label style={{ display: 'grid', gap: 6 }}>
+                  <span style={{ fontSize: 12, color: '#475569', fontWeight: 700 }}>모드</span>
+                  <select
+                    name="battle-mode"
+                    value={battleConfig.mode}
+                    onChange={event => updateBattleConfig({ mode: event.target.value })}
+                    style={configInputStyle}
+                  >
+                    <option value="single">싱글</option>
+                    <option value="multi">멀티</option>
+                  </select>
+                </label>
+                <label style={{ display: 'grid', gap: 6 }}>
+                  <span style={{ fontSize: 12, color: '#475569', fontWeight: 700 }}>최소 인원</span>
+                  <select
+                    name="battle-min-players"
+                    value={battleConfig.minPlayers}
+                    onChange={event => updateBattleConfig({ minPlayers: Number(event.target.value) })}
+                    style={configInputStyle}
+                  >
+                    {playerCountOptions.map(count => (
+                      <option key={`battle-min-${count}`} value={count}>
+                        {count}명
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label style={{ display: 'grid', gap: 6 }}>
+                  <span style={{ fontSize: 12, color: '#475569', fontWeight: 700 }}>최대 인원</span>
+                  <select
+                    name="battle-max-players"
+                    value={battleConfig.maxPlayers}
+                    onChange={event => updateBattleConfig({ maxPlayers: Number(event.target.value) })}
+                    style={configInputStyle}
+                  >
+                    {playerCountOptions.map(count => (
+                      <option key={`battle-max-${count}`} value={count}>
+                        {count}명
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div style={{ display: 'grid', gap: 10 }}>
+                <span style={{ fontSize: 12, color: '#475569', fontWeight: 700 }}>역할 목록</span>
+                <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'minmax(0, 1.4fr) minmax(0, 1fr) 110px auto' }}>
+                  <input
+                    name="battle-role-name"
+                    value={roleDraft.name}
+                    onChange={event => setRoleDraft(current => ({ ...current, name: event.target.value }))}
+                    placeholder="역할명"
+                    style={configInputStyle}
+                  />
+                  <input
+                    name="battle-role-team"
+                    value={roleDraft.team}
+                    onChange={event => setRoleDraft(current => ({ ...current, team: event.target.value }))}
+                    placeholder="팀"
+                    style={configInputStyle}
+                  />
+                  <select
+                    name="battle-role-limit"
+                    value={roleDraft.limit}
+                    onChange={event => setRoleDraft(current => ({ ...current, limit: event.target.value }))}
+                    style={configInputStyle}
+                  >
+                    {playerCountOptions.map(count => (
+                      <option key={`battle-role-${count}`} value={count}>
+                        {count}명
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={addRoleEntry}
+                    style={{
+                      border: '1px solid #0f172a',
+                      background: '#0f172a',
+                      color: '#f8fafc',
+                      borderRadius: 14,
+                      padding: '0 14px',
+                      fontSize: 13,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    추가
+                  </button>
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {(battleConfig.roles || []).length ? (
+                    battleConfig.roles.map(role => (
+                      <div
+                        key={role.id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          padding: '8px 10px',
+                          borderRadius: 999,
+                          background: '#e2e8f0',
+                          color: '#0f172a',
+                          fontSize: 12,
+                          fontWeight: 700,
+                        }}
+                      >
+                        <span>{role.name}</span>
+                        <span style={{ color: '#475569' }}>{role.team || '팀 없음'}</span>
+                        <span style={{ color: '#475569' }}>{role.limit}명</span>
+                        <button
+                          type="button"
+                          onClick={() => removeRoleEntry(role.id)}
+                          style={{
+                            border: 'none',
+                            background: 'transparent',
+                            color: '#b91c1c',
+                            fontSize: 12,
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          삭제
+                        </button>
+                      </div>
+                    ))
+                  ) : (
+                    <span style={{ fontSize: 11, color: '#6b7280' }}>아직 추가된 역할이 없습니다.</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : null}
         </section>
 
         <MakerEditorCanvas
@@ -409,6 +521,7 @@ export default function MakerEditor() {
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           onNodeClick={onNodeClick}
+          onNodeDoubleClick={handleNodeDoubleClick}
           onEdgeClick={onEdgeClick}
           onPaneClick={onPaneClick}
           onSelectionChange={onSelectionChange}
@@ -416,15 +529,17 @@ export default function MakerEditor() {
           onEdgesDelete={onEdgesDelete}
         />
 
-        <MakerEditorPanel
-          selectedNode={selectedNode}
-          selectedNodeId={selectedNodeId}
-          selectedEdge={selectedEdge}
-          onMarkAsStart={markAsStart}
-          onDeleteSelected={() => selectedNodeId && deletePrompt(selectedNodeId)}
-          setNodes={setNodes}
-          setEdges={setEdges}
-        />
+        <div ref={editorPanelRef}>
+          <MakerEditorPanel
+            selectedNode={selectedNode}
+            selectedNodeId={selectedNodeId}
+            selectedEdge={selectedEdge}
+            onMarkAsStart={markAsStart}
+            onDeleteSelected={() => selectedNodeId && deletePrompt(selectedNodeId)}
+            setNodes={setNodes}
+            setEdges={setEdges}
+          />
+        </div>
       </div>
 
       <AddPromptFab

@@ -14,6 +14,15 @@ export function isWorkspaceDebug() {
   }
 
   try {
+    const pathname = window.location && typeof window.location.pathname === 'string'
+      ? window.location.pathname
+      : '';
+    if (pathname.startsWith('/maker/')) return false;
+  } catch {
+    // ignore
+  }
+
+  try {
     if (window.__WORKSPACE_DEBUG__ === true) return true;
   } catch {
     // ignore
@@ -57,4 +66,3 @@ export function markWorkspaceDebug(enabled = true) {
     // ignore
   }
 }
-
