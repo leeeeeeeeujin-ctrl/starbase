@@ -7,6 +7,15 @@ import {
   TURN_STATE_WRITE_SOURCES,
 } from '../../../lib/battle/turnTemplate';
 
+const ACTOR_SCOPE_OPTIONS = [
+  { value: 'self', label: '현재 주체' },
+  { value: 'enemies', label: '상대' },
+  { value: 'allies', label: '아군' },
+  { value: 'all', label: '전체' },
+  { value: 'role:', label: '특정 역할' },
+  { value: 'custom', label: '직접 입력' },
+];
+
 function parseCsv(value) {
   return String(value || '')
     .split(',')
@@ -75,8 +84,15 @@ export default function MakerEditorPanel({
   if (selectedEdge) {
     const edgeData = selectedEdge.data || {};
     const currentConditions = Array.isArray(edgeData.conditions) ? edgeData.conditions : [];
-    const currentKey = currentConditions[0]?.key || '';
-    const currentValue = currentConditions[0]?.equals || '';
+    const addCondition = () => {
+      updateEdge(data => ({
+        ...data,
+        conditions: [
+          ...(Array.isArray(data.conditions) ? data.conditions : []),
+          { key: '', equals: '' },
+        ],
+      }));
+    };
 
     return (
       <section
@@ -89,43 +105,108 @@ export default function MakerEditorPanel({
           border: '1px solid #cbd5e1',
         }}
       >
-        <strong style={{ fontSize: 15, color: '#0f172a' }}>분기 조건</strong>
-        <div style={{ display: 'grid', gap: 6 }}>
-          <label style={labelStyle}>조건 키</label>
-          <input
-            name="route-condition-key"
-            type="text"
-            value={currentKey}
-            onChange={event =>
-              updateEdge(data => ({
-                ...data,
-                conditions: event.target.value
-                  ? [{ key: event.target.value, equals: currentValue }]
-                  : [],
-              }))
-            }
-            style={inputStyle}
-            placeholder="예: branch_hint"
-          />
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+          <div style={{ display: 'grid', gap: 4 }}>
+            <strong style={{ fontSize: 15, color: '#0f172a' }}>분기 슬롯</strong>
+            <span style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
+              이전 턴에서 기록한 변수나 결과를 읽고, 이 선을 탈 조건을 정합니다.
+            </span>
+          </div>
+          <button type="button" onClick={addCondition} style={chipButtonStyle('#dbeafe', '#1d4ed8')}>
+            조건 추가
+          </button>
         </div>
-        <div style={{ display: 'grid', gap: 6 }}>
-          <label style={labelStyle}>조건 값</label>
-          <input
-            name="route-condition-value"
-            type="text"
-            value={currentValue}
-            onChange={event =>
-              updateEdge(data => ({
-                ...data,
-                conditions: currentKey
-                  ? [{ key: currentKey, equals: event.target.value }]
-                  : [],
-              }))
-            }
-            style={inputStyle}
-            placeholder="예: attack"
-          />
-        </div>
+
+        {(currentConditions || []).length ? (
+          <div style={{ display: 'grid', gap: 10 }}>
+            {currentConditions.map((condition, index) => (
+              <div
+                key={`route-condition-${index}`}
+                style={{
+                  border: '1px solid #cbd5e1',
+                  borderRadius: 14,
+                  background: '#f8fafc',
+                  padding: 12,
+                  display: 'grid',
+                  gap: 10,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+                  <strong style={{ fontSize: 12, color: '#0f172a' }}>조건 슬롯 {index + 1}</strong>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateEdge(data => ({
+                        ...data,
+                        conditions: (Array.isArray(data.conditions) ? data.conditions : []).filter(
+                          (_, conditionIndex) => conditionIndex !== index
+                        ),
+                      }))
+                    }
+                    style={chipButtonStyle('#fee2e2', '#b91c1c')}
+                  >
+                    삭제
+                  </button>
+                </div>
+
+                <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+                  <Field label="조건 변수">
+                    <input
+                      name={`route-condition-key-${index}`}
+                      type="text"
+                      value={condition?.key || ''}
+                      onChange={event =>
+                        updateEdge(data => ({
+                          ...data,
+                          conditions: (Array.isArray(data.conditions) ? data.conditions : []).map(
+                            (entry, conditionIndex) =>
+                              conditionIndex === index ? { ...entry, key: event.target.value } : entry
+                          ),
+                        }))
+                      }
+                      style={inputStyle}
+                      placeholder="예: state.enemyDown"
+                    />
+                  </Field>
+                  <Field label="만족 값">
+                    <input
+                      name={`route-condition-value-${index}`}
+                      type="text"
+                      value={condition?.equals || ''}
+                      onChange={event =>
+                        updateEdge(data => ({
+                          ...data,
+                          conditions: (Array.isArray(data.conditions) ? data.conditions : []).map(
+                            (entry, conditionIndex) =>
+                              conditionIndex === index ? { ...entry, equals: event.target.value } : entry
+                          ),
+                        }))
+                      }
+                      style={inputStyle}
+                      placeholder="예: true / win / attack"
+                    />
+                  </Field>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div
+            style={{
+              borderRadius: 14,
+              border: '1px dashed #cbd5e1',
+              background: '#f8fafc',
+              padding: 12,
+              fontSize: 12,
+              color: '#64748b',
+              lineHeight: 1.6,
+            }}
+          >
+            조건이 없으면 이 선은 기본 진행선처럼 동작합니다. 필요하면 조건 슬롯을 추가해
+            <code style={{ marginLeft: 4 }}>state.enemyDown = true</code> 같은 값을 읽게 하세요.
+          </div>
+        )}
+
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#334155' }}>
           <input
             name="route-fallback"
@@ -161,6 +242,10 @@ export default function MakerEditorPanel({
     );
   }
 
+  const actorMode = getActorMode(meta.actorScope);
+  const actorRole = actorMode === 'role:' ? String(meta.actorScope || '').slice(5).trim() : '';
+  const actorCustom = actorMode === 'custom' ? String(meta.actorScope || '') : '';
+
   return (
     <section
       style={{
@@ -184,161 +269,221 @@ export default function MakerEditorPanel({
         </div>
       </div>
 
-      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
-        <Field label="노드 이름">
-          <input
-            name="execute-title"
-            type="text"
-            value={meta.title || ''}
-            onChange={event => updateMeta({ title: event.target.value })}
-            style={inputStyle}
-          />
-        </Field>
-
-        <Field label="실행 방식">
-          <select
-            name="execute-type"
-            value={meta.executionType || 'ai_prompt'}
-            onChange={event =>
-              updateMeta({
-                executionType: event.target.value,
-                outputFormat: event.target.value === 'user_response' ? 'text' : meta.outputFormat,
-              })
-            }
-            style={inputStyle}
-          >
-            <option value="ai_prompt">AI 프롬프트 실행</option>
-            <option value="user_response">유저 응답 받기</option>
-          </select>
-        </Field>
-
-        <Field label="행동 주체">
-          <input
-            name="execute-actor-scope"
-            type="text"
-            value={meta.actorScope || 'self'}
-            onChange={event => updateMeta({ actorScope: event.target.value })}
-            style={inputStyle}
-            placeholder="self, opponent, role:judge"
-          />
-        </Field>
-
-        <Field label="결과 이름">
-          <input
-            name="execute-result-key"
-            type="text"
-            value={meta.resultKey || ''}
-            onChange={event => updateMeta({ resultKey: event.target.value })}
-            style={inputStyle}
-            placeholder="예: action_result"
-          />
-        </Field>
-      </div>
-
-      <Field label="플레이어에게 보여줄 문구">
-        <textarea
-          name="execute-display"
-          value={meta.display || ''}
-          onChange={event => updateMeta({ display: event.target.value })}
-          rows={3}
-          style={{ ...inputStyle, resize: 'vertical' }}
-        />
-      </Field>
-
-      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
-        <Field label="입력 방식">
-          <select
-            name="execute-input-mode"
-            value={meta.inputMode || 'none'}
-            onChange={event => updateMeta({ inputMode: event.target.value })}
-            style={inputStyle}
-          >
-            <option value="none">없음</option>
-            <option value="text">텍스트</option>
-            <option value="choice">선택지</option>
-            <option value="ability">능력 선택</option>
-            <option value="target">대상 선택</option>
-          </select>
-        </Field>
-        <Field label="결과 형식">
-          <select
-            name="execute-output-format"
-            value={meta.outputFormat || 'json'}
-            onChange={event => updateMeta({ outputFormat: event.target.value })}
-            style={inputStyle}
-          >
-            <option value="json">JSON</option>
-            <option value="text">텍스트</option>
-          </select>
-        </Field>
-        <Field label="입력 안내">
-          <input
-            name="execute-input-label"
-            type="text"
-            value={meta.inputLabel || ''}
-            onChange={event => updateMeta({ inputLabel: event.target.value })}
-            style={inputStyle}
-          />
-        </Field>
-        <Field label="입력 예시 문구">
-          <input
-            name="execute-input-placeholder"
-            type="text"
-            value={meta.inputPlaceholder || ''}
-            onChange={event => updateMeta({ inputPlaceholder: event.target.value })}
-            style={inputStyle}
-          />
-        </Field>
-      </div>
-
-      <Field label="같이 참조할 참가자">
-        <input
-          name="execute-participant-scope"
-          type="text"
-          value={(meta.participantScope || []).join(', ')}
-          onChange={event => updateMeta({ participantScope: parseCsv(event.target.value) })}
-          style={inputStyle}
-          placeholder="self, opponent, allies"
-        />
-      </Field>
-
-      <Field label="문구 공개 범위">
-        <input
-          name="execute-visibility-scope"
-          type="text"
-          value={(meta.visibilityScope || []).join(', ')}
-          onChange={event => updateMeta({ visibilityScope: parseCsv(event.target.value) })}
-          style={inputStyle}
-          placeholder="all, self, role:judge"
-        />
-      </Field>
-
-      <details
-        style={{
-          borderRadius: 14,
-          border: '1px solid #cbd5e1',
-          background: '#f8fafc',
-          padding: '10px 12px',
-        }}
+      <Section
+        title="기본"
+        description="이 노드가 누구 차례인지, 플레이어에게 어떤 장면으로 보일지를 정합니다."
       >
-        <summary style={{ cursor: 'pointer', fontSize: 12, color: '#475569', fontWeight: 700 }}>
-          고급 설정: AI 결과 예시
-        </summary>
-        <div style={{ marginTop: 10 }}>
-          <Field label="AI가 돌려주길 기대하는 예시 형태">
-            <textarea
-              name="execute-output-schema"
-              value={meta.outputSchema || ''}
-              onChange={event => updateMeta({ outputSchema: event.target.value })}
-              rows={4}
-              style={{ ...inputStyle, resize: 'vertical' }}
-              placeholder='예: {"branch_hint":"attack","gameResult":"ongoing"}'
+        <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+          <Field label="노드 이름">
+            <input
+              name="execute-title"
+              type="text"
+              value={meta.title || ''}
+              onChange={event => updateMeta({ title: event.target.value })}
+              style={inputStyle}
+            />
+          </Field>
+
+          <Field label="실행 방식">
+            <select
+              name="execute-type"
+              value={meta.executionType || 'ai_prompt'}
+              onChange={event =>
+                updateMeta({
+                  executionType: event.target.value,
+                  outputFormat: event.target.value === 'user_response' ? 'text' : meta.outputFormat,
+                })
+              }
+              style={inputStyle}
+            >
+              <option value="ai_prompt">AI가 행동한다</option>
+              <option value="user_response">플레이어가 입력한다</option>
+            </select>
+          </Field>
+
+          <Field label="행동 주체">
+            <select
+              name="execute-actor-mode"
+              value={actorMode}
+              onChange={event => {
+                const nextMode = event.target.value;
+                if (nextMode === 'role:') {
+                  updateMeta({ actorScope: actorRole ? `role:${actorRole}` : 'role:' });
+                  return;
+                }
+                if (nextMode === 'custom') {
+                  updateMeta({ actorScope: actorCustom || '' });
+                  return;
+                }
+                updateMeta({ actorScope: nextMode });
+              }}
+              style={inputStyle}
+            >
+              {ACTOR_SCOPE_OPTIONS.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label="결과 이름">
+            <input
+              name="execute-result-key"
+              type="text"
+              value={meta.resultKey || ''}
+              onChange={event => updateMeta({ resultKey: event.target.value })}
+              style={inputStyle}
+              placeholder="예: result.winnerTeam"
             />
           </Field>
         </div>
-      </details>
 
-      <div style={{ display: 'grid', gap: 10 }}>
+        {actorMode === 'role:' ? (
+          <Field label="행동 역할">
+            <input
+              name="execute-actor-role"
+              type="text"
+              value={actorRole}
+              onChange={event => updateMeta({ actorScope: `role:${event.target.value}` })}
+              style={inputStyle}
+              placeholder="예: 수비"
+            />
+          </Field>
+        ) : null}
+
+        {actorMode === 'custom' ? (
+          <Field label="행동 주체 직접 입력">
+            <input
+              name="execute-actor-custom"
+              type="text"
+              value={actorCustom}
+              onChange={event => updateMeta({ actorScope: event.target.value })}
+              style={inputStyle}
+              placeholder="예: team:1 / role:judge"
+            />
+          </Field>
+        ) : null}
+
+        <Field label="플레이어에게 보여줄 문구">
+          <textarea
+            name="execute-display"
+            value={meta.display || ''}
+            onChange={event => updateMeta({ display: event.target.value })}
+            rows={3}
+            style={{ ...inputStyle, resize: 'vertical' }}
+          />
+        </Field>
+      </Section>
+
+      <Section
+        title="입력"
+        description="이 노드에서 플레이어가 직접 행동을 적거나, 선택지를 고를지 정합니다."
+      >
+        <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+          <Field label="입력 방식">
+            <select
+              name="execute-input-mode"
+              value={meta.inputMode || 'none'}
+              onChange={event => updateMeta({ inputMode: event.target.value })}
+              style={inputStyle}
+            >
+              <option value="none">입력 없음</option>
+              <option value="text">텍스트 입력</option>
+              <option value="choice">선택지 고르기</option>
+              <option value="ability">능력 선택</option>
+              <option value="target">대상 선택</option>
+            </select>
+          </Field>
+          <Field label="결과 형식">
+            <select
+              name="execute-output-format"
+              value={meta.outputFormat || 'json'}
+              onChange={event => updateMeta({ outputFormat: event.target.value })}
+              style={inputStyle}
+            >
+              <option value="json">구조화된 결과</option>
+              <option value="text">텍스트 결과</option>
+            </select>
+          </Field>
+          <Field label="입력 안내">
+            <input
+              name="execute-input-label"
+              type="text"
+              value={meta.inputLabel || ''}
+              onChange={event => updateMeta({ inputLabel: event.target.value })}
+              style={inputStyle}
+            />
+          </Field>
+          <Field label="입력 예시 문구">
+            <input
+              name="execute-input-placeholder"
+              type="text"
+              value={meta.inputPlaceholder || ''}
+              onChange={event => updateMeta({ inputPlaceholder: event.target.value })}
+              style={inputStyle}
+            />
+          </Field>
+        </div>
+      </Section>
+
+      <Section
+        title="참조 범위"
+        description="이 노드가 누구 정보를 참고하고, 누구에게 문구를 보여줄지 정합니다."
+      >
+        <Field label="같이 참조할 참가자">
+          <input
+            name="execute-participant-scope"
+            type="text"
+            value={(meta.participantScope || []).join(', ')}
+            onChange={event => updateMeta({ participantScope: parseCsv(event.target.value) })}
+            style={inputStyle}
+            placeholder="self, opponent, allies"
+          />
+        </Field>
+
+        <Field label="문구 공개 범위">
+          <input
+            name="execute-visibility-scope"
+            type="text"
+            value={(meta.visibilityScope || []).join(', ')}
+            onChange={event => updateMeta({ visibilityScope: parseCsv(event.target.value) })}
+            style={inputStyle}
+            placeholder="all, self, role:judge"
+          />
+        </Field>
+      </Section>
+
+      <Section
+        title="기록 슬롯"
+        description="이 노드 결과를 변수로 남겨, 다음 분기나 다음 턴에서 재사용합니다."
+      >
+        <details
+          style={{
+            borderRadius: 14,
+            border: '1px solid #cbd5e1',
+            background: '#f8fafc',
+            padding: '10px 12px',
+          }}
+        >
+          <summary style={{ cursor: 'pointer', fontSize: 12, color: '#475569', fontWeight: 700 }}>
+            고급 설정: AI 결과 예시
+          </summary>
+          <div style={{ marginTop: 10 }}>
+            <Field label="AI가 돌려주길 기대하는 예시 형태">
+              <textarea
+                name="execute-output-schema"
+                value={meta.outputSchema || ''}
+                onChange={event => updateMeta({ outputSchema: event.target.value })}
+                rows={4}
+                style={{ ...inputStyle, resize: 'vertical' }}
+                placeholder='예: {"branch_hint":"attack","gameResult":"ongoing"}'
+              />
+            </Field>
+          </div>
+        </details>
+
+        <div style={{ display: 'grid', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <label style={labelStyle}>기록 슬롯</label>
           <button
@@ -499,19 +644,25 @@ export default function MakerEditorPanel({
             <code style={{ marginLeft: 4 }}>result.winnerTeam = 1</code>
           </div>
         )}
-      </div>
-
-      <Field label="실행 본문">
-        <div style={{ height: 220, borderRadius: 14, overflow: 'hidden', border: '1px solid #cbd5e1' }}>
-          <EditorMonaco
-            value={turn.body || ''}
-            onChange={value => updateBody(value)}
-            language="markdown"
-            theme="vs-dark"
-            height="100%"
-          />
         </div>
-      </Field>
+      </Section>
+
+      <Section
+        title="실행 본문"
+        description="AI에게 직접 보낼 문장이나 플레이어 입력을 유도할 본문을 작성합니다."
+      >
+        <Field label="실행 본문">
+          <div style={{ height: 220, borderRadius: 14, overflow: 'hidden', border: '1px solid #cbd5e1' }}>
+            <EditorMonaco
+              value={turn.body || ''}
+              onChange={value => updateBody(value)}
+              language="markdown"
+              theme="vs-dark"
+              height="100%"
+            />
+          </div>
+        </Field>
+      </Section>
     </section>
   );
 }
@@ -522,6 +673,40 @@ function formatStateWriteSourceLabel(sourceType) {
   if (sourceType === 'teamOutcome') return '팀 결과';
   if (sourceType === 'participantOutcome') return '참가자 결과';
   return '항상 기록';
+}
+
+function getActorMode(actorScope = '') {
+  const value = String(actorScope || '').trim();
+  if (!value || value === 'self' || value === 'enemies' || value === 'allies' || value === 'all') {
+    return value || 'self';
+  }
+  if (value.startsWith('role:')) return 'role:';
+  return 'custom';
+}
+
+function Section({ title, description, children }) {
+  return (
+    <div
+      style={{
+        borderRadius: 16,
+        border: '1px solid #e2e8f0',
+        background: '#f8fafc',
+        padding: 14,
+        display: 'grid',
+        gap: 12,
+      }}
+    >
+      <div style={{ display: 'grid', gap: 4 }}>
+        <strong style={{ fontSize: 14, color: '#0f172a' }}>{title}</strong>
+        {description ? (
+          <span style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
+            {description}
+          </span>
+        ) : null}
+      </div>
+      {children}
+    </div>
+  );
 }
 
 function Field({ label, children }) {
