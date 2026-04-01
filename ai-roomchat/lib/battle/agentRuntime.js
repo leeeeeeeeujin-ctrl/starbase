@@ -79,6 +79,32 @@ export function buildTurnAgentContexts(session, turn, actorId = session?.actorId
 
 export function buildRuntimePromptFromTurn(session, turn, actorId = session?.actorId) {
   const agentContexts = buildTurnAgentContexts(session, turn, actorId);
+  const participants = Array.isArray(session?.participants?.list)
+    ? session.participants.list
+    : Array.isArray(session?.participants)
+      ? session.participants
+      : [];
+  const teamKeys = Array.from(
+    new Set(
+      participants
+        .map(participant => String(participant?.team || '').trim())
+        .filter(Boolean)
+    )
+  );
+  const participantKeys = participants
+    .map(participant => {
+      const id = String(participant?.id || '').trim();
+      if (!id) return null;
+      const name = String(participant?.name || participant?.heroName || id).trim();
+      return `${id}${name && name !== id ? ` (${name})` : ''}`;
+    })
+    .filter(Boolean);
+  const teamGuide = teamKeys.length
+    ? `teamOutcomes의 키는 반드시 다음 팀값만 사용한다: ${teamKeys.join(', ')}`
+    : 'teamOutcomes는 실제 세션 팀값만 키로 사용한다.';
+  const participantGuide = participantKeys.length
+    ? `participantOutcomes의 키는 반드시 다음 참가자 id만 사용한다: ${participantKeys.join(', ')}`
+    : 'participantOutcomes의 키는 반드시 실제 참가자 id를 사용한다.';
   const resultContract = [
     '응답은 가능하면 JSON 하나로 반환한다.',
     '형식:',
@@ -86,6 +112,10 @@ export function buildRuntimePromptFromTurn(session, turn, actorId = session?.act
     '아직 전투가 끝나지 않았다면 gameResult는 "ongoing"로 둔다.',
     '전투가 끝났다면 반드시 누가 승리했고 누가 패배했는지 teamOutcomes 또는 participantOutcomes 중 하나 이상으로 명확히 적는다.',
     '개인 결과는 보통 survived, eliminated, retired 중 하나를 쓴다.',
+    teamGuide,
+    participantGuide,
+    'teamOutcomes의 키에 "팀 1"처럼 접두사를 붙이지 말고 실제 값 그대로 쓴다.',
+    'participantOutcomes의 키에 표시 이름만 쓰지 말고 반드시 참가자 id를 쓴다.',
     '게임이 유야무야 끝났다면 gameResult를 "abandoned" 또는 "timed_out"으로 두고 승패를 억지로 만들지 않는다.',
     '승패는 현재 게임 규칙, 장면, 누적된 상태값을 기준으로 판단하고, 확정되지 않았다면 ongoing을 유지한다.',
     '중요: 승패와 종료 상태는 reply 문장 속에만 쓰지 말고 반드시 JSON 필드(gameResult, teamOutcomes, participantOutcomes)에 따로 적는다.',
