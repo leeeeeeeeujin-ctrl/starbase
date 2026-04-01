@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { supabase } from '../../../lib/supabase';
 import { withTable } from '../../../lib/supabaseTables';
+import { buildBattleDefinitionFromGraph, normalizeBattleConfig } from '../../../lib/battle/definition';
 import {
   MAX_GAME_ROWS,
   SORT_OPTIONS,
@@ -77,6 +78,69 @@ function normaliseGameRow(raw = {}, sourceTable) {
   }
 
   return base;
+}
+
+function normaliseRoleRows(rows = []) {
+  return (Array.isArray(rows) ? rows : [])
+    .map((role, index) => {
+      const name = String(role?.name || '').trim();
+      if (!name) return null;
+      const slotCount = Number.isFinite(Number(role?.slot_count ?? role?.slotCount ?? role?.limit))
+        ? Math.max(1, Number(role.slot_count ?? role.slotCount ?? role.limit))
+        : 1;
+      return {
+        id: role?.id || `workspace-role-${index + 1}`,
+        game_id: role?.game_id || null,
+        name,
+        slot_count: slotCount,
+        active: role?.active !== false,
+        source: role?.source || 'workspace',
+      };
+    })
+    .filter(Boolean);
+}
+
+async function fetchWorkspaceRoles(gameId, gameName) {
+  const response = await fetch(`/api/rank/game-workspace?gameId=${encodeURIComponent(gameId)}`);
+  const json = await response.json().catch(() => null);
+  if (!response.ok || !json?.ok) {
+    return [];
+  }
+
+  const workspace = json.workspace || null;
+  const graph = workspace?.graph && typeof workspace.graph === 'object' ? workspace.graph : {};
+  const nodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
+  const edges = Array.isArray(graph?.edges) ? graph.edges : [];
+  const rawConfig =
+    workspace?.template?.battleConfig ||
+    workspace?.template?.battle_config ||
+    workspace?.runtime_config?.battleConfig ||
+    workspace?.runtime_config?.battle_config ||
+    {};
+
+  const definition =
+    nodes.length || edges.length
+      ? buildBattleDefinitionFromGraph({
+          setInfo: {
+            id: workspace?.prompt_set_id || '',
+            name: gameName || workspace?.game_name || '이름 없는 게임',
+            description:
+              workspace?.template?.description || workspace?.runtime_config?.description || '',
+          },
+          nodes,
+          edges,
+          config: rawConfig,
+        })
+      : normalizeBattleConfig(rawConfig);
+
+  const roles = Array.isArray(definition?.roles) ? definition.roles : [];
+  return normaliseRoleRows(
+    roles.map(role => ({
+      ...role,
+      slot_count: role.limit,
+      source: 'workspace',
+    }))
+  );
 }
 
 export default function useGameBrowser({ enabled, mode = 'public' } = {}) {
@@ -427,12 +491,21 @@ export default function useGameBrowser({ enabled, mode = 'public' } = {}) {
       const battleRows = battlesResult.data || [];
       const logRows = logsResult.data || [];
 
+      let resolvedRoles = [];
       if (rolesResult.error) {
         console.error(rolesResult.error);
-        setGameRoles([]);
       } else {
-        setGameRoles(rolesResult.data || []);
+        resolvedRoles = normaliseRoleRows(rolesResult.data || []);
       }
+
+      if (!resolvedRoles.length) {
+        try {
+          resolvedRoles = await fetchWorkspaceRoles(selectedGame.id, selectedGame?.name || '');
+        } catch (error) {
+          console.error('workspace roles lookup failed:', error);
+        }
+      }
+      setGameRoles(resolvedRoles);
 
       if (participantsResult.error) {
         console.error(participantsResult.error);
@@ -495,8 +568,13 @@ export default function useGameBrowser({ enabled, mode = 'public' } = {}) {
 
   const roleSlots = useMemo(() => {
     const map = new Map();
+    const activeParticipants = participants.filter(participant => {
+      if (!participant) return false;
+      if (participant.status === 'out') return false;
+      return Boolean(participant.hero_id || participant.heroId);
+    });
     gameRoles.forEach(role => {
-      const occupied = participants.filter(p => (p.role || '') === role.name).length;
+      const occupied = activeParticipants.filter(p => (p.role || '') === role.name).length;
       map.set(role.name, { capacity: role.slot_count ?? 1, occupied });
     });
     return map;
@@ -544,24 +622,41 @@ export default function useGameBrowser({ enabled, mode = 'public' } = {}) {
 
       setJoinLoading(true);
       try {
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+
+        if (sessionError || !session?.access_token) {
+          return { ok: false, error: '로그인 세션을 확인하지 못했습니다.' };
+        }
+
         const payload = {
           game_id: selectedGame.id,
           hero_id: storedHeroId,
-          owner_id: viewerId,
           role: roleName,
           score: 1000,
         };
 
-        const { error } = await withTable(supabase, 'rank_participants', tableName =>
-          supabase.from(tableName).insert(payload, { ignoreDuplicates: true })
-        );
+        const response = await fetch('/api/rank/join-game', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify(payload),
+        });
 
-        if (error) {
-          throw error;
+        const json = await response.json().catch(() => null);
+        if (!response.ok || !json?.ok) {
+          return {
+            ok: false,
+            error: json?.detail || json?.error || '게임에 참여하지 못했습니다.',
+          };
         }
 
         refreshSelectedGame();
-        return { ok: true };
+        return { ok: true, overflow: Boolean(json?.overflow) };
       } catch (error) {
         console.error('게임 참여 실패:', error);
         return { ok: false, error: error.message || '게임에 참여하지 못했습니다.' };

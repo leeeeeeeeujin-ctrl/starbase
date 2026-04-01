@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useMemo } from 'react';
+import { useRouter } from 'next/router';
+import { useEffect } from 'react';
 
 import CharacterPlayPanel from '../CharacterPlayPanel';
 import useHeroParticipations from '../../../hooks/character/useHeroParticipations';
@@ -9,6 +11,7 @@ import useParticipationCarousel from '../../../hooks/character/useParticipationC
 import { formatPlayNumber, formatPlayWinRate } from '../../../utils/characterPlayFormatting';
 
 export default function CharacterPlayScreen({ hero }) {
+  const router = useRouter();
   const participationState = useHeroParticipations({ hero });
   const battleState = useHeroBattles({
     hero,
@@ -27,6 +30,16 @@ export default function CharacterPlayScreen({ hero }) {
     setSelectedGameId,
     refresh,
   } = participationState;
+
+  useEffect(() => {
+    const queryGameId = Array.isArray(router.query?.gameId)
+      ? router.query.gameId[0]
+      : router.query?.gameId;
+    if (!queryGameId) return;
+    if (!participations.some(entry => String(entry.game_id) === String(queryGameId))) return;
+    if (String(selectedGameId || '') === String(queryGameId)) return;
+    setSelectedGameId(queryGameId);
+  }, [participations, router.query?.gameId, selectedGameId, setSelectedGameId]);
 
   const {
     battleDetails,

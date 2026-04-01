@@ -82,10 +82,18 @@ export default function Lobby() {
   const handleEnterGame = useCallback(
     (game, role) => {
       if (!game) return;
-      const target = role ? `${game.id}?role=${encodeURIComponent(role)}` : game.id;
-      router.push(`/rank/${target}`);
+      if (returnHeroId) {
+        const params = new URLSearchParams();
+        params.set('gameId', String(game.id));
+        if (role) {
+          params.set('role', String(role));
+        }
+        router.push(`/character/${returnHeroId}/play?${params.toString()}`);
+        return;
+      }
+      router.push('/roster');
     },
-    [router]
+    [returnHeroId, router]
   );
 
   const handleTouchStart = useCallback(

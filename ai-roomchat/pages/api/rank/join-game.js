@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { sanitizeSupabaseUrl } from '@/lib/supabaseEnv';
+import { buildBattleDefinitionFromGraph } from '@/lib/battle/definition';
 
 const url = sanitizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL);
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -19,6 +20,99 @@ const anonClient = createClient(url, anonKey, {
     },
   },
 });
+
+function buildRoleRowsFromDefinition(gameId, definition) {
+  const roles = Array.isArray(definition?.roles) ? definition.roles : [];
+  return roles
+    .map(role => {
+      const name = String(role?.name || '').trim();
+      if (!name) return null;
+      const slotCount = Number.isFinite(Number(role?.limit)) ? Math.max(1, Number(role.limit)) : 1;
+      return {
+        game_id: gameId,
+        name,
+        slot_count: slotCount,
+        active: true,
+      };
+    })
+    .filter(Boolean);
+}
+
+function buildSlotRowsFromRoleRows(gameId, roleRows) {
+  let slotIndex = 1;
+  const rows = [];
+  roleRows.forEach(role => {
+    const slotCount = Number.isFinite(Number(role.slot_count)) ? Math.max(1, Number(role.slot_count)) : 1;
+    for (let index = 0; index < slotCount; index += 1) {
+      rows.push({
+        game_id: gameId,
+        slot_index: slotIndex,
+        role: role.name,
+        active: true,
+      });
+      slotIndex += 1;
+    }
+  });
+  return rows;
+}
+
+async function hydrateRoleSlotsFromWorkspace(gameId) {
+  const { data: workspaceRow, error: workspaceError } = await supabaseAdmin
+    .from('rank_game_workspaces')
+    .select('game_id, game_name, prompt_set_id, graph, template, runtime_config')
+    .eq('game_id', gameId)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (workspaceError || !workspaceRow) {
+    return { ok: false };
+  }
+
+  const graph = workspaceRow.graph && typeof workspaceRow.graph === 'object' ? workspaceRow.graph : {};
+  const nodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
+  const edges = Array.isArray(graph?.edges) ? graph.edges : [];
+  const rawConfig =
+    workspaceRow?.template?.battleConfig ||
+    workspaceRow?.template?.battle_config ||
+    workspaceRow?.runtime_config?.battleConfig ||
+    workspaceRow?.runtime_config?.battle_config ||
+    {};
+
+  const definition = buildBattleDefinitionFromGraph({
+    setInfo: {
+      id: workspaceRow?.prompt_set_id || '',
+      name: workspaceRow?.game_name || '이름 없는 게임',
+      description:
+        workspaceRow?.template?.description || workspaceRow?.runtime_config?.description || '',
+    },
+    nodes,
+    edges,
+    config: rawConfig,
+  });
+
+  const roleRows = buildRoleRowsFromDefinition(gameId, definition);
+  if (!roleRows.length) {
+    return { ok: false };
+  }
+
+  const slotRows = buildSlotRowsFromRoleRows(gameId, roleRows);
+
+  await supabaseAdmin.from('rank_game_roles').delete().eq('game_id', gameId);
+  await supabaseAdmin.from('rank_game_slots').delete().eq('game_id', gameId).is('hero_id', null);
+
+  const { error: roleInsertError } = await supabaseAdmin.from('rank_game_roles').insert(roleRows);
+  if (roleInsertError) {
+    return { ok: false, error: roleInsertError };
+  }
+
+  const { error: slotInsertError } = await supabaseAdmin.from('rank_game_slots').insert(slotRows);
+  if (slotInsertError) {
+    return { ok: false, error: slotInsertError };
+  }
+
+  return { ok: true };
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -75,6 +169,27 @@ export default async function handler(req, res) {
   }
   if (!gameRow) {
     return res.status(404).json({ error: 'game_not_found' });
+  }
+
+  const { data: existingSlots, error: existingSlotsError } = await supabaseAdmin
+    .from('rank_game_slots')
+    .select('id, role, hero_id, active')
+    .eq('game_id', game_id);
+  if (existingSlotsError) {
+    return res.status(400).json({ error: existingSlotsError.message });
+  }
+
+  const activeSlots = (existingSlots || []).filter(slot => slot?.active !== false);
+  const hasRequestedRole = activeSlots.some(
+    slot => String(slot?.role || '').trim() === trimmedRole
+  );
+  const hasOccupiedSlots = activeSlots.some(slot => Boolean(slot?.hero_id));
+
+  if (!activeSlots.length || (!hasRequestedRole && !hasOccupiedSlots)) {
+    const hydrateResult = await hydrateRoleSlotsFromWorkspace(game_id);
+    if (hydrateResult?.error) {
+      return res.status(400).json({ error: hydrateResult.error.message || 'failed_to_prepare_slots' });
+    }
   }
 
   const releaseQuery = supabaseAdmin
