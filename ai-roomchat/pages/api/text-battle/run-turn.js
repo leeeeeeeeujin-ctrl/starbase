@@ -4,6 +4,7 @@ import {
   buildTurnPromptContext,
   createBattleSession,
   getCurrentTurn,
+  resolveTurnActorId,
   submitBattleTurn,
 } from '@/lib/battle/session';
 import { buildRuntimePromptFromTurn } from '@/lib/battle/agentRuntime';
@@ -126,15 +127,16 @@ export default async function handler(req, res) {
       return res.status(409).json({ ok: false, error: 'turn_not_found' });
     }
 
-    const promptContext = buildTurnPromptContext(session, currentTurn, actorId);
+    const resolvedActorId = resolveTurnActorId(session, currentTurn, actorId);
+    const promptContext = buildTurnPromptContext(session, currentTurn, resolvedActorId);
     const { agentContexts, runtimePrompt } = buildRuntimePromptFromTurn(
       session,
       currentTurn,
-      actorId
+      resolvedActorId
     );
 
     const nextSession = submitBattleTurn(session, {
-      actorId,
+      actorId: resolvedActorId,
       input,
       result: payload?.result || null,
     });

@@ -3,6 +3,7 @@ const {
   createBattleSession,
   getCurrentTurn,
   getTurnScopeParticipants,
+  resolveTurnActorId,
   submitBattleTurn,
 } = require('../../../lib/battle/session');
 
@@ -59,6 +60,9 @@ describe('battle session runtime', () => {
           title: '상대 반응',
           kind: 'ai',
           display: '상대가 반응합니다.',
+          execution: {
+            actorScope: 'enemies',
+          },
           promptTemplate: '상대는 {{values.action_choice}} 에 반응한다.',
           input: {
             mode: 'none',
@@ -73,6 +77,9 @@ describe('battle session runtime', () => {
           title: '지원 행동',
           kind: 'system',
           display: '아군이 개입합니다.',
+          execution: {
+            actorScope: 'role:support',
+          },
           promptTemplate: '지원',
           input: {
             mode: 'none',
@@ -180,6 +187,26 @@ describe('battle session runtime', () => {
     expect(context.actorId).toBe('hero-1');
     expect(context.values.phase).toBe('opening');
     expect(context.scopedParticipants.map(entry => entry.id)).toEqual(['hero-1', 'hero-2']);
+  });
+
+  test('resolves actor by turn execution scope', () => {
+    const session = createBattleSession({
+      definition: createDefinition(),
+      participants,
+      actorId: 'hero-1',
+      sessionId: 'session-1',
+    });
+
+    const next = submitBattleTurn(session, {
+      actorId: 'hero-1',
+      input: 'attack',
+    });
+
+    expect(next.currentTurnId).toBe('turn-counter');
+    expect(next.actorId).toBe('hero-2');
+
+    const supportTurn = next.definition.turnMap.get('turn-support');
+    expect(resolveTurnActorId(next, supportTurn, next.actorId)).toBe('hero-3');
   });
 
   test('marks session completed when there is no next transition', () => {

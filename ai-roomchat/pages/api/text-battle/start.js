@@ -1,6 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 
-import { buildTurnPromptContext, createBattleSession, getCurrentTurn } from '@/lib/battle/session';
+import {
+  buildTurnPromptContext,
+  createBattleSession,
+  getCurrentTurn,
+  resolveTurnActorId,
+} from '@/lib/battle/session';
 import { buildTurnAgentContexts, buildRuntimePromptFromTurn } from '@/lib/battle/agentRuntime';
 import { toTextBattleSessionRow } from '@/lib/runtime/textBattlePersistence';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
@@ -136,11 +141,13 @@ export default async function handler(req, res) {
       actorId: participants[0]?.id || '',
     });
     const currentTurn = getCurrentTurn(session);
-    const promptContext = buildTurnPromptContext(session, currentTurn, session.actorId);
+    const actorId = resolveTurnActorId(session, currentTurn, session.actorId);
+    session.actorId = actorId;
+    const promptContext = buildTurnPromptContext(session, currentTurn, actorId);
     const { agentContexts, runtimePrompt } = buildRuntimePromptFromTurn(
       session,
       currentTurn,
-      session.actorId
+      actorId
     );
 
     const sessionRow = toTextBattleSessionRow({

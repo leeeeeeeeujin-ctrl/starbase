@@ -1,18 +1,41 @@
 "use client";
 
 import { useRouter } from 'next/router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { getCurrentTurn, buildTurnPromptContext } from '@/lib/battle/session';
+import { getCurrentTurn, buildTurnPromptContext, resolveTurnActorId } from '@/lib/battle/session';
 import { buildRuntimePromptFromTurn } from '@/lib/battle/agentRuntime';
 import {
   readStoredTextBattleSession,
   writeStoredTextBattleSession,
 } from '@/lib/battle/clientSessionStorage';
 
+function buildStatusTone(status = '') {
+  if (status === 'completed') {
+    return {
+      bg: 'rgba(20, 83, 45, 0.78)',
+      border: 'rgba(74, 222, 128, 0.35)',
+      text: '#dcfce7',
+    };
+  }
+  return {
+    bg: 'rgba(15, 23, 42, 0.78)',
+    border: 'rgba(59, 130, 246, 0.3)',
+    text: '#dbeafe',
+  };
+}
+
+function shortText(value, limit = 90) {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!text) return '';
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit).trim()}…`;
+}
+
 export default function TextBattleSessionPage() {
   const router = useRouter();
   const { id } = router.query || {};
+  const logRef = useRef(null);
   const [state, setState] = useState({
     loading: true,
     error: null,
@@ -24,6 +47,7 @@ export default function TextBattleSessionPage() {
     running: false,
     status: '',
     error: '',
+    showDebug: false,
   });
 
   useEffect(() => {
@@ -66,49 +90,36 @@ export default function TextBattleSessionPage() {
     };
   }, [id]);
 
-  if (!id) {
-    return (
-      <div style={{ padding: 20 }}>
-        세션 ID가 지정되지 않았습니다.
-      </div>
-    );
-  }
+  useEffect(() => {
+    if (!logRef.current) return;
+    logRef.current.scrollTop = logRef.current.scrollHeight;
+  }, [state.payload?.turns?.length, runtimeState.status]);
 
-  if (state.loading) {
-    return (
-      <div style={{ padding: 20 }}>
-        텍스트 배틀 결과를 불러오는 중입니다…
-      </div>
-    );
-  }
-
-  if (state.error) {
-    return (
-      <div style={{ padding: 20 }}>
-        <h1 style={{ fontSize: 20, marginBottom: 8 }}>텍스트 배틀 결과</h1>
-        <p style={{ color: '#ef4444', fontSize: 14 }}>
-          에러가 발생했습니다: {state.error}
-        </p>
-      </div>
-    );
-  }
-
-  const { session, turns, participants, agentContexts } = state.payload || {};
+  const payload = state.payload || {};
+  const dbSession = payload.session || null;
   const runtimeSession = runtimeState.session || null;
   const currentTurn = runtimeSession ? getCurrentTurn(runtimeSession) : null;
+  const resolvedActorId =
+    runtimeSession && currentTurn
+      ? resolveTurnActorId(runtimeSession, currentTurn, runtimeSession.actorId)
+      : '';
   const livePromptContext =
     runtimeSession && currentTurn
-      ? buildTurnPromptContext(runtimeSession, currentTurn, runtimeSession.actorId)
+      ? buildTurnPromptContext(runtimeSession, currentTurn, resolvedActorId)
       : null;
   const liveRuntime =
     runtimeSession && currentTurn
-      ? buildRuntimePromptFromTurn(runtimeSession, currentTurn, runtimeSession.actorId)
+      ? buildRuntimePromptFromTurn(runtimeSession, currentTurn, resolvedActorId)
       : { agentContexts: [], runtimePrompt: '' };
-  const finalScore = session?.final_score || null;
-  const winner = session?.winner || null;
-  const createdAt = session?.created_at || null;
-  const lastTurn =
-    Array.isArray(turns) && turns.length ? turns[turns.length - 1] : null;
+  const turns = Array.isArray(payload.turns) ? payload.turns : [];
+  const participants = Array.isArray(payload.participants) ? payload.participants : [];
+  const agentContexts = Array.isArray(payload.agentContexts) ? payload.agentContexts : [];
+  const currentActor = useMemo(
+    () => participants.find(participant => participant.id === resolvedActorId) || null,
+    [participants, resolvedActorId]
+  );
+  const statusTone = buildStatusTone(runtimeSession?.status || dbSession?.status || '');
+  const lastTurn = turns.length ? turns[turns.length - 1] : null;
 
   async function refreshPayload() {
     const response = await fetch(`/api/text-battle/session?id=${encodeURIComponent(id)}`);
@@ -128,7 +139,10 @@ export default function TextBattleSessionPage() {
     setRuntimeState(prev => ({
       ...prev,
       running: true,
-      status: '턴을 실행하는 중입니다…',
+      status:
+        (currentTurn?.input?.mode || 'none') === 'none'
+          ? 'AI가 행동을 생성하는 중입니다…'
+          : '행동을 처리하는 중입니다…',
       error: '',
     }));
 
@@ -141,8 +155,9 @@ export default function TextBattleSessionPage() {
         throw new Error('로그인 세션을 확인하지 못했습니다.');
       }
 
-      let resultText = '';
       const inputValue = runtimeState.input.trim();
+      let resultText = '';
+
       if ((currentTurn?.input?.mode || 'none') === 'none') {
         const aiResponse = await fetch('/api/chat/ai-proxy', {
           method: 'POST',
@@ -171,7 +186,7 @@ export default function TextBattleSessionPage() {
         },
         body: JSON.stringify({
           textSessionId: id,
-          actorId: runtimeSession.actorId,
+          actorId: resolvedActorId,
           session: runtimeSession,
           input: inputValue || null,
           result: resultText,
@@ -190,8 +205,8 @@ export default function TextBattleSessionPage() {
         running: false,
         status:
           json.session?.status === 'completed'
-            ? '세션이 종료되었습니다.'
-            : '다음 턴으로 진행했습니다.',
+            ? '전투가 종료되었습니다.'
+            : '다음 장면으로 진행했습니다.',
         error: '',
       }));
       await refreshPayload();
@@ -205,11 +220,29 @@ export default function TextBattleSessionPage() {
     }
   }
 
+  if (!id) {
+    return <div style={{ padding: 20 }}>세션 ID가 지정되지 않았습니다.</div>;
+  }
+
+  if (state.loading) {
+    return <div style={{ padding: 20 }}>텍스트 배틀을 불러오는 중입니다…</div>;
+  }
+
+  if (state.error) {
+    return (
+      <div style={{ padding: 20 }}>
+        <h1 style={{ fontSize: 20, marginBottom: 8 }}>텍스트 배틀</h1>
+        <p style={{ color: '#ef4444', fontSize: 14 }}>에러가 발생했습니다: {state.error}</p>
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
         minHeight: '100vh',
-        background: '#020617',
+        background:
+          'radial-gradient(circle at top, rgba(30,64,175,0.18), transparent 30%), linear-gradient(180deg, #020617 0%, #0f172a 100%)',
         color: '#e2e8f0',
         padding: '16px 14px 40px',
         boxSizing: 'border-box',
@@ -217,7 +250,7 @@ export default function TextBattleSessionPage() {
     >
       <div
         style={{
-          maxWidth: 960,
+          maxWidth: 760,
           margin: '0 auto',
           display: 'grid',
           gap: 16,
@@ -225,469 +258,386 @@ export default function TextBattleSessionPage() {
       >
         <header
           style={{
-            borderRadius: 18,
-            padding: '14px 16px',
-            background:
-              'linear-gradient(135deg, #1e1b4b 0%, #1d4ed8 40%, #0f172a 100%)',
-            boxShadow: '0 18px 40px -22px rgba(15,23,42,0.9)',
-            border: '1px solid rgba(59,130,246,0.6)',
+            borderRadius: 24,
+            padding: '18px 18px 16px',
+            background: 'linear-gradient(135deg, rgba(15,23,42,0.92) 0%, rgba(30,41,59,0.9) 100%)',
+            border: '1px solid rgba(59,130,246,0.35)',
+            boxShadow: '0 24px 60px -40px rgba(15,23,42,0.95)',
+            display: 'grid',
+            gap: 10,
           }}
         >
-          <h1
-            style={{
-              margin: 0,
-              fontSize: 20,
-              fontWeight: 800,
-              color: '#f9fafb',
-            }}
-          >
-            텍스트 배틀 결과
-          </h1>
-          <p
-            style={{
-              margin: '6px 0 0',
-              fontSize: 13,
-              color: '#c7d2fe',
-            }}
-          >
-            세션 ID: <code>{id}</code>
-          </p>
-          {createdAt && (
-            <p
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+            <div style={{ display: 'grid', gap: 4 }}>
+              <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#f8fafc' }}>텍스트 배틀</h1>
+              <p style={{ margin: 0, fontSize: 12, color: '#93c5fd' }}>세션 ID: {id}</p>
+            </div>
+            <div
               style={{
-                margin: '4px 0 0',
+                padding: '6px 10px',
+                borderRadius: 999,
+                background: statusTone.bg,
+                border: `1px solid ${statusTone.border}`,
+                color: statusTone.text,
                 fontSize: 12,
-                color: '#a5b4fc',
+                fontWeight: 700,
               }}
             >
-              생성 시각: {new Date(createdAt).toLocaleString()}
-            </p>
-          )}
+              {runtimeSession?.status || dbSession?.status || 'active'}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12, color: '#cbd5e1' }}>
+              현재 턴: <strong style={{ color: '#f8fafc' }}>{currentTurn?.title || currentTurn?.id || '없음'}</strong>
+            </span>
+            {currentActor ? (
+              <span style={{ fontSize: 12, color: '#cbd5e1' }}>
+                행동 주체: <strong style={{ color: '#fbbf24' }}>{currentActor.name}</strong>
+              </span>
+            ) : null}
+            <span style={{ fontSize: 12, color: '#cbd5e1' }}>
+              턴 수: <strong style={{ color: '#f8fafc' }}>{turns.length}</strong>
+            </span>
+          </div>
         </header>
 
         <section
           style={{
-            borderRadius: 16,
-            padding: '12px 14px',
-            background: '#020617',
-            border: '1px solid rgba(30,64,175,0.7)',
+            borderRadius: 24,
+            padding: 18,
+            background: 'rgba(2,6,23,0.86)',
+            border: '1px solid rgba(59,130,246,0.18)',
             display: 'grid',
-            gap: 8,
+            gap: 14,
           }}
         >
-          <h2
+          <div style={{ display: 'grid', gap: 6 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#7dd3fc', textTransform: 'uppercase' }}>
+              Current Turn
+            </div>
+            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#f8fafc' }}>
+              {currentTurn?.title || '턴이 없습니다'}
+            </h2>
+          </div>
+
+          <div
             style={{
-              margin: 0,
-              fontSize: 15,
-              fontWeight: 700,
-              color: '#e5e7eb',
+              borderRadius: 18,
+              padding: '14px 16px',
+              background: 'rgba(15,23,42,0.88)',
+              border: '1px solid rgba(71,85,105,0.45)',
+              whiteSpace: 'pre-wrap',
+              fontSize: 14,
+              lineHeight: 1.7,
             }}
           >
-            세션 진행
-          </h2>
-          {runtimeSession ? (
-            <div style={{ display: 'grid', gap: 10 }}>
-              <div style={{ fontSize: 13, color: '#cbd5e1', lineHeight: 1.6 }}>
-                현재 상태: <strong style={{ color: '#f8fafc' }}>{runtimeSession.status || 'active'}</strong>
-                {currentTurn ? (
-                  <>
-                    {' '}
-                    · 현재 턴: <strong style={{ color: '#93c5fd' }}>{currentTurn.title || currentTurn.id}</strong>
-                  </>
-                ) : null}
+            {currentTurn?.display || '현재 표시할 장면이 없습니다.'}
+          </div>
+
+          {(currentTurn?.input?.mode || 'none') !== 'none' ? (
+            <div
+              style={{
+                display: 'grid',
+                gap: 10,
+                borderRadius: 18,
+                padding: 14,
+                background: 'rgba(15,23,42,0.7)',
+                border: '1px solid rgba(56,189,248,0.22)',
+              }}
+            >
+              <div style={{ fontSize: 13, color: '#cbd5e1' }}>
+                {currentTurn?.input?.label || '행동 입력'}
               </div>
-              {currentTurn?.display ? (
-                <div
-                  style={{
-                    whiteSpace: 'pre-wrap',
-                    fontSize: 13,
-                    lineHeight: 1.6,
-                    padding: '10px 12px',
-                    borderRadius: 12,
-                    background: '#020617',
-                    border: '1px solid rgba(31,41,55,0.9)',
-                  }}
-                >
-                  {currentTurn.display}
-                </div>
-              ) : null}
-              {(currentTurn?.input?.mode || 'none') !== 'none' ? (
-                <textarea
-                  value={runtimeState.input}
-                  onChange={event =>
-                    setRuntimeState(prev => ({ ...prev, input: event.target.value }))
-                  }
-                  rows={3}
-                  placeholder={currentTurn?.input?.placeholder || '응답을 입력하세요'}
-                  style={{
-                    width: '100%',
-                    borderRadius: 12,
-                    border: '1px solid rgba(75,85,99,0.95)',
-                    background: '#020617',
-                    color: '#e2e8f0',
-                    padding: '10px 12px',
-                    resize: 'vertical',
-                  }}
-                />
-              ) : null}
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                <button
-                  type="button"
-                  onClick={handleRunTurn}
-                  disabled={runtimeState.running || !currentTurn}
-                  style={{
-                    padding: '10px 14px',
-                    borderRadius: 12,
-                    border: 'none',
-                    background: runtimeState.running ? '#334155' : '#38bdf8',
-                    color: runtimeState.running ? '#cbd5e1' : '#020617',
-                    fontWeight: 800,
-                    cursor: runtimeState.running ? 'wait' : 'pointer',
-                  }}
-                >
-                  {runtimeState.running ? '실행 중…' : '다음 턴 실행'}
-                </button>
-                {runtimeState.status ? (
-                  <span style={{ fontSize: 12, color: '#93c5fd', alignSelf: 'center' }}>
-                    {runtimeState.status}
-                  </span>
-                ) : null}
-                {runtimeState.error ? (
-                  <span style={{ fontSize: 12, color: '#fca5a5', alignSelf: 'center' }}>
-                    {runtimeState.error}
-                  </span>
-                ) : null}
-              </div>
-              {liveRuntime.runtimePrompt ? (
-                <details
-                  style={{
-                    borderRadius: 12,
-                    border: '1px solid rgba(31,41,55,0.9)',
-                    padding: '10px 12px',
-                    background: '#020617',
-                  }}
-                >
-                  <summary style={{ cursor: 'pointer', fontSize: 13, color: '#bfdbfe', fontWeight: 700 }}>
-                    현재 턴 실행 프롬프트
-                  </summary>
-                  <pre
-                    style={{
-                      margin: '10px 0 0',
-                      whiteSpace: 'pre-wrap',
-                      wordBreak: 'break-word',
-                      fontSize: 11,
-                      lineHeight: 1.6,
-                      color: '#cbd5e1',
-                    }}
-                  >
-                    {liveRuntime.runtimePrompt}
-                  </pre>
-                </details>
-              ) : null}
+              <textarea
+                value={runtimeState.input}
+                onChange={event => setRuntimeState(prev => ({ ...prev, input: event.target.value }))}
+                rows={3}
+                placeholder={currentTurn?.input?.placeholder || '무엇을 할지 입력하세요'}
+                style={{
+                  width: '100%',
+                  borderRadius: 14,
+                  border: '1px solid rgba(71,85,105,0.9)',
+                  background: '#020617',
+                  color: '#e2e8f0',
+                  padding: '12px 14px',
+                  resize: 'vertical',
+                  boxSizing: 'border-box',
+                }}
+              />
             </div>
           ) : (
-            <p style={{ fontSize: 13, color: '#9ca3af' }}>
-              이 기기에 저장된 실행 세션이 없습니다. 게임 시작 페이지에서 새 세션을 연 뒤 이어서 진행해 주세요.
-            </p>
+            <div
+              style={{
+                borderRadius: 18,
+                padding: '12px 14px',
+                background: 'rgba(15,23,42,0.62)',
+                border: '1px solid rgba(71,85,105,0.35)',
+                fontSize: 13,
+                lineHeight: 1.6,
+                color: '#cbd5e1',
+              }}
+            >
+              이 턴은 자동 실행됩니다. 현재 턴 프롬프트와 캐릭터 AI 문맥을 합쳐 행동을 생성합니다.
+            </div>
           )}
+
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <button
+              type="button"
+              onClick={handleRunTurn}
+              disabled={runtimeState.running || !currentTurn}
+              style={{
+                padding: '12px 16px',
+                borderRadius: 14,
+                border: 'none',
+                background: runtimeState.running ? '#334155' : '#38bdf8',
+                color: runtimeState.running ? '#cbd5e1' : '#020617',
+                fontWeight: 800,
+                cursor: runtimeState.running ? 'wait' : 'pointer',
+                minWidth: 140,
+              }}
+            >
+              {runtimeState.running
+                ? '실행 중…'
+                : (currentTurn?.input?.mode || 'none') === 'none'
+                  ? 'AI 턴 실행'
+                  : '행동 제출'}
+            </button>
+            {runtimeState.status ? (
+              <span style={{ fontSize: 12, color: '#93c5fd' }}>{runtimeState.status}</span>
+            ) : null}
+            {runtimeState.error ? (
+              <span style={{ fontSize: 12, color: '#fca5a5' }}>{runtimeState.error}</span>
+            ) : null}
+          </div>
         </section>
 
         <section
           style={{
-            borderRadius: 16,
-            padding: '12px 14px',
-            background: '#020617',
-            border: '1px solid rgba(55,65,81,0.8)',
             display: 'grid',
-            gap: 8,
+            gap: 12,
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
           }}
         >
-          <h2
-            style={{
-              margin: 0,
-              fontSize: 16,
-              fontWeight: 700,
-              color: '#bfdbfe',
-            }}
-          >
-            승패 / 최종 점수
-          </h2>
-          <div style={{ fontSize: 14 }}>
-            <div style={{ marginBottom: 4 }}>
-              승자:{' '}
-              <strong style={{ color: '#f97316' }}>
-                {winner || '미정'}
-              </strong>
-            </div>
-            {finalScore && (
-              <div
+          {participants.map(participant => {
+            const isActive = participant.id === resolvedActorId;
+            return (
+              <article
+                key={participant.id}
                 style={{
-                  display: 'flex',
-                  gap: 12,
-                  flexWrap: 'wrap',
-                  fontSize: 13,
-                  color: '#e5e7eb',
+                  borderRadius: 18,
+                  padding: 14,
+                  background: isActive ? 'rgba(30,64,175,0.24)' : 'rgba(15,23,42,0.7)',
+                  border: isActive
+                    ? '1px solid rgba(96,165,250,0.55)'
+                    : '1px solid rgba(71,85,105,0.3)',
+                  display: 'grid',
+                  gap: 6,
                 }}
               >
-                <span>
-                  hero 점수:{' '}
-                  <strong style={{ color: '#facc15' }}>
-                    {finalScore.hero ?? 0}
-                  </strong>
-                </span>
-                <span>
-                  rival 점수:{' '}
-                  <strong style={{ color: '#38bdf8' }}>
-                    {finalScore.rival ?? 0}
-                  </strong>
-                </span>
-              </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                  <strong style={{ color: '#f8fafc', fontSize: 14 }}>{participant.name}</strong>
+                  <span style={{ color: '#93c5fd', fontSize: 11 }}>
+                    {participant.role || 'role'}
+                  </span>
+                </div>
+                <div style={{ fontSize: 12, color: '#94a3b8' }}>
+                  {participant.team ? `팀 ${participant.team}` : '팀 미지정'}
+                </div>
+                {participant.description ? (
+                  <div style={{ fontSize: 12, color: '#cbd5e1', lineHeight: 1.6 }}>
+                    {shortText(participant.description, 60)}
+                  </div>
+                ) : null}
+                {participant.abilities?.length ? (
+                  <div style={{ fontSize: 11, color: '#7dd3fc', lineHeight: 1.5 }}>
+                    {participant.abilities.slice(0, 3).join(' / ')}
+                  </div>
+                ) : null}
+              </article>
+            );
+          })}
+        </section>
+
+        <section
+          style={{
+            borderRadius: 20,
+            padding: 16,
+            background: 'rgba(2,6,23,0.84)',
+            border: '1px solid rgba(71,85,105,0.35)',
+            display: 'grid',
+            gap: 12,
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
+            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#f8fafc' }}>턴 로그</h2>
+            {dbSession?.winner ? (
+              <span style={{ fontSize: 12, color: '#fbbf24' }}>승자: {dbSession.winner}</span>
+            ) : null}
+          </div>
+          <div
+            ref={logRef}
+            style={{
+              maxHeight: 320,
+              overflowY: 'auto',
+              display: 'grid',
+              gap: 10,
+            }}
+          >
+            {turns.length ? (
+              turns.map(turn => (
+                <article
+                  key={turn.id || `${turn.session_id}:${turn.turn_index}`}
+                  style={{
+                    borderRadius: 16,
+                    padding: '12px 14px',
+                    background: 'rgba(15,23,42,0.82)',
+                    border: '1px solid rgba(51,65,85,0.7)',
+                    display: 'grid',
+                    gap: 6,
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                    <span style={{ fontSize: 12, color: '#93c5fd' }}>턴 {turn.turn_index}</span>
+                    <span style={{ fontSize: 12, color: '#f8fafc' }}>{turn.result || '-'}</span>
+                  </div>
+                  <div style={{ fontSize: 13, color: '#e2e8f0', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
+                    {turn.ai_response || turn.prompt || '로그가 없습니다.'}
+                  </div>
+                </article>
+              ))
+            ) : (
+              <div style={{ fontSize: 13, color: '#94a3b8' }}>아직 기록된 턴이 없습니다.</div>
             )}
           </div>
         </section>
 
         <section
           style={{
-            borderRadius: 16,
-            padding: '12px 14px',
-            background: '#020617',
-            border: '1px solid rgba(55,65,81,0.8)',
+            borderRadius: 20,
+            padding: 16,
+            background: 'rgba(2,6,23,0.78)',
+            border: '1px solid rgba(71,85,105,0.32)',
             display: 'grid',
-            gap: 8,
+            gap: 10,
           }}
         >
-          <h2
-            style={{
-              margin: 0,
-              fontSize: 15,
-              fontWeight: 700,
-              color: '#e5e7eb',
-            }}
-          >
-            참가 캐릭터
-          </h2>
-          {Array.isArray(participants) && participants.length ? (
-            <div style={{ display: 'grid', gap: 8 }}>
-              {participants.map(participant => (
-                <div
-                  key={participant.id}
-                  style={{
-                    borderRadius: 12,
-                    border: '1px solid rgba(31,41,55,0.9)',
-                    padding: '10px 12px',
-                    display: 'grid',
-                    gap: 4,
-                  }}
-                >
-                  <strong style={{ fontSize: 14, color: '#f8fafc' }}>{participant.name}</strong>
-                  {participant.description ? (
-                    <div style={{ fontSize: 12, color: '#cbd5e1', lineHeight: 1.6 }}>
-                      {participant.description}
-                    </div>
-                  ) : null}
-                  {participant.abilities?.length ? (
-                    <div style={{ fontSize: 12, color: '#93c5fd' }}>
-                      능력: {participant.abilities.join(' / ')}
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p style={{ fontSize: 13, color: '#9ca3af' }}>
-              연결된 캐릭터 정보가 없습니다.
-            </p>
-          )}
-        </section>
-
-        <section
-          style={{
-            borderRadius: 16,
-            padding: '12px 14px',
-            background: '#020617',
-            border: '1px solid rgba(55,65,81,0.8)',
-            display: 'grid',
-            gap: 8,
-          }}
-        >
-          <h2
-            style={{
-              margin: 0,
-              fontSize: 15,
-              fontWeight: 700,
-              color: '#e5e7eb',
-            }}
-          >
-            캐릭터 AI 게임 문맥
-          </h2>
-          {(liveRuntime.agentContexts?.length || agentContexts?.length) ? (
-            <div style={{ display: 'grid', gap: 8 }}>
-              {(liveRuntime.agentContexts?.length ? liveRuntime.agentContexts : agentContexts).map(entry => (
-                <details
-                  key={entry.heroId || entry.id}
-                  style={{
-                    borderRadius: 12,
-                    border: '1px solid rgba(31,41,55,0.9)',
-                    padding: '10px 12px',
-                    background: '#020617',
-                  }}
-                >
-                  <summary style={{ cursor: 'pointer', fontSize: 13, color: '#bfdbfe', fontWeight: 700 }}>
-                    {entry.name}
-                  </summary>
-                  <pre
-                    style={{
-                      margin: '10px 0 0',
-                      whiteSpace: 'pre-wrap',
-                      wordBreak: 'break-word',
-                      fontSize: 11,
-                      lineHeight: 1.6,
-                      color: '#cbd5e1',
-                    }}
-                  >
-                    {entry.context}
-                  </pre>
-                </details>
-              ))}
-            </div>
-          ) : (
-            <p style={{ fontSize: 13, color: '#9ca3af' }}>
-              생성된 게임 문맥이 없습니다.
-            </p>
-          )}
-        </section>
-
-        <section
-          style={{
-            borderRadius: 16,
-            padding: '12px 14px',
-            background: '#020617',
-            border: '1px solid rgba(55,65,81,0.8)',
-            display: 'grid',
-            gap: 8,
-          }}
-        >
-          <h2
-            style={{
-              margin: 0,
-              fontSize: 15,
-              fontWeight: 700,
-              color: '#e5e7eb',
-            }}
-          >
-            마지막 장면 요약
-          </h2>
-          {lastTurn ? (
-            <div
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
+            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#f8fafc' }}>전투 요약</h2>
+            <button
+              type="button"
+              onClick={() => setRuntimeState(prev => ({ ...prev, showDebug: !prev.showDebug }))}
               style={{
-                fontSize: 13,
-                lineHeight: 1.6,
-                whiteSpace: 'pre-wrap',
-                background: '#020617',
-                borderRadius: 12,
-                border: '1px solid rgba(31,41,55,0.9)',
-                padding: '10px 12px',
+                padding: '6px 10px',
+                borderRadius: 999,
+                border: '1px solid rgba(71,85,105,0.7)',
+                background: 'rgba(15,23,42,0.82)',
+                color: '#cbd5e1',
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: 'pointer',
               }}
             >
-              {lastTurn.ai_response || lastTurn.prompt || '요약이 없습니다.'}
-            </div>
-          ) : (
-            <p style={{ fontSize: 13, color: '#9ca3af' }}>
-              기록된 턴이 없습니다.
-            </p>
-          )}
-        </section>
-
-        <section
-          style={{
-            borderRadius: 16,
-            padding: '12px 14px',
-            background: '#020617',
-            border: '1px solid rgba(55,65,81,0.8)',
-            display: 'grid',
-            gap: 8,
-          }}
-        >
-          <h2
-            style={{
-              margin: 0,
-              fontSize: 15,
-              fontWeight: 700,
-              color: '#e5e7eb',
-            }}
-          >
-            턴 로그
-          </h2>
-          {Array.isArray(turns) && turns.length ? (
-            <div
-              style={{
-                maxHeight: 320,
-                overflowY: 'auto',
-                borderRadius: 12,
-                border: '1px solid rgba(31,41,55,0.9)',
-              }}
-            >
-              {turns.map(turn => (
-                <div
-                  key={turn.id || `${turn.session_id}:${turn.turn_index}`}
+              {runtimeState.showDebug ? '세부 숨기기' : '세부 보기'}
+            </button>
+          </div>
+          <div style={{ fontSize: 13, lineHeight: 1.7, color: '#cbd5e1', whiteSpace: 'pre-wrap' }}>
+            {lastTurn?.ai_response || lastTurn?.prompt || '마지막 장면 요약이 아직 없습니다.'}
+          </div>
+          {runtimeState.showDebug ? (
+            <div style={{ display: 'grid', gap: 10 }}>
+              <details
+                open
+                style={{
+                  borderRadius: 14,
+                  border: '1px solid rgba(71,85,105,0.52)',
+                  padding: '10px 12px',
+                  background: 'rgba(15,23,42,0.7)',
+                }}
+              >
+                <summary style={{ cursor: 'pointer', fontSize: 13, color: '#bfdbfe', fontWeight: 700 }}>
+                  현재 턴 실행 프롬프트
+                </summary>
+                <pre
                   style={{
-                    padding: '8px 10px',
-                    borderBottom: '1px solid rgba(31,41,55,0.8)',
-                    fontSize: 12,
+                    margin: '10px 0 0',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    fontSize: 11,
+                    lineHeight: 1.6,
+                    color: '#cbd5e1',
                   }}
                 >
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      marginBottom: 4,
-                    }}
-                  >
-                    <span style={{ color: '#9ca3af' }}>
-                      턴 {turn.turn_index}
-                    </span>
-                    <span style={{ color: '#93c5fd' }}>
-                      결과: {turn.result || '-'}
-                    </span>
-                  </div>
-                  {turn.ai_response && (
-                    <div
-                      style={{
-                        whiteSpace: 'pre-wrap',
-                        color: '#e5e7eb',
-                      }}
-                    >
-                      {turn.ai_response}
-                    </div>
-                  )}
-                  {turn.effects?.apiRouting && (
+                  {liveRuntime.runtimePrompt || '없음'}
+                </pre>
+              </details>
+              <details
+                style={{
+                  borderRadius: 14,
+                  border: '1px solid rgba(71,85,105,0.52)',
+                  padding: '10px 12px',
+                  background: 'rgba(15,23,42,0.7)',
+                }}
+              >
+                <summary style={{ cursor: 'pointer', fontSize: 13, color: '#bfdbfe', fontWeight: 700 }}>
+                  현재 턴 문맥
+                </summary>
+                <pre
+                  style={{
+                    margin: '10px 0 0',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    fontSize: 11,
+                    lineHeight: 1.6,
+                    color: '#cbd5e1',
+                  }}
+                >
+                  {JSON.stringify(livePromptContext || {}, null, 2)}
+                </pre>
+              </details>
+              <details
+                style={{
+                  borderRadius: 14,
+                  border: '1px solid rgba(71,85,105,0.52)',
+                  padding: '10px 12px',
+                  background: 'rgba(15,23,42,0.7)',
+                }}
+              >
+                <summary style={{ cursor: 'pointer', fontSize: 13, color: '#bfdbfe', fontWeight: 700 }}>
+                  캐릭터 AI 게임 문맥
+                </summary>
+                <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
+                  {(liveRuntime.agentContexts?.length ? liveRuntime.agentContexts : agentContexts).map(entry => (
                     <details
+                      key={entry.heroId || entry.id}
                       style={{
-                        marginTop: 4,
-                        fontSize: 11,
-                        color: '#9ca3af',
+                        borderRadius: 12,
+                        border: '1px solid rgba(51,65,85,0.8)',
+                        padding: '8px 10px',
+                        background: 'rgba(2,6,23,0.78)',
                       }}
                     >
-                      <summary>API 라우팅 정보</summary>
+                      <summary style={{ cursor: 'pointer', fontSize: 12, color: '#f8fafc', fontWeight: 700 }}>
+                        {entry.name}
+                      </summary>
                       <pre
                         style={{
-                          marginTop: 2,
+                          margin: '8px 0 0',
                           whiteSpace: 'pre-wrap',
                           wordBreak: 'break-word',
+                          fontSize: 11,
+                          lineHeight: 1.6,
+                          color: '#cbd5e1',
                         }}
                       >
-                        {JSON.stringify(turn.effects?.apiRouting, null, 2)}
+                        {entry.context}
                       </pre>
                     </details>
-                  )}
+                  ))}
                 </div>
-              ))}
+              </details>
             </div>
-          ) : (
-            <p style={{ fontSize: 13, color: '#9ca3af' }}>
-              턴 로그가 없습니다.
-            </p>
-          )}
+          ) : null}
         </section>
       </div>
     </div>

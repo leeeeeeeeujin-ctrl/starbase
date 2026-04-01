@@ -139,6 +139,31 @@ function matchParticipantScope(scope = [], view) {
   });
 }
 
+function selectParticipantsForActorScope(actorScope = 'self', view) {
+  const scope = toId(actorScope) || 'self';
+  if (scope === 'self' || scope === 'actor') {
+    return view.actor ? [view.actor] : [];
+  }
+  if (scope === 'all') {
+    return view.all;
+  }
+  if (scope === 'allies') {
+    return view.allies;
+  }
+  if (scope === 'enemies' || scope === 'opponents') {
+    return view.enemies;
+  }
+  if (scope.startsWith('team:')) {
+    const team = scope.slice(5).trim();
+    return view.all.filter(participant => participant.team === team);
+  }
+  if (scope.startsWith('role:')) {
+    const role = scope.slice(5).trim();
+    return view.all.filter(participant => participant.role === role);
+  }
+  return view.actor ? [view.actor] : [];
+}
+
 function pickNextTransition({ definition, currentTurnId, resultKey, sessionValues }) {
   const candidates = definition.transitions.filter(transition => transition.from === currentTurnId);
   if (!candidates.length) return null;
@@ -208,11 +233,32 @@ export function getTurnScopeParticipants(session, turn = getCurrentTurn(session)
   return matchParticipantScope(turn.participantScope, view);
 }
 
+export function resolveTurnActorId(
+  session,
+  turn = getCurrentTurn(session),
+  fallbackActorId = session?.actorId
+) {
+  if (!session || !turn) return toId(fallbackActorId);
+  const resolvedFallback = toId(fallbackActorId);
+  const fallbackActor = resolvedFallback ? session?.participants?.byId?.get(resolvedFallback) || null : null;
+  const fallbackView = buildScopeView(session, turn, resolvedFallback);
+  if (!fallbackView.actor && fallbackActor) {
+    fallbackView.actor = fallbackActor;
+  }
+  if (!fallbackView.actor && !resolvedFallback && session?.participants?.list?.length) {
+    fallbackView.actor = session.participants.list[0];
+  }
+  const actorScope = turn?.execution?.actorScope || 'self';
+  const candidates = selectParticipantsForActorScope(actorScope, fallbackView);
+  return toId(candidates[0]?.id || fallbackView.actor?.id || resolvedFallback);
+}
+
 export function buildTurnPromptContext(session, turn = getCurrentTurn(session), actorId = session?.actorId) {
-  const scopeParticipants = getTurnScopeParticipants(session, turn, actorId);
+  const resolvedActorId = resolveTurnActorId(session, turn, actorId);
+  const scopeParticipants = getTurnScopeParticipants(session, turn, resolvedActorId);
   return {
     sessionId: session?.id || '',
-    actorId: toId(actorId),
+    actorId: resolvedActorId,
     turn,
     values: cloneJson(session?.values || {}),
     participants: cloneJson(session?.participants?.list || []),
@@ -254,10 +300,13 @@ export function submitBattleTurn(session, payload = {}) {
   });
   const nextTurnId = nextTransition?.to || '';
   const nextTurn = nextTurnId ? session.definition.turnMap.get(nextTurnId) || null : null;
+  const nextActorId = nextTurn
+    ? resolveTurnActorId(session, nextTurn, payload.actorId || session.actorId)
+    : toId(payload.actorId || session.actorId);
 
   return {
     ...session,
-    actorId: toId(payload.actorId || session.actorId),
+    actorId: nextActorId,
     currentTurnId: nextTurn?.id || '',
     turnIndex: nextTurn ? session.turnIndex + 1 : session.turnIndex,
     status: nextTurn ? 'running' : 'completed',
@@ -266,4 +315,3 @@ export function submitBattleTurn(session, payload = {}) {
     updatedAt: Date.now(),
   };
 }
-
