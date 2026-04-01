@@ -2793,18 +2793,23 @@ export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) 
         <div style={panelStyles.lockedNotice}>
           <p style={panelStyles.lockedText}>
             {battleReadiness.ready
-              ? battleReadiness.tooManyPlayers || battleReadiness.overflowRoles.length
-                ? `이번 세션에 ${battleReadiness.heroIds.length}명 선발 · 대기 인원 ${Math.max(0, battleReadiness.joinedCount - battleReadiness.heroIds.length)}명`
-                : `참가 인원 ${battleReadiness.heroIds.length}/${battleReadiness.maxPlayers} · 역할 조건 충족`
+              ? `현재 참가 인원 ${battleReadiness.joinedCount}명 · 시작 조건 충족`
               : battleReadiness.missingRoles.length
                     ? `아직 부족한 역할이 있습니다: ${battleReadiness.missingRoles
                         .map(role => `${role.name} ${role.missing}명`)
                         .join(', ')}`
-                    : `최소 인원 ${battleReadiness.minPlayers}명이 필요합니다. 현재 ${battleReadiness.heroIds.length}명`}
+                    : `최소 인원 ${battleReadiness.minPlayers}명이 필요합니다. 현재 ${battleReadiness.joinedCount}명`}
           </p>
           <p style={panelStyles.lockedGame}>
             모드 {workspaceDefinition.mode === 'multi' ? '멀티' : '싱글'} · 최소 {workspaceDefinition.minPlayers}명 · 최대 {workspaceDefinition.maxPlayers}명
           </p>
+          {battleReadiness.roleSummary.length ? (
+            <p style={panelStyles.lockedGame}>
+              역할 현황: {battleReadiness.roleSummary
+                .map(role => `${role.name} ${role.occupied}/${role.limit}`)
+                .join(' · ')}
+            </p>
+          ) : null}
         </div>
       ) : null}
       <button

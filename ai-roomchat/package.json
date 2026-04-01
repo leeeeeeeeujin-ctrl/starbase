@@ -26,6 +26,7 @@
     "test:fuzz": "jest --config jest.fuzz.config.js",
     "test:samples": "node scripts/run-matching-samples.js",
     "test:matching:anomalies": "node scripts/run-matching-anomaly-scan.js",
+    "test:matching:pools": "node scripts/run-matching-pool-scenarios.js",
     "migrate:db": "node scripts/apply-migrations.js",
     "seed:schema-migrations": "node scripts/seed-schema-migrations.js",
     "migrate:apply-sppp": "node scripts/apply-migrations-with-sppp.js",
