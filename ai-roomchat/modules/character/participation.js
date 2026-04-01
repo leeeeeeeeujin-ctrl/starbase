@@ -287,13 +287,17 @@ export async function fetchHeroParticipationBundle(heroId, { heroSeed } = {}) {
       participantIndex = participants.findIndex(entry => entry.slot_no === slot.slot_no);
     }
     const participant = participantIndex >= 0 ? participants.splice(participantIndex, 1)[0] : null;
+    const resolvedHeroId = participant?.hero_id != null ? participant.hero_id : slot.hero_id;
+    if (!resolvedHeroId) {
+      return;
+    }
     if (!scoreboardMap[slot.game_id]) {
       scoreboardMap[slot.game_id] = [];
     }
     const battleCount =
       participant?.battles != null && Number.isFinite(Number(participant.battles))
         ? Number(participant.battles)
-        : sessions.length;
+        : 0;
     const participantRole =
       participant?.role && typeof participant.role === 'string' ? participant.role.trim() : '';
     const slotRole = slot.role && typeof slot.role === 'string' ? slot.role.trim() : '';
@@ -307,7 +311,7 @@ export async function fetchHeroParticipationBundle(heroId, { heroSeed } = {}) {
     scoreboardMap[slot.game_id].push({
       id: slot.id || participant?.id || `${slot.game_id}-${slot.slot_no ?? 'slot'}`,
       game_id: slot.game_id,
-      hero_id: participant?.hero_id != null ? participant.hero_id : slot.hero_id,
+      hero_id: resolvedHeroId,
       slot_no: participant?.slot_no != null ? participant.slot_no : slot.slot_no,
       role: roleLabel,
       rating: participant?.rating != null ? participant.rating : null,
@@ -329,10 +333,13 @@ export async function fetchHeroParticipationBundle(heroId, { heroSeed } = {}) {
       scoreboardMap[gameId] = [];
     }
     remaining.forEach(participant => {
+      if (!participant?.hero_id) {
+        return;
+      }
       const battleCount =
         participant?.battles != null && Number.isFinite(Number(participant.battles))
           ? Number(participant.battles)
-          : null;
+          : 0;
       const participantRole =
         participant?.role && typeof participant.role === 'string' ? participant.role.trim() : '';
       const fallbackRole = participant.slot_no != null ? `슬롯 ${participant.slot_no}` : '';
@@ -377,7 +384,7 @@ export async function fetchHeroParticipationBundle(heroId, { heroSeed } = {}) {
       participant?.battles != null && Number.isFinite(Number(participant.battles))
         ? Number(participant.battles)
         : null;
-    const sessionCount = participantBattles != null ? participantBattles : sessions.length;
+    const sessionCount = participantBattles != null ? participantBattles : 0;
     const latestSession = sessions[0]?.created_at || null;
     const oldestSession = sessions.length ? sessions[sessions.length - 1]?.created_at : null;
     const primaryMode = buildModeFrequency(sessions);
