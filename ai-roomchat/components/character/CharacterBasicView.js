@@ -105,8 +105,8 @@ const pageStyles = {
 };
 
 const overlayTabs = [
-  { key: 'agent', label: '캐릭터 AI' },
-  { key: 'play', label: '게임 시작' },
+  { key: 'maker', label: '메이커' },
+  { key: 'register', label: '게임 등록' },
   { key: 'api-keys', label: 'AI 키 관리' },
   { key: 'settings', label: '설정' },
 ];
@@ -2654,18 +2654,18 @@ export default function CharacterBasicView({ hero }) {
   );
 
   const overlayBody = (() => {
-    if (activeTabKey === 'agent') {
+    if (activeTabKey === 'maker') {
       return (
         <div style={styles.tabContent}>
           <div style={styles.infoBlock}>
-            <p style={styles.infoTitle}>캐릭터 AI 허브</p>
+            <p style={styles.infoTitle}>배틀 메이커</p>
             <p style={styles.infoText}>
-              이 캐릭터와 대화하면서 성격, 말투, 행동 원칙을 정리하는 전용 공간입니다. 캐릭터 카드를
-              기준으로 왼쪽 페이지에 해당하는 흐름입니다.
+              이 캐릭터가 참가할 텍스트 배틀 구조, 역할, 분기, 실행 노드를 메이커에서 설계할 수
+              있습니다.
             </p>
             <div style={styles.quickLinkRow}>
-              <Link href={`/character/${currentHero?.id}/agent`} style={styles.primaryLinkButton}>
-                캐릭터 AI 열기
+              <Link href="/maker" style={styles.primaryLinkButton}>
+                메이커 열기
               </Link>
             </div>
           </div>
@@ -2673,22 +2673,22 @@ export default function CharacterBasicView({ hero }) {
           <div style={styles.creationGrid}>
             {[
               {
-                id: 'agent-chat',
+                id: 'maker-graph',
                 badge: 'STEP 01',
-                title: '캐릭터와 대화',
-                description: '질문과 응답을 통해 성격과 말투를 정리합니다.',
+                title: '배틀 그래프 설계',
+                description: '실행 노드와 조건 분기로 텍스트 배틀 흐름을 만듭니다.',
               },
               {
-                id: 'agent-summary',
+                id: 'maker-roles',
                 badge: 'STEP 02',
-                title: '요약 저장',
-                description: '긴 대화를 전부 쓰지 않고 요약 프로필만 게임에 넘깁니다.',
+                title: '인원 · 역할 설정',
+                description: '최소/최대 인원과 역할별 슬롯 수를 메이커에서 직접 정합니다.',
               },
               {
-                id: 'agent-rules',
+                id: 'maker-runtime',
                 badge: 'STEP 03',
-                title: '행동 규칙 설정',
-                description: '전투 성향, 금기, 우선 행동 원칙을 붙입니다.',
+                title: '실행 규칙 정리',
+                description: '캐릭터 AI가 어떤 문맥으로 행동할지 게임 실행 규칙을 정리합니다.',
               },
             ].map(item => (
               <div key={item.id} style={styles.creationCard}>
@@ -2702,7 +2702,7 @@ export default function CharacterBasicView({ hero }) {
       );
     }
 
-    if (activeTabKey === 'play') {
+    if (activeTabKey === 'register') {
       const registerBackdropStyle = styles.registerBackdrop(
         backgroundPreview || currentHero?.background_url || ''
       );
@@ -2712,15 +2712,15 @@ export default function CharacterBasicView({ hero }) {
           <div style={registerBackdropStyle}>
             <div style={{ display: 'grid', gap: 16 }}>
               <div style={{ display: 'grid', gap: 6 }}>
-                <p style={styles.registerIntroTitle}>통계 · 게임 시작</p>
+                <p style={styles.registerIntroTitle}>게임 등록</p>
                 <p style={styles.registerIntroText}>
-                  참여한 게임, 기본 통계, 게임 시작 흐름을 분리한 화면입니다. 캐릭터 카드를 기준으로
-                  오른쪽 페이지에 해당합니다.
+                  메이커에서 만든 배틀을 등록하고 공개 상태, 참여 구조, 랭크 관련 정보를 정리하는
+                  화면입니다.
                 </p>
               </div>
               <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                <Link href={`/character/${currentHero?.id}/play`} style={styles.primaryLinkButton}>
-                  통계·게임 화면 열기
+                <Link href="/rank/new" style={styles.primaryLinkButton}>
+                  게임 등록 열기
                 </Link>
               </div>
             </div>
