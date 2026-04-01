@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useRef } from 'react';
+import Link from 'next/link';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
 
 import CharacterRouteHud from './CharacterRouteHud';
@@ -12,6 +13,7 @@ export default function CharacterRouteLayout({
 }) {
   const router = useRouter();
   const startRef = useRef(null);
+  const [showDesktopNav, setShowDesktopNav] = useState(false);
   const heroId = hero?.id ? String(hero.id) : '';
   const backgroundImage = hero?.background_url || hero?.image_url || '';
 
@@ -57,6 +59,18 @@ export default function CharacterRouteLayout({
     [resolveSwipeHref, router]
   );
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const updateDesktopNav = () => {
+      setShowDesktopNav(window.innerWidth >= 980);
+    };
+    updateDesktopNav();
+    window.addEventListener('resize', updateDesktopNav);
+    return () => {
+      window.removeEventListener('resize', updateDesktopNav);
+    };
+  }, []);
+
   return (
     <div
       style={{
@@ -98,6 +112,29 @@ export default function CharacterRouteLayout({
             gap: 14,
           }}
         >
+          {showDesktopNav && heroId ? (
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'center',
+                gap: 10,
+                flexWrap: 'wrap',
+              }}
+            >
+              <Link href={`/lobby?heroId=${heroId}`} style={desktopNavButtonStyle}>
+                로비
+              </Link>
+              <Link href={`/character/${heroId}`} style={desktopNavButtonStyle}>
+                캐릭터
+              </Link>
+              <Link href={`/character/${heroId}/agent`} style={desktopNavButtonStyle}>
+                캐릭터 AI
+              </Link>
+              <Link href={`/character/${heroId}/play`} style={desktopNavButtonStyle}>
+                게임 시작
+              </Link>
+            </div>
+          ) : null}
           {children}
         </main>
       </div>
@@ -106,3 +143,16 @@ export default function CharacterRouteLayout({
     </div>
   );
 }
+
+const desktopNavButtonStyle = {
+  textDecoration: 'none',
+  padding: '10px 16px',
+  borderRadius: 999,
+  background: 'rgba(2, 6, 23, 0.68)',
+  color: '#e2e8f0',
+  fontSize: 13,
+  fontWeight: 800,
+  border: '1px solid rgba(148, 163, 184, 0.28)',
+  boxShadow: '0 18px 44px -30px rgba(15,23,42,0.72)',
+  backdropFilter: 'blur(10px)',
+};

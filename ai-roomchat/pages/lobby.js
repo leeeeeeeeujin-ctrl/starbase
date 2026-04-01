@@ -20,6 +20,7 @@ export default function Lobby() {
   const [storedHeroId, setStoredHeroId] = useState('');
   const [backgroundUrl, setBackgroundUrl] = useState('');
   const [selectedHero, setSelectedHero] = useState(null);
+  const [showDesktopNav, setShowDesktopNav] = useState(false);
   const startRef = useRef(null);
 
   const heroId = useMemo(() => {
@@ -128,6 +129,18 @@ export default function Lobby() {
     [returnHeroId, router]
   );
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const updateDesktopNav = () => {
+      setShowDesktopNav(window.innerWidth >= 980);
+    };
+    updateDesktopNav();
+    window.addEventListener('resize', updateDesktopNav);
+    return () => {
+      window.removeEventListener('resize', updateDesktopNav);
+    };
+  }, []);
+
   return (
     <>
       <div onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
@@ -136,6 +149,27 @@ export default function Lobby() {
           tabs={<TabBar tabs={LOBBY_TABS} activeTab={activeTab} onChange={setActiveTab} />}
           backgroundUrl={backgroundUrl}
         >
+          {showDesktopNav && returnHeroId ? (
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'center',
+                gap: 10,
+                flexWrap: 'wrap',
+                marginBottom: 14,
+              }}
+            >
+              <button type="button" onClick={() => router.push(`/character/${returnHeroId}`)} style={desktopNavButtonStyle}>
+                캐릭터
+              </button>
+              <button type="button" onClick={() => router.push(`/character/${returnHeroId}/agent`)} style={desktopNavButtonStyle}>
+                캐릭터 AI
+              </button>
+              <button type="button" onClick={() => router.push(`/character/${returnHeroId}/play`)} style={desktopNavButtonStyle}>
+                게임 시작
+              </button>
+            </div>
+          ) : null}
           {activeTab === 'games' && (
             <GameSearchPanel
               query={gameBrowser.gameQuery}
@@ -211,4 +245,18 @@ export default function Lobby() {
     </>
   );
 }
+
+const desktopNavButtonStyle = {
+  appearance: 'none',
+  border: '1px solid rgba(148, 163, 184, 0.28)',
+  borderRadius: 999,
+  padding: '10px 16px',
+  background: 'rgba(2, 6, 23, 0.68)',
+  color: '#e2e8f0',
+  fontSize: 13,
+  fontWeight: 800,
+  cursor: 'pointer',
+  boxShadow: '0 18px 44px -30px rgba(15,23,42,0.72)',
+  backdropFilter: 'blur(10px)',
+};
 //

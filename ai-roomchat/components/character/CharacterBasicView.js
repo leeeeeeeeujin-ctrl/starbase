@@ -112,6 +112,25 @@ const overlayTabs = [
 ];
 
 const styles = {
+  desktopNavRow: {
+    width: '100%',
+    display: 'flex',
+    justifyContent: 'center',
+    gap: 10,
+    flexWrap: 'wrap',
+  },
+  desktopNavButton: {
+    textDecoration: 'none',
+    padding: '10px 16px',
+    borderRadius: 999,
+    background: 'rgba(2, 6, 23, 0.68)',
+    color: '#e2e8f0',
+    fontSize: 13,
+    fontWeight: 800,
+    border: '1px solid rgba(148, 163, 184, 0.28)',
+    boxShadow: '0 18px 44px -30px rgba(15,23,42,0.72)',
+    backdropFilter: 'blur(10px)',
+  },
   stage: {
     width: '100%',
     maxWidth: 560,
@@ -1449,6 +1468,7 @@ export default function CharacterBasicView({ hero }) {
   const [activeTab, setActiveTab] = useState(0);
   const [playerCollapsed, setPlayerCollapsed] = useState(true);
   const [dockCollapsed, setDockCollapsed] = useState(true);
+  const [showDesktopNav, setShowDesktopNav] = useState(false);
   const swipeStartRef = useRef(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [overlayHeroStep, setOverlayHeroStep] = useState(0);
@@ -3695,11 +3715,36 @@ export default function CharacterBasicView({ hero }) {
     </div>
   );
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const updateDesktopNav = () => {
+      setShowDesktopNav(window.innerWidth >= 980);
+    };
+    updateDesktopNav();
+    window.addEventListener('resize', updateDesktopNav);
+    return () => {
+      window.removeEventListener('resize', updateDesktopNav);
+    };
+  }, []);
+
   return (
     <>
       {rankingOverlay}
       <div style={backgroundStyle} onTouchStart={handlePageTouchStart} onTouchEnd={handlePageTouchEnd}>
         <div style={styles.stage}>
+          {showDesktopNav && currentHero?.id ? (
+            <div style={styles.desktopNavRow}>
+              <Link href={`/lobby?heroId=${currentHero.id}`} style={styles.desktopNavButton}>
+                로비
+              </Link>
+              <Link href={`/character/${currentHero.id}/agent`} style={styles.desktopNavButton}>
+                캐릭터 AI
+              </Link>
+              <Link href={`/character/${currentHero.id}/play`} style={styles.desktopNavButton}>
+                게임 시작
+              </Link>
+            </div>
+          ) : null}
           {heroSlide}
         </div>
 
