@@ -2568,11 +2568,17 @@ export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) 
       throw new Error('참가할 캐릭터를 찾지 못했습니다.');
     }
     if (!readiness.ready) {
-      const missingMessage = readiness.missingRoles.length
-        ? `부족한 역할: ${readiness.missingRoles
-            .map(role => `${role.name} ${role.missing}명`)
-            .join(', ')}`
-        : `최소 인원 ${readiness.minPlayers}명이 필요합니다.`;
+      const missingMessage = readiness.tooManyPlayers
+        ? `최대 ${readiness.maxPlayers}명까지만 참여할 수 있습니다. 현재 ${readiness.joinedCount}명`
+        : readiness.overflowRoles.length
+          ? `역할 인원이 초과되었습니다: ${readiness.overflowRoles
+              .map(role => `${role.name} ${role.overflow}명 초과`)
+              .join(', ')}`
+          : readiness.missingRoles.length
+            ? `부족한 역할: ${readiness.missingRoles
+                .map(role => `${role.name} ${role.missing}명`)
+                .join(', ')}`
+            : `최소 인원 ${readiness.minPlayers}명이 필요합니다.`;
       throw new Error(`아직 매칭을 시작할 수 없습니다. ${missingMessage}`);
     }
 
@@ -2959,11 +2965,17 @@ export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) 
           <p style={panelStyles.lockedText}>
             {battleReadiness.ready
               ? `참가 인원 ${battleReadiness.heroIds.length}/${battleReadiness.maxPlayers} · 역할 조건 충족`
-              : battleReadiness.missingRoles.length
-                ? `아직 부족한 역할이 있습니다: ${battleReadiness.missingRoles
-                    .map(role => `${role.name} ${role.missing}명`)
-                    .join(', ')}`
-                : `최소 인원 ${battleReadiness.minPlayers}명이 필요합니다. 현재 ${battleReadiness.heroIds.length}명`}
+              : battleReadiness.tooManyPlayers
+                ? `참가 인원이 초과되었습니다. 최대 ${battleReadiness.maxPlayers}명, 현재 ${battleReadiness.joinedCount}명`
+                : battleReadiness.overflowRoles.length
+                  ? `역할 인원이 초과되었습니다: ${battleReadiness.overflowRoles
+                      .map(role => `${role.name} ${role.overflow}명 초과`)
+                      .join(', ')}`
+                  : battleReadiness.missingRoles.length
+                    ? `아직 부족한 역할이 있습니다: ${battleReadiness.missingRoles
+                        .map(role => `${role.name} ${role.missing}명`)
+                        .join(', ')}`
+                    : `최소 인원 ${battleReadiness.minPlayers}명이 필요합니다. 현재 ${battleReadiness.heroIds.length}명`}
           </p>
           <p style={panelStyles.lockedGame}>
             모드 {workspaceDefinition.mode === 'multi' ? '멀티' : '싱글'} · 최소 {workspaceDefinition.minPlayers}명 · 최대 {workspaceDefinition.maxPlayers}명

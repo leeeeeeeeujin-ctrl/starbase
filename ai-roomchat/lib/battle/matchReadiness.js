@@ -54,30 +54,37 @@ export function evaluateBattleReadiness({
       limit,
       occupied,
       missing: Math.max(0, limit - occupied),
+      overflow: Math.max(0, occupied - limit),
     };
   });
 
   const missingRoles = roleSummary.filter(role => role.missing > 0);
+  const overflowRoles = roleSummary.filter(role => role.overflow > 0);
   const activeHeroId = normalizeId(hero?.id);
   const heroIds = joinedParticipants
     .map(participant => participant.heroId)
     .filter((value, index, list) => value && list.indexOf(value) === index)
     .slice(0, maxPlayers);
+  const joinedCount = joinedParticipants.length;
+  const tooManyPlayers = joinedCount > maxPlayers;
 
   const includesActiveHero = !activeHeroId || heroIds.includes(activeHeroId);
   const enoughPlayers = heroIds.length >= minPlayers;
-  const roleReady = !roles.length || missingRoles.length === 0;
+  const roleReady = !roles.length || (missingRoles.length === 0 && overflowRoles.length === 0);
 
   return {
-    ready: enoughPlayers && roleReady && includesActiveHero,
+    ready: enoughPlayers && roleReady && includesActiveHero && !tooManyPlayers,
     maxPlayers,
     minPlayers,
     heroIds,
+    joinedCount,
     joinedParticipants,
     includesActiveHero,
     enoughPlayers,
     roleReady,
+    tooManyPlayers,
     roleSummary,
     missingRoles,
+    overflowRoles,
   };
 }
