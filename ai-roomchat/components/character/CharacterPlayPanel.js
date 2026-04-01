@@ -2548,11 +2548,11 @@ export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) 
     );
 
     if (!definition || !Array.isArray(definition.turns) || !definition.turns.length) {
-      appendDebug('text-battle:skip', {
+      appendDebug('text-battle:error', {
         gameId: selectedGameId,
         reason: 'missing_definition',
       });
-      return false;
+      throw new Error('메이커에서 만든 게임 정의를 찾지 못했습니다. 메이커 저장 상태를 확인해주세요.');
     }
 
     const readiness = evaluateBattleReadiness({
@@ -2714,10 +2714,8 @@ export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) 
       });
 
       try {
-        const started = await startTextBattleSession();
-        if (started) {
-          return;
-        }
+        await startTextBattleSession();
+        return;
       } catch (error) {
         const friendly =
           error?.message || '텍스트 배틀 세션을 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.';
@@ -2732,169 +2730,6 @@ export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) 
           countdown: null,
         }));
         return;
-      }
-
-      clearQueueWatch();
-      setMatchingState({
-        open: true,
-        phase: 'queue',
-        progress: 8,
-        message: '매칭 대기열에 참가했습니다.',
-        error: '',
-        ticketId: null,
-        ticketStatus: null,
-        sessionId: null,
-        readyExpiresAt: null,
-        queueMode: null,
-        matchCode: null,
-        countdown: null,
-        realtimeMode: null,
-        realtimeEnabled: null,
-      });
-
-      matchTaskRef.current = { cancelled: false };
-
-      try {
-        const maxAttempts = QUEUE_POLL_LIMIT;
-        for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-          if (!matchTaskRef.current || matchTaskRef.current.cancelled) {
-            appendDebug('simple-match:cancelled');
-            return;
-          }
-
-          try {
-            const res = await fetch('/api/rank/match/join', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                gameId: selectedGameId,
-                ownerId,
-                heroId: hero.id,
-                role: roleLabel,
-                score,
-              }),
-            });
-
-            const json = await res.json().catch(() => null);
-
-            if (!res.ok || !json || json.ok === false) {
-              const detail =
-                json?.detail ||
-                json?.error ||
-                res.statusText ||
-                '매칭 요청 중 오류가 발생했습니다.';
-              appendDebug('simple-match:error', { attempt, detail });
-              setMatchingState(prev => ({
-                ...prev,
-                phase: 'error',
-                progress: 0,
-                message: '',
-                error: detail,
-              }));
-              return;
-            }
-
-            // 서버에서 넘겨준 실시간/비실시간/난입 토글을 상태에 반영
-            const realtimeMode = json?.realtimeMode || null;
-            const realtimeEnabled =
-              typeof json?.realtimeEnabled === 'boolean' ? json.realtimeEnabled : null;
-            if (realtimeMode || realtimeEnabled !== null) {
-              setMatchingState(prev => ({
-                ...prev,
-                queueMode: realtimeEnabled ? 'realtime' : 'offline',
-                realtimeMode,
-                realtimeEnabled,
-              }));
-            }
-
-            if (json.matched) {
-              let sessionId = json.session?.id || null;
-              const matchCode = json.room?.code || null;
-
-              // 세션/매치 스냅샷을 미리 가져와 StartClient가 바로 인식할 수 있게 한다.
-              try {
-                const snapshot = await fetchAndStoreMatchSnapshot(selectedGameId, {
-                  attempts: 5,
-                  delayMs: 600,
-                });
-                if (!sessionId) {
-                  sessionId =
-                    snapshot?.sessionId ||
-                    snapshot?.session?.id ||
-                    null;
-                }
-                appendDebug('simple-match:snapshot-attached', {
-                  attempt,
-                  sessionId,
-                  matchCode,
-                });
-              } catch (snapshotError) {
-                appendDebug('simple-match:snapshot-error', {
-                  attempt,
-                  error: snapshotError?.message || String(snapshotError),
-                });
-              }
-
-              appendDebug('simple-match:matched', {
-                attempt,
-                sessionId,
-                matchCode,
-              });
-
-              setMatchingState(prev => ({
-                ...prev,
-                phase: 'ready',
-                progress: 100,
-                message: '매칭이 완료되었습니다. 전투 화면으로 이동합니다…',
-                error: '',
-                sessionId,
-                matchCode,
-                countdown: null,
-              }));
-
-              const query = sessionId
-                ? `?session=${encodeURIComponent(sessionId)}`
-                : '';
-              router.push(`/rank/${selectedGameId}/start${query}`);
-              return;
-            }
-
-            // 아직 매칭이 준비되지 않은 경우: 진행률만 조금 올리고 재시도
-            setMatchingState(prev => ({
-              ...prev,
-              phase: 'queue',
-              progress: Math.min(96, Math.max(prev.progress, 8) + 4),
-              message: '상대를 기다리는 중입니다…',
-            }));
-            await new Promise(resolve => setTimeout(resolve, QUEUE_POLL_INTERVAL_MS));
-          } catch (error) {
-            const friendly =
-              error?.message ||
-              '매칭 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.';
-            appendDebug('simple-match:exception', { attempt, error: friendly });
-            setMatchingState(prev => ({
-              ...prev,
-              phase: 'error',
-              progress: 0,
-              message: '',
-              error: friendly,
-              countdown: null,
-            }));
-            return;
-          }
-        }
-
-        appendDebug('simple-match:timeout', { attempts: QUEUE_POLL_LIMIT });
-        setMatchingState(prev => ({
-          ...prev,
-          phase: 'error',
-          progress: 0,
-          message: '',
-          error: '지금은 매칭 상대를 찾지 못했습니다. 잠시 후 다시 시도해 주세요.',
-          countdown: null,
-        }));
-      } finally {
-        matchTaskRef.current = null;
       }
     },
     [
