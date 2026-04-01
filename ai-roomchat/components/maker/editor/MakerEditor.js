@@ -222,6 +222,12 @@ export default function MakerEditor() {
   const unifiedSaveAll = useCallback(async () => {
     if (busy) return;
     const setKey = String(status?.setInfo?.id || status?.router?.query?.id || '').trim();
+    const hasStartNode = Array.isArray(nodes) && nodes.some(node => node?.data?.isStart);
+
+    if (!hasStartNode) {
+      window.alert('시작 노드를 하나 지정한 뒤 저장해주세요.');
+      return;
+    }
 
     await saveAll();
 
@@ -254,7 +260,7 @@ export default function MakerEditor() {
     } catch (error) {
       console.warn('[MakerEditor] rank workspace publish failed', error);
     }
-  }, [battleConfig, busy, saveAll, files, status?.setInfo, status?.router]);
+  }, [battleConfig, busy, saveAll, files, nodes, status?.setInfo, status?.router]);
 
   const updateBattleConfig = useCallback(
     partial => {
