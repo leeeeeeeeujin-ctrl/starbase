@@ -2568,13 +2568,7 @@ export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) 
       throw new Error('참가할 캐릭터를 찾지 못했습니다.');
     }
     if (!readiness.ready) {
-      const missingMessage = readiness.tooManyPlayers
-        ? `최대 ${readiness.maxPlayers}명까지만 참여할 수 있습니다. 현재 ${readiness.joinedCount}명`
-        : readiness.overflowRoles.length
-          ? `역할 인원이 초과되었습니다: ${readiness.overflowRoles
-              .map(role => `${role.name} ${role.overflow}명 초과`)
-              .join(', ')}`
-          : readiness.missingRoles.length
+      const missingMessage = readiness.missingRoles.length
             ? `부족한 역할: ${readiness.missingRoles
                 .map(role => `${role.name} ${role.missing}명`)
                 .join(', ')}`
@@ -2799,14 +2793,10 @@ export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) 
         <div style={panelStyles.lockedNotice}>
           <p style={panelStyles.lockedText}>
             {battleReadiness.ready
-              ? `참가 인원 ${battleReadiness.heroIds.length}/${battleReadiness.maxPlayers} · 역할 조건 충족`
-              : battleReadiness.tooManyPlayers
-                ? `참가 인원이 초과되었습니다. 최대 ${battleReadiness.maxPlayers}명, 현재 ${battleReadiness.joinedCount}명`
-                : battleReadiness.overflowRoles.length
-                  ? `역할 인원이 초과되었습니다: ${battleReadiness.overflowRoles
-                      .map(role => `${role.name} ${role.overflow}명 초과`)
-                      .join(', ')}`
-                  : battleReadiness.missingRoles.length
+              ? battleReadiness.tooManyPlayers || battleReadiness.overflowRoles.length
+                ? `이번 세션에 ${battleReadiness.heroIds.length}명 선발 · 대기 인원 ${Math.max(0, battleReadiness.joinedCount - battleReadiness.heroIds.length)}명`
+                : `참가 인원 ${battleReadiness.heroIds.length}/${battleReadiness.maxPlayers} · 역할 조건 충족`
+              : battleReadiness.missingRoles.length
                     ? `아직 부족한 역할이 있습니다: ${battleReadiness.missingRoles
                         .map(role => `${role.name} ${role.missing}명`)
                         .join(', ')}`

@@ -27,6 +27,55 @@ export function buildJoinedParticipants(scoreboard = [], heroLookup = {}) {
     .sort((left, right) => left.slotNo - right.slotNo);
 }
 
+function selectParticipantsForSession(joinedParticipants = [], roles = [], maxPlayers = 2, activeHeroId = '') {
+  const sorted = Array.isArray(joinedParticipants) ? [...joinedParticipants] : [];
+  const selected = [];
+  const selectedIds = new Set();
+
+  const pushParticipant = participant => {
+    if (!participant?.heroId || selectedIds.has(participant.heroId)) return false;
+    if (selected.length >= maxPlayers) return false;
+    selected.push(participant);
+    selectedIds.add(participant.heroId);
+    return true;
+  };
+
+  if (Array.isArray(roles) && roles.length) {
+    roles.forEach(role => {
+      const name = normalizeId(role?.name || role?.id);
+      const limit = Number.isFinite(Number(role?.limit)) ? Math.max(1, Number(role.limit)) : 1;
+      if (!name || limit <= 0) return;
+      const matching = sorted.filter(participant => participant.role === name);
+      if (!matching.length) return;
+
+      const preferred = [];
+      if (activeHeroId) {
+        const active = matching.find(participant => participant.heroId === activeHeroId);
+        if (active) preferred.push(active);
+      }
+      matching.forEach(participant => {
+        if (!preferred.includes(participant)) preferred.push(participant);
+      });
+
+      preferred.slice(0, limit).forEach(pushParticipant);
+    });
+  }
+
+  if (selected.length < maxPlayers) {
+    const preferred = [];
+    if (activeHeroId) {
+      const active = sorted.find(participant => participant.heroId === activeHeroId);
+      if (active) preferred.push(active);
+    }
+    sorted.forEach(participant => {
+      if (!preferred.includes(participant)) preferred.push(participant);
+    });
+    preferred.forEach(pushParticipant);
+  }
+
+  return selected;
+}
+
 export function evaluateBattleReadiness({
   definition = null,
   scoreboard = [],
@@ -61,7 +110,13 @@ export function evaluateBattleReadiness({
   const missingRoles = roleSummary.filter(role => role.missing > 0);
   const overflowRoles = roleSummary.filter(role => role.overflow > 0);
   const activeHeroId = normalizeId(hero?.id);
-  const heroIds = joinedParticipants
+  const selectedParticipants = selectParticipantsForSession(
+    joinedParticipants,
+    roles,
+    maxPlayers,
+    activeHeroId
+  );
+  const heroIds = selectedParticipants
     .map(participant => participant.heroId)
     .filter((value, index, list) => value && list.indexOf(value) === index)
     .slice(0, maxPlayers);
@@ -70,15 +125,16 @@ export function evaluateBattleReadiness({
 
   const includesActiveHero = !activeHeroId || heroIds.includes(activeHeroId);
   const enoughPlayers = heroIds.length >= minPlayers;
-  const roleReady = !roles.length || (missingRoles.length === 0 && overflowRoles.length === 0);
+  const roleReady = !roles.length || missingRoles.length === 0;
 
   return {
-    ready: enoughPlayers && roleReady && includesActiveHero && !tooManyPlayers,
+    ready: enoughPlayers && roleReady && includesActiveHero,
     maxPlayers,
     minPlayers,
     heroIds,
     joinedCount,
     joinedParticipants,
+    selectedParticipants,
     includesActiveHero,
     enoughPlayers,
     roleReady,

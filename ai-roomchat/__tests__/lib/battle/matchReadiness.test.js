@@ -51,7 +51,7 @@ describe('battle match readiness', () => {
     expect(result.missingRoles.map(entry => entry.name)).toEqual(['support']);
   });
 
-  test('blocks when a role exceeds its configured limit', () => {
+  test('still blocks when overflow exists but a required role is missing', () => {
     const result = evaluateBattleReadiness({
       definition,
       hero: { id: 'h1' },
@@ -66,9 +66,32 @@ describe('battle match readiness', () => {
     expect(result.ready).toBe(false);
     expect(result.roleReady).toBe(false);
     expect(result.overflowRoles.map(entry => entry.name)).toEqual(['defender']);
+    expect(result.heroIds).toEqual(['h1', 'h2', 'h3']);
   });
 
-  test('blocks when joined participants exceed max players', () => {
+  test('keeps a playable subset when there are extra participants beyond the role limits', () => {
+    const result = evaluateBattleReadiness({
+      definition,
+      hero: { id: 'h1' },
+      heroLookup: {
+        ...heroLookup,
+        h4: { id: 'h4', name: '이브' },
+      },
+      scoreboard: [
+        { hero_id: 'h1', role: 'attacker', slot_no: 1 },
+        { hero_id: 'h2', role: 'defender', slot_no: 2 },
+        { hero_id: 'h3', role: 'support', slot_no: 3 },
+        { hero_id: 'h4', role: 'support', slot_no: 4 },
+      ],
+    });
+
+    expect(result.ready).toBe(true);
+    expect(result.roleReady).toBe(true);
+    expect(result.overflowRoles.map(entry => entry.name)).toEqual(['support']);
+    expect(result.heroIds).toEqual(['h1', 'h2', 'h3', 'h4']);
+  });
+
+  test('keeps a playable subset when joined participants exceed max players', () => {
     const result = evaluateBattleReadiness({
       definition,
       hero: { id: 'h1' },
@@ -86,9 +109,10 @@ describe('battle match readiness', () => {
       ],
     });
 
-    expect(result.ready).toBe(false);
+    expect(result.ready).toBe(true);
     expect(result.tooManyPlayers).toBe(true);
     expect(result.joinedCount).toBe(5);
     expect(result.maxPlayers).toBe(4);
+    expect(result.heroIds).toEqual(['h1', 'h2', 'h3', 'h4']);
   });
 });
