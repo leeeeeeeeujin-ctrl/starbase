@@ -472,7 +472,17 @@ export default function TextBattleSessionPage() {
     return entries;
   }, [teams]);
   const activeHero = featuredSpeaker || participants[0] || null;
-  const sceneSource = featuredTurn?.ai_response || currentTurn?.display || '';
+  const featuredStructuredResult = useMemo(
+    () => parseStructuredBattleResult(featuredTurn?.ai_response || ''),
+    [featuredTurn?.ai_response]
+  );
+  const liveParticipantOutcomes =
+    featuredStructuredResult.participantOutcomes &&
+    typeof featuredStructuredResult.participantOutcomes === 'object'
+      ? featuredStructuredResult.participantOutcomes
+      : {};
+  const sceneSource =
+    featuredTurn?.ai_response || featuredStructuredResult.reply || featuredTurn?.display || currentTurn?.display || '';
   const sceneSegments = useMemo(() => toSceneSegments(sceneSource, participants), [participants, sceneSource]);
   const hasRenderableScene = Boolean(
     turns.length &&
@@ -1746,7 +1756,12 @@ export default function TextBattleSessionPage() {
               </div>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 {entry.members.map(participant => {
-                  const eliminated = String(participant.outcome || '').toLowerCase() === 'eliminated';
+                  const liveOutcome = [participant.id, participant.hero_id, participant.name]
+                    .map(value => String(value || '').trim())
+                    .find(key => key && liveParticipantOutcomes[key]);
+                  const eliminated =
+                    String(participant.outcome || (liveOutcome ? liveParticipantOutcomes[liveOutcome] : '') || '').toLowerCase() ===
+                    'eliminated';
                   const isActing = participant.id === resolvedActorId;
                   const teamColor = teamColorMap[entry.team] || '#38bdf8';
                   return (
