@@ -710,6 +710,7 @@ export default function MakerEditorPanel({
         </Section>
       ) : null}
 
+      {!quickOnly ? (
       <Section
         title="기록 슬롯"
         description="이 노드 결과를 변수로 남겨, 다음 분기나 다음 턴에서 재사용합니다."
@@ -915,6 +916,7 @@ export default function MakerEditorPanel({
         )}
         </div>
       </Section>
+      ) : null}
 
       {!variablesOnly ? (
       <Section
