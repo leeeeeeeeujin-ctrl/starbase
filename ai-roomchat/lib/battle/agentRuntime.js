@@ -138,9 +138,30 @@ export function buildRuntimePromptFromTurn(session, turn, actorId = session?.act
     '이름, 설명, 능력 문구에 있는 단어를 근거로 승패를 판정하지 말고 현재 전투 결과만 기준으로 적는다.',
     'segments가 없으면 이 응답은 실패로 간주된다.',
   ].join('\n');
+  const actorGuide = agentContexts.length
+    ? `이번 턴에 실제로 장면에 등장시킬 수 있는 인물: ${agentContexts
+        .map(entry => `${entry.id} (${entry.name})`)
+        .join(', ')}`
+    : '';
+  const contentDirectives = [
+    '[장면 작성 규칙]',
+    '아래 게임 프롬프트를 그대로 되풀이하지 말고, 그것을 바탕으로 실제 장면을 구성한다.',
+    '장면은 JRPG 컷신처럼 진행한다. 배경 소개, 인물 등장, 반응, 대사, 분위기 변화를 순서 있게 배치한다.',
+    '한 턴은 "짧은 장면 하나"이며, 여러 segments로 나뉘어 자연스럽게 이어져야 한다.',
+    '특정 인물의 존재감이나 장소 분위기가 바뀌면 sceneCue를 적극적으로 사용한다.',
+    'dialogue는 실제 발화만 넣고, narration은 화면에 보이는 상황과 감정선을 보조한다.',
+    'effect는 놀람, 침묵, 시선 이동, 자세 변화처럼 짧은 연출에만 사용한다.',
+    '플레이어가 탭하며 읽는 화면을 상상하고, 한 번에 한 호흡씩 보이도록 장면을 끊는다.',
+    '메이커 프롬프트가 짧거나 거칠어도, 실제 출력은 완성된 장면처럼 보이게 보강한다.',
+    '단, 승패/종료 여부는 현재 장면에서 확정된 내용만 JSON 필드에 적는다.',
+    actorGuide,
+  ]
+    .filter(Boolean)
+    .join('\n');
   const gamePromptGuide = [
     '[게임 프롬프트: 아래는 장면 내용 지시다]',
     '아래 내용을 따라 장면을 쓰되, 출력은 위의 JSON 계약과 segments 규칙을 반드시 유지한다.',
+    contentDirectives,
     turn?.promptTemplate || '',
   ]
     .filter(Boolean)
