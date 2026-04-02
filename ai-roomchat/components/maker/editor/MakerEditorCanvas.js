@@ -21,6 +21,8 @@ export default function MakerEditorCanvas({
   onSelectionChange,
   onNodesDelete,
   onEdgesDelete,
+  overlay = null,
+  onViewportChange,
 }) {
   const flowRef = useRef(null);
   const nodeCount = Array.isArray(nodes) ? nodes.length : 0;
@@ -39,6 +41,13 @@ export default function MakerEditorCanvas({
     }, 30);
     return () => window.clearTimeout(id);
   }, [nodeCount]);
+
+  useEffect(() => {
+    if (!flowRef.current || typeof onViewportChange !== 'function') return;
+    try {
+      onViewportChange(flowRef.current.getViewport());
+    } catch {}
+  }, [onViewportChange]);
 
   return (
     <section
@@ -100,10 +109,13 @@ export default function MakerEditorCanvas({
           </div>
         </div>
       ) : (
-        <div style={{ height: 'calc(68svh - 66px)' }}>
+        <div style={{ height: 'calc(68svh - 66px)', position: 'relative' }}>
           <ReactFlow
             onInit={instance => {
               flowRef.current = instance;
+              try {
+                onViewportChange?.(instance.getViewport());
+              } catch {}
             }}
             nodes={nodes}
             edges={edges}
@@ -118,6 +130,7 @@ export default function MakerEditorCanvas({
             onSelectionChange={onSelectionChange}
             onNodesDelete={onNodesDelete}
             onEdgesDelete={onEdgesDelete}
+            onMove={(_, viewport) => onViewportChange?.(viewport)}
             fitView
             minZoom={0.2}
             maxZoom={1.6}
@@ -139,6 +152,7 @@ export default function MakerEditorCanvas({
             />
             <Background color="#1e293b" gap={24} size={1.3} />
           </ReactFlow>
+          {overlay}
         </div>
       )}
     </section>

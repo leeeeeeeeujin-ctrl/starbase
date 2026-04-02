@@ -17,7 +17,8 @@ export default function PromptNode({ data, selected }) {
   const meta = parsed.meta || {};
   const isUserNode = meta.executionType === 'user_response' || slotType === 'user_action';
   const title = meta.title || (isUserNode ? '유저 응답' : 'AI 실행');
-  const cardBorder = selected ? '#2563eb' : '#334155';
+  const highlightColor = data?.variableHighlightColor || null;
+  const cardBorder = highlightColor || (selected ? '#2563eb' : '#334155');
   const displaySummary = summarizeText(meta.display, 72, '설명 없음');
   const bodySummary = summarizeText(parsed.body, 96, '실행 본문 없음');
 
@@ -34,6 +35,8 @@ export default function PromptNode({ data, selected }) {
         boxShadow: selected
           ? '0 22px 44px -28px rgba(37, 99, 235, 0.75)'
           : '0 18px 36px -28px rgba(15, 23, 42, 0.7)',
+        outline: highlightColor ? `2px solid ${highlightColor}` : 'none',
+        outlineOffset: highlightColor ? 2 : 0,
       }}
     >
       <Handle

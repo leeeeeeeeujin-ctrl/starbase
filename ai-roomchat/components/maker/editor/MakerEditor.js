@@ -11,10 +11,10 @@ import MinimalMakerHeader from './MinimalMakerHeader';
 import MakerEditorCanvas from './MakerEditorCanvas';
 import MakerEditorPanel from './MakerEditorPanel';
 import AddPromptFab from './AddPromptFab';
-import DrawerShell from './VariableDrawer/DrawerShell';
 import { normalizeBattleConfig } from '../../../lib/battle/definition.js';
 import { writeStoredBattleConfig } from '../../../lib/battle/battleConfigStorage.js';
 import { supabase } from '../../../lib/supabase';
+import { parseTurnTemplate, serializeTurnTemplate } from '../../../lib/battle/turnTemplate';
 
 function hasBattleConfigValue(config) {
   const normalized = normalizeBattleConfig(config);
@@ -50,7 +50,18 @@ export default function MakerEditor() {
   const [showGameConfig, setShowGameConfig] = useState(false);
   const [roleDraft, setRoleDraft] = useState({ name: '', team: '', limit: '1' });
   const [quickEditOpen, setQuickEditOpen] = useState(false);
-  const [variableDrawerOpen, setVariableDrawerOpen] = useState(false);
+  const [variableModeOpen, setVariableModeOpen] = useState(false);
+  const [variableViewport, setVariableViewport] = useState({ x: 0, y: 0, zoom: 0.82 });
+  const [variableDraft, setVariableDraft] = useState({
+    sourceType: 'always',
+    sourceKey: '',
+    equals: '',
+    key: '',
+    value: '',
+  });
+  const [variableSelection, setVariableSelection] = useState({ active: false, rect: null, start: null });
+  const [variableNodeIds, setVariableNodeIds] = useState([]);
+  const [selectedVariableName, setSelectedVariableName] = useState('');
   const lastTapRef = useRef({ kind: '', id: '', at: 0 });
 
   let templateText = '';
@@ -90,6 +101,7 @@ export default function MakerEditor() {
     []
   );
   const roleSlotPreview = useMemo(() => buildRoleSlotPreview(battleConfig.roles), [battleConfig.roles]);
+  const canvasHostRef = useRef(null);
 
   const {
     nodes,
@@ -102,6 +114,68 @@ export default function MakerEditor() {
     setNodes,
     setEdges,
   } = graph;
+
+  const variableCatalog = useMemo(() => {
+    const names = new Set();
+    (nodes || []).forEach(node => {
+      const parsed = parseTurnTemplate(node?.data?.template || '', node?.data?.slot_type || 'ai');
+      const rules = Array.isArray(parsed?.meta?.stateWrites) ? parsed.meta.stateWrites : [];
+      rules.forEach(rule => {
+        const key = String(rule?.key || '').trim();
+        if (key) names.add(key);
+      });
+    });
+    (edges || []).forEach(edge => {
+      const conditions = Array.isArray(edge?.data?.conditions) ? edge.data.conditions : [];
+      conditions.forEach(condition => {
+        const key = String(condition?.key || '').trim();
+        if (key) names.add(key);
+      });
+    });
+    return Array.from(names);
+  }, [edges, nodes]);
+
+  const colorForVariable = useCallback(name => {
+    const palette = ['#38bdf8', '#f59e0b', '#a78bfa', '#34d399', '#f472b6', '#fb7185'];
+    const value = String(name || '');
+    let hash = 0;
+    for (let index = 0; index < value.length; index += 1) {
+      hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+    }
+    return palette[hash % palette.length];
+  }, []);
+
+  const displayNodes = useMemo(() => {
+    if (!selectedVariableName) return nodes;
+    const highlightColor = colorForVariable(selectedVariableName);
+    return (nodes || []).map(node => {
+      const parsed = parseTurnTemplate(node?.data?.template || '', node?.data?.slot_type || 'ai');
+      const rules = Array.isArray(parsed?.meta?.stateWrites) ? parsed.meta.stateWrites : [];
+      const matches = rules.some(rule => String(rule?.key || '').trim() === selectedVariableName);
+      return matches
+        ? { ...node, data: { ...node.data, variableHighlightColor: highlightColor } }
+        : { ...node, data: { ...node.data, variableHighlightColor: null } };
+    });
+  }, [colorForVariable, nodes, selectedVariableName]);
+
+  const displayEdges = useMemo(() => {
+    if (!selectedVariableName) return edges;
+    const highlightColor = colorForVariable(selectedVariableName);
+    return (edges || []).map(edge => {
+      const conditions = Array.isArray(edge?.data?.conditions) ? edge.data.conditions : [];
+      const matches = conditions.some(condition => String(condition?.key || '').trim() === selectedVariableName);
+      return matches
+        ? {
+            ...edge,
+            style: {
+              ...(edge.style || {}),
+              stroke: highlightColor,
+              strokeWidth: 2.5,
+            },
+          }
+        : { ...edge, style: edge.style || {} };
+    });
+  }, [colorForVariable, edges, selectedVariableName]);
   const syncingRef = useRef(false);
   const hydratedRef = useRef(false);
   const lastWorkspaceTemplateRef = useRef(null);
@@ -370,6 +444,12 @@ export default function MakerEditor() {
     setQuickEditOpen(true);
   }, [setActivePanelTab]);
 
+  const closeVariableMode = useCallback(() => {
+    setVariableModeOpen(false);
+    setVariableSelection({ active: false, rect: null, start: null });
+    setVariableNodeIds([]);
+  }, []);
+
   const registerQuickTap = useCallback(
     (kind, id, selectFn, event, payload) => {
       selectFn?.(event, payload);
@@ -411,6 +491,97 @@ export default function MakerEditor() {
     },
     [onPaneClick]
   );
+
+  const applyVariableDraftToSelection = useCallback(() => {
+    const key = String(variableDraft.key || '').trim();
+    if (!key || !variableNodeIds.length) return;
+    setNodes(current =>
+      current.map(node => {
+        if (!variableNodeIds.includes(node.id)) return node;
+        const parsed = parseTurnTemplate(node?.data?.template || '', node?.data?.slot_type || 'ai');
+        const meta = parsed.meta || {};
+        const currentRules = Array.isArray(meta.stateWrites) ? meta.stateWrites : [];
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            template: serializeTurnTemplate(
+              {
+                ...meta,
+                stateWrites: [
+                  ...currentRules,
+                  {
+                    id: `state-write-${Date.now()}-${node.id}`,
+                    sourceType: variableDraft.sourceType || 'always',
+                    sourceKey: variableDraft.sourceKey || '',
+                    equals: variableDraft.equals || '',
+                    key,
+                    value: variableDraft.value || '',
+                  },
+                ],
+              },
+              parsed.body || '',
+              node?.data?.slot_type || 'ai'
+            ),
+          },
+        };
+      })
+    );
+    setSelectedVariableName(key);
+  }, [setNodes, variableDraft, variableNodeIds]);
+
+  const handleVariablePointerDown = useCallback(event => {
+    if (!variableModeOpen || !canvasHostRef.current) return;
+    if (event.target?.dataset?.variablePanel === 'true') return;
+    const bounds = canvasHostRef.current.getBoundingClientRect();
+    const start = {
+      x: event.clientX - bounds.left,
+      y: event.clientY - bounds.top,
+    };
+    setVariableSelection({
+      active: true,
+      start,
+      rect: { x: start.x, y: start.y, width: 0, height: 0 },
+    });
+  }, [variableModeOpen]);
+
+  const handleVariablePointerMove = useCallback(event => {
+    if (!variableSelection.active || !variableSelection.start || !canvasHostRef.current) return;
+    const bounds = canvasHostRef.current.getBoundingClientRect();
+    const currentPoint = {
+      x: event.clientX - bounds.left,
+      y: event.clientY - bounds.top,
+    };
+    const rect = {
+      x: Math.min(variableSelection.start.x, currentPoint.x),
+      y: Math.min(variableSelection.start.y, currentPoint.y),
+      width: Math.abs(currentPoint.x - variableSelection.start.x),
+      height: Math.abs(currentPoint.y - variableSelection.start.y),
+    };
+    setVariableSelection(current => ({ ...current, rect }));
+  }, [variableSelection.active, variableSelection.start]);
+
+  const handleVariablePointerUp = useCallback(() => {
+    if (!variableSelection.active || !variableSelection.rect) {
+      setVariableSelection({ active: false, rect: null, start: null });
+      return;
+    }
+    const { rect } = variableSelection;
+    const selectedIds = (nodes || [])
+      .filter(node => {
+        const centerX = variableViewport.x + (node.position?.x || 0) * variableViewport.zoom + 150 * variableViewport.zoom;
+        const centerY = variableViewport.y + (node.position?.y || 0) * variableViewport.zoom + 70 * variableViewport.zoom;
+        return (
+          centerX >= rect.x &&
+          centerX <= rect.x + rect.width &&
+          centerY >= rect.y &&
+          centerY <= rect.y + rect.height
+        );
+      })
+      .map(node => node.id);
+    setVariableNodeIds(selectedIds);
+    setVariableSelection({ active: false, rect: null, start: null });
+  }, [nodes, variableSelection, variableViewport]);
 
   useEffect(() => {
     if (!selectedNode && !selectedEdge) {
@@ -479,8 +650,14 @@ export default function MakerEditor() {
           busy={busy}
           onBack={goToSetList}
           onSave={unifiedSaveAll}
-          onToggleVariables={() => setVariableDrawerOpen(current => !current)}
-          variablesActive={variableDrawerOpen}
+          onToggleVariables={() => {
+            if (variableModeOpen) {
+              closeVariableMode();
+            } else {
+              setVariableModeOpen(true);
+            }
+          }}
+          variablesActive={variableModeOpen}
         />
 
         <section style={{ display: 'grid', gap: 12 }}>
@@ -708,8 +885,8 @@ export default function MakerEditor() {
         </section>
 
         <MakerEditorCanvas
-          nodes={nodes}
-          edges={edges}
+          nodes={displayNodes}
+          edges={displayEdges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
@@ -720,6 +897,218 @@ export default function MakerEditor() {
           onSelectionChange={onSelectionChange}
           onNodesDelete={onNodesDelete}
           onEdgesDelete={onEdgesDelete}
+          onViewportChange={setVariableViewport}
+          overlay={
+            variableModeOpen ? (
+              <div
+                ref={canvasHostRef}
+                onPointerDown={handleVariablePointerDown}
+                onPointerMove={handleVariablePointerMove}
+                onPointerUp={handleVariablePointerUp}
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  background: 'rgba(2, 6, 23, 0.28)',
+                  zIndex: 12,
+                  cursor: 'crosshair',
+                }}
+              >
+                <div
+                  style={{
+                    position: 'absolute',
+                    left: 12,
+                    top: 12,
+                    padding: '10px 12px',
+                    borderRadius: 14,
+                    background: 'rgba(2, 6, 23, 0.82)',
+                    color: '#e2e8f0',
+                    display: 'grid',
+                    gap: 4,
+                    maxWidth: 320,
+                  }}
+                >
+                  <strong style={{ fontSize: 13 }}>변수 모드</strong>
+                  <span style={{ fontSize: 12, color: '#cbd5e1', lineHeight: 1.55 }}>
+                    캔버스 위를 드래그해 노드들을 고른 뒤, 오른쪽 패널에서 기록 변수를 한 번에 적용합니다.
+                  </span>
+                  <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                    현재 선택 노드 {variableNodeIds.length}개
+                  </span>
+                </div>
+
+                <div
+                  data-variable-panel="true"
+                  style={{
+                    position: 'absolute',
+                    right: 12,
+                    top: 12,
+                    bottom: 12,
+                    width: 'min(340px, calc(100% - 24px))',
+                    borderRadius: 18,
+                    background: 'rgba(15, 23, 42, 0.92)',
+                    border: '1px solid rgba(148, 163, 184, 0.24)',
+                    boxShadow: '0 24px 50px -28px rgba(2, 6, 23, 0.88)',
+                    padding: 14,
+                    display: 'grid',
+                    gap: 12,
+                    overflowY: 'auto',
+                    cursor: 'default',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+                    <strong style={{ color: '#f8fafc', fontSize: 14 }}>변수 목록</strong>
+                    <button
+                      type="button"
+                      onClick={closeVariableMode}
+                      style={{
+                        border: '1px solid rgba(148,163,184,.35)',
+                        background: 'rgba(255,255,255,.06)',
+                        color: '#e2e8f0',
+                        borderRadius: 999,
+                        padding: '7px 12px',
+                        fontSize: 12,
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      닫기
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {variableCatalog.length ? variableCatalog.map(name => {
+                      const color = colorForVariable(name);
+                      const active = selectedVariableName === name;
+                      return (
+                        <button
+                          key={name}
+                          type="button"
+                          onClick={() => setSelectedVariableName(current => current === name ? '' : name)}
+                          style={{
+                            border: `1px solid ${active ? color : 'rgba(148,163,184,.25)'}`,
+                            background: active ? `${color}22` : 'rgba(255,255,255,.04)',
+                            color: '#f8fafc',
+                            borderRadius: 999,
+                            padding: '6px 10px',
+                            fontSize: 12,
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 999, background: color, marginRight: 6 }} />
+                          {name}
+                        </button>
+                      );
+                    }) : (
+                      <span style={{ fontSize: 12, color: '#94a3b8' }}>아직 기록된 변수가 없습니다.</span>
+                    )}
+                  </div>
+
+                  <div
+                    style={{
+                      borderRadius: 14,
+                      border: '1px solid rgba(148,163,184,.2)',
+                      background: 'rgba(2,6,23,.42)',
+                      padding: 12,
+                      display: 'grid',
+                      gap: 10,
+                    }}
+                  >
+                    <strong style={{ color: '#f8fafc', fontSize: 13 }}>선택 노드에 기록 슬롯 추가</strong>
+
+                    <label style={{ display: 'grid', gap: 6 }}>
+                      <span style={{ fontSize: 12, color: '#cbd5e1', fontWeight: 700 }}>조건</span>
+                      <select
+                        value={variableDraft.sourceType}
+                        onChange={event => setVariableDraft(current => ({ ...current, sourceType: event.target.value }))}
+                        style={overlayInputStyle}
+                      >
+                        <option value="always">항상</option>
+                        <option value="input">입력값</option>
+                        <option value="gameResult">게임 결과</option>
+                        <option value="teamOutcome">팀 결과</option>
+                        <option value="participantOutcome">참가자 결과</option>
+                      </select>
+                    </label>
+
+                    <label style={{ display: 'grid', gap: 6 }}>
+                      <span style={{ fontSize: 12, color: '#cbd5e1', fontWeight: 700 }}>조건 대상</span>
+                      <input
+                        value={variableDraft.sourceKey}
+                        onChange={event => setVariableDraft(current => ({ ...current, sourceKey: event.target.value }))}
+                        placeholder="team 1 / participant-1"
+                        style={overlayInputStyle}
+                      />
+                    </label>
+
+                    <label style={{ display: 'grid', gap: 6 }}>
+                      <span style={{ fontSize: 12, color: '#cbd5e1', fontWeight: 700 }}>만족 값</span>
+                      <input
+                        value={variableDraft.equals}
+                        onChange={event => setVariableDraft(current => ({ ...current, equals: event.target.value }))}
+                        placeholder="win / eliminated"
+                        style={overlayInputStyle}
+                      />
+                    </label>
+
+                    <label style={{ display: 'grid', gap: 6 }}>
+                      <span style={{ fontSize: 12, color: '#cbd5e1', fontWeight: 700 }}>변수 이름</span>
+                      <input
+                        value={variableDraft.key}
+                        onChange={event => setVariableDraft(current => ({ ...current, key: event.target.value }))}
+                        placeholder="state.enemyDown"
+                        style={overlayInputStyle}
+                      />
+                    </label>
+
+                    <label style={{ display: 'grid', gap: 6 }}>
+                      <span style={{ fontSize: 12, color: '#cbd5e1', fontWeight: 700 }}>기록 값</span>
+                      <input
+                        value={variableDraft.value}
+                        onChange={event => setVariableDraft(current => ({ ...current, value: event.target.value }))}
+                        placeholder="true / 1 / red"
+                        style={overlayInputStyle}
+                      />
+                    </label>
+
+                    <button
+                      type="button"
+                      onClick={applyVariableDraftToSelection}
+                      disabled={!variableNodeIds.length || !String(variableDraft.key || '').trim()}
+                      style={{
+                        border: '1px solid #1d4ed8',
+                        background: !variableNodeIds.length || !String(variableDraft.key || '').trim() ? 'rgba(29,78,216,.35)' : '#1d4ed8',
+                        color: '#fff',
+                        borderRadius: 12,
+                        padding: '10px 12px',
+                        fontSize: 12,
+                        fontWeight: 800,
+                        cursor: !variableNodeIds.length || !String(variableDraft.key || '').trim() ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      선택 노드에 적용
+                    </button>
+                  </div>
+                </div>
+
+                {variableSelection.rect ? (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: variableSelection.rect.x,
+                      top: variableSelection.rect.y,
+                      width: variableSelection.rect.width,
+                      height: variableSelection.rect.height,
+                      border: '1px solid #38bdf8',
+                      background: 'rgba(56, 189, 248, 0.14)',
+                      borderRadius: 10,
+                      pointerEvents: 'none',
+                    }}
+                  />
+                ) : null}
+              </div>
+            ) : null
+          }
         />
       </div>
 
@@ -818,41 +1207,6 @@ export default function MakerEditor() {
         </div>
       ) : null}
 
-      {variableDrawerOpen ? (
-        <DrawerShell onClose={() => setVariableDrawerOpen(false)}>
-          <div style={{ display: 'grid', gap: 12 }}>
-            <div
-              style={{
-                borderRadius: 14,
-                border: '1px solid #cbd5e1',
-                background: '#f8fafc',
-                padding: 12,
-                display: 'grid',
-                gap: 4,
-              }}
-            >
-              <strong style={{ fontSize: 14, color: '#0f172a' }}>변수/조건 편집</strong>
-              <span style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
-                노드에서는 기록 슬롯만, 연결선에서는 분기 조건만 편집합니다. 먼저 노드나 연결선을 선택한 뒤 여기서 변수 흐름을 정리하세요.
-              </span>
-            </div>
-
-            <MakerEditorPanel
-              focusMode="variables"
-              rolePresets={battleConfig.roles || []}
-              slotPresets={roleSlotPreview}
-              selectedNode={selectedNode}
-              selectedNodeId={selectedNodeId}
-              selectedEdge={selectedEdge}
-              onMarkAsStart={markAsStart}
-              onDeleteSelected={() => {}}
-              setNodes={setNodes}
-              setEdges={setEdges}
-            />
-          </div>
-        </DrawerShell>
-      ) : null}
-
       {receiptVisible && (
         <div
           role="status"
@@ -886,4 +1240,13 @@ const configInputStyle = {
   padding: '10px 12px',
   fontSize: 13,
   color: '#0f172a',
+};
+
+const overlayInputStyle = {
+  borderRadius: 12,
+  border: '1px solid rgba(148,163,184,.28)',
+  background: 'rgba(255,255,255,.06)',
+  padding: '10px 12px',
+  fontSize: 13,
+  color: '#f8fafc',
 };
