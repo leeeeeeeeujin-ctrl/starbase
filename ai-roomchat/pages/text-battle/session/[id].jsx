@@ -320,7 +320,6 @@ export default function TextBattleSessionPage() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [teamPanelOpen, setTeamPanelOpen] = useState(false);
   const [detailParticipant, setDetailParticipant] = useState(null);
-  const [firstSceneReady, setFirstSceneReady] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [apiSubmitting, setApiSubmitting] = useState(false);
   const [apiSaveStatus, setApiSaveStatus] = useState('');
@@ -377,9 +376,6 @@ export default function TextBattleSessionPage() {
     };
   }, [id]);
 
-  useEffect(() => {
-    setFirstSceneReady(false);
-  }, [id]);
 
   useEffect(() => {
     if (!logRef.current) return;
@@ -476,7 +472,10 @@ export default function TextBattleSessionPage() {
         extractRenderableSceneText(featuredTurn?.ai_response) ||
         extractRenderableSceneText(featuredTurn?.display))
   );
-  const showPrelude = !firstSceneReady && !isEnded;
+  const showPrelude =
+    !showApiKeyRecovery &&
+    !isEnded &&
+    ((runtimeState.running && !hasRenderableScene) || (!turns.length && !hasRenderableScene));
   const activeSegment = sceneSegments[dialogueState.segmentIndex] || null;
   const activeSegmentText = activeSegment?.text || '';
   const typedSegmentText = activeSegmentText.slice(0, dialogueState.visibleChars || 0);
@@ -570,11 +569,6 @@ export default function TextBattleSessionPage() {
     });
   }, [sceneSource]);
 
-  useEffect(() => {
-    if (hasRenderableScene || isEnded) {
-      setFirstSceneReady(true);
-    }
-  }, [hasRenderableScene, isEnded]);
 
   useEffect(() => {
     if (!activeSegmentText) return;
@@ -753,9 +747,6 @@ export default function TextBattleSessionPage() {
         router.replace(`/battle-log/${encodeURIComponent(String(id))}?source=text-battle`);
         return;
       }
-      if (json.turn || Number(json.session?.turnIndex) >= 0) {
-        setFirstSceneReady(true);
-      }
       await refreshPayload({ waitForFirstScene: wasPreludeTurn && !nextTurns.length });
       setRuntimeState(prev => ({
         ...prev,
@@ -866,7 +857,6 @@ export default function TextBattleSessionPage() {
         error: '',
         errorKind: '',
       }));
-      setFirstSceneReady(false);
       autoRunRef.current = false;
       shouldRetryAfterSave = Boolean(currentTurn) && !isEnded;
       if (typeof window !== 'undefined') {
