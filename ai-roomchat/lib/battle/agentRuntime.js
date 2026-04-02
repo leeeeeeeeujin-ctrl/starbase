@@ -105,29 +105,6 @@ export function buildRuntimePromptFromTurn(session, turn, actorId = session?.act
   const participantGuide = participantKeys.length
     ? `participantOutcomes의 키는 반드시 다음 참가자 id만 사용한다: ${participantKeys.join(', ')}`
     : 'participantOutcomes의 키는 반드시 실제 참가자 id를 사용한다.';
-  const resultContract = [
-    '[출력 계약: 이 아래 규칙이 최우선이다]',
-    '턴 프롬프트의 문체 지시보다 이 출력 계약이 우선이다.',
-    '응답은 JSON 하나만 반환한다.',
-    '형식:',
-    '{"reply":"장면 전체 요약","segments":[{"type":"dialogue|narration|effect|sceneCue","speaker":"참가자ID","placement":"left|right|center","text":"표시 문장","title":"장면 카드 제목","subtitle":"장면 카드 부제","delivery":"calm|urgent|hesitant|angry"}],"gameResult":"ongoing|ended|abandoned|timed_out","teamOutcomes":{"팀값":"win|lose"},"participantOutcomes":{"참가자ID":"survived|eliminated|retired"}}',
-    '이 응답은 JRPG/비주얼 노벨식 대화 화면에 바로 쓰인다.',
-    '한 턴은 여러 segments로 이루어진 짧은 장면이다. 한 문장으로 끝내지 말고 장면의 호흡대로 나눈다.',
-    'dialogue는 발화만, narration은 서술만, effect는 짧은 반응/행동, sceneCue는 장소·인물·BGM 전환 카드에 쓴다.',
-    'sceneCue는 title, subtitle을 채우고 text는 비워도 된다.',
-    '중요한 반응, 침묵, 시선 이동, 등장 같은 변화는 effect 또는 짧은 narration으로 분리한다.',
-    'reply는 장면 전체를 요약하는 문장으로 쓰고, 실제 화면용 본문은 반드시 segments에 넣는다.',
-    '아직 전투가 끝나지 않았다면 gameResult는 "ongoing"로 둔다.',
-    '전투가 끝났다면 승패를 teamOutcomes 또는 participantOutcomes에 반드시 적는다.',
-    '개인 결과는 survived, eliminated, retired 중 하나를 쓴다.',
-    teamGuide,
-    participantGuide,
-    'teamOutcomes의 키는 실제 팀값 그대로 쓴다. "팀 1" 같은 접두사를 붙이지 않는다.',
-    'participantOutcomes의 키는 표시 이름이 아니라 반드시 참가자 id를 쓴다.',
-    '승패와 종료 상태는 reply 문장 속에만 쓰지 말고 JSON 필드에도 따로 적는다.',
-    '이름, 설명, 능력 문구가 아니라 현재 장면과 전투 결과만 기준으로 판정한다.',
-    'segments가 없으면 이 응답은 실패로 간주된다.',
-  ].join('\n');
   const actorGuide = agentContexts.length
     ? `이번 턴에 실제로 장면에 등장시킬 수 있는 인물: ${agentContexts
         .map(entry => `${entry.id} (${entry.name})`)
@@ -138,23 +115,19 @@ export function buildRuntimePromptFromTurn(session, turn, actorId = session?.act
     '아래 게임 프롬프트를 되풀이하지 말고 실제 장면으로 풀어 쓴다.',
     '장면은 JRPG 컷신처럼 진행한다. 배경 소개, 인물 등장, 반응, 대사, 분위기 변화를 순서 있게 배치한다.',
     '플레이어가 탭하며 읽는 화면을 상상하고, 한 번에 한 호흡씩 보이도록 장면을 끊는다.',
-    '특정 인물의 존재감이나 장소 분위기, BGM 전환을 강조하고 싶다면 sceneCue를 사용한다.',
     '메이커 프롬프트가 짧거나 거칠어도 실제 출력은 완성된 장면처럼 보이게 보강한다.',
-    '승패/종료 여부는 현재 장면에서 확정된 내용만 JSON 필드에 적는다.',
     actorGuide,
   ]
     .filter(Boolean)
     .join('\n');
   const gamePromptGuide = [
     '[게임 프롬프트: 아래는 장면 내용 지시다]',
-    '아래 내용을 따라 장면을 쓰되, 출력은 위의 JSON 계약과 segments 규칙을 반드시 유지한다.',
     contentDirectives,
     turn?.promptTemplate || '',
   ]
     .filter(Boolean)
     .join('\n');
   const runtimePrompt = [
-    resultContract,
     agentContexts.length ? '아래는 현재 턴에 참여하는 캐릭터 AI들의 실행 문맥이다.' : '',
     ...agentContexts.map(entry => `[${entry.name}]\n${entry.context}`),
     gamePromptGuide,
@@ -165,5 +138,59 @@ export function buildRuntimePromptFromTurn(session, turn, actorId = session?.act
   return {
     agentContexts,
     runtimePrompt,
+    teamGuide,
+    participantGuide,
+    actorGuide,
   };
+}
+
+export function buildSegmentPromptFromScene(sceneText, runtime = {}) {
+  const text = typeof sceneText === 'string' ? sceneText.trim() : '';
+  const participantGuide = runtime?.participantGuide || 'participantOutcomes의 키는 실제 참가자 id를 사용한다.';
+  const actorGuide = runtime?.actorGuide || '';
+  return [
+    '[세그먼트 변환 계약]',
+    '아래 장면 본문을 JRPG/비주얼 노벨식 화면에 맞는 JSON 하나로 재구성한다.',
+    '응답은 JSON 하나만 반환한다.',
+    '형식:',
+    '{"reply":"장면 전체 요약","segments":[{"type":"dialogue|narration|effect|sceneCue","speaker":"참가자ID","placement":"left|right|center","text":"표시 문장","title":"장면 카드 제목","subtitle":"장면 카드 부제","delivery":"calm|urgent|hesitant|angry"}]}',
+    'segments는 반드시 필요하다.',
+    '한 턴은 여러 segments로 이루어진 짧은 장면이다. 한 문장만 넣지 말고 장면 호흡에 따라 자연스럽게 나눈다.',
+    'dialogue는 캐릭터의 발화만, narration은 장면 보조 서술만, effect는 짧은 반응/행동 효과만, sceneCue는 장소·인물·BGM 전환 카드에 사용한다.',
+    'sceneCue는 title, subtitle을 채우고 text는 비워도 된다.',
+    'reply는 장면 전체를 짧게 요약하고, 실제 화면용 본문은 segments에 모두 반영한다.',
+    'speaker가 필요한 경우 참가자 id를 사용한다.',
+    participantGuide,
+    actorGuide,
+    '',
+    '[장면 본문]',
+    text,
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+export function buildOutcomePromptFromScene(sceneText, runtime = {}) {
+  const text = typeof sceneText === 'string' ? sceneText.trim() : '';
+  const teamGuide = runtime?.teamGuide || 'teamOutcomes는 실제 팀값만 키로 사용한다.';
+  const participantGuide = runtime?.participantGuide || 'participantOutcomes의 키는 실제 참가자 id를 사용한다.';
+  return [
+    '[승패 판정 계약]',
+    '아래 장면 본문만 보고 JSON 하나로 현재 턴의 종료 여부와 승패만 판정한다.',
+    '응답은 JSON 하나만 반환한다.',
+    '형식:',
+    '{"gameResult":"ongoing|ended|abandoned|timed_out","teamOutcomes":{"팀값":"win|lose"},"participantOutcomes":{"참가자ID":"survived|eliminated|retired"}}',
+    '아직 승패가 확정되지 않았다면 gameResult는 "ongoing"로 두고 결과 객체를 비워도 된다.',
+    '전투가 끝났다면 teamOutcomes 또는 participantOutcomes 중 하나 이상을 반드시 채운다.',
+    '개인 결과는 survived, eliminated, retired 중 하나를 사용한다.',
+    teamGuide,
+    participantGuide,
+    '팀 키에 접두사(예: "팀 1")를 붙이지 않는다.',
+    'participantOutcomes의 키는 표시 이름이 아니라 반드시 참가자 id를 쓴다.',
+    '',
+    '[장면 본문]',
+    text,
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
