@@ -146,17 +146,27 @@ export default function MakerEditor() {
   }, []);
 
   const displayNodes = useMemo(() => {
-    if (!selectedVariableName) return nodes;
-    const highlightColor = colorForVariable(selectedVariableName);
     return (nodes || []).map(node => {
+      const isVariableSelected = selectedVariableName
+        ? (() => {
+            const parsed = parseTurnTemplate(node?.data?.template || '', node?.data?.slot_type || 'ai');
+            const rules = Array.isArray(parsed?.meta?.stateWrites) ? parsed.meta.stateWrites : [];
+            return rules.some(rule => String(rule?.key || '').trim() === selectedVariableName);
+          })()
+        : false;
+      const isAreaSelected = variableModeOpen && variableNodeIds.includes(node.id);
+      const highlightColor = selectedVariableName ? colorForVariable(selectedVariableName) : null;
       const parsed = parseTurnTemplate(node?.data?.template || '', node?.data?.slot_type || 'ai');
-      const rules = Array.isArray(parsed?.meta?.stateWrites) ? parsed.meta.stateWrites : [];
-      const matches = rules.some(rule => String(rule?.key || '').trim() === selectedVariableName);
-      return matches
-        ? { ...node, data: { ...node.data, variableHighlightColor: highlightColor } }
-        : { ...node, data: { ...node.data, variableHighlightColor: null } };
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          variableHighlightColor: isVariableSelected ? highlightColor : null,
+          variableSelectionColor: isAreaSelected ? '#38bdf8' : null,
+        },
+      };
     });
-  }, [colorForVariable, nodes, selectedVariableName]);
+  }, [colorForVariable, nodes, selectedVariableName, variableModeOpen, variableNodeIds]);
 
   const displayEdges = useMemo(() => {
     if (!selectedVariableName) return edges;
@@ -558,15 +568,6 @@ export default function MakerEditor() {
       width: Math.abs(currentPoint.x - variableSelection.start.x),
       height: Math.abs(currentPoint.y - variableSelection.start.y),
     };
-    setVariableSelection(current => ({ ...current, rect }));
-  }, [variableSelection.active, variableSelection.start]);
-
-  const handleVariablePointerUp = useCallback(() => {
-    if (!variableSelection.active || !variableSelection.rect) {
-      setVariableSelection({ active: false, rect: null, start: null });
-      return;
-    }
-    const { rect } = variableSelection;
     const selectedIds = (nodes || [])
       .filter(node => {
         const centerX = variableViewport.x + (node.position?.x || 0) * variableViewport.zoom + 150 * variableViewport.zoom;
@@ -580,8 +581,17 @@ export default function MakerEditor() {
       })
       .map(node => node.id);
     setVariableNodeIds(selectedIds);
+    setVariableSelection(current => ({ ...current, rect }));
+  }, [nodes, variableSelection.active, variableSelection.start, variableViewport]);
+
+  const handleVariablePointerUp = useCallback(() => {
+    if (!variableSelection.active || !variableSelection.rect) {
+      setVariableSelection({ active: false, rect: null, start: null });
+      return;
+    }
+    const { rect } = variableSelection;
     setVariableSelection({ active: false, rect: null, start: null });
-  }, [nodes, variableSelection, variableViewport]);
+  }, [variableSelection]);
 
   useEffect(() => {
     if (!selectedNode && !selectedEdge) {
