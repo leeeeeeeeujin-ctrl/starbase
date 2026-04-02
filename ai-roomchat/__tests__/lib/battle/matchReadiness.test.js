@@ -180,4 +180,41 @@ describe('battle match readiness', () => {
     expect(highRoll.heroIds[0]).toBe('h1');
     expect(lowRoll.heroIds[1]).not.toBe(highRoll.heroIds[1]);
   });
+
+  test('recent opponents are deprioritized during weighted selection', () => {
+    const definitionWithSingleRoles = {
+      minPlayers: 2,
+      maxPlayers: 2,
+      scoreRange: 400,
+      roles: [
+        { name: 'attacker', limit: 1, team: 'red' },
+        { name: 'defender', limit: 1, team: 'blue' },
+      ],
+    };
+    const scoreboard = [
+      { hero_id: 'h1', role: 'attacker', slot_no: 1, rating: 1000 },
+      { hero_id: 'h2', role: 'defender', slot_no: 2, rating: 1010 },
+      { hero_id: 'h3', role: 'defender', slot_no: 3, rating: 1015 },
+    ];
+
+    const baseline = evaluateBattleReadiness({
+      definition: definitionWithSingleRoles,
+      hero: { id: 'h1' },
+      heroLookup,
+      scoreboard,
+      randomFn: () => 0.4,
+    });
+
+    const penalized = evaluateBattleReadiness({
+      definition: definitionWithSingleRoles,
+      hero: { id: 'h1' },
+      heroLookup,
+      scoreboard,
+      randomFn: () => 0.4,
+      recentOpponentCounts: { h2: 8 },
+    });
+
+    expect(baseline.heroIds[1]).toBe('h2');
+    expect(penalized.heroIds[1]).toBe('h3');
+  });
 });

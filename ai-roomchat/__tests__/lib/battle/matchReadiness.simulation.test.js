@@ -11,7 +11,15 @@ function createSeededRandom(seed) {
   };
 }
 
-function runScenario({ label, definition, hero, heroLookup, scoreboard, runs = 1000 }) {
+function runScenario({
+  label,
+  definition,
+  hero,
+  heroLookup,
+  scoreboard,
+  runs = 1000,
+  recentOpponentCounts = {},
+}) {
   const counts = new Map();
 
   for (let index = 0; index < runs; index += 1) {
@@ -21,6 +29,7 @@ function runScenario({ label, definition, hero, heroLookup, scoreboard, runs = 1
       heroLookup,
       scoreboard,
       randomFn: createSeededRandom(index + 1),
+      recentOpponentCounts,
     });
     const opponentId = result.heroIds.find(heroId => heroId !== hero.id) || 'none';
     counts.set(opponentId, (counts.get(opponentId) || 0) + 1);
@@ -83,13 +92,26 @@ describe('battle match readiness simulation', () => {
           { hero_id: 'h4', role: 'defender', slot_no: 4, rating: 1380 },
         ],
       },
+      {
+        label: 'recent_opponent_penalty',
+        definition,
+        hero: { id: 'h1' },
+        heroLookup,
+        recentOpponentCounts: { h2: 8 },
+        scoreboard: [
+          { hero_id: 'h1', role: 'attacker', slot_no: 1, rating: 1000 },
+          { hero_id: 'h2', role: 'defender', slot_no: 2, rating: 1010 },
+          { hero_id: 'h3', role: 'defender', slot_no: 3, rating: 1015 },
+          { hero_id: 'h4', role: 'defender', slot_no: 4, rating: 1020 },
+        ],
+      },
     ];
 
     const report = scenarios.map(runScenario);
     // eslint-disable-next-line no-console
     console.log(JSON.stringify(report, null, 2));
 
-    expect(report).toHaveLength(2);
+    expect(report).toHaveLength(3);
     report.forEach(entry => {
       const ratioTotal = entry.distribution.reduce((sum, item) => sum + item.ratio, 0);
       expect(ratioTotal).toBeGreaterThan(0.99);

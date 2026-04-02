@@ -1839,6 +1839,36 @@ export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) 
     };
   }, [selectedGame?.name, selectedGameId]);
 
+  const recentOpponentCounts = useMemo(() => {
+    const currentHeroId = String(hero?.id || '');
+    if (!currentHeroId || !Array.isArray(battleDetails) || !battleDetails.length) {
+      return {};
+    }
+
+    return battleDetails.slice(0, 8).reduce((acc, battle) => {
+      const attackers = Array.isArray(battle?.attacker_hero_ids)
+        ? battle.attacker_hero_ids.map(value => String(value))
+        : [];
+      const defenders = Array.isArray(battle?.defender_hero_ids)
+        ? battle.defender_hero_ids.map(value => String(value))
+        : [];
+
+      const opponents = attackers.includes(currentHeroId)
+        ? defenders
+        : defenders.includes(currentHeroId)
+          ? attackers
+          : [];
+
+      opponents
+        .filter(candidate => candidate && candidate !== currentHeroId)
+        .forEach(candidate => {
+          acc[candidate] = (acc[candidate] || 0) + 1;
+        });
+
+      return acc;
+    }, {});
+  }, [battleDetails, hero?.id]);
+
   const battleReadiness = useMemo(
     () =>
       evaluateBattleReadiness({
@@ -1846,8 +1876,9 @@ export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) 
         scoreboard: selectedScoreboard,
         heroLookup,
         hero,
+        recentOpponentCounts,
       }),
-    [workspaceDefinition, selectedScoreboard, heroLookup, hero]
+    [workspaceDefinition, selectedScoreboard, heroLookup, hero, recentOpponentCounts]
   );
 
   useEffect(() => {
@@ -2651,6 +2682,7 @@ export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) 
       scoreboard: selectedScoreboard,
       heroLookup,
       hero,
+      recentOpponentCounts,
     });
     const heroIds = readiness.heroIds.length
       ? readiness.heroIds

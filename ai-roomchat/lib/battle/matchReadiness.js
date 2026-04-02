@@ -35,7 +35,12 @@ export function buildJoinedParticipants(scoreboard = [], heroLookup = {}) {
     .sort((left, right) => left.slotNo - right.slotNo);
 }
 
-function buildWeightedCandidates(candidates = [], referenceRating = null, scoreRange = 0) {
+function buildWeightedCandidates(
+  candidates = [],
+  referenceRating = null,
+  scoreRange = 0,
+  recentOpponentCounts = {}
+) {
   return candidates.map((participant, index) => {
     const rating = toNumberOrNull(participant?.rating);
     let weight = 1;
@@ -51,6 +56,14 @@ function buildWeightedCandidates(candidates = [], referenceRating = null, scoreR
       ? Math.max(0.2, 1 - Math.min(0.35, (Number(participant.slotNo) - 1) * 0.02))
       : 1;
     weight *= slotBias;
+
+    const recentCount = Number(
+      recentOpponentCounts?.[normalizeId(participant?.heroId || participant?.id)] || 0
+    );
+    if (Number.isFinite(recentCount) && recentCount > 0) {
+      const repeatPenalty = Math.max(0.25, 1 / (1 + recentCount * 0.65));
+      weight *= repeatPenalty;
+    }
 
     return {
       participant,
@@ -86,11 +99,17 @@ function pickParticipantsWithWeights({
   randomFn = Math.random,
   referenceRating = null,
   scoreRange = 0,
+  recentOpponentCounts = {},
 } = {}) {
   const remaining = Array.isArray(candidates) ? [...candidates] : [];
   const picked = [];
   while (remaining.length && picked.length < limit) {
-    const weighted = buildWeightedCandidates(remaining, referenceRating, scoreRange);
+    const weighted = buildWeightedCandidates(
+      remaining,
+      referenceRating,
+      scoreRange,
+      recentOpponentCounts
+    );
     const chosen = pickWeightedParticipant(weighted, randomFn);
     if (!chosen) break;
     picked.push(chosen);
@@ -125,6 +144,10 @@ function selectParticipantsForSession(
   const scoreRange = Number.isFinite(Number(options?.scoreRange))
     ? Math.max(0, Number(options.scoreRange))
     : 0;
+  const recentOpponentCounts =
+    options?.recentOpponentCounts && typeof options.recentOpponentCounts === 'object'
+      ? options.recentOpponentCounts
+      : {};
 
   const pushParticipant = participant => {
     if (!participant?.heroId || selectedIds.has(participant.heroId)) return false;
@@ -160,6 +183,7 @@ function selectParticipantsForSession(
         randomFn,
         referenceRating: activeRating,
         scoreRange,
+        recentOpponentCounts,
       }).forEach(pushParticipant);
     });
   }
@@ -179,6 +203,7 @@ function selectParticipantsForSession(
       randomFn,
       referenceRating: activeRating,
       scoreRange,
+      recentOpponentCounts,
     }).forEach(pushParticipant);
   }
 
@@ -195,6 +220,7 @@ export function evaluateBattleReadiness({
   heroLookup = {},
   hero = null,
   randomFn = Math.random,
+  recentOpponentCounts = {},
 } = {}) {
   const joinedParticipants = buildJoinedParticipants(scoreboard, heroLookup);
   const maxPlayers = Math.max(1, Math.min(12, Number(definition?.maxPlayers) || 2));
@@ -232,7 +258,7 @@ export function evaluateBattleReadiness({
     roles,
     maxPlayers,
     activeHeroId,
-    { randomFn, scoreRange }
+    { randomFn, scoreRange, recentOpponentCounts }
   );
   const heroIds = selectedParticipants
     .map(participant => participant.heroId)
