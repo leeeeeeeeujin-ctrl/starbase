@@ -367,6 +367,10 @@ export default function MakerEditor() {
     markAsStart,
     setActivePanelTab,
   } = selection;
+  const resolvedSelectedEdge = useMemo(() => {
+    if (!selectedEdge?.id) return selectedEdge;
+    return (edges || []).find(edge => edge.id === selectedEdge.id) || selectedEdge;
+  }, [edges, selectedEdge]);
 
   const { busy, saveAll, deletePrompt, addPromptNode, goToSetList } = persistence;
 
@@ -547,6 +551,52 @@ export default function MakerEditor() {
     );
     setSelectedVariableName(key);
   }, [setNodes, variableDraft, variableNodeIds]);
+
+  const deleteSelectedVariable = useCallback(() => {
+    const variableName = String(selectedVariableName || '').trim();
+    if (!variableName) return;
+
+    setNodes(current =>
+      current.map(node => {
+        const parsed = parseTurnTemplate(node?.data?.template || '', node?.data?.slot_type || 'ai');
+        const meta = parsed.meta || {};
+        const stateWrites = Array.isArray(meta.stateWrites) ? meta.stateWrites : [];
+        const nextStateWrites = stateWrites.filter(rule => String(rule?.key || '').trim() !== variableName);
+        if (nextStateWrites.length === stateWrites.length) return node;
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            template: serializeTurnTemplate(
+              {
+                ...meta,
+                stateWrites: nextStateWrites,
+              },
+              parsed.body || '',
+              node?.data?.slot_type || 'ai'
+            ),
+          },
+        };
+      })
+    );
+
+    setEdges(current =>
+      current.map(edge => {
+        const conditions = Array.isArray(edge?.data?.conditions) ? edge.data.conditions : [];
+        const nextConditions = conditions.filter(condition => String(condition?.key || '').trim() !== variableName);
+        if (nextConditions.length === conditions.length) return edge;
+        return {
+          ...edge,
+          data: {
+            ...(edge.data || {}),
+            conditions: nextConditions,
+          },
+        };
+      })
+    );
+
+    setSelectedVariableName('');
+  }, [selectedVariableName, setEdges, setNodes]);
 
   const handleVariablePointerDown = useCallback(event => {
     if (!variableModeOpen || !canvasHostRef.current) return;
@@ -1022,6 +1072,26 @@ export default function MakerEditor() {
                     )}
                   </div>
 
+                  {selectedVariableName ? (
+                    <button
+                      type="button"
+                      onClick={deleteSelectedVariable}
+                      style={{
+                        justifySelf: 'start',
+                        border: '1px solid rgba(248,113,113,.45)',
+                        background: 'rgba(127,29,29,.35)',
+                        color: '#fecaca',
+                        borderRadius: 999,
+                        padding: '8px 12px',
+                        fontSize: 12,
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      선택 변수 삭제
+                    </button>
+                  ) : null}
+
                   <div
                     style={{
                       borderRadius: 14,
@@ -1231,7 +1301,7 @@ export default function MakerEditor() {
               slotPresets={roleSlotPreview}
               selectedNode={selectedNode}
               selectedNodeId={selectedNodeId}
-              selectedEdge={selectedEdge}
+              selectedEdge={resolvedSelectedEdge}
               onMarkAsStart={markAsStart}
               onDeleteSelected={() => {
                 if (selectedNodeId) {
