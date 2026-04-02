@@ -12,7 +12,6 @@ import {
 import { parseStructuredBattleResult } from '@/lib/battle/resultSchema';
 import {
   buildRuntimePromptFromTurn,
-  buildSegmentPromptFromScene,
 } from '@/lib/battle/agentRuntime';
 import {
   readStoredTextBattleSession,
@@ -109,19 +108,6 @@ function isFormatLikeErrorMessage(value) {
     message.includes('segment') ||
     message.includes('structured')
   );
-}
-
-async function requestAiProxyJson(accessToken, prompt) {
-  const response = await fetch('/api/chat/ai-proxy', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${accessToken}`,
-    },
-    body: JSON.stringify({ prompt }),
-  });
-  const json = await response.json().catch(() => null);
-  return { response, json };
 }
 
 function hydrateRuntimeSession(value) {
@@ -705,74 +691,13 @@ export default function TextBattleSessionPage() {
       }
 
       const inputValue = runtimeState.input.trim();
-      let resultText = '';
+      let resultText = null;
 
       if ((currentTurn?.input?.mode || 'none') === 'none') {
         setRuntimeState(prev => ({
           ...prev,
-          status: 'AI가 장면 초안을 생성하는 중입니다…',
+          status: 'AI가 행동을 생성하는 중입니다…',
         }));
-
-        const sceneCall = await requestAiProxyJson(authSession.access_token, liveRuntime.runtimePrompt);
-        const sceneText =
-          sceneCall.response.ok && sceneCall.json?.ok && typeof sceneCall.json?.text === 'string'
-            ? sceneCall.json.text.trim()
-            : '';
-        if (!sceneText) {
-          throw new Error(
-            `장면 생성 실패: ${sceneCall.json?.detail || sceneCall.json?.error || 'ai_proxy_failed'}`
-          );
-        }
-        const sceneStructured = parseStructuredBattleResult(sceneText);
-
-        setRuntimeState(prev => ({
-          ...prev,
-          status: '장면을 화면용 세그먼트로 정리하는 중입니다…',
-        }));
-
-        const segmentPrompt = buildSegmentPromptFromScene(sceneText, liveRuntime);
-        let segmentResultText = '';
-        let segmentError = null;
-        for (let attempt = 0; attempt < 3; attempt += 1) {
-          const segmentCall = await requestAiProxyJson(authSession.access_token, segmentPrompt);
-          if (
-            segmentCall.response.ok &&
-            segmentCall.json?.ok &&
-            typeof segmentCall.json?.text === 'string' &&
-            segmentCall.json.text.trim()
-          ) {
-            segmentResultText = segmentCall.json.text.trim();
-            segmentError = null;
-            break;
-          }
-          segmentError = segmentCall.json?.detail || segmentCall.json?.error || 'segment_proxy_failed';
-          if (!isFormatLikeErrorMessage(segmentError)) {
-            break;
-          }
-        }
-        if (!segmentResultText) {
-          throw new Error(`세그먼트 변환 실패: ${segmentError || 'segment_proxy_failed'}`);
-        }
-
-        const segmented = parseStructuredBattleResult(segmentResultText);
-        resultText = JSON.stringify(
-          {
-            reply: sceneStructured.reply || segmented.reply || sceneText,
-            segments: Array.isArray(segmented.segments) ? segmented.segments : [],
-            gameResult: sceneStructured.gameResult || 'ongoing',
-            teamOutcomes:
-              sceneStructured.teamOutcomes && typeof sceneStructured.teamOutcomes === 'object'
-                ? sceneStructured.teamOutcomes
-                : {},
-            participantOutcomes:
-              sceneStructured.participantOutcomes &&
-              typeof sceneStructured.participantOutcomes === 'object'
-                ? sceneStructured.participantOutcomes
-                : {},
-          },
-          null,
-          2
-        );
       } else {
         resultText = inputValue;
       }

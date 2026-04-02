@@ -7,7 +7,7 @@ import {
   resolveTurnActorId,
   submitBattleTurn,
 } from '@/lib/battle/session';
-import { buildRuntimePromptFromTurn } from '@/lib/battle/agentRuntime';
+import { buildRuntimePromptFromTurn, buildSegmentPromptFromScene } from '@/lib/battle/agentRuntime';
 import { toTextBattleTurnRow } from '@/lib/runtime/textBattlePersistence';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { sanitizeSupabaseUrl } from '@/lib/supabaseEnv';
@@ -129,6 +129,23 @@ function buildSegmentRetryPrompt(prompt) {
   ].join('\n');
 }
 
+async function requestAiProxyText(appOrigin, authHeader, prompt) {
+  const response = await fetch(`${appOrigin}/api/chat/ai-proxy`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: authHeader,
+    },
+    body: JSON.stringify({ prompt }),
+  });
+  const json = await response.json().catch(() => null);
+  return {
+    response,
+    json,
+    text: typeof json?.text === 'string' ? json.text.trim() : '',
+  };
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -208,7 +225,7 @@ export default async function handler(req, res) {
 
     const resolvedActorId = resolveTurnActorId(session, currentTurn, actorId);
     const promptContext = buildTurnPromptContext(session, currentTurn, resolvedActorId);
-    const { agentContexts, runtimePrompt } = buildRuntimePromptFromTurn(
+    const { agentContexts, runtimePrompt, teamGuide, participantGuide, actorGuide } = buildRuntimePromptFromTurn(
       session,
       currentTurn,
       resolvedActorId
@@ -216,27 +233,80 @@ export default async function handler(req, res) {
 
     let submittedResult = payload?.result || null;
     let parsedResult = parseStructuredBattleResult(submittedResult);
+    const appOrigin = resolveAppOrigin(req);
 
-    if (needsStructuredRetry(parsedResult) && (currentTurn?.input?.mode || 'none') === 'none') {
-      let retryCount = 0;
-      const appOrigin = resolveAppOrigin(req);
-      while (retryCount < SEGMENT_RETRY_LIMIT) {
-        if (!appOrigin) break;
-        const retryResponse = await fetch(`${appOrigin}/api/chat/ai-proxy`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: authHeader,
-          },
-          body: JSON.stringify({
-            prompt: buildSegmentRetryPrompt(runtimePrompt),
-          }),
+    if ((currentTurn?.input?.mode || 'none') === 'none' && !submittedResult) {
+      if (!appOrigin) {
+        return res.status(500).json({ ok: false, error: 'missing_app_origin' });
+      }
+
+      const sceneCall = await requestAiProxyText(appOrigin, authHeader, runtimePrompt);
+      if (!sceneCall.response.ok || !sceneCall.json?.ok || !sceneCall.text) {
+        return res.status(sceneCall.response.status || 502).json({
+          ok: false,
+          error: sceneCall.json?.error || 'scene_ai_proxy_failed',
+          detail: sceneCall.json?.detail || sceneCall.json?.error || 'scene_ai_proxy_failed',
         });
-        const retryJson = await retryResponse.json().catch(() => null);
-        if (!retryResponse.ok || !retryJson?.ok) {
+      }
+
+      const sceneStructured = parseStructuredBattleResult(sceneCall.text);
+      const segmentPrompt = buildSegmentPromptFromScene(sceneCall.text, {
+        teamGuide,
+        participantGuide,
+        actorGuide,
+      });
+
+      let segmentResultText = '';
+      let segmentError = null;
+      for (let retryCount = 0; retryCount < SEGMENT_RETRY_LIMIT + 1; retryCount += 1) {
+        const segmentCall = await requestAiProxyText(appOrigin, authHeader, segmentPrompt);
+        if (segmentCall.response.ok && segmentCall.json?.ok && segmentCall.text) {
+          segmentResultText = segmentCall.text;
+          segmentError = null;
           break;
         }
-        submittedResult = typeof retryJson?.text === 'string' ? retryJson.text : submittedResult;
+        segmentError = segmentCall.json?.detail || segmentCall.json?.error || 'segment_ai_proxy_failed';
+        if (!isFormatLikeErrorMessage(segmentError)) {
+          break;
+        }
+      }
+
+      if (!segmentResultText) {
+        return res.status(502).json({
+          ok: false,
+          error: 'segment_ai_proxy_failed',
+          detail: `세그먼트 변환 실패: ${segmentError || 'segment_ai_proxy_failed'}`,
+        });
+      }
+
+      const segmented = parseStructuredBattleResult(segmentResultText);
+      submittedResult = JSON.stringify(
+        {
+          reply: sceneStructured.reply || segmented.reply || sceneCall.text,
+          segments: Array.isArray(segmented.segments) ? segmented.segments : [],
+          gameResult: sceneStructured.gameResult || 'ongoing',
+          teamOutcomes:
+            sceneStructured.teamOutcomes && typeof sceneStructured.teamOutcomes === 'object'
+              ? sceneStructured.teamOutcomes
+              : {},
+          participantOutcomes:
+            sceneStructured.participantOutcomes && typeof sceneStructured.participantOutcomes === 'object'
+              ? sceneStructured.participantOutcomes
+              : {},
+        },
+        null,
+        2
+      );
+      parsedResult = parseStructuredBattleResult(submittedResult);
+    } else if (needsStructuredRetry(parsedResult) && (currentTurn?.input?.mode || 'none') === 'none') {
+      let retryCount = 0;
+      while (retryCount < SEGMENT_RETRY_LIMIT) {
+        if (!appOrigin) break;
+        const retryCall = await requestAiProxyText(appOrigin, authHeader, buildSegmentRetryPrompt(runtimePrompt));
+        if (!retryCall.response.ok || !retryCall.json?.ok) {
+          break;
+        }
+        submittedResult = retryCall.text || submittedResult;
         parsedResult = parseStructuredBattleResult(submittedResult);
         if (!needsStructuredRetry(parsedResult)) {
           break;
