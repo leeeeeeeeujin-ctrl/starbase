@@ -149,6 +149,12 @@ export function useMakerEditorPersistence({ graph, setInfo, onAfterSave }) {
                 .map(value => Number(value))
                 .filter(value => Number.isFinite(value))
             : [],
+          actor_scope_type: node.data.actor_scope_type || 'all',
+          actor_scope_value: node.data.actor_scope_value || null,
+          body_visibility_type: node.data.body_visibility_type || 'all',
+          body_visibility_value: node.data.body_visibility_value || null,
+          guide_visibility_type: node.data.guide_visibility_type || 'all',
+          guide_visibility_value: node.data.guide_visibility_value || null,
           canvas_x: typeof node.position?.x === 'number' ? node.position.x : null,
           canvas_y: typeof node.position?.y === 'number' ? node.position.y : null,
           var_rules_global: sanitizeVariableRules(node.data.var_rules_global),

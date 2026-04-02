@@ -10,11 +10,10 @@ import {
 } from '../../../lib/battle/turnTemplate';
 
 const ACTOR_SCOPE_OPTIONS = [
-  { value: 'self', label: '현재 슬롯' },
-  { value: 'enemies', label: '다른 팀' },
-  { value: 'allies', label: '같은 팀' },
   { value: 'all', label: '모든 슬롯' },
   { value: 'role:', label: '특정 역할' },
+  { value: 'slot:', label: '특정 슬롯' },
+  { value: 'team:', label: '특정 팀' },
   { value: 'custom', label: '직접 입력' },
 ];
 const CONDITION_OPERATORS = [
@@ -25,14 +24,14 @@ const CONDITION_OPERATORS = [
 ];
 const VISIBILITY_SCOPE_PRESETS = [
   { value: 'all', label: '전체' },
-  { value: 'self', label: '현재 주체' },
+  { value: 'self', label: '실행 주체 슬롯' },
   { value: 'winners', label: '승리자' },
   { value: 'losers', label: '패배자' },
   { value: 'survivors', label: '생존자' },
   { value: 'eliminated', label: '탈락자' },
 ];
 const PARTICIPANT_SCOPE_PRESETS = [
-  { value: 'self', label: '현재 슬롯' },
+  { value: 'self', label: '실행 주체 슬롯' },
   { value: 'enemies', label: '다른 팀' },
   { value: 'allies', label: '같은 팀' },
   { value: 'all', label: '모든 슬롯' },
@@ -55,7 +54,7 @@ const PRESENTATION_SOURCE_OPTIONS = [
   { value: 'inherit', label: '이전 장면 유지' },
   { value: 'none', label: '없음' },
   { value: 'stop', label: '정지' },
-  { value: 'self', label: '현재 슬롯 캐릭터 사용' },
+  { value: 'self', label: '실행 주체 슬롯 캐릭터 사용' },
   { value: 'custom', label: '직접 입력' },
 ];
 
@@ -367,6 +366,8 @@ export default function MakerEditorPanel({
 
   const actorMode = getActorMode(meta.actorScope);
   const actorRole = actorMode === 'role:' ? String(meta.actorScope || '').slice(5).trim() : '';
+  const actorSlot = actorMode === 'slot:' ? String(meta.actorScope || '').slice(5).trim() : '';
+  const actorTeam = actorMode === 'team:' ? String(meta.actorScope || '').slice(5).trim() : '';
   const actorCustom = actorMode === 'custom' ? String(meta.actorScope || '') : '';
   const inputRule = useMemo(() => {
     const rules = Array.isArray(meta.stateWrites) ? meta.stateWrites : [];
@@ -476,6 +477,14 @@ export default function MakerEditorPanel({
                   updateMeta({ actorScope: actorRole ? `role:${actorRole}` : 'role:' });
                   return;
                 }
+                if (nextMode === 'slot:') {
+                  updateMeta({ actorScope: actorSlot ? `slot:${actorSlot}` : 'slot:' });
+                  return;
+                }
+                if (nextMode === 'team:') {
+                  updateMeta({ actorScope: actorTeam ? `team:${actorTeam}` : 'team:' });
+                  return;
+                }
                 if (nextMode === 'custom') {
                   updateMeta({ actorScope: actorCustom || '' });
                   return;
@@ -507,6 +516,38 @@ export default function MakerEditorPanel({
               items={roleScopePresetItems.map(item => ({ ...item, value: item.value.replace(/^role:/, '') }))}
               activeValues={actorRole ? [actorRole] : []}
               onToggle={value => updateMeta({ actorScope: `role:${value}` })}
+            />
+          </Field>
+        ) : null}
+
+        {actorMode === 'slot:' ? (
+          <Field label="행동 슬롯">
+            <input
+              list="maker-slot-suggestions"
+              name="execute-actor-slot"
+              type="text"
+              value={actorSlot}
+              onChange={event => updateMeta({ actorScope: `slot:${event.target.value}` })}
+              style={inputStyle}
+              placeholder="예: 1역할-1슬롯 / 2"
+            />
+            <PresetRow
+              items={slotScopePresetItems.map(item => ({ ...item, value: item.value.replace(/^slot:/, '') }))}
+              activeValues={actorSlot ? [actorSlot] : []}
+              onToggle={value => updateMeta({ actorScope: `slot:${value}` })}
+            />
+          </Field>
+        ) : null}
+
+        {actorMode === 'team:' ? (
+          <Field label="행동 팀">
+            <input
+              name="execute-actor-team"
+              type="text"
+              value={actorTeam}
+              onChange={event => updateMeta({ actorScope: `team:${event.target.value}` })}
+              style={inputStyle}
+              placeholder="예: 1 / 11 / 레드"
             />
           </Field>
         ) : null}
@@ -634,7 +675,7 @@ export default function MakerEditorPanel({
               value={(meta.participantScope || []).join(', ')}
               onChange={event => updateMeta({ participantScope: parseCsv(event.target.value) })}
               style={inputStyle}
-              placeholder="self, role:공격, slot:1역할-1슬롯"
+              placeholder="role:공격, slot:1역할-1슬롯, team:1"
             />
             <PresetRow
               items={PARTICIPANT_SCOPE_PRESETS}
@@ -842,7 +883,7 @@ export default function MakerEditorPanel({
             <PresetRow
               items={[
                 { value: 'inherit', label: '유지' },
-                { value: 'self', label: '현재 슬롯' },
+                { value: 'self', label: '실행 주체 슬롯' },
                 ...roleScopePresetItems,
                 ...slotScopePresetItems,
               ]}
@@ -892,7 +933,7 @@ export default function MakerEditorPanel({
               value={(meta.participantScope || []).join(', ')}
               onChange={event => updateMeta({ participantScope: parseCsv(event.target.value) })}
               style={inputStyle}
-              placeholder="self, opponent, allies"
+              placeholder="role:공격, slot:1역할-1슬롯, team:1"
             />
           </Field>
 
@@ -1149,10 +1190,10 @@ function formatStateWriteSourceLabel(sourceType) {
 
 function getActorMode(actorScope = '') {
   const value = String(actorScope || '').trim();
-  if (!value || value === 'self' || value === 'enemies' || value === 'allies' || value === 'all') {
-    return value || 'self';
-  }
+  if (!value || value === 'all') return 'all';
   if (value.startsWith('role:')) return 'role:';
+  if (value.startsWith('slot:')) return 'slot:';
+  if (value.startsWith('team:')) return 'team:';
   return 'custom';
 }
 

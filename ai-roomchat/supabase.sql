@@ -202,6 +202,12 @@ create table if not exists public.prompt_slots (
   is_start boolean not null default false,
   invisible boolean not null default false,
   visible_slots integer[] not null default array[]::integer[],
+  actor_scope_type text not null default 'all',
+  actor_scope_value text,
+  body_visibility_type text not null default 'all',
+  body_visibility_value text,
+  guide_visibility_type text not null default 'all',
+  guide_visibility_value text,
   canvas_x double precision,
   canvas_y double precision,
   var_rules_global jsonb default '[]'::jsonb,
@@ -209,6 +215,19 @@ create table if not exists public.prompt_slots (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.prompt_slots
+  add column if not exists actor_scope_type text not null default 'all';
+alter table public.prompt_slots
+  add column if not exists actor_scope_value text;
+alter table public.prompt_slots
+  add column if not exists body_visibility_type text not null default 'all';
+alter table public.prompt_slots
+  add column if not exists body_visibility_value text;
+alter table public.prompt_slots
+  add column if not exists guide_visibility_type text not null default 'all';
+alter table public.prompt_slots
+  add column if not exists guide_visibility_value text;
 
 alter table public.prompt_slots enable row level security;
 
