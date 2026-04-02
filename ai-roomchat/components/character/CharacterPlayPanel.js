@@ -1529,10 +1529,13 @@ export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) 
 
         const sessionRecord = json?.session || null;
         if (sessionRecord) {
-          setActiveSession(prev => ({
-            ...(prev && typeof prev === 'object' ? prev : {}),
-            ...sessionRecord,
-          }));
+          const status = String(sessionRecord.status || '').trim().toLowerCase();
+          if (status && SESSION_ENDED_STATUSES.has(status)) {
+            clearActiveSessionRecord();
+            setActiveSession(null);
+            return;
+          }
+          setActiveSession(sessionRecord);
           return;
         }
 
@@ -1583,7 +1586,7 @@ export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) 
 
   const hasBlockingActiveSession = useMemo(() => {
     if (!activeSessionInfo) return false;
-    if (!activeSessionInfo.status) return true;
+    if (!activeSessionInfo.status) return false;
     return !SESSION_ENDED_STATUSES.has(activeSessionInfo.status);
   }, [activeSessionInfo]);
 

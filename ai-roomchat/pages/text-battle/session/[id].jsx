@@ -320,6 +320,7 @@ export default function TextBattleSessionPage() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [teamPanelOpen, setTeamPanelOpen] = useState(false);
   const [detailParticipant, setDetailParticipant] = useState(null);
+  const [latestTurnOverride, setLatestTurnOverride] = useState(null);
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [apiSubmitting, setApiSubmitting] = useState(false);
   const [apiSaveStatus, setApiSaveStatus] = useState('');
@@ -376,6 +377,10 @@ export default function TextBattleSessionPage() {
     };
   }, [id]);
 
+  useEffect(() => {
+    setLatestTurnOverride(null);
+  }, [id]);
+
 
   useEffect(() => {
     if (!logRef.current) return;
@@ -422,7 +427,7 @@ export default function TextBattleSessionPage() {
   );
   const historyTurns = turns.slice(0, -1);
   const showApiKeyRecovery = runtimeState.errorKind === 'api_key';
-  const featuredTurn = turns.length ? turns[turns.length - 1] : null;
+  const featuredTurn = latestTurnOverride || (turns.length ? turns[turns.length - 1] : null);
   const featuredSpeaker =
     participants.find(participant => participant.hero_id === featuredTurn?.hero_id || participant.id === featuredTurn?.hero_id) ||
     currentActor ||
@@ -613,6 +618,7 @@ export default function TextBattleSessionPage() {
         error: null,
         payload: json,
       });
+      setLatestTurnOverride(nextFeaturedTurn || null);
 
       if (!waitForFirstScene || hasScene) {
         return json;
@@ -717,6 +723,7 @@ export default function TextBattleSessionPage() {
 
       writeStoredTextBattleSession(id, json.session);
       const nextTurns = upsertTurnList(state.payload?.turns, json.turn);
+      setLatestTurnOverride(json.turn || null);
       if (nextTurns !== state.payload?.turns) {
         setState(prev => ({
           ...prev,
