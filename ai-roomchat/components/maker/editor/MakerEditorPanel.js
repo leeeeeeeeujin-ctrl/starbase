@@ -8,10 +8,10 @@ import {
 } from '../../../lib/battle/turnTemplate';
 
 const ACTOR_SCOPE_OPTIONS = [
-  { value: 'self', label: '현재 주체' },
-  { value: 'enemies', label: '상대' },
-  { value: 'allies', label: '아군' },
-  { value: 'all', label: '전체' },
+  { value: 'self', label: '현재 슬롯' },
+  { value: 'enemies', label: '다른 팀' },
+  { value: 'allies', label: '같은 팀' },
+  { value: 'all', label: '모든 슬롯' },
   { value: 'role:', label: '특정 역할' },
   { value: 'custom', label: '직접 입력' },
 ];
@@ -30,10 +30,10 @@ const VISIBILITY_SCOPE_PRESETS = [
   { value: 'eliminated', label: '탈락자' },
 ];
 const PARTICIPANT_SCOPE_PRESETS = [
-  { value: 'self', label: '현재 주체' },
-  { value: 'enemies', label: '상대' },
-  { value: 'allies', label: '아군' },
-  { value: 'all', label: '전체' },
+  { value: 'self', label: '현재 슬롯' },
+  { value: 'enemies', label: '다른 팀' },
+  { value: 'allies', label: '같은 팀' },
+  { value: 'all', label: '모든 슬롯' },
   { value: 'winners', label: '승리자' },
   { value: 'losers', label: '패배자' },
 ];
@@ -364,7 +364,7 @@ export default function MakerEditorPanel({
 
       <Section
         title="기본"
-        description="이 노드가 누구 차례인지, 플레이어에게 어떤 장면으로 보일지를 정합니다."
+        description="이 노드에서 어느 슬롯이 행동하는지, 그리고 어떤 장면을 보여줄지 정합니다."
       >
         <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
           <Field label="노드 이름">
@@ -440,14 +440,14 @@ export default function MakerEditorPanel({
         ) : null}
 
         {actorMode === 'custom' ? (
-          <Field label="행동 주체 직접 입력">
+          <Field label="행동 대상 직접 입력">
             <input
               name="execute-actor-custom"
               type="text"
               value={actorCustom}
               onChange={event => updateMeta({ actorScope: event.target.value })}
               style={inputStyle}
-              placeholder="예: team:1 / role:judge"
+              placeholder="예: team:1 / role:judge / slot:1역할-1슬롯"
             />
           </Field>
         ) : null}
@@ -504,7 +504,7 @@ export default function MakerEditorPanel({
 
       <Section
         title="입력"
-        description="이 노드에서 플레이어가 직접 행동을 적거나, 선택지를 고를지 정합니다."
+        description="이 노드에서 어느 슬롯에게 입력을 받을지, 어떤 방식으로 받을지 정합니다."
       >
         <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
           <Field label="입력 방식">
@@ -553,14 +553,14 @@ export default function MakerEditorPanel({
         </div>
 
         {compact && meta.executionType === 'user_response' ? (
-          <Field label="응답 받을 대상">
+          <Field label="응답할 슬롯">
             <input
               name="execute-participant-scope-compact"
               type="text"
               value={(meta.participantScope || []).join(', ')}
               onChange={event => updateMeta({ participantScope: parseCsv(event.target.value) })}
               style={inputStyle}
-              placeholder="self, role:공격, slot:1-1"
+              placeholder="self, role:공격, slot:1역할-1슬롯"
             />
             <PresetRow
               items={PARTICIPANT_SCOPE_PRESETS}
