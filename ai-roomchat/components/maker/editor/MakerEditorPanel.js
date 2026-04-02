@@ -61,6 +61,33 @@ function toggleCsvValue(list, value) {
   return [...current, value];
 }
 
+function buildChoiceSchema(choiceCount = 3) {
+  return JSON.stringify(
+    {
+      choices: Array.from({ length: Math.max(1, Math.min(8, Number(choiceCount) || 3)) }, (_, index) => ({
+        id: `choice_${index + 1}`,
+        label: `선택지 ${index + 1}`,
+        value: `choice_${index + 1}`,
+      })),
+    },
+    null,
+    2
+  );
+}
+
+function buildChoiceBodyHint(choiceCount = 3, choicePrompt = '') {
+  const count = Math.max(1, Math.min(8, Number(choiceCount) || 3));
+  const guide = String(choicePrompt || '').trim();
+  return [
+    '',
+    '[선택지 생성 규칙]',
+    `- 반드시 ${count}개의 선택지를 구조화된 JSON 배열로 반환한다.`,
+    '- 자유 텍스트로 나열하지 말고 choices 배열만 사용한다.',
+    '- 각 선택지는 id, label, value를 모두 포함한다.',
+    guide ? `- 선택지 조건: ${guide}` : '- 선택지 조건: 현재 장면과 요건에 맞는 선택지를 만든다.',
+  ].join('\n');
+}
+
 export default function MakerEditorPanel({
   rolePresets = [],
   slotPresets = [],
@@ -581,20 +608,68 @@ export default function MakerEditorPanel({
         ) : null}
 
         {meta.inputMode === 'choice' ? (
-          <div
-            style={{
-              borderRadius: 14,
-              border: '1px dashed #cbd5e1',
-              background: '#f8fafc',
-              padding: 12,
-              fontSize: 12,
-              color: '#64748b',
-              lineHeight: 1.6,
-            }}
-          >
-            선택지 입력은 지금 직접 요구하지 않아도 됩니다. 실행 본문에서
-            <code style={{ margin: '0 4px' }}>요건에 맞는 선택지를 만들어 결과에 포함하라</code>
-            식으로 적으면 AI가 선택지를 생성하게 할 수 있습니다.
+          <div style={{ display: 'grid', gap: 10 }}>
+            <div style={{ display: 'grid', gap: 10, gridTemplateColumns: '160px minmax(0, 1fr)' }}>
+              <Field label="선택지 수">
+                <select
+                  name="execute-choice-count"
+                  value={Number(meta.choiceCount) || 3}
+                  onChange={event => updateMeta({ choiceCount: Number(event.target.value) })}
+                  style={inputStyle}
+                >
+                  {Array.from({ length: 6 }, (_, index) => index + 2).map(count => (
+                    <option key={`choice-count-${count}`} value={count}>
+                      {count}개
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="선택지 생성 조건">
+                <input
+                  name="execute-choice-prompt"
+                  type="text"
+                  value={meta.choiceGenerationPrompt || ''}
+                  onChange={event => updateMeta({ choiceGenerationPrompt: event.target.value })}
+                  style={inputStyle}
+                  placeholder="예: 공격적이지 않은 선택지만, 생존 가능한 선택지 우선"
+                />
+              </Field>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  const nextCount = Number(meta.choiceCount) || 3;
+                  updateMeta({
+                    outputFormat: 'json',
+                    outputSchema: buildChoiceSchema(nextCount),
+                  });
+                  const hint = buildChoiceBodyHint(nextCount, meta.choiceGenerationPrompt);
+                  const body = String(turn.body || '');
+                  updateBody(body.includes('[선택지 생성 규칙]') ? body : `${body}${hint}`.trim());
+                }}
+                style={chipButtonStyle('#dcfce7', '#166534')}
+              >
+                구조화 선택지 규칙 넣기
+              </button>
+            </div>
+
+            <div
+              style={{
+                borderRadius: 14,
+                border: '1px dashed #cbd5e1',
+                background: '#f8fafc',
+                padding: 12,
+                fontSize: 12,
+                color: '#64748b',
+                lineHeight: 1.6,
+              }}
+            >
+              선택지는 자유 텍스트가 아니라
+              <code style={{ margin: '0 4px' }}>choices: []</code>
+              배열로 돌려주게 맞춥니다. 버튼을 누르면 본문과 결과 예시를 같이 채웁니다.
+            </div>
           </div>
         ) : null}
       </Section>

@@ -88,6 +88,8 @@ function buildTurnDefinition(node) {
       mode: meta.inputMode || 'none',
       label: meta.inputLabel || '',
       placeholder: meta.inputPlaceholder || '',
+      choiceGenerationPrompt: meta.choiceGenerationPrompt || '',
+      choiceCount: Number.isFinite(Number(meta.choiceCount)) ? Number(meta.choiceCount) : 3,
       resultKey: meta.resultKey || '',
     },
     participantScope: normalizeParticipantScope(meta.participantScope),

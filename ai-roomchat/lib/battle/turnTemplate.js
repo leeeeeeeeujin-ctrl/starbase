@@ -36,6 +36,8 @@ export function getDefaultTurnMeta(slotType = 'ai') {
     inputMode: 'none',
     inputLabel: '',
     inputPlaceholder: '',
+    choiceGenerationPrompt: '',
+    choiceCount: 3,
     resultKey: '',
     outputFormat: 'json',
     outputSchema: '',
@@ -97,6 +99,10 @@ export function normalizeTurnMeta(rawMeta, slotType = 'ai') {
     inputMode,
     inputLabel: String(source.inputLabel ?? ''),
     inputPlaceholder: String(source.inputPlaceholder ?? ''),
+    choiceGenerationPrompt: String(source.choiceGenerationPrompt ?? ''),
+    choiceCount: Number.isFinite(Number(source.choiceCount))
+      ? Math.max(1, Math.min(8, Number(source.choiceCount)))
+      : base.choiceCount,
     resultKey: String(source.resultKey ?? ''),
     outputFormat: String(source.outputFormat ?? base.outputFormat).trim() || base.outputFormat,
     outputSchema: String(source.outputSchema ?? ''),
