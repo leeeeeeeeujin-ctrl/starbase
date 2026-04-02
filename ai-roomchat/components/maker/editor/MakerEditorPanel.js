@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import EditorMonaco from '../../EditorMonaco.jsx';
 import {
   parseTurnTemplate,
