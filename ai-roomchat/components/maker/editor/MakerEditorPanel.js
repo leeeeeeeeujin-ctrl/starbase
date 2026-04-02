@@ -21,12 +21,44 @@ const CONDITION_OPERATORS = [
   { value: 'exists', label: '값이 있다' },
   { value: 'not_exists', label: '값이 없다' },
 ];
+const VISIBILITY_SCOPE_PRESETS = [
+  { value: 'all', label: '전체' },
+  { value: 'self', label: '현재 주체' },
+  { value: 'winners', label: '승리자' },
+  { value: 'losers', label: '패배자' },
+  { value: 'survivors', label: '생존자' },
+  { value: 'eliminated', label: '탈락자' },
+];
+const PARTICIPANT_SCOPE_PRESETS = [
+  { value: 'self', label: '현재 주체' },
+  { value: 'enemies', label: '상대' },
+  { value: 'allies', label: '아군' },
+  { value: 'all', label: '전체' },
+  { value: 'winners', label: '승리자' },
+  { value: 'losers', label: '패배자' },
+];
+const VARIABLE_KEY_PRESETS = [
+  { value: 'gameResult', label: '게임 종료 여부' },
+  { value: 'result.winnerTeam', label: '승리 팀' },
+  { value: 'state.enemyDown', label: '상대 탈락' },
+  { value: 'state.surrendered', label: '항복 여부' },
+  { value: 'state.lastChoice', label: '마지막 선택' },
+];
 
 function parseCsv(value) {
   return String(value || '')
     .split(',')
     .map(item => item.trim())
     .filter(Boolean);
+}
+
+function toggleCsvValue(list, value) {
+  const current = Array.isArray(list) ? list.filter(Boolean) : [];
+  if (!value) return current;
+  if (current.includes(value)) {
+    return current.filter(item => item !== value);
+  }
+  return [...current, value];
 }
 
 export default function MakerEditorPanel({
@@ -173,6 +205,19 @@ export default function MakerEditorPanel({
                       }
                       style={inputStyle}
                       placeholder="예: state.enemyDown"
+                    />
+                    <PresetRow
+                      items={VARIABLE_KEY_PRESETS}
+                      activeValues={[condition?.key || '']}
+                      onToggle={value =>
+                        updateEdge(data => ({
+                          ...data,
+                          conditions: (Array.isArray(data.conditions) ? data.conditions : []).map(
+                            (entry, conditionIndex) =>
+                              conditionIndex === index ? { ...entry, key: value } : entry
+                          ),
+                        }))
+                      }
                     />
                   </Field>
                   <Field label="비교 방식">
@@ -408,6 +453,11 @@ export default function MakerEditorPanel({
               style={inputStyle}
               placeholder="all, role:수비, slot:1-1, winners"
             />
+            <PresetRow
+              items={VISIBILITY_SCOPE_PRESETS}
+              activeValues={meta.visibilityScope || []}
+              onToggle={value => updateMeta({ visibilityScope: toggleCsvValue(meta.visibilityScope, value) })}
+            />
           </Field>
         ) : (
           <Field label="결과 이름">
@@ -483,7 +533,30 @@ export default function MakerEditorPanel({
               style={inputStyle}
               placeholder="self, role:공격, slot:1-1"
             />
+            <PresetRow
+              items={PARTICIPANT_SCOPE_PRESETS}
+              activeValues={meta.participantScope || []}
+              onToggle={value => updateMeta({ participantScope: toggleCsvValue(meta.participantScope, value) })}
+            />
           </Field>
+        ) : null}
+
+        {meta.inputMode === 'choice' ? (
+          <div
+            style={{
+              borderRadius: 14,
+              border: '1px dashed #cbd5e1',
+              background: '#f8fafc',
+              padding: 12,
+              fontSize: 12,
+              color: '#64748b',
+              lineHeight: 1.6,
+            }}
+          >
+            선택지 입력은 지금 직접 요구하지 않아도 됩니다. 실행 본문에서
+            <code style={{ margin: '0 4px' }}>요건에 맞는 선택지를 만들어 결과에 포함하라</code>
+            식으로 적으면 AI가 선택지를 생성하게 할 수 있습니다.
+          </div>
         ) : null}
       </Section>
 
@@ -670,6 +743,17 @@ export default function MakerEditorPanel({
                       style={inputStyle}
                       placeholder="state.enemyDown"
                     />
+                    <PresetRow
+                      items={VARIABLE_KEY_PRESETS}
+                      activeValues={[rule.key || '']}
+                      onToggle={value =>
+                        updateStateWrites(current =>
+                          current.map((entry, currentIndex) =>
+                            currentIndex === index ? { ...entry, key: value } : entry
+                          )
+                        )
+                      }
+                    />
                   </Field>
 
                   <Field label={compact ? '출력 값' : '기록 값'}>
@@ -778,6 +862,26 @@ function Field({ label, children }) {
     <div style={{ display: 'grid', gap: 6 }}>
       <label style={labelStyle}>{label}</label>
       {children}
+    </div>
+  );
+}
+
+function PresetRow({ items, activeValues, onToggle }) {
+  return (
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+      {items.map(item => {
+        const active = Array.isArray(activeValues) ? activeValues.includes(item.value) : false;
+        return (
+          <button
+            key={`${item.value}:${item.label}`}
+            type="button"
+            onClick={() => onToggle(item.value)}
+            style={chipButtonStyle(active ? '#dbeafe' : '#e2e8f0', active ? '#1d4ed8' : '#334155')}
+          >
+            {item.label}
+          </button>
+        );
+      })}
     </div>
   );
 }
