@@ -103,6 +103,27 @@ function parseJsonLikeText(value) {
   return null;
 }
 
+function looksLikeParticipantRuntimeId(value) {
+  return /^participant-[a-f0-9-]+$/i.test(String(value || '').trim());
+}
+
+function extractRenderableSceneText(value) {
+  const parsed = parseJsonLikeText(value);
+  if (Array.isArray(parsed?.segments) && parsed.segments.length) {
+    const firstText = parsed.segments
+      .map(segment => String(segment?.text || '').trim())
+      .find(Boolean);
+    if (firstText) return firstText;
+  }
+  if (parsed && typeof parsed.reply === 'string' && parsed.reply.trim()) {
+    return parsed.reply.trim();
+  }
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!text) return '';
+  if (text.startsWith('{') || text.startsWith('```')) return '';
+  return text;
+}
+
 function toSceneSegments(sourceText, participants) {
   const parsed = parseJsonLikeText(sourceText);
   if (Array.isArray(parsed?.segments) && parsed.segments.length) {
@@ -381,6 +402,10 @@ export default function TextBattleSessionPage() {
     featuredSpeaker ||
     currentActor ||
     null;
+  const activeSpeakerLabel =
+    activeDialogueSpeaker?.name ||
+    (looksLikeParticipantRuntimeId(activeSegment?.speaker) ? '' : String(activeSegment?.speaker || '').trim()) ||
+    '시스템';
   const focusedParticipant = resolveParticipantByScope(participants, currentPresentation.focusCharacter, activeDialogueSpeaker);
   const stageBackgroundUrl =
     resolvePresentationAsset(
@@ -405,10 +430,14 @@ export default function TextBattleSessionPage() {
     activeSegment?.type === 'sceneCue'
       ? {
           placement: activeSegment.placement === 'right' ? 'right' : 'left',
-          title: activeSegment.title || activeSegment.speaker || activeDialogueSpeaker?.name || '장면 전환',
+          title: activeSegment.title || activeDialogueSpeaker?.name || (looksLikeParticipantRuntimeId(activeSegment?.speaker) ? '' : activeSegment.speaker) || '장면 전환',
           subtitle: activeSegment.subtitle || activeSegment.text || '',
         }
       : null;
+  const safeFallbackText =
+    extractRenderableSceneText(currentTurn?.display) ||
+    extractRenderableSceneText(lastTurn?.ai_response) ||
+    '현재 표시할 장면이 없습니다.';
   const preludeBackgroundUrl =
     stageBackgroundUrl ||
     participants.find(participant => participant?.background_url)?.background_url ||
@@ -1466,7 +1495,7 @@ export default function TextBattleSessionPage() {
               )}
             </div>
             <div style={{ display: 'grid', gap: 2, minWidth: 0 }}>
-              <strong style={{ color: '#f8fafc', fontSize: 16 }}>{activeSegment?.speaker || activeDialogueSpeaker?.name || '시스템'}</strong>
+              <strong style={{ color: '#f8fafc', fontSize: 16 }}>{activeSpeakerLabel}</strong>
               <span style={{ color: '#93c5fd', fontSize: 12 }}>
                 {activeSegmentTone.label}
               </span>
@@ -1492,7 +1521,7 @@ export default function TextBattleSessionPage() {
         >
           {activeSegment?.type === 'sceneCue'
             ? `${activeSceneCue?.title || ''}${activeSceneCue?.subtitle ? `\n${activeSceneCue.subtitle}` : ''}`.trim()
-            : typedSegmentText || currentTurn?.display || lastTurn?.ai_response || '현재 표시할 장면이 없습니다.'}
+            : typedSegmentText || safeFallbackText}
         </div>
 
         {(currentTurn?.input?.mode || 'none') !== 'none' ? (
