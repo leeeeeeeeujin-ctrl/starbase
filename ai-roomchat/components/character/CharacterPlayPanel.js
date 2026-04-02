@@ -3015,17 +3015,18 @@ export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) 
           <div style={panelStyles.emptyState}>{battleError}</div>
         </div>
       ) : battleCards.length ? (
-        <div style={panelStyles.logList}>
+        <div style={{ ...panelStyles.logList, gridTemplateColumns: 'minmax(0, 1fr)' }}>
           {battleCards.map(card => (
             <button
               key={card.id}
               type="button"
-              disabled={!card.targetId}
               onClick={
-                card.targetId
+                card.id
                   ? () =>
                       router.push(
-                        `/battle-log/${encodeURIComponent(card.targetId)}?heroId=${encodeURIComponent(
+                        `/battle-log/${encodeURIComponent(card.targetId || card.id)}?battleId=${encodeURIComponent(
+                          card.id
+                        )}&heroId=${encodeURIComponent(
                           hero?.id || ''
                         )}&gameId=${encodeURIComponent(selectedGameId || '')}`
                       )
@@ -3038,8 +3039,10 @@ export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) 
                   : card.tone === 'lose'
                     ? panelStyles.logCardLose
                     : panelStyles.logCardDraw),
-                cursor: card.targetId ? 'pointer' : 'default',
+                cursor: card.id ? 'pointer' : 'default',
                 textAlign: 'left',
+                color: '#e2e8f0',
+                padding: '10px 12px',
               }}
             >
               <div style={panelStyles.logHeader}>
@@ -3056,9 +3059,9 @@ export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) 
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <div
                   style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: 14,
+                    width: 40,
+                    height: 40,
+                    borderRadius: 12,
                     flex: '0 0 auto',
                     background: card.opponentImage
                       ? `linear-gradient(180deg, rgba(2,6,23,0.15), rgba(2,6,23,0.65)), url(${card.opponentImage}) center/cover no-repeat`
@@ -3070,7 +3073,7 @@ export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) 
                   <strong
                     style={{
                       color: '#f8fafc',
-                      fontSize: 14,
+                      fontSize: 13,
                       whiteSpace: 'nowrap',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
@@ -3083,7 +3086,7 @@ export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) 
                 <div
                   style={{
                     marginLeft: 'auto',
-                    fontSize: 18,
+                    fontSize: 16,
                     fontWeight: 900,
                     color:
                       card.scoreDelta == null

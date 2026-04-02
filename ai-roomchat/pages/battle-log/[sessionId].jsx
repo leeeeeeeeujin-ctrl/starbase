@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
+import { supabase } from '@/lib/supabase';
+import { withTable } from '@/lib/supabaseTables';
 
 function formatDate(value) {
   if (!value) return '-';
@@ -534,9 +536,88 @@ function LegacyBattleLogView({ data, sessionId, viewParam, backHref = '' }) {
   );
 }
 
+function RankBattleDetailView({ battle, logs, backHref = '' }) {
+  return (
+    <div style={{ padding: 24, color: '#e2e8f0', background: '#0b1220', minHeight: '100vh' }}>
+      <div style={{ display: 'grid', gap: 12, maxWidth: 900, margin: '0 auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+          <h1 style={{ margin: 0, fontSize: 20 }}>베틀로그</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            {backHref ? (
+              <Link
+                href={backHref}
+                style={{
+                  textDecoration: 'none',
+                  padding: '8px 12px',
+                  borderRadius: 999,
+                  background: 'rgba(15,23,42,0.76)',
+                  border: '1px solid rgba(148,163,184,0.28)',
+                  color: '#e2e8f0',
+                  fontSize: 12,
+                  fontWeight: 700,
+                }}
+              >
+                게임 시작으로 돌아가기
+              </Link>
+            ) : null}
+            <div style={{ fontSize: 13, color: '#93c5fd' }}>
+              전투 {battle?.id || '-'} · {formatDate(battle?.created_at)}
+            </div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            border: '1px solid rgba(148,163,184,0.25)',
+            borderRadius: 12,
+            padding: 14,
+            background: 'rgba(15,23,42,0.7)',
+            display: 'grid',
+            gap: 8,
+          }}
+        >
+          <div style={{ fontSize: 13, color: '#cbd5e1' }}>결과</div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 13 }}>
+            <span>판정: {battle?.result || '-'}</span>
+            <span>점수 변화: {battle?.score_delta ?? '-'}</span>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gap: 8 }}>
+          <div style={{ fontSize: 14, fontWeight: 700 }}>전투 로그</div>
+          {logs.length === 0 ? (
+            <div style={{ fontSize: 13, color: '#94a3b8' }}>기록이 없습니다.</div>
+          ) : (
+            <div style={{ display: 'grid', gap: 8 }}>
+              {logs.map(log => (
+                <div
+                  key={`${battle?.id}-${log.turn_no ?? 'na'}-${log.created_at ?? ''}`}
+                  style={{
+                    padding: '10px 12px',
+                    borderRadius: 12,
+                    border: '1px solid rgba(148,163,184,0.28)',
+                    background: 'rgba(15,23,42,0.7)',
+                    display: 'grid',
+                    gap: 4,
+                  }}
+                >
+                  <div style={{ fontSize: 12, color: '#93c5fd' }}>턴 {log.turn_no ?? '-'}</div>
+                  <div style={{ fontSize: 13, color: '#e2e8f0', whiteSpace: 'pre-wrap' }}>
+                    {shortText(log.ai_response || log.prompt || '내용 없음', 800)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function BattleLogPage() {
   const router = useRouter();
-  const { sessionId, view: viewParam, heroId: heroIdParam, gameId: gameIdParam } = router.query || {};
+  const { sessionId, view: viewParam, heroId: heroIdParam, gameId: gameIdParam, battleId: battleIdParam } = router.query || {};
   const [data, setData] = useState(null);
   const [mode, setMode] = useState('loading');
   const [error, setError] = useState(null);
@@ -569,7 +650,31 @@ export default function BattleLogPage() {
         const legacyRes = await fetch(`/api/rank/history?sessionId=${encodeURIComponent(sessionId)}`);
         const legacyJson = await legacyRes.json().catch(() => null);
         if (!legacyRes.ok || !legacyJson?.ok) {
-          throw new Error(legacyJson?.error || textJson?.error || 'load_failed');
+          const fallbackBattleId =
+            (Array.isArray(battleIdParam) ? battleIdParam[0] : battleIdParam) ||
+            String(sessionId);
+          const { data: battleRow, error: battleError } = await withTable(supabase, 'rank_battles', table =>
+            supabase
+              .from(table)
+              .select('id, game_id, created_at, result, score_delta')
+              .eq('id', fallbackBattleId)
+              .maybeSingle()
+          );
+          if (battleError || !battleRow?.id) {
+            throw new Error(legacyJson?.error || textJson?.error || 'load_failed');
+          }
+          const { data: logRows } = await withTable(supabase, 'rank_battle_logs', table =>
+            supabase
+              .from(table)
+              .select('battle_id, turn_no, prompt, ai_response, created_at')
+              .eq('battle_id', fallbackBattleId)
+              .order('turn_no', { ascending: true })
+          );
+          if (!cancelled) {
+            setData({ battle: battleRow, logs: Array.isArray(logRows) ? logRows : [] });
+            setMode('battle');
+          }
+          return;
         }
         if (!cancelled) {
           setData(legacyJson);
@@ -617,6 +722,9 @@ export default function BattleLogPage() {
     if (!data) return null;
     if (mode === 'text-battle') {
       return <TextBattleResultView payload={data} sessionId={String(sessionId)} backHref={backHref} />;
+    }
+    if (mode === 'battle') {
+      return <RankBattleDetailView battle={data.battle} logs={Array.isArray(data.logs) ? data.logs : []} backHref={backHref} />;
     }
     return <LegacyBattleLogView data={data} sessionId={String(sessionId)} viewParam={viewParam} backHref={backHref} />;
   }, [backHref, data, error, mode, sessionId, viewParam]);
