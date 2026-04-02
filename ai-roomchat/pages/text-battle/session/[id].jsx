@@ -11,7 +11,6 @@ import {
 } from '@/lib/battle/session';
 import { parseStructuredBattleResult } from '@/lib/battle/resultSchema';
 import {
-  buildOutcomePromptFromScene,
   buildRuntimePromptFromTurn,
   buildSegmentPromptFromScene,
 } from '@/lib/battle/agentRuntime';
@@ -714,6 +713,7 @@ export default function TextBattleSessionPage() {
             `장면 생성 실패: ${sceneCall.json?.detail || sceneCall.json?.error || 'ai_proxy_failed'}`
           );
         }
+        const sceneStructured = parseStructuredBattleResult(sceneText);
 
         setRuntimeState(prev => ({
           ...prev,
@@ -744,46 +744,20 @@ export default function TextBattleSessionPage() {
           throw new Error(`세그먼트 변환 실패: ${segmentError || 'segment_proxy_failed'}`);
         }
 
-        setRuntimeState(prev => ({
-          ...prev,
-          status: '장면의 승패와 상태를 판정하는 중입니다…',
-        }));
-
-        const outcomePrompt = buildOutcomePromptFromScene(sceneText, liveRuntime);
-        let outcomeResultText = '';
-        let outcomeError = null;
-        for (let attempt = 0; attempt < 3; attempt += 1) {
-          const outcomeCall = await requestAiProxyJson(authSession.access_token, outcomePrompt);
-          if (
-            outcomeCall.response.ok &&
-            outcomeCall.json?.ok &&
-            typeof outcomeCall.json?.text === 'string' &&
-            outcomeCall.json.text.trim()
-          ) {
-            outcomeResultText = outcomeCall.json.text.trim();
-            outcomeError = null;
-            break;
-          }
-          outcomeError = outcomeCall.json?.detail || outcomeCall.json?.error || 'outcome_proxy_failed';
-          if (!isFormatLikeErrorMessage(outcomeError)) {
-            break;
-          }
-        }
-        if (!outcomeResultText) {
-          throw new Error(`승패 판정 실패: ${outcomeError || 'outcome_proxy_failed'}`);
-        }
-
         const segmented = parseStructuredBattleResult(segmentResultText);
-        const outcome = parseStructuredBattleResult(outcomeResultText);
         resultText = JSON.stringify(
           {
-            reply: segmented.reply || sceneText,
+            reply: sceneStructured.reply || segmented.reply || sceneText,
             segments: Array.isArray(segmented.segments) ? segmented.segments : [],
-            gameResult: outcome.gameResult || 'ongoing',
-            teamOutcomes: outcome.teamOutcomes && typeof outcome.teamOutcomes === 'object' ? outcome.teamOutcomes : {},
+            gameResult: sceneStructured.gameResult || 'ongoing',
+            teamOutcomes:
+              sceneStructured.teamOutcomes && typeof sceneStructured.teamOutcomes === 'object'
+                ? sceneStructured.teamOutcomes
+                : {},
             participantOutcomes:
-              outcome.participantOutcomes && typeof outcome.participantOutcomes === 'object'
-                ? outcome.participantOutcomes
+              sceneStructured.participantOutcomes &&
+              typeof sceneStructured.participantOutcomes === 'object'
+                ? sceneStructured.participantOutcomes
                 : {},
           },
           null,

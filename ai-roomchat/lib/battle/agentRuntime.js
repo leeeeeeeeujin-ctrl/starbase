@@ -110,12 +110,28 @@ export function buildRuntimePromptFromTurn(session, turn, actorId = session?.act
         .map(entry => `${entry.id} (${entry.name})`)
         .join(', ')}`
     : '';
+  const outputContract = [
+    '[출력 계약]',
+    '응답은 JSON 하나만 반환한다.',
+    '형식:',
+    '{"reply":"장면 본문","gameResult":"ongoing|ended|abandoned|timed_out","teamOutcomes":{"팀값":"win|lose"},"participantOutcomes":{"참가자ID":"survived|eliminated|retired"}}',
+    'reply에는 이번 턴의 장면 전체를 자연스럽게 쓴다.',
+    '승패가 아직 확정되지 않았다면 gameResult는 "ongoing"로 두고 결과 객체를 비워도 된다.',
+    '이번 턴에서 승패가 확정됐다면 teamOutcomes 또는 participantOutcomes 중 하나 이상을 반드시 채운다.',
+    '팀 키에 접두사(예: "팀 1")를 붙이지 않는다.',
+    'participantOutcomes의 키는 반드시 실제 참가자 id를 사용한다.',
+    teamGuide,
+    participantGuide,
+  ]
+    .filter(Boolean)
+    .join('\n');
   const contentDirectives = [
     '[장면 작성 규칙]',
     '아래 게임 프롬프트를 되풀이하지 말고 실제 장면으로 풀어 쓴다.',
     '장면은 JRPG 컷신처럼 진행한다. 배경 소개, 인물 등장, 반응, 대사, 분위기 변화를 순서 있게 배치한다.',
     '플레이어가 탭하며 읽는 화면을 상상하고, 한 번에 한 호흡씩 보이도록 장면을 끊는다.',
     '메이커 프롬프트가 짧거나 거칠어도 실제 출력은 완성된 장면처럼 보이게 보강한다.',
+    '이번 단계에서는 segments를 만들지 말고 장면 원문(reply)과 필요할 경우 승패 JSON만 함께 정한다.',
     actorGuide,
   ]
     .filter(Boolean)
@@ -128,6 +144,7 @@ export function buildRuntimePromptFromTurn(session, turn, actorId = session?.act
     .filter(Boolean)
     .join('\n');
   const runtimePrompt = [
+    outputContract,
     agentContexts.length ? '아래는 현재 턴에 참여하는 캐릭터 AI들의 실행 문맥이다.' : '',
     ...agentContexts.map(entry => `[${entry.name}]\n${entry.context}`),
     gamePromptGuide,
@@ -162,31 +179,6 @@ export function buildSegmentPromptFromScene(sceneText, runtime = {}) {
     'speaker가 필요한 경우 참가자 id를 사용한다.',
     participantGuide,
     actorGuide,
-    '',
-    '[장면 본문]',
-    text,
-  ]
-    .filter(Boolean)
-    .join('\n');
-}
-
-export function buildOutcomePromptFromScene(sceneText, runtime = {}) {
-  const text = typeof sceneText === 'string' ? sceneText.trim() : '';
-  const teamGuide = runtime?.teamGuide || 'teamOutcomes는 실제 팀값만 키로 사용한다.';
-  const participantGuide = runtime?.participantGuide || 'participantOutcomes의 키는 실제 참가자 id를 사용한다.';
-  return [
-    '[승패 판정 계약]',
-    '아래 장면 본문만 보고 JSON 하나로 현재 턴의 종료 여부와 승패만 판정한다.',
-    '응답은 JSON 하나만 반환한다.',
-    '형식:',
-    '{"gameResult":"ongoing|ended|abandoned|timed_out","teamOutcomes":{"팀값":"win|lose"},"participantOutcomes":{"참가자ID":"survived|eliminated|retired"}}',
-    '아직 승패가 확정되지 않았다면 gameResult는 "ongoing"로 두고 결과 객체를 비워도 된다.',
-    '전투가 끝났다면 teamOutcomes 또는 participantOutcomes 중 하나 이상을 반드시 채운다.',
-    '개인 결과는 survived, eliminated, retired 중 하나를 사용한다.',
-    teamGuide,
-    participantGuide,
-    '팀 키에 접두사(예: "팀 1")를 붙이지 않는다.',
-    'participantOutcomes의 키는 표시 이름이 아니라 반드시 참가자 id를 쓴다.',
     '',
     '[장면 본문]',
     text,
