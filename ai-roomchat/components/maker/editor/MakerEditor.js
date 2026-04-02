@@ -790,6 +790,8 @@ export default function MakerEditor() {
 
             <MakerEditorPanel
               compact
+              rolePresets={battleConfig.roles || []}
+              slotPresets={roleSlotPreview}
               selectedNode={selectedNode}
               selectedNodeId={selectedNodeId}
               selectedEdge={selectedEdge}

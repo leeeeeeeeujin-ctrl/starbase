@@ -62,6 +62,8 @@ function toggleCsvValue(list, value) {
 }
 
 export default function MakerEditorPanel({
+  rolePresets = [],
+  slotPresets = [],
   selectedNode,
   selectedNodeId,
   selectedEdge,
@@ -324,6 +326,18 @@ export default function MakerEditorPanel({
   const actorMode = getActorMode(meta.actorScope);
   const actorRole = actorMode === 'role:' ? String(meta.actorScope || '').slice(5).trim() : '';
   const actorCustom = actorMode === 'custom' ? String(meta.actorScope || '') : '';
+  const roleScopePresetItems = (Array.isArray(rolePresets) ? rolePresets : [])
+    .map(role => String(role?.name || '').trim())
+    .filter(Boolean)
+    .map(name => ({ value: `role:${name}`, label: name }));
+  const slotScopePresetItems = (Array.isArray(slotPresets) ? slotPresets : [])
+    .map(slot => {
+      const slotLabel = String(slot?.slotLabel || '').trim();
+      const roleName = String(slot?.roleName || '').trim();
+      const value = slotLabel ? `slot:${slotLabel}` : '';
+      return value ? { value, label: roleName ? `${roleName} · ${slotLabel}` : slotLabel } : null;
+    })
+    .filter(Boolean);
 
   return (
     <section
@@ -417,6 +431,11 @@ export default function MakerEditorPanel({
               style={inputStyle}
               placeholder="예: 수비"
             />
+            <PresetRow
+              items={roleScopePresetItems.map(item => ({ ...item, value: item.value.replace(/^role:/, '') }))}
+              activeValues={actorRole ? [actorRole] : []}
+              onToggle={value => updateMeta({ actorScope: `role:${value}` })}
+            />
           </Field>
         ) : null}
 
@@ -455,6 +474,16 @@ export default function MakerEditorPanel({
             />
             <PresetRow
               items={VISIBILITY_SCOPE_PRESETS}
+              activeValues={meta.visibilityScope || []}
+              onToggle={value => updateMeta({ visibilityScope: toggleCsvValue(meta.visibilityScope, value) })}
+            />
+            <PresetRow
+              items={roleScopePresetItems}
+              activeValues={meta.visibilityScope || []}
+              onToggle={value => updateMeta({ visibilityScope: toggleCsvValue(meta.visibilityScope, value) })}
+            />
+            <PresetRow
+              items={slotScopePresetItems}
               activeValues={meta.visibilityScope || []}
               onToggle={value => updateMeta({ visibilityScope: toggleCsvValue(meta.visibilityScope, value) })}
             />
@@ -535,6 +564,16 @@ export default function MakerEditorPanel({
             />
             <PresetRow
               items={PARTICIPANT_SCOPE_PRESETS}
+              activeValues={meta.participantScope || []}
+              onToggle={value => updateMeta({ participantScope: toggleCsvValue(meta.participantScope, value) })}
+            />
+            <PresetRow
+              items={roleScopePresetItems}
+              activeValues={meta.participantScope || []}
+              onToggle={value => updateMeta({ participantScope: toggleCsvValue(meta.participantScope, value) })}
+            />
+            <PresetRow
+              items={slotScopePresetItems}
               activeValues={meta.participantScope || []}
               onToggle={value => updateMeta({ participantScope: toggleCsvValue(meta.participantScope, value) })}
             />
