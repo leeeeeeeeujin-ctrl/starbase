@@ -22,21 +22,6 @@ import {
 import CharacterRouteHud from '@/components/character/routes/CharacterRouteHud';
 import CharacterDetailOverlay from '@/components/character/CharacterDetailOverlay';
 
-function buildStatusTone(status = '') {
-  if (status === 'completed') {
-    return {
-      bg: 'rgba(20, 83, 45, 0.78)',
-      border: 'rgba(74, 222, 128, 0.35)',
-      text: '#dcfce7',
-    };
-  }
-  return {
-    bg: 'rgba(15, 23, 42, 0.78)',
-    border: 'rgba(59, 130, 246, 0.3)',
-    text: '#dbeafe',
-  };
-}
-
 function shortText(value, limit = 90) {
   const text = typeof value === 'string' ? value.trim() : '';
   if (!text) return '';
@@ -343,7 +328,6 @@ export default function TextBattleSessionPage() {
     () => participants.find(participant => participant.id === resolvedActorId) || null,
     [participants, resolvedActorId]
   );
-  const statusTone = buildStatusTone(runtimeSession?.status || dbSession?.status || '');
   const lastTurn = turns.length ? turns[turns.length - 1] : null;
   const sessionStatus = runtimeSession?.status || dbSession?.status || '';
   const isEnded = ['completed', 'abandoned', 'defeated', 'closed', 'ended', 'cancelled', 'canceled'].includes(
@@ -844,71 +828,17 @@ export default function TextBattleSessionPage() {
           </section>
         ) : null}
 
-        <header
-          style={{
-            borderRadius: 24,
-            padding: '18px 18px 16px',
-            background: 'linear-gradient(135deg, rgba(15,23,42,0.92) 0%, rgba(30,41,59,0.9) 100%)',
-            border: '1px solid rgba(59,130,246,0.35)',
-            boxShadow: '0 24px 60px -40px rgba(15,23,42,0.95)',
-            display: 'grid',
-            gap: 10,
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
-            <div style={{ display: 'grid', gap: 4 }}>
-              <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#f8fafc' }}>텍스트 배틀</h1>
-              <p style={{ margin: 0, fontSize: 12, color: '#93c5fd' }}>세션 ID: {id}</p>
-            </div>
-            <div
-              style={{
-                padding: '6px 10px',
-                borderRadius: 999,
-                background: statusTone.bg,
-                border: `1px solid ${statusTone.border}`,
-                color: statusTone.text,
-                fontSize: 12,
-                fontWeight: 700,
-              }}
-            >
-              {runtimeSession?.status || dbSession?.status || 'active'}
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 12, color: '#cbd5e1' }}>
-              현재 턴: <strong style={{ color: '#f8fafc' }}>{currentTurn?.title || currentTurn?.id || '없음'}</strong>
-            </span>
-            {currentActor ? (
-              <span style={{ fontSize: 12, color: '#cbd5e1' }}>
-                행동 주체: <strong style={{ color: '#fbbf24' }}>{currentActor.name}</strong>
-              </span>
-            ) : null}
-            <span style={{ fontSize: 12, color: '#cbd5e1' }}>
-              턴 수: <strong style={{ color: '#f8fafc' }}>{turns.length}</strong>
-            </span>
-          </div>
-        </header>
-
         <section
           style={{
             borderRadius: 24,
-            padding: 22,
-            background: 'rgba(2,6,23,0.86)',
-            border: '1px solid rgba(59,130,246,0.18)',
+            padding: '12px 12px 0',
+            background: 'transparent',
+            border: 'none',
             display: 'grid',
-            gap: 18,
-            minHeight: 360,
+            gap: 12,
+            minHeight: 'calc(100vh - 180px)',
           }}
         >
-          <div style={{ display: 'grid', gap: 6 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#7dd3fc', textTransform: 'uppercase' }}>
-              Current Situation
-            </div>
-            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: '#f8fafc' }}>
-              {currentTurn?.title || '턴이 없습니다'}
-            </h2>
-          </div>
-
           <div
             style={{
               borderRadius: 24,
@@ -1088,74 +1018,36 @@ export default function TextBattleSessionPage() {
           </div>
         </section>
 
-        <section
-          style={{
-            borderRadius: 20,
-            padding: 16,
-            background: 'rgba(2,6,23,0.78)',
-            border: '1px solid rgba(71,85,105,0.32)',
-            display: 'grid',
-            gap: 10,
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
-            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#f8fafc' }}>전투 요약</h2>
-            <button
-              type="button"
-              onClick={() => setRuntimeState(prev => ({ ...prev, showDebug: !prev.showDebug }))}
-              style={{
-                padding: '6px 10px',
-                borderRadius: 999,
-                border: '1px solid rgba(71,85,105,0.7)',
-                background: 'rgba(15,23,42,0.82)',
-                color: '#cbd5e1',
-                fontSize: 12,
-                fontWeight: 700,
-                cursor: 'pointer',
-              }}
-            >
-              {runtimeState.showDebug ? '세부 숨기기' : '세부 보기'}
-            </button>
-          </div>
-          <div style={{ fontSize: 13, lineHeight: 1.7, color: '#cbd5e1', whiteSpace: 'pre-wrap' }}>
-            {lastTurn?.ai_response || lastTurn?.prompt || '마지막 장면 요약이 아직 없습니다.'}
-          </div>
-          {isEnded ? (
-            <div
-              style={{
-                borderRadius: 16,
-                padding: '12px 14px',
-                background: 'rgba(20,83,45,0.2)',
-                border: '1px solid rgba(74,222,128,0.24)',
-                display: 'grid',
-                gap: 6,
-              }}
-            >
-              <strong style={{ color: '#dcfce7', fontSize: 14 }}>
-                전투 종료
-              </strong>
-              <div style={{ fontSize: 12, color: '#bbf7d0' }}>
-                상태: {sessionStatus || 'completed'}
-              </div>
-              {dbSession?.winner ? (
-                <div style={{ fontSize: 12, color: '#bbf7d0' }}>승자: {String(dbSession.winner)}</div>
-              ) : null}
-              {dbSession?.final_score ? (
-                <pre
-                  style={{
-                    margin: 0,
-                    fontSize: 11,
-                    lineHeight: 1.5,
-                    color: '#d1fae5',
-                    whiteSpace: 'pre-wrap',
-                  }}
-                >
-                  {JSON.stringify(dbSession.final_score, null, 2)}
-                </pre>
-              ) : null}
+        {runtimeState.showDebug ? (
+          <section
+            style={{
+              borderRadius: 20,
+              padding: 16,
+              background: 'rgba(2,6,23,0.78)',
+              border: '1px solid rgba(71,85,105,0.32)',
+              display: 'grid',
+              gap: 10,
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
+              <h2 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#f8fafc' }}>세부 정보</h2>
+              <button
+                type="button"
+                onClick={() => setRuntimeState(prev => ({ ...prev, showDebug: false }))}
+                style={{
+                  padding: '6px 10px',
+                  borderRadius: 999,
+                  border: '1px solid rgba(71,85,105,0.7)',
+                  background: 'rgba(15,23,42,0.82)',
+                  color: '#cbd5e1',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                세부 숨기기
+              </button>
             </div>
-          ) : null}
-          {runtimeState.showDebug ? (
             <div style={{ display: 'grid', gap: 10 }}>
               <details
                 open
@@ -1248,8 +1140,8 @@ export default function TextBattleSessionPage() {
                 </div>
               </details>
             </div>
-          ) : null}
-        </section>
+          </section>
+        ) : null}
       </div>
       <button
         type="button"
@@ -1275,6 +1167,31 @@ export default function TextBattleSessionPage() {
       >
         ≡
       </button>
+      {!runtimeState.showDebug ? (
+        <button
+          type="button"
+          onClick={() => setRuntimeState(prev => ({ ...prev, showDebug: true }))}
+          aria-label="세부 정보 열기"
+          style={{
+            position: 'fixed',
+            right: 18,
+            top: 18,
+            zIndex: 30,
+            padding: '10px 12px',
+            borderRadius: 14,
+            border: '1px solid rgba(148,163,184,0.22)',
+            background: 'rgba(2,6,23,0.72)',
+            color: '#cbd5e1',
+            fontSize: 11,
+            fontWeight: 800,
+            cursor: 'pointer',
+            backdropFilter: 'blur(12px)',
+            boxShadow: '0 18px 40px -26px rgba(15,23,42,0.95)',
+          }}
+        >
+          세부
+        </button>
+      ) : null}
       {activeSceneCue ? (
         <div
           style={{
@@ -1377,7 +1294,7 @@ export default function TextBattleSessionPage() {
         style={{
           position: 'fixed',
           left: '50%',
-          bottom: 286,
+          bottom: 94,
           transform: 'translateX(-50%)',
           zIndex: 25,
           width: 'min(860px, calc(100vw - 24px))',
@@ -1402,18 +1319,18 @@ export default function TextBattleSessionPage() {
             backdropFilter: 'blur(12px)',
           }}
         >
-          {teamPanelOpen ? '팀 패널 닫기' : '팀 패널 펼치기'}
+          {teamPanelOpen ? '캐릭터 정보 닫기' : '캐릭터 정보 펼치기'}
         </button>
       </div>
       <div
         style={{
           position: 'fixed',
           left: '50%',
-          bottom: 340,
+          bottom: 142,
           transform: 'translateX(-50%)',
           zIndex: 24,
           width: 'min(860px, calc(100vw - 24px))',
-          maxHeight: teamPanelOpen ? '30vh' : 0,
+          maxHeight: teamPanelOpen ? '22vh' : 0,
           opacity: teamPanelOpen ? 1 : 0,
           overflow: 'hidden',
           transition: 'max-height 180ms ease, opacity 180ms ease',
@@ -1430,7 +1347,7 @@ export default function TextBattleSessionPage() {
             boxShadow: '0 28px 70px -34px rgba(15,23,42,0.95)',
             display: 'grid',
             gap: 12,
-            maxHeight: '30vh',
+            maxHeight: '22vh',
             overflowY: 'auto',
           }}
         >
