@@ -20,6 +20,7 @@ function normalizeStateWriteRule(rule, index = 0) {
   return {
     id: String(source.id || `state-write-${index + 1}`).trim(),
     sourceType,
+    key,
     sourceKey: String(source.sourceKey || '').trim(),
     equals: String(source.equals ?? '').trim(),
     value: String(source.value ?? '').trim(),
