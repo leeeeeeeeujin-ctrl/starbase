@@ -181,9 +181,9 @@ export default function MakerEditorPanel({
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
           <div style={{ display: 'grid', gap: 4 }}>
-            <strong style={{ fontSize: 15, color: '#0f172a' }}>분기 슬롯</strong>
+            <strong style={{ fontSize: 15, color: '#0f172a' }}>조건 분기</strong>
             <span style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
-              이전 턴에서 기록한 변수나 결과를 읽고, 이 선을 탈 조건을 정합니다.
+              이전 턴에서 기록된 변수 값을 읽고, 이 선을 탈 조건을 정합니다.
             </span>
           </div>
           <button type="button" onClick={addCondition} style={chipButtonStyle('#dbeafe', '#1d4ed8')}>
@@ -224,7 +224,7 @@ export default function MakerEditorPanel({
                 </div>
 
                 <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
-                  <Field label="조건 변수">
+                  <Field label="읽을 변수">
                     <input
                       name={`route-condition-key-${index}`}
                       type="text"
@@ -277,7 +277,7 @@ export default function MakerEditorPanel({
                       ))}
                     </select>
                   </Field>
-                  <Field label="만족 값">
+                  <Field label="이 값이면">
                     <input
                       name={`route-condition-value-${index}`}
                       type="text"
