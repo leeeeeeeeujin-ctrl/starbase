@@ -923,6 +923,7 @@ export default function TextBattleSessionPage() {
   async function handleRegisterApiKey() {
     const apiKey = apiKeyInput.trim();
     if (!apiKey || apiSubmitting) return;
+    let shouldRetryAfterSave = false;
     setApiSubmitting(true);
     setApiSaveStatus('');
     try {
@@ -948,12 +949,17 @@ export default function TextBattleSessionPage() {
         throw new Error(payload?.error || 'API 키를 저장하지 못했습니다.');
       }
       setApiKeyInput('');
-      setApiSaveStatus('API 키를 저장했습니다. 다시 시도해주세요.');
+      setApiSaveStatus('API 키를 저장했습니다. 자동으로 다시 시도합니다.');
       setRuntimeState(prev => ({
         ...prev,
+        running: false,
+        status: '저장한 키로 다시 시도하는 중입니다…',
         error: '',
         errorKind: '',
       }));
+      setFirstSceneReady(false);
+      autoRunRef.current = false;
+      shouldRetryAfterSave = Boolean(currentTurn) && !isEnded;
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('rank-keyring:refresh'));
       }
@@ -961,6 +967,11 @@ export default function TextBattleSessionPage() {
       setApiSaveStatus(error.message || 'API 키를 저장하지 못했습니다.');
     } finally {
       setApiSubmitting(false);
+      if (shouldRetryAfterSave) {
+        setTimeout(() => {
+          handleRunTurn();
+        }, 180);
+      }
     }
   }
 
