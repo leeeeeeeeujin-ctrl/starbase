@@ -106,7 +106,10 @@ export function buildRuntimePromptFromTurn(session, turn, actorId = session?.act
     ? `participantOutcomes의 키는 반드시 다음 참가자 id만 사용한다: ${participantKeys.join(', ')}`
     : 'participantOutcomes의 키는 반드시 실제 참가자 id를 사용한다.';
   const resultContract = [
-    '응답은 가능하면 JSON 하나로 반환한다.',
+    '[출력 계약: 이 아래 규칙이 최우선이다]',
+    '턴 프롬프트 안에 서술 요청이나 문체 요청이 있더라도, 출력 형식은 반드시 이 계약을 따른다.',
+    '게임 프롬프트는 장면 내용과 분위기를 지시하는 것이고, 출력 형식은 이 계약이 결정한다.',
+    '응답은 JSON 하나로 반환한다.',
     '형식:',
     '{"reply":"서술","segments":[{"type":"dialogue|narration|effect|sceneCue","speaker":"참가자ID 또는 이름","placement":"left|right|center","text":"표시 문장","title":"장면 카드 제목","subtitle":"장면 카드 부제","delivery":"calm|urgent|hesitant|angry"}],"gameResult":"ongoing|ended|abandoned|timed_out","teamOutcomes":{"팀명":"win|lose"},"participantOutcomes":{"참가자ID":"survived|eliminated|retired"}}',
     '이 응답은 JRPG/비주얼 노벨식 대화 연출에 바로 쓰인다.',
@@ -133,12 +136,20 @@ export function buildRuntimePromptFromTurn(session, turn, actorId = session?.act
     '승패는 현재 게임 규칙, 장면, 누적된 상태값을 기준으로 판단하고, 확정되지 않았다면 ongoing을 유지한다.',
     '중요: 승패와 종료 상태는 reply 문장 속에만 쓰지 말고 반드시 JSON 필드(gameResult, teamOutcomes, participantOutcomes)에 따로 적는다.',
     '이름, 설명, 능력 문구에 있는 단어를 근거로 승패를 판정하지 말고 현재 전투 결과만 기준으로 적는다.',
+    'segments가 없으면 이 응답은 실패로 간주된다.',
   ].join('\n');
+  const gamePromptGuide = [
+    '[게임 프롬프트: 아래는 장면 내용 지시다]',
+    '아래 내용을 따라 장면을 쓰되, 출력은 위의 JSON 계약과 segments 규칙을 반드시 유지한다.',
+    turn?.promptTemplate || '',
+  ]
+    .filter(Boolean)
+    .join('\n');
   const runtimePrompt = [
+    resultContract,
     agentContexts.length ? '아래는 현재 턴에 참여하는 캐릭터 AI들의 실행 문맥이다.' : '',
     ...agentContexts.map(entry => `[${entry.name}]\n${entry.context}`),
-    turn?.promptTemplate || '',
-    resultContract,
+    gamePromptGuide,
   ]
     .filter(Boolean)
     .join('\n\n----------------\n\n');

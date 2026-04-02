@@ -110,13 +110,16 @@ function resolveAppOrigin(req) {
 
 function buildSegmentRetryPrompt(prompt) {
   return [
-    prompt,
-    '',
     '[재요청]',
-    '방금 응답은 segments 배열이 부족했습니다.',
-    '반드시 JSON 최상위에 segments 배열을 포함하세요.',
+    '방금 응답은 출력 계약을 어겼습니다.',
+    '이번 응답은 반드시 JSON 하나만 반환하세요.',
+    '반드시 최상위에 segments 배열을 포함하세요.',
     'segments는 dialogue, narration, effect, sceneCue 중 하나의 type을 가진 객체 배열이어야 합니다.',
-    'reply만 주지 말고, 표시할 문장을 segments로 잘게 나눠 함께 주세요.',
+    '한 턴 전체를 짧은 장면으로 보고 여러 segments를 연속으로 넣으세요.',
+    'reply만 주거나 긴 문단 하나로 쓰지 마세요.',
+    '게임 프롬프트의 문체 지시보다 JSON 계약과 segments 형식이 우선입니다.',
+    '',
+    prompt,
   ].join('\n');
 }
 
