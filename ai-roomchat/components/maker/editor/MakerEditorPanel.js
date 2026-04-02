@@ -38,7 +38,12 @@ const PARTICIPANT_SCOPE_PRESETS = [
   { value: 'losers', label: '패배자' },
 ];
 const VARIABLE_KEY_PRESETS = [
-  { value: 'gameResult', label: '게임 종료 여부' },
+  { value: 'result.winnerTeam', label: '승리 팀' },
+  { value: 'state.enemyDown', label: '상대 탈락' },
+  { value: 'state.surrendered', label: '항복 여부' },
+  { value: 'state.lastChoice', label: '마지막 선택' },
+];
+const CONDITION_KEY_PRESETS = [
   { value: 'result.winnerTeam', label: '승리 팀' },
   { value: 'state.enemyDown', label: '상대 탈락' },
   { value: 'state.surrendered', label: '항복 여부' },
@@ -237,7 +242,7 @@ export default function MakerEditorPanel({
                       placeholder="예: state.enemyDown"
                     />
                     <PresetRow
-                      items={VARIABLE_KEY_PRESETS}
+                      items={CONDITION_KEY_PRESETS}
                       activeValues={[condition?.key || '']}
                       onToggle={value =>
                         updateEdge(data => ({
@@ -354,6 +359,10 @@ export default function MakerEditorPanel({
   const actorMode = getActorMode(meta.actorScope);
   const actorRole = actorMode === 'role:' ? String(meta.actorScope || '').slice(5).trim() : '';
   const actorCustom = actorMode === 'custom' ? String(meta.actorScope || '') : '';
+  const inputRule = useMemo(() => {
+    const rules = Array.isArray(meta.stateWrites) ? meta.stateWrites : [];
+    return rules.find(rule => String(rule?.sourceType || '') === 'input') || null;
+  }, [meta.stateWrites]);
   const roleScopePresetItems = (Array.isArray(rolePresets) ? rolePresets : [])
     .map(role => String(role?.name || '').trim())
     .filter(Boolean)
@@ -368,6 +377,29 @@ export default function MakerEditorPanel({
     .filter(Boolean);
   const variablesOnly = focusMode === 'variables';
   const quickOnly = compact && focusMode !== 'variables';
+
+  const updatePrimaryInputRule = partial => {
+    if (!meta || !nodeData) return;
+    const currentRules = Array.isArray(meta.stateWrites) ? meta.stateWrites : [];
+    const inputIndex = currentRules.findIndex(rule => String(rule?.sourceType || '') === 'input');
+    const baseRule =
+      inputIndex >= 0
+        ? currentRules[inputIndex]
+        : {
+            id: `state-write-input-${Date.now()}`,
+            sourceType: 'input',
+            sourceKey: '',
+            equals: '',
+            key: '',
+            value: '',
+          };
+    const nextRule = { ...baseRule, sourceType: 'input', ...partial };
+    const nextRules =
+      inputIndex >= 0
+        ? currentRules.map((rule, index) => (index === inputIndex ? nextRule : rule))
+        : [...currentRules, nextRule];
+    updateMeta({ stateWrites: nextRules });
+  };
 
   return (
     <section
@@ -675,6 +707,78 @@ export default function MakerEditorPanel({
               선택지는 자유 텍스트가 아니라
               <code style={{ margin: '0 4px' }}>choices: []</code>
               배열로 돌려주게 맞춥니다. 버튼을 누르면 본문과 결과 예시를 같이 채웁니다.
+            </div>
+          </div>
+        ) : null}
+
+        {meta.executionType === 'user_response' && (meta.inputMode === 'text' || meta.inputMode === 'choice') ? (
+          <div
+            style={{
+              borderRadius: 14,
+              border: '1px solid #cbd5e1',
+              background: '#f8fafc',
+              padding: 12,
+              display: 'grid',
+              gap: 10,
+            }}
+          >
+            <strong style={{ fontSize: 13, color: '#0f172a' }}>입력 결과를 변수로 기록</strong>
+            <span style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
+              특정 입력이나 선택지가 들어왔을 때, 다음 분기에서 읽을 변수를 간단하게 남깁니다.
+            </span>
+
+            <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
+              <Field label={meta.inputMode === 'choice' ? '어떤 선택지면' : '어떤 입력이면'}>
+                <input
+                  name="input-rule-equals"
+                  type="text"
+                  value={inputRule?.equals || ''}
+                  onChange={event => updatePrimaryInputRule({ equals: event.target.value })}
+                  style={inputStyle}
+                  placeholder={meta.inputMode === 'choice' ? '예: choice_1 / attack' : '예: yes / surrender'}
+                />
+              </Field>
+
+              <Field label="기록할 변수">
+                <input
+                  name="input-rule-key"
+                  type="text"
+                  value={inputRule?.key || ''}
+                  onChange={event => updatePrimaryInputRule({ key: event.target.value })}
+                  style={inputStyle}
+                  placeholder="예: state.lastChoice"
+                />
+                <PresetRow
+                  items={VARIABLE_KEY_PRESETS}
+                  activeValues={[inputRule?.key || '']}
+                  onToggle={value => updatePrimaryInputRule({ key: value })}
+                />
+              </Field>
+
+              <Field label="기록 값">
+                <input
+                  name="input-rule-value"
+                  type="text"
+                  value={inputRule?.value || ''}
+                  onChange={event => updatePrimaryInputRule({ value: event.target.value })}
+                  style={inputStyle}
+                  placeholder="예: attack / true / optionA"
+                />
+              </Field>
+            </div>
+
+            <div
+              style={{
+                borderRadius: 12,
+                border: '1px solid #e2e8f0',
+                background: '#ffffff',
+                padding: '10px 12px',
+                fontSize: 12,
+                color: '#334155',
+                lineHeight: 1.6,
+              }}
+            >
+              {`${meta.inputMode === 'choice' ? '선택지가' : '입력이'} ${inputRule?.equals || '(값)'} 이면 ${inputRule?.key || '(변수)'} 에 ${inputRule?.value || '(기록 값)'} 을 기록`}
             </div>
           </div>
         ) : null}
