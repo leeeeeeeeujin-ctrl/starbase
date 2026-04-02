@@ -692,7 +692,9 @@ export default function TextBattleSessionPage() {
             ? sceneCall.json.text.trim()
             : '';
         if (!sceneText) {
-          throw new Error(sceneCall.json?.detail || sceneCall.json?.error || 'ai_proxy_failed');
+          throw new Error(
+            `장면 생성 실패: ${sceneCall.json?.detail || sceneCall.json?.error || 'ai_proxy_failed'}`
+          );
         }
 
         setRuntimeState(prev => ({
@@ -721,7 +723,7 @@ export default function TextBattleSessionPage() {
           }
         }
         if (!segmentResultText) {
-          throw new Error(segmentError || 'segment_proxy_failed');
+          throw new Error(`세그먼트 변환 실패: ${segmentError || 'segment_proxy_failed'}`);
         }
 
         setRuntimeState(prev => ({
@@ -750,7 +752,7 @@ export default function TextBattleSessionPage() {
           }
         }
         if (!outcomeResultText) {
-          throw new Error(outcomeError || 'outcome_proxy_failed');
+          throw new Error(`승패 판정 실패: ${outcomeError || 'outcome_proxy_failed'}`);
         }
 
         const segmented = parseStructuredBattleResult(segmentResultText);
