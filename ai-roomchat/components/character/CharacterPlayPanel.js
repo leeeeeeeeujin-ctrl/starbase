@@ -19,13 +19,11 @@ import {
 import { loadMatchFlowSnapshot } from '@/modules/rank/matchRealtimeSync';
 import {
   clearActiveSessionRecord,
-  storeActiveSessionRecord,
 } from '@/lib/rank/activeSessionStorage';
 import { normalizeRealtimeMode, isRealtimeEnabled } from '@/lib/rank/realtimeModes';
 import { formatPlayNumber } from '@/utils/characterPlayFormatting';
 import { buildBattleDefinitionFromGraph } from '@/lib/battle/definition';
 import { evaluateBattleReadiness } from '@/lib/battle/matchReadiness';
-import { writeStoredTextBattleSession } from '@/lib/battle/clientSessionStorage';
 import {
   MATCH_DEBUG_HOLD_ENABLED,
   buildDebugHoldSnapshot,
@@ -2738,17 +2736,6 @@ export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) 
     if (!response.ok || !json?.ok) {
       if (response.status === 409 && json?.existingSession) {
         const existingSession = json.existingSession;
-        storeActiveSessionRecord(selectedGameId, {
-          ...existingSession,
-          gameId: existingSession.gameId || selectedGameId,
-          gameName:
-            existingSession.gameName ||
-            selectedGame?.name ||
-            workspace?.game_name ||
-            '',
-          status: existingSession.status || 'active',
-          sessionId: existingSession.sessionId || null,
-        });
         setActiveSession(prev => ({
           ...(prev && typeof prev === 'object' ? prev : {}),
           ...existingSession,
@@ -2776,18 +2763,6 @@ export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) 
       heroIds,
     });
 
-    writeStoredTextBattleSession(textSessionId, json?.session || null);
-    storeActiveSessionRecord(selectedGameId, {
-      href: `/text-battle/session/${encodeURIComponent(textSessionId)}`,
-      gameName: selectedGame?.name || workspace?.game_name || '',
-      description: selectedGame?.description || '',
-      status: 'active',
-      sessionId: textSessionId,
-      actorNames: Array.isArray(json?.participants)
-        ? json.participants.map(participant => participant?.name).filter(Boolean)
-        : [],
-      turn: Number.isFinite(Number(json?.session?.turnIndex)) ? Number(json.session.turnIndex) + 1 : 1,
-    });
     setActiveSession({
       href: `/text-battle/session/${encodeURIComponent(textSessionId)}`,
       gameId: selectedGameId,
