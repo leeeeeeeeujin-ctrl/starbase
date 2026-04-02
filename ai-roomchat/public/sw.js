@@ -4,7 +4,7 @@
  */
 
 // public/sw.js
-const CACHE_NAME = 'starbase-ai-game-v1.0.2';
+const CACHE_NAME = 'starbase-ai-game-v1.0.3';
 
 // 캐시할 리소스들
 const STATIC_RESOURCES = [
@@ -182,6 +182,14 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const { request } = event;
   const url = new URL(request.url);
+
+  // API 응답은 절대 서비스워커 캐시/오프라인 경로를 타지 않는다.
+  // 모바일에서 stale 세션/키/턴 상태가 남는 공통 원인이 될 수 있으므로
+  // 서버 응답을 그대로 통과시킨다.
+  if (url.pathname.startsWith('/api/')) {
+    event.respondWith(fetch(request));
+    return;
+  }
 
   // 게임 API 요청 처리
   if (url.pathname.startsWith('/api/game/')) {
