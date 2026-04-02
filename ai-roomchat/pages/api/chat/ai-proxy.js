@@ -24,6 +24,20 @@ const anonClient = createClient(url, anonKey, {
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
+    const referer = typeof req.headers.referer === 'string' ? req.headers.referer : '';
+    const accept = typeof req.headers.accept === 'string' ? req.headers.accept : '';
+    const secFetchMode =
+      typeof req.headers['sec-fetch-mode'] === 'string' ? req.headers['sec-fetch-mode'] : '';
+
+    if (
+      req.method === 'GET' &&
+      secFetchMode === 'navigate' &&
+      accept.includes('text/html') &&
+      referer
+    ) {
+      return res.redirect(303, referer);
+    }
+
     return res.status(405).json({ error: 'method_not_allowed' });
   }
 
