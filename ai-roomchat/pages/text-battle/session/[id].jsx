@@ -160,6 +160,34 @@ function toSceneSegments(sourceText, participants) {
   }));
 }
 
+function upsertTurnList(turns, incomingTurn) {
+  const current = Array.isArray(turns) ? turns : [];
+  if (!incomingTurn || typeof incomingTurn !== 'object') {
+    return current;
+  }
+  if (Number(incomingTurn.turn_index) < 0) {
+    return current;
+  }
+
+  const next = current.slice();
+  const existingIndex = next.findIndex(turn =>
+    (turn?.id && incomingTurn?.id && String(turn.id) === String(incomingTurn.id)) ||
+    Number(turn?.turn_index) === Number(incomingTurn.turn_index)
+  );
+
+  if (existingIndex >= 0) {
+    next[existingIndex] = {
+      ...next[existingIndex],
+      ...incomingTurn,
+    };
+  } else {
+    next.push(incomingTurn);
+  }
+
+  next.sort((left, right) => Number(left?.turn_index || 0) - Number(right?.turn_index || 0));
+  return next;
+}
+
 function getTypingDelay(segment, visibleChars) {
   const text = segment?.text || '';
   const delivery = String(segment?.delivery || '').toLowerCase();
@@ -650,6 +678,18 @@ export default function TextBattleSessionPage() {
       }
 
       writeStoredTextBattleSession(id, json.session);
+      const nextTurns = upsertTurnList(state.payload?.turns, json.turn);
+      if (nextTurns !== state.payload?.turns) {
+        setState(prev => ({
+          ...prev,
+          loading: false,
+          error: null,
+          payload: {
+            ...(prev.payload || {}),
+            turns: nextTurns,
+          },
+        }));
+      }
       setRuntimeState(prev => ({
         ...prev,
         session: hydrateRuntimeSession(json.session),
@@ -669,7 +709,7 @@ export default function TextBattleSessionPage() {
         router.replace(`/battle-log/${encodeURIComponent(String(id))}?source=text-battle`);
         return;
       }
-      await refreshPayload({ waitForFirstScene: wasPreludeTurn });
+      await refreshPayload({ waitForFirstScene: wasPreludeTurn && !nextTurns.length });
       setRuntimeState(prev => ({
         ...prev,
         running: false,

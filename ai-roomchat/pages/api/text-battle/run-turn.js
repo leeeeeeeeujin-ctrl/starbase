@@ -259,6 +259,8 @@ export default async function handler(req, res) {
       valuesPatch,
     });
 
+    let persistedTurn = null;
+
     if (textSessionId) {
       const { data: sessionRow, error: sessionLookupError } = await supabaseAdmin
         .from('text_battle_sessions')
@@ -341,6 +343,7 @@ export default async function handler(req, res) {
         heroId: agentContexts[0]?.heroId || null,
         rivalId: agentContexts[1]?.heroId || null,
       });
+      persistedTurn = turnRow;
 
       const { error: turnInsertError } = await supabaseAdmin
         .from('text_battle_turns')
@@ -418,6 +421,7 @@ export default async function handler(req, res) {
       agentContexts,
       runtimePrompt,
       session: serializeSession(nextSession),
+      turn: persistedTurn,
     });
   } catch (error) {
     return res.status(500).json({
