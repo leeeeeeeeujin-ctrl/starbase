@@ -358,7 +358,6 @@ export default function TextBattleSessionPage() {
     String(sessionStatus || '').toLowerCase()
   );
   const historyTurns = turns.slice(0, -1);
-  const showPrelude = !turns.length && !isEnded;
   const showApiKeyRecovery = runtimeState.errorKind === 'api_key';
   const featuredTurn = turns.length ? turns[turns.length - 1] : null;
   const featuredSpeaker =
@@ -394,6 +393,13 @@ export default function TextBattleSessionPage() {
   const activeHero = featuredSpeaker || participants[0] || null;
   const sceneSource = featuredTurn?.ai_response || currentTurn?.display || '';
   const sceneSegments = useMemo(() => toSceneSegments(sceneSource, participants), [participants, sceneSource]);
+  const hasRenderableScene = Boolean(
+    turns.length &&
+      (sceneSegments.length ||
+        extractRenderableSceneText(featuredTurn?.ai_response) ||
+        extractRenderableSceneText(featuredTurn?.display))
+  );
+  const showPrelude = !hasRenderableScene && !isEnded;
   const activeSegment = sceneSegments[dialogueState.segmentIndex] || null;
   const activeSegmentText = activeSegment?.text || '';
   const typedSegmentText = activeSegmentText.slice(0, dialogueState.visibleChars || 0);
@@ -438,7 +444,7 @@ export default function TextBattleSessionPage() {
         }
       : null;
   const safeFallbackText =
-    extractRenderableSceneText(currentTurn?.display) ||
+    extractRenderableSceneText(featuredTurn?.ai_response) ||
     extractRenderableSceneText(lastTurn?.ai_response) ||
     '현재 표시할 장면이 없습니다.';
   const preludeProgressLabel = showApiKeyRecovery
@@ -510,17 +516,35 @@ export default function TextBattleSessionPage() {
     return () => clearTimeout(timer);
   }, [currentTurn, id, isEnded, runtimeSession, runtimeState.running, turns.length]);
 
-  async function refreshPayload() {
-    const response = await fetch(`/api/text-battle/session?id=${encodeURIComponent(id)}`);
-    const json = await response.json().catch(() => null);
-    if (!response.ok || !json?.ok) {
-      throw new Error(json?.detail || json?.error || 'failed_to_refresh');
+  async function refreshPayload(options = {}) {
+    const waitForFirstScene = Boolean(options.waitForFirstScene);
+
+    for (let attempt = 0; attempt < (waitForFirstScene ? 5 : 1); attempt += 1) {
+      const response = await fetch(`/api/text-battle/session?id=${encodeURIComponent(id)}`);
+      const json = await response.json().catch(() => null);
+      if (!response.ok || !json?.ok) {
+        throw new Error(json?.detail || json?.error || 'failed_to_refresh');
+      }
+
+      const nextTurns = Array.isArray(json?.turns) ? json.turns : [];
+      const nextFeaturedTurn = nextTurns.length ? nextTurns[nextTurns.length - 1] : null;
+      const nextSceneText = extractRenderableSceneText(nextFeaturedTurn?.ai_response) || extractRenderableSceneText(nextFeaturedTurn?.display);
+      const hasScene = Boolean(nextTurns.length && nextSceneText);
+
+      setState({
+        loading: false,
+        error: null,
+        payload: json,
+      });
+
+      if (!waitForFirstScene || hasScene) {
+        return json;
+      }
+
+      await new Promise(resolve => {
+        window.setTimeout(resolve, 450);
+      });
     }
-    setState({
-      loading: false,
-      error: null,
-      payload: json,
-    });
   }
 
   function handleParticipantTap(participant) {
@@ -562,6 +586,7 @@ export default function TextBattleSessionPage() {
 
   async function handleRunTurn() {
     if (!id || !runtimeSession || !currentTurn || runtimeState.running) return;
+    const wasPreludeTurn = !turns.length;
     setRuntimeState(prev => ({
       ...prev,
       running: true,
@@ -629,11 +654,13 @@ export default function TextBattleSessionPage() {
         ...prev,
         session: hydrateRuntimeSession(json.session),
         input: '',
-        running: false,
+        running: json.session?.status === 'completed' ? false : prev.running,
         status:
           json.session?.status === 'completed'
             ? '전투가 종료되었습니다.'
-            : '다음 장면으로 진행했습니다.',
+            : wasPreludeTurn
+              ? '첫 장면을 준비하는 중입니다…'
+              : '다음 장면으로 진행했습니다.',
         error: '',
         errorKind: '',
       }));
@@ -642,7 +669,12 @@ export default function TextBattleSessionPage() {
         router.replace(`/battle-log/${encodeURIComponent(String(id))}?source=text-battle`);
         return;
       }
-      await refreshPayload();
+      await refreshPayload({ waitForFirstScene: wasPreludeTurn });
+      setRuntimeState(prev => ({
+        ...prev,
+        running: false,
+        status: '다음 장면으로 진행했습니다.',
+      }));
     } catch (error) {
       const friendly = getBattleRunErrorMessage(error);
       setRuntimeState(prev => ({

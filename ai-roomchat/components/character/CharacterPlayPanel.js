@@ -1556,8 +1556,20 @@ export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) 
     }
 
     syncActiveSessionFromServer();
+    const handleWindowFocus = () => {
+      syncActiveSessionFromServer();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        syncActiveSessionFromServer();
+      }
+    };
+    window.addEventListener('focus', handleWindowFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       cancelled = true;
+      window.removeEventListener('focus', handleWindowFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
 
@@ -2746,6 +2758,18 @@ export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) 
           status: existingSession.status || 'active',
           sessionId: existingSession.sessionId || null,
         });
+        setActiveSession(prev => ({
+          ...(prev && typeof prev === 'object' ? prev : {}),
+          ...existingSession,
+          gameId: existingSession.gameId || selectedGameId,
+          gameName:
+            existingSession.gameName ||
+            selectedGame?.name ||
+            workspace?.game_name ||
+            '',
+          status: existingSession.status || 'active',
+          sessionId: existingSession.sessionId || null,
+        }));
       }
       throw new Error(json?.detail || json?.error || '텍스트 배틀 세션을 시작하지 못했습니다.');
     }
@@ -2764,6 +2788,18 @@ export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) 
     writeStoredTextBattleSession(textSessionId, json?.session || null);
     storeActiveSessionRecord(selectedGameId, {
       href: `/text-battle/session/${encodeURIComponent(textSessionId)}`,
+      gameName: selectedGame?.name || workspace?.game_name || '',
+      description: selectedGame?.description || '',
+      status: 'active',
+      sessionId: textSessionId,
+      actorNames: Array.isArray(json?.participants)
+        ? json.participants.map(participant => participant?.name).filter(Boolean)
+        : [],
+      turn: Number.isFinite(Number(json?.session?.turnIndex)) ? Number(json.session.turnIndex) + 1 : 1,
+    });
+    setActiveSession({
+      href: `/text-battle/session/${encodeURIComponent(textSessionId)}`,
+      gameId: selectedGameId,
       gameName: selectedGame?.name || workspace?.game_name || '',
       description: selectedGame?.description || '',
       status: 'active',
