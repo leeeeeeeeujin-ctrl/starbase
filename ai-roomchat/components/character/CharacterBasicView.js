@@ -30,7 +30,6 @@ import {
   fetchRankUserKeyring,
   formatKeyProviderLabel,
   KEYRING_LIMIT_FALLBACK,
-  mergeKeyringEntries,
   normalizeKeyringEntry,
   registerRankApiKey,
   sanitizeKeyringStorageEntry,
@@ -1501,6 +1500,25 @@ export default function CharacterBasicView({ hero }) {
 
   const { apiKey, apiVersion } = useStartApiKeyManager({});
 
+  const reloadKeyring = useCallback(async () => {
+    const { entries, limit } = await fetchRankUserKeyring();
+    const normalized = Array.isArray(entries)
+      ? entries.map(normalizeKeyringEntry).filter(Boolean)
+      : [];
+    setKeyringEntries(normalized);
+    setKeyringLimit(Number.isFinite(limit) ? Number(limit) : KEYRING_LIMIT_FALLBACK);
+    const sessionResult = await supabase.auth.getSession().catch(() => null);
+    const userId = sessionResult?.data?.session?.user?.id || '';
+    persistRankKeyringSnapshot({
+      userId,
+      entries: normalized.map(sanitizeKeyringStorageEntry),
+    });
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('rank-keyring:refresh'));
+    }
+    return normalized;
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     async function loadKeyring() {
@@ -1508,6 +1526,9 @@ export default function CharacterBasicView({ hero }) {
       setKeyringError(null);
       try {
         const snapshot = readRankKeyringSnapshot();
+        if (snapshot?.entries?.length && !cancelled) {
+          setKeyringEntries(snapshot.entries.map(normalizeKeyringEntry).filter(Boolean));
+        }
         const { entries, limit } = await fetchRankUserKeyring();
         if (cancelled) return;
         const normalized = Array.isArray(entries)
@@ -1515,6 +1536,12 @@ export default function CharacterBasicView({ hero }) {
           : [];
         setKeyringEntries(normalized);
         setKeyringLimit(Number.isFinite(limit) ? Number(limit) : KEYRING_LIMIT_FALLBACK);
+        const sessionResult = await supabase.auth.getSession().catch(() => null);
+        const userId = sessionResult?.data?.session?.user?.id || '';
+        persistRankKeyringSnapshot({
+          userId,
+          entries: normalized.map(sanitizeKeyringStorageEntry),
+        });
       } catch (error) {
         console.error('[Character] failed to load api keyring', error);
         if (!cancelled) setKeyringError(error);
@@ -3822,24 +3849,11 @@ export default function CharacterBasicView({ hero }) {
                               setKeyringError(null);
                               setKeyringMessage('');
                               try {
-                                const payload = await registerRankApiKey({
+                                await registerRankApiKey({
                                   apiKey: newApiKey.trim(),
                                   context: {},
                                 });
-                                const entry = normalizeKeyringEntry(payload?.entry);
-                                const entries = mergeKeyringEntries(
-                                  keyringEntries,
-                                  entry,
-                                  payload?.activated !== false
-                                );
-                                setKeyringEntries(entries);
-                                persistRankKeyringSnapshot({
-                                  userId: '',
-                                  entries: entries.map(sanitizeKeyringStorageEntry),
-                                });
-                                setKeyringLimit(
-                                  Number.isFinite(payload?.limit) ? Number(payload.limit) : keyringLimit
-                                );
+                                await reloadKeyring();
                                 setNewApiKey('');
                                 setKeyringMessage('API 키가 저장되었습니다.');
                               } catch (error) {
@@ -3901,7 +3915,7 @@ export default function CharacterBasicView({ hero }) {
                                       setKeyringError(null);
                                       setKeyringMessage('');
                                       try {
-                                        const payload = entry.isActive
+                                        entry.isActive
                                           ? await deactivateRankApiKey({
                                               entryId: entry.id,
                                               context: {},
@@ -3910,17 +3924,7 @@ export default function CharacterBasicView({ hero }) {
                                               entryId: entry.id,
                                               context: {},
                                             });
-                                        const normalized = normalizeKeyringEntry(payload?.entry);
-                                        const entries = mergeKeyringEntries(
-                                          keyringEntries,
-                                          normalized,
-                                          !!normalized?.isActive
-                                        );
-                                        setKeyringEntries(entries);
-                                        persistRankKeyringSnapshot({
-                                          userId: '',
-                                          entries: entries.map(sanitizeKeyringStorageEntry),
-                                        });
+                                        await reloadKeyring();
                                       } catch (error) {
                                         console.error('[Character] failed to toggle api key', error);
                                         setKeyringError(error);
@@ -3945,12 +3949,7 @@ export default function CharacterBasicView({ hero }) {
                                           entryId: entry.id,
                                           context: {},
                                         });
-                                        const entries = keyringEntries.filter(item => item.id !== entry.id);
-                                        setKeyringEntries(entries);
-                                        persistRankKeyringSnapshot({
-                                          userId: '',
-                                          entries: entries.map(sanitizeKeyringStorageEntry),
-                                        });
+                                        await reloadKeyring();
                                       } catch (error) {
                                         console.error('[Character] failed to delete api key', error);
                                         setKeyringError(error);
