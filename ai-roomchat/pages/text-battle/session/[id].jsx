@@ -37,6 +37,15 @@ function shortText(value, limit = 90) {
 function getBattleRunErrorMessage(error) {
   const message = String(error?.message || '').toLowerCase();
   if (
+    message.includes('quota_exhausted') ||
+    message.includes('quota exceeded') ||
+    message.includes('rate limit') ||
+    message.includes('too many requests') ||
+    message.includes('retry in')
+  ) {
+    return '요청 한도를 초과했습니다. 잠시 후 다시 시도하거나 AI 키를 바꿔주세요.';
+  }
+  if (
     message.includes('invalid api key') ||
     message.includes('api key') ||
     message.includes('authentication') ||
@@ -68,6 +77,15 @@ function getBattleRunErrorMessage(error) {
 
 function getBattleRunErrorKind(error) {
   const message = String(error?.message || '').toLowerCase();
+  if (
+    message.includes('quota_exhausted') ||
+    message.includes('quota exceeded') ||
+    message.includes('rate limit') ||
+    message.includes('too many requests') ||
+    message.includes('retry in')
+  ) {
+    return 'quota';
+  }
   if (
     message.includes('invalid api key') ||
     message.includes('api key') ||
