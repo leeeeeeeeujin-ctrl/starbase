@@ -425,6 +425,11 @@ export default function TextBattleSessionPage() {
           subtitle: activeSegment.subtitle || activeSegment.text || '',
         }
       : null;
+  const preludeBackgroundUrl =
+    stageBackgroundUrl ||
+    participants.find(participant => participant?.background_url)?.background_url ||
+    participants.find(participant => participant?.image_url)?.image_url ||
+    null;
 
   useEffect(() => {
     if (!id) return;
@@ -712,8 +717,8 @@ export default function TextBattleSessionPage() {
               zIndex: 120,
               padding: '24px 18px 140px',
               background:
-                stageBackgroundUrl
-                  ? `linear-gradient(180deg, rgba(2,6,23,0.24) 0%, rgba(2,6,23,0.94) 100%), url(${stageBackgroundUrl}) center/cover`
+                preludeBackgroundUrl
+                  ? `linear-gradient(180deg, rgba(2,6,23,0.24) 0%, rgba(2,6,23,0.94) 100%), url(${preludeBackgroundUrl}) center/cover`
                   : 'linear-gradient(180deg, rgba(15,23,42,0.94) 0%, rgba(2,6,23,0.98) 100%)',
               display: 'flex',
               alignItems: 'center',
@@ -779,9 +784,9 @@ export default function TextBattleSessionPage() {
                               boxShadow: '0 18px 44px -28px rgba(15,23,42,0.96)',
                             }}
                           >
-                            {participant.image_url ? (
+                            {participant.image_url || participant.background_url ? (
                               <img
-                                src={participant.image_url}
+                                src={participant.image_url || participant.background_url}
                                 alt={participant.name}
                                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                               />

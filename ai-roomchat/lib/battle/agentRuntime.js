@@ -108,7 +108,11 @@ export function buildRuntimePromptFromTurn(session, turn, actorId = session?.act
   const resultContract = [
     '응답은 가능하면 JSON 하나로 반환한다.',
     '형식:',
-    '{"reply":"서술","gameResult":"ongoing|ended|abandoned|timed_out","teamOutcomes":{"팀명":"win|lose"},"participantOutcomes":{"참가자ID":"survived|eliminated|retired"}}',
+    '{"reply":"서술","segments":[{"type":"dialogue|narration|effect|sceneCue","speaker":"참가자ID 또는 이름","placement":"left|right|center","text":"표시 문장","title":"장면 카드 제목","subtitle":"장면 카드 부제","delivery":"calm|urgent|hesitant|angry"}],"gameResult":"ongoing|ended|abandoned|timed_out","teamOutcomes":{"팀명":"win|lose"},"participantOutcomes":{"참가자ID":"survived|eliminated|retired"}}',
+    '가능하면 reply만 쓰지 말고 segments를 함께 제공한다.',
+    'dialogue는 캐릭터 대사, narration은 서술, effect는 짧은 효과 문구, sceneCue는 장소/인물/BGM 전환 카드에 쓴다.',
+    'sceneCue는 title, subtitle을 채우고 text는 비워도 된다.',
+    'segments가 있으면 각 문장은 1세그먼트씩 잘게 나눈다.',
     '아직 전투가 끝나지 않았다면 gameResult는 "ongoing"로 둔다.',
     '전투가 끝났다면 반드시 누가 승리했고 누가 패배했는지 teamOutcomes 또는 participantOutcomes 중 하나 이상으로 명확히 적는다.',
     '개인 결과는 보통 survived, eliminated, retired 중 하나를 쓴다.',
