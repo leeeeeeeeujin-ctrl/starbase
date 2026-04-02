@@ -95,7 +95,13 @@ function buildSessionUpdateRow(session) {
   };
 }
 
-const SEGMENT_RETRY_LIMIT = 1;
+const SEGMENT_RETRY_LIMIT = 2;
+
+function needsStructuredRetry(parsedResult) {
+  if (!parsedResult || typeof parsedResult !== 'object') return true;
+  if (!Array.isArray(parsedResult.segments) || !parsedResult.segments.length) return true;
+  return !parsedResult.segments.some(segment => String(segment?.text || segment?.subtitle || '').trim());
+}
 
 function resolveAppOrigin(req) {
   const proto =
@@ -211,10 +217,7 @@ export default async function handler(req, res) {
     let submittedResult = payload?.result || null;
     let parsedResult = parseStructuredBattleResult(submittedResult);
 
-    if (
-      (!Array.isArray(parsedResult?.segments) || !parsedResult.segments.length) &&
-      (currentTurn?.input?.mode || 'none') === 'none'
-    ) {
+    if (needsStructuredRetry(parsedResult) && (currentTurn?.input?.mode || 'none') === 'none') {
       let retryCount = 0;
       const appOrigin = resolveAppOrigin(req);
       while (retryCount < SEGMENT_RETRY_LIMIT) {
@@ -235,7 +238,7 @@ export default async function handler(req, res) {
         }
         submittedResult = typeof retryJson?.text === 'string' ? retryJson.text : submittedResult;
         parsedResult = parseStructuredBattleResult(submittedResult);
-        if (Array.isArray(parsedResult?.segments) && parsedResult.segments.length) {
+        if (!needsStructuredRetry(parsedResult)) {
           break;
         }
         retryCount += 1;

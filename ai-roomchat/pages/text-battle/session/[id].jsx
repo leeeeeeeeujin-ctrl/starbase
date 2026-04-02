@@ -258,6 +258,9 @@ export default function TextBattleSessionPage() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [teamPanelOpen, setTeamPanelOpen] = useState(false);
   const [detailParticipant, setDetailParticipant] = useState(null);
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [apiSubmitting, setApiSubmitting] = useState(false);
+  const [apiSaveStatus, setApiSaveStatus] = useState('');
   const [dialogueState, setDialogueState] = useState({
     segmentIndex: 0,
     visibleChars: 0,
@@ -707,6 +710,50 @@ export default function TextBattleSessionPage() {
     }
   }
 
+  async function handleRegisterApiKey() {
+    const apiKey = apiKeyInput.trim();
+    if (!apiKey || apiSubmitting) return;
+    setApiSubmitting(true);
+    setApiSaveStatus('');
+    try {
+      const {
+        data: { session: authSession },
+      } = await supabase.auth.getSession();
+      const token = authSession?.access_token || '';
+      if (!token) {
+        throw new Error('로그인이 필요합니다.');
+      }
+      const response = await fetch('/api/rank/user-api-keyring', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          apiKey,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || 'API 키를 저장하지 못했습니다.');
+      }
+      setApiKeyInput('');
+      setApiSaveStatus('API 키를 저장했습니다. 다시 시도해주세요.');
+      setRuntimeState(prev => ({
+        ...prev,
+        error: '',
+        errorKind: '',
+      }));
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('rank-keyring:refresh'));
+      }
+    } catch (error) {
+      setApiSaveStatus(error.message || 'API 키를 저장하지 못했습니다.');
+    } finally {
+      setApiSubmitting(false);
+    }
+  }
+
   if (!id) {
     return <div style={{ padding: 20 }}>세션 ID가 지정되지 않았습니다.</div>;
   }
@@ -891,28 +938,68 @@ export default function TextBattleSessionPage() {
                 ))}
               </div>
               {showApiKeyRecovery ? (
-                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      router.push(
-                        viewerHeroId
-                          ? `/character/${encodeURIComponent(String(viewerHeroId))}/agent`
-                          : '/lobby'
-                      )
-                    }
-                    style={{
-                      padding: '12px 16px',
-                      borderRadius: 14,
-                      border: '1px solid rgba(96,165,250,0.28)',
-                      background: 'rgba(15,23,42,0.88)',
-                      color: '#f8fafc',
-                      fontWeight: 800,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    캐릭터 페이지로 이동
-                  </button>
+                <div style={{ display: 'grid', gap: 10 }}>
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    <input
+                      type="password"
+                      value={apiKeyInput}
+                      onChange={event => setApiKeyInput(event.target.value)}
+                      placeholder="새 API 키를 붙여넣습니다."
+                      style={{
+                        width: '100%',
+                        borderRadius: 14,
+                        border: '1px solid rgba(248,113,113,0.28)',
+                        background: 'rgba(15,23,42,0.88)',
+                        color: '#f8fafc',
+                        padding: '12px 14px',
+                        boxSizing: 'border-box',
+                      }}
+                    />
+                    {apiSaveStatus ? (
+                      <div style={{ fontSize: 12, color: apiSaveStatus.includes('저장했습니다') ? '#93c5fd' : '#fecaca' }}>
+                        {apiSaveStatus}
+                      </div>
+                    ) : null}
+                  </div>
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={handleRegisterApiKey}
+                      disabled={apiSubmitting || !apiKeyInput.trim()}
+                      style={{
+                        padding: '12px 16px',
+                        borderRadius: 14,
+                        border: '1px solid rgba(96,165,250,0.28)',
+                        background: apiSubmitting ? 'rgba(51,65,85,0.88)' : 'rgba(15,23,42,0.88)',
+                        color: '#f8fafc',
+                        fontWeight: 800,
+                        cursor: apiSubmitting ? 'wait' : 'pointer',
+                      }}
+                    >
+                      {apiSubmitting ? '저장 중…' : 'API 키 저장'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        router.push(
+                          viewerHeroId
+                            ? `/character/${encodeURIComponent(String(viewerHeroId))}/agent`
+                            : '/lobby'
+                        )
+                      }
+                      style={{
+                        padding: '12px 16px',
+                        borderRadius: 14,
+                        border: '1px solid rgba(96,165,250,0.2)',
+                        background: 'rgba(15,23,42,0.66)',
+                        color: '#dbeafe',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      캐릭터 페이지로 이동
+                    </button>
+                  </div>
                 </div>
               ) : null}
             </div>
