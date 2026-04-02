@@ -91,6 +91,29 @@ function buildZeroSumDelta(outcome, reason) {
   return { attacker: -base, defender: base };
 }
 
+function adjustZeroSumDeltaByRating(delta = {}, attackerRating = 1000, defenderRating = 1000) {
+  const attackerBase = toNumber(delta?.attacker, 0);
+  const defenderBase = toNumber(delta?.defender, 0);
+  if (attackerBase === 0 && defenderBase === 0) {
+    return { attacker: 0, defender: 0 };
+  }
+
+  const gap = Math.max(-400, Math.min(400, toNumber(attackerRating, 1000) - toNumber(defenderRating, 1000)));
+  const swing = Math.max(-4, Math.min(4, Math.round(gap / 100)));
+
+  if (attackerBase > 0) {
+    const adjusted = Math.max(4, attackerBase - swing);
+    return { attacker: adjusted, defender: -adjusted };
+  }
+
+  if (attackerBase < 0) {
+    const adjusted = Math.max(4, Math.abs(attackerBase) + swing);
+    return { attacker: -adjusted, defender: adjusted };
+  }
+
+  return { attacker: attackerBase, defender: defenderBase };
+}
+
 function normalizeTurnLogs(session = {}, gameId, battleId, outcome) {
   const logs = Array.isArray(session?.logs) ? session.logs : [];
   if (!logs.length) {
@@ -209,6 +232,24 @@ async function upsertParticipantOutcome({
   if (insertError) throw insertError;
 }
 
+async function loadParticipantRating({ gameId, ownerId }) {
+  if (!gameId || !ownerId) return 1000;
+  const { data, error } = await supabaseAdmin
+    .from('rank_participants')
+    .select('rating, score')
+    .eq('game_id', gameId)
+    .eq('owner_id', ownerId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  const rating = toNumber(data?.rating, NaN);
+  if (Number.isFinite(rating)) return rating;
+  return toNumber(data?.score, 1000);
+}
+
 function buildSettlementPayload({ session, winnerParticipant, loserParticipant, reason }) {
   const participants = Array.isArray(session?.participants?.list) ? session.participants.list : [];
   if (participants.length !== 2) return null;
@@ -289,6 +330,23 @@ export async function settleTextBattleSession({ session, sessionRow, winnerParti
       reason: reason || 'completed',
     };
   }
+
+  const [attackerRating, defenderRating] = await Promise.all([
+    loadParticipantRating({
+      gameId: settlement.gameId,
+      ownerId: settlement.attacker.ownerId,
+    }),
+    loadParticipantRating({
+      gameId: settlement.gameId,
+      ownerId: settlement.defender.ownerId,
+    }),
+  ]);
+
+  settlement.delta = adjustZeroSumDeltaByRating(
+    settlement.delta,
+    attackerRating,
+    defenderRating
+  );
 
   const now = new Date().toISOString();
   const { data: battleRow, error: battleError } = await supabaseAdmin

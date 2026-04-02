@@ -14,6 +14,7 @@ describe('text battle settlement source', () => {
     expect(source).toContain('function buildZeroSumDelta(outcome, reason)');
     expect(source).toContain('return { attacker: base, defender: -base };');
     expect(source).toContain('return { attacker: -base, defender: base };');
+    expect(source).toContain('function adjustZeroSumDeltaByRating');
     expect(source).toContain('delta: settlement.delta.attacker');
     expect(source).toContain('delta: settlement.delta.defender');
   });
