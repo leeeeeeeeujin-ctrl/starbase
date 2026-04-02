@@ -76,6 +76,19 @@ function getBattleRunErrorKind(error) {
   return 'generic';
 }
 
+function isFormatLikeErrorMessage(value) {
+  const message = String(value || '').toLowerCase();
+  if (!message) return false;
+  return (
+    message.includes('json') ||
+    message.includes('format') ||
+    message.includes('schema') ||
+    message.includes('parse') ||
+    message.includes('segment') ||
+    message.includes('structured')
+  );
+}
+
 function hydrateRuntimeSession(value) {
   if (!value || typeof value !== 'object') return null;
   return rehydrateBattleSession(value);
@@ -650,20 +663,38 @@ export default function TextBattleSessionPage() {
       let resultText = '';
 
       if ((currentTurn?.input?.mode || 'none') === 'none') {
-        const aiResponse = await fetch('/api/chat/ai-proxy', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${authSession.access_token}`,
-          },
-          body: JSON.stringify({
-            prompt: liveRuntime.runtimePrompt,
-          }),
-        });
-        const aiJson = await aiResponse.json().catch(() => null);
-        if (!aiResponse.ok || !aiJson?.ok) {
-          throw new Error(aiJson?.detail || aiJson?.error || 'ai_proxy_failed');
+        let aiJson = null;
+        let aiResponse = null;
+        let aiError = null;
+
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          aiResponse = await fetch('/api/chat/ai-proxy', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${authSession.access_token}`,
+            },
+            body: JSON.stringify({
+              prompt: liveRuntime.runtimePrompt,
+            }),
+          });
+          aiJson = await aiResponse.json().catch(() => null);
+
+          if (aiResponse.ok && aiJson?.ok && typeof aiJson?.text === 'string' && aiJson.text.trim()) {
+            aiError = null;
+            break;
+          }
+
+          aiError = aiJson?.detail || aiJson?.error || 'ai_proxy_failed';
+          if (!isFormatLikeErrorMessage(aiError)) {
+            break;
+          }
         }
+
+        if (!aiResponse?.ok || !aiJson?.ok) {
+          throw new Error(aiError || 'ai_proxy_failed');
+        }
+
         resultText = typeof aiJson?.text === 'string' ? aiJson.text : '';
       } else {
         resultText = inputValue;
