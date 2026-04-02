@@ -14,13 +14,7 @@ import {
   buildRuntimePromptFromTurn,
 } from '@/lib/battle/agentRuntime';
 import {
-  readStoredTextBattleSession,
-  writeStoredTextBattleSession,
-} from '@/lib/battle/clientSessionStorage';
-import {
   clearActiveSessionRecord,
-  readActiveSession,
-  updateActiveSessionRecord,
 } from '@/lib/rank/activeSessionStorage';
 import CharacterRouteHud from '@/components/character/routes/CharacterRouteHud';
 import CharacterDetailOverlay from '@/components/character/CharacterDetailOverlay';
@@ -345,7 +339,6 @@ export default function TextBattleSessionPage() {
           });
           return;
         }
-        const storedSession = hydrateRuntimeSession(readStoredTextBattleSession(id));
         const remoteSession = hydrateRuntimeSession(json?.runtimeSession);
         setState({
           loading: false,
@@ -354,23 +347,16 @@ export default function TextBattleSessionPage() {
         });
         setRuntimeState(prev => ({
           ...prev,
-          session: remoteSession || prev.session,
+          session: remoteSession || null,
         }));
       })
       .catch(err => {
         if (cancelled) return;
-        const storedSession = hydrateRuntimeSession(readStoredTextBattleSession(id));
         setState({
           loading: false,
           error: err?.message || String(err),
           payload: null,
         });
-        if (storedSession) {
-          setRuntimeState(prev => ({
-            ...prev,
-            session: prev.session || storedSession,
-          }));
-        }
       });
     return () => {
       cancelled = true;
@@ -549,25 +535,6 @@ export default function TextBattleSessionPage() {
     null;
 
   useEffect(() => {
-    if (!id) return;
-    const active = readActiveSession();
-    if (!active) return;
-    if (active.sessionId && String(active.sessionId) !== String(id)) return;
-    if (isEnded) {
-      clearActiveSessionRecord(active.gameId || undefined);
-      return;
-    }
-    if (active.gameId) {
-      updateActiveSessionRecord(active.gameId, {
-        href: `/text-battle/session/${encodeURIComponent(String(id))}`,
-        status: 'active',
-        turn: Number.isFinite(Number(runtimeSession?.turnIndex)) ? Number(runtimeSession.turnIndex) + 1 : active.turn || 1,
-        actorNames: Array.isArray(participants) ? participants.map(participant => participant?.name).filter(Boolean) : active.actorNames || [],
-      });
-    }
-  }, [id, isEnded, participants, runtimeSession?.turnIndex]);
-
-  useEffect(() => {
     setDialogueState({
       segmentIndex: 0,
       visibleChars: 0,
@@ -721,7 +688,6 @@ export default function TextBattleSessionPage() {
         throw new Error(json?.detail || json?.error || 'run_turn_failed');
       }
 
-      writeStoredTextBattleSession(id, json.session);
       const nextTurns = upsertTurnList(state.payload?.turns, json.turn);
       setLatestTurnOverride(json.turn || null);
       if (nextTurns !== state.payload?.turns) {
@@ -804,7 +770,6 @@ export default function TextBattleSessionPage() {
       if (!response.ok || !json?.ok) {
         throw new Error(json?.detail || json?.error || 'finish_failed');
       }
-      writeStoredTextBattleSession(id, json.session);
       clearActiveSessionRecord();
       setRuntimeState(prev => ({
         ...prev,
