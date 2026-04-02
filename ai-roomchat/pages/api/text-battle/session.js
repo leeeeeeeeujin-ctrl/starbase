@@ -179,6 +179,7 @@ export default async function handler(req, res) {
               background_url:
                 row.background_url || runtimeMeta.background_url || null,
               bgm_url: row.bgm_url || runtimeMeta.bgm_url || null,
+              owner_id: runtimeParticipant?.ownerId || runtimeMeta.ownerId || null,
               agent_profile:
                 row.agent_profile && typeof row.agent_profile === 'object'
                   ? row.agent_profile

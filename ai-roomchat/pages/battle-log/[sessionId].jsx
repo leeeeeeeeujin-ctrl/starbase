@@ -167,6 +167,22 @@ function ResultPortrait({ participant, tone = 'neutral' }) {
   );
 }
 
+function buildTeamOutcomeMap(finalScore = {}, session = {}) {
+  const raw =
+    (finalScore?.teamOutcomes && typeof finalScore.teamOutcomes === 'object'
+      ? finalScore.teamOutcomes
+      : session?.team_outcomes && typeof session.team_outcomes === 'object'
+        ? session.team_outcomes
+        : {}) || {};
+  const normalized = {};
+  Object.entries(raw).forEach(([key, value]) => {
+    const normalizedKey = String(key || '').replace(/^팀\s*/i, '').trim();
+    if (!normalizedKey) return;
+    normalized[normalizedKey] = String(value || '').trim().toLowerCase();
+  });
+  return normalized;
+}
+
 function TextBattleResultView({ payload, sessionId, backHref = '' }) {
   const session = payload?.session || {};
   const participants = Array.isArray(payload?.participants) ? payload.participants : [];
@@ -175,29 +191,29 @@ function TextBattleResultView({ payload, sessionId, backHref = '' }) {
     session?.final_score && typeof session.final_score === 'object'
       ? session.final_score
       : {};
-
-  const winnerKey = String(finalScore?.winner || session?.winner || '').trim();
-  const loserKey = String(finalScore?.loser || '').trim();
-
-  const winner = participants.find(participant =>
-    [participant?.hero_id, participant?.id, participant?.name]
-      .filter(Boolean)
-      .map(value => String(value))
-      .includes(winnerKey)
-  ) || participants[0] || null;
-
-  const loser = participants.find(participant => {
-    const keys = [participant?.hero_id, participant?.id, participant?.name]
-      .filter(Boolean)
-      .map(value => String(value));
-    if (!loserKey) {
-      return winner && participant?.hero_id !== winner.hero_id;
-    }
-    return keys.includes(loserKey);
-  }) || participants.find(participant => participant?.hero_id !== winner?.hero_id) || participants[1] || null;
-
-  const winnerDelta = Number.isFinite(Number(finalScore?.delta)) ? Number(finalScore.delta) : null;
-  const loserDelta = winnerDelta == null ? null : winnerDelta * -1;
+  const attacker = participants[0] || null;
+  const defender = participants[1] || null;
+  const teamOutcomeMap = buildTeamOutcomeMap(finalScore, session);
+  const attackerTeamKey = String(attacker?.team || '').trim();
+  const defenderTeamKey = String(defender?.team || '').trim();
+  const attackerOutcome = attackerTeamKey ? teamOutcomeMap[attackerTeamKey] || '' : '';
+  const defenderOutcome = defenderTeamKey ? teamOutcomeMap[defenderTeamKey] || '' : '';
+  const attackerTone =
+    attackerOutcome === 'win' ? 'win' : attackerOutcome === 'lose' ? 'lose' : 'neutral';
+  const defenderTone =
+    defenderOutcome === 'win' ? 'win' : defenderOutcome === 'lose' ? 'lose' : 'neutral';
+  const attackerDelta =
+    Number.isFinite(Number(finalScore?.deltas?.attacker))
+      ? Number(finalScore.deltas.attacker)
+      : Number.isFinite(Number(finalScore?.delta))
+        ? Number(finalScore.delta)
+        : null;
+  const defenderDelta =
+    Number.isFinite(Number(finalScore?.deltas?.defender))
+      ? Number(finalScore.deltas.defender)
+      : attackerDelta == null
+        ? null
+        : attackerDelta * -1;
 
   const logRows = turns.map((turn, index) => {
     const actor = participants.find(participant =>
@@ -250,7 +266,7 @@ function TextBattleResultView({ payload, sessionId, backHref = '' }) {
               gap: 16,
             }}
           >
-            <ResultPortrait participant={winner} tone="win" />
+            <ResultPortrait participant={attacker} tone={attackerTone} />
             <div
               style={{
                 display: 'grid',
@@ -272,15 +288,15 @@ function TextBattleResultView({ payload, sessionId, backHref = '' }) {
                 }}
               >
                 <div style={{ fontSize: 20, fontWeight: 900, color: '#60a5fa' }}>
-                  {winnerDelta == null ? '-' : `${winnerDelta > 0 ? '+' : ''}${winnerDelta}`}
+                  {attackerDelta == null ? '-' : `${attackerDelta > 0 ? '+' : ''}${attackerDelta}`}
                 </div>
                 <div style={{ fontSize: 12, color: '#475569' }}>vs</div>
                 <div style={{ fontSize: 20, fontWeight: 900, color: '#f87171' }}>
-                  {loserDelta == null ? '-' : `${loserDelta > 0 ? '+' : ''}${loserDelta}`}
+                  {defenderDelta == null ? '-' : `${defenderDelta > 0 ? '+' : ''}${defenderDelta}`}
                 </div>
               </div>
             </div>
-            <ResultPortrait participant={loser} tone="lose" />
+            <ResultPortrait participant={defender} tone={defenderTone} />
           </div>
         </section>
 
@@ -581,11 +597,15 @@ function LegacyBattleLogView({ data, sessionId, viewParam, backHref = '' }) {
 }
 
 function RankBattleDetailView({ battle, logs, backHref = '' }) {
-  const isWin = String(battle?.result || '').toLowerCase() === 'win';
-  const isLose = String(battle?.result || '').toLowerCase() === 'lose' || String(battle?.result || '').toLowerCase() === 'loss';
-  const tone = isWin ? 'win' : isLose ? 'lose' : 'neutral';
-  const myParticipant = battle?.myParticipant || { name: '내 캐릭터', image_url: null, team: '', role: '' };
-  const opponentParticipant = battle?.opponentParticipant || { name: '상대 캐릭터', image_url: null, team: '', role: '' };
+  const rawResult = String(battle?.result || '').toLowerCase();
+  const attackerParticipant = battle?.attackerParticipant || { name: '공격 캐릭터', image_url: null, team: '1', role: '' };
+  const defenderParticipant = battle?.defenderParticipant || { name: '방어 캐릭터', image_url: null, team: '2', role: '' };
+  const attackerTone =
+    rawResult === 'win' ? 'win' : rawResult === 'lose' || rawResult === 'loss' ? 'lose' : 'neutral';
+  const defenderTone =
+    rawResult === 'win' ? 'lose' : rawResult === 'lose' || rawResult === 'loss' ? 'win' : 'neutral';
+  const attackerDelta = Number.isFinite(Number(battle?.score_delta)) ? Number(battle.score_delta) : null;
+  const defenderDelta = attackerDelta == null ? null : attackerDelta * -1;
   return (
     <BattleLogShell>
       <BattleLogHeader
@@ -609,8 +629,8 @@ function RankBattleDetailView({ battle, logs, backHref = '' }) {
               style={{
                 padding: '6px 10px',
                 borderRadius: 999,
-                border: `1px solid ${isWin ? 'rgba(96,165,250,0.72)' : isLose ? 'rgba(248,113,113,0.72)' : 'rgba(148,163,184,0.42)'}`,
-                color: isWin ? '#93c5fd' : isLose ? '#fca5a5' : '#cbd5e1',
+                border: `1px solid ${attackerTone === 'win' ? 'rgba(96,165,250,0.72)' : attackerTone === 'lose' ? 'rgba(248,113,113,0.72)' : 'rgba(148,163,184,0.42)'}`,
+                color: attackerTone === 'win' ? '#93c5fd' : attackerTone === 'lose' ? '#fca5a5' : '#cbd5e1',
                 fontSize: 12,
                 fontWeight: 800,
               }}
@@ -626,7 +646,7 @@ function RankBattleDetailView({ battle, logs, backHref = '' }) {
               gap: 16,
             }}
           >
-            <ResultPortrait participant={myParticipant} tone={tone} />
+            <ResultPortrait participant={attackerParticipant} tone={attackerTone} />
             <div
               style={{
                 display: 'grid',
@@ -651,16 +671,28 @@ function RankBattleDetailView({ battle, logs, backHref = '' }) {
                   style={{
                     fontSize: 22,
                     fontWeight: 900,
-                    color: Number(battle?.score_delta || 0) >= 0 ? '#60a5fa' : '#f87171',
+                    color: attackerDelta == null ? '#cbd5e1' : attackerDelta >= 0 ? '#60a5fa' : '#f87171',
                   }}
                 >
-                  {Number.isFinite(Number(battle?.score_delta))
-                    ? `${Number(battle.score_delta) > 0 ? '+' : ''}${Number(battle.score_delta)}`
+                  {attackerDelta != null
+                    ? `${attackerDelta > 0 ? '+' : ''}${attackerDelta}`
+                    : '-'}
+                </div>
+                <div style={{ fontSize: 12, color: '#475569' }}>vs</div>
+                <div
+                  style={{
+                    fontSize: 22,
+                    fontWeight: 900,
+                    color: defenderDelta == null ? '#cbd5e1' : defenderDelta >= 0 ? '#60a5fa' : '#f87171',
+                  }}
+                >
+                  {defenderDelta != null
+                    ? `${defenderDelta > 0 ? '+' : ''}${defenderDelta}`
                     : '-'}
                 </div>
                 </div>
               </div>
-            <ResultPortrait participant={opponentParticipant} tone={isWin ? 'lose' : isLose ? 'win' : 'neutral'} />
+            <ResultPortrait participant={defenderParticipant} tone={defenderTone} />
           </div>
         </div>
 
@@ -782,30 +814,23 @@ export default function BattleLogPage() {
           const heroMap = Object.fromEntries(
             heroRows.map(row => [String(row.id), row])
           );
-          const resolvedHeroId = (Array.isArray(heroIdParam) ? heroIdParam[0] : heroIdParam) || '';
-          const normalizedResolvedHeroId = String(resolvedHeroId || '');
-          const viewerIsAttacker = normalizedResolvedHeroId
-            ? attackerHeroIds.includes(normalizedResolvedHeroId)
-            : true;
-          const myHeroId = viewerIsAttacker ? attackerHeroIds[0] || '' : defenderHeroIds[0] || '';
-          const opponentHeroId = viewerIsAttacker
-            ? defenderHeroIds[0] || attackerHeroIds.find(id => id !== myHeroId) || ''
-            : attackerHeroIds[0] || defenderHeroIds.find(id => id !== myHeroId) || '';
-          const myHero = heroMap[myHeroId] || null;
-          const opponentHero = heroMap[opponentHeroId] || null;
+          const attackerHeroId = attackerHeroIds[0] || '';
+          const defenderHeroId = defenderHeroIds[0] || '';
+          const attackerHero = heroMap[attackerHeroId] || null;
+          const defenderHero = heroMap[defenderHeroId] || null;
           if (!cancelled) {
             setData({
               battle: {
                 ...battleRow,
-                myParticipant: {
-                  name: myHero?.name || '내 캐릭터',
-                  image_url: myHero?.image_url || null,
-                  team: viewerIsAttacker ? '1' : '2',
+                attackerParticipant: {
+                  name: attackerHero?.name || '공격 캐릭터',
+                  image_url: attackerHero?.image_url || null,
+                  team: '1',
                 },
-                opponentParticipant: {
-                  name: opponentHero?.name || '상대 캐릭터',
-                  image_url: opponentHero?.image_url || null,
-                  team: viewerIsAttacker ? '2' : '1',
+                defenderParticipant: {
+                  name: defenderHero?.name || '방어 캐릭터',
+                  image_url: defenderHero?.image_url || null,
+                  team: '2',
                 },
               },
               logs: Array.isArray(logRows) ? logRows : [],

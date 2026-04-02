@@ -6,6 +6,7 @@ import {
   parseTurnTemplate,
   serializeTurnTemplate,
   TURN_STATE_WRITE_SOURCES,
+  TURN_PRESENTATION_SOURCES,
 } from '../../../lib/battle/turnTemplate';
 
 const ACTOR_SCOPE_OPTIONS = [
@@ -49,6 +50,13 @@ const CONDITION_KEY_PRESETS = [
   { value: 'state.enemyDown', label: '상대 탈락' },
   { value: 'state.surrendered', label: '항복 여부' },
   { value: 'state.lastChoice', label: '마지막 선택' },
+];
+const PRESENTATION_SOURCE_OPTIONS = [
+  { value: 'inherit', label: '이전 장면 유지' },
+  { value: 'none', label: '없음' },
+  { value: 'stop', label: '정지' },
+  { value: 'self', label: '현재 슬롯 캐릭터 사용' },
+  { value: 'custom', label: '직접 입력' },
 ];
 
 function parseCsv(value) {
@@ -782,6 +790,92 @@ export default function MakerEditorPanel({
               {`${meta.inputMode === 'choice' ? '선택지가' : '입력이'} ${inputRule?.equals || '(값)'} 이면 ${inputRule?.key || '(변수)'} 에 ${inputRule?.value || '(기록 값)'} 을 기록`}
             </div>
           </div>
+        ) : null}
+      </Section>
+      ) : null}
+
+      {!variablesOnly ? (
+      <Section
+        title="장면 연출"
+        description="노드가 시작될 때 배경, 브금, 포커스 캐릭터를 어떻게 바꿀지 정합니다."
+      >
+        <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+          <Field label="배경">
+            <select
+              name="execute-background-source"
+              value={meta.backgroundSource || 'inherit'}
+              onChange={event => updateMeta({ backgroundSource: event.target.value })}
+              style={inputStyle}
+            >
+              {PRESENTATION_SOURCE_OPTIONS.filter(option => option.value !== 'stop').map(option => (
+                <option key={`bg-${option.value}`} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label="브금">
+            <select
+              name="execute-bgm-source"
+              value={meta.bgmSource || 'inherit'}
+              onChange={event => updateMeta({ bgmSource: event.target.value })}
+              style={inputStyle}
+            >
+              {PRESENTATION_SOURCE_OPTIONS.map(option => (
+                <option key={`bgm-${option.value}`} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label="포커스 캐릭터">
+            <input
+              name="execute-focus-character"
+              type="text"
+              value={meta.focusCharacter || 'inherit'}
+              onChange={event => updateMeta({ focusCharacter: event.target.value })}
+              style={inputStyle}
+              placeholder="inherit / self / role:수비 / slot:1역할-1슬롯"
+            />
+            <PresetRow
+              items={[
+                { value: 'inherit', label: '유지' },
+                { value: 'self', label: '현재 슬롯' },
+                ...roleScopePresetItems,
+                ...slotScopePresetItems,
+              ]}
+              activeValues={[meta.focusCharacter || 'inherit']}
+              onToggle={value => updateMeta({ focusCharacter: value })}
+            />
+          </Field>
+        </div>
+
+        {meta.backgroundSource === 'custom' ? (
+          <Field label="배경 소스 직접 입력">
+            <input
+              name="execute-background-value"
+              type="text"
+              value={meta.backgroundValue || ''}
+              onChange={event => updateMeta({ backgroundValue: event.target.value })}
+              style={inputStyle}
+              placeholder="asset:bg/hakurei-shrine 또는 이미지 URL"
+            />
+          </Field>
+        ) : null}
+
+        {meta.bgmSource === 'custom' ? (
+          <Field label="브금 소스 직접 입력">
+            <input
+              name="execute-bgm-value"
+              type="text"
+              value={meta.bgmValue || ''}
+              onChange={event => updateMeta({ bgmValue: event.target.value })}
+              style={inputStyle}
+              placeholder="asset:bgm/theme-01 또는 오디오 URL"
+            />
+          </Field>
         ) : null}
       </Section>
       ) : null}

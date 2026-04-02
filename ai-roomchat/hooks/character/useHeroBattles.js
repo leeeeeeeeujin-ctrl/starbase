@@ -14,6 +14,36 @@ function isMeaningfulBattle(row, logs = []) {
   return Number.isFinite(scoreDelta) && scoreDelta !== 0;
 }
 
+function mapBattleForViewer(row, heroId) {
+  const normalizedHeroId = heroId != null ? String(heroId) : '';
+  const viewerIsAttacker = includesHeroId(row?.attacker_hero_ids, normalizedHeroId);
+  const viewerIsDefender = includesHeroId(row?.defender_hero_ids, normalizedHeroId);
+  const rawResult = String(row?.result || '').trim().toLowerCase();
+  const rawScoreDelta = Number(row?.score_delta);
+  const hasScoreDelta = Number.isFinite(rawScoreDelta);
+
+  let viewerResult = rawResult;
+  if (viewerIsDefender) {
+    if (rawResult === 'win') viewerResult = 'lose';
+    else if (rawResult === 'lose' || rawResult === 'loss') viewerResult = 'win';
+  }
+
+  const viewerScoreDelta = hasScoreDelta
+    ? viewerIsDefender
+      ? rawScoreDelta * -1
+      : rawScoreDelta
+    : row?.score_delta;
+
+  return {
+    ...row,
+    raw_result: row?.result || '',
+    raw_score_delta: row?.score_delta,
+    result: viewerResult,
+    score_delta: viewerScoreDelta,
+    viewer_side: viewerIsDefender ? 'defender' : viewerIsAttacker ? 'attacker' : 'unknown',
+  };
+}
+
 export default function useHeroBattles({ hero, selectedGameId }) {
   const [battleDetails, setBattleDetails] = useState([]);
   const [visibleBattles, setVisibleBattles] = useState(LOGS_SLICE);
@@ -128,7 +158,7 @@ export default function useHeroBattles({ hero, selectedGameId }) {
 
       const detailed = battles
         .map(battle => ({
-          ...battle,
+          ...mapBattleForViewer(battle, heroId),
           logs: (logsMap.get(battle.id) || []).sort(
             (a, b) => (a.turn_no ?? 0) - (b.turn_no ?? 0)
           ),

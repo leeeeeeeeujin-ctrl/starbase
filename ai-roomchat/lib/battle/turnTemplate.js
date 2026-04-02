@@ -8,6 +8,7 @@ export const TURN_STATE_WRITE_SOURCES = [
   'teamOutcome',
   'participantOutcome',
 ];
+export const TURN_PRESENTATION_SOURCES = ['inherit', 'none', 'stop', 'self', 'custom'];
 
 function normalizeStateWriteRule(rule, index = 0) {
   const source = rule && typeof rule === 'object' ? rule : {};
@@ -44,6 +45,11 @@ export function getDefaultTurnMeta(slotType = 'ai') {
     participantScope: [],
     visibilityScope: ['all'],
     stateWrites: [],
+    backgroundSource: 'inherit',
+    backgroundValue: '',
+    bgmSource: 'inherit',
+    bgmValue: '',
+    focusCharacter: 'inherit',
   };
 
   if (slotType === 'user_action') {
@@ -109,6 +115,15 @@ export function normalizeTurnMeta(rawMeta, slotType = 'ai') {
     participantScope,
     visibilityScope,
     stateWrites,
+    backgroundSource: TURN_PRESENTATION_SOURCES.includes(String(source.backgroundSource || ''))
+      ? String(source.backgroundSource)
+      : base.backgroundSource,
+    backgroundValue: String(source.backgroundValue ?? ''),
+    bgmSource: TURN_PRESENTATION_SOURCES.includes(String(source.bgmSource || ''))
+      ? String(source.bgmSource)
+      : base.bgmSource,
+    bgmValue: String(source.bgmValue ?? ''),
+    focusCharacter: String(source.focusCharacter ?? base.focusCharacter).trim() || base.focusCharacter,
   };
 }
 

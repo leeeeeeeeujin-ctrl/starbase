@@ -76,6 +76,21 @@ function getBattleRunErrorMessage(error) {
   return String(error?.message || '턴을 진행하지 못했습니다.');
 }
 
+function getBattleRunErrorKind(error) {
+  const message = String(error?.message || '').toLowerCase();
+  if (
+    message.includes('invalid api key') ||
+    message.includes('api key') ||
+    message.includes('authentication') ||
+    message.includes('unauthorized') ||
+    message.includes('401') ||
+    message.includes('403')
+  ) {
+    return 'api_key';
+  }
+  return 'generic';
+}
+
 function hydrateRuntimeSession(value) {
   if (!value || typeof value !== 'object') return null;
   return rehydrateBattleSession(value);
@@ -189,6 +204,31 @@ function getSegmentTone(segment) {
   };
 }
 
+function resolveParticipantByScope(participants, scope, fallbackParticipant = null) {
+  const value = String(scope || '').trim();
+  if (!value || value === 'inherit') return fallbackParticipant;
+  if (value === 'self') return fallbackParticipant;
+  if (value.startsWith('role:')) {
+    const roleName = value.slice(5).trim();
+    return participants.find(participant => String(participant.role || '').trim() === roleName) || fallbackParticipant;
+  }
+  if (value.startsWith('slot:')) {
+    const slotLabel = value.slice(5).trim();
+    return participants.find(participant => String(participant.slot_label || '').trim() === slotLabel) || fallbackParticipant;
+  }
+  return participants.find(participant =>
+    [participant.id, participant.hero_id, participant.name].map(entry => String(entry || '').trim()).includes(value)
+  ) || fallbackParticipant;
+}
+
+function resolvePresentationAsset(source, value, fallbackParticipant, key) {
+  const mode = String(source || 'inherit').trim();
+  if (mode === 'none' || mode === 'stop') return null;
+  if (mode === 'self') return fallbackParticipant?.[key] || null;
+  if (mode === 'custom') return String(value || '').trim() || null;
+  return null;
+}
+
 export default function TextBattleSessionPage() {
   const router = useRouter();
   const { id } = router.query || {};
@@ -206,9 +246,11 @@ export default function TextBattleSessionPage() {
     running: false,
     status: '',
     error: '',
+    errorKind: '',
     showDebug: false,
   });
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [teamPanelOpen, setTeamPanelOpen] = useState(false);
   const [detailParticipant, setDetailParticipant] = useState(null);
   const [dialogueState, setDialogueState] = useState({
     segmentIndex: 0,
@@ -272,6 +314,7 @@ export default function TextBattleSessionPage() {
   const dbSession = payload.session || null;
   const runtimeSession = runtimeState.session || null;
   const currentTurn = runtimeSession ? getCurrentTurn(runtimeSession) : null;
+  const currentPresentation = currentTurn?.presentation || {};
   const resolvedActorId =
     runtimeSession && currentTurn
       ? resolveTurnActorId(runtimeSession, currentTurn, runtimeSession.actorId)
@@ -287,6 +330,15 @@ export default function TextBattleSessionPage() {
   const turns = Array.isArray(payload.turns) ? payload.turns : [];
   const participants = Array.isArray(payload.participants) ? payload.participants : [];
   const agentContexts = Array.isArray(payload.agentContexts) ? payload.agentContexts : [];
+  const viewerHeroId = useMemo(() => {
+    const ownerId = String(dbSession?.owner_id || '').trim();
+    if (!ownerId) return participants[0]?.hero_id || '';
+    return (
+      participants.find(participant => String(participant?.owner_id || '').trim() === ownerId)?.hero_id ||
+      participants[0]?.hero_id ||
+      ''
+    );
+  }, [dbSession?.owner_id, participants]);
   const currentActor = useMemo(
     () => participants.find(participant => participant.id === resolvedActorId) || null,
     [participants, resolvedActorId]
@@ -298,6 +350,8 @@ export default function TextBattleSessionPage() {
     String(sessionStatus || '').toLowerCase()
   );
   const historyTurns = turns.slice(0, -1);
+  const showPrelude = !turns.length && !isEnded;
+  const showApiKeyRecovery = runtimeState.errorKind === 'api_key';
   const featuredTurn = turns.length ? turns[turns.length - 1] : null;
   const featuredSpeaker =
     participants.find(participant => participant.hero_id === featuredTurn?.hero_id || participant.id === featuredTurn?.hero_id) ||
@@ -343,6 +397,25 @@ export default function TextBattleSessionPage() {
     featuredSpeaker ||
     currentActor ||
     null;
+  const focusedParticipant = resolveParticipantByScope(participants, currentPresentation.focusCharacter, activeDialogueSpeaker);
+  const stageBackgroundUrl =
+    resolvePresentationAsset(
+      currentPresentation.backgroundSource,
+      currentPresentation.backgroundValue,
+      focusedParticipant,
+      'background_url'
+    ) || activeDialogueSpeaker?.background_url || null;
+  const audioHero =
+    currentPresentation.bgmSource === 'self'
+      ? focusedParticipant || activeHero
+      : currentPresentation.bgmSource === 'custom'
+        ? {
+            ...(activeHero || {}),
+            bgm_url: String(currentPresentation.bgmValue || '').trim() || null,
+            bgm_duration_seconds: activeHero?.bgm_duration_seconds || 0,
+            name: activeHero?.name || focusedParticipant?.name || '장면 브금',
+          }
+        : activeHero;
   const activeSegmentTone = getSegmentTone(activeSegment);
   const activeSceneCue =
     activeSegment?.type === 'sceneCue'
@@ -462,6 +535,7 @@ export default function TextBattleSessionPage() {
           ? 'AI가 행동을 생성하는 중입니다…'
           : '행동을 처리하는 중입니다…',
       error: '',
+      errorKind: '',
     }));
 
     try {
@@ -526,6 +600,7 @@ export default function TextBattleSessionPage() {
             ? '전투가 종료되었습니다.'
             : '다음 장면으로 진행했습니다.',
         error: '',
+        errorKind: '',
       }));
       if (json.session?.status === 'completed') {
         clearActiveSessionRecord();
@@ -534,10 +609,12 @@ export default function TextBattleSessionPage() {
       }
       await refreshPayload();
     } catch (error) {
+      const friendly = getBattleRunErrorMessage(error);
       setRuntimeState(prev => ({
         ...prev,
         running: false,
-        error: getBattleRunErrorMessage(error),
+        error: friendly,
+        errorKind: getBattleRunErrorKind(error),
         status: '',
       }));
     }
@@ -550,6 +627,7 @@ export default function TextBattleSessionPage() {
       running: true,
       status: '항복 처리 중입니다…',
       error: '',
+      errorKind: '',
     }));
     try {
       const {
@@ -582,13 +660,16 @@ export default function TextBattleSessionPage() {
         running: false,
         status: '항복으로 전투가 종료되었습니다.',
         error: '',
+        errorKind: '',
       }));
       router.replace(`/battle-log/${encodeURIComponent(String(id))}?source=text-battle`);
     } catch (error) {
+      const friendly = getBattleRunErrorMessage(error);
       setRuntimeState(prev => ({
         ...prev,
         running: false,
-        error: getBattleRunErrorMessage(error),
+        error: friendly,
+        errorKind: getBattleRunErrorKind(error),
         status: '',
       }));
     }
@@ -622,110 +703,125 @@ export default function TextBattleSessionPage() {
         boxSizing: 'border-box',
       }}
     >
-      <div style={{ maxWidth: 920, margin: '0 auto', display: 'grid', gap: 16, paddingTop: 120, paddingBottom: 360 }}>
-        {teams.map((entry, index) => {
-          const slot = anchorSlots[index % anchorSlots.length];
-          const teamColor = teamColorMap[entry.team] || '#38bdf8';
-          return (
-            <div
-              key={entry.team}
-              style={{
-                position: 'fixed',
-                zIndex: 22,
-                display: 'grid',
-                gap: 10,
-                width: slot.left === '50%' ? 'min(360px, calc(100vw - 80px))' : 'min(180px, calc(50vw - 28px))',
-                ...slot,
-                transform: slot.translateX ? `translateX(${slot.translateX})` : undefined,
-              }}
-            >
-              <div
-                style={{
-                  alignSelf: slot.align,
-                  justifySelf: slot.justify,
-                  padding: '6px 10px',
-                  borderRadius: 999,
-                  background: 'rgba(2,6,23,0.82)',
-                  border: `1px solid ${teamColor}55`,
-                  color: teamColor,
-                  fontSize: 12,
-                  fontWeight: 800,
-                  backdropFilter: 'blur(10px)',
-                }}
-              >
-                팀 {entry.team}
-              </div>
-              <div
-                style={{
-                  display: 'flex',
-                  gap: 10,
-                  flexWrap: 'wrap',
-                  justifyContent: slot.justify,
-                }}
-              >
-                {entry.members.map(participant => {
-                  const eliminated = String(participant.outcome || '').toLowerCase() === 'eliminated';
-                  const isActing = participant.id === resolvedActorId;
-                  return (
-                    <button
-                      key={participant.id}
-                      type="button"
-                      onClick={() => handleParticipantTap(participant)}
-                      onDoubleClick={() => setDetailParticipant(participant)}
-                      style={{
-                        width: 74,
-                        display: 'grid',
-                        gap: 6,
-                        border: 'none',
-                        background: 'transparent',
-                        padding: 0,
-                        cursor: 'pointer',
-                      }}
-                    >
+      <div style={{ maxWidth: 920, margin: '0 auto', display: 'grid', gap: 16, paddingTop: 84, paddingBottom: 360 }}>
+        {(showPrelude || showApiKeyRecovery) ? (
+          <section
+            style={{
+              borderRadius: 28,
+              padding: 24,
+              background:
+                stageBackgroundUrl
+                  ? `linear-gradient(180deg, rgba(2,6,23,0.24) 0%, rgba(2,6,23,0.88) 100%), url(${stageBackgroundUrl}) center/cover`
+                  : 'linear-gradient(180deg, rgba(15,23,42,0.9) 0%, rgba(2,6,23,0.96) 100%)',
+              border: '1px solid rgba(96,165,250,0.24)',
+              boxShadow: '0 28px 80px -40px rgba(15,23,42,0.94)',
+              display: 'grid',
+              gap: 18,
+              minHeight: 320,
+            }}
+          >
+            <div style={{ display: 'grid', gap: 6 }}>
+              <strong style={{ color: '#f8fafc', fontSize: 22, fontWeight: 800 }}>
+                {showApiKeyRecovery ? 'AI 키 확인이 필요합니다' : '전투 준비 중'}
+              </strong>
+              <p style={{ margin: 0, color: '#cbd5e1', fontSize: 14, lineHeight: 1.7 }}>
+                {showApiKeyRecovery
+                  ? '캐릭터 페이지에서 ai키를 새로 갱신해주세요.'
+                  : '첫 장면을 준비하고 있습니다. 잠시 후 자동으로 첫 턴이 진행됩니다.'}
+              </p>
+            </div>
+            <div style={{ display: 'grid', gap: 14 }}>
+              {teams.map(entry => (
+                <div key={`prelude-team-${entry.team}`} style={{ display: 'grid', gap: 10 }}>
+                  <div
+                    style={{
+                      color: teamColorMap[entry.team] || '#38bdf8',
+                      fontSize: 13,
+                      fontWeight: 800,
+                    }}
+                  >
+                    팀 {entry.team}
+                  </div>
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    {entry.members.map(participant => (
                       <div
+                        key={`prelude-member-${participant.id}`}
                         style={{
-                          width: 74,
-                          height: 74,
-                          borderRadius: 20,
-                          overflow: 'hidden',
-                          border: `2px solid ${isActing ? '#f8fafc' : teamColor}`,
-                          boxShadow: isActing ? `0 0 0 3px ${teamColor}55` : 'none',
-                          background: 'rgba(15,23,42,0.9)',
-                          filter: eliminated ? 'grayscale(1) brightness(0.7)' : 'none',
+                          width: 86,
+                          display: 'grid',
+                          gap: 8,
+                          justifyItems: 'center',
                         }}
                       >
-                        {participant.image_url ? (
-                          <img
-                            src={participant.image_url}
-                            alt={participant.name}
-                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                          />
-                        ) : (
-                          <div
-                            style={{
-                              width: '100%',
-                              height: '100%',
-                              display: 'grid',
-                              placeItems: 'center',
-                              color: teamColor,
-                              fontWeight: 800,
-                              fontSize: 24,
-                            }}
-                          >
-                            {(participant.name || '?').slice(0, 1)}
-                          </div>
-                        )}
+                        <div
+                          style={{
+                            width: 86,
+                            height: 106,
+                            borderRadius: 20,
+                            overflow: 'hidden',
+                            border: `2px solid ${teamColorMap[entry.team] || '#38bdf8'}`,
+                            background: 'rgba(15,23,42,0.88)',
+                            boxShadow: '0 18px 44px -28px rgba(15,23,42,0.96)',
+                          }}
+                        >
+                          {participant.image_url ? (
+                            <img
+                              src={participant.image_url}
+                              alt={participant.name}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            />
+                          ) : (
+                            <div
+                              style={{
+                                width: '100%',
+                                height: '100%',
+                                display: 'grid',
+                                placeItems: 'center',
+                                color: '#cbd5e1',
+                                fontSize: 28,
+                                fontWeight: 800,
+                              }}
+                            >
+                              {(participant.name || '?').slice(0, 1)}
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ color: '#e2e8f0', fontSize: 12, fontWeight: 700, textAlign: 'center' }}>
+                          {shortText(participant.name, 18)}
+                        </div>
                       </div>
-                      <div style={{ color: '#e2e8f0', fontSize: 11, fontWeight: 700, lineHeight: 1.35 }}>
-                        {shortText(participant.name, 18)}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
-          );
-        })}
+            {showApiKeyRecovery ? (
+              <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                <button
+                  type="button"
+                  onClick={() =>
+                    router.push(
+                      viewerHeroId
+                        ? `/character/${encodeURIComponent(String(viewerHeroId))}/agent`
+                        : '/lobby'
+                    )
+                  }
+                  style={{
+                    padding: '12px 16px',
+                    borderRadius: 14,
+                    border: '1px solid rgba(96,165,250,0.28)',
+                    background: 'rgba(15,23,42,0.88)',
+                    color: '#f8fafc',
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                  }}
+                >
+                  캐릭터 페이지로 이동
+                </button>
+              </div>
+            ) : null}
+          </section>
+        ) : null}
 
         <header
           style={{
@@ -795,10 +891,10 @@ export default function TextBattleSessionPage() {
           <div
             style={{
               borderRadius: 24,
-              minHeight: 240,
+              minHeight: 360,
               background:
-                activeDialogueSpeaker?.background_url
-                  ? `linear-gradient(180deg, rgba(2,6,23,0.18) 0%, rgba(2,6,23,0.78) 100%), url(${activeDialogueSpeaker.background_url}) center/cover`
+                stageBackgroundUrl
+                  ? `linear-gradient(180deg, rgba(2,6,23,0.18) 0%, rgba(2,6,23,0.78) 100%), url(${stageBackgroundUrl}) center/cover`
                   : 'linear-gradient(180deg, rgba(15,23,42,0.88) 0%, rgba(15,23,42,0.72) 100%)',
               border: '1px solid rgba(71,85,105,0.45)',
               position: 'relative',
@@ -809,16 +905,46 @@ export default function TextBattleSessionPage() {
               boxSizing: 'border-box',
             }}
           >
+            <div
+              style={{
+                position: 'absolute',
+                inset: 18,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
+                pointerEvents: 'none',
+              }}
+            >
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', maxWidth: '60%' }}>
+                {teams.map(entry => (
+                  <span
+                    key={`stage-team-${entry.team}`}
+                    style={{
+                      padding: '6px 10px',
+                      borderRadius: 999,
+                      background: 'rgba(2,6,23,0.68)',
+                      border: `1px solid ${(teamColorMap[entry.team] || '#38bdf8')}55`,
+                      color: teamColorMap[entry.team] || '#38bdf8',
+                      fontSize: 11,
+                      fontWeight: 800,
+                      backdropFilter: 'blur(10px)',
+                    }}
+                  >
+                    팀 {entry.team} · {entry.members.length}
+                  </span>
+                ))}
+              </div>
+            </div>
             {activeDialogueSpeaker?.image_url ? (
               <img
                 src={activeDialogueSpeaker.image_url}
                 alt={activeDialogueSpeaker.name}
                 style={{
                   position: 'absolute',
-                  inset: 'auto 50% -26px auto',
-                  transform: 'translateX(50%)',
+                  inset: 'auto auto -26px 50%',
+                  transform: `translateX(${activeSegment?.placement === 'right' ? '8%' : '-58%'})`,
                   height: '100%',
-                  maxHeight: 280,
+                  maxHeight: 360,
                   objectFit: 'contain',
                   filter: 'drop-shadow(0 24px 36px rgba(2,6,23,0.72))',
                   opacity: 0.92,
@@ -1104,6 +1230,30 @@ export default function TextBattleSessionPage() {
           ) : null}
         </section>
       </div>
+      <button
+        type="button"
+        onClick={() => setHistoryOpen(prev => !prev)}
+        aria-label="지난 대화 열기"
+        style={{
+          position: 'fixed',
+          left: 18,
+          top: 18,
+          zIndex: 30,
+          width: 44,
+          height: 44,
+          borderRadius: 14,
+          border: '1px solid rgba(148,163,184,0.26)',
+          background: 'rgba(2,6,23,0.78)',
+          color: '#e2e8f0',
+          fontSize: 18,
+          fontWeight: 800,
+          cursor: 'pointer',
+          backdropFilter: 'blur(12px)',
+          boxShadow: '0 18px 40px -26px rgba(15,23,42,0.95)',
+        }}
+      >
+        ≡
+      </button>
       {activeSceneCue ? (
         <div
           style={{
@@ -1142,35 +1292,14 @@ export default function TextBattleSessionPage() {
         </div>
       ) : null}
 
-      <button
-        type="button"
-        onClick={() => setHistoryOpen(prev => !prev)}
-        style={{
-          position: 'fixed',
-          right: 18,
-          bottom: historyOpen ? 392 : 304,
-          zIndex: 28,
-          padding: '12px 14px',
-          borderRadius: 18,
-          border: '1px solid rgba(96,165,250,0.28)',
-          background: 'rgba(2,6,23,0.86)',
-          color: '#e2e8f0',
-          fontWeight: 800,
-          cursor: 'pointer',
-          backdropFilter: 'blur(12px)',
-          boxShadow: '0 18px 40px -26px rgba(15,23,42,0.95)',
-        }}
-      >
-        지난 턴 {historyOpen ? '닫기' : `${historyTurns.length}개`}
-      </button>
       <div
         style={{
           position: 'fixed',
-          right: 18,
-          bottom: 354,
+          left: 18,
+          top: 72,
           zIndex: 27,
-          width: 'min(360px, calc(100vw - 28px))',
-          maxHeight: historyOpen ? '44vh' : 0,
+          width: 'min(320px, calc(100vw - 32px))',
+          maxHeight: historyOpen ? '56vh' : 0,
           opacity: historyOpen ? 1 : 0,
           overflow: 'hidden',
           transition: 'max-height 180ms ease, opacity 180ms ease',
@@ -1188,7 +1317,7 @@ export default function TextBattleSessionPage() {
             boxShadow: '0 28px 70px -34px rgba(15,23,42,0.95)',
             display: 'grid',
             gap: 10,
-            maxHeight: '44vh',
+            maxHeight: '56vh',
             overflowY: 'auto',
           }}
         >
@@ -1223,6 +1352,140 @@ export default function TextBattleSessionPage() {
           )}
         </section>
       </div>
+      <div
+        style={{
+          position: 'fixed',
+          left: '50%',
+          bottom: 286,
+          transform: 'translateX(-50%)',
+          zIndex: 25,
+          width: 'min(860px, calc(100vw - 24px))',
+          display: 'flex',
+          justifyContent: 'flex-end',
+          pointerEvents: 'none',
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setTeamPanelOpen(prev => !prev)}
+          style={{
+            pointerEvents: 'auto',
+            padding: '10px 14px',
+            borderRadius: 16,
+            border: '1px solid rgba(96,165,250,0.24)',
+            background: 'rgba(2,6,23,0.84)',
+            color: '#dbeafe',
+            fontSize: 12,
+            fontWeight: 800,
+            cursor: 'pointer',
+            backdropFilter: 'blur(12px)',
+          }}
+        >
+          {teamPanelOpen ? '팀 패널 닫기' : '팀 패널 펼치기'}
+        </button>
+      </div>
+      <div
+        style={{
+          position: 'fixed',
+          left: '50%',
+          bottom: 340,
+          transform: 'translateX(-50%)',
+          zIndex: 24,
+          width: 'min(860px, calc(100vw - 24px))',
+          maxHeight: teamPanelOpen ? '30vh' : 0,
+          opacity: teamPanelOpen ? 1 : 0,
+          overflow: 'hidden',
+          transition: 'max-height 180ms ease, opacity 180ms ease',
+          pointerEvents: teamPanelOpen ? 'auto' : 'none',
+        }}
+      >
+        <section
+          style={{
+            borderRadius: 22,
+            padding: 14,
+            background: 'rgba(2,6,23,0.9)',
+            border: '1px solid rgba(96,165,250,0.24)',
+            backdropFilter: 'blur(16px)',
+            boxShadow: '0 28px 70px -34px rgba(15,23,42,0.95)',
+            display: 'grid',
+            gap: 12,
+            maxHeight: '30vh',
+            overflowY: 'auto',
+          }}
+        >
+          {teams.map(entry => (
+            <div key={`panel-team-${entry.team}`} style={{ display: 'grid', gap: 8 }}>
+              <div
+                style={{
+                  color: teamColorMap[entry.team] || '#38bdf8',
+                  fontSize: 12,
+                  fontWeight: 800,
+                }}
+              >
+                팀 {entry.team}
+              </div>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                {entry.members.map(participant => {
+                  const eliminated = String(participant.outcome || '').toLowerCase() === 'eliminated';
+                  const isActing = participant.id === resolvedActorId;
+                  const teamColor = teamColorMap[entry.team] || '#38bdf8';
+                  return (
+                    <button
+                      key={`panel-participant-${participant.id}`}
+                      type="button"
+                      onClick={() => handleParticipantTap(participant)}
+                      onDoubleClick={() => setDetailParticipant(participant)}
+                      style={{
+                        width: 72,
+                        display: 'grid',
+                        gap: 6,
+                        border: 'none',
+                        background: 'transparent',
+                        padding: 0,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 72,
+                          height: 72,
+                          borderRadius: 18,
+                          overflow: 'hidden',
+                          border: `2px solid ${isActing ? '#f8fafc' : teamColor}`,
+                          boxShadow: isActing ? `0 0 0 3px ${teamColor}55` : 'none',
+                          background: 'rgba(15,23,42,0.9)',
+                          filter: eliminated ? 'grayscale(1) brightness(0.7)' : 'none',
+                        }}
+                      >
+                        {participant.image_url ? (
+                          <img src={participant.image_url} alt={participant.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                          <div
+                            style={{
+                              width: '100%',
+                              height: '100%',
+                              display: 'grid',
+                              placeItems: 'center',
+                              color: teamColor,
+                              fontWeight: 800,
+                              fontSize: 24,
+                            }}
+                          >
+                            {(participant.name || '?').slice(0, 1)}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ color: '#e2e8f0', fontSize: 11, fontWeight: 700, lineHeight: 1.35 }}>
+                        {shortText(participant.name, 16)}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </section>
+      </div>
       <section
         onClick={handleAdvanceDialogue}
         style={{
@@ -1233,7 +1496,7 @@ export default function TextBattleSessionPage() {
           zIndex: 26,
           width: 'min(860px, calc(100vw - 24px))',
           borderRadius: 24,
-          padding: '16px 18px 18px',
+          padding: '18px 20px 20px',
           background: 'linear-gradient(180deg, rgba(2,6,23,0.95) 0%, rgba(15,23,42,0.94) 100%)',
           border: '1px solid rgba(96,165,250,0.24)',
           boxShadow: '0 28px 80px -38px rgba(15,23,42,0.96)',
@@ -1280,10 +1543,10 @@ export default function TextBattleSessionPage() {
 
         <div
           style={{
-            minHeight: 78,
+            minHeight: 114,
             color: activeSegmentTone.color,
-            fontSize: 16,
-            lineHeight: 1.85,
+            fontSize: 17,
+            lineHeight: 1.9,
             whiteSpace: 'pre-wrap',
             textAlign: activeSegmentTone.textAlign,
             fontStyle: activeSegmentTone.fontStyle,
@@ -1371,7 +1634,7 @@ export default function TextBattleSessionPage() {
           {runtimeState.error ? <span style={{ fontSize: 12, color: '#fca5a5' }}>{runtimeState.error}</span> : null}
         </div>
       </section>
-      <CharacterRouteHud hero={activeHero} />
+      <CharacterRouteHud hero={audioHero} />
       <CharacterDetailOverlay participant={detailParticipant} onClose={() => setDetailParticipant(null)} />
     </div>
   );
