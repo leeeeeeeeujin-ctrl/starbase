@@ -145,17 +145,17 @@ function getTypingDelay(segment, visibleChars) {
   const nextChar = text.charAt(visibleChars) || '';
   const previousSlice = text.slice(Math.max(0, visibleChars - 3), visibleChars + 1);
 
-  let delay = 18;
-  if (delivery === 'calm') delay = 26;
-  if (delivery === 'urgent') delay = 10;
-  if (delivery === 'hesitant') delay = 34;
-  if (delivery === 'angry') delay = 14;
+  let delay = 28;
+  if (delivery === 'calm') delay = 36;
+  if (delivery === 'urgent') delay = 18;
+  if (delivery === 'hesitant') delay = 46;
+  if (delivery === 'angry') delay = 22;
 
   if (previousSlice.includes('...') || previousSlice.includes('…')) {
-    delay += delivery === 'hesitant' ? 120 : 70;
+    delay += delivery === 'hesitant' ? 180 : 110;
   }
   if (/[,.!?]/.test(nextChar)) {
-    delay += 34;
+    delay += 48;
   }
   if (/\s/.test(nextChar)) {
     delay += 6;
