@@ -294,6 +294,24 @@ export default async function handler(req, res) {
         };
       }
 
+      const normalizedAiPayload = JSON.stringify(
+        {
+          reply: parsedResult.reply || '',
+          segments: Array.isArray(parsedResult.segments) ? parsedResult.segments : [],
+          gameResult: parsedResult.gameResult || 'ongoing',
+          teamOutcomes:
+            parsedResult.teamOutcomes && typeof parsedResult.teamOutcomes === 'object'
+              ? parsedResult.teamOutcomes
+              : {},
+          participantOutcomes:
+            parsedResult.participantOutcomes && typeof parsedResult.participantOutcomes === 'object'
+              ? parsedResult.participantOutcomes
+              : {},
+        },
+        null,
+        2
+      );
+
       const turnRow = toTextBattleTurnRow({
         sessionId: textSessionId,
         turnIndex: Number.isFinite(Number(session?.turnIndex)) ? Number(session.turnIndex) : 0,
@@ -304,10 +322,10 @@ export default async function handler(req, res) {
           },
           variables: {
             lastPrompt: runtimePrompt,
-            aiResponseRaw: parsedResult.reply || payload?.result || null,
+            aiResponseRaw: normalizedAiPayload,
             battleLast: {
-              result: parsedResult.reply || payload?.result || null,
-              narrative: parsedResult.reply || payload?.result || null,
+              result: normalizedAiPayload,
+              narrative: parsedResult.reply || '',
               battleEnd:
                 nextSession?.status === 'completed' ||
                 ['ended', 'abandoned', 'timed_out'].includes(
