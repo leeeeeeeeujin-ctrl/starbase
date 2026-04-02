@@ -95,6 +95,31 @@ function buildSessionUpdateRow(session) {
   };
 }
 
+const SEGMENT_RETRY_LIMIT = 1;
+
+function resolveAppOrigin(req) {
+  const proto =
+    (typeof req.headers['x-forwarded-proto'] === 'string' && req.headers['x-forwarded-proto']) ||
+    'https';
+  const host =
+    (typeof req.headers['x-forwarded-host'] === 'string' && req.headers['x-forwarded-host']) ||
+    (typeof req.headers.host === 'string' && req.headers.host) ||
+    '';
+  return host ? `${proto}://${host}` : '';
+}
+
+function buildSegmentRetryPrompt(prompt) {
+  return [
+    prompt,
+    '',
+    '[재요청]',
+    '방금 응답은 segments 배열이 부족했습니다.',
+    '반드시 JSON 최상위에 segments 배열을 포함하세요.',
+    'segments는 dialogue, narration, effect, sceneCue 중 하나의 type을 가진 객체 배열이어야 합니다.',
+    'reply만 주지 말고, 표시할 문장을 segments로 잘게 나눠 함께 주세요.',
+  ].join('\n');
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -180,13 +205,46 @@ export default async function handler(req, res) {
       resolvedActorId
     );
 
-    const parsedResult = parseStructuredBattleResult(payload?.result || null);
+    let submittedResult = payload?.result || null;
+    let parsedResult = parseStructuredBattleResult(submittedResult);
+
+    if (
+      (!Array.isArray(parsedResult?.segments) || !parsedResult.segments.length) &&
+      (currentTurn?.input?.mode || 'none') === 'none'
+    ) {
+      let retryCount = 0;
+      const appOrigin = resolveAppOrigin(req);
+      while (retryCount < SEGMENT_RETRY_LIMIT) {
+        if (!appOrigin) break;
+        const retryResponse = await fetch(`${appOrigin}/api/chat/ai-proxy`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: authHeader,
+          },
+          body: JSON.stringify({
+            prompt: buildSegmentRetryPrompt(runtimePrompt),
+          }),
+        });
+        const retryJson = await retryResponse.json().catch(() => null);
+        if (!retryResponse.ok || !retryJson?.ok) {
+          break;
+        }
+        submittedResult = typeof retryJson?.text === 'string' ? retryJson.text : submittedResult;
+        parsedResult = parseStructuredBattleResult(submittedResult);
+        if (Array.isArray(parsedResult?.segments) && parsedResult.segments.length) {
+          break;
+        }
+        retryCount += 1;
+      }
+    }
+
     const valuesPatch = applyBattleResultToValues(session?.values || {}, parsedResult);
 
     const nextSession = submitBattleTurn(session, {
       actorId: resolvedActorId,
       input,
-      result: payload?.result || null,
+      result: submittedResult,
       rawResult: parsedResult.raw,
       reply: parsedResult.reply,
       gameResult: parsedResult.gameResult,
