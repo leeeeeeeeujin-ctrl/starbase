@@ -225,6 +225,65 @@ export default function MakerEditor() {
     };
   }, [templateText, nodes, edges]);
 
+  const buildLatestFilesSnapshot = useCallback(() => {
+    const baseFiles = files && typeof files === 'object' ? { ...files } : {};
+    const templateObject = toTemplateObject();
+    const graphData = {
+      nodes: (nodes || []).map(node => ({
+        id: node.id,
+        type: node.type || 'prompt',
+        data: node.data || {},
+      })),
+      edges: (edges || []).map(edge => ({
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        label: edge.label || '',
+        data: edge.data || {},
+      })),
+    };
+    const nextFiles = {
+      ...baseFiles,
+      '/template.json': {
+        ...(baseFiles['/template.json'] || {}),
+        content: JSON.stringify(templateObject, null, 2) + '\n',
+        readonly: false,
+        dir: false,
+      },
+      '/graph/prompt-graph.json': {
+        ...(baseFiles['/graph/prompt-graph.json'] || {}),
+        content: JSON.stringify(graphData, null, 2) + '\n',
+        readonly: false,
+        dir: false,
+      },
+      '/battle/definition.json': {
+        ...(baseFiles['/battle/definition.json'] || {}),
+        content: JSON.stringify(resolvedBattleDefinition, null, 2) + '\n',
+        readonly: false,
+        dir: false,
+      },
+    };
+
+    const startNode = (nodes || []).find(node => node.data?.isStart);
+    const configPath = '/game/runtime.config.json';
+    if (startNode && nextFiles[configPath]?.content) {
+      try {
+        const config = JSON.parse(nextFiles[configPath].content || '{}');
+        config.entryNode = startNode.id;
+        nextFiles[configPath] = {
+          ...nextFiles[configPath],
+          content: JSON.stringify(config, null, 2) + '\n',
+          readonly: false,
+          dir: false,
+        };
+      } catch {
+        // ignore malformed runtime config; latest graph/template are still saved
+      }
+    }
+
+    return nextFiles;
+  }, [files, nodes, edges, resolvedBattleDefinition, toTemplateObject]);
+
   const hydrateFromTemplate = useCallback(() => {
     let parsed;
     try {
@@ -386,6 +445,8 @@ export default function MakerEditor() {
 
     await saveAll();
 
+    const filesForSave = buildLatestFilesSnapshot();
+
     try {
       if (setKey) {
         await supabase
@@ -402,7 +463,7 @@ export default function MakerEditor() {
 
     try {
       if (setKey) {
-        await saveSet(setKey, files || {});
+        await saveSet(setKey, filesForSave);
       }
     } catch (error) {
       console.warn('[MakerEditor] workspace save failed', error);
@@ -410,12 +471,12 @@ export default function MakerEditor() {
 
     try {
       if (setKey) {
-        await publishRankWorkspaceForPromptSet(setKey, files || {});
+        await publishRankWorkspaceForPromptSet(setKey, filesForSave);
       }
     } catch (error) {
       console.warn('[MakerEditor] rank workspace publish failed', error);
     }
-  }, [battleConfig, busy, saveAll, files, nodes, status?.setInfo, status?.router]);
+  }, [battleConfig, busy, buildLatestFilesSnapshot, saveAll, status?.setInfo, status?.router]);
 
   const updateBattleConfig = useCallback(
     partial => {
