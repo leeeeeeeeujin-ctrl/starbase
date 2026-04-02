@@ -44,6 +44,14 @@ function buildRoleSlotPreview(roles = []) {
   return lines;
 }
 
+function formatVariableSourceLabel(sourceType) {
+  if (sourceType === 'input') return '입력값이';
+  if (sourceType === 'gameResult') return '게임 결과가';
+  if (sourceType === 'teamOutcome') return '특정 팀 결과가';
+  if (sourceType === 'participantOutcome') return '특정 참가자 결과가';
+  return '항상';
+}
+
 export default function MakerEditor() {
   const { status, graph, selection, persistence, history, definition: battleDefinition } = useMakerEditor();
   const { writeFile, files } = useWorkspace();
@@ -1025,9 +1033,14 @@ export default function MakerEditor() {
                     }}
                   >
                     <strong style={{ color: '#f8fafc', fontSize: 13 }}>선택 노드에 기록 슬롯 추가</strong>
+                    <span style={{ fontSize: 12, color: '#cbd5e1', lineHeight: 1.6 }}>
+                      아래 문장을 채우면 선택한 노드들에
+                      <code style={{ margin: '0 4px', color: '#f8fafc' }}>~이면 ~라는 변수를 기록</code>
+                      하는 규칙이 같이 들어갑니다.
+                    </span>
 
                     <label style={{ display: 'grid', gap: 6 }}>
-                      <span style={{ fontSize: 12, color: '#cbd5e1', fontWeight: 700 }}>조건</span>
+                      <span style={{ fontSize: 12, color: '#cbd5e1', fontWeight: 700 }}>언제 기록할까</span>
                       <select
                         value={variableDraft.sourceType}
                         onChange={event => setVariableDraft(current => ({ ...current, sourceType: event.target.value }))}
@@ -1042,44 +1055,60 @@ export default function MakerEditor() {
                     </label>
 
                     <label style={{ display: 'grid', gap: 6 }}>
-                      <span style={{ fontSize: 12, color: '#cbd5e1', fontWeight: 700 }}>조건 대상</span>
+                      <span style={{ fontSize: 12, color: '#cbd5e1', fontWeight: 700 }}>누구 / 무엇을 기준으로</span>
                       <input
                         value={variableDraft.sourceKey}
                         onChange={event => setVariableDraft(current => ({ ...current, sourceKey: event.target.value }))}
-                        placeholder="team 1 / participant-1"
+                        placeholder="예: 팀 1 / participant-1 / 선택지 id"
                         style={overlayInputStyle}
                       />
                     </label>
 
                     <label style={{ display: 'grid', gap: 6 }}>
-                      <span style={{ fontSize: 12, color: '#cbd5e1', fontWeight: 700 }}>만족 값</span>
+                      <span style={{ fontSize: 12, color: '#cbd5e1', fontWeight: 700 }}>어떤 상태면</span>
                       <input
                         value={variableDraft.equals}
                         onChange={event => setVariableDraft(current => ({ ...current, equals: event.target.value }))}
-                        placeholder="win / eliminated"
+                        placeholder="예: win / eliminated / yes"
                         style={overlayInputStyle}
                       />
                     </label>
 
                     <label style={{ display: 'grid', gap: 6 }}>
-                      <span style={{ fontSize: 12, color: '#cbd5e1', fontWeight: 700 }}>변수 이름</span>
+                      <span style={{ fontSize: 12, color: '#cbd5e1', fontWeight: 700 }}>그때 적을 변수 이름</span>
                       <input
                         value={variableDraft.key}
                         onChange={event => setVariableDraft(current => ({ ...current, key: event.target.value }))}
-                        placeholder="state.enemyDown"
+                        placeholder="예: state.enemyDown"
                         style={overlayInputStyle}
                       />
                     </label>
 
                     <label style={{ display: 'grid', gap: 6 }}>
-                      <span style={{ fontSize: 12, color: '#cbd5e1', fontWeight: 700 }}>기록 값</span>
+                      <span style={{ fontSize: 12, color: '#cbd5e1', fontWeight: 700 }}>그 변수에 적을 값</span>
                       <input
                         value={variableDraft.value}
                         onChange={event => setVariableDraft(current => ({ ...current, value: event.target.value }))}
-                        placeholder="true / 1 / red"
+                        placeholder="예: true / 1 / red"
                         style={overlayInputStyle}
                       />
                     </label>
+
+                    <div
+                      style={{
+                        borderRadius: 12,
+                        background: 'rgba(15, 23, 42, 0.6)',
+                        border: '1px solid rgba(148,163,184,.22)',
+                        padding: '10px 12px',
+                        fontSize: 12,
+                        color: '#e2e8f0',
+                        lineHeight: 1.65,
+                      }}
+                    >
+                      {String(variableDraft.sourceType || '') === 'always'
+                        ? `항상 ${variableDraft.key || '(변수 이름)'} 에 ${variableDraft.value || '(값)'} 을 기록`
+                        : `${formatVariableSourceLabel(variableDraft.sourceType)} ${variableDraft.sourceKey || '(대상)'} 가 ${variableDraft.equals || '(조건값)'} 이면 ${variableDraft.key || '(변수 이름)'} 에 ${variableDraft.value || '(값)'} 을 기록`}
+                    </div>
 
                     <button
                       type="button"
@@ -1255,8 +1284,8 @@ const configInputStyle = {
 const overlayInputStyle = {
   borderRadius: 12,
   border: '1px solid rgba(148,163,184,.28)',
-  background: 'rgba(255,255,255,.06)',
+  background: '#f8fafc',
   padding: '10px 12px',
   fontSize: 13,
-  color: '#f8fafc',
+  color: '#0f172a',
 };
