@@ -19,9 +19,7 @@ import {
 import { loadMatchFlowSnapshot } from '@/modules/rank/matchRealtimeSync';
 import {
   clearActiveSessionRecord,
-  readActiveSession,
   storeActiveSessionRecord,
-  subscribeActiveSession,
 } from '@/lib/rank/activeSessionStorage';
 import { normalizeRealtimeMode, isRealtimeEnabled } from '@/lib/rank/realtimeModes';
 import { formatPlayNumber } from '@/utils/characterPlayFormatting';
@@ -1508,17 +1506,7 @@ export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) 
     refreshParticipations = () => {},
   } = playData || {};
 
-  const [activeSession, setActiveSession] = useState(() => readActiveSession());
-
-  useEffect(() => {
-    const unsubscribe = subscribeActiveSession(payload => {
-      setActiveSession(payload);
-    });
-    setActiveSession(readActiveSession());
-    return () => {
-      unsubscribe?.();
-    };
-  }, []);
+  const [activeSession, setActiveSession] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
