@@ -37,6 +37,7 @@ export default function MakerEditorPanel({
   onDeleteSelected,
   setNodes,
   setEdges,
+  compact = false,
 }) {
   const nodeData = selectedNode?.data || null;
   const turn = nodeData ? parseTurnTemplate(nodeData.template || '', nodeData.slot_type || 'ai') : null;
@@ -359,17 +360,6 @@ export default function MakerEditorPanel({
               ))}
             </select>
           </Field>
-
-          <Field label="결과 이름">
-            <input
-              name="execute-result-key"
-              type="text"
-              value={meta.resultKey || ''}
-              onChange={event => updateMeta({ resultKey: event.target.value })}
-              style={inputStyle}
-              placeholder="예: result.winnerTeam"
-            />
-          </Field>
         </div>
 
         {actorMode === 'role:' ? (
@@ -407,6 +397,30 @@ export default function MakerEditorPanel({
             style={{ ...inputStyle, resize: 'vertical' }}
           />
         </Field>
+
+        {compact ? (
+          <Field label="보여줄 대상">
+            <input
+              name="execute-visibility-scope-compact"
+              type="text"
+              value={(meta.visibilityScope || []).join(', ')}
+              onChange={event => updateMeta({ visibilityScope: parseCsv(event.target.value) })}
+              style={inputStyle}
+              placeholder="all, role:수비, slot:1-1, winners"
+            />
+          </Field>
+        ) : (
+          <Field label="결과 이름">
+            <input
+              name="execute-result-key"
+              type="text"
+              value={meta.resultKey || ''}
+              onChange={event => updateMeta({ resultKey: event.target.value })}
+              style={inputStyle}
+              placeholder="예: result.winnerTeam"
+            />
+          </Field>
+        )}
       </Section>
 
       <Section
@@ -458,63 +472,80 @@ export default function MakerEditorPanel({
             />
           </Field>
         </div>
+
+        {compact && meta.executionType === 'user_response' ? (
+          <Field label="응답 받을 대상">
+            <input
+              name="execute-participant-scope-compact"
+              type="text"
+              value={(meta.participantScope || []).join(', ')}
+              onChange={event => updateMeta({ participantScope: parseCsv(event.target.value) })}
+              style={inputStyle}
+              placeholder="self, role:공격, slot:1-1"
+            />
+          </Field>
+        ) : null}
       </Section>
 
-      <Section
-        title="참조 범위"
-        description="이 노드가 누구 정보를 참고하고, 누구에게 문구를 보여줄지 정합니다."
-      >
-        <Field label="같이 참조할 참가자">
-          <input
-            name="execute-participant-scope"
-            type="text"
-            value={(meta.participantScope || []).join(', ')}
-            onChange={event => updateMeta({ participantScope: parseCsv(event.target.value) })}
-            style={inputStyle}
-            placeholder="self, opponent, allies"
-          />
-        </Field>
+      {!compact ? (
+        <Section
+          title="참조 범위"
+          description="이 노드가 누구 정보를 참고하고, 누구에게 문구를 보여줄지 정합니다."
+        >
+          <Field label="같이 참조할 참가자">
+            <input
+              name="execute-participant-scope"
+              type="text"
+              value={(meta.participantScope || []).join(', ')}
+              onChange={event => updateMeta({ participantScope: parseCsv(event.target.value) })}
+              style={inputStyle}
+              placeholder="self, opponent, allies"
+            />
+          </Field>
 
-        <Field label="문구 공개 범위">
-          <input
-            name="execute-visibility-scope"
-            type="text"
-            value={(meta.visibilityScope || []).join(', ')}
-            onChange={event => updateMeta({ visibilityScope: parseCsv(event.target.value) })}
-            style={inputStyle}
-            placeholder="all, self, role:judge"
-          />
-        </Field>
-      </Section>
+          <Field label="문구 공개 범위">
+            <input
+              name="execute-visibility-scope"
+              type="text"
+              value={(meta.visibilityScope || []).join(', ')}
+              onChange={event => updateMeta({ visibilityScope: parseCsv(event.target.value) })}
+              style={inputStyle}
+              placeholder="all, self, role:judge"
+            />
+          </Field>
+        </Section>
+      ) : null}
 
       <Section
         title="기록 슬롯"
         description="이 노드 결과를 변수로 남겨, 다음 분기나 다음 턴에서 재사용합니다."
       >
-        <details
-          style={{
-            borderRadius: 14,
-            border: '1px solid #cbd5e1',
-            background: '#f8fafc',
-            padding: '10px 12px',
-          }}
-        >
-          <summary style={{ cursor: 'pointer', fontSize: 12, color: '#475569', fontWeight: 700 }}>
-            고급 설정: AI 결과 예시
-          </summary>
-          <div style={{ marginTop: 10 }}>
-            <Field label="AI가 돌려주길 기대하는 예시 형태">
-              <textarea
-                name="execute-output-schema"
-                value={meta.outputSchema || ''}
-                onChange={event => updateMeta({ outputSchema: event.target.value })}
-                rows={4}
-                style={{ ...inputStyle, resize: 'vertical' }}
-                placeholder='예: {"branch_hint":"attack","gameResult":"ongoing"}'
-              />
-            </Field>
-          </div>
-        </details>
+        {!compact ? (
+          <details
+            style={{
+              borderRadius: 14,
+              border: '1px solid #cbd5e1',
+              background: '#f8fafc',
+              padding: '10px 12px',
+            }}
+          >
+            <summary style={{ cursor: 'pointer', fontSize: 12, color: '#475569', fontWeight: 700 }}>
+              고급 설정: AI 결과 예시
+            </summary>
+            <div style={{ marginTop: 10 }}>
+              <Field label="AI가 돌려주길 기대하는 예시 형태">
+                <textarea
+                  name="execute-output-schema"
+                  value={meta.outputSchema || ''}
+                  onChange={event => updateMeta({ outputSchema: event.target.value })}
+                  rows={4}
+                  style={{ ...inputStyle, resize: 'vertical' }}
+                  placeholder='예: {"branch_hint":"attack","gameResult":"ongoing"}'
+                />
+              </Field>
+            </div>
+          </details>
+        ) : null}
 
         <div style={{ display: 'grid', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
@@ -567,7 +598,7 @@ export default function MakerEditorPanel({
                 </div>
 
                 <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
-                  <Field label="기록 시점">
+                  <Field label={compact ? '조건 종류' : '기록 시점'}>
                     <select
                       name={`state-write-source-${index}`}
                       value={rule.sourceType || 'always'}
@@ -588,7 +619,7 @@ export default function MakerEditorPanel({
                     </select>
                   </Field>
 
-                  <Field label="대상 키">
+                  <Field label={compact ? '조건 대상' : '대상 키'}>
                     <input
                       name={`state-write-source-key-${index}`}
                       type="text"
@@ -605,7 +636,7 @@ export default function MakerEditorPanel({
                     />
                   </Field>
 
-                  <Field label="조건 값">
+                  <Field label="만족 값">
                     <input
                       name={`state-write-equals-${index}`}
                       type="text"
@@ -624,7 +655,7 @@ export default function MakerEditorPanel({
                 </div>
 
                 <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
-                  <Field label="기록 변수">
+                  <Field label={compact ? '만족시 출력할 변수' : '기록 변수'}>
                     <input
                       name={`state-write-key-${index}`}
                       type="text"
@@ -641,7 +672,7 @@ export default function MakerEditorPanel({
                     />
                   </Field>
 
-                  <Field label="기록 값">
+                  <Field label={compact ? '출력 값' : '기록 값'}>
                     <input
                       name={`state-write-value-${index}`}
                       type="text"

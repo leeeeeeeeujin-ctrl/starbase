@@ -47,7 +47,7 @@ export default function MakerEditorCanvas({
         borderRadius: 24,
         border: '1px solid rgba(148, 163, 184, 0.24)',
         overflow: 'hidden',
-        minHeight: '62svh',
+        minHeight: '68svh',
         position: 'relative',
       }}
     >
@@ -62,14 +62,14 @@ export default function MakerEditorCanvas({
       >
         <strong style={{ color: '#f8fafc', fontSize: 15 }}>실행 노드 흐름</strong>
         <span style={{ color: '#94a3b8', fontSize: 12, lineHeight: 1.5 }}>
-          사각형 노드는 실행입니다. 선은 조건 분기입니다. 노드를 선택하면 아래에서 내용을 편집합니다.
+          사각형 노드는 실행입니다. 선은 조건 분기입니다. 모바일에서는 노드나 선을 두 번 터치하면 바로 빠른 편집이 열립니다.
         </span>
       </div>
 
       {nodeCount === 0 ? (
         <div
           style={{
-            minHeight: 'calc(62svh - 66px)',
+            minHeight: 'calc(68svh - 66px)',
             display: 'grid',
             placeItems: 'center',
             padding: 24,
@@ -100,7 +100,7 @@ export default function MakerEditorCanvas({
           </div>
         </div>
       ) : (
-        <div style={{ height: 'calc(62svh - 66px)' }}>
+        <div style={{ height: 'calc(68svh - 66px)' }}>
           <ReactFlow
             onInit={instance => {
               flowRef.current = instance;
@@ -121,7 +121,7 @@ export default function MakerEditorCanvas({
             fitView
             minZoom={0.2}
             maxZoom={1.6}
-            defaultViewport={{ x: 0, y: 0, zoom: 0.7 }}
+            defaultViewport={{ x: 0, y: 0, zoom: 0.82 }}
             style={{ width: '100%', height: '100%' }}
           >
             <MiniMap

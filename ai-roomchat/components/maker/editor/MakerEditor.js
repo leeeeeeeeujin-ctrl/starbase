@@ -48,7 +48,8 @@ export default function MakerEditor() {
   const { writeFile, files } = useWorkspace();
   const [showGameConfig, setShowGameConfig] = useState(false);
   const [roleDraft, setRoleDraft] = useState({ name: '', team: '', limit: '1' });
-  const editorPanelRef = useRef(null);
+  const [quickEditOpen, setQuickEditOpen] = useState(false);
+  const lastTapRef = useRef({ kind: '', id: '', at: 0 });
 
   let templateText = '';
   let setTemplateText = () => {};
@@ -362,16 +363,58 @@ export default function MakerEditor() {
     [battleConfig.roles, updateBattleConfig]
   );
 
+  const openQuickEdit = useCallback(() => {
+    setActivePanelTab('selection');
+    setQuickEditOpen(true);
+  }, [setActivePanelTab]);
+
+  const registerQuickTap = useCallback(
+    (kind, id, selectFn, event, payload) => {
+      selectFn?.(event, payload);
+      const now = Date.now();
+      if (lastTapRef.current.kind === kind && lastTapRef.current.id === id && now - lastTapRef.current.at < 360) {
+        openQuickEdit();
+      }
+      lastTapRef.current = { kind, id, at: now };
+    },
+    [openQuickEdit]
+  );
+
+  const handleNodeClick = useCallback(
+    (event, node) => {
+      registerQuickTap('node', node?.id, onNodeClick, event, node);
+    },
+    [onNodeClick, registerQuickTap]
+  );
+
   const handleNodeDoubleClick = useCallback(
     (event, node) => {
       onNodeClick?.(event, node);
-      setActivePanelTab('selection');
-      window.setTimeout(() => {
-        editorPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 40);
+      openQuickEdit();
     },
-    [onNodeClick, setActivePanelTab]
+    [onNodeClick, openQuickEdit]
   );
+
+  const handleEdgeClick = useCallback(
+    (event, edge) => {
+      registerQuickTap('edge', edge?.id, onEdgeClick, event, edge);
+    },
+    [onEdgeClick, registerQuickTap]
+  );
+
+  const handlePaneClick = useCallback(
+    event => {
+      onPaneClick?.(event);
+      setQuickEditOpen(false);
+    },
+    [onPaneClick]
+  );
+
+  useEffect(() => {
+    if (!selectedNode && !selectedEdge) {
+      setQuickEditOpen(false);
+    }
+  }, [selectedEdge, selectedNode]);
 
   const { receipt: saveReceipt, ackReceipt } = history;
   const [receiptVisible, setReceiptVisible] = useState(null);
@@ -662,34 +705,107 @@ export default function MakerEditor() {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
-          onNodeClick={onNodeClick}
+          onNodeClick={handleNodeClick}
           onNodeDoubleClick={handleNodeDoubleClick}
-          onEdgeClick={onEdgeClick}
-          onPaneClick={onPaneClick}
+          onEdgeClick={handleEdgeClick}
+          onPaneClick={handlePaneClick}
           onSelectionChange={onSelectionChange}
           onNodesDelete={onNodesDelete}
           onEdgesDelete={onEdgesDelete}
         />
-
-        <div ref={editorPanelRef}>
-          <MakerEditorPanel
-            selectedNode={selectedNode}
-            selectedNodeId={selectedNodeId}
-            selectedEdge={selectedEdge}
-            onMarkAsStart={markAsStart}
-            onDeleteSelected={() => selectedNodeId && deletePrompt(selectedNodeId)}
-            setNodes={setNodes}
-            setEdges={setEdges}
-          />
-        </div>
       </div>
 
       <AddPromptFab
         onAdd={type => {
           addPromptNode(type, '');
           setSelectedEdge(null);
+          setQuickEditOpen(true);
+          setActivePanelTab('selection');
         }}
       />
+
+      {quickEditOpen && (selectedNode || selectedEdge) ? (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 140,
+            background: 'rgba(2, 6, 23, 0.54)',
+            display: 'grid',
+            alignItems: 'start',
+            justifyItems: 'center',
+            padding: 'max(env(safe-area-inset-top), 16px) 12px calc(env(safe-area-inset-bottom) + 24px)',
+            overflowY: 'auto',
+          }}
+          onClick={() => setQuickEditOpen(false)}
+        >
+          <div
+            style={{
+              width: 'min(760px, 100%)',
+              display: 'grid',
+              gap: 10,
+            }}
+            onClick={event => event.stopPropagation()}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+                padding: '12px 14px',
+                borderRadius: 18,
+                background: '#0f172a',
+                color: '#f8fafc',
+                boxShadow: '0 20px 50px -26px rgba(15, 23, 42, 0.82)',
+              }}
+            >
+              <div style={{ display: 'grid', gap: 4 }}>
+                <strong style={{ fontSize: 15 }}>
+                  {selectedEdge ? '분기 빠른 편집' : '노드 빠른 편집'}
+                </strong>
+                <span style={{ fontSize: 12, color: '#cbd5e1', lineHeight: 1.5 }}>
+                  {selectedEdge
+                    ? '조건 슬롯만 빠르게 손보고 바로 캔버스로 돌아갈 수 있습니다.'
+                    : '실행 본문, 입력 방식, 조건 기록만 빠르게 수정합니다.'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setQuickEditOpen(false)}
+                style={{
+                  border: '1px solid rgba(148, 163, 184, 0.3)',
+                  background: 'rgba(15, 23, 42, 0.9)',
+                  color: '#f8fafc',
+                  borderRadius: 999,
+                  padding: '10px 14px',
+                  fontSize: 12,
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                }}
+              >
+                닫기
+              </button>
+            </div>
+
+            <MakerEditorPanel
+              compact
+              selectedNode={selectedNode}
+              selectedNodeId={selectedNodeId}
+              selectedEdge={selectedEdge}
+              onMarkAsStart={markAsStart}
+              onDeleteSelected={() => {
+                if (selectedNodeId) {
+                  deletePrompt(selectedNodeId);
+                }
+                setQuickEditOpen(false);
+              }}
+              setNodes={setNodes}
+              setEdges={setEdges}
+            />
+          </div>
+        </div>
+      ) : null}
 
       {receiptVisible && (
         <div

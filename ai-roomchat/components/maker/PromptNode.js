@@ -26,13 +26,13 @@ export default function PromptNode({ data, selected }) {
   return (
     <div
       style={{
-        minWidth: 300,
-        maxWidth: 320,
+        minWidth: 324,
+        maxWidth: 348,
         background: '#0f172a',
         border: `1px solid ${cardBorder}`,
         borderRadius: 18,
         color: '#e2e8f0',
-        padding: 14,
+        padding: 16,
         boxShadow: selected
           ? '0 22px 44px -28px rgba(37, 99, 235, 0.75)'
           : '0 18px 36px -28px rgba(15, 23, 42, 0.7)',
@@ -79,9 +79,9 @@ export default function PromptNode({ data, selected }) {
       </div>
 
       <div style={{ display: 'grid', gap: 10 }}>
-        <div style={{ display: 'grid', gap: 4 }}>
-          <strong style={{ fontSize: 16, lineHeight: 1.3 }}>{title}</strong>
-          <span style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.5 }}>
+        <div style={{ display: 'grid', gap: 6 }}>
+          <strong style={{ fontSize: 17, lineHeight: 1.3 }}>{title}</strong>
+          <span style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.55 }}>
             {meta.display || '설명 없음'}
           </span>
         </div>
