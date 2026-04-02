@@ -312,6 +312,17 @@ const panelStyles = {
     display: 'grid',
     gap: 8,
   },
+  logCardWin: {
+    borderColor: 'rgba(96,165,250,0.72)',
+    boxShadow: '0 18px 44px -34px rgba(59,130,246,0.72)',
+  },
+  logCardLose: {
+    borderColor: 'rgba(248,113,113,0.72)',
+    boxShadow: '0 18px 44px -34px rgba(239,68,68,0.65)',
+  },
+  logCardDraw: {
+    borderColor: 'rgba(148,163,184,0.42)',
+  },
   logHeader: {
     display: 'flex',
     justifyContent: 'space-between',
@@ -2855,20 +2866,42 @@ export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) 
     [battleDetails, visibleBattles]
   );
 
-  const [expandedBattles, setExpandedBattles] = useState(() => new Set());
+  const battleCards = useMemo(
+    () =>
+      visibleBattleRows.map((battle, index) => {
+        const heroIds = [
+          ...(Array.isArray(battle?.attacker_hero_ids) ? battle.attacker_hero_ids : []),
+          ...(Array.isArray(battle?.defender_hero_ids) ? battle.defender_hero_ids : []),
+        ]
+          .map(value => (value != null ? String(value) : ''))
+          .filter(Boolean);
+        const opponentHeroId =
+          heroIds.find(candidate => String(candidate) !== String(hero?.id || '')) || null;
+        const opponent = opponentHeroId ? heroLookup?.[opponentHeroId] || null : null;
+        const result = String(battle?.result || '').trim().toLowerCase();
+        const tone =
+          result === 'win'
+            ? 'win'
+            : result === 'lose' || result === 'loss'
+              ? 'lose'
+              : 'draw';
 
-  const toggleBattleExpanded = useCallback(battleId => {
-    if (!battleId) return;
-    setExpandedBattles(prev => {
-      const next = new Set(prev);
-      if (next.has(battleId)) {
-        next.delete(battleId);
-      } else {
-        next.add(battleId);
-      }
-      return next;
-    });
-  }, []);
+        return {
+          id: battle?.id || `battle-${index}`,
+          targetId: battle?.session_id ? String(battle.session_id) : '',
+          createdAt: battle?.created_at || null,
+          opponentName:
+            opponent?.name || (opponentHeroId ? `상대 ${opponentHeroId}` : '상대 정보 없음'),
+          opponentImage: opponent?.image_url || null,
+          scoreDelta:
+            Number.isFinite(Number(battle?.score_delta)) ? Number(battle.score_delta) : null,
+          tone,
+          resultLabel:
+            tone === 'win' ? '승리' : tone === 'lose' ? '패배' : '무승부',
+        };
+      }),
+    [hero?.id, heroLookup, visibleBattleRows]
+  );
 
   const isMatchingBusy =
     matchingState.open &&
@@ -2981,52 +3014,91 @@ export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) 
         <div style={panelStyles.section}>
           <div style={panelStyles.emptyState}>{battleError}</div>
         </div>
-      ) : visibleBattleRows.length ? (
+      ) : battleCards.length ? (
         <div style={panelStyles.logList}>
-          {visibleBattleRows.map(battle => (
-            <article key={battle.id} style={panelStyles.logCard}>
+          {battleCards.map(card => (
+            <button
+              key={card.id}
+              type="button"
+              disabled={!card.targetId}
+              onClick={
+                card.targetId
+                  ? () =>
+                      router.push(
+                        `/battle-log/${encodeURIComponent(card.targetId)}?heroId=${encodeURIComponent(
+                          hero?.id || ''
+                        )}&gameId=${encodeURIComponent(selectedGameId || '')}`
+                      )
+                  : undefined
+              }
+              style={{
+                ...panelStyles.logCard,
+                ...(card.tone === 'win'
+                  ? panelStyles.logCardWin
+                  : card.tone === 'lose'
+                    ? panelStyles.logCardLose
+                    : panelStyles.logCardDraw),
+                cursor: card.targetId ? 'pointer' : 'default',
+                textAlign: 'left',
+              }}
+            >
               <div style={panelStyles.logHeader}>
                 <div style={{ display: 'grid', gap: 4 }}>
                   <p style={panelStyles.logDate}>
-                    {battle.created_at
-                      ? new Date(battle.created_at).toLocaleString('ko-KR')
+                    {card.createdAt
+                      ? new Date(card.createdAt).toLocaleString('ko-KR')
                       : '시간 정보 없음'}
                   </p>
-                  <p style={panelStyles.logMeta}>
-                    점수 변화:{' '}
-                    {battle.score_delta != null ? formatPlayNumber(battle.score_delta) : '—'}
-                  </p>
+                  <p style={panelStyles.logMeta}>{card.opponentName}</p>
                 </div>
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                  <p style={panelStyles.logResult}>
-                    {battle.result ? battle.result.toUpperCase() : 'PENDING'}
-                  </p>
-                  {battle.logs?.length ? (
-                    <button
-                      type="button"
-                      style={panelStyles.logToggle}
-                      onClick={() => toggleBattleExpanded(battle.id)}
-                    >
-                      {expandedBattles.has(battle.id) ? '로그 접기' : '로그 펼치기'}
-                    </button>
-                  ) : null}
+                <p style={panelStyles.logResult}>{card.resultLabel}</p>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 14,
+                    flex: '0 0 auto',
+                    background: card.opponentImage
+                      ? `linear-gradient(180deg, rgba(2,6,23,0.15), rgba(2,6,23,0.65)), url(${card.opponentImage}) center/cover no-repeat`
+                      : 'rgba(15,23,42,0.88)',
+                    border: '1px solid rgba(148,163,184,0.28)',
+                  }}
+                />
+                <div style={{ display: 'grid', gap: 4, minWidth: 0 }}>
+                  <strong
+                    style={{
+                      color: '#f8fafc',
+                      fontSize: 14,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    {card.opponentName}
+                  </strong>
+                  <span style={panelStyles.logText}>눌러서 베틀로그 보기</span>
+                </div>
+                <div
+                  style={{
+                    marginLeft: 'auto',
+                    fontSize: 18,
+                    fontWeight: 900,
+                    color:
+                      card.scoreDelta == null
+                        ? '#cbd5e1'
+                        : card.scoreDelta >= 0
+                          ? '#60a5fa'
+                          : '#f87171',
+                  }}
+                >
+                  {card.scoreDelta == null
+                    ? '—'
+                    : `${card.scoreDelta > 0 ? '+' : ''}${card.scoreDelta}`}
                 </div>
               </div>
-              <p style={panelStyles.logText}>
-                {battle.logs?.length
-                  ? `${battle.logs[0].turn_no ?? 0}턴 - ${battle.logs[0].prompt || '내용 없음'}`
-                  : '로그 없음'}
-              </p>
-              {expandedBattles.has(battle.id) && battle.logs?.length ? (
-                <div style={{ display: 'grid', gap: 6 }}>
-                  {battle.logs.map(log => (
-                    <p key={`${battle.id}-${log.turn_no}`} style={panelStyles.logText}>
-                      {log.prompt ? `${log.turn_no ?? 0}턴 - ${log.prompt}` : '로그 없음'}
-                    </p>
-                  ))}
-                </div>
-              ) : null}
-            </article>
+            </button>
           ))}
           {visibleBattles && visibleBattles < battleDetails.length ? (
             <button type="button" style={panelStyles.mutedButton} onClick={showMoreBattles}>

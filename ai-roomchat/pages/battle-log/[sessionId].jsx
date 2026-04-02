@@ -1,5 +1,6 @@
 "use client";
 
+import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
 
@@ -79,7 +80,7 @@ function ResultPortrait({ participant, tone = 'neutral' }) {
   );
 }
 
-function TextBattleResultView({ payload, sessionId }) {
+function TextBattleResultView({ payload, sessionId, backHref = '' }) {
   const session = payload?.session || {};
   const participants = Array.isArray(payload?.participants) ? payload.participants : [];
   const turns = Array.isArray(payload?.turns) ? payload.turns : [];
@@ -158,8 +159,27 @@ function TextBattleResultView({ payload, sessionId }) {
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
             <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#f8fafc' }}>베틀로그</h1>
-            <div style={{ fontSize: 12, color: '#93c5fd' }}>
-              세션 {sessionId} · {formatDate(session?.updated_at || session?.created_at)}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              {backHref ? (
+                <Link
+                  href={backHref}
+                  style={{
+                    textDecoration: 'none',
+                    padding: '8px 12px',
+                    borderRadius: 999,
+                    background: 'rgba(15,23,42,0.76)',
+                    border: '1px solid rgba(148,163,184,0.28)',
+                    color: '#e2e8f0',
+                    fontSize: 12,
+                    fontWeight: 700,
+                  }}
+                >
+                  게임 시작으로 돌아가기
+                </Link>
+              ) : null}
+              <div style={{ fontSize: 12, color: '#93c5fd' }}>
+                세션 {sessionId} · {formatDate(session?.updated_at || session?.created_at)}
+              </div>
             </div>
           </div>
           <div style={{ fontSize: 13, color: '#cbd5e1' }}>
@@ -292,7 +312,7 @@ function EventRow({ ev }) {
   );
 }
 
-function LegacyBattleLogView({ data, sessionId, viewParam }) {
+function LegacyBattleLogView({ data, sessionId, viewParam, backHref = '' }) {
   const battleLog = data.battleLog || {};
   const events = Array.isArray(battleLog?.events) ? battleLog.events : [];
   const highlights = data.result?.highlightIds || data.battleLog?.highlightIds || [];
@@ -328,8 +348,27 @@ function LegacyBattleLogView({ data, sessionId, viewParam }) {
       <div style={{ display: 'grid', gap: 12, maxWidth: 900, margin: '0 auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
           <h1 style={{ margin: 0, fontSize: 20 }}>베틀로그</h1>
-          <div style={{ fontSize: 13, color: '#93c5fd' }}>
-            세션 {sessionId} · 게임 {data.meta?.gameId || '-'} · {formatDate(data.meta?.createdAt || data.receivedAt)}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            {backHref ? (
+              <Link
+                href={backHref}
+                style={{
+                  textDecoration: 'none',
+                  padding: '8px 12px',
+                  borderRadius: 999,
+                  background: 'rgba(15,23,42,0.76)',
+                  border: '1px solid rgba(148,163,184,0.28)',
+                  color: '#e2e8f0',
+                  fontSize: 12,
+                  fontWeight: 700,
+                }}
+              >
+                게임 시작으로 돌아가기
+              </Link>
+            ) : null}
+            <div style={{ fontSize: 13, color: '#93c5fd' }}>
+              세션 {sessionId} · 게임 {data.meta?.gameId || '-'} · {formatDate(data.meta?.createdAt || data.receivedAt)}
+            </div>
           </div>
         </div>
 
@@ -497,10 +536,20 @@ function LegacyBattleLogView({ data, sessionId, viewParam }) {
 
 export default function BattleLogPage() {
   const router = useRouter();
-  const { sessionId, view: viewParam } = router.query || {};
+  const { sessionId, view: viewParam, heroId: heroIdParam, gameId: gameIdParam } = router.query || {};
   const [data, setData] = useState(null);
   const [mode, setMode] = useState('loading');
   const [error, setError] = useState(null);
+  const [storedHeroId, setStoredHeroId] = useState('');
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      setStoredHeroId(window.localStorage.getItem('character-play:last-hero-id') || '');
+    } catch (storageError) {
+      setStoredHeroId('');
+    }
+  }, []);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -539,6 +588,18 @@ export default function BattleLogPage() {
     };
   }, [sessionId]);
 
+  const resolvedHeroId = (Array.isArray(heroIdParam) ? heroIdParam[0] : heroIdParam) || storedHeroId || '';
+  const resolvedGameId =
+    (Array.isArray(gameIdParam) ? gameIdParam[0] : gameIdParam) ||
+    data?.session?.game_id ||
+    data?.session?.gameId ||
+    data?.meta?.gameId ||
+    '';
+  const backHref =
+    resolvedHeroId && resolvedGameId
+      ? `/character/${encodeURIComponent(resolvedHeroId)}/play?gameId=${encodeURIComponent(resolvedGameId)}`
+      : '';
+
   const content = useMemo(() => {
     if (!sessionId) {
       return <div style={{ padding: 24, color: '#e2e8f0' }}>세션 ID가 없습니다.</div>;
@@ -555,10 +616,10 @@ export default function BattleLogPage() {
     }
     if (!data) return null;
     if (mode === 'text-battle') {
-      return <TextBattleResultView payload={data} sessionId={String(sessionId)} />;
+      return <TextBattleResultView payload={data} sessionId={String(sessionId)} backHref={backHref} />;
     }
-    return <LegacyBattleLogView data={data} sessionId={String(sessionId)} viewParam={viewParam} />;
-  }, [data, error, mode, sessionId, viewParam]);
+    return <LegacyBattleLogView data={data} sessionId={String(sessionId)} viewParam={viewParam} backHref={backHref} />;
+  }, [backHref, data, error, mode, sessionId, viewParam]);
 
   return content;
 }

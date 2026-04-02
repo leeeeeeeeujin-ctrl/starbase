@@ -41,6 +41,7 @@ export default function useHeroBattles({ hero, selectedGameId }) {
       const fields = [
         'id',
         'game_id',
+        'session_id',
         'created_at',
         'result',
         'score_delta',

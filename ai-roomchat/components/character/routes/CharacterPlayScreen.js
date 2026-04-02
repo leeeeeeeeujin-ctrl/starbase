@@ -10,6 +10,25 @@ import useHeroBattles from '../../../hooks/character/useHeroBattles';
 import useParticipationCarousel from '../../../hooks/character/useParticipationCarousel';
 import { formatPlayNumber, formatPlayWinRate } from '../../../utils/characterPlayFormatting';
 
+function getStoredSelectedGameId(heroId) {
+  if (typeof window === 'undefined' || !heroId) return null;
+  try {
+    return window.localStorage.getItem(`character-play:selected-game:${heroId}`) || null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function storeSelectedGameId(heroId, gameId) {
+  if (typeof window === 'undefined' || !heroId || !gameId) return;
+  try {
+    window.localStorage.setItem(`character-play:selected-game:${heroId}`, String(gameId));
+    window.localStorage.setItem('character-play:last-hero-id', String(heroId));
+  } catch (error) {
+    // UI convenience only
+  }
+}
+
 export default function CharacterPlayScreen({ hero }) {
   const router = useRouter();
   const participationState = useHeroParticipations({ hero });
@@ -40,6 +59,26 @@ export default function CharacterPlayScreen({ hero }) {
     if (String(selectedGameId || '') === String(queryGameId)) return;
     setSelectedGameId(queryGameId);
   }, [participations, router.query?.gameId, selectedGameId, setSelectedGameId]);
+
+  useEffect(() => {
+    const heroId = hero?.id ? String(hero.id) : '';
+    if (!heroId || !participations.length) return;
+    const queryGameId = Array.isArray(router.query?.gameId)
+      ? router.query.gameId[0]
+      : router.query?.gameId;
+    if (queryGameId) return;
+    const storedGameId = getStoredSelectedGameId(heroId);
+    if (!storedGameId) return;
+    if (!participations.some(entry => String(entry.game_id) === String(storedGameId))) return;
+    if (String(selectedGameId || '') === String(storedGameId)) return;
+    setSelectedGameId(storedGameId);
+  }, [hero?.id, participations, router.query?.gameId, selectedGameId, setSelectedGameId]);
+
+  useEffect(() => {
+    const heroId = hero?.id ? String(hero.id) : '';
+    if (!heroId || !selectedGameId) return;
+    storeSelectedGameId(heroId, selectedGameId);
+  }, [hero?.id, selectedGameId]);
 
   const {
     battleDetails,
