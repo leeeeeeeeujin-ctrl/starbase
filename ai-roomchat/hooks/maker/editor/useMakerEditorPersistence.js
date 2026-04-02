@@ -11,6 +11,59 @@ import { sanitizeVariableRules } from '../../../lib/variableRules';
 // 실제 프롬프트 세트 편집에서는 prompt_slots / prompt_bridges 만 사용하므로
 // 여기서는 명시적으로 해당 테이블을 호출해 네트워크 요청이 확실히 나가도록 고정한다.
 
+function isPromptSlotSchemaMismatch(error) {
+  const message = String(error?.message || error?.details || error?.hint || '');
+  return (
+    error?.code === 'PGRST204' ||
+    /schema cache/i.test(message) ||
+    /column/i.test(message) ||
+    /Could not find/i.test(message)
+  );
+}
+
+function buildLegacyPromptSlotPayload(payload) {
+  return {
+    set_id: payload.set_id,
+    slot_no: payload.slot_no,
+    slot_type: payload.slot_type,
+    slot_pick: payload.slot_pick,
+    template: payload.template,
+    is_start: payload.is_start,
+    invisible: payload.invisible,
+    visible_slots: payload.visible_slots,
+    canvas_x: payload.canvas_x,
+    canvas_y: payload.canvas_y,
+    var_rules_global: payload.var_rules_global,
+    var_rules_local: payload.var_rules_local,
+  };
+}
+
+async function upsertPromptSlot({ slotId, payload }) {
+  if (!slotId) {
+    let { data, error } = await supabase.from('prompt_slots').insert(payload).select().single();
+    if (!error && data) {
+      return { data, error: null, usedLegacyPayload: false };
+    }
+    if (!isPromptSlotSchemaMismatch(error)) {
+      return { data: null, error, usedLegacyPayload: false };
+    }
+    const legacy = buildLegacyPromptSlotPayload(payload);
+    ({ data, error } = await supabase.from('prompt_slots').insert(legacy).select().single());
+    return { data: data || null, error: error || null, usedLegacyPayload: true };
+  }
+
+  let { error } = await supabase.from('prompt_slots').update(payload).eq('id', slotId);
+  if (!error) {
+    return { data: null, error: null, usedLegacyPayload: false };
+  }
+  if (!isPromptSlotSchemaMismatch(error)) {
+    return { data: null, error, usedLegacyPayload: false };
+  }
+  const legacy = buildLegacyPromptSlotPayload(payload);
+  ({ error } = await supabase.from('prompt_slots').update(legacy).eq('id', slotId));
+  return { data: null, error: error || null, usedLegacyPayload: true };
+}
+
 export function useMakerEditorPersistence({ graph, setInfo, onAfterSave }) {
   const {
     nodes,
@@ -174,11 +227,10 @@ export function useMakerEditorPersistence({ graph, setInfo, onAfterSave }) {
         }
 
         if (!slotId) {
-          const { data: inserted, error } = await supabase
-            .from('prompt_slots')
-            .insert(payload)
-            .select()
-            .single();
+          const { data: inserted, error, usedLegacyPayload } = await upsertPromptSlot({
+            slotId: null,
+            payload,
+          });
           if (error || !inserted) {
             console.error(error);
             continue;
@@ -189,16 +241,25 @@ export function useMakerEditorPersistence({ graph, setInfo, onAfterSave }) {
             console.log('[useMakerEditorPersistence] inserted new slot', {
               flowNodeId: node.id,
               slotId,
+              usedLegacyPayload,
             });
           } catch {
             // ignore log errors
           }
         } else {
-          await supabase.from('prompt_slots').update(payload).eq('id', slotId);
+          const { error, usedLegacyPayload } = await upsertPromptSlot({
+            slotId,
+            payload,
+          });
+          if (error) {
+            console.error(error);
+            continue;
+          }
           try {
             console.log('[useMakerEditorPersistence] updated slot', {
               flowNodeId: node.id,
               slotId,
+              usedLegacyPayload,
             });
           } catch {
             // ignore log errors
