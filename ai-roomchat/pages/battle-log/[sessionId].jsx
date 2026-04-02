@@ -5,6 +5,7 @@ import { useRouter } from 'next/router';
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { withTable } from '@/lib/supabaseTables';
+import { clearActiveSessionRecord, readActiveSession } from '@/lib/rank/activeSessionStorage';
 
 function formatDate(value) {
   if (!value) return '-';
@@ -755,6 +756,14 @@ export default function BattleLogPage() {
       setStoredHeroId('');
     }
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !sessionId) return;
+    const active = readActiveSession();
+    if (!active) return;
+    if (active.sessionId && String(active.sessionId) !== String(sessionId)) return;
+    clearActiveSessionRecord(active.gameId || undefined);
+  }, [sessionId]);
 
   useEffect(() => {
     if (!sessionId) return;
