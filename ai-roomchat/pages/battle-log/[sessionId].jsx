@@ -22,6 +22,26 @@ function shortText(value, limit = 280) {
   return `${text.slice(0, limit).trim()}…`;
 }
 
+function parseJsonLikeText(value) {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!text) return null;
+  const fenced = text.match(/```json\s*([\s\S]*?)```/i);
+  const raw = fenced ? fenced[1].trim() : text;
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    return null;
+  }
+}
+
+function extractBattleLogText(value) {
+  const parsed = parseJsonLikeText(value);
+  if (parsed && typeof parsed.reply === 'string' && parsed.reply.trim()) {
+    return parsed.reply.trim();
+  }
+  return typeof value === 'string' ? value : '';
+}
+
 function BattleLogShell({ children }) {
   return (
     <div
@@ -564,6 +584,8 @@ function RankBattleDetailView({ battle, logs, backHref = '' }) {
   const isWin = String(battle?.result || '').toLowerCase() === 'win';
   const isLose = String(battle?.result || '').toLowerCase() === 'lose' || String(battle?.result || '').toLowerCase() === 'loss';
   const tone = isWin ? 'win' : isLose ? 'lose' : 'neutral';
+  const myParticipant = battle?.myParticipant || { name: '내 캐릭터', image_url: null, team: '', role: '' };
+  const opponentParticipant = battle?.opponentParticipant || { name: '상대 캐릭터', image_url: null, team: '', role: '' };
   return (
     <BattleLogShell>
       <BattleLogHeader
@@ -604,7 +626,7 @@ function RankBattleDetailView({ battle, logs, backHref = '' }) {
               gap: 16,
             }}
           >
-            <ResultPortrait participant={{ name: '내 캐릭터' }} tone={tone} />
+            <ResultPortrait participant={myParticipant} tone={tone} />
             <div
               style={{
                 display: 'grid',
@@ -636,9 +658,9 @@ function RankBattleDetailView({ battle, logs, backHref = '' }) {
                     ? `${Number(battle.score_delta) > 0 ? '+' : ''}${Number(battle.score_delta)}`
                     : '-'}
                 </div>
+                </div>
               </div>
-            </div>
-            <ResultPortrait participant={{ name: '상대 캐릭터' }} tone={isWin ? 'lose' : isLose ? 'win' : 'neutral'} />
+            <ResultPortrait participant={opponentParticipant} tone={isWin ? 'lose' : isLose ? 'win' : 'neutral'} />
           </div>
         </div>
 
@@ -674,7 +696,7 @@ function RankBattleDetailView({ battle, logs, backHref = '' }) {
                 >
                   <div style={{ fontSize: 12, color: '#93c5fd' }}>턴 {log.turn_no ?? '-'}</div>
                   <div style={{ fontSize: 13, color: '#e2e8f0', whiteSpace: 'pre-wrap' }}>
-                    {shortText(log.ai_response || log.prompt || '내용 없음', 800)}
+                    {shortText(extractBattleLogText(log.ai_response || log.prompt || '내용 없음'), 800)}
                   </div>
                 </article>
               ))}
@@ -726,7 +748,7 @@ export default function BattleLogPage() {
           const { data: battleRow, error: battleError } = await withTable(supabase, 'rank_battles', table =>
             supabase
               .from(table)
-              .select('id, game_id, created_at, result, score_delta')
+              .select('id, game_id, created_at, result, score_delta, attacker_hero_ids, defender_hero_ids')
               .eq('id', fallbackBattleId)
               .maybeSingle()
           );
@@ -740,8 +762,54 @@ export default function BattleLogPage() {
               .eq('battle_id', fallbackBattleId)
               .order('turn_no', { ascending: true })
           );
+          const attackerHeroIds = Array.isArray(battleRow?.attacker_hero_ids)
+            ? battleRow.attacker_hero_ids.map(value => String(value))
+            : [];
+          const defenderHeroIds = Array.isArray(battleRow?.defender_hero_ids)
+            ? battleRow.defender_hero_ids.map(value => String(value))
+            : [];
+          const heroIds = [...new Set([...attackerHeroIds, ...defenderHeroIds])];
+          let heroRows = [];
+          if (heroIds.length) {
+            const heroResult = await withTable(supabase, 'heroes', table =>
+              supabase
+                .from(table)
+                .select('id, name, image_url')
+                .in('id', heroIds)
+            );
+            heroRows = Array.isArray(heroResult?.data) ? heroResult.data : [];
+          }
+          const heroMap = Object.fromEntries(
+            heroRows.map(row => [String(row.id), row])
+          );
+          const resolvedHeroId = (Array.isArray(heroIdParam) ? heroIdParam[0] : heroIdParam) || '';
+          const normalizedResolvedHeroId = String(resolvedHeroId || '');
+          const viewerIsAttacker = normalizedResolvedHeroId
+            ? attackerHeroIds.includes(normalizedResolvedHeroId)
+            : true;
+          const myHeroId = viewerIsAttacker ? attackerHeroIds[0] || '' : defenderHeroIds[0] || '';
+          const opponentHeroId = viewerIsAttacker
+            ? defenderHeroIds[0] || attackerHeroIds.find(id => id !== myHeroId) || ''
+            : attackerHeroIds[0] || defenderHeroIds.find(id => id !== myHeroId) || '';
+          const myHero = heroMap[myHeroId] || null;
+          const opponentHero = heroMap[opponentHeroId] || null;
           if (!cancelled) {
-            setData({ battle: battleRow, logs: Array.isArray(logRows) ? logRows : [] });
+            setData({
+              battle: {
+                ...battleRow,
+                myParticipant: {
+                  name: myHero?.name || '내 캐릭터',
+                  image_url: myHero?.image_url || null,
+                  team: viewerIsAttacker ? '1' : '2',
+                },
+                opponentParticipant: {
+                  name: opponentHero?.name || '상대 캐릭터',
+                  image_url: opponentHero?.image_url || null,
+                  team: viewerIsAttacker ? '2' : '1',
+                },
+              },
+              logs: Array.isArray(logRows) ? logRows : [],
+            });
             setMode('battle');
           }
           return;
