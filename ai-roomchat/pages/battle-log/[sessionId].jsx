@@ -22,6 +22,71 @@ function shortText(value, limit = 280) {
   return `${text.slice(0, limit).trim()}…`;
 }
 
+function BattleLogShell({ children }) {
+  return (
+    <div
+      style={{
+        minHeight: '100vh',
+        background:
+          'radial-gradient(circle at top, rgba(59,130,246,0.18), transparent 24%), linear-gradient(180deg, #020617 0%, #0f172a 100%)',
+        color: '#e2e8f0',
+        padding: '20px 14px 42px',
+        boxSizing: 'border-box',
+      }}
+    >
+      <div
+        style={{
+          maxWidth: 820,
+          margin: '0 auto',
+          display: 'grid',
+          gap: 16,
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function BattleLogHeader({ title = '베틀로그', meta = '', backHref = '' }) {
+  return (
+    <header
+      style={{
+        borderRadius: 24,
+        padding: '18px 18px 16px',
+        background: 'rgba(2,6,23,0.82)',
+        border: '1px solid rgba(59,130,246,0.22)',
+        display: 'grid',
+        gap: 8,
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#f8fafc' }}>{title}</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          {backHref ? (
+            <Link
+              href={backHref}
+              style={{
+                textDecoration: 'none',
+                padding: '8px 12px',
+                borderRadius: 999,
+                background: 'rgba(15,23,42,0.76)',
+                border: '1px solid rgba(148,163,184,0.28)',
+                color: '#e2e8f0',
+                fontSize: 12,
+                fontWeight: 700,
+              }}
+            >
+              게임 시작으로 돌아가기
+            </Link>
+          ) : null}
+          {meta ? <div style={{ fontSize: 12, color: '#93c5fd' }}>{meta}</div> : null}
+        </div>
+      </div>
+    </header>
+  );
+}
+
 function ResultPortrait({ participant, tone = 'neutral' }) {
   const borderColor =
     tone === 'win'
@@ -131,63 +196,23 @@ function TextBattleResultView({ payload, sessionId, backHref = '' }) {
   });
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        background:
-          'radial-gradient(circle at top, rgba(59,130,246,0.18), transparent 24%), linear-gradient(180deg, #020617 0%, #0f172a 100%)',
-        color: '#e2e8f0',
-        padding: '20px 14px 42px',
-        boxSizing: 'border-box',
-      }}
-    >
+    <BattleLogShell>
+      <BattleLogHeader
+        meta={`세션 ${sessionId} · ${formatDate(session?.updated_at || session?.created_at)}`}
+        backHref={backHref}
+      />
       <div
         style={{
-          maxWidth: 820,
-          margin: '0 auto',
-          display: 'grid',
-          gap: 16,
+          fontSize: 13,
+          color: '#cbd5e1',
+          borderRadius: 18,
+          padding: '12px 16px',
+          background: 'rgba(2,6,23,0.72)',
+          border: '1px solid rgba(71,85,105,0.3)',
         }}
       >
-        <header
-          style={{
-            borderRadius: 24,
-            padding: '18px 18px 16px',
-            background: 'rgba(2,6,23,0.82)',
-            border: '1px solid rgba(59,130,246,0.22)',
-            display: 'grid',
-            gap: 8,
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#f8fafc' }}>베틀로그</h1>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              {backHref ? (
-                <Link
-                  href={backHref}
-                  style={{
-                    textDecoration: 'none',
-                    padding: '8px 12px',
-                    borderRadius: 999,
-                    background: 'rgba(15,23,42,0.76)',
-                    border: '1px solid rgba(148,163,184,0.28)',
-                    color: '#e2e8f0',
-                    fontSize: 12,
-                    fontWeight: 700,
-                  }}
-                >
-                  게임 시작으로 돌아가기
-                </Link>
-              ) : null}
-              <div style={{ fontSize: 12, color: '#93c5fd' }}>
-                세션 {sessionId} · {formatDate(session?.updated_at || session?.created_at)}
-              </div>
-            </div>
-          </div>
-          <div style={{ fontSize: 13, color: '#cbd5e1' }}>
-            종료 사유: <strong style={{ color: '#f8fafc' }}>{finalScore?.reason || session?.status || 'completed'}</strong>
-          </div>
-        </header>
+        종료 사유: <strong style={{ color: '#f8fafc' }}>{finalScore?.reason || session?.status || 'completed'}</strong>
+      </div>
 
         <section
           style={{
@@ -282,8 +307,7 @@ function TextBattleResultView({ payload, sessionId, backHref = '' }) {
             )}
           </div>
         </section>
-      </div>
-    </div>
+    </BattleLogShell>
   );
 }
 
@@ -537,81 +561,127 @@ function LegacyBattleLogView({ data, sessionId, viewParam, backHref = '' }) {
 }
 
 function RankBattleDetailView({ battle, logs, backHref = '' }) {
+  const isWin = String(battle?.result || '').toLowerCase() === 'win';
+  const isLose = String(battle?.result || '').toLowerCase() === 'lose' || String(battle?.result || '').toLowerCase() === 'loss';
+  const tone = isWin ? 'win' : isLose ? 'lose' : 'neutral';
   return (
-    <div style={{ padding: 24, color: '#e2e8f0', background: '#0b1220', minHeight: '100vh' }}>
-      <div style={{ display: 'grid', gap: 12, maxWidth: 900, margin: '0 auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-          <h1 style={{ margin: 0, fontSize: 20 }}>베틀로그</h1>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-            {backHref ? (
-              <Link
-                href={backHref}
-                style={{
-                  textDecoration: 'none',
-                  padding: '8px 12px',
-                  borderRadius: 999,
-                  background: 'rgba(15,23,42,0.76)',
-                  border: '1px solid rgba(148,163,184,0.28)',
-                  color: '#e2e8f0',
-                  fontSize: 12,
-                  fontWeight: 700,
-                }}
-              >
-                게임 시작으로 돌아가기
-              </Link>
-            ) : null}
-            <div style={{ fontSize: 13, color: '#93c5fd' }}>
-              전투 {battle?.id || '-'} · {formatDate(battle?.created_at)}
-            </div>
-          </div>
-        </div>
+    <BattleLogShell>
+      <BattleLogHeader
+        meta={`전투 ${battle?.id || '-'} · ${formatDate(battle?.created_at)}`}
+        backHref={backHref}
+      />
 
         <div
           style={{
-            border: '1px solid rgba(148,163,184,0.25)',
-            borderRadius: 12,
-            padding: 14,
-            background: 'rgba(15,23,42,0.7)',
+            borderRadius: 28,
+            padding: '22px 18px',
+            background: 'rgba(2,6,23,0.78)',
+            border: '1px solid rgba(71,85,105,0.4)',
             display: 'grid',
-            gap: 8,
+            gap: 18,
           }}
         >
-          <div style={{ fontSize: 13, color: '#cbd5e1' }}>결과</div>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 13 }}>
-            <span>판정: {battle?.result || '-'}</span>
-            <span>점수 변화: {battle?.score_delta ?? '-'}</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 16, fontWeight: 800, color: '#f8fafc' }}>결과 요약</div>
+            <div
+              style={{
+                padding: '6px 10px',
+                borderRadius: 999,
+                border: `1px solid ${isWin ? 'rgba(96,165,250,0.72)' : isLose ? 'rgba(248,113,113,0.72)' : 'rgba(148,163,184,0.42)'}`,
+                color: isWin ? '#93c5fd' : isLose ? '#fca5a5' : '#cbd5e1',
+                fontSize: 12,
+                fontWeight: 800,
+              }}
+            >
+              {battle?.result || 'unknown'}
+            </div>
+          </div>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'minmax(0, 1fr) auto minmax(0, 1fr)',
+              alignItems: 'center',
+              gap: 16,
+            }}
+          >
+            <ResultPortrait participant={{ name: '내 캐릭터' }} tone={tone} />
+            <div
+              style={{
+                display: 'grid',
+                gap: 8,
+                justifyItems: 'center',
+                minWidth: 90,
+              }}
+            >
+              <div style={{ fontSize: 12, color: '#94a3b8', letterSpacing: '0.06em' }}>점수 변동</div>
+              <div
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: 18,
+                  background: 'rgba(15,23,42,0.92)',
+                  border: '1px solid rgba(71,85,105,0.65)',
+                  display: 'grid',
+                  gap: 6,
+                  justifyItems: 'center',
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 22,
+                    fontWeight: 900,
+                    color: Number(battle?.score_delta || 0) >= 0 ? '#60a5fa' : '#f87171',
+                  }}
+                >
+                  {Number.isFinite(Number(battle?.score_delta))
+                    ? `${Number(battle.score_delta) > 0 ? '+' : ''}${Number(battle.score_delta)}`
+                    : '-'}
+                </div>
+              </div>
+            </div>
+            <ResultPortrait participant={{ name: '상대 캐릭터' }} tone={isWin ? 'lose' : isLose ? 'win' : 'neutral'} />
           </div>
         </div>
 
-        <div style={{ display: 'grid', gap: 8 }}>
-          <div style={{ fontSize: 14, fontWeight: 700 }}>전투 로그</div>
+        <section
+          style={{
+            borderRadius: 22,
+            padding: '16px 16px 18px',
+            background: 'rgba(2,6,23,0.84)',
+            border: '1px solid rgba(71,85,105,0.34)',
+            display: 'grid',
+            gap: 12,
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+            <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: '#f8fafc' }}>전투 로그</h2>
+            <div style={{ fontSize: 12, color: '#94a3b8' }}>{logs.length}개 기록</div>
+          </div>
           {logs.length === 0 ? (
             <div style={{ fontSize: 13, color: '#94a3b8' }}>기록이 없습니다.</div>
           ) : (
             <div style={{ display: 'grid', gap: 8 }}>
               {logs.map(log => (
-                <div
+                <article
                   key={`${battle?.id}-${log.turn_no ?? 'na'}-${log.created_at ?? ''}`}
                   style={{
-                    padding: '10px 12px',
-                    borderRadius: 12,
-                    border: '1px solid rgba(148,163,184,0.28)',
-                    background: 'rgba(15,23,42,0.7)',
+                    borderRadius: 18,
+                    padding: '12px 14px',
+                    background: 'rgba(15,23,42,0.78)',
+                    border: '1px solid rgba(51,65,85,0.82)',
                     display: 'grid',
-                    gap: 4,
+                    gap: 6,
                   }}
                 >
                   <div style={{ fontSize: 12, color: '#93c5fd' }}>턴 {log.turn_no ?? '-'}</div>
                   <div style={{ fontSize: 13, color: '#e2e8f0', whiteSpace: 'pre-wrap' }}>
                     {shortText(log.ai_response || log.prompt || '내용 없음', 800)}
                   </div>
-                </div>
+                </article>
               ))}
             </div>
           )}
-        </div>
-      </div>
-    </div>
+        </section>
+    </BattleLogShell>
   );
 }
 

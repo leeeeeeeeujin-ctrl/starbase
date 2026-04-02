@@ -135,6 +135,12 @@ const panelStyles = {
     width: '100%',
     gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
   },
+  fullSection: {
+    display: 'grid',
+    gap: 12,
+    width: '100%',
+    gridTemplateColumns: 'minmax(0, 1fr)',
+  },
   headerRow: {
     display: 'flex',
     alignItems: 'center',
@@ -3001,7 +3007,7 @@ export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) 
   );
 
   const battleSection = (
-    <section style={panelStyles.section}>
+    <section style={panelStyles.fullSection}>
       <div style={panelStyles.headerRow}>
         <h3 style={panelStyles.title}>베틀 로그</h3>
         <p style={panelStyles.subtitle}>
@@ -3015,7 +3021,7 @@ export default function CharacterPlayPanel({ hero, playData, heroLookup = {} }) 
           <div style={panelStyles.emptyState}>{battleError}</div>
         </div>
       ) : battleCards.length ? (
-        <div style={{ ...panelStyles.logList, gridTemplateColumns: 'minmax(0, 1fr)' }}>
+        <div style={{ ...panelStyles.logList, gridTemplateColumns: 'minmax(0, 1fr)', gap: 10 }}>
           {battleCards.map(card => (
             <button
               key={card.id}
