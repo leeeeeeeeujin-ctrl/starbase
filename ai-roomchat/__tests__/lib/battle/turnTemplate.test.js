@@ -5,6 +5,23 @@ const {
 } = require('../../../lib/battle/turnTemplate');
 
 describe('turn template state writes', () => {
+  test('keeps empty draft state write rows for maker editing', () => {
+    const meta = normalizeTurnMeta({
+      stateWrites: [
+        {
+          sourceType: 'always',
+          sourceKey: '',
+          equals: '',
+          key: '',
+          value: '',
+        },
+      ],
+    });
+
+    expect(meta.stateWrites).toHaveLength(1);
+    expect(meta.stateWrites[0].key).toBe('');
+  });
+
   test('keeps state write key during normalization', () => {
     const meta = normalizeTurnMeta({
       stateWrites: [

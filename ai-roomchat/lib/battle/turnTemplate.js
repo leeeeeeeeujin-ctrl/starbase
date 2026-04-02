@@ -15,7 +15,6 @@ function normalizeStateWriteRule(rule, index = 0) {
     ? source.sourceType
     : 'always';
   const key = String(source.key || '').trim();
-  if (!key) return null;
 
   return {
     id: String(source.id || `state-write-${index + 1}`).trim(),
