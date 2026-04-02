@@ -42,12 +42,12 @@ export default function CharacterRouteHud({ hero }) {
       style={{
         position: 'fixed',
         left: '50%',
-        bottom: 'calc(54px + var(--character-agent-panel-height, 0px))',
+        bottom: 'calc(18px + var(--character-agent-panel-height, 0px))',
         transform: 'translateX(-50%)',
-        width: 'min(560px, calc(100% - 24px))',
-        zIndex: 25,
+        width: playerCollapsed ? 'auto' : 'min(420px, calc(100% - 24px))',
+        zIndex: 32,
         display: 'grid',
-        gap: 10,
+        gap: 6,
         pointerEvents: 'auto',
         transition: 'bottom 180ms ease',
       }}
@@ -94,26 +94,27 @@ export default function CharacterRouteHud({ hero }) {
 }
 
 const shellStyle = collapsed => ({
-  borderRadius: 18,
-  padding: collapsed ? '10px 12px' : '12px 14px',
-  background: 'rgba(15,23,42,0.82)',
-  border: '1px solid rgba(96,165,250,0.24)',
-  boxShadow: '0 24px 60px -34px rgba(15,23,42,0.92)',
-  backdropFilter: 'blur(14px)',
+  borderRadius: collapsed ? 999 : 18,
+  padding: collapsed ? '6px 8px' : '10px 12px',
+  background: collapsed ? 'rgba(2,6,23,0.38)' : 'rgba(15,23,42,0.82)',
+  border: collapsed ? '1px solid rgba(96,165,250,0.14)' : '1px solid rgba(96,165,250,0.24)',
+  boxShadow: collapsed ? 'none' : '0 24px 60px -34px rgba(15,23,42,0.92)',
+  backdropFilter: collapsed ? 'blur(8px)' : 'blur(14px)',
   display: 'grid',
   gap: collapsed ? 0 : 10,
 });
 
 const miniButtonStyle = {
   appearance: 'none',
-  border: '1px solid rgba(148,163,184,0.22)',
-  borderRadius: 14,
-  padding: '6px 12px',
-  background: 'rgba(15,23,42,0.68)',
+  border: '1px solid rgba(148,163,184,0.18)',
+  borderRadius: 999,
+  padding: '4px 10px',
+  background: 'rgba(15,23,42,0.52)',
   color: '#bae6fd',
-  fontSize: 12,
+  fontSize: 11,
   fontWeight: 700,
   cursor: 'pointer',
+  WebkitTapHighlightColor: 'transparent',
 };
 
 const actionButtonStyle = {

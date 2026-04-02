@@ -714,14 +714,13 @@ export default function TextBattleSessionPage() {
     <div
       style={{
         minHeight: '100vh',
-        background:
-          'radial-gradient(circle at top, rgba(30,64,175,0.18), transparent 30%), linear-gradient(180deg, #020617 0%, #0f172a 100%)',
+        background: '#020617',
         color: '#e2e8f0',
-        padding: '16px 14px 40px',
+        padding: 0,
         boxSizing: 'border-box',
       }}
     >
-      <div style={{ maxWidth: 920, margin: '0 auto', display: 'grid', gap: 16, paddingTop: 84, paddingBottom: 360 }}>
+      <div style={{ width: '100%', margin: '0 auto', display: 'grid', gap: 0, paddingTop: 0, paddingBottom: 0 }}>
         {(showPrelude || showApiKeyRecovery) ? (
           <section
             style={{
@@ -865,26 +864,35 @@ export default function TextBattleSessionPage() {
             border: 'none',
             display: 'grid',
             gap: 12,
-            minHeight: 'calc(100vh - 180px)',
+            minHeight: '100vh',
           }}
         >
           <div
             style={{
               borderRadius: 24,
-              minHeight: 360,
+              minHeight: '100vh',
               background:
                 stageBackgroundUrl
                   ? `linear-gradient(180deg, rgba(2,6,23,0.18) 0%, rgba(2,6,23,0.78) 100%), url(${stageBackgroundUrl}) center/cover`
                   : 'linear-gradient(180deg, rgba(15,23,42,0.88) 0%, rgba(15,23,42,0.72) 100%)',
-              border: '1px solid rgba(71,85,105,0.45)',
+              border: 'none',
               position: 'relative',
               overflow: 'hidden',
               display: 'grid',
               placeItems: 'center',
-              padding: 24,
+              padding: '54px 16px 220px',
               boxSizing: 'border-box',
             }}
           >
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                background:
+                  'linear-gradient(90deg, rgba(2,6,23,0.96) 0%, rgba(2,6,23,0.42) 14%, rgba(2,6,23,0.1) 28%, rgba(2,6,23,0.1) 72%, rgba(2,6,23,0.42) 86%, rgba(2,6,23,0.96) 100%), linear-gradient(180deg, rgba(2,6,23,0.56) 0%, rgba(2,6,23,0.05) 24%, rgba(2,6,23,0.05) 70%, rgba(2,6,23,0.9) 100%)',
+                pointerEvents: 'none',
+              }}
+            />
             <div
               style={{
                 position: 'absolute',
@@ -921,13 +929,13 @@ export default function TextBattleSessionPage() {
                 alt={activeDialogueSpeaker.name}
                 style={{
                   position: 'absolute',
-                  inset: 'auto auto -26px 50%',
+                  inset: 'auto auto 120px 50%',
                   transform: `translateX(${activeSegment?.placement === 'right' ? '8%' : '-58%'})`,
-                  height: '100%',
-                  maxHeight: 360,
+                  height: '82%',
+                  maxHeight: 520,
                   objectFit: 'contain',
-                  filter: 'drop-shadow(0 24px 36px rgba(2,6,23,0.72))',
-                  opacity: 0.92,
+                  filter: 'drop-shadow(0 34px 48px rgba(2,6,23,0.88))',
+                  opacity: 0.96,
                 }}
               />
             ) : null}
@@ -1355,11 +1363,11 @@ export default function TextBattleSessionPage() {
         style={{
           position: 'fixed',
           left: '50%',
-          bottom: 142,
+          bottom: 84,
           transform: 'translateX(-50%)',
-          zIndex: 24,
+          zIndex: 18,
           width: 'min(860px, calc(100vw - 24px))',
-          maxHeight: teamPanelOpen ? '22vh' : 0,
+          maxHeight: teamPanelOpen ? '18vh' : 0,
           opacity: teamPanelOpen ? 1 : 0,
           overflow: 'hidden',
           transition: 'max-height 180ms ease, opacity 180ms ease',
@@ -1376,7 +1384,7 @@ export default function TextBattleSessionPage() {
             boxShadow: '0 28px 70px -34px rgba(15,23,42,0.95)',
             display: 'grid',
             gap: 12,
-            maxHeight: '22vh',
+            maxHeight: '18vh',
             overflowY: 'auto',
           }}
         >
@@ -1458,19 +1466,20 @@ export default function TextBattleSessionPage() {
         style={{
           position: 'fixed',
           left: '50%',
-          bottom: 126,
+          bottom: 46,
           transform: 'translateX(-50%)',
           zIndex: 26,
-          width: 'min(860px, calc(100vw - 24px))',
-          borderRadius: 24,
-          padding: '18px 20px 20px',
-          background: 'linear-gradient(180deg, rgba(2,6,23,0.95) 0%, rgba(15,23,42,0.94) 100%)',
-          border: '1px solid rgba(96,165,250,0.24)',
-          boxShadow: '0 28px 80px -38px rgba(15,23,42,0.96)',
-          backdropFilter: 'blur(16px)',
+          width: '100%',
+          borderRadius: 0,
+          padding: '14px 18px 18px',
+          background: 'linear-gradient(180deg, rgba(2,6,23,0) 0%, rgba(2,6,23,0.76) 14%, rgba(2,6,23,0.96) 34%, rgba(2,6,23,0.98) 100%)',
+          border: 'none',
+          boxShadow: 'none',
+          backdropFilter: 'none',
           display: 'grid',
-          gap: 14,
+          gap: 10,
           cursor: sceneSegments.length ? 'pointer' : 'default',
+          WebkitTapHighlightColor: 'transparent',
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
@@ -1510,10 +1519,10 @@ export default function TextBattleSessionPage() {
 
         <div
           style={{
-            minHeight: 114,
+            minHeight: 72,
             color: activeSegmentTone.color,
-            fontSize: 17,
-            lineHeight: 1.9,
+            fontSize: 15,
+            lineHeight: 1.75,
             whiteSpace: 'pre-wrap',
             textAlign: activeSegmentTone.textAlign,
             fontStyle: activeSegmentTone.fontStyle,
