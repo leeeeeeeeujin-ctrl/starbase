@@ -707,119 +707,135 @@ export default function TextBattleSessionPage() {
         {(showPrelude || showApiKeyRecovery) ? (
           <section
             style={{
-              borderRadius: 28,
-              padding: 24,
+              position: 'fixed',
+              inset: 0,
+              zIndex: 120,
+              padding: '24px 18px 140px',
               background:
                 stageBackgroundUrl
-                  ? `linear-gradient(180deg, rgba(2,6,23,0.24) 0%, rgba(2,6,23,0.88) 100%), url(${stageBackgroundUrl}) center/cover`
-                  : 'linear-gradient(180deg, rgba(15,23,42,0.9) 0%, rgba(2,6,23,0.96) 100%)',
-              border: '1px solid rgba(96,165,250,0.24)',
-              boxShadow: '0 28px 80px -40px rgba(15,23,42,0.94)',
-              display: 'grid',
-              gap: 18,
-              minHeight: 320,
+                  ? `linear-gradient(180deg, rgba(2,6,23,0.24) 0%, rgba(2,6,23,0.94) 100%), url(${stageBackgroundUrl}) center/cover`
+                  : 'linear-gradient(180deg, rgba(15,23,42,0.94) 0%, rgba(2,6,23,0.98) 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              overflowY: 'auto',
             }}
           >
-            <div style={{ display: 'grid', gap: 6 }}>
-              <strong style={{ color: '#f8fafc', fontSize: 22, fontWeight: 800 }}>
-                {showApiKeyRecovery ? 'AI 키 확인이 필요합니다' : '전투 준비 중'}
-              </strong>
-              <p style={{ margin: 0, color: '#cbd5e1', fontSize: 14, lineHeight: 1.7 }}>
-                {showApiKeyRecovery
-                  ? '캐릭터 페이지에서 ai키를 새로 갱신해주세요.'
-                  : '첫 장면을 준비하고 있습니다. 잠시 후 자동으로 첫 턴이 진행됩니다.'}
-              </p>
-            </div>
-            <div style={{ display: 'grid', gap: 14 }}>
-              {teams.map(entry => (
-                <div key={`prelude-team-${entry.team}`} style={{ display: 'grid', gap: 10 }}>
-                  <div
-                    style={{
-                      color: teamColorMap[entry.team] || '#38bdf8',
-                      fontSize: 13,
-                      fontWeight: 800,
-                    }}
-                  >
-                    팀 {entry.team}
-                  </div>
-                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                    {entry.members.map(participant => (
-                      <div
-                        key={`prelude-member-${participant.id}`}
-                        style={{
-                          width: 86,
-                          display: 'grid',
-                          gap: 8,
-                          justifyItems: 'center',
-                        }}
-                      >
+            <div
+              style={{
+                width: 'min(920px, 100%)',
+                borderRadius: 28,
+                padding: 24,
+                border: '1px solid rgba(96,165,250,0.24)',
+                boxShadow: '0 28px 80px -40px rgba(15,23,42,0.94)',
+                background: 'linear-gradient(180deg, rgba(2,6,23,0.42) 0%, rgba(2,6,23,0.78) 100%)',
+                backdropFilter: 'blur(6px)',
+                display: 'grid',
+                gap: 18,
+                minHeight: 320,
+              }}
+            >
+              <div style={{ display: 'grid', gap: 6 }}>
+                <strong style={{ color: '#f8fafc', fontSize: 22, fontWeight: 800 }}>
+                  {showApiKeyRecovery ? 'AI 키 확인이 필요합니다' : '전투 준비 중'}
+                </strong>
+                <p style={{ margin: 0, color: '#cbd5e1', fontSize: 14, lineHeight: 1.7 }}>
+                  {showApiKeyRecovery
+                    ? '캐릭터 페이지에서 ai키를 새로 갱신해주세요.'
+                    : '첫 장면을 준비하고 있습니다. 잠시 후 자동으로 첫 턴이 진행됩니다.'}
+                </p>
+              </div>
+              <div style={{ display: 'grid', gap: 14 }}>
+                {teams.map(entry => (
+                  <div key={`prelude-team-${entry.team}`} style={{ display: 'grid', gap: 10 }}>
+                    <div
+                      style={{
+                        color: teamColorMap[entry.team] || '#38bdf8',
+                        fontSize: 13,
+                        fontWeight: 800,
+                      }}
+                    >
+                      팀 {entry.team}
+                    </div>
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                      {entry.members.map(participant => (
                         <div
+                          key={`prelude-member-${participant.id}`}
                           style={{
                             width: 86,
-                            height: 106,
-                            borderRadius: 20,
-                            overflow: 'hidden',
-                            border: `2px solid ${teamColorMap[entry.team] || '#38bdf8'}`,
-                            background: 'rgba(15,23,42,0.88)',
-                            boxShadow: '0 18px 44px -28px rgba(15,23,42,0.96)',
+                            display: 'grid',
+                            gap: 8,
+                            justifyItems: 'center',
                           }}
                         >
-                          {participant.image_url ? (
-                            <img
-                              src={participant.image_url}
-                              alt={participant.name}
-                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                            />
-                          ) : (
-                            <div
-                              style={{
-                                width: '100%',
-                                height: '100%',
-                                display: 'grid',
-                                placeItems: 'center',
-                                color: '#cbd5e1',
-                                fontSize: 28,
-                                fontWeight: 800,
-                              }}
-                            >
-                              {(participant.name || '?').slice(0, 1)}
-                            </div>
-                          )}
+                          <div
+                            style={{
+                              width: 86,
+                              height: 106,
+                              borderRadius: 20,
+                              overflow: 'hidden',
+                              border: `2px solid ${teamColorMap[entry.team] || '#38bdf8'}`,
+                              background: 'rgba(15,23,42,0.88)',
+                              boxShadow: '0 18px 44px -28px rgba(15,23,42,0.96)',
+                            }}
+                          >
+                            {participant.image_url ? (
+                              <img
+                                src={participant.image_url}
+                                alt={participant.name}
+                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              />
+                            ) : (
+                              <div
+                                style={{
+                                  width: '100%',
+                                  height: '100%',
+                                  display: 'grid',
+                                  placeItems: 'center',
+                                  color: '#cbd5e1',
+                                  fontSize: 28,
+                                  fontWeight: 800,
+                                }}
+                              >
+                                {(participant.name || '?').slice(0, 1)}
+                              </div>
+                            )}
+                          </div>
+                          <div style={{ color: '#e2e8f0', fontSize: 12, fontWeight: 700, textAlign: 'center' }}>
+                            {shortText(participant.name, 18)}
+                          </div>
                         </div>
-                        <div style={{ color: '#e2e8f0', fontSize: 12, fontWeight: 700, textAlign: 'center' }}>
-                          {shortText(participant.name, 18)}
-                        </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-            {showApiKeyRecovery ? (
-              <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                <button
-                  type="button"
-                  onClick={() =>
-                    router.push(
-                      viewerHeroId
-                        ? `/character/${encodeURIComponent(String(viewerHeroId))}/agent`
-                        : '/lobby'
-                    )
-                  }
-                  style={{
-                    padding: '12px 16px',
-                    borderRadius: 14,
-                    border: '1px solid rgba(96,165,250,0.28)',
-                    background: 'rgba(15,23,42,0.88)',
-                    color: '#f8fafc',
-                    fontWeight: 800,
-                    cursor: 'pointer',
-                  }}
-                >
-                  캐릭터 페이지로 이동
-                </button>
+                ))}
               </div>
-            ) : null}
+              {showApiKeyRecovery ? (
+                <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      router.push(
+                        viewerHeroId
+                          ? `/character/${encodeURIComponent(String(viewerHeroId))}/agent`
+                          : '/lobby'
+                      )
+                    }
+                    style={{
+                      padding: '12px 16px',
+                      borderRadius: 14,
+                      border: '1px solid rgba(96,165,250,0.28)',
+                      background: 'rgba(15,23,42,0.88)',
+                      color: '#f8fafc',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    캐릭터 페이지로 이동
+                  </button>
+                </div>
+              ) : null}
+            </div>
           </section>
         ) : null}
 
