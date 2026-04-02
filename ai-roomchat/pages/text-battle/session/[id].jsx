@@ -438,6 +438,20 @@ export default function TextBattleSessionPage() {
     extractRenderableSceneText(currentTurn?.display) ||
     extractRenderableSceneText(lastTurn?.ai_response) ||
     '현재 표시할 장면이 없습니다.';
+  const preludeProgressLabel = showApiKeyRecovery
+    ? 'AI 키 확인 필요'
+    : runtimeState.running
+      ? runtimeState.status || '첫 장면을 준비하는 중입니다…'
+      : runtimeState.error
+        ? runtimeState.error
+        : '첫 장면을 준비하는 중입니다…';
+  const preludeProgressValue = showApiKeyRecovery
+    ? 100
+    : runtimeState.error
+      ? 100
+      : runtimeState.running
+        ? 72
+        : 28;
   const preludeBackgroundUrl =
     stageBackgroundUrl ||
     participants.find(participant => participant?.background_url)?.background_url ||
@@ -761,6 +775,55 @@ export default function TextBattleSessionPage() {
                     ? '캐릭터 페이지에서 ai키를 새로 갱신해주세요.'
                     : '첫 장면을 준비하고 있습니다. 잠시 후 자동으로 첫 턴이 진행됩니다.'}
                 </p>
+              </div>
+              <div
+                style={{
+                  display: 'grid',
+                  gap: 8,
+                  padding: '12px 14px',
+                  borderRadius: 18,
+                  background: 'rgba(2,6,23,0.52)',
+                  border: showApiKeyRecovery
+                    ? '1px solid rgba(248,113,113,0.3)'
+                    : '1px solid rgba(96,165,250,0.22)',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 12, color: '#cbd5e1' }}>
+                  <span>{preludeProgressLabel}</span>
+                  <span>{preludeProgressValue}%</span>
+                </div>
+                <div
+                  style={{
+                    height: 8,
+                    borderRadius: 999,
+                    overflow: 'hidden',
+                    background: 'rgba(30,41,59,0.88)',
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${preludeProgressValue}%`,
+                      height: '100%',
+                      borderRadius: 999,
+                      background: showApiKeyRecovery
+                        ? 'linear-gradient(90deg, #f87171 0%, #fb7185 100%)'
+                        : 'linear-gradient(90deg, #38bdf8 0%, #7dd3fc 100%)',
+                      transition: 'width 220ms ease',
+                    }}
+                  />
+                </div>
+                {runtimeState.error && !showApiKeyRecovery ? (
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: '#fecaca',
+                      whiteSpace: 'pre-wrap',
+                      lineHeight: 1.6,
+                    }}
+                  >
+                    오류: {runtimeState.error}
+                  </div>
+                ) : null}
               </div>
               <div style={{ display: 'grid', gap: 14 }}>
                 {teams.map(entry => (
