@@ -11,6 +11,7 @@ import MinimalMakerHeader from './MinimalMakerHeader';
 import MakerEditorCanvas from './MakerEditorCanvas';
 import MakerEditorPanel from './MakerEditorPanel';
 import AddPromptFab from './AddPromptFab';
+import DrawerShell from './VariableDrawer/DrawerShell';
 import { normalizeBattleConfig } from '../../../lib/battle/definition.js';
 import { writeStoredBattleConfig } from '../../../lib/battle/battleConfigStorage.js';
 import { supabase } from '../../../lib/supabase';
@@ -49,6 +50,7 @@ export default function MakerEditor() {
   const [showGameConfig, setShowGameConfig] = useState(false);
   const [roleDraft, setRoleDraft] = useState({ name: '', team: '', limit: '1' });
   const [quickEditOpen, setQuickEditOpen] = useState(false);
+  const [variableDrawerOpen, setVariableDrawerOpen] = useState(false);
   const lastTapRef = useRef({ kind: '', id: '', at: 0 });
 
   let templateText = '';
@@ -473,7 +475,13 @@ export default function MakerEditor() {
           gap: 12,
         }}
       >
-        <MinimalMakerHeader busy={busy} onBack={goToSetList} onSave={unifiedSaveAll} />
+        <MinimalMakerHeader
+          busy={busy}
+          onBack={goToSetList}
+          onSave={unifiedSaveAll}
+          onToggleVariables={() => setVariableDrawerOpen(current => !current)}
+          variablesActive={variableDrawerOpen}
+        />
 
         <section style={{ display: 'grid', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
@@ -790,6 +798,7 @@ export default function MakerEditor() {
 
             <MakerEditorPanel
               compact
+              focusMode="quick"
               rolePresets={battleConfig.roles || []}
               slotPresets={roleSlotPreview}
               selectedNode={selectedNode}
@@ -807,6 +816,41 @@ export default function MakerEditor() {
             />
           </div>
         </div>
+      ) : null}
+
+      {variableDrawerOpen ? (
+        <DrawerShell onClose={() => setVariableDrawerOpen(false)}>
+          <div style={{ display: 'grid', gap: 12 }}>
+            <div
+              style={{
+                borderRadius: 14,
+                border: '1px solid #cbd5e1',
+                background: '#f8fafc',
+                padding: 12,
+                display: 'grid',
+                gap: 4,
+              }}
+            >
+              <strong style={{ fontSize: 14, color: '#0f172a' }}>변수/조건 편집</strong>
+              <span style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
+                노드에서는 기록 슬롯만, 연결선에서는 분기 조건만 편집합니다. 먼저 노드나 연결선을 선택한 뒤 여기서 변수 흐름을 정리하세요.
+              </span>
+            </div>
+
+            <MakerEditorPanel
+              focusMode="variables"
+              rolePresets={battleConfig.roles || []}
+              slotPresets={roleSlotPreview}
+              selectedNode={selectedNode}
+              selectedNodeId={selectedNodeId}
+              selectedEdge={selectedEdge}
+              onMarkAsStart={markAsStart}
+              onDeleteSelected={() => {}}
+              setNodes={setNodes}
+              setEdges={setEdges}
+            />
+          </div>
+        </DrawerShell>
       ) : null}
 
       {receiptVisible && (

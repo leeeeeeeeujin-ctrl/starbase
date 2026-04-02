@@ -2,10 +2,10 @@ import React, { useMemo } from 'react';
 import { Handle, Position } from 'reactflow';
 import { parseTurnTemplate } from '../../lib/battle/turnTemplate';
 
-function summarizePrompt(text) {
+function summarizeText(text, limit = 84, empty = '내용 없음') {
   const value = String(text || '').replace(/\s+/g, ' ').trim();
-  if (!value) return '프롬프트 없음';
-  return value.length > 84 ? `${value.slice(0, 83)}…` : value;
+  if (!value) return empty;
+  return value.length > limit ? `${value.slice(0, limit - 1)}…` : value;
 }
 
 export default function PromptNode({ data, selected }) {
@@ -17,22 +17,20 @@ export default function PromptNode({ data, selected }) {
   const meta = parsed.meta || {};
   const isUserNode = meta.executionType === 'user_response' || slotType === 'user_action';
   const title = meta.title || (isUserNode ? '유저 응답' : 'AI 실행');
-  const actorLabel = meta.actorScope || 'self';
-  const saveLabel = meta.resultKey || '-';
-  const outputLabel = meta.outputFormat || 'json';
-  const stateWriteCount = Array.isArray(meta.stateWrites) ? meta.stateWrites.length : 0;
   const cardBorder = selected ? '#2563eb' : '#334155';
+  const displaySummary = summarizeText(meta.display, 72, '설명 없음');
+  const bodySummary = summarizeText(parsed.body, 96, '실행 본문 없음');
 
   return (
     <div
       style={{
-        minWidth: 324,
-        maxWidth: 348,
+        minWidth: 282,
+        maxWidth: 304,
         background: '#0f172a',
         border: `1px solid ${cardBorder}`,
         borderRadius: 18,
         color: '#e2e8f0',
-        padding: 16,
+        padding: 14,
         boxShadow: selected
           ? '0 22px 44px -28px rgba(37, 99, 235, 0.75)'
           : '0 18px 36px -28px rgba(15, 23, 42, 0.7)',
@@ -49,7 +47,7 @@ export default function PromptNode({ data, selected }) {
         style={{ width: 12, height: 12, background: '#f59e0b', border: '2px solid #0f172a' }}
       />
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
         <span
           style={{
             padding: '4px 8px',
@@ -80,35 +78,10 @@ export default function PromptNode({ data, selected }) {
 
       <div style={{ display: 'grid', gap: 10 }}>
         <div style={{ display: 'grid', gap: 6 }}>
-          <strong style={{ fontSize: 17, lineHeight: 1.3 }}>{title}</strong>
+          <strong style={{ fontSize: 16, lineHeight: 1.3 }}>{title}</strong>
           <span style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.55 }}>
-            {meta.display || '설명 없음'}
+            {displaySummary}
           </span>
-        </div>
-
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-            gap: 8,
-          }}
-        >
-          <div style={{ background: '#111827', borderRadius: 12, padding: 8, display: 'grid', gap: 3 }}>
-            <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 800 }}>주체</span>
-            <span style={{ fontSize: 12, color: '#f8fafc', fontWeight: 700 }}>{actorLabel}</span>
-          </div>
-          <div style={{ background: '#111827', borderRadius: 12, padding: 8, display: 'grid', gap: 3 }}>
-            <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 800 }}>저장</span>
-            <span style={{ fontSize: 12, color: '#f8fafc', fontWeight: 700 }}>{saveLabel}</span>
-          </div>
-          <div style={{ background: '#111827', borderRadius: 12, padding: 8, display: 'grid', gap: 3 }}>
-            <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 800 }}>출력</span>
-            <span style={{ fontSize: 12, color: '#f8fafc', fontWeight: 700 }}>{outputLabel}</span>
-          </div>
-          <div style={{ background: '#111827', borderRadius: 12, padding: 8, display: 'grid', gap: 3 }}>
-            <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 800 }}>기록</span>
-            <span style={{ fontSize: 12, color: '#f8fafc', fontWeight: 700 }}>{stateWriteCount}개</span>
-          </div>
         </div>
 
         <div
@@ -122,7 +95,7 @@ export default function PromptNode({ data, selected }) {
             color: '#cbd5e1',
           }}
         >
-          {summarizePrompt(parsed.body)}
+          {bodySummary}
         </div>
       </div>
     </div>

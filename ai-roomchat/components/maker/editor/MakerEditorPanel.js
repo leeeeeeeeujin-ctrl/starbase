@@ -99,6 +99,7 @@ export default function MakerEditorPanel({
   setNodes,
   setEdges,
   compact = false,
+  focusMode = 'default',
 }) {
   const nodeData = selectedNode?.data || null;
   const turn = nodeData ? parseTurnTemplate(nodeData.template || '', nodeData.slot_type || 'ai') : null;
@@ -365,6 +366,8 @@ export default function MakerEditorPanel({
       return value ? { value, label: roleName ? `${roleName} · ${slotLabel}` : slotLabel } : null;
     })
     .filter(Boolean);
+  const variablesOnly = focusMode === 'variables';
+  const quickOnly = compact && focusMode !== 'variables';
 
   return (
     <section
@@ -389,6 +392,7 @@ export default function MakerEditorPanel({
         </div>
       </div>
 
+      {!variablesOnly ? (
       <Section
         title="기본"
         description="이 노드에서 어느 슬롯이 행동하는지, 그리고 어떤 장면을 보여줄지 정합니다."
@@ -528,7 +532,9 @@ export default function MakerEditorPanel({
           </Field>
         )}
       </Section>
+      ) : null}
 
+      {!variablesOnly ? (
       <Section
         title="입력"
         description="이 노드에서 어느 슬롯에게 입력을 받을지, 어떤 방식으로 받을지 정합니다."
@@ -673,8 +679,9 @@ export default function MakerEditorPanel({
           </div>
         ) : null}
       </Section>
+      ) : null}
 
-      {!compact ? (
+      {!compact && !variablesOnly ? (
         <Section
           title="참조 범위"
           description="이 노드가 누구 정보를 참고하고, 누구에게 문구를 보여줄지 정합니다."
@@ -707,7 +714,7 @@ export default function MakerEditorPanel({
         title="기록 슬롯"
         description="이 노드 결과를 변수로 남겨, 다음 분기나 다음 턴에서 재사용합니다."
       >
-        {!compact ? (
+        {!compact && !variablesOnly ? (
           <details
             style={{
               borderRadius: 14,
@@ -909,6 +916,7 @@ export default function MakerEditorPanel({
         </div>
       </Section>
 
+      {!variablesOnly ? (
       <Section
         title="실행 본문"
         description="AI에게 직접 보낼 문장이나 플레이어 입력을 유도할 본문을 작성합니다."
@@ -925,6 +933,7 @@ export default function MakerEditorPanel({
           </div>
         </Field>
       </Section>
+      ) : null}
     </section>
   );
 }

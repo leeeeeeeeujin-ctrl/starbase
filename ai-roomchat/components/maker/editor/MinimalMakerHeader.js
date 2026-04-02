@@ -4,6 +4,8 @@ export default function MinimalMakerHeader({
   busy,
   onBack,
   onSave,
+  onToggleVariables,
+  variablesActive = false,
 }) {
   const btn = (label, onClick, style = {}) => (
     <button
@@ -42,6 +44,13 @@ export default function MinimalMakerHeader({
         <strong style={{ fontSize: 14 }}>실행 플로우 메이커</strong>
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        {onToggleVariables
+          ? btn('변수', onToggleVariables, {
+              background: variablesActive ? '#1d4ed8' : 'rgba(255,255,255,.06)',
+              color: '#fff',
+              borderColor: variablesActive ? '#1d4ed8' : 'rgba(148,163,184,.35)',
+            })
+          : null}
         {btn('저장', onSave, {
           background: busy ? 'rgba(148,163,184,0.2)' : '#16a34a',
           color: '#fff',
