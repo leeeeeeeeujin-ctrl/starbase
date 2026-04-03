@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/router';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import getHeroAudioManager from '@/lib/audio/heroAudioManager';
 import { supabase } from '@/lib/supabase';
 import {
   getCurrentTurn,
@@ -290,6 +291,23 @@ function resolvePresentationAsset(source, value, fallbackParticipant, key) {
   return null;
 }
 
+function getStageLayout(index, total) {
+  if (total <= 1) {
+    return { left: '50%', bottom: 112, width: 'min(34vw, 220px)', opacity: 1, zIndex: 3, scale: 1 };
+  }
+  if (total === 2) {
+    return index === 0
+      ? { left: '28%', bottom: 112, width: 'min(28vw, 190px)', opacity: 0.88, zIndex: 2, scale: 0.96 }
+      : { left: '72%', bottom: 112, width: 'min(28vw, 190px)', opacity: 0.88, zIndex: 2, scale: 0.96 };
+  }
+  const presets = [
+    { left: '18%', bottom: 108, width: 'min(24vw, 160px)', opacity: 0.62, zIndex: 1, scale: 0.88 },
+    { left: '50%', bottom: 116, width: 'min(28vw, 188px)', opacity: 0.94, zIndex: 3, scale: 1 },
+    { left: '82%', bottom: 108, width: 'min(24vw, 160px)', opacity: 0.62, zIndex: 1, scale: 0.88 },
+  ];
+  return presets[index] || presets[presets.length - 1];
+}
+
 export default function TextBattleSessionPage() {
   const router = useRouter();
   const { id } = router.query || {};
@@ -522,6 +540,30 @@ export default function TextBattleSessionPage() {
     resolvePresentationAsset(currentPresentation.backgroundSource, currentPresentation.backgroundValue, focusedParticipant, 'background_url') ||
     activeDialogueSpeaker?.background_url ||
     null;
+  const stageParticipants = useMemo(() => {
+    const priorityIds = [
+      ...focusParticipantIds,
+      String(activeDialogueSpeaker?.id || '').trim(),
+      String(currentActor?.id || '').trim(),
+      ...visibleParticipantIds,
+    ].filter(Boolean);
+    const uniqueIds = Array.from(new Set(priorityIds));
+    const resolved = uniqueIds
+      .map(id => participants.find(participant => String(participant?.id || '').trim() === id))
+      .filter(Boolean);
+    if (resolved.length) return resolved.slice(0, 3);
+    return activeDialogueSpeaker ? [activeDialogueSpeaker] : [];
+  }, [activeDialogueSpeaker, currentActor, focusParticipantIds, participants, visibleParticipantIds]);
+  const stagePortraits = useMemo(
+    () =>
+      stageParticipants.map((participant, index) => ({
+        participant,
+        layout: getStageLayout(index, stageParticipants.length),
+        isSpeaker: String(participant?.id || '').trim() === String(activeDialogueSpeaker?.id || '').trim(),
+        isFocused: focusParticipantIds.includes(String(participant?.id || '').trim()),
+      })),
+    [activeDialogueSpeaker, focusParticipantIds, stageParticipants]
+  );
   const activeSegmentTone = getSegmentTone(activeSegment);
   const activeSceneCue =
     activeSegment?.type === 'sceneCue'
@@ -561,6 +603,12 @@ export default function TextBattleSessionPage() {
       visibleChars: 0,
     });
   }, [sceneSource]);
+
+  useEffect(() => {
+    const audioManager = getHeroAudioManager();
+    audioManager.setEnabled(false, { resume: false });
+    audioManager.stop();
+  }, [id]);
 
 
   useEffect(() => {
@@ -1156,52 +1204,33 @@ export default function TextBattleSessionPage() {
                 pointerEvents: 'none',
               }}
             />
-            <div
-              style={{
-                position: 'absolute',
-                inset: 18,
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'flex-start',
-                pointerEvents: 'none',
-              }}
-            >
-              <div />
-            </div>
-            {activeDialogueSpeaker?.image_url || activeDialogueSpeaker?.background_url ? (
-              <img
-                src={activeDialogueSpeaker.image_url || activeDialogueSpeaker.background_url}
-                alt={activeDialogueSpeaker.name}
-                style={{
-                  position: 'absolute',
-                  inset: 'auto auto 120px 50%',
-                  transform: `translateX(${activeSegment?.placement === 'right' ? '8%' : '-58%'})`,
-                  height: '82%',
-                  maxHeight: 520,
-                  objectFit: 'contain',
-                  filter: 'drop-shadow(0 34px 48px rgba(2,6,23,0.88))',
-                  opacity: 0.96,
-                }}
-              />
-            ) : null}
-            <div
-              style={{
-                position: 'relative',
-                zIndex: 1,
-                display: 'grid',
-                gap: 8,
-                justifyItems: 'center',
-                textAlign: 'center',
-              }}
-            >
-              <div style={{ fontSize: 12, color: '#93c5fd', fontWeight: 700 }}>현재 장면</div>
-              <strong style={{ color: '#f8fafc', fontSize: 20 }}>
-                {activeDialogueSpeaker?.name || currentActor?.name || '시스템'}
-              </strong>
-              <span style={{ color: '#cbd5e1', fontSize: 13 }}>
-                {activeDialogueSpeaker?.slot_label || activeDialogueSpeaker?.role || '장면 진행 중'}
-              </span>
-            </div>
+            {stagePortraits.map(({ participant, layout, isSpeaker, isFocused }) =>
+              participant?.image_url || participant?.background_url ? (
+                <img
+                  key={`stage-participant-${participant.id}`}
+                  src={participant.image_url || participant.background_url}
+                  alt={participant.name}
+                  style={{
+                    position: 'absolute',
+                    left: layout.left,
+                    bottom: layout.bottom,
+                    transform: `translateX(-50%) scale(${layout.scale})`,
+                    width: layout.width,
+                    maxWidth: '34vw',
+                    maxHeight: '58vh',
+                    objectFit: 'contain',
+                    filter:
+                      isSpeaker || isFocused
+                        ? 'brightness(1) saturate(1.02) drop-shadow(0 28px 42px rgba(2,6,23,0.88))'
+                        : 'brightness(0.44) saturate(0.8) drop-shadow(0 22px 32px rgba(2,6,23,0.82))',
+                    opacity: isSpeaker ? 1 : layout.opacity,
+                    zIndex: layout.zIndex,
+                    transition: 'transform 220ms ease, opacity 220ms ease, filter 220ms ease',
+                    pointerEvents: 'none',
+                  }}
+                />
+              ) : null
+            )}
           </div>
 
           {(currentTurn?.input?.mode || 'none') !== 'none' ? (
