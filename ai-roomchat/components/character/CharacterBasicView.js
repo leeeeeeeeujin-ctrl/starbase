@@ -1427,6 +1427,30 @@ const styles = {
     height: '100%',
     objectFit: 'cover',
   },
+  previewImageContain: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'contain',
+    filter: 'drop-shadow(0 12px 20px rgba(15, 23, 42, 0.45))',
+  },
+  previewFrameCutout: {
+    width: 180,
+    minHeight: 180,
+    borderRadius: 18,
+    backgroundColor: 'rgba(15, 23, 42, 0.86)',
+    backgroundImage:
+      'linear-gradient(45deg, rgba(148,163,184,0.14) 25%, transparent 25%), ' +
+      'linear-gradient(-45deg, rgba(148,163,184,0.14) 25%, transparent 25%), ' +
+      'linear-gradient(45deg, transparent 75%, rgba(148,163,184,0.14) 75%), ' +
+      'linear-gradient(-45deg, transparent 75%, rgba(148,163,184,0.14) 75%)',
+    backgroundSize: '24px 24px',
+    backgroundPosition: '0 0, 0 12px, 12px -12px, -12px 0px',
+    border: '1px solid rgba(96, 165, 250, 0.35)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
   previewFallback: {
     fontSize: 12,
     color: 'rgba(148,163,184,0.85)',
@@ -3139,12 +3163,12 @@ export default function CharacterBasicView({ hero }) {
                         <div style={styles.previewFallback}>이미지 없음</div>
                       )}
                     </div>
-                    <div style={styles.previewFrame}>
+                    <div style={styles.previewFrameCutout}>
                       {ingameImagePreview ? (
                         <img
                           src={ingameImagePreview}
                           alt="인게임 컷아웃 미리보기"
-                          style={styles.previewImage}
+                          style={styles.previewImageContain}
                         />
                       ) : (
                         <div style={styles.previewFallback}>컷아웃 없음</div>

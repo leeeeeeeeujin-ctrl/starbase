@@ -7,6 +7,11 @@ export default function HeroImageUploadCard({ preview, ingamePreview, onSelect, 
   const inputRef = useRef(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const checkerboardBackground =
+    'linear-gradient(45deg, rgba(148,163,184,0.14) 25%, transparent 25%), ' +
+    'linear-gradient(-45deg, rgba(148,163,184,0.14) 25%, transparent 25%), ' +
+    'linear-gradient(45deg, transparent 75%, rgba(148,163,184,0.14) 75%), ' +
+    'linear-gradient(-45deg, transparent 75%, rgba(148,163,184,0.14) 75%)';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
@@ -41,8 +46,10 @@ export default function HeroImageUploadCard({ preview, ingamePreview, onSelect, 
             borderRadius: 32,
             overflow: 'hidden',
             border: '1px solid rgba(96, 165, 250, 0.35)',
-            background:
-              'linear-gradient(180deg, rgba(15,23,42,0.72) 0%, rgba(30,41,59,0.86) 100%)',
+            backgroundColor: 'rgba(15, 23, 42, 0.86)',
+            backgroundImage: checkerboardBackground,
+            backgroundSize: '24px 24px',
+            backgroundPosition: '0 0, 0 12px, 12px -12px, -12px 0px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -54,7 +61,12 @@ export default function HeroImageUploadCard({ preview, ingamePreview, onSelect, 
             <img
               src={ingamePreview}
               alt="인게임 미리보기"
-              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'contain',
+                filter: 'drop-shadow(0 12px 20px rgba(15, 23, 42, 0.45))',
+              }}
             />
           ) : (
             <span style={{ color: '#93c5fd', fontSize: 13 }}>인게임 컷아웃 미리보기</span>
