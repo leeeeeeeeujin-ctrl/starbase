@@ -16,7 +16,6 @@ import {
 import {
   clearActiveSessionRecord,
 } from '@/lib/rank/activeSessionStorage';
-import CharacterRouteHud from '@/components/character/routes/CharacterRouteHud';
 import CharacterDetailOverlay from '@/components/character/CharacterDetailOverlay';
 
 function shortText(value, limit = 90) {
@@ -312,7 +311,6 @@ export default function TextBattleSessionPage() {
     showDebug: false,
   });
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [teamPanelOpen, setTeamPanelOpen] = useState(false);
   const [detailParticipant, setDetailParticipant] = useState(null);
   const [latestTurnOverride, setLatestTurnOverride] = useState(null);
   const [apiKeyInput, setApiKeyInput] = useState('');
@@ -490,17 +488,6 @@ export default function TextBattleSessionPage() {
       focusedParticipant,
       'background_url'
     ) || activeDialogueSpeaker?.background_url || null;
-  const audioHero =
-    currentPresentation.bgmSource === 'self'
-      ? focusedParticipant || activeHero
-      : currentPresentation.bgmSource === 'custom'
-        ? {
-            ...(activeHero || {}),
-            bgm_url: String(currentPresentation.bgmValue || '').trim() || null,
-            bgm_duration_seconds: activeHero?.bgm_duration_seconds || 0,
-            name: activeHero?.name || focusedParticipant?.name || '장면 브금',
-          }
-        : activeHero;
   const activeSegmentTone = getSegmentTone(activeSegment);
   const activeSceneCue =
     activeSegment?.type === 'sceneCue'
@@ -1145,29 +1132,11 @@ export default function TextBattleSessionPage() {
                 pointerEvents: 'none',
               }}
             >
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', maxWidth: '60%' }}>
-                {teams.map(entry => (
-                  <span
-                    key={`stage-team-${entry.team}`}
-                    style={{
-                      padding: '6px 10px',
-                      borderRadius: 999,
-                      background: 'rgba(2,6,23,0.68)',
-                      border: `1px solid ${(teamColorMap[entry.team] || '#38bdf8')}55`,
-                      color: teamColorMap[entry.team] || '#38bdf8',
-                      fontSize: 11,
-                      fontWeight: 800,
-                      backdropFilter: 'blur(10px)',
-                    }}
-                  >
-                    팀 {entry.team} · {entry.members.length}
-                  </span>
-                ))}
-              </div>
+              <div />
             </div>
-            {activeDialogueSpeaker?.image_url ? (
+            {activeDialogueSpeaker?.image_url || activeDialogueSpeaker?.background_url ? (
               <img
-                src={activeDialogueSpeaker.image_url}
+                src={activeDialogueSpeaker.image_url || activeDialogueSpeaker.background_url}
                 alt={activeDialogueSpeaker.name}
                 style={{
                   position: 'absolute',
@@ -1475,32 +1444,44 @@ export default function TextBattleSessionPage() {
         <div
           style={{
             position: 'fixed',
-            [activeSceneCue.placement]: 22,
-            bottom: 328,
+            [activeSceneCue.placement]: 0,
+            top: '18vh',
             zIndex: 32,
-            width: 'min(320px, calc(100vw - 40px))',
+            width: 'min(440px, calc(100vw - 18px))',
             pointerEvents: 'none',
           }}
         >
           <div
             style={{
-              borderRadius: 22,
-              padding: '16px 18px',
-              background: 'linear-gradient(180deg, rgba(2,6,23,0.94) 0%, rgba(15,23,42,0.9) 100%)',
-              border: '1px solid rgba(125,211,252,0.3)',
-              boxShadow: '0 24px 60px -30px rgba(15,23,42,0.95)',
+              padding:
+                activeSceneCue.placement === 'right' ? '18px 22px 18px 64px' : '18px 64px 18px 22px',
+              background:
+                activeSceneCue.placement === 'right'
+                  ? 'linear-gradient(90deg, rgba(2,6,23,0) 0%, rgba(2,6,23,0.26) 10%, rgba(2,6,23,0.58) 24%, rgba(2,6,23,0.8) 100%)'
+                  : 'linear-gradient(270deg, rgba(2,6,23,0) 0%, rgba(2,6,23,0.26) 10%, rgba(2,6,23,0.58) 24%, rgba(2,6,23,0.8) 100%)',
+              textAlign: activeSceneCue.placement === 'right' ? 'right' : 'left',
+              animation: 'sceneCueSlide 420ms ease-out',
             }}
           >
-            <div style={{ color: '#f8fafc', fontSize: 18, fontWeight: 800 }}>{activeSceneCue.title}</div>
             <div
               style={{
-                marginTop: 8,
-                paddingTop: 10,
-                borderTop: '1px solid rgba(148,163,184,0.18)',
-                color: '#cbd5e1',
+                color: '#f8fafc',
+                fontSize: 22,
+                fontWeight: 800,
+                letterSpacing: '0.01em',
+                textShadow: '0 2px 18px rgba(2,6,23,0.75)',
+              }}
+            >
+              {activeSceneCue.title}
+            </div>
+            <div
+              style={{
+                marginTop: 7,
+                color: 'rgba(226,232,240,0.94)',
                 fontSize: 13,
                 lineHeight: 1.65,
                 whiteSpace: 'pre-wrap',
+                textShadow: '0 2px 14px rgba(2,6,23,0.72)',
               }}
             >
               {activeSceneCue.subtitle || ' '}
@@ -1508,6 +1489,18 @@ export default function TextBattleSessionPage() {
           </div>
         </div>
       ) : null}
+      <style jsx global>{`
+        @keyframes sceneCueSlide {
+          0% {
+            opacity: 0;
+            transform: translateX(${activeSceneCue?.placement === 'right' ? '28px' : '-28px'});
+          }
+          100% {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+      `}</style>
 
       <div
         style={{
@@ -1573,75 +1566,33 @@ export default function TextBattleSessionPage() {
         style={{
           position: 'fixed',
           left: '50%',
-          bottom: 94,
+          bottom: 8,
           transform: 'translateX(-50%)',
-          zIndex: 25,
-          width: 'min(860px, calc(100vw - 24px))',
+          zIndex: 28,
+          width: 'min(860px, calc(100vw - 18px))',
           display: 'flex',
-          justifyContent: 'flex-end',
+          justifyContent: 'center',
           pointerEvents: 'none',
         }}
       >
-        <button
-          type="button"
-          onClick={() => setTeamPanelOpen(prev => !prev)}
+        <div
           style={{
+            display: 'flex',
+            gap: 10,
+            alignItems: 'flex-end',
+            maxWidth: '100%',
+            padding: '6px 10px',
+            borderRadius: 18,
+            background: 'rgba(2,6,23,0.34)',
+            backdropFilter: 'blur(10px)',
+            overflowX: 'auto',
             pointerEvents: 'auto',
-            padding: '10px 14px',
-            borderRadius: 16,
-            border: '1px solid rgba(96,165,250,0.24)',
-            background: 'rgba(2,6,23,0.84)',
-            color: '#dbeafe',
-            fontSize: 12,
-            fontWeight: 800,
-            cursor: 'pointer',
-            backdropFilter: 'blur(12px)',
-          }}
-        >
-          {teamPanelOpen ? '캐릭터 정보 닫기' : '캐릭터 정보 펼치기'}
-        </button>
-      </div>
-      <div
-        style={{
-          position: 'fixed',
-          left: '50%',
-          bottom: 84,
-          transform: 'translateX(-50%)',
-          zIndex: 18,
-          width: 'min(860px, calc(100vw - 24px))',
-          maxHeight: teamPanelOpen ? '18vh' : 0,
-          opacity: teamPanelOpen ? 1 : 0,
-          overflow: 'hidden',
-          transition: 'max-height 180ms ease, opacity 180ms ease',
-          pointerEvents: teamPanelOpen ? 'auto' : 'none',
-        }}
-      >
-        <section
-          style={{
-            borderRadius: 22,
-            padding: 14,
-            background: 'rgba(2,6,23,0.9)',
-            border: '1px solid rgba(96,165,250,0.24)',
-            backdropFilter: 'blur(16px)',
-            boxShadow: '0 28px 70px -34px rgba(15,23,42,0.95)',
-            display: 'grid',
-            gap: 12,
-            maxHeight: '18vh',
-            overflowY: 'auto',
           }}
         >
           {teams.map(entry => (
-            <div key={`panel-team-${entry.team}`} style={{ display: 'grid', gap: 8 }}>
-              <div
-                style={{
-                  color: teamColorMap[entry.team] || '#38bdf8',
-                  fontSize: 12,
-                  fontWeight: 800,
-                }}
-              >
-                팀 {entry.team}
-              </div>
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <div key={`mini-team-${entry.team}`} style={{ display: 'grid', gap: 4, justifyItems: 'center' }}>
+              <div style={{ color: teamColorMap[entry.team] || '#38bdf8', fontSize: 10, fontWeight: 800 }}>팀 {entry.team}</div>
+              <div style={{ display: 'flex', gap: 6 }}>
                 {entry.members.map(participant => {
                   const liveOutcome = [participant.id, participant.hero_id, participant.name]
                     .map(value => String(value || '').trim())
@@ -1653,14 +1604,15 @@ export default function TextBattleSessionPage() {
                   const teamColor = teamColorMap[entry.team] || '#38bdf8';
                   return (
                     <button
-                      key={`panel-participant-${participant.id}`}
+                      key={`mini-participant-${participant.id}`}
                       type="button"
                       onClick={() => handleParticipantTap(participant)}
                       onDoubleClick={() => setDetailParticipant(participant)}
                       style={{
-                        width: 72,
+                        width: 38,
                         display: 'grid',
-                        gap: 6,
+                        gap: 4,
+                        justifyItems: 'center',
                         border: 'none',
                         background: 'transparent',
                         padding: 0,
@@ -1669,18 +1621,22 @@ export default function TextBattleSessionPage() {
                     >
                       <div
                         style={{
-                          width: 72,
-                          height: 72,
-                          borderRadius: 18,
+                          width: 38,
+                          height: 38,
+                          borderRadius: 12,
                           overflow: 'hidden',
                           border: `2px solid ${isActing ? '#f8fafc' : teamColor}`,
-                          boxShadow: isActing ? `0 0 0 3px ${teamColor}55` : 'none',
-                          background: 'rgba(15,23,42,0.9)',
-                          filter: eliminated ? 'grayscale(1) brightness(0.7)' : 'none',
+                          boxShadow: isActing ? `0 0 0 2px ${teamColor}55` : 'none',
+                          background: 'rgba(15,23,42,0.88)',
+                          filter: eliminated ? 'grayscale(1) brightness(0.62)' : 'none',
                         }}
                       >
-                        {participant.image_url ? (
-                          <img src={participant.image_url} alt={participant.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        {participant.image_url || participant.background_url ? (
+                          <img
+                            src={participant.image_url || participant.background_url}
+                            alt={participant.name}
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          />
                         ) : (
                           <div
                             style={{
@@ -1690,15 +1646,12 @@ export default function TextBattleSessionPage() {
                               placeItems: 'center',
                               color: teamColor,
                               fontWeight: 800,
-                              fontSize: 24,
+                              fontSize: 14,
                             }}
                           >
                             {(participant.name || '?').slice(0, 1)}
                           </div>
                         )}
-                      </div>
-                      <div style={{ color: '#e2e8f0', fontSize: 11, fontWeight: 700, lineHeight: 1.35 }}>
-                        {shortText(participant.name, 16)}
                       </div>
                     </button>
                   );
@@ -1706,25 +1659,25 @@ export default function TextBattleSessionPage() {
               </div>
             </div>
           ))}
-        </section>
+        </div>
       </div>
       <section
         onClick={handleAdvanceDialogue}
         style={{
           position: 'fixed',
           left: '50%',
-          bottom: 46,
+          bottom: 58,
           transform: 'translateX(-50%)',
           zIndex: 26,
-          width: '100%',
+          width: 'min(860px, calc(100vw - 18px))',
           borderRadius: 0,
-          padding: '14px 18px 18px',
-          background: 'linear-gradient(180deg, rgba(2,6,23,0) 0%, rgba(2,6,23,0.76) 14%, rgba(2,6,23,0.96) 34%, rgba(2,6,23,0.98) 100%)',
+          padding: '10px 14px 12px',
+          background: 'linear-gradient(180deg, rgba(2,6,23,0) 0%, rgba(2,6,23,0.42) 16%, rgba(2,6,23,0.78) 54%, rgba(2,6,23,0.9) 100%)',
           border: 'none',
           boxShadow: 'none',
           backdropFilter: 'none',
           display: 'grid',
-          gap: 10,
+          gap: 8,
           cursor: sceneSegments.length ? 'pointer' : 'default',
           WebkitTapHighlightColor: 'transparent',
         }}
@@ -1733,17 +1686,21 @@ export default function TextBattleSessionPage() {
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', minWidth: 0 }}>
             <div
               style={{
-                width: 50,
-                height: 50,
-                borderRadius: 16,
+                width: 42,
+                height: 42,
+                borderRadius: 14,
                 overflow: 'hidden',
                 flexShrink: 0,
                 border: `1px solid ${(activeDialogueSpeaker && teamColorMap[String(activeDialogueSpeaker.team || '미지정')]) || '#38bdf8'}66`,
                 background: 'rgba(15,23,42,0.9)',
               }}
             >
-              {activeDialogueSpeaker?.image_url ? (
-                <img src={activeDialogueSpeaker.image_url} alt={activeDialogueSpeaker.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              {activeDialogueSpeaker?.image_url || activeDialogueSpeaker?.background_url ? (
+                <img
+                  src={activeDialogueSpeaker.image_url || activeDialogueSpeaker.background_url}
+                  alt={activeDialogueSpeaker.name}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
               ) : (
                 <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: '#93c5fd', fontWeight: 800 }}>
                   {(activeDialogueSpeaker?.name || '?').slice(0, 1)}
@@ -1751,7 +1708,7 @@ export default function TextBattleSessionPage() {
               )}
             </div>
             <div style={{ display: 'grid', gap: 2, minWidth: 0 }}>
-              <strong style={{ color: '#f8fafc', fontSize: 16 }}>{activeSpeakerLabel}</strong>
+              <strong style={{ color: '#f8fafc', fontSize: 15 }}>{activeSpeakerLabel}</strong>
               <span style={{ color: '#93c5fd', fontSize: 12 }}>
                 {activeSegmentTone.label}
               </span>
@@ -1766,10 +1723,10 @@ export default function TextBattleSessionPage() {
 
         <div
           style={{
-            minHeight: 72,
+            minHeight: 54,
             color: activeSegmentTone.color,
-            fontSize: 15,
-            lineHeight: 1.75,
+            fontSize: 14,
+            lineHeight: 1.65,
             whiteSpace: 'pre-wrap',
             textAlign: activeSegmentTone.textAlign,
             fontStyle: activeSegmentTone.fontStyle,
@@ -1787,7 +1744,7 @@ export default function TextBattleSessionPage() {
               display: 'grid',
               gap: 10,
               borderTop: '1px solid rgba(71,85,105,0.32)',
-              paddingTop: 12,
+              paddingTop: 10,
             }}
           >
             <div style={{ fontSize: 12, color: '#cbd5e1' }}>{currentTurn?.input?.label || '행동 입력'}</div>
@@ -1857,7 +1814,6 @@ export default function TextBattleSessionPage() {
           {runtimeState.error ? <span style={{ fontSize: 12, color: '#fca5a5' }}>{runtimeState.error}</span> : null}
         </div>
       </section>
-      <CharacterRouteHud hero={audioHero} />
       <CharacterDetailOverlay participant={detailParticipant} onClose={() => setDetailParticipant(null)} />
     </div>
   );
