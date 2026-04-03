@@ -105,6 +105,8 @@ export function useCharacterProfile(heroId) {
               'ability3',
               'ability4',
               'image_url',
+              'ingame_image_url',
+              'scene_background_description',
               'background_url',
               'bgm_url',
               'bgm_duration_seconds',

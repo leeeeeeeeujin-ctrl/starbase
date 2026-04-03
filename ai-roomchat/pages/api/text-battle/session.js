@@ -119,6 +119,8 @@ export default async function handler(req, res) {
             'ability3',
             'ability4',
             'image_url',
+            'ingame_image_url',
+            'scene_background_description',
             'background_url',
             'bgm_url',
             'agent_profile',
@@ -176,6 +178,11 @@ export default async function handler(req, res) {
                   ? runtimeMeta.abilities.filter(Boolean)
                   : [],
               image_url: row.image_url || runtimeMeta.image_url || null,
+              ingame_image_url: row.ingame_image_url || runtimeMeta.ingame_image_url || null,
+              scene_background_description:
+                row.scene_background_description ||
+                runtimeMeta.scene_background_description ||
+                '',
               background_url:
                 row.background_url || runtimeMeta.background_url || null,
               bgm_url: row.bgm_url || runtimeMeta.bgm_url || null,

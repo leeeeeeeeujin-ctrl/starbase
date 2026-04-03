@@ -18,6 +18,8 @@ import {
   validateHeroProfileDraft,
 } from '@/lib/characters/profileRules';
 import { sanitizeFileName } from '@/utils/characterAssets';
+import { uploadHeroImageBundle } from '@/utils/heroIngameImage';
+import { generateHeroCutoutPreview } from '@/utils/heroIngameImage';
 import CharacterPlayPanel from './CharacterPlayPanel';
 import useHeroParticipations from '@/hooks/character/useHeroParticipations';
 import useHeroBattles from '@/hooks/character/useHeroBattles';
@@ -1480,7 +1482,11 @@ export default function CharacterBasicView({ hero }) {
   const [isEditing, setIsEditing] = useState(false);
   const [draftHero, setDraftHero] = useState(null);
   const [imagePreview, setImagePreview] = useState(hero?.image_url || '');
+  const [ingameImagePreview, setIngameImagePreview] = useState(hero?.ingame_image_url || '');
   const [backgroundPreview, setBackgroundPreview] = useState(hero?.background_url || '');
+  const [sceneBackgroundDescription, setSceneBackgroundDescription] = useState(
+    hero?.scene_background_description || ''
+  );
   const [imageFile, setImageFile] = useState(null);
   const [backgroundFile, setBackgroundFile] = useState(null);
   const [bgmFile, setBgmFile] = useState(null);
@@ -2156,6 +2162,8 @@ export default function CharacterBasicView({ hero }) {
     setImageFile(null);
     setBackgroundFile(null);
     setBgmFile(null);
+    setIngameImagePreview(hero?.ingame_image_url || '');
+    setSceneBackgroundDescription(hero?.scene_background_description || '');
     setBgmDurationSeconds(hero?.bgm_duration_seconds || null);
     setBgmMime(hero?.bgm_mime || null);
     setBgmError('');
@@ -2321,6 +2329,18 @@ export default function CharacterBasicView({ hero }) {
     imageObjectUrlRef.current = objectUrl;
     setImagePreview(objectUrl);
     setImageFile(file);
+    generateHeroCutoutPreview(file)
+      .then(url => {
+        setIngameImagePreview(previous => {
+          if (previous && previous.startsWith('blob:')) {
+            URL.revokeObjectURL(previous);
+          }
+          return url;
+        });
+      })
+      .catch(error => {
+        console.error('Failed to generate ingame preview:', error);
+      });
 
     event.target.value = '';
   };
@@ -2489,8 +2509,15 @@ export default function CharacterBasicView({ hero }) {
       const payload = normalizeHeroProfilePayload(draftHero, DEFAULT_HERO_NAME);
 
       let imageUrl = currentHero.image_url || null;
+      let ingameImageUrl = currentHero.ingame_image_url || null;
       if (imageFile) {
-        imageUrl = await uploadHeroAsset(imageFile, 'hero-image', payload.name);
+        const uploaded = await uploadHeroImageBundle(
+          imageFile,
+          sanitizeFileName(payload.name || currentHero.name || 'hero-image'),
+          { gameId: 'heroes' }
+        );
+        imageUrl = uploaded.imageUrl;
+        ingameImageUrl = uploaded.ingameImageUrl;
       }
 
       let backgroundUrl = currentHero.background_url || null;
@@ -2515,6 +2542,8 @@ export default function CharacterBasicView({ hero }) {
       const fullPayload = {
         ...payload,
         image_url: imageUrl,
+        ingame_image_url: ingameImageUrl,
+        scene_background_description: sceneBackgroundDescription,
         background_url: backgroundUrl,
         bgm_url: bgmUrl,
         bgm_duration_seconds: nextDuration,
@@ -2541,6 +2570,7 @@ export default function CharacterBasicView({ hero }) {
         ability4: fullPayload.ability4,
       });
       setImagePreview(imageUrl || '');
+      setIngameImagePreview(ingameImageUrl || '');
       setBackgroundPreview(backgroundUrl || '');
       if (imageObjectUrlRef.current) {
         URL.revokeObjectURL(imageObjectUrlRef.current);
@@ -2558,6 +2588,28 @@ export default function CharacterBasicView({ hero }) {
       setBgmMime(nextMime);
       setSelectedBgmName('');
       setBgmCleared(false);
+      const cleanupUrl = async url => {
+        if (!url) return;
+        try {
+          await fetch('/api/storage/delete', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ url }),
+          });
+        } catch (_) {
+          // ignore cleanup failures
+        }
+      };
+      if (imageFile && currentHero.image_url && currentHero.image_url !== imageUrl) {
+        cleanupUrl(currentHero.image_url);
+      }
+      if (
+        imageFile &&
+        currentHero.ingame_image_url &&
+        currentHero.ingame_image_url !== ingameImageUrl
+      ) {
+        cleanupUrl(currentHero.ingame_image_url);
+      }
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('hero-overlay:refresh'));
       }
@@ -2586,6 +2638,8 @@ export default function CharacterBasicView({ hero }) {
     setCustomBgmUrl(null);
     setSelectedBgmName('');
     setBgmFile(null);
+    setIngameImagePreview(currentHero?.ingame_image_url || '');
+    setSceneBackgroundDescription(currentHero?.scene_background_description || '');
     setBgmDurationSeconds(currentHero?.bgm_duration_seconds || null);
     setBgmMime(currentHero?.bgm_mime || null);
     setBgmCleared(false);
@@ -3059,18 +3113,45 @@ export default function CharacterBasicView({ hero }) {
                   </div>
                 ))}
 
+                <div style={styles.formRow}>
+                  <label style={styles.sliderLabel}>대표 배경 설명</label>
+                  <textarea
+                    style={styles.textareaField}
+                    value={sceneBackgroundDescription}
+                    onChange={event => setSceneBackgroundDescription(event.target.value)}
+                    placeholder="예: 홍마관 복도, 마법의 숲 공방, 야간 도시 옥상"
+                  />
+                  <span style={styles.sectionHint}>
+                    인게임 장면 배경을 고를 때 참고하는 설명입니다.
+                  </span>
+                </div>
+
                 <div style={styles.uploadSection}>
-                  <div style={styles.previewFrame}>
-                    {imagePreview ? (
-                      <img
-                        src={imagePreview}
-                        alt="캐릭터 이미지 미리보기"
-                        style={styles.previewImage}
-                      />
-                    ) : (
-                      <div style={styles.previewFallback}>이미지 없음</div>
-                    )}
+                  <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                    <div style={styles.previewFrame}>
+                      {imagePreview ? (
+                        <img
+                          src={imagePreview}
+                          alt="캐릭터 이미지 미리보기"
+                          style={styles.previewImage}
+                        />
+                      ) : (
+                        <div style={styles.previewFallback}>이미지 없음</div>
+                      )}
+                    </div>
+                    <div style={styles.previewFrame}>
+                      {ingameImagePreview ? (
+                        <img
+                          src={ingameImagePreview}
+                          alt="인게임 컷아웃 미리보기"
+                          style={styles.previewImage}
+                        />
+                      ) : (
+                        <div style={styles.previewFallback}>컷아웃 없음</div>
+                      )}
+                    </div>
                   </div>
+                  <span style={styles.sectionHint}>왼쪽은 원본, 오른쪽은 인게임용 배경 제거 이미지입니다.</span>
                   <button
                     type="button"
                     style={styles.uploadButton}

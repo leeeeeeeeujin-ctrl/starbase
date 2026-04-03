@@ -11,6 +11,8 @@ const HERO_DETAIL_COLUMNS = [
   'ability3',
   'ability4',
   'image_url',
+  'ingame_image_url',
+  'scene_background_description',
   'background_url',
   'bgm_url',
   'bgm_duration_seconds',
@@ -19,7 +21,7 @@ const HERO_DETAIL_COLUMNS = [
   'updated_at',
 ].join(',');
 
-const HERO_LIST_COLUMNS = 'id,name,image_url,owner_id,created_at,updated_at';
+const HERO_LIST_COLUMNS = 'id,name,image_url,ingame_image_url,scene_background_description,owner_id,created_at,updated_at';
 const FALLBACK_NAME = '이름 없는 영웅';
 
 export function normaliseHero(record) {
@@ -40,6 +42,8 @@ export function normaliseHero(record) {
     ability3: record.ability3 || '',
     ability4: record.ability4 || '',
     image_url: record.image_url || null,
+    ingame_image_url: record.ingame_image_url || null,
+    scene_background_description: record.scene_background_description || '',
     background_url: record.background_url || null,
     bgm_url: record.bgm_url || null,
     bgm_duration_seconds: record.bgm_duration_seconds || null,
@@ -58,6 +62,8 @@ function normaliseListHero(record) {
     owner_id: base.owner_id,
     name: base.name,
     image_url: base.image_url,
+    ingame_image_url: base.ingame_image_url,
+    scene_background_description: base.scene_background_description,
     created_at: base.created_at,
     updated_at: base.updated_at,
   };

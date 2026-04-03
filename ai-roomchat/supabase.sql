@@ -87,6 +87,8 @@ create table if not exists public.heroes (
   ability3 text not null,
   ability4 text not null,
   image_url text,
+  ingame_image_url text,
+  scene_background_description text,
   background_url text,
   bgm_url text,
   bgm_duration_seconds integer,
@@ -173,6 +175,12 @@ create table if not exists public.prompt_sets (
 
 alter table public.prompt_sets
   add column if not exists battle_config jsonb not null default '{}'::jsonb;
+
+alter table public.heroes
+  add column if not exists ingame_image_url text;
+
+alter table public.heroes
+  add column if not exists scene_background_description text;
 
 alter table public.prompt_sets enable row level security;
 

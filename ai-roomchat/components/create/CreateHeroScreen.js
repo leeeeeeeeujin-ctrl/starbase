@@ -94,7 +94,12 @@ export default function CreateHeroScreen() {
             gap: 20,
           }}
         >
-          <HeroImageUploadCard preview={state.preview} onSelect={actions.selectImage} />
+          <HeroImageUploadCard
+            preview={state.preview}
+            ingamePreview={state.ingamePreview}
+            onSelect={actions.selectImage}
+          />
+          
 
           <div
             style={{
@@ -125,8 +130,10 @@ export default function CreateHeroScreen() {
           <HeroInfoFields
             name={state.name}
             description={state.description}
+            sceneBackgroundDescription={state.sceneBackgroundDescription}
             onChangeName={actions.setName}
             onChangeDescription={actions.setDescription}
+            onChangeSceneBackgroundDescription={actions.setSceneBackgroundDescription}
           />
 
           <HeroAbilityFields

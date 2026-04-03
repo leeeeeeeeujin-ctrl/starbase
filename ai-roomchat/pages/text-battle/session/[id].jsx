@@ -593,6 +593,7 @@ export default function TextBattleSessionPage() {
         : 28;
   const preludeBackgroundUrl =
     stageBackgroundUrl ||
+    participants.find(participant => participant?.ingame_image_url)?.ingame_image_url ||
     participants.find(participant => participant?.background_url)?.background_url ||
     participants.find(participant => participant?.image_url)?.image_url ||
     null;
@@ -1067,9 +1068,9 @@ export default function TextBattleSessionPage() {
                               boxShadow: '0 18px 44px -28px rgba(15,23,42,0.96)',
                             }}
                           >
-                            {participant.image_url || participant.background_url ? (
+                            {participant.ingame_image_url || participant.image_url || participant.background_url ? (
                               <img
-                                src={participant.image_url || participant.background_url}
+                                src={participant.ingame_image_url || participant.image_url || participant.background_url}
                                 alt={participant.name}
                                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                               />
@@ -1205,10 +1206,10 @@ export default function TextBattleSessionPage() {
               }}
             />
             {stagePortraits.map(({ participant, layout, isSpeaker, isFocused }) =>
-              participant?.image_url || participant?.background_url ? (
+              participant?.ingame_image_url || participant?.image_url || participant?.background_url ? (
                 <img
                   key={`stage-participant-${participant.id}`}
-                  src={participant.image_url || participant.background_url}
+                  src={participant.ingame_image_url || participant.image_url || participant.background_url}
                   alt={participant.name}
                   style={{
                     position: 'absolute',
@@ -1699,9 +1700,9 @@ export default function TextBattleSessionPage() {
                           opacity: eliminated ? 0.68 : isVisible ? 1 : 0.54,
                         }}
                       >
-                        {isVisible && (participant.image_url || participant.background_url) ? (
+                        {isVisible && (participant.ingame_image_url || participant.image_url || participant.background_url) ? (
                           <img
-                            src={participant.image_url || participant.background_url}
+                            src={participant.ingame_image_url || participant.image_url || participant.background_url}
                             alt={participant.name}
                             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                           />
@@ -1777,9 +1778,15 @@ export default function TextBattleSessionPage() {
                 background: 'rgba(15,23,42,0.9)',
               }}
             >
-              {activeDialogueSpeaker?.image_url || activeDialogueSpeaker?.background_url ? (
+              {activeDialogueSpeaker?.ingame_image_url ||
+              activeDialogueSpeaker?.image_url ||
+              activeDialogueSpeaker?.background_url ? (
                 <img
-                  src={activeDialogueSpeaker.image_url || activeDialogueSpeaker.background_url}
+                  src={
+                    activeDialogueSpeaker.ingame_image_url ||
+                    activeDialogueSpeaker.image_url ||
+                    activeDialogueSpeaker.background_url
+                  }
                   alt={activeDialogueSpeaker.name}
                   style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                 />

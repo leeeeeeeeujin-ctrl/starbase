@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { supabase } from '../../lib/supabase';
-import { uploadAsset } from '../../utils/uploader';
+import { uploadHeroImageBundle } from '../../utils/heroIngameImage';
+import { generateHeroCutoutPreview } from '../../utils/heroIngameImage';
 import { withTable } from '../../lib/supabaseTables';
 
 function revokeUrl(url) {
@@ -14,6 +15,7 @@ function revokeUrl(url) {
 
 export function useHeroCreator({ onSaved } = {}) {
   const [preview, setPreview] = useState(null);
+  const [ingamePreview, setIngamePreview] = useState(null);
   const [imageBlob, setImageBlob] = useState(null);
 
   const [backgroundPreview, setBackgroundPreview] = useState(null);
@@ -27,6 +29,7 @@ export function useHeroCreator({ onSaved } = {}) {
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [sceneBackgroundDescription, setSceneBackgroundDescription] = useState('');
   const [ability1, setAbility1] = useState('');
   const [ability2, setAbility2] = useState('');
   const [ability3, setAbility3] = useState('');
@@ -37,9 +40,10 @@ export function useHeroCreator({ onSaved } = {}) {
   useEffect(() => {
     return () => {
       revokeUrl(preview);
+      revokeUrl(ingamePreview);
       revokeUrl(backgroundPreview);
     };
-  }, [preview, backgroundPreview]);
+  }, [preview, ingamePreview, backgroundPreview]);
 
   const sanitizeFileName = useCallback((base, fallback = 'asset') => {
     const safe = String(base || fallback)
@@ -62,10 +66,19 @@ export function useHeroCreator({ onSaved } = {}) {
       if (preview) {
         revokeUrl(preview);
       }
+      if (ingamePreview) {
+        revokeUrl(ingamePreview);
+      }
       setImageBlob(blob);
       setPreview(URL.createObjectURL(blob));
+      try {
+        setIngamePreview(await generateHeroCutoutPreview(file));
+      } catch (error) {
+        console.error('Failed to generate ingame preview:', error);
+        setIngamePreview(null);
+      }
     },
-    [preview]
+    [preview, ingamePreview]
   );
 
   const clearBackground = useCallback(() => {
@@ -168,6 +181,7 @@ export function useHeroCreator({ onSaved } = {}) {
       }
 
       let imageUrl = null;
+      let ingameImageUrl = null;
       let backgroundUrl = null;
       let bgmUrl = null;
       let bgmDurationSeconds = null;
@@ -175,8 +189,9 @@ export function useHeroCreator({ onSaved } = {}) {
 
       if (imageBlob) {
         const file = new File([imageBlob], `${sanitizeFileName(name)}.jpg`, { type: imageBlob.type || 'image/jpeg' });
-        const up = await uploadAsset(file, { gameId: 'heroes' });
-        imageUrl = up.url;
+        const up = await uploadHeroImageBundle(file, sanitizeFileName(name), { gameId: 'heroes' });
+        imageUrl = up.imageUrl;
+        ingameImageUrl = up.ingameImageUrl;
       }
 
       if (backgroundBlob) {
@@ -205,6 +220,8 @@ export function useHeroCreator({ onSaved } = {}) {
           ability3,
           ability4,
           image_url: imageUrl,
+          ingame_image_url: ingameImageUrl,
+          scene_background_description: sceneBackgroundDescription,
           background_url: backgroundUrl,
           bgm_url: bgmUrl,
           bgm_duration_seconds: bgmDurationSeconds,
@@ -230,6 +247,7 @@ export function useHeroCreator({ onSaved } = {}) {
     bgmBlob,
     bgmDuration,
     description,
+    sceneBackgroundDescription,
     imageBlob,
     name,
     onSaved,
@@ -239,6 +257,7 @@ export function useHeroCreator({ onSaved } = {}) {
   return {
     state: {
       preview,
+      ingamePreview,
       backgroundPreview,
       backgroundError,
       bgmLabel,
@@ -246,6 +265,7 @@ export function useHeroCreator({ onSaved } = {}) {
       bgmError,
       name,
       description,
+      sceneBackgroundDescription,
       ability1,
       ability2,
       ability3,
@@ -255,6 +275,7 @@ export function useHeroCreator({ onSaved } = {}) {
     actions: {
       setName,
       setDescription,
+      setSceneBackgroundDescription,
       setAbility1,
       setAbility2,
       setAbility3,

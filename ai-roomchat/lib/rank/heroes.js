@@ -101,6 +101,11 @@ function toPromptHero(
   out.bgmUrl = out.bgm_url;
   out.image_url = hero.image_url || hero.imageUrl || null;
   out.imageUrl = out.image_url;
+  out.ingame_image_url = hero.ingame_image_url || hero.ingameImageUrl || null;
+  out.ingameImageUrl = out.ingame_image_url;
+  out.scene_background_description =
+    hero.scene_background_description || hero.sceneBackgroundDescription || '';
+  out.sceneBackgroundDescription = out.scene_background_description;
   out.audio_profile = hero.audio_profile || hero.audioProfile || null;
   out.audioProfile = out.audio_profile;
   out.agent_profile =

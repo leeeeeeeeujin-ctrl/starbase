@@ -3,35 +3,63 @@
 import { useRef, useState } from 'react';
 import { uploadAsset } from '../../utils/uploader';
 
-export default function HeroImageUploadCard({ preview, onSelect, onUploaded }) {
+export default function HeroImageUploadCard({ preview, ingamePreview, onSelect, onUploaded }) {
   const inputRef = useRef(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
-      <div
-        style={{
-          width: 260,
-          height: 260,
-          borderRadius: 32,
-          overflow: 'hidden',
-          border: '1px solid rgba(148, 163, 184, 0.35)',
-          background: 'rgba(15, 23, 42, 0.55)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        {preview ? (
-          <img
-            src={preview}
-            alt="미리보기"
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-          />
-        ) : (
-          <span style={{ color: '#94a3b8', fontSize: 13 }}>이미지를 선택하세요</span>
-        )}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12, width: '100%' }}>
+        <div
+          style={{
+            minHeight: 260,
+            borderRadius: 32,
+            overflow: 'hidden',
+            border: '1px solid rgba(148, 163, 184, 0.35)',
+            background: 'rgba(15, 23, 42, 0.55)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexDirection: 'column',
+            gap: 8,
+          }}
+        >
+          {preview ? (
+            <img
+              src={preview}
+              alt="원본 미리보기"
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+          ) : (
+            <span style={{ color: '#94a3b8', fontSize: 13 }}>이미지를 선택하세요</span>
+          )}
+        </div>
+        <div
+          style={{
+            minHeight: 260,
+            borderRadius: 32,
+            overflow: 'hidden',
+            border: '1px solid rgba(96, 165, 250, 0.35)',
+            background:
+              'linear-gradient(180deg, rgba(15,23,42,0.72) 0%, rgba(30,41,59,0.86) 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexDirection: 'column',
+            gap: 8,
+          }}
+        >
+          {ingamePreview ? (
+            <img
+              src={ingamePreview}
+              alt="인게임 미리보기"
+              style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+            />
+          ) : (
+            <span style={{ color: '#93c5fd', fontSize: 13 }}>인게임 컷아웃 미리보기</span>
+          )}
+        </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
         <button
@@ -64,7 +92,7 @@ export default function HeroImageUploadCard({ preview, onSelect, onUploaded }) {
           style={{ display: 'none' }}
         />
         {error ? <span style={{ color:'#fca5a5', fontSize:12 }}>{error}</span> : null}
-        <span style={{ fontSize: 12, color: '#cbd5f5' }}>정사각형 이미지가 가장 잘 어울려요.</span>
+        <span style={{ fontSize: 12, color: '#cbd5f5' }}>왼쪽은 원본, 오른쪽은 인게임 컷아웃 미리보기입니다.</span>
       </div>
     </div>
   );

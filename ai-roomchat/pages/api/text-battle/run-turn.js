@@ -239,6 +239,9 @@ export default async function handler(req, res) {
               participantId,
               String(participant?.name || '').trim() ? `이름:${String(participant.name).trim()}` : '',
               String(participant?.team || '').trim() ? `팀:${String(participant.team).trim()}` : '',
+              String(participant?.scene_background_description || '').trim()
+                ? `대표배경:${String(participant.scene_background_description).trim()}`
+                : '',
               participant?.background_url ? '배경가능' : '',
             ].filter(Boolean);
             return parts.join(' / ');
