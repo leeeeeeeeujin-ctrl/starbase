@@ -1707,12 +1707,6 @@ export default function TextBattleSessionPage() {
                 </div>
               )}
             </div>
-            <div style={{ display: 'grid', gap: 2, minWidth: 0 }}>
-              <strong style={{ color: '#f8fafc', fontSize: 15 }}>{activeSpeakerLabel}</strong>
-              <span style={{ color: '#93c5fd', fontSize: 12 }}>
-                {activeSegmentTone.label}
-              </span>
-            </div>
           </div>
           <div style={{ color: '#94a3b8', fontSize: 11, textAlign: 'right' }}>
             {sceneSegments.length ? `${dialogueState.segmentIndex + 1} / ${sceneSegments.length}` : '표시할 문장 없음'}
