@@ -43,6 +43,9 @@ export function parseStructuredBattleResult(raw) {
         gameResult: toId(parsed?.gameResult || parsed?.result || parsed?.battleResult),
         teamOutcomes: toObject(parsed?.teamOutcomes),
         participantOutcomes: toObject(parsed?.participantOutcomes),
+        visibleParticipants: Array.isArray(parsed?.visibleParticipants) ? parsed.visibleParticipants.map(toId).filter(Boolean) : [],
+        focusParticipants: Array.isArray(parsed?.focusParticipants) ? parsed.focusParticipants.map(toId).filter(Boolean) : [],
+        sceneBackground: toId(parsed?.sceneBackground),
       };
     } catch {
       // Try next shape.
@@ -57,6 +60,9 @@ export function parseStructuredBattleResult(raw) {
     gameResult: '',
     teamOutcomes: {},
     participantOutcomes: {},
+    visibleParticipants: [],
+    focusParticipants: [],
+    sceneBackground: '',
   };
 }
 
@@ -107,6 +113,15 @@ export function applyBattleResultToValues(values = {}, parsedResult = {}) {
     .filter(Boolean);
   if (eliminatedIds.length) {
     nextValues.eliminatedParticipantIds = eliminatedIds;
+  }
+  if (Array.isArray(parsedResult?.visibleParticipants) && parsedResult.visibleParticipants.length) {
+    nextValues.visibleParticipants = parsedResult.visibleParticipants.map(toId).filter(Boolean);
+  }
+  if (Array.isArray(parsedResult?.focusParticipants) && parsedResult.focusParticipants.length) {
+    nextValues.focusParticipants = parsedResult.focusParticipants.map(toId).filter(Boolean);
+  }
+  if (toId(parsedResult?.sceneBackground)) {
+    nextValues.sceneBackground = toId(parsedResult.sceneBackground);
   }
 
   if (!nextValues.battleWinner && winningTeams.length === 1) {

@@ -230,6 +230,22 @@ export default async function handler(req, res) {
       currentTurn,
       resolvedActorId
     );
+    const participantSceneGuide = Array.isArray(session?.participants)
+      ? session.participants
+          .map(participant => {
+            const participantId = String(participant?.id || '').trim();
+            if (!participantId) return null;
+            const parts = [
+              participantId,
+              String(participant?.name || '').trim() ? `이름:${String(participant.name).trim()}` : '',
+              String(participant?.team || '').trim() ? `팀:${String(participant.team).trim()}` : '',
+              participant?.background_url ? '배경가능' : '',
+            ].filter(Boolean);
+            return parts.join(' / ');
+          })
+          .filter(Boolean)
+          .join(', ')
+      : '';
 
     let submittedResult = payload?.result || null;
     let parsedResult = parseStructuredBattleResult(submittedResult);
@@ -254,6 +270,8 @@ export default async function handler(req, res) {
         teamGuide,
         participantGuide,
         actorGuide,
+        visibilityGuide: participantSceneGuide ? `등장 가능 참가자 목록: ${participantSceneGuide}` : '',
+        backgroundGuide: 'sceneBackground에는 배경 기준이 되는 참가자 id 하나를 넣고, 특별히 바꾸지 않을 때만 inherit를 쓴다.',
       });
 
       let segmentResultText = '';
@@ -284,6 +302,9 @@ export default async function handler(req, res) {
         {
           reply: sceneStructured.reply || segmented.reply || sceneCall.text,
           segments: Array.isArray(segmented.segments) ? segmented.segments : [],
+          visibleParticipants: Array.isArray(segmented.visibleParticipants) ? segmented.visibleParticipants : [],
+          focusParticipants: Array.isArray(segmented.focusParticipants) ? segmented.focusParticipants : [],
+          sceneBackground: segmented.sceneBackground || '',
           gameResult: sceneStructured.gameResult || 'ongoing',
           teamOutcomes:
             sceneStructured.teamOutcomes && typeof sceneStructured.teamOutcomes === 'object'

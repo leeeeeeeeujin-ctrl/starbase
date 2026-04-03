@@ -165,20 +165,27 @@ export function buildSegmentPromptFromScene(sceneText, runtime = {}) {
   const text = typeof sceneText === 'string' ? sceneText.trim() : '';
   const participantGuide = runtime?.participantGuide || 'participantOutcomes의 키는 실제 참가자 id를 사용한다.';
   const actorGuide = runtime?.actorGuide || '';
+  const visibilityGuide = runtime?.visibilityGuide || '';
+  const backgroundGuide = runtime?.backgroundGuide || '';
   return [
     '[세그먼트 변환 계약]',
     '아래 장면 본문을 JRPG/비주얼 노벨식 화면에 맞는 JSON 하나로 재구성한다.',
     '응답은 JSON 하나만 반환한다.',
     '형식:',
-    '{"reply":"장면 전체 요약","segments":[{"type":"dialogue|narration|effect|sceneCue","speaker":"참가자ID","placement":"left|right|center","text":"표시 문장","title":"장면 카드 제목","subtitle":"장면 카드 부제","delivery":"calm|urgent|hesitant|angry"}]}',
+    '{"reply":"장면 전체 요약","segments":[{"type":"dialogue|narration|effect|sceneCue","speaker":"참가자ID","placement":"left|right|center","text":"표시 문장","title":"장면 카드 제목","subtitle":"장면 카드 부제","delivery":"calm|urgent|hesitant|angry"}],"visibleParticipants":["참가자ID"],"focusParticipants":["참가자ID"],"sceneBackground":"inherit|참가자ID"}',
     'segments는 반드시 필요하다.',
     '한 턴은 여러 segments로 이루어진 짧은 장면이다. 한 문장만 넣지 말고 장면 호흡에 따라 자연스럽게 나눈다.',
     'dialogue는 캐릭터의 발화만, narration은 장면 보조 서술만, effect는 짧은 반응/행동 효과만, sceneCue는 장소·인물·BGM 전환 카드에 사용한다.',
     'sceneCue는 title, subtitle을 채우고 text는 비워도 된다.',
     'reply는 장면 전체를 짧게 요약하고, 실제 화면용 본문은 segments에 모두 반영한다.',
     'speaker가 필요한 경우 참가자 id를 사용한다.',
+    'visibleParticipants에는 이 장면에서 실제로 등장하거나 존재가 드러난 참가자 id만 넣는다. 아직 정체가 드러나지 않은 상대는 넣지 않는다.',
+    'focusParticipants에는 이번 장면에서 시각적으로 강조할 참가자 id를 넣는다. 없으면 비워도 된다.',
+    'sceneBackground에는 "inherit" 또는 이번 장면의 배경 기준이 되는 참가자 id 하나를 넣는다.',
     participantGuide,
     actorGuide,
+    visibilityGuide,
+    backgroundGuide,
     '',
     '[장면 본문]',
     text,

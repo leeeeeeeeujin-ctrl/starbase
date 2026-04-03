@@ -400,6 +400,16 @@ export default function TextBattleSessionPage() {
       ''
     );
   }, [dbSession?.owner_id, participants]);
+  const viewerParticipant = useMemo(
+    () =>
+      participants.find(participant =>
+        [participant.id, participant.hero_id, participant.name]
+          .map(value => String(value || '').trim())
+          .includes(String(viewerHeroId || '').trim())
+      ) || participants[0] || null,
+    [participants, viewerHeroId]
+  );
+  const viewerTeam = String(viewerParticipant?.team || '').trim();
   const currentActor = useMemo(
     () => participants.find(participant => participant.id === resolvedActorId) || null,
     [participants, resolvedActorId]
@@ -452,6 +462,26 @@ export default function TextBattleSessionPage() {
     typeof featuredStructuredResult.participantOutcomes === 'object'
       ? featuredStructuredResult.participantOutcomes
       : {};
+  const visibleParticipantIds = useMemo(() => {
+    const explicitVisible = Array.isArray(featuredStructuredResult.visibleParticipants)
+      ? featuredStructuredResult.visibleParticipants.map(value => String(value || '').trim()).filter(Boolean)
+      : [];
+    const explicitFocus = Array.isArray(featuredStructuredResult.focusParticipants)
+      ? featuredStructuredResult.focusParticipants.map(value => String(value || '').trim()).filter(Boolean)
+      : [];
+    const allied = participants
+      .filter(participant => String(participant?.team || '').trim() === viewerTeam)
+      .map(participant => String(participant?.id || '').trim())
+      .filter(Boolean);
+    return Array.from(new Set([...allied, ...explicitVisible, ...explicitFocus]));
+  }, [featuredStructuredResult.focusParticipants, featuredStructuredResult.visibleParticipants, participants, viewerTeam]);
+  const focusParticipantIds = useMemo(
+    () =>
+      Array.isArray(featuredStructuredResult.focusParticipants)
+        ? featuredStructuredResult.focusParticipants.map(value => String(value || '').trim()).filter(Boolean)
+        : [],
+    [featuredStructuredResult.focusParticipants]
+  );
   const sceneSource =
     featuredTurn?.ai_response || featuredStructuredResult.reply || featuredTurn?.display || currentTurn?.display || '';
   const sceneSegments = useMemo(() => toSceneSegments(sceneSource, participants), [participants, sceneSource]);
@@ -481,13 +511,17 @@ export default function TextBattleSessionPage() {
     (looksLikeParticipantRuntimeId(activeSegment?.speaker) ? '' : String(activeSegment?.speaker || '').trim()) ||
     '시스템';
   const focusedParticipant = resolveParticipantByScope(participants, currentPresentation.focusCharacter, activeDialogueSpeaker);
+  const structuredBackgroundParticipant =
+    participants.find(participant =>
+      [participant.id, participant.hero_id, participant.name, participant.slot_label]
+        .map(value => String(value || '').trim())
+        .includes(String(featuredStructuredResult.sceneBackground || '').trim())
+    ) || null;
   const stageBackgroundUrl =
-    resolvePresentationAsset(
-      currentPresentation.backgroundSource,
-      currentPresentation.backgroundValue,
-      focusedParticipant,
-      'background_url'
-    ) || activeDialogueSpeaker?.background_url || null;
+    structuredBackgroundParticipant?.background_url ||
+    resolvePresentationAsset(currentPresentation.backgroundSource, currentPresentation.backgroundValue, focusedParticipant, 'background_url') ||
+    activeDialogueSpeaker?.background_url ||
+    null;
   const activeSegmentTone = getSegmentTone(activeSegment);
   const activeSceneCue =
     activeSegment?.type === 'sceneCue'
@@ -1601,6 +1635,10 @@ export default function TextBattleSessionPage() {
                     String(participant.outcome || (liveOutcome ? liveParticipantOutcomes[liveOutcome] : '') || '').toLowerCase() ===
                     'eliminated';
                   const isActing = participant.id === resolvedActorId;
+                  const isVisible =
+                    visibleParticipantIds.includes(String(participant.id || '').trim()) ||
+                    String(participant?.team || '').trim() === viewerTeam;
+                  const isFocused = focusParticipantIds.includes(String(participant.id || '').trim());
                   const teamColor = teamColorMap[entry.team] || '#38bdf8';
                   return (
                     <button
@@ -1625,13 +1663,14 @@ export default function TextBattleSessionPage() {
                           height: 38,
                           borderRadius: 12,
                           overflow: 'hidden',
-                          border: `2px solid ${isActing ? '#f8fafc' : teamColor}`,
-                          boxShadow: isActing ? `0 0 0 2px ${teamColor}55` : 'none',
+                          border: `2px solid ${isActing ? '#f8fafc' : isFocused ? '#f8fafc' : teamColor}`,
+                          boxShadow: isActing || isFocused ? `0 0 0 2px ${teamColor}55` : 'none',
                           background: 'rgba(15,23,42,0.88)',
-                          filter: eliminated ? 'grayscale(1) brightness(0.62)' : 'none',
+                          filter: eliminated ? 'grayscale(1) brightness(0.62)' : isVisible ? 'none' : 'grayscale(1) brightness(0.28)',
+                          opacity: eliminated ? 0.68 : isVisible ? 1 : 0.54,
                         }}
                       >
-                        {participant.image_url || participant.background_url ? (
+                        {isVisible && (participant.image_url || participant.background_url) ? (
                           <img
                             src={participant.image_url || participant.background_url}
                             alt={participant.name}
@@ -1644,14 +1683,28 @@ export default function TextBattleSessionPage() {
                               height: '100%',
                               display: 'grid',
                               placeItems: 'center',
-                              color: teamColor,
+                              color: isVisible ? teamColor : '#e2e8f0',
                               fontWeight: 800,
                               fontSize: 14,
                             }}
                           >
-                            {(participant.name || '?').slice(0, 1)}
+                            {(isVisible ? participant.name : '?') || '?'}
                           </div>
                         )}
+                      </div>
+                      <div
+                        style={{
+                          maxWidth: 44,
+                          fontSize: 8,
+                          lineHeight: 1.2,
+                          color: isVisible ? '#cbd5f5' : 'rgba(226,232,240,0.74)',
+                          textAlign: 'center',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {isVisible ? shortText(participant.name, 8) : '미확인'}
                       </div>
                     </button>
                   );
