@@ -21,6 +21,29 @@ function averageRgb(samples) {
   return sums.map(total => Math.round(total / samples.length));
 }
 
+function buildBackgroundPalette(samples, varianceThresholdSq = 28 * 28, maxColors = 12) {
+  const palette = [];
+  for (const sample of samples) {
+    if (!sample || sample[3] <= 12) continue;
+    const rgb = sample.slice(0, 3);
+    const alreadyCovered = palette.some(color => colorDistanceSq(color, rgb) <= varianceThresholdSq);
+    if (!alreadyCovered) {
+      palette.push(rgb);
+      if (palette.length >= maxColors) break;
+    }
+  }
+  return palette;
+}
+
+function minPaletteDistanceSq(color, palette) {
+  let min = Infinity;
+  for (const candidate of palette) {
+    const distance = colorDistanceSq(color, candidate);
+    if (distance < min) min = distance;
+  }
+  return min;
+}
+
 export async function createHeroCutout(inputBuffer) {
   const base = sharp(inputBuffer, { failOn: 'none' }).rotate().ensureAlpha();
   const processed = base.clone().resize(896, 896, {
@@ -49,40 +72,66 @@ export async function createHeroCutout(inputBuffer) {
     samples.push(pixel(0, y));
     samples.push(pixel(width - 1, y));
   }
-  const backgroundColor = averageRgb(samples.filter(sample => sample[3] > 12).map(sample => sample.slice(0, 3)));
+  samples.push(pixel(0, 0));
+  samples.push(pixel(width - 1, 0));
+  samples.push(pixel(0, height - 1));
+  samples.push(pixel(width - 1, height - 1));
 
-  const threshold = 38 * 38;
-  const visited = new Uint8Array(width * height);
-  const background = new Uint8Array(width * height);
-  const queue = [];
-  const enqueue = (x, y) => {
-    if (x < 0 || y < 0 || x >= width || y >= height) return;
-    const index = y * width + x;
-    if (visited[index]) return;
-    visited[index] = 1;
-    queue.push([x, y]);
+  const backgroundColor = averageRgb(samples.filter(sample => sample[3] > 12).map(sample => sample.slice(0, 3)));
+  const backgroundPalette = buildBackgroundPalette(samples);
+  if (!backgroundPalette.length) {
+    backgroundPalette.push(backgroundColor);
+  }
+
+  const classifyBackground = thresholdSq => {
+    const visited = new Uint8Array(width * height);
+    const background = new Uint8Array(width * height);
+    const queue = [];
+    let head = 0;
+
+    const enqueue = (x, y) => {
+      if (x < 0 || y < 0 || x >= width || y >= height) return;
+      const index = y * width + x;
+      if (visited[index]) return;
+      visited[index] = 1;
+      queue.push([x, y]);
+    };
+
+    for (let x = 0; x < width; x += 1) {
+      enqueue(x, 0);
+      enqueue(x, height - 1);
+    }
+    for (let y = 0; y < height; y += 1) {
+      enqueue(0, y);
+      enqueue(width - 1, y);
+    }
+
+    while (head < queue.length) {
+      const [x, y] = queue[head++];
+      const index = y * width + x;
+      const [r, g, b, a] = pixel(x, y);
+      const paletteDistance = minPaletteDistanceSq([r, g, b], backgroundPalette);
+      const averageDistance = colorDistanceSq([r, g, b], backgroundColor);
+      if (a < 16 || paletteDistance <= thresholdSq || averageDistance <= thresholdSq) {
+        background[index] = 1;
+        enqueue(x - 1, y);
+        enqueue(x + 1, y);
+        enqueue(x, y - 1);
+        enqueue(x, y + 1);
+      }
+    }
+
+    return background;
   };
 
-  for (let x = 0; x < width; x += stride) {
-    enqueue(x, 0);
-    enqueue(x, height - 1);
+  let background = classifyBackground(42 * 42);
+  let backgroundCount = background.reduce((total, value) => total + value, 0);
+  if (backgroundCount < width * height * 0.01) {
+    background = classifyBackground(58 * 58);
+    backgroundCount = background.reduce((total, value) => total + value, 0);
   }
-  for (let y = 0; y < height; y += stride) {
-    enqueue(0, y);
-    enqueue(width - 1, y);
-  }
-
-  while (queue.length) {
-    const [x, y] = queue.shift();
-    const index = y * width + x;
-    const [r, g, b, a] = pixel(x, y);
-    if (a < 12 || colorDistanceSq([r, g, b], backgroundColor) <= threshold) {
-      background[index] = 1;
-      enqueue(x - 1, y);
-      enqueue(x + 1, y);
-      enqueue(x, y - 1);
-      enqueue(x, y + 1);
-    }
+  if (backgroundCount < width * height * 0.01) {
+    background = classifyBackground(74 * 74);
   }
 
   const alpha = Buffer.alloc(width * height);
