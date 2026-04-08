@@ -85,6 +85,8 @@ export default function ChatgptWebToolsPage() {
   const [cleanupMode, setCleanupMode] = useState('delete');
   const [timeoutMs, setTimeoutMs] = useState(240000);
   const [headless, setHeadless] = useState(false);
+  const [runMode, setRunMode] = useState('local-helper');
+  const [helperUrl, setHelperUrl] = useState('http://127.0.0.1:4319');
   const [running, setRunning] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
@@ -99,7 +101,11 @@ export default function ChatgptWebToolsPage() {
     setError('');
     setResult(null);
     try {
-      const response = await fetch('/api/tools/chatgpt-web/run', {
+      const endpoint =
+        runMode === 'local-helper'
+          ? `${helperUrl.replace(/\/$/, '')}/run`
+          : '/api/tools/chatgpt-web/run';
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -166,6 +172,14 @@ export default function ChatgptWebToolsPage() {
             }}
           >
             <div style={{ display: 'grid', gap: 8 }}>
+              <label style={{ fontWeight: 700 }}>실행 경로</label>
+              <select value={runMode} onChange={event => setRunMode(event.target.value)} style={fieldStyle}>
+                <option value="local-helper">로컬 헬퍼 프로그램</option>
+                <option value="server-api">개발 서버 API</option>
+              </select>
+            </div>
+
+            <div style={{ display: 'grid', gap: 8 }}>
               <label style={{ fontWeight: 700 }}>기대 응답 형식</label>
               <select value={expectType} onChange={event => setExpectType(event.target.value)} style={fieldStyle}>
                 <option value="json">JSON 코드블록</option>
@@ -205,6 +219,19 @@ export default function ChatgptWebToolsPage() {
             </label>
           </div>
 
+          {runMode === 'local-helper' ? (
+            <div style={{ display: 'grid', gap: 8 }}>
+              <label style={{ fontWeight: 700 }}>로컬 헬퍼 주소</label>
+              <input
+                type="text"
+                value={helperUrl}
+                onChange={event => setHelperUrl(event.target.value)}
+                style={fieldStyle}
+                placeholder="http://127.0.0.1:4319"
+              />
+            </div>
+          ) : null}
+
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <button
               type="button"
@@ -227,11 +254,13 @@ export default function ChatgptWebToolsPage() {
           <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.7 }}>
             권장 흐름:
             <br />
-            1. 버튼을 누른 뒤 열린 Chromium 창을 본다.
+            1. 로컬 헬퍼를 쓸 땐 <code>npm run chatgpt:web:bridge</code>로 먼저 브리지를 띄운다.
             <br />
-            2. Cloudflare 인간 확인이나 로그인 화면이 뜨면 직접 통과한다.
+            2. 버튼을 누른 뒤 열린 Chromium 창을 본다.
             <br />
-            3. 그러면 스크립트가 새 채팅에 프롬프트를 넣고 응답을 기다린다.
+            3. Cloudflare 인간 확인이나 로그인 화면이 뜨면 직접 통과한다.
+            <br />
+            4. 그러면 스크립트가 새 채팅에 프롬프트를 넣고 응답을 기다린다.
           </div>
         </section>
 

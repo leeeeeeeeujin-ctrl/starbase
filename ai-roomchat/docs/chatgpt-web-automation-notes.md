@@ -84,3 +84,9 @@
 2. edit 단계 cleanup 결과를 `Promise.allSettled`로 모아 기록
 3. 컷아웃 응답 `transparentPixels`를 UI debug badge로 표시
 4. ChatGPT 웹 보조 생성 결과와 이미지 업로드 결과를 같은 dev console panel에서 볼 수 있게 통합
+# Local helper bridge
+
+- production serverless route is intentionally disabled
+- recommended dev flow is a localhost helper on `http://127.0.0.1:4319`
+- start it with `npm run chatgpt:web:bridge`
+- tool page can switch between local helper and server api
