@@ -115,6 +115,18 @@ export default function PokerogueIndexPage() {
                 플레이그라운드
               </Link>
               <Link
+                href="/pokerogue/upstream"
+                style={{
+                  padding: '10px 16px',
+                  borderRadius: 999,
+                  border: '1px solid rgba(148,163,184,0.28)',
+                  color: '#e2e8f0',
+                  textDecoration: 'none',
+                }}
+              >
+                upstream 본판
+              </Link>
+              <Link
                 href="/roster"
                 style={{
                   padding: '10px 16px',
