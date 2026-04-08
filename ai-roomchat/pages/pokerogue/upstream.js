@@ -56,32 +56,87 @@ const iframeStyle = {
 };
 
 export default function PokerogueUpstreamPage() {
+  const externalUpstreamUrl = process.env.NEXT_PUBLIC_POKEROGUE_UPSTREAM_URL || '';
+  const isDev = process.env.NODE_ENV !== 'production';
+  const iframeSrc = externalUpstreamUrl || (isDev ? '/api/pokerogue/upstream/index.html' : '');
+  const openInNewTabHref = externalUpstreamUrl || '/api/pokerogue/upstream/index.html';
+
   return (
     <main style={pageStyle}>
       <header style={headerStyle}>
         <div>
           <h1 style={{ margin: 0, fontSize: 28 }}>Pokerogue Upstream</h1>
           <p style={{ margin: '6px 0 0', color: '#94a3b8' }}>
-            로컬에 빌드된 Pokerogue 본판을 그대로 띄워서 수정 지점을 찾는 개발용 페이지
+            {iframeSrc
+              ? 'Pokerogue 본판을 바로 띄워서 수정 지점을 확인하는 페이지'
+              : 'Pokerogue 본판 배포 주소가 아직 연결되지 않은 상태'}
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <Link href="/pokerogue" style={actionStyle}>
             포켓로그 메타로
           </Link>
-          <a href="/api/pokerogue/upstream/index.html" target="_blank" rel="noreferrer" style={actionStyle}>
+          <a href={openInNewTabHref} target="_blank" rel="noreferrer" style={actionStyle}>
             새 탭으로 열기
           </a>
         </div>
       </header>
 
       <div style={noteStyle}>
-        이 페이지는 <strong>로컬 개발용</strong>이다. <code>../pokerogue-upstream/dist</code> 폴더를 직접 읽는다.
-        Vercel 배포본에는 아직 upstream 빌드를 포함하지 않았다.
+        {iframeSrc ? (
+          <>
+            {externalUpstreamUrl ? (
+              <>
+                현재는 <strong>외부 정적 배포</strong>를 iframe으로 불러온다. 주소:
+                <code style={{ marginLeft: 6 }}>{externalUpstreamUrl}</code>
+              </>
+            ) : (
+              <>
+                현재는 <strong>로컬 개발용</strong>으로 동작한다. <code>../pokerogue-upstream/dist</code> 폴더를 직접 읽는다.
+              </>
+            )}
+          </>
+        ) : (
+          <>
+            프로덕션에서는 로컬 파일시스템의 <code>../pokerogue-upstream/dist</code>를 읽을 수 없다.
+            Vercel에서 본판을 보려면 Pokerogue 정적 빌드를 별도 배포하고,
+            <code style={{ marginLeft: 6 }}>NEXT_PUBLIC_POKEROGUE_UPSTREAM_URL</code>
+            환경변수에 그 주소를 넣어야 한다.
+          </>
+        )}
       </div>
 
       <div style={frameWrapStyle}>
-        <iframe title="Pokerogue Upstream" src="/api/pokerogue/upstream/index.html" style={iframeStyle} />
+        {iframeSrc ? (
+          <iframe title="Pokerogue Upstream" src={iframeSrc} style={iframeStyle} />
+        ) : (
+          <div
+            style={{
+              ...iframeStyle,
+              display: 'grid',
+              placeItems: 'center',
+              padding: 32,
+              color: '#cbd5e1',
+              lineHeight: 1.8,
+              textAlign: 'center',
+            }}
+          >
+            <div style={{ maxWidth: 760 }}>
+              <strong style={{ display: 'block', marginBottom: 12, fontSize: 18 }}>
+                Pokerogue upstream 배포 주소가 아직 없다
+              </strong>
+              <div>
+                1. <code>pokerogue-upstream/dist</code>를 별도 정적 호스팅으로 배포
+              </div>
+              <div>
+                2. 그 URL을 <code>NEXT_PUBLIC_POKEROGUE_UPSTREAM_URL</code>에 설정
+              </div>
+              <div>
+                3. 다시 배포하면 여기서 iframe으로 본판을 확인할 수 있다
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </main>
   );

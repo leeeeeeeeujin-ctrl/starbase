@@ -8,6 +8,8 @@ ai-roomchat/reference_data/
 
 # Local repo mirror / large git object caches
 repo-mirror.git/
+pokerogue-upstream/
+rogueserver-upstream/
 
 # Packaged archives and large binary artifacts
 **/*.zip
