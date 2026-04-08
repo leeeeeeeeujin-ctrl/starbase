@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { uploadHeroImageBundle } from '../../utils/heroIngameImage';
 import { generateHeroCutoutPreview } from '../../utils/heroIngameImage';
+import { uploadAsset } from '../../utils/uploader';
 import { withTable } from '../../lib/supabaseTables';
 
 function revokeUrl(url) {
@@ -27,6 +28,17 @@ export function useHeroCreator({ onSaved } = {}) {
   const [bgmDuration, setBgmDuration] = useState(null);
   const [bgmError, setBgmError] = useState('');
 
+  const [pokerogueEnabled, setPokerogueEnabled] = useState(false);
+  const [pokerogueRegion, setPokerogueRegion] = useState('');
+  const [pokerogueTier, setPokerogueTier] = useState('common');
+  const [pokeroguePlayable, setPokeroguePlayable] = useState(true);
+  const [pokerogueFrontPreview, setPokerogueFrontPreview] = useState(null);
+  const [pokerogueBackPreview, setPokerogueBackPreview] = useState(null);
+  const [pokerogueIconPreview, setPokerogueIconPreview] = useState(null);
+  const [pokerogueFrontFile, setPokerogueFrontFile] = useState(null);
+  const [pokerogueBackFile, setPokerogueBackFile] = useState(null);
+  const [pokerogueIconFile, setPokerogueIconFile] = useState(null);
+
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [sceneBackgroundDescription, setSceneBackgroundDescription] = useState('');
@@ -42,8 +54,18 @@ export function useHeroCreator({ onSaved } = {}) {
       revokeUrl(preview);
       revokeUrl(ingamePreview);
       revokeUrl(backgroundPreview);
+      revokeUrl(pokerogueFrontPreview);
+      revokeUrl(pokerogueBackPreview);
+      revokeUrl(pokerogueIconPreview);
     };
-  }, [preview, ingamePreview, backgroundPreview]);
+  }, [
+    backgroundPreview,
+    ingamePreview,
+    pokerogueBackPreview,
+    pokerogueFrontPreview,
+    pokerogueIconPreview,
+    preview,
+  ]);
 
   const sanitizeFileName = useCallback((base, fallback = 'asset') => {
     const safe = String(base || fallback)
@@ -118,6 +140,31 @@ export function useHeroCreator({ onSaved } = {}) {
     setBgmError('');
   }, []);
 
+  const selectPokerogueSprite = useCallback(async (file, currentPreview, setPreviewUrl, setFile) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      alert('이미지 파일만 사용할 수 있습니다.');
+      return;
+    }
+    if (file.type === 'image/gif' || /\.gif$/i.test(file.name || '')) {
+      alert('움짤(GIF)은 사용할 수 없습니다.');
+      return;
+    }
+    const buffer = await file.arrayBuffer();
+    const blob = new Blob([new Uint8Array(buffer)], { type: file.type || 'image/png' });
+    if (currentPreview) {
+      revokeUrl(currentPreview);
+    }
+    setFile(new File([blob], file.name || 'pokerogue-sprite.png', { type: blob.type }));
+    setPreviewUrl(URL.createObjectURL(blob));
+  }, []);
+
+  const clearPokerogueSprite = useCallback((currentPreview, setPreviewUrl, setFile) => {
+    revokeUrl(currentPreview);
+    setPreviewUrl(null);
+    setFile(null);
+  }, []);
+
   const selectBgm = useCallback(
     async file => {
       clearBgm();
@@ -186,6 +233,9 @@ export function useHeroCreator({ onSaved } = {}) {
       let bgmUrl = null;
       let bgmDurationSeconds = null;
       let bgmMime = null;
+      let pokerogueFrontSpriteUrl = null;
+      let pokerogueBackSpriteUrl = null;
+      let pokerogueIconUrl = null;
 
       if (imageBlob) {
         const file = new File([imageBlob], `${sanitizeFileName(name)}.jpg`, { type: imageBlob.type || 'image/jpeg' });
@@ -210,6 +260,33 @@ export function useHeroCreator({ onSaved } = {}) {
         bgmMime = bgmBlob.type || null;
       }
 
+      if (pokerogueEnabled) {
+        if (pokerogueFrontFile) {
+          const ext = (pokerogueFrontFile.type && pokerogueFrontFile.type.split('/')[1]) || 'png';
+          const file = new File([pokerogueFrontFile], `${sanitizeFileName(name, 'pokerogue-front')}.${ext}`, {
+            type: pokerogueFrontFile.type || 'image/png',
+          });
+          const up = await uploadAsset(file, { gameId: 'heroes' });
+          pokerogueFrontSpriteUrl = up.url;
+        }
+        if (pokerogueBackFile) {
+          const ext = (pokerogueBackFile.type && pokerogueBackFile.type.split('/')[1]) || 'png';
+          const file = new File([pokerogueBackFile], `${sanitizeFileName(name, 'pokerogue-back')}.${ext}`, {
+            type: pokerogueBackFile.type || 'image/png',
+          });
+          const up = await uploadAsset(file, { gameId: 'heroes' });
+          pokerogueBackSpriteUrl = up.url;
+        }
+        if (pokerogueIconFile) {
+          const ext = (pokerogueIconFile.type && pokerogueIconFile.type.split('/')[1]) || 'png';
+          const file = new File([pokerogueIconFile], `${sanitizeFileName(name, 'pokerogue-icon')}.${ext}`, {
+            type: pokerogueIconFile.type || 'image/png',
+          });
+          const up = await uploadAsset(file, { gameId: 'heroes' });
+          pokerogueIconUrl = up.url;
+        }
+      }
+
       const { error: insertError } = await withTable(supabase, 'heroes', table =>
         supabase.from(table).insert({
           owner_id: user.id,
@@ -226,6 +303,14 @@ export function useHeroCreator({ onSaved } = {}) {
           bgm_url: bgmUrl,
           bgm_duration_seconds: bgmDurationSeconds,
           bgm_mime: bgmMime,
+          pokerogue_enabled: pokerogueEnabled,
+          pokerogue_front_sprite_url: pokerogueEnabled ? pokerogueFrontSpriteUrl : null,
+          pokerogue_back_sprite_url: pokerogueEnabled ? pokerogueBackSpriteUrl : null,
+          pokerogue_icon_url: pokerogueEnabled ? pokerogueIconUrl : null,
+          pokerogue_region: pokerogueEnabled ? pokerogueRegion.trim() : '',
+          pokerogue_tier: pokerogueEnabled ? pokerogueTier : 'common',
+          pokerogue_playable: pokerogueEnabled ? pokeroguePlayable : true,
+          pokerogue_profile: {},
         })
       );
       if (insertError) throw insertError;
@@ -251,6 +336,13 @@ export function useHeroCreator({ onSaved } = {}) {
     imageBlob,
     name,
     onSaved,
+    pokerogueBackFile,
+    pokerogueEnabled,
+    pokerogueFrontFile,
+    pokerogueIconFile,
+    pokeroguePlayable,
+    pokerogueRegion,
+    pokerogueTier,
     sanitizeFileName,
   ]);
 
@@ -263,6 +355,13 @@ export function useHeroCreator({ onSaved } = {}) {
       bgmLabel,
       bgmDuration,
       bgmError,
+      pokerogueEnabled,
+      pokerogueRegion,
+      pokerogueTier,
+      pokeroguePlayable,
+      pokerogueFrontPreview,
+      pokerogueBackPreview,
+      pokerogueIconPreview,
       name,
       description,
       sceneBackgroundDescription,
@@ -280,11 +379,42 @@ export function useHeroCreator({ onSaved } = {}) {
       setAbility2,
       setAbility3,
       setAbility4,
+      setPokerogueEnabled,
+      setPokerogueRegion,
+      setPokerogueTier,
+      setPokeroguePlayable,
       selectImage,
       selectBackground,
       clearBackground,
       selectBgm,
       clearBgm,
+      selectPokerogueFront: file =>
+        selectPokerogueSprite(
+          file,
+          pokerogueFrontPreview,
+          setPokerogueFrontPreview,
+          setPokerogueFrontFile
+        ),
+      selectPokerogueBack: file =>
+        selectPokerogueSprite(
+          file,
+          pokerogueBackPreview,
+          setPokerogueBackPreview,
+          setPokerogueBackFile
+        ),
+      selectPokerogueIcon: file =>
+        selectPokerogueSprite(
+          file,
+          pokerogueIconPreview,
+          setPokerogueIconPreview,
+          setPokerogueIconFile
+        ),
+      clearPokerogueFront: () =>
+        clearPokerogueSprite(pokerogueFrontPreview, setPokerogueFrontPreview, setPokerogueFrontFile),
+      clearPokerogueBack: () =>
+        clearPokerogueSprite(pokerogueBackPreview, setPokerogueBackPreview, setPokerogueBackFile),
+      clearPokerogueIcon: () =>
+        clearPokerogueSprite(pokerogueIconPreview, setPokerogueIconPreview, setPokerogueIconFile),
       save,
     },
   };

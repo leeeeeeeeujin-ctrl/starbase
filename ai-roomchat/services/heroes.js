@@ -17,11 +17,20 @@ const HERO_DETAIL_COLUMNS = [
   'bgm_url',
   'bgm_duration_seconds',
   'bgm_mime',
+  'pokerogue_enabled',
+  'pokerogue_front_sprite_url',
+  'pokerogue_back_sprite_url',
+  'pokerogue_icon_url',
+  'pokerogue_region',
+  'pokerogue_tier',
+  'pokerogue_playable',
+  'pokerogue_profile',
   'created_at',
   'updated_at',
 ].join(',');
 
-const HERO_LIST_COLUMNS = 'id,name,image_url,ingame_image_url,scene_background_description,owner_id,created_at,updated_at';
+const HERO_LIST_COLUMNS =
+  'id,name,image_url,ingame_image_url,scene_background_description,pokerogue_enabled,pokerogue_front_sprite_url,pokerogue_icon_url,pokerogue_region,pokerogue_tier,pokerogue_playable,owner_id,created_at,updated_at';
 const FALLBACK_NAME = '이름 없는 영웅';
 
 export function normaliseHero(record) {
@@ -48,6 +57,18 @@ export function normaliseHero(record) {
     bgm_url: record.bgm_url || null,
     bgm_duration_seconds: record.bgm_duration_seconds || null,
     bgm_mime: record.bgm_mime || null,
+    pokerogue_enabled: Boolean(record.pokerogue_enabled),
+    pokerogue_front_sprite_url: record.pokerogue_front_sprite_url || null,
+    pokerogue_back_sprite_url: record.pokerogue_back_sprite_url || null,
+    pokerogue_icon_url: record.pokerogue_icon_url || null,
+    pokerogue_region: record.pokerogue_region || '',
+    pokerogue_tier: record.pokerogue_tier || 'common',
+    pokerogue_playable:
+      typeof record.pokerogue_playable === 'boolean' ? record.pokerogue_playable : true,
+    pokerogue_profile:
+      record.pokerogue_profile && typeof record.pokerogue_profile === 'object'
+        ? record.pokerogue_profile
+        : {},
     created_at: record.created_at || null,
     updated_at: record.updated_at || null,
   };
@@ -64,6 +85,12 @@ function normaliseListHero(record) {
     image_url: base.image_url,
     ingame_image_url: base.ingame_image_url,
     scene_background_description: base.scene_background_description,
+    pokerogue_enabled: base.pokerogue_enabled,
+    pokerogue_front_sprite_url: base.pokerogue_front_sprite_url,
+    pokerogue_icon_url: base.pokerogue_icon_url,
+    pokerogue_region: base.pokerogue_region,
+    pokerogue_tier: base.pokerogue_tier,
+    pokerogue_playable: base.pokerogue_playable,
     created_at: base.created_at,
     updated_at: base.updated_at,
   };

@@ -30,6 +30,18 @@ function normaliseHero(row) {
     bgm_url: row.bgm_url || null,
     bgm_duration_seconds: row.bgm_duration_seconds ?? null,
     bgm_mime: row.bgm_mime || null,
+    pokerogue_enabled: Boolean(row.pokerogue_enabled),
+    pokerogue_front_sprite_url: row.pokerogue_front_sprite_url || null,
+    pokerogue_back_sprite_url: row.pokerogue_back_sprite_url || null,
+    pokerogue_icon_url: row.pokerogue_icon_url || null,
+    pokerogue_region: row.pokerogue_region || '',
+    pokerogue_tier: row.pokerogue_tier || 'common',
+    pokerogue_playable:
+      typeof row.pokerogue_playable === 'boolean' ? row.pokerogue_playable : true,
+    pokerogue_profile:
+      row.pokerogue_profile && typeof row.pokerogue_profile === 'object'
+        ? row.pokerogue_profile
+        : {},
     agent_profile:
       row.agent_profile && typeof row.agent_profile === 'object' ? row.agent_profile : null,
     created_at: row.created_at || null,
@@ -133,6 +145,14 @@ export function useCharacterDetail(heroId) {
               'bgm_url',
               'bgm_duration_seconds',
               'bgm_mime',
+              'pokerogue_enabled',
+              'pokerogue_front_sprite_url',
+              'pokerogue_back_sprite_url',
+              'pokerogue_icon_url',
+              'pokerogue_region',
+              'pokerogue_tier',
+              'pokerogue_playable',
+              'pokerogue_profile',
               'agent_profile',
               'created_at',
               'updated_at',

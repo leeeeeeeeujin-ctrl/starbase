@@ -93,6 +93,14 @@ create table if not exists public.heroes (
   bgm_url text,
   bgm_duration_seconds integer,
   bgm_mime text,
+  pokerogue_enabled boolean not null default false,
+  pokerogue_front_sprite_url text,
+  pokerogue_back_sprite_url text,
+  pokerogue_icon_url text,
+  pokerogue_region text,
+  pokerogue_tier text not null default 'common',
+  pokerogue_playable boolean not null default true,
+  pokerogue_profile jsonb not null default '{}'::jsonb,
   agent_profile jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -181,6 +189,30 @@ alter table public.heroes
 
 alter table public.heroes
   add column if not exists scene_background_description text;
+
+alter table public.heroes
+  add column if not exists pokerogue_enabled boolean not null default false;
+
+alter table public.heroes
+  add column if not exists pokerogue_front_sprite_url text;
+
+alter table public.heroes
+  add column if not exists pokerogue_back_sprite_url text;
+
+alter table public.heroes
+  add column if not exists pokerogue_icon_url text;
+
+alter table public.heroes
+  add column if not exists pokerogue_region text;
+
+alter table public.heroes
+  add column if not exists pokerogue_tier text not null default 'common';
+
+alter table public.heroes
+  add column if not exists pokerogue_playable boolean not null default true;
+
+alter table public.heroes
+  add column if not exists pokerogue_profile jsonb not null default '{}'::jsonb;
 
 alter table public.prompt_sets enable row level security;
 

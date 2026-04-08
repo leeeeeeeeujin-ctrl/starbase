@@ -58,6 +58,12 @@ const MAX_AUDIO_SIZE = 12 * 1024 * 1024;
 const MAX_AUDIO_DURATION = 5 * 60;
 const AUDIO_SETTINGS_COOKIE = 'hero-audio-settings';
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
+const POKEROGUE_TIER_OPTIONS = [
+  { value: 'common', label: '일반' },
+  { value: 'rare', label: '희귀' },
+  { value: 'elite', label: '엘리트' },
+  { value: 'legendary', label: '전설' },
+];
 
 const readCookie = name => {
   if (typeof document === 'undefined') return null;
@@ -1511,9 +1517,25 @@ export default function CharacterBasicView({ hero }) {
   const [sceneBackgroundDescription, setSceneBackgroundDescription] = useState(
     hero?.scene_background_description || ''
   );
+  const [pokerogueEnabled, setPokerogueEnabled] = useState(Boolean(hero?.pokerogue_enabled));
+  const [pokerogueRegion, setPokerogueRegion] = useState(hero?.pokerogue_region || '');
+  const [pokerogueTier, setPokerogueTier] = useState(hero?.pokerogue_tier || 'common');
+  const [pokeroguePlayable, setPokeroguePlayable] = useState(
+    typeof hero?.pokerogue_playable === 'boolean' ? hero.pokerogue_playable : true
+  );
+  const [pokerogueFrontPreview, setPokerogueFrontPreview] = useState(
+    hero?.pokerogue_front_sprite_url || ''
+  );
+  const [pokerogueBackPreview, setPokerogueBackPreview] = useState(
+    hero?.pokerogue_back_sprite_url || ''
+  );
+  const [pokerogueIconPreview, setPokerogueIconPreview] = useState(hero?.pokerogue_icon_url || '');
   const [imageFile, setImageFile] = useState(null);
   const [backgroundFile, setBackgroundFile] = useState(null);
   const [bgmFile, setBgmFile] = useState(null);
+  const [pokerogueFrontFile, setPokerogueFrontFile] = useState(null);
+  const [pokerogueBackFile, setPokerogueBackFile] = useState(null);
+  const [pokerogueIconFile, setPokerogueIconFile] = useState(null);
   const [bgmDurationSeconds, setBgmDurationSeconds] = useState(hero?.bgm_duration_seconds || null);
   const [bgmMime, setBgmMime] = useState(hero?.bgm_mime || null);
   const [bgmError, setBgmError] = useState('');
@@ -2072,9 +2094,15 @@ export default function CharacterBasicView({ hero }) {
   const imageInputRef = useRef(null);
   const backgroundInputRef = useRef(null);
   const bgmInputRef = useRef(null);
+  const pokerogueFrontInputRef = useRef(null);
+  const pokerogueBackInputRef = useRef(null);
+  const pokerogueIconInputRef = useRef(null);
   const previousCustomUrl = useRef(null);
   const imageObjectUrlRef = useRef(null);
   const backgroundObjectUrlRef = useRef(null);
+  const pokerogueFrontObjectUrlRef = useRef(null);
+  const pokerogueBackObjectUrlRef = useRef(null);
+  const pokerogueIconObjectUrlRef = useRef(null);
   const lastLoadedHeroKeyRef = useRef(null);
 
   useEffect(() => audioManager.subscribe(setAudioState), [audioManager]);
@@ -2188,6 +2216,28 @@ export default function CharacterBasicView({ hero }) {
     setBgmFile(null);
     setIngameImagePreview(hero?.ingame_image_url || '');
     setSceneBackgroundDescription(hero?.scene_background_description || '');
+    setPokerogueEnabled(Boolean(hero?.pokerogue_enabled));
+    setPokerogueRegion(hero?.pokerogue_region || '');
+    setPokerogueTier(hero?.pokerogue_tier || 'common');
+    setPokeroguePlayable(typeof hero?.pokerogue_playable === 'boolean' ? hero.pokerogue_playable : true);
+    setPokerogueFrontPreview(hero?.pokerogue_front_sprite_url || '');
+    setPokerogueBackPreview(hero?.pokerogue_back_sprite_url || '');
+    setPokerogueIconPreview(hero?.pokerogue_icon_url || '');
+    if (pokerogueFrontObjectUrlRef.current) {
+      URL.revokeObjectURL(pokerogueFrontObjectUrlRef.current);
+      pokerogueFrontObjectUrlRef.current = null;
+    }
+    if (pokerogueBackObjectUrlRef.current) {
+      URL.revokeObjectURL(pokerogueBackObjectUrlRef.current);
+      pokerogueBackObjectUrlRef.current = null;
+    }
+    if (pokerogueIconObjectUrlRef.current) {
+      URL.revokeObjectURL(pokerogueIconObjectUrlRef.current);
+      pokerogueIconObjectUrlRef.current = null;
+    }
+    setPokerogueFrontFile(null);
+    setPokerogueBackFile(null);
+    setPokerogueIconFile(null);
     setBgmDurationSeconds(hero?.bgm_duration_seconds || null);
     setBgmMime(hero?.bgm_mime || null);
     setBgmError('');
@@ -2195,6 +2245,9 @@ export default function CharacterBasicView({ hero }) {
     if (imageInputRef.current) imageInputRef.current.value = '';
     if (backgroundInputRef.current) backgroundInputRef.current.value = '';
     if (bgmInputRef.current) bgmInputRef.current.value = '';
+    if (pokerogueFrontInputRef.current) pokerogueFrontInputRef.current.value = '';
+    if (pokerogueBackInputRef.current) pokerogueBackInputRef.current.value = '';
+    if (pokerogueIconInputRef.current) pokerogueIconInputRef.current.value = '';
   }, [hero]);
 
   useEffect(() => {
@@ -2235,6 +2288,18 @@ export default function CharacterBasicView({ hero }) {
       if (backgroundObjectUrlRef.current) {
         URL.revokeObjectURL(backgroundObjectUrlRef.current);
         backgroundObjectUrlRef.current = null;
+      }
+      if (pokerogueFrontObjectUrlRef.current) {
+        URL.revokeObjectURL(pokerogueFrontObjectUrlRef.current);
+        pokerogueFrontObjectUrlRef.current = null;
+      }
+      if (pokerogueBackObjectUrlRef.current) {
+        URL.revokeObjectURL(pokerogueBackObjectUrlRef.current);
+        pokerogueBackObjectUrlRef.current = null;
+      }
+      if (pokerogueIconObjectUrlRef.current) {
+        URL.revokeObjectURL(pokerogueIconObjectUrlRef.current);
+        pokerogueIconObjectUrlRef.current = null;
       }
     };
   }, [customBgmUrl]);
@@ -2401,6 +2466,77 @@ export default function CharacterBasicView({ hero }) {
     event.target.value = '';
   };
 
+  const handlePokerogueSpriteChange = useCallback(
+    (event, { setPreview, setFile, previewRef }) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      if (!file.type.startsWith('image/')) {
+        alert('이미지 파일만 업로드할 수 있습니다.');
+        event.target.value = '';
+        return;
+      }
+      if (isGifFile(file)) {
+        alert('포켓로그 스프라이트는 GIF를 사용할 수 없습니다.');
+        event.target.value = '';
+        return;
+      }
+      if (file.size > MAX_IMAGE_SIZE) {
+        alert('스프라이트 이미지는 5MB를 넘을 수 없습니다.');
+        event.target.value = '';
+        return;
+      }
+      if (previewRef.current) {
+        URL.revokeObjectURL(previewRef.current);
+      }
+      const objectUrl = URL.createObjectURL(file);
+      previewRef.current = objectUrl;
+      setPreview(objectUrl);
+      setFile(file);
+      event.target.value = '';
+    },
+    []
+  );
+
+  const handlePokerogueFrontChange = useCallback(
+    event =>
+      handlePokerogueSpriteChange(event, {
+        setPreview: setPokerogueFrontPreview,
+        setFile: setPokerogueFrontFile,
+        previewRef: pokerogueFrontObjectUrlRef,
+      }),
+    [handlePokerogueSpriteChange]
+  );
+
+  const handlePokerogueBackChange = useCallback(
+    event =>
+      handlePokerogueSpriteChange(event, {
+        setPreview: setPokerogueBackPreview,
+        setFile: setPokerogueBackFile,
+        previewRef: pokerogueBackObjectUrlRef,
+      }),
+    [handlePokerogueSpriteChange]
+  );
+
+  const handlePokerogueIconChange = useCallback(
+    event =>
+      handlePokerogueSpriteChange(event, {
+        setPreview: setPokerogueIconPreview,
+        setFile: setPokerogueIconFile,
+        previewRef: pokerogueIconObjectUrlRef,
+      }),
+    [handlePokerogueSpriteChange]
+  );
+
+  const clearPokerogueSprite = useCallback((previewRef, setPreview, setFile, inputRef) => {
+    if (previewRef.current) {
+      URL.revokeObjectURL(previewRef.current);
+      previewRef.current = null;
+    }
+    setPreview('');
+    setFile(null);
+    if (inputRef?.current) inputRef.current.value = '';
+  }, []);
+
   const handleBgmFileChange = async event => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -2563,6 +2699,33 @@ export default function CharacterBasicView({ hero }) {
         nextMime = null;
       }
 
+      let pokerogueFrontSpriteUrl = currentHero.pokerogue_front_sprite_url || null;
+      if (pokerogueEnabled && pokerogueFrontFile) {
+        pokerogueFrontSpriteUrl = await uploadHeroAsset(
+          pokerogueFrontFile,
+          'hero-pokerogue-front',
+          payload.name
+        );
+      }
+
+      let pokerogueBackSpriteUrl = currentHero.pokerogue_back_sprite_url || null;
+      if (pokerogueEnabled && pokerogueBackFile) {
+        pokerogueBackSpriteUrl = await uploadHeroAsset(
+          pokerogueBackFile,
+          'hero-pokerogue-back',
+          payload.name
+        );
+      }
+
+      let pokerogueIconUrl = currentHero.pokerogue_icon_url || null;
+      if (pokerogueEnabled && pokerogueIconFile) {
+        pokerogueIconUrl = await uploadHeroAsset(
+          pokerogueIconFile,
+          'hero-pokerogue-icon',
+          payload.name
+        );
+      }
+
       const fullPayload = {
         ...payload,
         image_url: imageUrl,
@@ -2572,6 +2735,13 @@ export default function CharacterBasicView({ hero }) {
         bgm_url: bgmUrl,
         bgm_duration_seconds: nextDuration,
         bgm_mime: nextMime,
+        pokerogue_enabled: pokerogueEnabled,
+        pokerogue_front_sprite_url: pokerogueEnabled ? pokerogueFrontSpriteUrl : null,
+        pokerogue_back_sprite_url: pokerogueEnabled ? pokerogueBackSpriteUrl : null,
+        pokerogue_icon_url: pokerogueEnabled ? pokerogueIconUrl : null,
+        pokerogue_region: pokerogueEnabled ? pokerogueRegion.trim() : '',
+        pokerogue_tier: pokerogueEnabled ? pokerogueTier : 'common',
+        pokerogue_playable: pokerogueEnabled ? pokeroguePlayable : true,
       };
 
       const { error } = await withTable(supabase, 'heroes', table =>
@@ -2596,6 +2766,9 @@ export default function CharacterBasicView({ hero }) {
       setImagePreview(imageUrl || '');
       setIngameImagePreview(ingameImageUrl || '');
       setBackgroundPreview(backgroundUrl || '');
+      setPokerogueFrontPreview(fullPayload.pokerogue_front_sprite_url || '');
+      setPokerogueBackPreview(fullPayload.pokerogue_back_sprite_url || '');
+      setPokerogueIconPreview(fullPayload.pokerogue_icon_url || '');
       if (imageObjectUrlRef.current) {
         URL.revokeObjectURL(imageObjectUrlRef.current);
         imageObjectUrlRef.current = null;
@@ -2604,14 +2777,35 @@ export default function CharacterBasicView({ hero }) {
         URL.revokeObjectURL(backgroundObjectUrlRef.current);
         backgroundObjectUrlRef.current = null;
       }
+      if (pokerogueFrontObjectUrlRef.current) {
+        URL.revokeObjectURL(pokerogueFrontObjectUrlRef.current);
+        pokerogueFrontObjectUrlRef.current = null;
+      }
+      if (pokerogueBackObjectUrlRef.current) {
+        URL.revokeObjectURL(pokerogueBackObjectUrlRef.current);
+        pokerogueBackObjectUrlRef.current = null;
+      }
+      if (pokerogueIconObjectUrlRef.current) {
+        URL.revokeObjectURL(pokerogueIconObjectUrlRef.current);
+        pokerogueIconObjectUrlRef.current = null;
+      }
       setImageFile(null);
       setBackgroundFile(null);
       setBgmFile(null);
+      setPokerogueFrontFile(null);
+      setPokerogueBackFile(null);
+      setPokerogueIconFile(null);
       setCustomBgmUrl(null);
       setBgmDurationSeconds(nextDuration);
       setBgmMime(nextMime);
       setSelectedBgmName('');
       setBgmCleared(false);
+      setPokerogueEnabled(Boolean(fullPayload.pokerogue_enabled));
+      setPokerogueRegion(fullPayload.pokerogue_region || '');
+      setPokerogueTier(fullPayload.pokerogue_tier || 'common');
+      setPokeroguePlayable(
+        typeof fullPayload.pokerogue_playable === 'boolean' ? fullPayload.pokerogue_playable : true
+      );
       const cleanupUrl = async url => {
         if (!url) return;
         try {
@@ -2633,6 +2827,32 @@ export default function CharacterBasicView({ hero }) {
         currentHero.ingame_image_url !== ingameImageUrl
       ) {
         cleanupUrl(currentHero.ingame_image_url);
+      }
+      if (
+        pokerogueFrontFile &&
+        currentHero.pokerogue_front_sprite_url &&
+        currentHero.pokerogue_front_sprite_url !== pokerogueFrontSpriteUrl
+      ) {
+        cleanupUrl(currentHero.pokerogue_front_sprite_url);
+      }
+      if (
+        pokerogueBackFile &&
+        currentHero.pokerogue_back_sprite_url &&
+        currentHero.pokerogue_back_sprite_url !== pokerogueBackSpriteUrl
+      ) {
+        cleanupUrl(currentHero.pokerogue_back_sprite_url);
+      }
+      if (
+        pokerogueIconFile &&
+        currentHero.pokerogue_icon_url &&
+        currentHero.pokerogue_icon_url !== pokerogueIconUrl
+      ) {
+        cleanupUrl(currentHero.pokerogue_icon_url);
+      }
+      if (!pokerogueEnabled) {
+        cleanupUrl(currentHero.pokerogue_front_sprite_url);
+        cleanupUrl(currentHero.pokerogue_back_sprite_url);
+        cleanupUrl(currentHero.pokerogue_icon_url);
       }
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('hero-overlay:refresh'));
@@ -2664,6 +2884,18 @@ export default function CharacterBasicView({ hero }) {
     setBgmFile(null);
     setIngameImagePreview(currentHero?.ingame_image_url || '');
     setSceneBackgroundDescription(currentHero?.scene_background_description || '');
+    setPokerogueEnabled(Boolean(currentHero?.pokerogue_enabled));
+    setPokerogueRegion(currentHero?.pokerogue_region || '');
+    setPokerogueTier(currentHero?.pokerogue_tier || 'common');
+    setPokeroguePlayable(
+      typeof currentHero?.pokerogue_playable === 'boolean' ? currentHero.pokerogue_playable : true
+    );
+    setPokerogueFrontPreview(currentHero?.pokerogue_front_sprite_url || '');
+    setPokerogueBackPreview(currentHero?.pokerogue_back_sprite_url || '');
+    setPokerogueIconPreview(currentHero?.pokerogue_icon_url || '');
+    setPokerogueFrontFile(null);
+    setPokerogueBackFile(null);
+    setPokerogueIconFile(null);
     setBgmDurationSeconds(currentHero?.bgm_duration_seconds || null);
     setBgmMime(currentHero?.bgm_mime || null);
     setBgmCleared(false);
@@ -2678,9 +2910,24 @@ export default function CharacterBasicView({ hero }) {
       URL.revokeObjectURL(backgroundObjectUrlRef.current);
       backgroundObjectUrlRef.current = null;
     }
+    if (pokerogueFrontObjectUrlRef.current) {
+      URL.revokeObjectURL(pokerogueFrontObjectUrlRef.current);
+      pokerogueFrontObjectUrlRef.current = null;
+    }
+    if (pokerogueBackObjectUrlRef.current) {
+      URL.revokeObjectURL(pokerogueBackObjectUrlRef.current);
+      pokerogueBackObjectUrlRef.current = null;
+    }
+    if (pokerogueIconObjectUrlRef.current) {
+      URL.revokeObjectURL(pokerogueIconObjectUrlRef.current);
+      pokerogueIconObjectUrlRef.current = null;
+    }
     if (imageInputRef.current) imageInputRef.current.value = '';
     if (backgroundInputRef.current) backgroundInputRef.current.value = '';
     if (bgmInputRef.current) bgmInputRef.current.value = '';
+    if (pokerogueFrontInputRef.current) pokerogueFrontInputRef.current.value = '';
+    if (pokerogueBackInputRef.current) pokerogueBackInputRef.current.value = '';
+    if (pokerogueIconInputRef.current) pokerogueIconInputRef.current.value = '';
     setIsEditing(false);
   };
 
@@ -3246,6 +3493,125 @@ export default function CharacterBasicView({ hero }) {
                     </button>
                   </div>
                   {bgmError ? <p style={styles.errorText}>{bgmError}</p> : null}
+                </div>
+
+                <div style={styles.infoBlock}>
+                  <div style={styles.formRow}>
+                    <label style={styles.sliderLabel}>포켓로그 참여</label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#e2e8f0' }}>
+                      <input
+                        type="checkbox"
+                        checked={pokerogueEnabled}
+                        onChange={event => setPokerogueEnabled(event.target.checked)}
+                      />
+                      참여 캐릭터로 등록
+                    </label>
+                    <span style={styles.sectionHint}>
+                      켜면 전후면 도트와 출현 메타를 이 캐릭터에 함께 저장합니다.
+                    </span>
+                  </div>
+
+                  {pokerogueEnabled ? (
+                    <>
+                      <div style={styles.formRow}>
+                        <label style={styles.sliderLabel}>출현 지역</label>
+                        <input
+                          style={styles.textField}
+                          value={pokerogueRegion}
+                          onChange={event => setPokerogueRegion(event.target.value)}
+                          placeholder="예: 숲 / 폐성 / 심해 / 화산"
+                        />
+                      </div>
+
+                      <div style={styles.inlineActions}>
+                        <label style={{ display: 'grid', gap: 6, flex: '1 1 180px' }}>
+                          <span style={styles.sliderLabel}>등급</span>
+                          <select
+                            style={styles.textField}
+                            value={pokerogueTier}
+                            onChange={event => setPokerogueTier(event.target.value)}
+                          >
+                            {POKEROGUE_TIER_OPTIONS.map(option => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#e2e8f0', paddingTop: 28 }}>
+                          <input
+                            type="checkbox"
+                            checked={pokeroguePlayable}
+                            onChange={event => setPokeroguePlayable(event.target.checked)}
+                          />
+                          플레이어 선택 가능
+                        </label>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
+                        {[
+                          {
+                            title: '전면 도트',
+                            preview: pokerogueFrontPreview,
+                            onPick: () => pokerogueFrontInputRef.current?.click(),
+                            onClear: () =>
+                              clearPokerogueSprite(
+                                pokerogueFrontObjectUrlRef,
+                                setPokerogueFrontPreview,
+                                setPokerogueFrontFile,
+                                pokerogueFrontInputRef
+                              ),
+                          },
+                          {
+                            title: '후면 도트',
+                            preview: pokerogueBackPreview,
+                            onPick: () => pokerogueBackInputRef.current?.click(),
+                            onClear: () =>
+                              clearPokerogueSprite(
+                                pokerogueBackObjectUrlRef,
+                                setPokerogueBackPreview,
+                                setPokerogueBackFile,
+                                pokerogueBackInputRef
+                              ),
+                          },
+                          {
+                            title: '아이콘',
+                            preview: pokerogueIconPreview,
+                            onPick: () => pokerogueIconInputRef.current?.click(),
+                            onClear: () =>
+                              clearPokerogueSprite(
+                                pokerogueIconObjectUrlRef,
+                                setPokerogueIconPreview,
+                                setPokerogueIconFile,
+                                pokerogueIconInputRef
+                              ),
+                          },
+                        ].map(item => (
+                          <div key={item.title} style={styles.uploadSection}>
+                            <div style={styles.previewFrameCutout}>
+                              {item.preview ? (
+                                <img
+                                  src={item.preview}
+                                  alt={`${item.title} 미리보기`}
+                                  style={{ ...styles.previewImageContain, imageRendering: 'pixelated' }}
+                                />
+                              ) : (
+                                <div style={styles.previewFallback}>{item.title}</div>
+                              )}
+                            </div>
+                            <div style={styles.inlineActions}>
+                              <button type="button" style={styles.uploadButton} onClick={item.onPick}>
+                                업로드
+                              </button>
+                              <button type="button" style={styles.ghostButton} onClick={item.onClear}>
+                                제거
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : null}
                 </div>
 
                 <div style={styles.formActions}>
@@ -4104,6 +4470,27 @@ export default function CharacterBasicView({ hero }) {
           ref={bgmInputRef}
           style={{ display: 'none' }}
           onChange={handleBgmFileChange}
+        />
+        <input
+          type="file"
+          accept="image/*"
+          ref={pokerogueFrontInputRef}
+          style={{ display: 'none' }}
+          onChange={handlePokerogueFrontChange}
+        />
+        <input
+          type="file"
+          accept="image/*"
+          ref={pokerogueBackInputRef}
+          style={{ display: 'none' }}
+          onChange={handlePokerogueBackChange}
+        />
+        <input
+          type="file"
+          accept="image/*"
+          ref={pokerogueIconInputRef}
+          style={{ display: 'none' }}
+          onChange={handlePokerogueIconChange}
         />
       </div>
     </>

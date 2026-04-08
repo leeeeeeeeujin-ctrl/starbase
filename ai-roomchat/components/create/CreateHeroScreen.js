@@ -8,6 +8,7 @@ import HeroBackgroundUploadCard from './HeroBackgroundUploadCard';
 import HeroBgmUploadCard from './HeroBgmUploadCard';
 import HeroImageUploadCard from './HeroImageUploadCard';
 import HeroInfoFields from './HeroInfoFields';
+import HeroPokerogueFields from './HeroPokerogueFields';
 import { useHeroCreator } from './useHeroCreator';
 
 export default function CreateHeroScreen() {
@@ -134,6 +135,26 @@ export default function CreateHeroScreen() {
             onChangeName={actions.setName}
             onChangeDescription={actions.setDescription}
             onChangeSceneBackgroundDescription={actions.setSceneBackgroundDescription}
+          />
+
+          <HeroPokerogueFields
+            enabled={state.pokerogueEnabled}
+            region={state.pokerogueRegion}
+            tier={state.pokerogueTier}
+            playable={state.pokeroguePlayable}
+            frontPreview={state.pokerogueFrontPreview}
+            backPreview={state.pokerogueBackPreview}
+            iconPreview={state.pokerogueIconPreview}
+            onChangeEnabled={actions.setPokerogueEnabled}
+            onChangeRegion={actions.setPokerogueRegion}
+            onChangeTier={actions.setPokerogueTier}
+            onChangePlayable={actions.setPokeroguePlayable}
+            onSelectFront={actions.selectPokerogueFront}
+            onSelectBack={actions.selectPokerogueBack}
+            onSelectIcon={actions.selectPokerogueIcon}
+            onResetFront={actions.clearPokerogueFront}
+            onResetBack={actions.clearPokerogueBack}
+            onResetIcon={actions.clearPokerogueIcon}
           />
 
           <HeroAbilityFields
