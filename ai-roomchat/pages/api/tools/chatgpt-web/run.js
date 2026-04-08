@@ -73,7 +73,7 @@ export default async function handler(req, res) {
 
   const {
     prompt,
-    provider = 'chatgpt',
+    provider = 'wrtn-gpt5',
     expect = 'text',
     cleanup = 'delete',
     timeoutMs: rawTimeoutMs,
@@ -102,7 +102,7 @@ export default async function handler(req, res) {
       '--prompt-file',
       promptPath,
       '--provider',
-      provider === 'wrtn-gpt5' ? 'wrtn-gpt5' : 'chatgpt',
+      'wrtn-gpt5',
       '--expect',
       expect === 'json' ? 'json' : 'text',
       '--cleanup',

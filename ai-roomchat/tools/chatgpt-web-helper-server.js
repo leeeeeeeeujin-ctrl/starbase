@@ -52,7 +52,7 @@ app.get('/health', (_req, res) => {
 
 app.post('/run', async (req, res) => {
   const prompt = typeof req.body?.prompt === 'string' ? req.body.prompt : '';
-  const provider = req.body?.provider === 'wrtn-gpt5' ? 'wrtn-gpt5' : 'chatgpt';
+  const provider = 'wrtn-gpt5';
   const expectType = req.body?.expect === 'text' ? 'text' : 'json';
   const cleanupMode = req.body?.cleanup === 'none' ? 'none' : 'delete';
   const timeoutMs = Math.max(30000, Math.min(Number(req.body?.timeoutMs) || 240000, 900000));

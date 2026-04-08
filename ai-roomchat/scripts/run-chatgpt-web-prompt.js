@@ -78,7 +78,7 @@ Options:
   --prompt-file <path>     Read prompt from a file
   --prompt <text>          Inline prompt text
   --out <path>             Save result JSON to a file
-  --provider <name>        chatgpt or wrtn-gpt5 (default: chatgpt)
+  --provider <name>        wrtn-gpt5 or chatgpt (default: wrtn-gpt5)
   --expect <json|text>     Parse first fenced code block as JSON when set to json (default: text)
   --cleanup <delete|none>  Delete created chat after extraction when possible (default: delete)
   --profile-dir <path>     Chromium user data dir (default: tmp/chatgpt-web-profile)
@@ -316,7 +316,7 @@ async function main() {
       h: 'help',
     },
     default: {
-      provider: 'chatgpt',
+      provider: 'wrtn-gpt5',
       expect: 'text',
       cleanup: 'delete',
       'browser-channel': 'chromium',
