@@ -60,7 +60,7 @@ export default function PokerogueUpstreamPage() {
   const externalUpstreamUrl = process.env.NEXT_PUBLIC_POKEROGUE_UPSTREAM_URL || '';
   const isDev = process.env.NODE_ENV !== 'production';
   const bundledUpstreamUrl = '/pokerogue-embedded/index.html';
-  const [bridgeReady, setBridgeReady] = useState(typeof window === 'undefined');
+  const [bridgeReady, setBridgeReady] = useState(false);
   const iframeSrc = useMemo(
     () => externalUpstreamUrl || (isDev ? '/api/pokerogue/upstream/index.html' : bundledUpstreamUrl),
     [externalUpstreamUrl, isDev],
