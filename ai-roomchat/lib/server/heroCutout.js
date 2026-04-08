@@ -1,8 +1,13 @@
-import { removeBackground } from '@imgly/background-removal-node';
 import path from 'path';
 import { existsSync } from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
 import sharp from 'sharp';
+
+async function importBackgroundRemovalRuntime() {
+  const packageName = '@imgly/background-removal-node';
+  // Avoid static bundling of the package and its model assets into production serverless output.
+  return Function('name', 'return import(name)')(packageName);
+}
 
 function resolveModelPublicPath() {
   const candidates = [
@@ -33,6 +38,7 @@ const cutoutConfig = {
 };
 
 export async function createHeroCutout(inputBuffer) {
+  const { removeBackground } = await importBackgroundRemovalRuntime();
   const metadata = await sharp(inputBuffer, { failOn: 'none' }).metadata();
   const mimeType = metadata.format ? `image/${metadata.format === 'jpg' ? 'jpeg' : metadata.format}` : 'image/png';
   const sourceBlob = new Blob([inputBuffer], { type: mimeType });

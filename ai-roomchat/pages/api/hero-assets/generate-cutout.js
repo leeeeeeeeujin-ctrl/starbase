@@ -14,6 +14,13 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'method_not_allowed' });
   }
 
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(503).json({
+      error: 'cutout_generation_disabled_in_production',
+      detail: 'Background-removal runtime is currently limited to local/dev environments.',
+    });
+  }
+
   try {
     const { dataBase64 } = req.body || {};
     if (!dataBase64 || typeof dataBase64 !== 'string') {
