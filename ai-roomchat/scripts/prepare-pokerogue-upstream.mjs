@@ -7,7 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..", "..");
 const pokerogueWebDir = path.join(repoRoot, "pokerogue-web");
-const publicTargetDir = path.join(repoRoot, "ai-roomchat", "public", "pokerogue-upstream");
+const publicTargetDir = path.join(repoRoot, "ai-roomchat", "public", "pokerogue-embedded");
 
 function run(command, args, cwd) {
   const result = spawnSync(command, args, {
@@ -16,7 +16,7 @@ function run(command, args, cwd) {
     shell: true,
     env: {
       ...process.env,
-      VITE_BASE_PATH: "/pokerogue-upstream/",
+      VITE_BASE_PATH: "/pokerogue-embedded/",
       VITE_ENABLE_SERVICE_WORKER: "0",
     },
   });
@@ -56,7 +56,7 @@ function main() {
     throw new Error(`Expected dist directory was not created: ${distDir}`);
   }
 
-  console.log("[prepare-pokerogue-upstream] copying dist into ai-roomchat/public/pokerogue-upstream");
+  console.log("[prepare-pokerogue-upstream] copying dist into ai-roomchat/public/pokerogue-embedded");
   ensureDir(path.dirname(publicTargetDir));
   cleanDir(publicTargetDir);
   fs.cpSync(distDir, publicTargetDir, { recursive: true });

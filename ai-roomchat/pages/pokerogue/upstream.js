@@ -58,7 +58,7 @@ const iframeStyle = {
 export default function PokerogueUpstreamPage() {
   const externalUpstreamUrl = process.env.NEXT_PUBLIC_POKEROGUE_UPSTREAM_URL || '';
   const isDev = process.env.NODE_ENV !== 'production';
-  const bundledUpstreamUrl = '/pokerogue-upstream/index.html';
+  const bundledUpstreamUrl = '/pokerogue-embedded/index.html';
   const iframeSrc = externalUpstreamUrl || (isDev ? '/api/pokerogue/upstream/index.html' : bundledUpstreamUrl);
   const openInNewTabHref = externalUpstreamUrl || (isDev ? '/api/pokerogue/upstream/index.html' : bundledUpstreamUrl);
 
@@ -102,6 +102,10 @@ export default function PokerogueUpstreamPage() {
                     현재는 <strong>같은 Vercel 프로젝트 안에 번들된 정적 빌드</strong>를 iframe으로 불러온다.
                     경로:
                     <code style={{ marginLeft: 6 }}>{bundledUpstreamUrl}</code>
+                    <span style={{ display: 'block', marginTop: 8 }}>
+                      기존 <code>/pokerogue-upstream</code> 캐시/서비스워커 간섭을 피하려고 새 스코프
+                      <code style={{ marginLeft: 6 }}>/pokerogue-embedded</code>를 쓴다.
+                    </span>
                   </>
                 )}
               </>
