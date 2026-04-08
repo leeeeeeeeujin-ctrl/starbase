@@ -41,6 +41,7 @@ import {
   formatPlayWinRate,
   formatWinRateValue,
 } from '@/utils/characterPlayFormatting';
+import { buildPokerogueParticipant } from '@/lib/pokerogue/participantProfile';
 import {
   clearSharedBackgroundUrl,
   writeSharedBackgroundUrl,
@@ -1948,6 +1949,11 @@ export default function CharacterBasicView({ hero }) {
     return null;
   }, [battleSummary, selectedEntry]);
 
+  const pokerogueEntryPreview = useMemo(
+    () => (currentHero ? buildPokerogueParticipant(currentHero) : null),
+    [currentHero]
+  );
+
   const overallHeroStats = useMemo(() => {
     if (!currentHero?.id || !scoreboardMap) {
       return {
@@ -3094,7 +3100,63 @@ export default function CharacterBasicView({ hero }) {
                 <Link href="/rank/new" style={styles.primaryLinkButton}>
                   게임 등록 열기
                 </Link>
+                <Link
+                  href="/pokerogue"
+                  style={{
+                    ...styles.primaryLinkButton,
+                    background: 'rgba(15,23,42,0.58)',
+                    color: '#e2e8f0',
+                    border: '1px solid rgba(148,163,184,0.28)',
+                    boxShadow: 'none',
+                  }}
+                >
+                  포켓로그 데이터 보기
+                </Link>
               </div>
+            </div>
+
+            <div style={styles.infoBlock}>
+              <p style={styles.infoTitle}>포켓로그 참여 상태</p>
+              <p style={styles.infoText}>
+                지금은 AI 스펙 생성 없이도 참여 메타와 도트 자산만으로 캐릭터 엔트리를 만들 수 있게
+                준비하는 단계다.
+              </p>
+              {pokerogueEntryPreview ? (
+                <>
+                  <div style={styles.rankingList}>
+                    <div style={styles.listItem}>
+                      <p style={styles.listTitle}>
+                        {pokerogueEntryPreview.ready ? '즉시 주입 가능' : '보완 필요'}
+                      </p>
+                      <p style={styles.listMeta}>
+                        {pokerogueEntryPreview.region || '지역 미지정'} · {pokerogueEntryPreview.tier} ·{' '}
+                        {pokerogueEntryPreview.playable ? '플레이어블' : '비플레이어블'}
+                      </p>
+                      {!pokerogueEntryPreview.ready ? (
+                        <p style={styles.listMeta}>
+                          {`누락 항목: ${pokerogueEntryPreview.missingRequirements.join(', ')}`}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 12,
+                      padding: '14px 16px',
+                      borderRadius: 16,
+                      background: 'rgba(2,6,23,0.78)',
+                      border: '1px solid rgba(71,85,105,0.8)',
+                      fontSize: 12,
+                      lineHeight: 1.6,
+                      color: '#cbd5e1',
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                    }}
+                  >
+                    {JSON.stringify(pokerogueEntryPreview, null, 2)}
+                  </div>
+                </>
+              ) : null}
             </div>
           </div>
         </div>
