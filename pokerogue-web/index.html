@@ -46,16 +46,37 @@ SPDX-License-Identifier: AGPL-3.0-only
   <script>
     const SHOULD_REGISTER_SERVICE_WORKER = "%VITE_ENABLE_SERVICE_WORKER%" !== "0";
 
-    if (SHOULD_REGISTER_SERVICE_WORKER && "serviceWorker" in navigator) {
+    if ("serviceWorker" in navigator) {
       window.addEventListener("load", function () {
-        navigator.serviceWorker.register("./service-worker.js").then(
-          function (registration) {
-            console.log("ServiceWorker registration successful");
-          },
-          function (err) {
-            console.log("ServiceWorker registration failed: ", err);
-          },
-        );
+        if (SHOULD_REGISTER_SERVICE_WORKER) {
+          navigator.serviceWorker.register("./service-worker.js").then(
+            function (registration) {
+              console.log("ServiceWorker registration successful");
+            },
+            function (err) {
+              console.log("ServiceWorker registration failed: ", err);
+            },
+          );
+          return;
+        }
+
+        navigator.serviceWorker.getRegistrations().then(function (registrations) {
+          registrations.forEach(function (registration) {
+            registration.unregister().catch(function () {});
+          });
+        });
+
+        if ("caches" in window) {
+          caches.keys().then(function (keys) {
+            keys
+              .filter(function (key) {
+                return key.toLowerCase().includes("workbox") || key.toLowerCase().includes("pokerogue");
+              })
+              .forEach(function (key) {
+                caches.delete(key).catch(function () {});
+              });
+          });
+        }
       });
     }
 
