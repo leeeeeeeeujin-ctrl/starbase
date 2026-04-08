@@ -3,6 +3,7 @@ node_modules/
 .env.*
 !.env.local.example
 .next/
+public/pokerogue-upstream/
 reports/
 .vercel
 .env*.local

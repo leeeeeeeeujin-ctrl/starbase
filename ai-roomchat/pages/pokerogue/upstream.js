@@ -58,8 +58,9 @@ const iframeStyle = {
 export default function PokerogueUpstreamPage() {
   const externalUpstreamUrl = process.env.NEXT_PUBLIC_POKEROGUE_UPSTREAM_URL || '';
   const isDev = process.env.NODE_ENV !== 'production';
-  const iframeSrc = externalUpstreamUrl || (isDev ? '/api/pokerogue/upstream/index.html' : '');
-  const openInNewTabHref = externalUpstreamUrl || '/api/pokerogue/upstream/index.html';
+  const bundledUpstreamUrl = '/pokerogue-upstream/index.html';
+  const iframeSrc = externalUpstreamUrl || (isDev ? '/api/pokerogue/upstream/index.html' : bundledUpstreamUrl);
+  const openInNewTabHref = externalUpstreamUrl || (isDev ? '/api/pokerogue/upstream/index.html' : bundledUpstreamUrl);
 
   return (
     <main style={pageStyle}>
@@ -92,7 +93,17 @@ export default function PokerogueUpstreamPage() {
               </>
             ) : (
               <>
-                현재는 <strong>로컬 개발용</strong>으로 동작한다. <code>../pokerogue-upstream/dist</code> 폴더를 직접 읽는다.
+                {isDev ? (
+                  <>
+                    현재는 <strong>로컬 개발용</strong>으로 동작한다. <code>../pokerogue-upstream/dist</code> 폴더를 직접 읽는다.
+                  </>
+                ) : (
+                  <>
+                    현재는 <strong>같은 Vercel 프로젝트 안에 번들된 정적 빌드</strong>를 iframe으로 불러온다.
+                    경로:
+                    <code style={{ marginLeft: 6 }}>{bundledUpstreamUrl}</code>
+                  </>
+                )}
               </>
             )}
           </>
