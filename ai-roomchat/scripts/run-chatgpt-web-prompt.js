@@ -53,6 +53,7 @@ const PROVIDERS = {
       'button:has-text("Stop")',
       'button:has-text("생성 중지")',
     ],
+    settleRounds: 2,
     freshStart: async (page, timeout, clickFirst) => {
       await page.goto('https://wrtn.ai/', { waitUntil: 'domcontentloaded', timeout });
       await page.waitForTimeout(1200);
@@ -171,6 +172,9 @@ async function waitForResponse(page, timeout, provider) {
   const started = Date.now();
   let settledRounds = 0;
   let lastAssistantText = '';
+  let lastMeaningfulText = '';
+  let firstMeaningfulSeenAt = 0;
+  const settleRoundsTarget = provider.settleRounds || 3;
 
   while (Date.now() - started < timeout) {
     const stopVisible = await page
@@ -180,18 +184,40 @@ async function waitForResponse(page, timeout, provider) {
       .catch(() => false);
     const assistant = page.locator(primaryResponseSelector).last();
     const currentText = (await assistant.innerText().catch(() => '')).trim();
+    const currentLength = currentText.length;
+
+    if (currentLength > 20) {
+      lastMeaningfulText = currentText;
+      if (!firstMeaningfulSeenAt) {
+        firstMeaningfulSeenAt = Date.now();
+      }
+    }
 
     if (!stopVisible && currentText && currentText === lastAssistantText) {
       settledRounds += 1;
-      if (settledRounds >= 3) {
+      if (settledRounds >= settleRoundsTarget) {
         return;
       }
     } else {
       settledRounds = 0;
     }
 
+    if (
+      provider.id === 'wrtn-gpt5' &&
+      firstMeaningfulSeenAt &&
+      Date.now() - firstMeaningfulSeenAt > 7000 &&
+      currentLength > 20 &&
+      Math.abs(currentLength - lastAssistantText.length) < 8
+    ) {
+      return;
+    }
+
     lastAssistantText = currentText;
     await page.waitForTimeout(1000);
+  }
+
+  if (provider.id === 'wrtn-gpt5' && lastMeaningfulText) {
+    return;
   }
 
   throw new Error('Timed out waiting for provider response to settle');
@@ -240,7 +266,8 @@ function parseResult(extracted, expectType) {
     return { parsed: null, parseError: null };
   }
 
-  const block = extracted.firstCodeBlock;
+  const textBlockMatch = extracted.text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const block = extracted.firstCodeBlock || (textBlockMatch ? textBlockMatch[1].trim() : null);
   if (!block) {
     return { parsed: null, parseError: 'No fenced code block found' };
   }
