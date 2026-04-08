@@ -45,11 +45,13 @@ export const sharedConfig: UserConfigFnPromise = async ({ mode }) =>
 // biome-ignore lint/style/noDefaultExport: required for Vite
 export default defineConfig(async config => {
   const { mode, command } = config;
-  const envPort = Number(loadEnv(mode, process.cwd()).VITE_PORT);
+  const env = loadEnv(mode, process.cwd());
+  const envPort = Number(env.VITE_PORT);
+  const basePath = env.VITE_BASE_PATH || "";
 
   return {
     ...(await sharedConfig(config)),
-    base: "",
+    base: basePath,
     publicDir: command === "serve" ? "assets" : false,
     server: {
       port: Number.isNaN(envPort) ? 8000 : envPort,

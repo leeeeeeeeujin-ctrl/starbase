@@ -14,7 +14,11 @@ function run(command, args, cwd) {
     cwd,
     stdio: "inherit",
     shell: true,
-    env: process.env,
+    env: {
+      ...process.env,
+      VITE_BASE_PATH: "/pokerogue-upstream/",
+      VITE_ENABLE_SERVICE_WORKER: "0",
+    },
   });
 
   if (result.status !== 0) {
