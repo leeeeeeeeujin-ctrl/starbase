@@ -10,6 +10,8 @@ ai-roomchat/reference_data/
 repo-mirror.git/
 pokerogue-upstream/
 rogueserver-upstream/
+pokerogue-web/node_modules/
+pokerogue-web/dist/
 
 # Packaged archives and large binary artifacts
 **/*.zip
