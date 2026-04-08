@@ -9,6 +9,7 @@ import HeroBgmUploadCard from './HeroBgmUploadCard';
 import HeroImageUploadCard from './HeroImageUploadCard';
 import HeroInfoFields from './HeroInfoFields';
 import HeroPokerogueFields from './HeroPokerogueFields';
+import HeroPokerogueProfileFields from './HeroPokerogueProfileFields';
 import { useHeroCreator } from './useHeroCreator';
 
 export default function CreateHeroScreen() {
@@ -156,6 +157,13 @@ export default function CreateHeroScreen() {
             onResetBack={actions.clearPokerogueBack}
             onResetIcon={actions.clearPokerogueIcon}
           />
+
+          {state.pokerogueEnabled ? (
+            <HeroPokerogueProfileFields
+              value={state.pokerogueProfileDraft}
+              onChange={actions.setPokerogueProfileDraft}
+            />
+          ) : null}
 
           <HeroAbilityFields
             ability1={state.ability1}

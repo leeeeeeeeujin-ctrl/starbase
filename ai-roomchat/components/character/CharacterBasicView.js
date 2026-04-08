@@ -43,6 +43,10 @@ import {
 } from '@/utils/characterPlayFormatting';
 import { buildPokerogueParticipant } from '@/lib/pokerogue/participantProfile';
 import {
+  normalizePokerogueProfileDraft,
+  serializePokerogueProfileDraft,
+} from '@/lib/pokerogue/profileDraft';
+import {
   clearSharedBackgroundUrl,
   writeSharedBackgroundUrl,
 } from '@/hooks/shared/useSharedPromptSetStorage';
@@ -52,6 +56,7 @@ import useHeroProfileInfo, {
 } from '@/hooks/character/useHeroProfileInfo';
 import useParticipationCarousel from '@/hooks/character/useParticipationCarousel';
 import useInfoSlider from '@/hooks/character/useInfoSlider';
+import HeroPokerogueProfileFields from '../create/HeroPokerogueProfileFields';
 
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 const MAX_BACKGROUND_SIZE = 8 * 1024 * 1024;
@@ -1524,6 +1529,9 @@ export default function CharacterBasicView({ hero }) {
   const [pokeroguePlayable, setPokeroguePlayable] = useState(
     typeof hero?.pokerogue_playable === 'boolean' ? hero.pokerogue_playable : true
   );
+  const [pokerogueProfileDraft, setPokerogueProfileDraft] = useState(() =>
+    normalizePokerogueProfileDraft(hero?.pokerogue_profile)
+  );
   const [pokerogueFrontPreview, setPokerogueFrontPreview] = useState(
     hero?.pokerogue_front_sprite_url || ''
   );
@@ -2226,6 +2234,7 @@ export default function CharacterBasicView({ hero }) {
     setPokerogueRegion(hero?.pokerogue_region || '');
     setPokerogueTier(hero?.pokerogue_tier || 'common');
     setPokeroguePlayable(typeof hero?.pokerogue_playable === 'boolean' ? hero.pokerogue_playable : true);
+    setPokerogueProfileDraft(normalizePokerogueProfileDraft(hero?.pokerogue_profile));
     setPokerogueFrontPreview(hero?.pokerogue_front_sprite_url || '');
     setPokerogueBackPreview(hero?.pokerogue_back_sprite_url || '');
     setPokerogueIconPreview(hero?.pokerogue_icon_url || '');
@@ -2748,6 +2757,9 @@ export default function CharacterBasicView({ hero }) {
         pokerogue_region: pokerogueEnabled ? pokerogueRegion.trim() : '',
         pokerogue_tier: pokerogueEnabled ? pokerogueTier : 'common',
         pokerogue_playable: pokerogueEnabled ? pokeroguePlayable : true,
+        pokerogue_profile: pokerogueEnabled
+          ? serializePokerogueProfileDraft(pokerogueProfileDraft)
+          : {},
       };
 
       const { error } = await withTable(supabase, 'heroes', table =>
@@ -2772,6 +2784,13 @@ export default function CharacterBasicView({ hero }) {
       setImagePreview(imageUrl || '');
       setIngameImagePreview(ingameImageUrl || '');
       setBackgroundPreview(backgroundUrl || '');
+      setPokerogueEnabled(Boolean(fullPayload.pokerogue_enabled));
+      setPokerogueRegion(fullPayload.pokerogue_region || '');
+      setPokerogueTier(fullPayload.pokerogue_tier || 'common');
+      setPokeroguePlayable(
+        typeof fullPayload.pokerogue_playable === 'boolean' ? fullPayload.pokerogue_playable : true
+      );
+      setPokerogueProfileDraft(normalizePokerogueProfileDraft(fullPayload.pokerogue_profile));
       setPokerogueFrontPreview(fullPayload.pokerogue_front_sprite_url || '');
       setPokerogueBackPreview(fullPayload.pokerogue_back_sprite_url || '');
       setPokerogueIconPreview(fullPayload.pokerogue_icon_url || '');
@@ -2896,6 +2915,7 @@ export default function CharacterBasicView({ hero }) {
     setPokeroguePlayable(
       typeof currentHero?.pokerogue_playable === 'boolean' ? currentHero.pokerogue_playable : true
     );
+    setPokerogueProfileDraft(normalizePokerogueProfileDraft(currentHero?.pokerogue_profile));
     setPokerogueFrontPreview(currentHero?.pokerogue_front_sprite_url || '');
     setPokerogueBackPreview(currentHero?.pokerogue_back_sprite_url || '');
     setPokerogueIconPreview(currentHero?.pokerogue_icon_url || '');
@@ -3672,6 +3692,11 @@ export default function CharacterBasicView({ hero }) {
                           </div>
                         ))}
                       </div>
+
+                      <HeroPokerogueProfileFields
+                        value={pokerogueProfileDraft}
+                        onChange={setPokerogueProfileDraft}
+                      />
                     </>
                   ) : null}
                 </div>

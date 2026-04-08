@@ -1,11 +1,51 @@
-const DEFAULT_BASE_STATS = {
-  hp: 70,
-  attack: 70,
-  defense: 70,
-  spAttack: 70,
-  spDefense: 70,
-  speed: 70,
-};
+import {
+  normalizePokerogueProfileDraft,
+  serializePokerogueProfileDraft,
+  textToList,
+} from './profileDraft.js';
+
+const TEST_RIVAL_PROFILE = normalizePokerogueProfileDraft({
+  primaryType: 'normal',
+  secondaryType: 'light',
+  growthType: 'balanced',
+  starterCost: 3,
+  ability: 'spotlight',
+  secondaryAbility: 'quick-feet',
+  hiddenAbility: 'rival-heart',
+  passive: 'stage-presence',
+  signatureMoves: ['Curtain Call', 'Flash Step'],
+  movePool: ['tackle', 'quick-attack', 'protect', 'swift'],
+  spawnWeight: 1,
+  biography: '개발용 첫 라이벌전 고정 엔트리.',
+  baseStats: {
+    hp: 72,
+    attack: 84,
+    defense: 66,
+    spAttack: 84,
+    spDefense: 66,
+    speed: 88,
+  },
+});
+
+const TEST_RIVAL_STARTING_MOVES = ['tackle', 'quick-attack', 'curtain-call', 'flash-step'];
+
+function buildMoveSet(serialized) {
+  const signature = Array.isArray(serialized.signatureMoves) ? serialized.signatureMoves : [];
+  const levelUp = Array.isArray(serialized.movePool) ? serialized.movePool : [];
+  const starting = [...signature, ...levelUp].filter(Boolean).slice(0, 4);
+
+  return {
+    signature,
+    levelUp,
+    starting,
+    levelUpSet: levelUp.map((moveId, index) => ({
+      level: index === 0 ? 1 : Math.min(100, (index + 1) * 7),
+      moveId,
+    })),
+    egg: [],
+    tm: [],
+  };
+}
 
 function slugify(value, fallback = 'hero') {
   const source = String(value || fallback)
@@ -18,43 +58,35 @@ function slugify(value, fallback = 'hero') {
   return source || fallback;
 }
 
-function normalizeStats(raw) {
-  if (!raw || typeof raw !== 'object') return { ...DEFAULT_BASE_STATS };
-  return {
-    hp: Number.isFinite(Number(raw.hp)) ? Number(raw.hp) : DEFAULT_BASE_STATS.hp,
-    attack: Number.isFinite(Number(raw.attack)) ? Number(raw.attack) : DEFAULT_BASE_STATS.attack,
-    defense: Number.isFinite(Number(raw.defense)) ? Number(raw.defense) : DEFAULT_BASE_STATS.defense,
-    spAttack:
-      Number.isFinite(Number(raw.spAttack)) ? Number(raw.spAttack) : DEFAULT_BASE_STATS.spAttack,
-    spDefense:
-      Number.isFinite(Number(raw.spDefense)) ? Number(raw.spDefense) : DEFAULT_BASE_STATS.spDefense,
-    speed: Number.isFinite(Number(raw.speed)) ? Number(raw.speed) : DEFAULT_BASE_STATS.speed,
-  };
-}
-
-function normalizeStringArray(value) {
-  if (!Array.isArray(value)) return [];
-  return value.map(entry => String(entry || '').trim()).filter(Boolean);
-}
-
 export function buildPokerogueProfileDraft(hero) {
-  const profile =
-    hero?.pokerogue_profile && typeof hero.pokerogue_profile === 'object'
-      ? hero.pokerogue_profile
-      : {};
+  const normalized = normalizePokerogueProfileDraft(hero?.pokerogue_profile);
+  const serialized = serializePokerogueProfileDraft(normalized);
 
   return {
     speciesId: hero?.id ? `hero-${hero.id}` : null,
     slug: slugify(hero?.name || hero?.id || 'hero'),
-    types: normalizeStringArray(profile.types),
-    baseStats: normalizeStats(profile.baseStats),
-    growthType: String(profile.growthType || 'balanced'),
-    passive: profile.passive || null,
-    ability: profile.ability || null,
-    signatureMoves: normalizeStringArray(profile.signatureMoves),
-    movePool: normalizeStringArray(profile.movePool),
-    spawnWeight: Number.isFinite(Number(profile.spawnWeight)) ? Number(profile.spawnWeight) : 1,
-    biography: String(profile.biography || '').trim(),
+    types: serialized.types,
+    type1: serialized.types[0] || null,
+    type2: serialized.types[1] || null,
+    baseStats: serialized.baseStats,
+    growthType: serialized.growthType,
+    starterCost: serialized.starterCost,
+    passive: serialized.passive || null,
+    ability: serialized.ability || null,
+    secondaryAbility: serialized.secondaryAbility || null,
+    hiddenAbility: serialized.hiddenAbility || null,
+    abilities: {
+      primary: serialized.ability || null,
+      secondary: serialized.secondaryAbility || null,
+      hidden: serialized.hiddenAbility || null,
+      passive: serialized.passive || null,
+    },
+    signatureMoves: serialized.signatureMoves,
+    movePool: serialized.movePool,
+    moves: buildMoveSet(serialized),
+    spawnWeight: serialized.spawnWeight,
+    biography: String(serialized.biography || '').trim(),
+    draft: normalized,
   };
 }
 
@@ -66,6 +98,12 @@ export function getPokerogueMissingRequirements(hero) {
   if (!hero?.pokerogue_front_sprite_url) missing.push('frontSprite');
   if (!hero?.pokerogue_back_sprite_url) missing.push('backSprite');
   if (!hero?.pokerogue_icon_url) missing.push('iconSprite');
+  const draft = normalizePokerogueProfileDraft(hero?.pokerogue_profile);
+  if (!draft.primaryType) missing.push('primaryType');
+  if (!draft.ability) missing.push('ability');
+  if (!textToList(draft.signatureMovesText).length && !textToList(draft.movePoolText).length) {
+    missing.push('movePool');
+  }
   return missing;
 }
 
@@ -104,8 +142,79 @@ export function buildPokerogueParticipant(hero) {
   };
 }
 
+export function buildPokerogueTestRival() {
+  const serialized = serializePokerogueProfileDraft(TEST_RIVAL_PROFILE);
+  const moves = buildMoveSet(serialized);
+  return {
+    id: 'test-rival-001',
+    heroId: null,
+    slug: 'test-rival-001',
+    name: '테스트 라이벌',
+    enabled: true,
+    ready: true,
+    missingRequirements: [],
+    region: 'starter-plains',
+    tier: 'elite',
+    playable: false,
+    legendary: false,
+    encounter: {
+      fixedRole: 'first-rival',
+      fixedWave: 1,
+    },
+    sprites: {
+      front: '/icon.png',
+      back: '/icon.png',
+      icon: '/icon.png',
+    },
+    audio: {
+      battleThemeUrl: null,
+    },
+    profile: {
+      speciesId: 'test-rival-001',
+      slug: 'test-rival-001',
+      types: serialized.types,
+      type1: serialized.types[0] || null,
+      type2: serialized.types[1] || null,
+      baseStats: serialized.baseStats,
+      growthType: serialized.growthType,
+      starterCost: serialized.starterCost,
+      passive: serialized.passive,
+      ability: serialized.ability,
+      secondaryAbility: serialized.secondaryAbility,
+      hiddenAbility: serialized.hiddenAbility,
+      abilities: {
+        primary: serialized.ability,
+        secondary: serialized.secondaryAbility,
+        hidden: serialized.hiddenAbility,
+        passive: serialized.passive,
+      },
+      signatureMoves: serialized.signatureMoves,
+      movePool: serialized.movePool,
+      moves: {
+        ...moves,
+        starting: TEST_RIVAL_STARTING_MOVES,
+        levelUpSet: TEST_RIVAL_STARTING_MOVES.map((moveId, index) => ({
+          level: index === 0 ? 1 : index + 1,
+          moveId,
+        })),
+      },
+      spawnWeight: serialized.spawnWeight,
+      biography: serialized.biography,
+      draft: TEST_RIVAL_PROFILE,
+    },
+    source: {
+      sceneBackgroundDescription: '테스트 라이벌전',
+      imageUrl: '/icon.png',
+      ingameImageUrl: '/icon.png',
+      updatedAt: null,
+    },
+    isTestEntry: true,
+  };
+}
+
 export function buildPokerogueRoster(heroes, options = {}) {
-  const { readyOnly = false } = options;
+  const { readyOnly = false, includeTestRival = false } = options;
   const entries = Array.isArray(heroes) ? heroes.map(buildPokerogueParticipant) : [];
-  return readyOnly ? entries.filter(entry => entry.ready) : entries;
+  const filtered = readyOnly ? entries.filter(entry => entry.ready) : entries;
+  return includeTestRival ? [buildPokerogueTestRival(), ...filtered] : filtered;
 }

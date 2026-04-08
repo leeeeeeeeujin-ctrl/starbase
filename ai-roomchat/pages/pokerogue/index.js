@@ -50,6 +50,7 @@ export default function PokerogueIndexPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [entries, setEntries] = useState([]);
+  const [firstRival, setFirstRival] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -64,6 +65,7 @@ export default function PokerogueIndexPage() {
         }
         if (!cancelled) {
           setEntries(Array.isArray(payload.entries) ? payload.entries : []);
+          setFirstRival(payload.firstRival || null);
         }
       } catch (fetchError) {
         if (!cancelled) setError(fetchError?.message || '포켓로그 참여 캐릭터를 불러오지 못했습니다.');
@@ -95,8 +97,23 @@ export default function PokerogueIndexPage() {
                 AI 스펙 생성 전 단계에서, 현재 캐릭터 메타를 포켓로그 엔트리로 변환한 결과를
                 확인하는 개발용 화면이다.
               </p>
+              <p style={{ margin: 0, color: '#67e8f9', fontSize: 12 }}>
+                첫 라이벌전 고정 테스트 엔트리가 항상 맨 앞에 포함된다.
+              </p>
             </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <Link
+                href="/pokerogue/playground"
+                style={{
+                  padding: '10px 16px',
+                  borderRadius: 999,
+                  border: '1px solid rgba(148,163,184,0.28)',
+                  color: '#e2e8f0',
+                  textDecoration: 'none',
+                }}
+              >
+                플레이그라운드
+              </Link>
               <Link
                 href="/roster"
                 style={{
@@ -153,6 +170,17 @@ export default function PokerogueIndexPage() {
           <JsonPane value={sampleJson || '[]'} />
         </section>
 
+        {firstRival ? (
+          <section style={{ ...cardStyle, display: 'grid', gap: 16 }}>
+            <h2 style={{ margin: 0, fontSize: 18 }}>첫 라이벌전 고정 테스트 엔트리</h2>
+            <div style={{ fontSize: 13, color: '#cbd5e1' }}>
+              {firstRival.name} · {firstRival.region} · 시작 기술:{' '}
+              {(firstRival.profile?.moves?.starting || []).join(', ') || '없음'}
+            </div>
+            <JsonPane value={JSON.stringify(firstRival, null, 2)} />
+          </section>
+        ) : null}
+
         <section style={{ ...cardStyle, display: 'grid', gap: 12 }}>
           <h2 style={{ margin: 0, fontSize: 18 }}>참여 캐릭터 목록</h2>
           {entries.length ? (
@@ -178,6 +206,7 @@ export default function PokerogueIndexPage() {
                   <div style={{ fontSize: 12, color: '#94a3b8' }}>
                     {entry.region || '지역 미지정'} · {entry.tier} ·{' '}
                     {entry.playable ? '플레이어블' : '비플레이어블'}
+                    {entry.encounter?.fixedRole ? ` · ${entry.encounter.fixedRole}` : ''}
                   </div>
                   <div style={{ fontSize: 12, color: '#cbd5e1' }}>{entry.slug}</div>
                 </div>

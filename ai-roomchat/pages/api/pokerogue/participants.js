@@ -1,5 +1,8 @@
 import { supabaseAdmin } from '../../../lib/supabaseAdmin.js';
-import { buildPokerogueRoster } from '../../../lib/pokerogue/participantProfile.js';
+import {
+  buildPokerogueRoster,
+  buildPokerogueTestRival,
+} from '../../../lib/pokerogue/participantProfile.js';
 
 const HERO_COLUMNS = [
   'id',
@@ -30,6 +33,7 @@ export default async function handler(req, res) {
   }
 
   const readyOnly = req.query?.ready === '1' || req.query?.ready === 'true';
+  const includeTestRival = req.query?.test !== '0' && req.query?.test !== 'false';
 
   try {
     const query = supabaseAdmin
@@ -48,14 +52,16 @@ export default async function handler(req, res) {
       });
     }
 
-    const roster = buildPokerogueRoster(data, { readyOnly });
+    const roster = buildPokerogueRoster(data, { readyOnly, includeTestRival });
     const readyCount = roster.filter(entry => entry.ready).length;
 
     return res.status(200).json({
       ok: true,
       readyOnly,
+      includeTestRival,
       count: roster.length,
       readyCount,
+      firstRival: includeTestRival ? buildPokerogueTestRival() : null,
       entries: roster,
     });
   } catch (error) {

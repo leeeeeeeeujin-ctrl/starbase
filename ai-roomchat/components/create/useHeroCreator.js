@@ -7,6 +7,10 @@ import { uploadHeroImageBundle } from '../../utils/heroIngameImage';
 import { generateHeroCutoutPreview } from '../../utils/heroIngameImage';
 import { uploadAsset } from '../../utils/uploader';
 import { withTable } from '../../lib/supabaseTables';
+import {
+  normalizePokerogueProfileDraft,
+  serializePokerogueProfileDraft,
+} from '../../lib/pokerogue/profileDraft';
 
 function revokeUrl(url) {
   if (url) {
@@ -38,6 +42,9 @@ export function useHeroCreator({ onSaved } = {}) {
   const [pokerogueFrontFile, setPokerogueFrontFile] = useState(null);
   const [pokerogueBackFile, setPokerogueBackFile] = useState(null);
   const [pokerogueIconFile, setPokerogueIconFile] = useState(null);
+  const [pokerogueProfileDraft, setPokerogueProfileDraft] = useState(() =>
+    normalizePokerogueProfileDraft({})
+  );
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -310,7 +317,9 @@ export function useHeroCreator({ onSaved } = {}) {
           pokerogue_region: pokerogueEnabled ? pokerogueRegion.trim() : '',
           pokerogue_tier: pokerogueEnabled ? pokerogueTier : 'common',
           pokerogue_playable: pokerogueEnabled ? pokeroguePlayable : true,
-          pokerogue_profile: {},
+          pokerogue_profile: pokerogueEnabled
+            ? serializePokerogueProfileDraft(pokerogueProfileDraft)
+            : {},
         })
       );
       if (insertError) throw insertError;
@@ -341,6 +350,7 @@ export function useHeroCreator({ onSaved } = {}) {
     pokerogueFrontFile,
     pokerogueIconFile,
     pokeroguePlayable,
+    pokerogueProfileDraft,
     pokerogueRegion,
     pokerogueTier,
     sanitizeFileName,
@@ -362,6 +372,7 @@ export function useHeroCreator({ onSaved } = {}) {
       pokerogueFrontPreview,
       pokerogueBackPreview,
       pokerogueIconPreview,
+      pokerogueProfileDraft,
       name,
       description,
       sceneBackgroundDescription,
@@ -383,6 +394,7 @@ export function useHeroCreator({ onSaved } = {}) {
       setPokerogueRegion,
       setPokerogueTier,
       setPokeroguePlayable,
+      setPokerogueProfileDraft,
       selectImage,
       selectBackground,
       clearBackground,
