@@ -81,6 +81,7 @@ Schema:
 
 export default function ChatgptWebToolsPage() {
   const [prompt, setPrompt] = useState(DEFAULT_PROMPT);
+  const [provider, setProvider] = useState('chatgpt');
   const [expectType, setExpectType] = useState('json');
   const [cleanupMode, setCleanupMode] = useState('delete');
   const [timeoutMs, setTimeoutMs] = useState(240000);
@@ -114,6 +115,7 @@ export default function ChatgptWebToolsPage() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           prompt,
+          provider,
           expect: expectType,
           cleanup: cleanupMode,
           timeoutMs,
@@ -144,9 +146,9 @@ export default function ChatgptWebToolsPage() {
             <div style={{ display: 'grid', gap: 6 }}>
               <h1 style={{ margin: 0, fontSize: 28 }}>ChatGPT 웹 보조 실행기</h1>
               <p style={{ margin: 0, color: '#94a3b8', lineHeight: 1.7 }}>
-                로그인된 브라우저 세션에서 ChatGPT 웹을 열고, 새 채팅에 프롬프트를 넣어 코드블록
-                응답을 회수하는 개발용 도구다. 인간 확인이나 로그인 화면이 뜨면 열린 브라우저에서
-                직접 처리하면 된다.
+                로그인된 브라우저 세션에서 ChatGPT 웹 또는 뤼튼 GPT-5를 열고, 새 채팅에 프롬프트를
+                넣어 코드블록 응답을 회수하는 개발용 도구다. 인간 확인이나 로그인 화면이 뜨면 열린
+                브라우저에서 직접 처리하면 된다.
               </p>
             </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -179,6 +181,14 @@ export default function ChatgptWebToolsPage() {
               gap: 12,
             }}
           >
+            <div style={{ display: 'grid', gap: 8 }}>
+              <label style={{ fontWeight: 700 }}>대상 서비스</label>
+              <select value={provider} onChange={event => setProvider(event.target.value)} style={fieldStyle}>
+                <option value="chatgpt">ChatGPT 웹</option>
+                <option value="wrtn-gpt5">뤼튼 GPT-5</option>
+              </select>
+            </div>
+
             <div style={{ display: 'grid', gap: 8 }}>
               <label style={{ fontWeight: 700 }}>실행 경로</label>
               <select value={runMode} onChange={event => setRunMode(event.target.value)} style={fieldStyle}>

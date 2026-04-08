@@ -3,6 +3,71 @@ const path = require('path');
 const minimist = require('minimist');
 const { chromium } = require('@playwright/test');
 
+const PROVIDERS = {
+  chatgpt: {
+    id: 'chatgpt',
+    startUrl: 'https://chatgpt.com/',
+    composerSelectors: [
+      '#prompt-textarea',
+      'textarea[placeholder]',
+      'textarea',
+      '[contenteditable="true"][data-lexical-editor="true"]',
+      '[contenteditable="true"]',
+    ],
+    responseSelectors: ['[data-message-author-role="assistant"]'],
+    codeSelectors: ['pre code'],
+    stopSelectors: [
+      'button[aria-label*="Stop"]',
+      'button:has-text("Stop generating")',
+      'button:has-text("중단")',
+    ],
+    freshStart: async (page, timeout, clickFirst) => {
+      const clicked = await clickFirst(page, [
+        'button[aria-label*="New chat"]',
+        'button[aria-label*="새 채팅"]',
+        'button:has-text("New chat")',
+        'button:has-text("새 채팅")',
+        'a:has-text("New chat")',
+        'a:has-text("새 채팅")',
+      ]);
+      if (!clicked) {
+        await page.goto('https://chatgpt.com/', { waitUntil: 'domcontentloaded', timeout });
+      }
+      await page.waitForTimeout(1200);
+    },
+    cleanupSupported: true,
+  },
+  'wrtn-gpt5': {
+    id: 'wrtn-gpt5',
+    startUrl: 'https://wrtn.ai/',
+    composerSelectors: ['textarea[placeholder]', 'textarea', '[contenteditable="true"]', 'input[type="text"]'],
+    responseSelectors: [
+      'article',
+      '[data-testid*="message"]',
+      '[class*="message"]',
+      '[class*="chat"] [class*="bubble"]',
+    ],
+    codeSelectors: ['pre code', 'code'],
+    stopSelectors: [
+      'button:has-text("중단")',
+      'button:has-text("Stop")',
+      'button:has-text("생성 중지")',
+    ],
+    freshStart: async (page, timeout, clickFirst) => {
+      await page.goto('https://wrtn.ai/', { waitUntil: 'domcontentloaded', timeout });
+      await page.waitForTimeout(1200);
+      await clickFirst(page, [
+        'text=GPT-5',
+        'button:has-text("GPT-5")',
+        'a:has-text("GPT-5")',
+        'img[alt*="GPT-5"]',
+      ], 2500).catch(() => false);
+      await page.waitForTimeout(1500);
+    },
+    cleanupSupported: false,
+  },
+};
+
 function usage() {
   console.log(`
 Usage:
@@ -13,6 +78,7 @@ Options:
   --prompt-file <path>     Read prompt from a file
   --prompt <text>          Inline prompt text
   --out <path>             Save result JSON to a file
+  --provider <name>        chatgpt or wrtn-gpt5 (default: chatgpt)
   --expect <json|text>     Parse first fenced code block as JSON when set to json (default: text)
   --cleanup <delete|none>  Delete created chat after extraction when possible (default: delete)
   --profile-dir <path>     Chromium user data dir (default: tmp/chatgpt-web-profile)
@@ -49,15 +115,7 @@ async function clickFirst(page, candidates, timeout = 1500) {
   return false;
 }
 
-async function locateComposer(page, timeout) {
-  const selectors = [
-    '#prompt-textarea',
-    'textarea[placeholder]',
-    'textarea',
-    '[contenteditable="true"][data-lexical-editor="true"]',
-    '[contenteditable="true"]',
-  ];
-
+async function locateComposer(page, timeout, selectors) {
   const start = Date.now();
   while (Date.now() - start < timeout) {
     for (const selector of selectors) {
@@ -70,34 +128,17 @@ async function locateComposer(page, timeout) {
     }
     await page.waitForTimeout(500);
   }
-  throw new Error('Could not find ChatGPT composer');
+  throw new Error('Could not find provider composer');
 }
 
-async function ensureLoggedIn(page, timeout) {
-  await page.goto('https://chatgpt.com/', { waitUntil: 'domcontentloaded', timeout });
-  const composer = await locateComposer(page, timeout);
+async function ensureLoggedIn(page, timeout, provider) {
+  await page.goto(provider.startUrl, { waitUntil: 'domcontentloaded', timeout });
+  const composer = await locateComposer(page, timeout, provider.composerSelectors);
   await composer.waitFor({ state: 'visible', timeout });
 }
 
-async function startFreshChat(page) {
-  const clicked = await clickFirst(page, [
-    'button[aria-label*="New chat"]',
-    'button[aria-label*="새 채팅"]',
-    'button:has-text("New chat")',
-    'button:has-text("새 채팅")',
-    'a:has-text("New chat")',
-    'a:has-text("새 채팅")',
-  ]);
-  if (clicked) {
-    await page.waitForTimeout(1200);
-    return;
-  }
-  await page.goto('https://chatgpt.com/', { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(1200);
-}
-
-async function submitPrompt(page, prompt, timeout) {
-  const composer = await locateComposer(page, timeout);
+async function submitPrompt(page, prompt, timeout, provider) {
+  const composer = await locateComposer(page, timeout, provider.composerSelectors);
   await composer.click();
   try {
     await composer.fill(prompt);
@@ -112,6 +153,8 @@ async function submitPrompt(page, prompt, timeout) {
     'button[aria-label*="Send prompt"]',
     'button[aria-label*="메시지 보내기"]',
     'button[data-testid="send-button"]',
+    'button:has-text("보내기")',
+    'button:has-text("전송")',
   ], 500);
 
   if (!sendClicked) {
@@ -121,17 +164,21 @@ async function submitPrompt(page, prompt, timeout) {
   }
 }
 
-async function waitForResponse(page, timeout) {
-  const assistantSelector = '[data-message-author-role="assistant"]';
-  await page.waitForSelector(assistantSelector, { timeout });
+async function waitForResponse(page, timeout, provider) {
+  const primaryResponseSelector = provider.responseSelectors[0];
+  await page.waitForSelector(primaryResponseSelector, { timeout });
 
   const started = Date.now();
   let settledRounds = 0;
   let lastAssistantText = '';
 
   while (Date.now() - started < timeout) {
-    const stopVisible = await page.locator('button[aria-label*="Stop"], button:has-text("Stop generating"), button:has-text("중단")').first().isVisible().catch(() => false);
-    const assistant = page.locator(assistantSelector).last();
+    const stopVisible = await page
+      .locator(provider.stopSelectors.join(', '))
+      .first()
+      .isVisible()
+      .catch(() => false);
+    const assistant = page.locator(primaryResponseSelector).last();
     const currentText = (await assistant.innerText().catch(() => '')).trim();
 
     if (!stopVisible && currentText && currentText === lastAssistantText) {
@@ -147,15 +194,39 @@ async function waitForResponse(page, timeout) {
     await page.waitForTimeout(1000);
   }
 
-  throw new Error('Timed out waiting for assistant response to settle');
+  throw new Error('Timed out waiting for provider response to settle');
 }
 
-async function extractResponse(page) {
-  const assistant = page.locator('[data-message-author-role="assistant"]').last();
-  const text = (await assistant.innerText()).trim();
-  const codeBlocks = await assistant.locator('pre code').evaluateAll((nodes) =>
-    nodes.map((node) => node.textContent || '').filter(Boolean)
-  );
+async function extractResponse(page, provider) {
+  let assistant = null;
+  for (const selector of provider.responseSelectors) {
+    const candidate = page.locator(selector).last();
+    try {
+      if (await candidate.count()) {
+        assistant = candidate;
+        break;
+      }
+    } catch (_) {}
+  }
+
+  if (!assistant) {
+    throw new Error('Could not find provider response container');
+  }
+
+  const text = (await assistant.innerText().catch(() => '')).trim();
+  let codeBlocks = [];
+
+  for (const selector of provider.codeSelectors) {
+    try {
+      const found = await assistant.locator(selector).evaluateAll(nodes =>
+        nodes.map(node => node.textContent || '').filter(Boolean)
+      );
+      if (found.length) {
+        codeBlocks = found;
+        break;
+      }
+    } catch (_) {}
+  }
 
   return {
     text,
@@ -181,7 +252,11 @@ function parseResult(extracted, expectType) {
   }
 }
 
-async function cleanupConversation(page) {
+async function cleanupConversation(page, provider) {
+  if (!provider.cleanupSupported) {
+    return { cleaned: false, reason: 'cleanup_not_supported_for_provider' };
+  }
+
   const clickedMenu = await clickFirst(page, [
     'button[aria-label*="More"]',
     'button[aria-label*="more"]',
@@ -226,6 +301,7 @@ async function main() {
       'prompt',
       'prompt-file',
       'out',
+      'provider',
       'expect',
       'cleanup',
       'profile-dir',
@@ -240,6 +316,7 @@ async function main() {
       h: 'help',
     },
     default: {
+      provider: 'chatgpt',
       expect: 'text',
       cleanup: 'delete',
       'browser-channel': 'chromium',
@@ -257,6 +334,11 @@ async function main() {
     prompt: argv.prompt,
     promptFile: argv['prompt-file'],
   });
+  const provider = PROVIDERS[String(argv.provider || 'chatgpt')];
+
+  if (!provider) {
+    throw new Error(`Unsupported provider: ${argv.provider}`);
+  }
 
   const profileDir = path.resolve(
     argv['user-data-dir'] || argv['profile-dir'] || path.join(process.cwd(), 'tmp', 'chatgpt-web-profile')
@@ -300,16 +382,16 @@ async function main() {
   let cleanup = null;
 
   try {
-    await ensureLoggedIn(page, timeout);
-    await startFreshChat(page);
+    await ensureLoggedIn(page, timeout, provider);
+    await provider.freshStart(page, timeout, clickFirst);
     const beforeSubmitUrl = page.url();
-    await submitPrompt(page, prompt, timeout);
-    await waitForResponse(page, timeout);
-    extracted = await extractResponse(page);
+    await submitPrompt(page, prompt, timeout, provider);
+    await waitForResponse(page, timeout, provider);
+    extracted = await extractResponse(page, provider);
     ({ parsed, parseError } = parseResult(extracted, argv.expect));
 
     if (argv.cleanup === 'delete') {
-      cleanup = await cleanupConversation(page);
+      cleanup = await cleanupConversation(page, provider);
     } else {
       cleanup = { cleaned: false, reason: 'cleanup_disabled' };
     }
@@ -317,6 +399,7 @@ async function main() {
     const payload = {
       ok: !parseError,
       startedAt,
+      provider: provider.id,
       profileDir,
       profileName,
       browserChannel,
@@ -342,11 +425,12 @@ async function main() {
       console.log(serialized);
     }
   } catch (error) {
-    const screenshotPath = path.join(process.cwd(), 'tmp', 'chatgpt-web-error.png');
+    const screenshotPath = path.join(process.cwd(), 'tmp', `chatgpt-web-error-${provider.id}.png`);
     await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
     const failure = {
       ok: false,
       startedAt,
+      provider: provider.id,
       profileDir,
       profileName,
       browserChannel,
@@ -373,7 +457,7 @@ async function main() {
   }
 }
 
-main().catch((error) => {
+main().catch(error => {
   console.error(error);
   process.exit(1);
 });
