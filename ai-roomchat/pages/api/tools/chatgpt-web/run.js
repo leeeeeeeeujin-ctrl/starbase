@@ -77,6 +77,10 @@ export default async function handler(req, res) {
     cleanup = 'delete',
     timeoutMs: rawTimeoutMs,
     headless = false,
+    browserChannel = 'chromium',
+    executablePath = '',
+    userDataDir = '',
+    profileName = '',
   } = req.body || {};
 
   if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
@@ -104,7 +108,21 @@ export default async function handler(req, res) {
       resultPath,
       '--timeout',
       String(timeoutMs),
+      '--browser-channel',
+      browserChannel === 'chrome' ? 'chrome' : 'chromium',
     ];
+
+    if (executablePath && typeof executablePath === 'string') {
+      args.push('--executable-path', executablePath);
+    }
+
+    if (userDataDir && typeof userDataDir === 'string') {
+      args.push('--user-data-dir', userDataDir);
+    }
+
+    if (profileName && typeof profileName === 'string') {
+      args.push('--profile-name', profileName);
+    }
 
     if (headless) {
       args.push('--headless');

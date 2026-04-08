@@ -56,6 +56,10 @@ app.post('/run', async (req, res) => {
   const cleanupMode = req.body?.cleanup === 'none' ? 'none' : 'delete';
   const timeoutMs = Math.max(30000, Math.min(Number(req.body?.timeoutMs) || 240000, 900000));
   const headless = Boolean(req.body?.headless);
+  const browserChannel = req.body?.browserChannel === 'chrome' ? 'chrome' : 'chromium';
+  const executablePath = typeof req.body?.executablePath === 'string' ? req.body.executablePath.trim() : '';
+  const userDataDir = typeof req.body?.userDataDir === 'string' ? req.body.userDataDir.trim() : '';
+  const profileName = typeof req.body?.profileName === 'string' ? req.body.profileName.trim() : '';
 
   if (!prompt.trim()) {
     return res.status(400).json({ ok: false, error: 'prompt_required' });
@@ -80,7 +84,21 @@ app.post('/run', async (req, res) => {
       String(timeoutMs),
       '--cleanup',
       cleanupMode,
+      '--browser-channel',
+      browserChannel,
     ];
+
+    if (executablePath) {
+      args.push('--executable-path', executablePath);
+    }
+
+    if (userDataDir) {
+      args.push('--user-data-dir', userDataDir);
+    }
+
+    if (profileName) {
+      args.push('--profile-name', profileName);
+    }
 
     if (headless) {
       args.push('--headless');

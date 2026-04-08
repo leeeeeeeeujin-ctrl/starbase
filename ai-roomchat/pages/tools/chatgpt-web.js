@@ -87,6 +87,10 @@ export default function ChatgptWebToolsPage() {
   const [headless, setHeadless] = useState(false);
   const [runMode, setRunMode] = useState('local-helper');
   const [helperUrl, setHelperUrl] = useState('http://127.0.0.1:4319');
+  const [browserChannel, setBrowserChannel] = useState('chrome');
+  const [userDataDir, setUserDataDir] = useState('');
+  const [profileName, setProfileName] = useState('Default');
+  const [executablePath, setExecutablePath] = useState('');
   const [running, setRunning] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
@@ -114,6 +118,10 @@ export default function ChatgptWebToolsPage() {
           cleanup: cleanupMode,
           timeoutMs,
           headless,
+          browserChannel,
+          userDataDir,
+          profileName,
+          executablePath,
         }),
       });
       const payload = await response.json().catch(() => null);
@@ -180,6 +188,14 @@ export default function ChatgptWebToolsPage() {
             </div>
 
             <div style={{ display: 'grid', gap: 8 }}>
+              <label style={{ fontWeight: 700 }}>브라우저 채널</label>
+              <select value={browserChannel} onChange={event => setBrowserChannel(event.target.value)} style={fieldStyle}>
+                <option value="chrome">설치된 Chrome</option>
+                <option value="chromium">Playwright Chromium</option>
+              </select>
+            </div>
+
+            <div style={{ display: 'grid', gap: 8 }}>
               <label style={{ fontWeight: 700 }}>기대 응답 형식</label>
               <select value={expectType} onChange={event => setExpectType(event.target.value)} style={fieldStyle}>
                 <option value="json">JSON 코드블록</option>
@@ -232,6 +248,47 @@ export default function ChatgptWebToolsPage() {
             </div>
           ) : null}
 
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: 12,
+            }}
+          >
+            <div style={{ display: 'grid', gap: 8 }}>
+              <label style={{ fontWeight: 700 }}>사용자 데이터 폴더</label>
+              <input
+                type="text"
+                value={userDataDir}
+                onChange={event => setUserDataDir(event.target.value)}
+                style={fieldStyle}
+                placeholder="예: C:\\Users\\...\\AppData\\Local\\Google\\Chrome\\User Data"
+              />
+            </div>
+
+            <div style={{ display: 'grid', gap: 8 }}>
+              <label style={{ fontWeight: 700 }}>프로필 이름</label>
+              <input
+                type="text"
+                value={profileName}
+                onChange={event => setProfileName(event.target.value)}
+                style={fieldStyle}
+                placeholder="Default / Profile 1"
+              />
+            </div>
+
+            <div style={{ display: 'grid', gap: 8 }}>
+              <label style={{ fontWeight: 700 }}>브라우저 실행 파일 경로</label>
+              <input
+                type="text"
+                value={executablePath}
+                onChange={event => setExecutablePath(event.target.value)}
+                style={fieldStyle}
+                placeholder="비워두면 channel 사용"
+              />
+            </div>
+          </div>
+
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <button
               type="button"
@@ -256,11 +313,13 @@ export default function ChatgptWebToolsPage() {
             <br />
             1. 로컬 헬퍼를 쓸 땐 <code>npm run chatgpt:web:bridge</code>로 먼저 브리지를 띄운다.
             <br />
-            2. 버튼을 누른 뒤 열린 Chromium 창을 본다.
+            2. Chrome 기존 프로필을 쓰려면 사용자 데이터 폴더와 프로필 이름을 넣고, 가능하면 기존 Chrome 창은 먼저 닫는다.
             <br />
-            3. Cloudflare 인간 확인이나 로그인 화면이 뜨면 직접 통과한다.
+            3. 버튼을 누른 뒤 열린 브라우저 창을 본다.
             <br />
-            4. 그러면 스크립트가 새 채팅에 프롬프트를 넣고 응답을 기다린다.
+            4. Cloudflare 인간 확인이나 로그인 화면이 뜨면 직접 통과한다.
+            <br />
+            5. 그러면 스크립트가 새 채팅에 프롬프트를 넣고 응답을 기다린다.
           </div>
         </section>
 

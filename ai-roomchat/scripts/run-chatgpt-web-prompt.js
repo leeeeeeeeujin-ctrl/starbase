@@ -16,6 +16,10 @@ Options:
   --expect <json|text>     Parse first fenced code block as JSON when set to json (default: text)
   --cleanup <delete|none>  Delete created chat after extraction when possible (default: delete)
   --profile-dir <path>     Chromium user data dir (default: tmp/chatgpt-web-profile)
+  --user-data-dir <path>   Browser user data dir (preferred over --profile-dir)
+  --profile-name <name>    Existing Chrome profile name, for example Default or Profile 1
+  --browser-channel <name> Browser channel to launch (default: chromium, use chrome for installed Chrome)
+  --executable-path <path> Explicit browser executable path
   --headless               Run headless (default: false)
   --timeout <ms>           Per-step timeout in milliseconds (default: 120000)
   --help                   Show this help
@@ -218,7 +222,19 @@ async function cleanupConversation(page) {
 
 async function main() {
   const argv = minimist(process.argv.slice(2), {
-    string: ['prompt', 'prompt-file', 'out', 'expect', 'cleanup', 'profile-dir', 'timeout'],
+    string: [
+      'prompt',
+      'prompt-file',
+      'out',
+      'expect',
+      'cleanup',
+      'profile-dir',
+      'user-data-dir',
+      'profile-name',
+      'browser-channel',
+      'executable-path',
+      'timeout',
+    ],
     boolean: ['headless', 'help'],
     alias: {
       h: 'help',
@@ -226,6 +242,7 @@ async function main() {
     default: {
       expect: 'text',
       cleanup: 'delete',
+      'browser-channel': 'chromium',
       headless: false,
       timeout: '120000',
     },
@@ -241,15 +258,34 @@ async function main() {
     promptFile: argv['prompt-file'],
   });
 
-  const profileDir = path.resolve(argv['profile-dir'] || path.join(process.cwd(), 'tmp', 'chatgpt-web-profile'));
+  const profileDir = path.resolve(
+    argv['user-data-dir'] || argv['profile-dir'] || path.join(process.cwd(), 'tmp', 'chatgpt-web-profile')
+  );
+  const profileName = argv['profile-name'] ? String(argv['profile-name']) : '';
+  const browserChannel = String(argv['browser-channel'] || 'chromium');
+  const executablePath = argv['executable-path'] ? path.resolve(argv['executable-path']) : '';
   const timeout = Number(argv.timeout) || 120000;
 
   fs.mkdirSync(profileDir, { recursive: true });
 
-  const context = await chromium.launchPersistentContext(profileDir, {
+  const launchOptions = {
     headless: Boolean(argv.headless),
     viewport: { width: 1440, height: 960 },
-  });
+  };
+
+  if (browserChannel === 'chrome' && !executablePath) {
+    launchOptions.channel = 'chrome';
+  }
+
+  if (executablePath) {
+    launchOptions.executablePath = executablePath;
+  }
+
+  if (profileName) {
+    launchOptions.args = [`--profile-directory=${profileName}`];
+  }
+
+  const context = await chromium.launchPersistentContext(profileDir, launchOptions);
 
   let page = context.pages()[0];
   if (!page) {
@@ -282,6 +318,9 @@ async function main() {
       ok: !parseError,
       startedAt,
       profileDir,
+      profileName,
+      browserChannel,
+      executablePath,
       initialUrl,
       beforeSubmitUrl,
       finalUrl: page.url(),
@@ -309,6 +348,9 @@ async function main() {
       ok: false,
       startedAt,
       profileDir,
+      profileName,
+      browserChannel,
+      executablePath,
       finalUrl: page.url(),
       prompt,
       error: error.message,
