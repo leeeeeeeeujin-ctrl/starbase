@@ -54,9 +54,25 @@ const PROVIDERS = {
       'button:has-text("생성 중지")',
     ],
     settleRounds: 2,
+    dismissOverlaySelectors: [
+      'button[aria-label="닫기"]',
+      'button[aria-label*="close"]',
+      'button[aria-label*="Close"]',
+      'button:has-text("닫기")',
+      '[role="dialog"] button:has-text("나중에")',
+      '[role="dialog"] button:has-text("다음에")',
+      '[role="dialog"] button:has-text("건너뛰기")',
+      '[role="dialog"] button:has-text("취소")',
+    ],
     freshStart: async (page, timeout, clickFirst) => {
       await page.goto('https://wrtn.ai/', { waitUntil: 'domcontentloaded', timeout });
       await page.waitForTimeout(1200);
+      await dismissOverlays(page, [
+        'button[aria-label="닫기"]',
+        'button:has-text("닫기")',
+        '[role="dialog"] button:has-text("나중에")',
+        '[role="dialog"] button:has-text("건너뛰기")',
+      ]);
       await clickFirst(page, [
         'text=GPT-5',
         'button:has-text("GPT-5")',
@@ -65,7 +81,7 @@ const PROVIDERS = {
       ], 2500).catch(() => false);
       await page.waitForTimeout(1500);
     },
-    cleanupSupported: false,
+    cleanupSupported: true,
   },
 };
 
@@ -116,6 +132,16 @@ async function clickFirst(page, candidates, timeout = 1500) {
   return false;
 }
 
+async function dismissOverlays(page, selectors) {
+  for (let round = 0; round < 4; round += 1) {
+    const clicked = await clickFirst(page, selectors, 750);
+    if (!clicked) {
+      break;
+    }
+    await page.waitForTimeout(600);
+  }
+}
+
 async function locateComposer(page, timeout, selectors) {
   const start = Date.now();
   while (Date.now() - start < timeout) {
@@ -134,6 +160,9 @@ async function locateComposer(page, timeout, selectors) {
 
 async function ensureLoggedIn(page, timeout, provider) {
   await page.goto(provider.startUrl, { waitUntil: 'domcontentloaded', timeout });
+  if (provider.dismissOverlaySelectors?.length) {
+    await dismissOverlays(page, provider.dismissOverlaySelectors);
+  }
   const composer = await locateComposer(page, timeout, provider.composerSelectors);
   await composer.waitFor({ state: 'visible', timeout });
 }
@@ -165,7 +194,7 @@ async function submitPrompt(page, prompt, timeout, provider) {
   }
 }
 
-async function waitForResponse(page, timeout, provider) {
+async function waitForResponse(page, timeout, provider, baselineCount = 0) {
   const primaryResponseSelector = provider.responseSelectors[0];
   await page.waitForSelector(primaryResponseSelector, { timeout });
 
@@ -177,12 +206,14 @@ async function waitForResponse(page, timeout, provider) {
   const settleRoundsTarget = provider.settleRounds || 3;
 
   while (Date.now() - started < timeout) {
+    const currentCount = await page.locator(primaryResponseSelector).count().catch(() => 0);
+    const targetIndex = currentCount > baselineCount ? baselineCount : Math.max(0, currentCount - 1);
     const stopVisible = await page
       .locator(provider.stopSelectors.join(', '))
       .first()
       .isVisible()
       .catch(() => false);
-    const assistant = page.locator(primaryResponseSelector).last();
+    const assistant = page.locator(primaryResponseSelector).nth(targetIndex);
     const currentText = (await assistant.innerText().catch(() => '')).trim();
     const currentLength = currentText.length;
 
@@ -223,12 +254,14 @@ async function waitForResponse(page, timeout, provider) {
   throw new Error('Timed out waiting for provider response to settle');
 }
 
-async function extractResponse(page, provider) {
+async function extractResponse(page, provider, baselineCount = 0) {
   let assistant = null;
   for (const selector of provider.responseSelectors) {
-    const candidate = page.locator(selector).last();
+    const count = await page.locator(selector).count().catch(() => 0);
+    const targetIndex = count > baselineCount ? baselineCount : Math.max(0, count - 1);
+    const candidate = page.locator(selector).nth(targetIndex);
     try {
-      if (await candidate.count()) {
+      if (count > 0) {
         assistant = candidate;
         break;
       }
@@ -282,6 +315,59 @@ function parseResult(extracted, expectType) {
 async function cleanupConversation(page, provider) {
   if (!provider.cleanupSupported) {
     return { cleaned: false, reason: 'cleanup_not_supported_for_provider' };
+  }
+
+  if (provider.id === 'wrtn-gpt5') {
+    const openedSideMenu = await clickFirst(page, [
+      'button[aria-label*="메뉴"]',
+      'button[aria-label*="Menu"]',
+      'button[aria-label*="더보기"]',
+      'button:has-text("⋯")',
+      'button:has-text("...")',
+    ], 1200);
+
+    if (openedSideMenu) {
+      await page.waitForTimeout(800);
+    }
+
+    const openedConversationMenu = await clickFirst(page, [
+      '[role="navigation"] button[aria-label*="더보기"]',
+      '[role="navigation"] button[aria-label*="옵션"]',
+      '[role="navigation"] button[aria-label*="메뉴"]',
+      '[role="navigation"] button:has-text("⋯")',
+      '[role="navigation"] button:has-text("...")',
+      'aside button[aria-label*="더보기"]',
+      'aside button[aria-label*="옵션"]',
+      'aside button:has-text("⋯")',
+      'aside button:has-text("...")',
+    ], 1200);
+
+    if (!openedConversationMenu) {
+      return { cleaned: false, reason: 'wrtn_conversation_menu_not_found' };
+    }
+
+    const clickedDelete = await clickFirst(page, [
+      'button:has-text("삭제")',
+      'button:has-text("대화 삭제")',
+      '[role="menuitem"]:has-text("삭제")',
+      '[role="menuitem"]:has-text("대화 삭제")',
+    ], 1200);
+
+    if (!clickedDelete) {
+      return { cleaned: false, reason: 'wrtn_delete_action_not_found' };
+    }
+
+    const confirmed = await clickFirst(page, [
+      'button:has-text("삭제")',
+      'button:has-text("확인")',
+      'button:has-text("예")',
+    ], 1200);
+
+    await page.waitForTimeout(1000);
+    return {
+      cleaned: confirmed,
+      reason: confirmed ? 'deleted' : 'wrtn_delete_confirm_not_found',
+    };
   }
 
   const clickedMenu = await clickFirst(page, [
@@ -412,9 +498,10 @@ async function main() {
     await ensureLoggedIn(page, timeout, provider);
     await provider.freshStart(page, timeout, clickFirst);
     const beforeSubmitUrl = page.url();
+    const baselineCount = await page.locator(provider.responseSelectors[0]).count().catch(() => 0);
     await submitPrompt(page, prompt, timeout, provider);
-    await waitForResponse(page, timeout, provider);
-    extracted = await extractResponse(page, provider);
+    await waitForResponse(page, timeout, provider, baselineCount);
+    extracted = await extractResponse(page, provider, baselineCount);
     ({ parsed, parseError } = parseResult(extracted, argv.expect));
 
     if (argv.cleanup === 'delete') {
