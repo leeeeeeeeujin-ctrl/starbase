@@ -256,12 +256,22 @@ async function waitForResponse(page, timeout, provider, baselineCount = 0) {
 
 async function extractResponse(page, provider, baselineCount = 0) {
   let assistant = null;
+  const candidates = [];
   for (const selector of provider.responseSelectors) {
     const count = await page.locator(selector).count().catch(() => 0);
     const targetIndex = count > baselineCount ? baselineCount : Math.max(0, count - 1);
     const candidate = page.locator(selector).nth(targetIndex);
     try {
       if (count > 0) {
+        const candidateText = (await candidate.innerText().catch(() => '')).trim();
+        if (candidateText) {
+          candidates.push({
+            selector,
+            index: targetIndex,
+            text: candidateText,
+            length: candidateText.length,
+          });
+        }
         assistant = candidate;
         break;
       }
@@ -291,7 +301,31 @@ async function extractResponse(page, provider, baselineCount = 0) {
     text,
     codeBlocks,
     firstCodeBlock: codeBlocks[0] || null,
+    candidates,
   };
+}
+
+function extractJsonLikeBlock(text) {
+  if (!text) return null;
+
+  const fencedMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fencedMatch?.[1]?.trim()) {
+    return fencedMatch[1].trim();
+  }
+
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start !== -1 && end !== -1 && end > start) {
+    return text.slice(start, end + 1).trim();
+  }
+
+  const arrayStart = text.indexOf('[');
+  const arrayEnd = text.lastIndexOf(']');
+  if (arrayStart !== -1 && arrayEnd !== -1 && arrayEnd > arrayStart) {
+    return text.slice(arrayStart, arrayEnd + 1).trim();
+  }
+
+  return null;
 }
 
 function parseResult(extracted, expectType) {
@@ -299,10 +333,15 @@ function parseResult(extracted, expectType) {
     return { parsed: null, parseError: null };
   }
 
-  const textBlockMatch = extracted.text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const block = extracted.firstCodeBlock || (textBlockMatch ? textBlockMatch[1].trim() : null);
+  const candidateBlocks = [
+    extracted.firstCodeBlock,
+    extractJsonLikeBlock(extracted.text),
+    ...(extracted.candidates || []).map(candidate => extractJsonLikeBlock(candidate.text)),
+  ].filter(Boolean);
+
+  const block = candidateBlocks[0] || null;
   if (!block) {
-    return { parsed: null, parseError: 'No fenced code block found' };
+    return { parsed: null, parseError: 'No JSON-like block found' };
   }
 
   try {
@@ -524,6 +563,7 @@ async function main() {
       prompt,
       expect: argv.expect,
       response: extracted,
+      debugTextSample: extracted?.text?.slice?.(0, 4000) || '',
       parsed,
       parseError,
       cleanup,
@@ -554,6 +594,7 @@ async function main() {
       error: error.message,
       screenshotPath,
       response: extracted,
+      debugTextSample: extracted?.text?.slice?.(0, 4000) || '',
       parsed,
       parseError,
       cleanup,
