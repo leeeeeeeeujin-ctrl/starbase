@@ -115,6 +115,8 @@ export default function MyApp({ Component, pageProps }) {
     if (typeof window === 'undefined' || typeof navigator === 'undefined') return;
     if (!('serviceWorker' in navigator)) return;
     if (window.__PWA_SW_REGISTERED) return;
+    const pathname = (window.location?.pathname || '').toLowerCase();
+    if (pathname.startsWith('/pokerogue')) return;
 
     const register = async () => {
       try {

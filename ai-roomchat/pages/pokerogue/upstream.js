@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { useEffect, useMemo, useState } from 'react';
 
 const pageStyle = {
   minHeight: '100vh',
@@ -59,8 +60,47 @@ export default function PokerogueUpstreamPage() {
   const externalUpstreamUrl = process.env.NEXT_PUBLIC_POKEROGUE_UPSTREAM_URL || '';
   const isDev = process.env.NODE_ENV !== 'production';
   const bundledUpstreamUrl = '/pokerogue-embedded/index.html';
-  const iframeSrc = externalUpstreamUrl || (isDev ? '/api/pokerogue/upstream/index.html' : bundledUpstreamUrl);
-  const openInNewTabHref = externalUpstreamUrl || (isDev ? '/api/pokerogue/upstream/index.html' : bundledUpstreamUrl);
+  const [bridgeReady, setBridgeReady] = useState(typeof window === 'undefined');
+  const iframeSrc = useMemo(
+    () => externalUpstreamUrl || (isDev ? '/api/pokerogue/upstream/index.html' : bundledUpstreamUrl),
+    [externalUpstreamUrl, isDev],
+  );
+  const openInNewTabHref = iframeSrc;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function releaseMainServiceWorker() {
+      if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
+        if (!cancelled) setBridgeReady(true);
+        return;
+      }
+
+      try {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(registrations.map(registration => registration.unregister().catch(() => {})));
+
+        if ('caches' in window) {
+          const keys = await caches.keys();
+          await Promise.all(
+            keys
+              .filter(key => key.toLowerCase().includes('starbase-ai-game') || key.toLowerCase().includes('workbox'))
+              .map(key => caches.delete(key).catch(() => {})),
+          );
+        }
+      } catch (_) {
+        // ignore cleanup errors
+      }
+
+      if (!cancelled) setBridgeReady(true);
+    }
+
+    releaseMainServiceWorker();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <main style={pageStyle}>
@@ -106,6 +146,11 @@ export default function PokerogueUpstreamPage() {
                       기존 <code>/pokerogue-upstream</code> 캐시/서비스워커 간섭을 피하려고 새 스코프
                       <code style={{ marginLeft: 6 }}>/pokerogue-embedded</code>를 쓴다.
                     </span>
+                    {!bridgeReady ? (
+                      <span style={{ display: 'block', marginTop: 8 }}>
+                        현재는 메인 앱 서비스워커를 해제하고 캐시를 정리하는 중이라 iframe 표시를 잠시 늦춘다.
+                      </span>
+                    ) : null}
                   </>
                 )}
               </>
@@ -122,7 +167,7 @@ export default function PokerogueUpstreamPage() {
       </div>
 
       <div style={frameWrapStyle}>
-        {iframeSrc ? (
+        {iframeSrc && bridgeReady ? (
           <iframe title="Pokerogue Upstream" src={iframeSrc} style={iframeStyle} />
         ) : (
           <div
@@ -138,17 +183,26 @@ export default function PokerogueUpstreamPage() {
           >
             <div style={{ maxWidth: 760 }}>
               <strong style={{ display: 'block', marginBottom: 12, fontSize: 18 }}>
-                Pokerogue upstream 배포 주소가 아직 없다
+                {iframeSrc ? 'Pokerogue 실행 준비 중' : 'Pokerogue upstream 배포 주소가 아직 없다'}
               </strong>
-              <div>
-                1. <code>pokerogue-upstream/dist</code>를 별도 정적 호스팅으로 배포
-              </div>
-              <div>
-                2. 그 URL을 <code>NEXT_PUBLIC_POKEROGUE_UPSTREAM_URL</code>에 설정
-              </div>
-              <div>
-                3. 다시 배포하면 여기서 iframe으로 본판을 확인할 수 있다
-              </div>
+              {iframeSrc ? (
+                <>
+                  <div>메인 앱 서비스워커를 해제하고 포켓로그 전용 정적 경로를 준비 중이다.</div>
+                  <div>이 상태가 길게 유지되면 새로고침 한 번 후 다시 확인해봐.</div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    1. <code>pokerogue-upstream/dist</code>를 별도 정적 호스팅으로 배포
+                  </div>
+                  <div>
+                    2. 그 URL을 <code>NEXT_PUBLIC_POKEROGUE_UPSTREAM_URL</code>에 설정
+                  </div>
+                  <div>
+                    3. 다시 배포하면 여기서 iframe으로 본판을 확인할 수 있다
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}

@@ -183,6 +183,11 @@ self.addEventListener('fetch', event => {
   const { request } = event;
   const url = new URL(request.url);
 
+  if (url.pathname.startsWith('/pokerogue-embedded/')) {
+    event.respondWith(fetch(request));
+    return;
+  }
+
   // API 응답은 절대 서비스워커 캐시/오프라인 경로를 타지 않는다.
   // 모바일에서 stale 세션/키/턴 상태가 남는 공통 원인이 될 수 있으므로
   // 서버 응답을 그대로 통과시킨다.
