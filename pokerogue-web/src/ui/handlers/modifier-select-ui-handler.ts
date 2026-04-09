@@ -313,6 +313,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
                 Math.floor((1 - value) * 1250) * 0.325 + 2000 * maxUpgradeCount,
                 -(maxUpgradeCount - typeOptions[i].upgradeCount),
                 rewardAnimAllSettledPromises,
+                !isDevShop,
               ),
             );
           }
