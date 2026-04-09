@@ -1,4 +1,34 @@
 import { supabaseAdmin } from "../supabaseAdmin.js";
+import fs from "fs";
+import path from "path";
+
+const fallbackStorePath = path.join(process.cwd(), "tmp", "pokerogue-profiles.local.json");
+
+function ensureFallbackStore() {
+  fs.mkdirSync(path.dirname(fallbackStorePath), { recursive: true });
+  if (!fs.existsSync(fallbackStorePath)) {
+    fs.writeFileSync(fallbackStorePath, "{}", "utf8");
+  }
+}
+
+function readFallbackProfiles() {
+  ensureFallbackStore();
+  try {
+    return JSON.parse(fs.readFileSync(fallbackStorePath, "utf8")) || {};
+  } catch {
+    return {};
+  }
+}
+
+function writeFallbackProfiles(data) {
+  ensureFallbackStore();
+  fs.writeFileSync(fallbackStorePath, JSON.stringify(data, null, 2), "utf8");
+}
+
+function isMissingPokerogueTable(error) {
+  const message = error?.message || "";
+  return typeof message === "string" && /pokerogue_profiles/.test(message) && /does not exist/i.test(message);
+}
 
 export function derivePokerogueUsername(user) {
   const metadata = user?.user_metadata && typeof user.user_metadata === "object" ? user.user_metadata : {};
@@ -48,17 +78,26 @@ export async function getPokerogueAuthedUser(req) {
 }
 
 export async function getPokerogueProfile(userId) {
-  const { data, error } = await supabaseAdmin
-    .from("pokerogue_profiles")
-    .select("user_id, username, system_data, session_slots, last_session_slot, client_session_id")
-    .eq("user_id", userId)
-    .maybeSingle();
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("pokerogue_profiles")
+      .select("user_id, username, system_data, session_slots, last_session_slot, client_session_id")
+      .eq("user_id", userId)
+      .maybeSingle();
 
-  if (error) {
-    throw error;
+    if (error) {
+      throw error;
+    }
+
+    return data;
+  } catch (error) {
+    if (!isMissingPokerogueTable(error)) {
+      throw error;
+    }
+
+    const store = readFallbackProfiles();
+    return store[userId] || null;
   }
-
-  return data;
 }
 
 export async function upsertPokerogueProfile(payload) {
@@ -69,17 +108,28 @@ export async function upsertPokerogueProfile(payload) {
     ...payload,
   };
 
-  const { data, error } = await supabaseAdmin
-    .from("pokerogue_profiles")
-    .upsert(normalized, { onConflict: "user_id" })
-    .select("user_id, username, system_data, session_slots, last_session_slot, client_session_id")
-    .single();
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("pokerogue_profiles")
+      .upsert(normalized, { onConflict: "user_id" })
+      .select("user_id, username, system_data, session_slots, last_session_slot, client_session_id")
+      .single();
 
-  if (error) {
-    throw error;
+    if (error) {
+      throw error;
+    }
+
+    return data;
+  } catch (error) {
+    if (!isMissingPokerogueTable(error)) {
+      throw error;
+    }
+
+    const store = readFallbackProfiles();
+    store[normalized.user_id] = normalized;
+    writeFallbackProfiles(store);
+    return normalized;
   }
-
-  return data;
 }
 
 export function normalizeStoredBody(body) {
