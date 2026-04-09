@@ -1,3 +1,4 @@
+import { createClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "../supabaseAdmin.js";
 import { createServerClient } from "@supabase/ssr";
 import { parse as parseCookieHeader, serialize as serializeCookie } from "cookie";
@@ -7,6 +8,12 @@ import path from "path";
 const fallbackStorePath = path.join(process.cwd(), "tmp", "pokerogue-profiles.local.json");
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+const bearerVerifyClient =
+  supabaseUrl && supabaseAnonKey
+    ? createClient(supabaseUrl, supabaseAnonKey, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      })
+    : null;
 
 function ensureFallbackStore() {
   fs.mkdirSync(path.dirname(fallbackStorePath), { recursive: true });
@@ -132,7 +139,15 @@ export async function getPokerogueAuthedUser(req, res) {
   }
 
   try {
-    const { data, error } = await supabaseAdmin.auth.getUser(token);
+    if (!bearerVerifyClient) {
+      return {
+        user: null,
+        error: "bearer_client_not_configured",
+        debug: { ...debug, authSource: "bearer" },
+      };
+    }
+
+    const { data, error } = await bearerVerifyClient.auth.getUser(token);
     if (error || !data?.user) {
       return {
         user: null,
