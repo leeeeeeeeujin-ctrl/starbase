@@ -68,9 +68,14 @@ async function requireUser(req, res) {
     return null;
   }
 
-  const { user, error } = await getPokerogueAuthedUser(req, res);
+  const { user, error, debug } = await getPokerogueAuthedUser(req, res);
   if (!user) {
-    sendJson(res, 401, { error: error || "unauthorized" });
+    console.warn("[pokerogue-compat] auth failed", {
+      route: req.url,
+      error: error || "unauthorized",
+      debug,
+    });
+    sendJson(res, 401, { error: error || "unauthorized", debug });
     return null;
   }
 

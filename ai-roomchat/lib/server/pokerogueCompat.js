@@ -34,6 +34,18 @@ function isMissingPokerogueTable(error) {
   return typeof message === "string" && /pokerogue_profiles/.test(message) && /does not exist/i.test(message);
 }
 
+function decodeJwtPayload(token) {
+  try {
+    const [, payload] = String(token || "").split(".");
+    if (!payload) return null;
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = `${base64}${"=".repeat((4 - (base64.length % 4 || 4)) % 4)}`;
+    return JSON.parse(Buffer.from(padded, "base64").toString("utf8"));
+  } catch {
+    return null;
+  }
+}
+
 export function derivePokerogueUsername(user) {
   const metadata = user?.user_metadata && typeof user.user_metadata === "object" ? user.user_metadata : {};
   const candidates = [
@@ -64,6 +76,16 @@ export function extractAuthorizationToken(req) {
 }
 
 export async function getPokerogueAuthedUser(req, res) {
+  const token = extractAuthorizationToken(req);
+  const tokenPayload = decodeJwtPayload(token);
+  const debug = {
+    hasCookieHeader: Boolean(req?.headers?.cookie),
+    hasAuthorizationHeader: Boolean(token),
+    tokenRole: tokenPayload?.role || null,
+    tokenHasSub: Boolean(tokenPayload?.sub),
+    tokenIssuer: tokenPayload?.iss || null,
+  };
+
   try {
     const requestCookies = parseCookieHeader(req?.headers?.cookie || "");
     const cookieSupabase = createServerClient(supabaseUrl, supabaseAnonKey, {
@@ -89,32 +111,51 @@ export async function getPokerogueAuthedUser(req, res) {
       error,
     } = await cookieSupabase.auth.getUser();
     if (user) {
-      return { user, error: null };
+      return { user, error: null, debug: { ...debug, authSource: "cookie" } };
     }
     if (error && !/Auth session missing/i.test(error.message || "")) {
-      return { user: null, error: error.message || "invalid_cookie_session" };
+      return {
+        user: null,
+        error: error.message || "invalid_cookie_session",
+        debug: { ...debug, authSource: "cookie", cookieError: error.message || "invalid_cookie_session" },
+      };
     }
   } catch (error) {
     const message = error?.message || String(error);
     if (!/Auth session missing/i.test(message)) {
-      return { user: null, error: message };
+      return { user: null, error: message, debug: { ...debug, authSource: "cookie", cookieError: message } };
     }
   }
 
-  const token = extractAuthorizationToken(req);
   if (!token) {
-    return { user: null, error: "missing_authorization" };
+    return { user: null, error: "missing_authorization", debug: { ...debug, authSource: "none" } };
   }
 
   try {
     const { data, error } = await supabaseAdmin.auth.getUser(token);
     if (error || !data?.user) {
-      return { user: null, error: error?.message || "invalid_authorization" };
+      return {
+        user: null,
+        error: error?.message || "invalid_authorization",
+        debug: {
+          ...debug,
+          authSource: "bearer",
+          bearerError: error?.message || "invalid_authorization",
+        },
+      };
     }
 
-    return { user: data.user, error: null };
+    return { user: data.user, error: null, debug: { ...debug, authSource: "bearer" } };
   } catch (error) {
-    return { user: null, error: error?.message || String(error) };
+    return {
+      user: null,
+      error: error?.message || String(error),
+      debug: {
+        ...debug,
+        authSource: "bearer",
+        bearerError: error?.message || String(error),
+      },
+    };
   }
 }
 
