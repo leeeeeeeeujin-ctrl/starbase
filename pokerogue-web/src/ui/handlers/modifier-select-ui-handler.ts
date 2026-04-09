@@ -205,12 +205,6 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     this.continueButtonContainer.setVisible(false);
     this.continueButtonContainer.setAlpha(0);
 
-    this.rerollButtonContainer.setPositionRelative(
-      this.lockRarityButtonContainer,
-      0,
-      canLockRarities || isDevShop ? -12 : 0,
-    );
-
     this.rerollCost = args[3] as number;
 
     this.updateRerollCostText();
@@ -218,6 +212,11 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     const typeOptions = args[1] as ModifierTypeOption[];
     const hasShop = globalScene.gameMode.getShopStatus();
     const isDevShop = this.isDevShopPhase();
+    this.rerollButtonContainer.setPositionRelative(
+      this.lockRarityButtonContainer,
+      0,
+      canLockRarities || isDevShop ? -12 : 0,
+    );
     const baseShopCost = new NumberHolder(globalScene.getWaveMoneyAmount(1));
     globalScene.applyModifier(HealShopCostModifier, true, baseShopCost);
     const shopTypeOptions = hasShop
@@ -672,7 +671,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
   private getRowItems(rowCursor: number): number {
     switch (rowCursor) {
       case 0:
-        return 3;
+        return this.lockRarityButtonContainer.visible ? 4 : 3;
       case 1:
         return this.options.length;
       default:
