@@ -9,6 +9,8 @@
   "checkTeamDesc": "파티를 확인하거나 폼 변경 아이템을 사용합니다.",
   "rerollCost": "₽{{formattedMoney}}",
   "itemCost": "₽{{formattedMoney}}",
+  "leaveShopButton": "상점 나가기",
+  "leaveShopDesc": "상점을 닫고 다음 웨이브로 진행합니다.",
   "continueNextWaveButton": "진행하기",
   "continueNextWaveDescription": "다음 웨이브로 진행합니다."
 }

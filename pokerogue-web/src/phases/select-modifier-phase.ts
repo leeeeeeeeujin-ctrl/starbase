@@ -43,6 +43,10 @@ export class SelectModifierPhase extends BattlePhase {
 
   private typeOptions: ModifierTypeOption[];
 
+  private isDevShopPhase(): boolean {
+    return globalScene.gameMode?.modeId === GameModes.DEV && globalScene.gameMode.getShopStatus();
+  }
+
   constructor(
     rerollCount = 0,
     modifierTiers?: ModifierTier[],
@@ -77,6 +81,12 @@ export class SelectModifierPhase extends BattlePhase {
     const modifierCount = this.getModifierCount();
 
     this.typeOptions = this.getModifierTypeOptions(modifierCount);
+    if (this.isDevShopPhase()) {
+      this.typeOptions = this.typeOptions.map(option => ({
+        ...option,
+        cost: this.getDevShopRewardCost(option.type?.tier ?? 0),
+      }));
+    }
 
     const modifierSelectCallback = (rowCursor: number, cursor: number) => {
       if (rowCursor < 0 || cursor < 0) {
@@ -109,6 +119,12 @@ export class SelectModifierPhase extends BattlePhase {
               });
               return true;
             case 3:
+              if (this.isDevShopPhase()) {
+                globalScene.ui.clearText();
+                globalScene.ui.setMode(UiMode.MESSAGE);
+                super.end();
+                return true;
+              }
               return this.toggleRerollLock();
             default:
               return false;
@@ -135,7 +151,12 @@ export class SelectModifierPhase extends BattlePhase {
       return true;
     }
     const modifierType = this.typeOptions[cursor].type;
-    return this.applyChosenModifier(modifierType, -1, modifierSelectCallback);
+    const cost = this.isDevShopPhase() ? (this.typeOptions[cursor].cost ?? -1) : -1;
+    if (cost !== -1 && globalScene.money < cost && !Overrides.WAIVE_ROLL_FEE_OVERRIDE) {
+      globalScene.ui.playError();
+      return false;
+    }
+    return this.applyChosenModifier(modifierType, cost, modifierSelectCallback);
   }
 
   // Pick a modifier from the shop and apply it
@@ -496,5 +517,10 @@ export class SelectModifierPhase extends BattlePhase {
 
   addModifier(modifier: Modifier): boolean {
     return globalScene.addModifier(modifier, false, true);
+  }
+
+  private getDevShopRewardCost(tier: number): number {
+    const tierCosts = [150, 300, 600, 1200, 2400];
+    return tierCosts[tier] ?? tierCosts[0];
   }
 }

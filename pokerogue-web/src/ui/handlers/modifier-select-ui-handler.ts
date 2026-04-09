@@ -4,6 +4,7 @@ import { handleTutorial, Tutorial } from "#app/tutorial";
 import { allMoves } from "#data/data-lists";
 import { getPokeballAtlasKey } from "#data/pokeball";
 import { Button } from "#enums/buttons";
+import { GameModes } from "#enums/game-modes";
 import type { PokeballType } from "#enums/pokeball";
 import { ShopCursorTarget } from "#enums/shop-cursor-target";
 import { TextStyle } from "#enums/text-style";
@@ -51,6 +52,10 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
   public shopOptionsRows: ModifierOption[][];
 
   private cursorObj: Phaser.GameObjects.Image | null;
+
+  private isDevShopPhase(): boolean {
+    return globalScene.gameMode?.modeId === GameModes.DEV && globalScene.gameMode.getShopStatus();
+  }
 
   constructor() {
     super(UiMode.CONFIRM);
@@ -200,7 +205,11 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     this.continueButtonContainer.setVisible(false);
     this.continueButtonContainer.setAlpha(0);
 
-    this.rerollButtonContainer.setPositionRelative(this.lockRarityButtonContainer, 0, canLockRarities ? -12 : 0);
+    this.rerollButtonContainer.setPositionRelative(
+      this.lockRarityButtonContainer,
+      0,
+      canLockRarities || isDevShop ? -12 : 0,
+    );
 
     this.rerollCost = args[3] as number;
 
@@ -208,6 +217,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
 
     const typeOptions = args[1] as ModifierTypeOption[];
     const hasShop = globalScene.gameMode.getShopStatus();
+    const isDevShop = this.isDevShopPhase();
     const baseShopCost = new NumberHolder(globalScene.getWaveMoneyAmount(1));
     globalScene.applyModifier(HealShopCostModifier, true, baseShopCost);
     const shopTypeOptions = hasShop
@@ -345,7 +355,13 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
         this.rerollButtonContainer.setVisible(true);
         this.checkButtonContainer.setVisible(true);
         this.continueButtonContainer.setVisible(this.rerollCost < 0);
-        this.lockRarityButtonContainer.setVisible(canLockRarities);
+        if (isDevShop) {
+          this.lockRarityButtonText.setText(i18next.t("modifierSelectUiHandler:leaveShopButton"));
+          this.lockRarityButtonContainer.setVisible(true);
+        } else {
+          this.lockRarityButtonText.setText(i18next.t("modifierSelectUiHandler:lockRarities"));
+          this.lockRarityButtonContainer.setVisible(canLockRarities);
+        }
 
         globalScene.tweens.add({
           targets: [this.checkButtonContainer, this.continueButtonContainer],
@@ -604,7 +620,11 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
       ui.showText(i18next.t("modifierSelectUiHandler:checkTeamDesc"));
     } else {
       this.cursorObj.setPosition(6, OPTION_BUTTON_YPOSITION + 4);
-      ui.showText(i18next.t("modifierSelectUiHandler:lockRaritiesDesc"));
+      ui.showText(
+        this.isDevShopPhase()
+          ? i18next.t("modifierSelectUiHandler:leaveShopDesc")
+          : i18next.t("modifierSelectUiHandler:lockRaritiesDesc"),
+      );
     }
 
     return ret;
@@ -690,6 +710,11 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
   }
 
   updateLockRaritiesText(): void {
+    if (this.isDevShopPhase()) {
+      this.lockRarityButtonText.setColor(getTextColor(TextStyle.PARTY));
+      this.lockRarityButtonText.setShadowColor(getTextColor(TextStyle.PARTY, true));
+      return;
+    }
     const textStyle = globalScene.lockModifierTiers ? TextStyle.SUMMARY_BLUE : TextStyle.PARTY;
     this.lockRarityButtonText.setColor(getTextColor(textStyle));
     this.lockRarityButtonText.setShadowColor(getTextColor(textStyle, true));

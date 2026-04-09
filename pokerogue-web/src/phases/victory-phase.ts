@@ -4,6 +4,7 @@ import { modifierTypes } from "#data/data-lists";
 import { BattleType } from "#enums/battle-type";
 import type { BattlerIndex } from "#enums/battler-index";
 import { ClassicFixedBossWaves } from "#enums/fixed-boss-waves";
+import { GameModes } from "#enums/game-modes";
 import { handleMysteryEncounterVictory } from "#mystery-encounters/encounter-phase-utils";
 import { PokemonPhase } from "#phases/pokemon-phase";
 
@@ -51,7 +52,8 @@ export class VictoryPhase extends PokemonPhase {
 
       if (gameMode.isEndless || !gameMode.isWaveFinal(currentWaveIndex)) {
         globalScene.phaseManager.pushNew("EggLapsePhase");
-        if (gameMode.isClassic) {
+        const isDevMode = gameMode.modeId === GameModes.DEV;
+        if (gameMode.isClassic && !isDevMode) {
           switch (currentWaveIndex) {
             case ClassicFixedBossWaves.RIVAL_1:
             case ClassicFixedBossWaves.RIVAL_2:
@@ -66,7 +68,11 @@ export class VictoryPhase extends PokemonPhase {
               break;
           }
         }
-        if (currentWaveIndex % 10) {
+        if (isDevMode) {
+          if (gameMode.getShopStatus()) {
+            globalScene.phaseManager.pushNew("SelectModifierPhase");
+          }
+        } else if (currentWaveIndex % 10) {
           globalScene.phaseManager.pushNew(
             "SelectModifierPhase",
             undefined,
