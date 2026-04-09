@@ -163,6 +163,40 @@ export default function PokerogueUpstreamPage() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+
+    let active = true;
+
+    async function syncEmbeddedToken() {
+      try {
+        const { token } = await buildSupabaseAuthHeaders();
+        if (!active) return;
+        if (token) {
+          window.localStorage.setItem('pokerogue_supabase_access_token', token);
+        } else {
+          window.localStorage.removeItem('pokerogue_supabase_access_token');
+        }
+      } catch {
+        if (!active) return;
+        window.localStorage.removeItem('pokerogue_supabase_access_token');
+      }
+    }
+
+    syncEmbeddedToken();
+
+    const { data: listener } = supabase.auth.onAuthStateChange(() => {
+      syncEmbeddedToken();
+    });
+
+    return () => {
+      active = false;
+      listener?.subscription?.unsubscribe?.();
+    };
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
 
     async function releaseMainServiceWorker() {

@@ -94,6 +94,14 @@ export function getEmbeddedSupabaseSession(): EmbeddedSupabaseSession | null {
     return null;
   }
 
+  const bridgedToken = window.localStorage.getItem("pokerogue_supabase_access_token");
+  if (isLikelyUserAccessToken(bridgedToken)) {
+    return {
+      accessToken: bridgedToken,
+      user: null,
+    };
+  }
+
   for (let i = 0; i < window.localStorage.length; i++) {
     const storageKey = window.localStorage.key(i);
     if (!storageKey) {
