@@ -2,6 +2,29 @@
 
 import { supabase } from '../supabase';
 
+function decodeJwtPayload(token) {
+  try {
+    const [, payload] = String(token || '').split('.');
+    if (!payload) return null;
+    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = `${base64}${'='.repeat((4 - (base64.length % 4 || 4)) % 4)}`;
+    if (typeof window !== 'undefined' && typeof window.atob === 'function') {
+      return JSON.parse(window.atob(padded));
+    }
+    return JSON.parse(Buffer.from(padded, 'base64').toString('utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function isLikelyUserAccessToken(token) {
+  const payload = decodeJwtPayload(token);
+  if (!payload || typeof payload !== 'object') return false;
+  if (!payload.sub) return false;
+  if (payload.role && payload.role !== 'authenticated') return false;
+  return true;
+}
+
 function normalizeHeaders(input) {
   if (!input) return {};
   if (typeof Headers !== 'undefined' && input instanceof Headers) {
@@ -26,7 +49,8 @@ export async function getSupabaseAccessToken() {
   try {
     const { data, error } = await supabase.auth.getSession();
     if (error) return null;
-    return data?.session?.access_token || null;
+    const token = data?.session?.access_token || null;
+    return isLikelyUserAccessToken(token) ? token : null;
   } catch {
     return null;
   }

@@ -1,5 +1,3 @@
-import { SESSION_ID_COOKIE_NAME } from "#app/constants";
-import { getCookie } from "#utils/cookies";
 import { getEmbeddedSupabaseAccessToken } from "#utils/supabase-session";
 import type { SetRequired, UndefinedOnPartialDeep } from "type-fest";
 
@@ -86,12 +84,14 @@ export abstract class ApiBase {
    */
   protected async doFetch(path: string, config: DoFetchConfig): Promise<Response> {
     const embeddedAccessToken = getEmbeddedSupabaseAccessToken();
-
-    config.headers = {
+    const nextHeaders: HeadersInit = {
       ...config.headers,
-      Authorization: embeddedAccessToken ? `Bearer ${embeddedAccessToken}` : getCookie(SESSION_ID_COOKIE_NAME),
       "Content-Type": config.headers?.["Content-Type"] ?? "application/json",
     };
+    if (embeddedAccessToken) {
+      nextHeaders["Authorization"] = `Bearer ${embeddedAccessToken}`;
+    }
+    config.headers = nextHeaders;
 
     // can't import `isLocal` due to circular import issues
     if (import.meta.env.MODE === "development") {

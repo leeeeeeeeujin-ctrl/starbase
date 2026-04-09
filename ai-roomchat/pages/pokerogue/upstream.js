@@ -118,19 +118,17 @@ export default function PokerogueUpstreamPage() {
         const { headers, token } = await buildSupabaseAuthHeaders();
 
         let compatOk = false;
-        let compatText = '로그인 세션이 없어 compat API를 확인하지 않았다.';
+        let compatText = '확인 전';
 
-        if (token) {
-          try {
-            const response = await fetch('/api/pokerogue-compat/account/info', {
-              headers,
-            });
-            const text = await response.text();
-            compatOk = response.ok;
-            compatText = response.ok ? text : `${response.status} ${text}`;
-          } catch (error) {
-            compatText = error?.message || 'compat API 요청 실패';
-          }
+        try {
+          const response = await fetch('/api/pokerogue-compat/account/info', {
+            headers,
+          });
+          const text = await response.text();
+          compatOk = response.ok;
+          compatText = response.ok ? text : `${response.status} ${text}`;
+        } catch (error) {
+          compatText = error?.message || 'compat API 요청 실패';
         }
 
         if (!cancelled) {

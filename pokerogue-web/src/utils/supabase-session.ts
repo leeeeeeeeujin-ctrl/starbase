@@ -9,6 +9,26 @@ interface EmbeddedSupabaseUserInfo {
   id: string;
 }
 
+function decodeJwtPayload(token: string | null | undefined): Record<string, any> | null {
+  try {
+    const [, payload] = String(token || "").split(".");
+    if (!payload) return null;
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = `${base64}${"=".repeat((4 - (base64.length % 4 || 4)) % 4)}`;
+    return JSON.parse(window.atob(padded));
+  } catch {
+    return null;
+  }
+}
+
+function isLikelyUserAccessToken(token: string | null | undefined): token is string {
+  const payload = decodeJwtPayload(token);
+  if (!payload || typeof payload !== "object") return false;
+  if (!payload.sub) return false;
+  if (payload.role && payload.role !== "authenticated") return false;
+  return true;
+}
+
 function extractSessionCandidate(value: unknown, depth = 0): EmbeddedSupabaseSession | null {
   if (depth > 6 || value == null) {
     return null;
@@ -99,7 +119,8 @@ export function getEmbeddedSupabaseSession(): EmbeddedSupabaseSession | null {
 }
 
 export function getEmbeddedSupabaseAccessToken(): string | null {
-  return getEmbeddedSupabaseSession()?.accessToken ?? null;
+  const token = getEmbeddedSupabaseSession()?.accessToken ?? null;
+  return isLikelyUserAccessToken(token) ? token : null;
 }
 
 export function getEmbeddedSupabaseUserInfo(): EmbeddedSupabaseUserInfo | null {
