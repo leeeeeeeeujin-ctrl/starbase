@@ -1815,7 +1815,7 @@ export type ModifierOverride = GeneratorModifierOverride | BaseModifierOverride;
 
 export type ModifierTypeKeys = keyof typeof modifierTypeInitObj;
 
-const modifierTypeInitObj = Object.freeze({
+export const modifierTypeInitObj = Object.freeze({
   POKEBALL: () => new AddPokeballModifierType("pb", PokeballType.POKEBALL, 5),
   GREAT_BALL: () => new AddPokeballModifierType("gb", PokeballType.GREAT_BALL, 5),
   ULTRA_BALL: () => new AddPokeballModifierType("ub", PokeballType.ULTRA_BALL, 5),

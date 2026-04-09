@@ -1,6 +1,8 @@
 import { globalScene } from "#app/global-scene";
 import Overrides from "#app/overrides";
+import { getDevItemIdFromModifierType } from "#app/dev-item-inventory";
 import { ModifierPoolType } from "#enums/modifier-pool-type";
+import { GameModes } from "#enums/game-modes";
 import type { ModifierTier } from "#enums/modifier-tier";
 import { UiMode } from "#enums/ui-mode";
 import type { Modifier } from "#modifiers/modifier";
@@ -170,6 +172,21 @@ export class SelectModifierPhase extends BattlePhase {
     cost: number,
     modifierSelectCallback: ModifierSelectCallback,
   ): boolean {
+    if (cost !== -1 && globalScene.gameMode?.modeId === GameModes.DEV) {
+      const devItemId = getDevItemIdFromModifierType(modifierType);
+      if (devItemId) {
+        if (!Overrides.WAIVE_ROLL_FEE_OVERRIDE) {
+          globalScene.money -= cost;
+          globalScene.updateMoneyText();
+          globalScene.animateMoneyChanged(false);
+        }
+        globalScene.devItemCounts[devItemId]++;
+        globalScene.playSound("se/buy");
+        (globalScene.ui.getHandler() as ModifierSelectUiHandler).updateCostText();
+        return false;
+      }
+    }
+
     if (modifierType instanceof PokemonModifierType) {
       if (modifierType instanceof FusePokemonModifierType) {
         this.openFusionMenu(modifierType, cost, modifierSelectCallback);
