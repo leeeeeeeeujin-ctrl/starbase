@@ -384,6 +384,10 @@ export class GameMode implements GameModeConfig {
    * @returns Whether the shop is available in the current mode
    */
   public getShopStatus(): boolean {
+    if (this.modeId === GameModes.DEV) {
+      return globalScene.currentBattle.waveIndex >= 5 && globalScene.currentBattle.waveIndex % 10 === 5;
+    }
+
     const status = new BooleanHolder(!this.hasNoShop);
     applyChallenges(ChallengeType.SHOP, status);
     return status.value;
@@ -488,8 +492,12 @@ export function getGameMode(gameMode: GameModes): GameMode {
     case GameModes.DEV:
       return new GameMode(
         GameModes.DEV,
-        { isClassic: true, hasTrainers: true, hasMysteryEncounters: true },
-        classicFixedBattles,
+        {
+          isClassic: true,
+          hasTrainers: false,
+          hasMysteryEncounters: false,
+        },
+        {},
       );
     case GameModes.ENDLESS:
       return new GameMode(GameModes.ENDLESS, {

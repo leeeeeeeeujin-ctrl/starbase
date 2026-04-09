@@ -18,6 +18,7 @@ import { BattlerTagType } from "#enums/battler-tag-type";
 import { BerryType } from "#enums/berry-type";
 import { ChallengeType } from "#enums/challenge-type";
 import { FormChangeItem } from "#enums/form-change-item";
+import { GameModes } from "#enums/game-modes";
 import { ModifierPoolType } from "#enums/modifier-pool-type";
 import { ModifierTier } from "#enums/modifier-tier";
 import { MoveId } from "#enums/move-id";
@@ -2627,6 +2628,29 @@ export function overridePlayerModifierTypeOptions(options: ModifierTypeOption[],
 }
 
 export function getPlayerShopModifierTypeOptionsForWave(waveIndex: number, baseCost: number): ModifierTypeOption[] {
+  if (globalScene.gameMode?.modeId === GameModes.DEV) {
+    if (waveIndex < 5 || waveIndex % 10 !== 5) {
+      return [];
+    }
+
+    return [
+      new ModifierTypeOption(modifierTypeInitObj.POTION(), 0, baseCost * 0.2),
+      new ModifierTypeOption(modifierTypeInitObj.SUPER_POTION(), 0, baseCost * 0.45),
+      new ModifierTypeOption(modifierTypeInitObj.HYPER_POTION(), 0, baseCost * 0.8),
+      new ModifierTypeOption(modifierTypeInitObj.MAX_POTION(), 0, baseCost * 1.5),
+      new ModifierTypeOption(modifierTypeInitObj.FULL_HEAL(), 0, baseCost),
+      new ModifierTypeOption(modifierTypeInitObj.REVIVE(), 0, baseCost * 2),
+      new ModifierTypeOption(modifierTypeInitObj.MAX_REVIVE(), 0, baseCost * 2.75),
+      new ModifierTypeOption(modifierTypeInitObj.ETHER(), 0, baseCost * 0.4),
+      new ModifierTypeOption(modifierTypeInitObj.ELIXIR(), 0, baseCost),
+      new ModifierTypeOption(modifierTypeInitObj.MAX_ELIXIR(), 0, baseCost * 2.5),
+    ].filter(shopItem => {
+      const status = new BooleanHolder(true);
+      applyChallenges(ChallengeType.SHOP_ITEM, shopItem, status);
+      return status.value;
+    });
+  }
+
   if (!(waveIndex % 10)) {
     return [];
   }
