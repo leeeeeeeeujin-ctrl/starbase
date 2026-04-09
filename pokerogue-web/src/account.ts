@@ -19,12 +19,10 @@ export async function updateUserInfo(): Promise<[success: boolean, status: numbe
   }
 
   const embeddedUser = getEmbeddedSupabaseUserInfo();
-  if (embeddedUser) {
-    const [accountInfo, status] = await pokerogueApi.account.getInfo();
-    if (accountInfo) {
-      loggedInUser = accountInfo;
-      return [true, status];
-    }
+  const [accountInfo, status] = await pokerogueApi.account.getInfo();
+  if (accountInfo) {
+    loggedInUser = accountInfo;
+    return [true, status];
   }
 
   loggedInUser = {
