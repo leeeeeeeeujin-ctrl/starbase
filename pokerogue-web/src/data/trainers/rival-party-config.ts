@@ -53,35 +53,7 @@ function forceRivalStarterTraits(pokemon: EnemyPokemon, bars = 0, useRivalSignat
 }
 
 /** Rival's slot 1 species pool for fight 1 */
-const SLOT_1_FIGHT_1 = [
-  SpeciesId.BULBASAUR,
-  SpeciesId.CHARMANDER,
-  SpeciesId.SQUIRTLE,
-  SpeciesId.CHIKORITA,
-  SpeciesId.CYNDAQUIL,
-  SpeciesId.TOTODILE,
-  SpeciesId.TREECKO,
-  SpeciesId.TORCHIC,
-  SpeciesId.MUDKIP,
-  SpeciesId.TURTWIG,
-  SpeciesId.CHIMCHAR,
-  SpeciesId.PIPLUP,
-  SpeciesId.SNIVY,
-  SpeciesId.TEPIG,
-  SpeciesId.OSHAWOTT,
-  SpeciesId.CHESPIN,
-  SpeciesId.FENNEKIN,
-  SpeciesId.FROAKIE,
-  SpeciesId.ROWLET,
-  SpeciesId.LITTEN,
-  SpeciesId.POPPLIO,
-  SpeciesId.GROOKEY,
-  SpeciesId.SCORBUNNY,
-  SpeciesId.SOBBLE,
-  SpeciesId.SPRIGATITO,
-  SpeciesId.FUECOCO,
-  SpeciesId.QUAXLY,
-];
+const SLOT_1_FIGHT_1 = [SpeciesId.EEVEE];
 
 /** Rival's slot 1 species pool for fight 2 */
 const SLOT_1_FIGHT_2 = [
@@ -208,17 +180,7 @@ function forceRivalBirdAbility(pokemon: EnemyPokemon, bars = 0, useRivalSignatur
   }
 }
 /** Rival's slot 2 species pool for fight 1 */
-const SLOT_2_FIGHT_1 = [
-  SpeciesId.PIDGEY,
-  SpeciesId.HOOTHOOT,
-  SpeciesId.TAILLOW,
-  SpeciesId.STARLY,
-  SpeciesId.PIDOVE,
-  SpeciesId.FLETCHLING,
-  SpeciesId.PIKIPEK,
-  SpeciesId.ROOKIDEE,
-  SpeciesId.WATTREL,
-];
+const SLOT_2_FIGHT_1 = [SpeciesId.PIDGEY];
 
 /** Rival's slot 2 species pool for fight 2 */
 const SLOT_2_FIGHT_2 = [

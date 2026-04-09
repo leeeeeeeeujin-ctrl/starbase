@@ -3457,18 +3457,18 @@
   },
   "rival": {
     "encounter": {
-      "1": "@c{smile}Hey, I was looking for you! I knew you were eager to get going but I expected at least a goodbye…$@c{smile_eclosed}So you’re really pursuing your dream after all? I almost can’t believe it.$@c{serious_smile_fists}Since we’re here, how about a battle?\nAfter all, I want to make sure you’re ready.$@c{serious_mopen_fists}Don’t hold back, I want you to give me everything you’ve got!"
+      "1": "@c{smile}There you are. I wanted to catch you before your run really started.$@c{serious_smile_fists}I brought a tiny test team on purpose.\nEevee up front, Pidgey in the back. Simple, clean, and enough to see what you're made of.$@c{serious_mopen_fists}No excuses, no warmup.\nShow me you can win your very first rival fight."
     },
     "victory": {
-      "1": "@c{shock}Wow… You cleaned me out.\nAre you actually a beginner?$@c{smile}Maybe it was a bit of luck but…Who knows you might just be able to go all the way.$By the way, the professor asked me to give you these items. They look pretty cool.$@c{serious_smile_fists}Good luck out there!"
+      "1": "@c{shock}You beat that test team already?$@c{smile}Then you really are ready to go further than I thought.$@c{serious_smile_fists}Don't get comfortable, though.\nNext time I won't be using a warmup lineup."
     }
   },
   "rivalFemale": {
     "encounter": {
-      "1": "@c{smile_wave}There you are! I’ve been looking everywhere for you!\n@c{angry_mopen}Did you forget to say goodbye to your best friend?$@c{smile_ehalf}You’re going after your dream, huh?\nThat day is really today isn’t it…$@c{smile}Anyway, I’ll forgive you for forgetting me, but on one condition. @c{smile_wave_wink}You have to battle me!$@c{angry_mopen}Give it your all! Wouldn’t want your adventure to be over before it started, right?"
+      "1": "@c{smile_wave}Found you at last.\nI wasn't letting you slip off without one proper test.$@c{smile_ehalf}I even picked a lightweight lineup for it.\nEevee first, Pidgey second. Enough to see whether your run starts strong or ends immediately.$@c{angry_mopen}So come on.\nShow me your opening move."
     },
     "victory": {
-      "1": "@c{shock}You just started and you’re already this strong?!@d{96}\n@c{angry}You totally cheated, didn’t you?$@c{smile_wave_wink}Just kidding!@d{64} @c{smile_eclosed}I lost fair and square… I have a feeling you’re going to do really well out there.$@c{smile}By the way, the professor wanted me to give you some items. Hopefully they’re helpful!$@c{smile_wave}Do your best like always! I believe in you!"
+      "1": "@c{shock}Wait, you cleared that test already?!$@c{smile_wave_wink}Okay, okay, I get it.\nYou're not stumbling out of the gate today.$@c{smile_eclosed}Enjoy the win while it lasts.\nNext time I bring out a real squad."
     }
   },
   "rival2": {
