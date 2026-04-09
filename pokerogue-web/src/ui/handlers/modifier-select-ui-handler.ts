@@ -970,7 +970,8 @@ class ModifierOption extends Phaser.GameObjects.Container {
     }
 
     const finalPromises: Promise<void>[] = [];
-    globalScene.time.delayedCall(remainingDuration + 2000, () => {
+    const revealDelay = isReward ? remainingDuration + 2000 : remainingDuration;
+    globalScene.time.delayedCall(revealDelay, () => {
       if (isReward) {
         this.pb.setTexture("pb", `${this.getPbAtlasKey(0)}_open`);
         globalScene.playSound("se/pb_rel");
