@@ -1,5 +1,6 @@
 import type { TurnCommand } from "#app/battle";
 import { globalScene } from "#app/global-scene";
+import type { DevItemId } from "#app/dev-item-inventory";
 import { getPokemonNameWithAffix } from "#app/messages";
 import { speciesStarterCosts } from "#balance/starters";
 import { TrappedTag } from "#data/battler-tags";
@@ -458,6 +459,22 @@ export class CommandPhase extends FieldPhase {
     }
 
     return false;
+  }
+
+  public handleDevItemCommand(itemId: DevItemId, targetPartyIndex: number, moveIndex?: number): boolean {
+    if (!globalScene.devItemCounts[itemId]) {
+      return false;
+    }
+
+    globalScene.currentBattle.turnCommands[this.fieldIndex] = {
+      command: Command.ITEM,
+      cursor: targetPartyIndex,
+      args: [itemId, moveIndex],
+      targets: [this.fieldIndex],
+    };
+
+    this.end();
+    return true;
   }
 
   /**

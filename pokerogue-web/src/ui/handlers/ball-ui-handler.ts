@@ -6,7 +6,6 @@ import { Command } from "#enums/command";
 import { GameModes } from "#enums/game-modes";
 import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
-import type { Modifier } from "#modifiers/modifier";
 import {
   PokemonMoveModifierType,
   PokemonPpRestoreModifierType,
@@ -221,14 +220,16 @@ export class BallUiHandler extends UiHandler {
       this.refreshView();
       globalScene.ui.setMode(UiMode.BALL);
     };
-    const consumeModifier = (modifier: Modifier | null) => {
-      const success = globalScene.addModifier(modifier, false, true);
+    const queueUsage = (slotIndex: number, moveIndex?: number) => {
+      const commandPhase = globalScene.phaseManager.getCurrentPhase() as CommandPhase;
+      const success = commandPhase.handleDevItemCommand(itemId, slotIndex, moveIndex);
       if (success) {
-        globalScene.devItemCounts[itemId] = Math.max(0, globalScene.devItemCounts[itemId] - 1);
+        globalScene.ui.setMode(UiMode.COMMAND, commandPhase.getFieldIndex());
+        globalScene.ui.setMode(UiMode.MESSAGE);
       } else {
         globalScene.ui.playError();
+        resetBagMode();
       }
-      resetBagMode();
     };
 
     if (modifierType instanceof PokemonMoveModifierType) {
@@ -238,7 +239,7 @@ export class BallUiHandler extends UiHandler {
         -1,
         (slotIndex: number, option: PartyOption) => {
           if (slotIndex < 6) {
-            consumeModifier(modifierType.newModifier(party[slotIndex], option - PartyOption.MOVE_1));
+            queueUsage(slotIndex, option - PartyOption.MOVE_1);
           } else {
             resetBagMode();
           }
@@ -257,7 +258,7 @@ export class BallUiHandler extends UiHandler {
       -1,
       (slotIndex: number) => {
         if (slotIndex < 6) {
-          consumeModifier(modifierType.newModifier(party[slotIndex]));
+          queueUsage(slotIndex);
         } else {
           resetBagMode();
         }
