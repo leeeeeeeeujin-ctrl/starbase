@@ -225,6 +225,8 @@ function main() {
     run("corepack", ["pnpm", "build"], buildDir, {
       VITE_BASE_PATH: "/pokerogue-embedded/",
       VITE_ENABLE_SERVICE_WORKER: "0",
+      VITE_BYPASS_LOGIN: "1",
+      VITE_SERVER_URL: "/api/pokerogue-compat",
     });
 
     const distDir = path.join(buildDir, "dist");

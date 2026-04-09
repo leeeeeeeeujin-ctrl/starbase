@@ -8795,6 +8795,20 @@ begin
 end;
 $$;
 
+create table if not exists public.pokerogue_profiles (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  username text not null,
+  system_data text,
+  session_slots jsonb not null default '{}'::jsonb,
+  last_session_slot integer not null default -1,
+  client_session_id text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists pokerogue_profiles_updated_at_idx
+  on public.pokerogue_profiles (updated_at desc);
+
 do $$
 begin
   if not exists (

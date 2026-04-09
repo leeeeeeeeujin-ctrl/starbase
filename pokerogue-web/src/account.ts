@@ -2,6 +2,7 @@ import { pokerogueApi } from "#api/pokerogue-api";
 import { bypassLogin } from "#constants/app-constants";
 import type { UserInfo } from "#types/api";
 import { randomString } from "#utils/common";
+import { getEmbeddedSupabaseUserInfo } from "#utils/supabase-session";
 
 export let loggedInUser: UserInfo | null = null;
 // This is a random string that is used to identify the client session - unique per session (tab or window) so that the game will only save on the one that the server is expecting
@@ -17,11 +18,20 @@ export async function updateUserInfo(): Promise<[success: boolean, status: numbe
     return [true, 200];
   }
 
+  const embeddedUser = getEmbeddedSupabaseUserInfo();
+  if (embeddedUser) {
+    const [accountInfo, status] = await pokerogueApi.account.getInfo();
+    if (accountInfo) {
+      loggedInUser = accountInfo;
+      return [true, status];
+    }
+  }
+
   loggedInUser = {
-    username: "Guest",
+    username: embeddedUser?.username ?? "Guest",
     lastSessionSlot: -1,
-    discordId: "",
-    googleId: "",
+    discordId: embeddedUser?.id ?? "",
+    googleId: embeddedUser?.email ?? "",
     hasAdminRole: false,
   };
   let lastSessionSlot = -1;
