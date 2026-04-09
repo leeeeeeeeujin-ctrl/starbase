@@ -31,6 +31,9 @@ export function getKeyWithKeycode(
   config: InterfaceConfig,
   keycode: number | undefined,
 ): InterfaceButtonName | undefined {
+  if (!config?.deviceMapping) {
+    return undefined;
+  }
   for (const [key, value] of Object.entries(config.deviceMapping)) {
     if (value === keycode) {
       return key as InterfaceButtonName;
@@ -81,6 +84,9 @@ export function getIconWithKeycode(config: InterfaceConfig, keycode: number): st
  * @returns The button associated with the specified keycode.
  */
 export function getButtonWithKeycode(config: InterfaceConfig, keycode: number): Button | undefined {
+  if (!config?.settings) {
+    return undefined;
+  }
   const settingName = getSettingNameWithKeycode(config, keycode);
   return config.settings[settingName! as keyof typeof config.settings];
 }
