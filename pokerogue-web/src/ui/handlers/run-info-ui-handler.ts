@@ -573,6 +573,9 @@ export class RunInfoUiHandler extends UiHandler {
       case GameModes.SPLICED_ENDLESS:
         modeText.appendText(`${i18next.t("gameMode:endlessSpliced")}`, false);
         break;
+      case GameModes.DEV:
+        modeText.appendText(`${i18next.t("gameMode:dev")}`, false);
+        break;
       case GameModes.CHALLENGE: {
         modeText.appendText(`${i18next.t("gameMode:challenge")}`, false);
         modeText.appendText(`${i18next.t("runHistory:challengeRules")}: `);

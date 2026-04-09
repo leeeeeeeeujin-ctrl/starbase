@@ -296,6 +296,7 @@ export class GameMode implements GameModeConfig {
   isWaveFinal(waveIndex: number, modeId: GameModes = this.modeId): boolean {
     switch (modeId) {
       case GameModes.CLASSIC:
+      case GameModes.DEV:
       case GameModes.CHALLENGE:
         return waveIndex === 200;
       case GameModes.ENDLESS:
@@ -318,7 +319,10 @@ export class GameMode implements GameModeConfig {
    * @returns `true` if the current battle is against classic mode's final boss
    */
   isBattleClassicFinalBoss(waveIndex: number): boolean {
-    return (this.modeId === GameModes.CLASSIC || this.modeId === GameModes.CHALLENGE) && this.isWaveFinal(waveIndex);
+    return (
+      (this.modeId === GameModes.CLASSIC || this.modeId === GameModes.DEV || this.modeId === GameModes.CHALLENGE)
+      && this.isWaveFinal(waveIndex)
+    );
   }
 
   /**
@@ -388,6 +392,7 @@ export class GameMode implements GameModeConfig {
   getClearScoreBonus(): number {
     switch (this.modeId) {
       case GameModes.CLASSIC:
+      case GameModes.DEV:
       case GameModes.CHALLENGE:
         return 5000;
       case GameModes.DAILY:
@@ -400,6 +405,7 @@ export class GameMode implements GameModeConfig {
   getEnemyModifierChance(isBoss: boolean): number {
     switch (this.modeId) {
       case GameModes.CLASSIC:
+      case GameModes.DEV:
       case GameModes.CHALLENGE:
       case GameModes.DAILY:
         return isBoss ? 6 : 18;
@@ -413,6 +419,8 @@ export class GameMode implements GameModeConfig {
     switch (this.modeId) {
       case GameModes.CLASSIC:
         return i18next.t("gameMode:classic");
+      case GameModes.DEV:
+        return i18next.t("gameMode:dev");
       case GameModes.ENDLESS:
         return i18next.t("gameMode:endless");
       case GameModes.SPLICED_ENDLESS:
@@ -430,6 +438,7 @@ export class GameMode implements GameModeConfig {
   getMysteryEncounterLegalWaves(): [minWave: number, maxWave: number] {
     switch (this.modeId) {
       case GameModes.CLASSIC:
+      case GameModes.DEV:
         return CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES;
       case GameModes.CHALLENGE:
         return CHALLENGE_MODE_MYSTERY_ENCOUNTER_WAVES;
@@ -454,6 +463,8 @@ export class GameMode implements GameModeConfig {
     switch (modeId) {
       case GameModes.CLASSIC:
         return i18next.t("gameMode:classic");
+      case GameModes.DEV:
+        return i18next.t("gameMode:dev");
       case GameModes.ENDLESS:
         return i18next.t("gameMode:endless");
       case GameModes.SPLICED_ENDLESS:
@@ -471,6 +482,12 @@ export function getGameMode(gameMode: GameModes): GameMode {
     case GameModes.CLASSIC:
       return new GameMode(
         GameModes.CLASSIC,
+        { isClassic: true, hasTrainers: true, hasMysteryEncounters: true },
+        classicFixedBattles,
+      );
+    case GameModes.DEV:
+      return new GameMode(
+        GameModes.DEV,
         { isClassic: true, hasTrainers: true, hasMysteryEncounters: true },
         classicFixedBattles,
       );

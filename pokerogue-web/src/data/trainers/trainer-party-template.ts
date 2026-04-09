@@ -277,17 +277,18 @@ export function getWavePartyTemplate(...templates: TrainerPartyTemplate[]) {
 
 export function getGymLeaderPartyTemplate() {
   const { currentBattle, gameMode } = globalScene;
-  switch (gameMode.modeId) {
-    case GameModes.DAILY:
-      if (currentBattle?.waveIndex <= 20) {
-        return trainerPartyTemplates.GYM_LEADER_2;
-      }
-      return trainerPartyTemplates.GYM_LEADER_3;
-    case GameModes.CHALLENGE: // In the future, there may be a ChallengeType to call here. For now, use classic's.
-    case GameModes.CLASSIC:
-      if (currentBattle?.waveIndex <= 20) {
-        return trainerPartyTemplates.GYM_LEADER_1; // 1 avg 1 strong
-      }
+    switch (gameMode.modeId) {
+      case GameModes.DAILY:
+        if (currentBattle?.waveIndex <= 20) {
+          return trainerPartyTemplates.GYM_LEADER_2;
+        }
+        return trainerPartyTemplates.GYM_LEADER_3;
+      case GameModes.DEV:
+      case GameModes.CHALLENGE: // In the future, there may be a ChallengeType to call here. For now, use classic's.
+      case GameModes.CLASSIC:
+        if (currentBattle?.waveIndex <= 20) {
+          return trainerPartyTemplates.GYM_LEADER_1; // 1 avg 1 strong
+        }
       if (currentBattle?.waveIndex <= 30) {
         return trainerPartyTemplates.GYM_LEADER_2; // 1 avg 1 strong 1 stronger
       }

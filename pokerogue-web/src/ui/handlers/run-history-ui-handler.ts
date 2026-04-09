@@ -366,6 +366,7 @@ class RunEntryContainer extends Phaser.GameObjects.Container {
       case GameModes.ENDLESS:
         mode = i18next.t("gameMode:endless");
         break;
+      case GameModes.DEV:
       case GameModes.CLASSIC:
         mode = i18next.t("gameMode:classic");
         break;
