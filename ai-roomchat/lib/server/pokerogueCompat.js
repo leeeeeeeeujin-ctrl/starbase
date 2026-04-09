@@ -1,9 +1,12 @@
 import { supabaseAdmin } from "../supabaseAdmin.js";
-import { createServerSupabaseClient } from "@supabase/ssr";
+import { createServerClient } from "@supabase/ssr";
+import { parse as parseCookieHeader, serialize as serializeCookie } from "cookie";
 import fs from "fs";
 import path from "path";
 
 const fallbackStorePath = path.join(process.cwd(), "tmp", "pokerogue-profiles.local.json");
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 
 function ensureFallbackStore() {
   fs.mkdirSync(path.dirname(fallbackStorePath), { recursive: true });
@@ -62,7 +65,25 @@ export function extractAuthorizationToken(req) {
 
 export async function getPokerogueAuthedUser(req, res) {
   try {
-    const cookieSupabase = createServerSupabaseClient({ req, res });
+    const requestCookies = parseCookieHeader(req?.headers?.cookie || "");
+    const cookieSupabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+      cookies: {
+        getAll() {
+          return Object.entries(requestCookies).map(([name, value]) => ({ name, value }));
+        },
+        setAll(cookiesToSet) {
+          if (!res || !Array.isArray(cookiesToSet) || cookiesToSet.length === 0) {
+            return;
+          }
+          const existing = res.getHeader("Set-Cookie");
+          const current = Array.isArray(existing) ? existing : existing ? [String(existing)] : [];
+          const next = cookiesToSet.map(({ name, value, options }) =>
+            serializeCookie(name, value, options || {})
+          );
+          res.setHeader("Set-Cookie", [...current, ...next]);
+        },
+      },
+    });
     const {
       data: { user },
       error,
