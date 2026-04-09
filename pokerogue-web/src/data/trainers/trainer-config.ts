@@ -979,6 +979,24 @@ function replaceInMoveset(moveset: PokemonMove[], target: MoveId, replacement: M
     }
   }
 }
+
+function postProcessFirstRivalEevee(p: EnemyPokemon): void {
+  p.abilityIndex = 0;
+  p.generateAndPopulateMoveset();
+  p.moveset[0] = new PokemonMove(MoveId.TACKLE);
+  p.moveset[1] = new PokemonMove(MoveId.TAIL_WHIP);
+  p.moveset[2] = new PokemonMove(MoveId.GROWL);
+  p.moveset[3] = new PokemonMove(MoveId.QUICK_ATTACK);
+}
+
+function postProcessFirstRivalPidgey(p: EnemyPokemon): void {
+  p.abilityIndex = 0;
+  p.generateAndPopulateMoveset();
+  p.moveset[0] = new PokemonMove(MoveId.TACKLE);
+  p.moveset[1] = new PokemonMove(MoveId.GUST);
+  p.moveset[2] = new PokemonMove(MoveId.SAND_ATTACK);
+  p.moveset[3] = new PokemonMove(MoveId.QUICK_ATTACK);
+}
 /**
  * Randomly selects one of the `Species` from `speciesPool`, determines its evolution, level, and strength.
  * Then adds Pokemon to globalScene.
@@ -5497,8 +5515,8 @@ export const trainerConfigs: TrainerConfigs = {
       () => modifierTypes.SUPER_EXP_CHARM,
       () => modifierTypes.EXP_SHARE,
     )
-    .setPartyMemberFunc(0, getRandomRivalPartyMemberFunc(RIVAL_1_POOL, 0))
-    .setPartyMemberFunc(1, getRandomRivalPartyMemberFunc(RIVAL_1_POOL, 1)),
+    .setPartyMemberFunc(0, getRandomPartyMemberFunc([SpeciesId.EEVEE], TrainerSlot.TRAINER, true, postProcessFirstRivalEevee))
+    .setPartyMemberFunc(1, getRandomPartyMemberFunc([SpeciesId.PIDGEY], TrainerSlot.TRAINER, true, postProcessFirstRivalPidgey)),
   [TrainerType.RIVAL_2]: new TrainerConfig(++t)
     .setName("Finn")
     .setHasGenders("Ivy")
