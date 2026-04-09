@@ -19,6 +19,7 @@ const VALIDATION_FILES = [
   ["assets", "images", "trainer", "rival_m.png"],
   ["assets", "audio", "battle_anims", "PRSFX- Struggle.wav"],
 ];
+const KNOWN_SUBMODULES = ["assets", "locales"];
 
 function log(message) {
   console.log(`[prepare-pokerogue-upstream] ${message}`);
@@ -77,6 +78,29 @@ function hasGitRepository(dirPath) {
   return fs.existsSync(path.join(dirPath, ".git"));
 }
 
+function hasSubmoduleConfig(dirPath) {
+  return fs.existsSync(path.join(dirPath, ".gitmodules"));
+}
+
+function hydrateSubmodules(sourceDir) {
+  if (!hasSubmoduleConfig(sourceDir)) {
+    return;
+  }
+
+  log("initializing Pokerogue submodules");
+  run("git", ["submodule", "update", "--init", "--recursive", "--depth", "1"], sourceDir);
+
+  for (const submoduleName of KNOWN_SUBMODULES) {
+    const submoduleDir = path.join(sourceDir, submoduleName);
+    if (!fs.existsSync(submoduleDir) || !hasGitRepository(submoduleDir)) {
+      continue;
+    }
+
+    log(`refreshing Git LFS assets in submodule ${submoduleName}`);
+    run("git", ["lfs", "pull"], submoduleDir);
+  }
+}
+
 function resolveConfiguredLocalSource() {
   const configured = process.env.POKEROGUE_SOURCE_DIR?.trim();
   if (!configured) {
@@ -92,6 +116,8 @@ function cloneFreshSource(tempRoot) {
 
   log(`cloning ${gitUrl}#${gitRef}`);
   run("git", ["clone", "--depth", "1", "--branch", gitRef, gitUrl, cloneDir], repoRoot);
+
+  hydrateSubmodules(cloneDir);
 
   log("pulling Git LFS assets");
   run("git", ["lfs", "pull"], cloneDir);
@@ -156,6 +182,7 @@ function resolveSourceDir() {
   if (configuredLocalSource && fs.existsSync(configuredLocalSource)) {
     log(`using configured local source ${configuredLocalSource}`);
     if (hasGitRepository(configuredLocalSource)) {
+      hydrateSubmodules(configuredLocalSource);
       log("refreshing Git LFS assets in configured local source");
       run("git", ["lfs", "pull"], configuredLocalSource);
     }
@@ -164,6 +191,7 @@ function resolveSourceDir() {
 
   if (fs.existsSync(localPokerogueSourceDir) && hasGitRepository(localPokerogueSourceDir)) {
     log(`using local Pokerogue source ${localPokerogueSourceDir}`);
+    hydrateSubmodules(localPokerogueSourceDir);
     log("refreshing Git LFS assets in local source");
     run("git", ["lfs", "pull"], localPokerogueSourceDir);
     return { sourceDir: localPokerogueSourceDir, cleanup: null };
