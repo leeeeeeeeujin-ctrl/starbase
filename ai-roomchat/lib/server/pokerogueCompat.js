@@ -1,4 +1,3 @@
-import { createClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "../supabaseAdmin.js";
 import { createServerClient } from "@supabase/ssr";
 import { parse as parseCookieHeader, serialize as serializeCookie } from "cookie";
@@ -8,12 +7,6 @@ import path from "path";
 const fallbackStorePath = path.join(process.cwd(), "tmp", "pokerogue-profiles.local.json");
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-const bearerVerifyClient =
-  supabaseUrl && supabaseAnonKey
-    ? createClient(supabaseUrl, supabaseAnonKey, {
-        auth: { persistSession: false, autoRefreshToken: false },
-      })
-    : null;
 
 function ensureFallbackStore() {
   fs.mkdirSync(path.dirname(fallbackStorePath), { recursive: true });
@@ -139,7 +132,7 @@ export async function getPokerogueAuthedUser(req, res) {
   }
 
   try {
-    if (!bearerVerifyClient) {
+    if (!supabaseUrl || !supabaseAnonKey) {
       return {
         user: null,
         error: "bearer_client_not_configured",
@@ -147,20 +140,34 @@ export async function getPokerogueAuthedUser(req, res) {
       };
     }
 
-    const { data, error } = await bearerVerifyClient.auth.getUser(token);
-    if (error || !data?.user) {
+    const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      headers: {
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    const text = await response.text();
+    let parsed = null;
+    try {
+      parsed = text ? JSON.parse(text) : null;
+    } catch {
+      parsed = null;
+    }
+
+    if (!response.ok || !parsed?.id) {
       return {
         user: null,
-        error: error?.message || "invalid_authorization",
+        error: parsed?.msg || parsed?.error_description || parsed?.error || `auth_status_${response.status}`,
         debug: {
           ...debug,
           authSource: "bearer",
-          bearerError: error?.message || "invalid_authorization",
+          bearerStatus: response.status,
+          bearerError: parsed?.msg || parsed?.error_description || parsed?.error || text || "invalid_authorization",
         },
       };
     }
 
-    return { user: data.user, error: null, debug: { ...debug, authSource: "bearer" } };
+    return { user: parsed, error: null, debug: { ...debug, authSource: "bearer", bearerStatus: response.status } };
   } catch (error) {
     return {
       user: null,
