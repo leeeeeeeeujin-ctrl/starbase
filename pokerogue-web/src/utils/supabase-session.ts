@@ -95,10 +95,17 @@ export function getEmbeddedSupabaseSession(): EmbeddedSupabaseSession | null {
   }
 
   const bridgedToken = window.localStorage.getItem("pokerogue_supabase_access_token");
+  const bridgedUserRaw = window.localStorage.getItem("pokerogue_supabase_user");
+  let bridgedUser = null;
+  try {
+    bridgedUser = bridgedUserRaw ? JSON.parse(bridgedUserRaw) : null;
+  } catch {
+    bridgedUser = null;
+  }
   if (isLikelyUserAccessToken(bridgedToken)) {
     return {
       accessToken: bridgedToken,
-      user: null,
+      user: bridgedUser,
     };
   }
 

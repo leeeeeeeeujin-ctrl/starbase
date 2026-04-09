@@ -93,6 +93,7 @@ export default function PokerogueUpstreamPage() {
   const isDev = process.env.NODE_ENV !== 'production';
   const bundledUpstreamUrl = '/pokerogue-embedded/index.html';
   const [bridgeReady, setBridgeReady] = useState(false);
+  const [embeddedAuthReady, setEmbeddedAuthReady] = useState(false);
   const [authState, setAuthState] = useState({
     loading: true,
     loggedIn: false,
@@ -106,6 +107,8 @@ export default function PokerogueUpstreamPage() {
     [externalUpstreamUrl, isDev],
   );
   const openInNewTabHref = iframeSrc;
+  const iframeLaunchReady =
+    Boolean(iframeSrc) && bridgeReady && !authState.loading && authState.compatOk && embeddedAuthReady;
 
   useEffect(() => {
     let cancelled = false;
@@ -171,6 +174,8 @@ export default function PokerogueUpstreamPage() {
 
     async function syncEmbeddedToken() {
       try {
+        const { data } = await supabase.auth.getSession();
+        const user = data?.session?.user || null;
         const { token } = await buildSupabaseAuthHeaders();
         if (!active) return;
         if (token) {
@@ -178,9 +183,24 @@ export default function PokerogueUpstreamPage() {
         } else {
           window.localStorage.removeItem('pokerogue_supabase_access_token');
         }
+        if (user) {
+          window.localStorage.setItem(
+            'pokerogue_supabase_user',
+            JSON.stringify({
+              id: user.id || '',
+              email: user.email || '',
+              user_metadata: user.user_metadata || {},
+            }),
+          );
+        } else {
+          window.localStorage.removeItem('pokerogue_supabase_user');
+        }
+        setEmbeddedAuthReady(true);
       } catch {
         if (!active) return;
         window.localStorage.removeItem('pokerogue_supabase_access_token');
+        window.localStorage.removeItem('pokerogue_supabase_user');
+        setEmbeddedAuthReady(true);
       }
     }
 
@@ -326,7 +346,7 @@ export default function PokerogueUpstreamPage() {
       </section>
 
       <div style={frameWrapStyle}>
-        {iframeSrc && bridgeReady ? (
+        {iframeLaunchReady ? (
           <iframe title="Pokerogue Upstream" src={iframeSrc} style={iframeStyle} />
         ) : (
           <div
@@ -347,7 +367,11 @@ export default function PokerogueUpstreamPage() {
               {iframeSrc ? (
                 <>
                   <div>메인 앱 서비스워커를 해제하고 포켓로그 전용 정적 경로를 준비 중이다.</div>
-                  <div>이 상태가 길게 유지되면 새로고침 한 번 후 다시 확인해봐.</div>
+                  <div>계정 브리지와 compat API 확인이 끝난 뒤에만 본판을 띄운다.</div>
+                  {!embeddedAuthReady ? <div>임베드 인증 브리지 동기화 중…</div> : null}
+                  {!authState.loading && !authState.compatOk ? (
+                    <div style={{ color: '#fca5a5' }}>Compat API가 아직 정상 응답을 주지 않아서 본판 실행을 보류 중이다.</div>
+                  ) : null}
                 </>
               ) : (
                 <>
