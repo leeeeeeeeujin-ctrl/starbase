@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
+import { supabase } from '../../lib/supabase';
+import { buildSupabaseAuthHeaders } from '../../lib/api/authHeaders';
 
 const pageStyle = {
   minHeight: '100vh',
@@ -43,6 +45,36 @@ const noteStyle = {
   lineHeight: 1.6,
 };
 
+const statusGridStyle = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+  gap: 12,
+  margin: '16px 24px 0',
+};
+
+const statusCardStyle = {
+  borderRadius: 14,
+  padding: '14px 16px',
+  background: 'rgba(15,23,42,0.82)',
+  border: '1px solid rgba(148,163,184,0.18)',
+};
+
+const statusLabelStyle = {
+  display: 'block',
+  color: '#94a3b8',
+  fontSize: 12,
+  marginBottom: 8,
+  textTransform: 'uppercase',
+  letterSpacing: '0.06em',
+};
+
+const statusValueStyle = {
+  fontSize: 14,
+  lineHeight: 1.6,
+  color: '#e2e8f0',
+  wordBreak: 'break-word',
+};
+
 const frameWrapStyle = {
   flex: 1,
   padding: 24,
@@ -61,11 +93,76 @@ export default function PokerogueUpstreamPage() {
   const isDev = process.env.NODE_ENV !== 'production';
   const bundledUpstreamUrl = '/pokerogue-embedded/index.html';
   const [bridgeReady, setBridgeReady] = useState(false);
+  const [authState, setAuthState] = useState({
+    loading: true,
+    loggedIn: false,
+    userText: '',
+    tokenReady: false,
+    compatOk: false,
+    compatText: '',
+  });
   const iframeSrc = useMemo(
     () => externalUpstreamUrl || (isDev ? '/api/pokerogue/upstream/index.html' : bundledUpstreamUrl),
     [externalUpstreamUrl, isDev],
   );
   const openInNewTabHref = iframeSrc;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadAuthState() {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const session = data?.session || null;
+        const user = session?.user || null;
+        const { headers, token } = await buildSupabaseAuthHeaders();
+
+        let compatOk = false;
+        let compatText = '로그인 세션이 없어 compat API를 확인하지 않았다.';
+
+        if (token) {
+          try {
+            const response = await fetch('/api/pokerogue-compat/account/info', {
+              headers,
+            });
+            const text = await response.text();
+            compatOk = response.ok;
+            compatText = response.ok ? text : `${response.status} ${text}`;
+          } catch (error) {
+            compatText = error?.message || 'compat API 요청 실패';
+          }
+        }
+
+        if (!cancelled) {
+          setAuthState({
+            loading: false,
+            loggedIn: Boolean(user),
+            userText: user?.email || user?.id || '',
+            tokenReady: Boolean(token),
+            compatOk,
+            compatText,
+          });
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setAuthState({
+            loading: false,
+            loggedIn: false,
+            userText: '',
+            tokenReady: false,
+            compatOk: false,
+            compatText: error?.message || '로그인 상태 확인 실패',
+          });
+        }
+      }
+    }
+
+    loadAuthState();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -165,6 +262,36 @@ export default function PokerogueUpstreamPage() {
           </>
         )}
       </div>
+
+      <section style={statusGridStyle}>
+        <div style={statusCardStyle}>
+          <span style={statusLabelStyle}>앱 로그인 상태</span>
+          <div style={statusValueStyle}>
+            {authState.loading
+              ? '확인 중'
+              : authState.loggedIn
+                ? `로그인됨${authState.userText ? ` (${authState.userText})` : ''}`
+                : '로그인 안 됨'}
+          </div>
+        </div>
+        <div style={statusCardStyle}>
+          <span style={statusLabelStyle}>Supabase 토큰</span>
+          <div style={statusValueStyle}>
+            {authState.loading ? '확인 중' : authState.tokenReady ? '준비됨' : '없음'}
+          </div>
+        </div>
+        <div style={statusCardStyle}>
+          <span style={statusLabelStyle}>Pokerogue Compat API</span>
+          <div style={statusValueStyle}>
+            {authState.loading ? '확인 중' : authState.compatOk ? '정상' : '미확인 / 실패'}
+            {authState.compatText ? (
+              <div style={{ marginTop: 8, color: authState.compatOk ? '#a7f3d0' : '#fca5a5' }}>
+                {authState.compatText}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </section>
 
       <div style={frameWrapStyle}>
         {iframeSrc && bridgeReady ? (
