@@ -68,7 +68,7 @@ async function requireUser(req, res) {
     return null;
   }
 
-  const { user, error } = await getPokerogueAuthedUser(req);
+  const { user, error } = await getPokerogueAuthedUser(req, res);
   if (!user) {
     sendJson(res, 401, { error: error || "unauthorized" });
     return null;

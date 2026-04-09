@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "../supabaseAdmin.js";
+import { createServerSupabaseClient } from "@supabase/ssr";
 import fs from "fs";
 import path from "path";
 
@@ -59,7 +60,26 @@ export function extractAuthorizationToken(req) {
   return trimmed;
 }
 
-export async function getPokerogueAuthedUser(req) {
+export async function getPokerogueAuthedUser(req, res) {
+  try {
+    const cookieSupabase = createServerSupabaseClient({ req, res });
+    const {
+      data: { user },
+      error,
+    } = await cookieSupabase.auth.getUser();
+    if (user) {
+      return { user, error: null };
+    }
+    if (error && !/Auth session missing/i.test(error.message || "")) {
+      return { user: null, error: error.message || "invalid_cookie_session" };
+    }
+  } catch (error) {
+    const message = error?.message || String(error);
+    if (!/Auth session missing/i.test(message)) {
+      return { user: null, error: message };
+    }
+  }
+
   const token = extractAuthorizationToken(req);
   if (!token) {
     return { user: null, error: "missing_authorization" };
