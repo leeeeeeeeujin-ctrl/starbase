@@ -31,15 +31,12 @@ enum BagTab {
 }
 
 export class BallUiHandler extends UiHandler {
-  private static readonly MAX_ROWS_PER_COLUMN = 6;
-  private static readonly COLUMN_X_OFFSETS = [18, 132];
+  private static readonly MAX_VISIBLE_ROWS = 6;
 
   private pokeballSelectContainer: Phaser.GameObjects.Container;
   private pokeballSelectBg: Phaser.GameObjects.NineSlice;
-  private leftOptionsText: Phaser.GameObjects.Text;
-  private leftCountsText: Phaser.GameObjects.Text;
-  private rightOptionsText: Phaser.GameObjects.Text;
-  private rightCountsText: Phaser.GameObjects.Text;
+  private optionsText: Phaser.GameObjects.Text;
+  private countsText: Phaser.GameObjects.Text;
   private tabText: Phaser.GameObjects.Text;
   private entryIcons: Phaser.GameObjects.Sprite[] = [];
 
@@ -62,7 +59,7 @@ export class BallUiHandler extends UiHandler {
 
     this.scale = getTextStyleOptions(TextStyle.WINDOW).scale;
 
-    const panelWidth = 266;
+    const panelWidth = 172;
     const panelHeight = 32 + 960 * this.scale;
     this.pokeballSelectContainer = globalScene.add.container(
       globalScene.scaledCanvas.width - 51 - panelWidth,
@@ -80,41 +77,24 @@ export class BallUiHandler extends UiHandler {
     this.tabText.setPositionRelative(this.pokeballSelectBg, panelWidth / 2, 8);
     this.pokeballSelectContainer.add(this.tabText);
 
-    this.leftOptionsText = addTextObject(0, 0, "", TextStyle.WINDOW, { align: "right", maxLines: 6 });
-    this.pokeballSelectContainer.add(this.leftOptionsText);
-    this.leftOptionsText.setOrigin(0, 0);
-    this.leftOptionsText.setPositionRelative(this.pokeballSelectBg, 42, 30);
-    this.leftOptionsText.setLineSpacing(this.scale * 72);
+    this.optionsText = addTextObject(0, 0, "", TextStyle.WINDOW, { align: "right", maxLines: 6 });
+    this.pokeballSelectContainer.add(this.optionsText);
+    this.optionsText.setOrigin(0, 0);
+    this.optionsText.setPositionRelative(this.pokeballSelectBg, 42, 30);
+    this.optionsText.setLineSpacing(this.scale * 72);
 
-    this.leftCountsText = addTextObject(0, 0, "", TextStyle.WINDOW, { maxLines: 6 });
-    this.leftCountsText.setPositionRelative(this.pokeballSelectBg, 18, 30);
-    this.leftCountsText.setLineSpacing(this.scale * 72);
-    this.pokeballSelectContainer.add(this.leftCountsText);
+    this.countsText = addTextObject(0, 0, "", TextStyle.WINDOW, { maxLines: 6 });
+    this.countsText.setPositionRelative(this.pokeballSelectBg, 18, 30);
+    this.countsText.setLineSpacing(this.scale * 72);
+    this.pokeballSelectContainer.add(this.countsText);
 
-    this.rightOptionsText = addTextObject(0, 0, "", TextStyle.WINDOW, { align: "right", maxLines: 6 });
-    this.pokeballSelectContainer.add(this.rightOptionsText);
-    this.rightOptionsText.setOrigin(0, 0);
-    this.rightOptionsText.setPositionRelative(this.pokeballSelectBg, 156, 30);
-    this.rightOptionsText.setLineSpacing(this.scale * 72);
-
-    this.rightCountsText = addTextObject(0, 0, "", TextStyle.WINDOW, { maxLines: 6 });
-    this.rightCountsText.setPositionRelative(this.pokeballSelectBg, 132, 30);
-    this.rightCountsText.setLineSpacing(this.scale * 72);
-    this.pokeballSelectContainer.add(this.rightCountsText);
-
-    for (let column = 0; column < BallUiHandler.COLUMN_X_OFFSETS.length; column++) {
-      for (let row = 0; row < BallUiHandler.MAX_ROWS_PER_COLUMN; row++) {
-        const icon = globalScene.add.sprite(0, 0, "items", "potion");
-        icon.setScale(0.5);
-        icon.setVisible(false);
-        icon.setPositionRelative(
-          this.pokeballSelectBg,
-          BallUiHandler.COLUMN_X_OFFSETS[column] + 18,
-          36 + (6 + row * 96) * this.scale,
-        );
-        this.entryIcons.push(icon);
-        this.pokeballSelectContainer.add(icon);
-      }
+    for (let row = 0; row < BallUiHandler.MAX_VISIBLE_ROWS; row++) {
+      const icon = globalScene.add.sprite(0, 0, "items", "potion");
+      icon.setScale(0.5);
+      icon.setVisible(false);
+      icon.setPositionRelative(this.pokeballSelectBg, 18, 36 + (6 + row * 96) * this.scale);
+      this.entryIcons.push(icon);
+      this.pokeballSelectContainer.add(icon);
     }
 
     this.setCursor(0);
@@ -186,23 +166,27 @@ export class BallUiHandler extends UiHandler {
 
   refreshView() {
     const entries = [...this.getCurrentEntries(), { label: i18next.t("commandUiHandler:ballCancel"), count: null as number | null }];
-    const leftEntries = entries.slice(0, BallUiHandler.MAX_ROWS_PER_COLUMN);
-    const rightEntries = entries.slice(BallUiHandler.MAX_ROWS_PER_COLUMN, BallUiHandler.MAX_ROWS_PER_COLUMN * 2);
+    if (this.cursor > entries.length - 1) {
+      this.cursor = Math.max(0, entries.length - 1);
+      this.tabCursors[this.activeTab] = this.cursor;
+    }
+    const startIndex = this.getPageStart(entries.length);
+    const visibleEntries = entries.slice(startIndex, startIndex + BallUiHandler.MAX_VISIBLE_ROWS);
+    const totalPages = Math.max(1, Math.ceil(entries.length / BallUiHandler.MAX_VISIBLE_ROWS));
+    const currentPage = Math.floor(startIndex / BallUiHandler.MAX_VISIBLE_ROWS) + 1;
 
-    this.leftOptionsText.setText(leftEntries.map(entry => entry.label).join("\n"));
-    this.leftCountsText.setText(leftEntries.map(entry => (entry.count == null ? "" : `×${entry.count}`)).join("\n"));
-    this.rightOptionsText.setText(rightEntries.map(entry => entry.label).join("\n"));
-    this.rightCountsText.setText(rightEntries.map(entry => (entry.count == null ? "" : `×${entry.count}`)).join("\n"));
-    this.tabText.setText(
+    this.optionsText.setText(visibleEntries.map(entry => entry.label).join("\n"));
+    this.countsText.setText(visibleEntries.map(entry => (entry.count == null ? "" : `×${entry.count}`)).join("\n"));
+    const tabLabel =
       this.activeTab === BagTab.BALLS
         ? i18next.t("ballUiHandler:ballsTab")
         : this.activeTab === BagTab.ITEMS
           ? i18next.t("ballUiHandler:itemsTab")
-          : i18next.t("ballUiHandler:buffsTab"),
-    );
+          : i18next.t("ballUiHandler:buffsTab");
+    this.tabText.setText(totalPages > 1 ? `${tabLabel} ${currentPage}/${totalPages}` : tabLabel);
 
     this.entryIcons.forEach(icon => icon.setVisible(false));
-    entries.slice(0, this.entryIcons.length).forEach((entry, index) => {
+    visibleEntries.forEach((entry, index) => {
       const icon = this.entryIcons[index];
       if (!icon || !entry.iconTexture) {
         return;
@@ -222,10 +206,8 @@ export class BallUiHandler extends UiHandler {
     }
 
     this.cursorObj.setScale(this.scale * 6);
-    const column = Math.floor(this.cursor / BallUiHandler.MAX_ROWS_PER_COLUMN);
-    const row = this.cursor % BallUiHandler.MAX_ROWS_PER_COLUMN;
-    const xOffset = BallUiHandler.COLUMN_X_OFFSETS[Math.min(column, BallUiHandler.COLUMN_X_OFFSETS.length - 1)];
-    this.cursorObj.setPositionRelative(this.pokeballSelectBg, xOffset, 36 + (6 + row * 96) * this.scale);
+    const row = this.cursor % BallUiHandler.MAX_VISIBLE_ROWS;
+    this.cursorObj.setPositionRelative(this.pokeballSelectBg, 18, 36 + (6 + row * 96) * this.scale);
 
     return ret;
   }
@@ -259,7 +241,7 @@ export class BallUiHandler extends UiHandler {
 
   private getCurrentEntries(): { label: string; count: number; iconTexture?: string; iconFrame?: string }[] {
     if (this.activeTab === BagTab.ITEMS && this.hasItemTab()) {
-      return DEV_ITEM_DEFINITIONS.map(def => {
+      return DEV_ITEM_DEFINITIONS.filter(def => globalScene.devItemCounts[def.id] > 0).map(def => {
         const modifierType = def.createModifierType();
         return {
           label: modifierType.name,
@@ -271,7 +253,7 @@ export class BallUiHandler extends UiHandler {
     }
 
     if (this.activeTab === BagTab.BUFFS && this.hasItemTab()) {
-      return DEV_BUFF_DEFINITIONS.map(def => {
+      return DEV_BUFF_DEFINITIONS.filter(def => globalScene.devBuffCounts[def.id] > 0).map(def => {
         const modifierType = def.createModifierType();
         return {
           label: modifierType.name,
@@ -293,8 +275,16 @@ export class BallUiHandler extends UiHandler {
     return this.getCurrentEntries().length;
   }
 
+  private getPageStart(totalEntries: number): number {
+    if (totalEntries <= BallUiHandler.MAX_VISIBLE_ROWS) {
+      return 0;
+    }
+    return Math.floor(this.cursor / BallUiHandler.MAX_VISIBLE_ROWS) * BallUiHandler.MAX_VISIBLE_ROWS;
+  }
+
   private openSelectedDevItem(): boolean {
-    const itemId = DEV_ITEM_DEFINITIONS[this.cursor]?.id;
+    const ownedItemDefs = DEV_ITEM_DEFINITIONS.filter(def => globalScene.devItemCounts[def.id] > 0);
+    const itemId = ownedItemDefs[this.cursor]?.id;
     if (!itemId) {
       return false;
     }
@@ -358,7 +348,8 @@ export class BallUiHandler extends UiHandler {
   }
 
   private openSelectedDevBuff(): boolean {
-    const buffId = DEV_BUFF_DEFINITIONS[this.cursor]?.id;
+    const ownedBuffDefs = DEV_BUFF_DEFINITIONS.filter(def => globalScene.devBuffCounts[def.id] > 0);
+    const buffId = ownedBuffDefs[this.cursor]?.id;
     if (!buffId) {
       return false;
     }
