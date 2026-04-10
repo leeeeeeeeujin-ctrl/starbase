@@ -35,6 +35,8 @@ type BagPage = {
   kind: BagPageKind;
   label: string;
   entries: BagPageEntry[];
+  pageNumber: number;
+  pageTotal: number;
 };
 
 const MAX_ROWS = 6;
@@ -179,8 +181,7 @@ export class BallUiHandler extends UiHandler {
     this.optionsText.setText(entries.map(entry => entry.label).join("\n"));
     this.countsText.setText(entries.map(entry => (entry.count == null ? "" : `×${entry.count}`)).join("\n"));
 
-    const pages = this.getPages();
-    this.tabText.setText(pages.length > 1 ? `${page.label} ${this.pageIndex + 1}/${pages.length}` : page.label);
+    this.tabText.setText(page.pageTotal > 1 ? `${page.label} ${page.pageNumber}/${page.pageTotal}` : page.label);
   }
 
   setCursor(cursor: number): boolean {
@@ -226,6 +227,8 @@ export class BallUiHandler extends UiHandler {
           count: globalScene.pokeballCounts[key],
           value: index,
         })),
+        pageNumber: 1,
+        pageTotal: 1,
       },
     ];
 
@@ -236,7 +239,7 @@ export class BallUiHandler extends UiHandler {
     const itemPages = this.chunkEntries(
       DEV_ITEM_DEFINITIONS.map(def => ({
         kind: "item" as const,
-        label: def.createModifierType().name,
+        label: this.getDevItemLabel(def.id),
         count: globalScene.devItemCounts[def.id],
         value: def.id,
       })),
@@ -246,7 +249,7 @@ export class BallUiHandler extends UiHandler {
     const buffPages = this.chunkEntries(
       DEV_BUFF_DEFINITIONS.map(def => ({
         kind: "buff" as const,
-        label: def.createModifierType().name,
+        label: this.getDevBuffLabel(def.id),
         count: globalScene.devBuffCounts[def.id],
         value: def.id,
       })),
@@ -258,14 +261,41 @@ export class BallUiHandler extends UiHandler {
 
   private chunkEntries<T extends BagPageEntry>(entries: T[], label: string): BagPage[] {
     const chunks: BagPage[] = [];
+    const total = Math.max(1, Math.ceil(entries.length / MAX_ROWS));
     for (let start = 0; start < entries.length; start += MAX_ROWS) {
       chunks.push({
         kind: entries[start]?.kind === "buff" ? "buffs" : "items",
         label,
         entries: entries.slice(start, start + MAX_ROWS),
+        pageNumber: chunks.length + 1,
+        pageTotal: total,
       });
     }
     return chunks;
+  }
+
+  private getDevItemLabel(itemId: DevItemId): string {
+    const name = getDevItemDefinition(itemId).createModifierType().name;
+    return name && !name.startsWith("null.") ? name : itemId;
+  }
+
+  private getDevBuffLabel(buffId: DevBuffId): string {
+    switch (buffId) {
+      case "x_attack":
+        return "X어택";
+      case "x_defense":
+        return "X디펜드";
+      case "x_speed":
+        return "X스피드";
+      case "x_sp_atk":
+        return "X특공";
+      case "x_sp_def":
+        return "X특방";
+      case "x_accuracy":
+        return "X명중";
+      case "dire_hit":
+        return "급소공격";
+    }
   }
 
   private getCurrentPage(): BagPage {
