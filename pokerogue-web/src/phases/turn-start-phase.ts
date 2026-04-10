@@ -1,6 +1,6 @@
 import { applyAbAttrs } from "#abilities/apply-ab-attrs";
 import type { TurnCommand } from "#app/battle";
-import { getDevItemDefinition, type DevItemId } from "#app/dev-item-inventory";
+import { getDevBuffDefinition, getDevItemDefinition, type DevBuffId, type DevItemId } from "#app/dev-item-inventory";
 import { globalScene } from "#app/global-scene";
 import { ArenaTagSide } from "#enums/arena-tag-side";
 import type { BattlerIndex } from "#enums/battler-index";
@@ -164,10 +164,31 @@ export class TurnStartPhase extends FieldPhase {
   }
 
   private handleItemCommand(turnCommand: TurnCommand, pokemon: Pokemon) {
-    const itemId = turnCommand.args?.[0] as DevItemId | undefined;
+    const itemKind = turnCommand.args?.[0] as string | undefined;
+    const isBuffItem = itemKind === "dev-buff";
+
+    let modifier;
+    if (isBuffItem) {
+      const buffId = turnCommand.args?.[1] as DevBuffId | undefined;
+      if (!buffId || !globalScene.devBuffCounts[buffId]) {
+        return;
+      }
+      const modifierType = getDevBuffDefinition(buffId).createModifierType();
+      modifier = modifierType.newModifier(pokemon);
+      if (!modifier) {
+        return;
+      }
+      const applied = globalScene.addModifier(modifier, false, true);
+      if (!applied) {
+        return;
+      }
+      globalScene.devBuffCounts[buffId] = Math.max(0, globalScene.devBuffCounts[buffId] - 1);
+      return;
+    }
+
+    const itemId = itemKind as DevItemId | undefined;
     const moveIndex = turnCommand.args?.[1] as number | undefined;
     const targetPartyIndex = turnCommand.cursor;
-
     if (!itemId || targetPartyIndex === undefined || !globalScene.devItemCounts[itemId]) {
       return;
     }
@@ -178,10 +199,7 @@ export class TurnStartPhase extends FieldPhase {
     }
 
     const modifierType = getDevItemDefinition(itemId).createModifierType();
-    const modifier = modifierType.newModifier(
-      targetPokemon,
-      typeof moveIndex === "number" ? moveIndex : undefined,
-    );
+    modifier = modifierType.newModifier(targetPokemon, typeof moveIndex === "number" ? moveIndex : undefined);
 
     if (!modifier) {
       return;

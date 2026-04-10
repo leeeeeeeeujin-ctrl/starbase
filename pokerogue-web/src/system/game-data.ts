@@ -1,7 +1,7 @@
 import { pokerogueApi } from "#api/pokerogue-api";
 import { clientSessionId, loggedInUser, updateUserInfo } from "#app/account";
 import { defaultStarterSpecies, saveKey } from "#app/constants";
-import { createEmptyDevItemCounts } from "#app/dev-item-inventory";
+import { createEmptyDevBuffCounts, createEmptyDevItemCounts } from "#app/dev-item-inventory";
 import { getGameMode } from "#app/game-mode";
 import { globalScene } from "#app/global-scene";
 import Overrides from "#app/overrides";
@@ -814,6 +814,7 @@ export class GameData {
       arena: new ArenaData(globalScene.arena),
       pokeballCounts: globalScene.pokeballCounts,
       devItemCounts: globalScene.devItemCounts,
+      devBuffCounts: globalScene.devBuffCounts,
       money: Math.floor(globalScene.money),
       score: globalScene.score,
       waveIndex: globalScene.currentBattle.waveIndex,
@@ -964,6 +965,13 @@ export class GameData {
     };
     Object.keys(devItemCounts).forEach((key: string) => {
       globalScene.devItemCounts[key] = devItemCounts[key] || 0;
+    });
+    const devBuffCounts = {
+      ...createEmptyDevBuffCounts(),
+      ...(fromSession.devBuffCounts ?? {}),
+    };
+    Object.keys(devBuffCounts).forEach((key: string) => {
+      globalScene.devBuffCounts[key] = devBuffCounts[key] || 0;
     });
     if (Overrides.POKEBALL_OVERRIDE.active) {
       globalScene.pokeballCounts = Overrides.POKEBALL_OVERRIDE.pokeballs;

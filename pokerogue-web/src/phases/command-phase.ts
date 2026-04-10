@@ -1,6 +1,6 @@
 import type { TurnCommand } from "#app/battle";
 import { globalScene } from "#app/global-scene";
-import type { DevItemId } from "#app/dev-item-inventory";
+import type { DevBuffId, DevItemId } from "#app/dev-item-inventory";
 import { getPokemonNameWithAffix } from "#app/messages";
 import { speciesStarterCosts } from "#balance/starters";
 import { TrappedTag } from "#data/battler-tags";
@@ -474,6 +474,24 @@ export class CommandPhase extends FieldPhase {
     };
 
     this.end();
+    return true;
+  }
+
+  public handleDevBuffCommand(buffId: DevBuffId): boolean {
+    if (!globalScene.devBuffCounts[buffId]) {
+      return false;
+    }
+
+    globalScene.currentBattle.turnCommands[this.fieldIndex] = {
+      command: Command.ITEM,
+      cursor: this.getPokemon().getPartyIndex(),
+      args: ["dev-buff", buffId],
+      targets: [this.fieldIndex],
+    };
+
+    if (this.fieldIndex) {
+      globalScene.currentBattle.turnCommands[this.fieldIndex - 1]!.skip = true;
+    }
     return true;
   }
 

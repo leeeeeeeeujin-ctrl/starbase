@@ -1,4 +1,5 @@
 import { TYPE_BOOST_ITEM_BOOST_PERCENT } from "#app/constants";
+import { getDevShopBuffOptions } from "#app/dev-item-inventory";
 import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
@@ -130,16 +131,6 @@ import i18next from "i18next";
 const outputModifierData = false;
 const useMaxWeightForOutput = false;
 const DEV_SHOP_RANDOM_OPTION_COUNT = 6;
-const DEV_SHOP_FIXED_ITEM_ICONS = new Set([
-  "potion",
-  "hyper_potion",
-  "max_potion",
-  "full_heal",
-  "revive",
-  "max_revive",
-  "ether",
-  "elixir",
-]);
 
 let devShopStockWave = -1;
 let devShopStock: ModifierTypeOption[] = [];
@@ -2650,20 +2641,13 @@ export function getPlayerShopModifierTypeOptionsForWave(waveIndex: number, baseC
     if (devShopStockWave !== waveIndex || devShopStock.length === 0) {
       devShopStockWave = waveIndex;
       devShopPurchasedOptionIds = new Set<string>();
+      const availableOptions = getDevShopBuffOptions(waveIndex, baseCost);
       const generatedOptions: ModifierTypeOption[] = [];
-      let safety = 0;
-      while (generatedOptions.length < DEV_SHOP_RANDOM_OPTION_COUNT && safety < 120) {
-        safety++;
-        const option = getModifierTypeOptionWithRetry(generatedOptions, 50, globalScene.getPlayerParty());
-        if (isDevShopExcludedModifier(option)) {
-          continue;
+      while (generatedOptions.length < Math.min(DEV_SHOP_RANDOM_OPTION_COUNT, availableOptions.length)) {
+        const option = availableOptions.splice(randSeedInt(availableOptions.length), 1)[0];
+        if (!option) {
+          break;
         }
-        const status = new BooleanHolder(true);
-        applyChallenges(ChallengeType.SHOP_ITEM, option, status);
-        if (!status.value) {
-          continue;
-        }
-        option.cost = getDevShopRandomCost(option, baseCost);
         generatedOptions.push(option);
       }
       devShopStock = generatedOptions;
@@ -2945,18 +2929,8 @@ export class ModifierTypeOption {
   }
 }
 
-function isDevShopExcludedModifier(option: ModifierTypeOption): boolean {
-  return option.type instanceof MoneyRewardModifierType || DEV_SHOP_FIXED_ITEM_ICONS.has(option.type.iconImage);
-}
-
 function getDevShopOptionKey(option: ModifierTypeOption): string {
   return option.type.id || option.type.iconImage || option.type.name;
-}
-
-function getDevShopRandomCost(option: ModifierTypeOption, baseCost: number): number {
-  const tierMultipliers = [1, 1.75, 3, 5.5, 9];
-  const tier = option.type.tier ?? ModifierTier.COMMON;
-  return Math.min(Math.round(baseCost * (tierMultipliers[tier] ?? tierMultipliers[0])), Number.MAX_SAFE_INTEGER);
 }
 
 export function resetDevShopStock(): void {

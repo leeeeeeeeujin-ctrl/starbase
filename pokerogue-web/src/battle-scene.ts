@@ -12,7 +12,7 @@ import { getGameMode } from "#app/game-mode";
 import { timedEventManager } from "#app/global-event-manager";
 import { initGlobalScene } from "#app/global-scene";
 import { starterColors } from "#app/global-vars/starter-colors";
-import { createEmptyDevItemCounts, type DevItemCounts } from "#app/dev-item-inventory";
+import { createEmptyDevBuffCounts, createEmptyDevItemCounts, type DevBuffCounts, type DevItemCounts } from "#app/dev-item-inventory";
 import { InputsController } from "#app/inputs-controller";
 import { LoadingScene } from "#app/loading-scene";
 import Overrides from "#app/overrides";
@@ -303,6 +303,7 @@ export class BattleScene extends SceneBase {
   public currentBattle: Battle;
   public pokeballCounts: PokeballCounts;
   public devItemCounts: DevItemCounts;
+  public devBuffCounts: DevBuffCounts;
   public money: number;
   public pokemonInfoContainer: PokemonInfoContainer;
   private party: PlayerPokemon[];
@@ -1158,6 +1159,7 @@ export class BattleScene extends SceneBase {
         .map(t => [t, 0]),
     );
     this.devItemCounts = createEmptyDevItemCounts();
+    this.devBuffCounts = createEmptyDevBuffCounts();
     this.pokeballCounts[PokeballType.POKEBALL] += 5;
     if (Overrides.POKEBALL_OVERRIDE.active) {
       this.pokeballCounts = Overrides.POKEBALL_OVERRIDE.pokeballs;

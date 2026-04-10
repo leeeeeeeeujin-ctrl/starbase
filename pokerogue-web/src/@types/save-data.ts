@@ -1,5 +1,5 @@
 import type { PokeballCounts } from "#app/battle-scene";
-import type { DevItemCounts } from "#app/dev-item-inventory";
+import type { DevBuffCounts, DevItemCounts } from "#app/dev-item-inventory";
 import type { Tutorial } from "#app/tutorial";
 import type { BattleType } from "#enums/battle-type";
 import type { GameModes } from "#enums/game-modes";
@@ -51,6 +51,7 @@ export interface SessionSaveData {
   arena: ArenaData;
   pokeballCounts: PokeballCounts;
   devItemCounts?: DevItemCounts;
+  devBuffCounts?: DevBuffCounts;
   money: number;
   score: number;
   waveIndex: number;

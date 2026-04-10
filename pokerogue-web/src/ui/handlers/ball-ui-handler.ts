@@ -1,5 +1,10 @@
 import { globalScene } from "#app/global-scene";
-import { DEV_ITEM_DEFINITIONS, getDevItemDefinition, type DevItemId } from "#app/dev-item-inventory";
+import {
+  DEV_BUFF_DEFINITIONS,
+  DEV_ITEM_DEFINITIONS,
+  getDevItemDefinition,
+  type DevItemId,
+} from "#app/dev-item-inventory";
 import { getPokeballName } from "#data/pokeball";
 import { Button } from "#enums/buttons";
 import { Command } from "#enums/command";
@@ -21,6 +26,7 @@ import i18next from "i18next";
 enum BagTab {
   BALLS = 0,
   ITEMS = 1,
+  BUFFS = 2,
 }
 
 export class BallUiHandler extends UiHandler {
@@ -35,6 +41,7 @@ export class BallUiHandler extends UiHandler {
   private tabCursors: Record<BagTab, number> = {
     [BagTab.BALLS]: 0,
     [BagTab.ITEMS]: 0,
+    [BagTab.BUFFS]: 0,
   };
 
   private scale = 0.1666666667;
@@ -113,8 +120,10 @@ export class BallUiHandler extends UiHandler {
           } else {
             ui.playError();
           }
-        } else {
+        } else if (this.activeTab === BagTab.ITEMS) {
           success = this.openSelectedDevItem();
+        } else {
+          success = this.openSelectedDevBuff();
         }
       } else {
         ui.setMode(UiMode.COMMAND, commandPhase.getFieldIndex());
@@ -129,10 +138,10 @@ export class BallUiHandler extends UiHandler {
           success = this.setCursor(this.cursor < entryCount ? this.cursor + 1 : 0);
           break;
         case Button.LEFT:
-          success = this.setActiveTab(BagTab.BALLS);
+          success = this.shiftActiveTab(-1);
           break;
         case Button.RIGHT:
-          success = this.setActiveTab(BagTab.ITEMS);
+          success = this.shiftActiveTab(1);
           break;
       }
     }
@@ -151,7 +160,9 @@ export class BallUiHandler extends UiHandler {
     this.tabText.setText(
       this.activeTab === BagTab.BALLS
         ? i18next.t("ballUiHandler:ballsTab")
-        : i18next.t("ballUiHandler:itemsTab"),
+        : this.activeTab === BagTab.ITEMS
+          ? i18next.t("ballUiHandler:itemsTab")
+          : i18next.t("ballUiHandler:buffsTab"),
     );
   }
 
@@ -171,7 +182,7 @@ export class BallUiHandler extends UiHandler {
   }
 
   private setActiveTab(tab: BagTab): boolean {
-    if (tab === this.activeTab || (tab === BagTab.ITEMS && !this.hasItemTab())) {
+    if (tab === this.activeTab || !this.getAvailableTabs().includes(tab)) {
       return false;
     }
     this.activeTab = tab;
@@ -179,8 +190,22 @@ export class BallUiHandler extends UiHandler {
     return this.setCursor(this.tabCursors[tab] ?? 0);
   }
 
+  private shiftActiveTab(delta: number): boolean {
+    const tabs = this.getAvailableTabs();
+    const currentIndex = tabs.indexOf(this.activeTab);
+    const nextIndex = (currentIndex + delta + tabs.length) % tabs.length;
+    return this.setActiveTab(tabs[nextIndex]!);
+  }
+
   private hasItemTab(): boolean {
     return globalScene.gameMode?.modeId === GameModes.DEV;
+  }
+
+  private getAvailableTabs(): BagTab[] {
+    if (!this.hasItemTab()) {
+      return [BagTab.BALLS];
+    }
+    return [BagTab.BALLS, BagTab.ITEMS, BagTab.BUFFS];
   }
 
   private getCurrentEntries(): { label: string; count: number }[] {
@@ -190,6 +215,16 @@ export class BallUiHandler extends UiHandler {
         return {
           label: modifierType.name,
           count: globalScene.devItemCounts[def.id],
+        };
+      });
+    }
+
+    if (this.activeTab === BagTab.BUFFS && this.hasItemTab()) {
+      return DEV_BUFF_DEFINITIONS.map(def => {
+        const modifierType = def.createModifierType();
+        return {
+          label: modifierType.name,
+          count: globalScene.devBuffCounts[def.id],
         };
       });
     }
@@ -266,6 +301,28 @@ export class BallUiHandler extends UiHandler {
       modifierType.selectFilter,
     );
     return true;
+  }
+
+  private openSelectedDevBuff(): boolean {
+    const buffId = DEV_BUFF_DEFINITIONS[this.cursor]?.id;
+    if (!buffId) {
+      return false;
+    }
+    if (!globalScene.devBuffCounts[buffId]) {
+      globalScene.ui.playError();
+      return false;
+    }
+
+    const commandPhase = globalScene.phaseManager.getCurrentPhase() as CommandPhase;
+    const success = commandPhase.handleDevBuffCommand(buffId);
+    if (success) {
+      globalScene.ui.setMode(UiMode.COMMAND, commandPhase.getFieldIndex());
+      globalScene.ui.setMode(UiMode.MESSAGE);
+      return true;
+    }
+
+    globalScene.ui.playError();
+    return false;
   }
 
   clear() {

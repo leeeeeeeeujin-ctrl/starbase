@@ -1,6 +1,6 @@
 import { globalScene } from "#app/global-scene";
 import Overrides from "#app/overrides";
-import { getDevItemIdFromModifierType, getDevShopConsumableOptions } from "#app/dev-item-inventory";
+import { getDevBuffIdFromModifierType, getDevItemIdFromModifierType, getDevShopConsumableOptions } from "#app/dev-item-inventory";
 import { ModifierPoolType } from "#enums/modifier-pool-type";
 import { GameModes } from "#enums/game-modes";
 import type { ModifierTier } from "#enums/modifier-tier";
@@ -205,6 +205,25 @@ export class SelectModifierPhase extends BattlePhase {
         globalScene.devItemCounts[devItemId]++;
         globalScene.playSound("se/buy");
         (globalScene.ui.getHandler() as ModifierSelectUiHandler).updateCostText();
+        return false;
+      }
+      const devBuffId = getDevBuffIdFromModifierType(modifierType);
+      if (devBuffId) {
+        if (!Overrides.WAIVE_ROLL_FEE_OVERRIDE) {
+          globalScene.money -= cost;
+          globalScene.updateMoneyText();
+          globalScene.animateMoneyChanged(false);
+        }
+        globalScene.devBuffCounts[devBuffId]++;
+        if (this.pendingDevShopPurchaseId) {
+          markDevShopOptionPurchased(this.pendingDevShopPurchaseId);
+          this.pendingDevShopPurchaseId = null;
+        }
+        globalScene.playSound("se/buy");
+        (globalScene.ui.getHandler() as ModifierSelectUiHandler).updateCostText();
+        if (this.isDevShopPhase() && this.modifierSelectCallback) {
+          this.resetModifierSelect(this.modifierSelectCallback);
+        }
         return false;
       }
     }
@@ -492,7 +511,7 @@ export class SelectModifierPhase extends BattlePhase {
     }
 
     const baseMultiplier = Math.min(
-      Math.ceil(globalScene.currentBattle.waveIndex / 10) * baseValue * 2 ** this.rerollCount * multiplier,
+      Math.ceil(Math.ceil(globalScene.currentBattle.waveIndex / 10) * baseValue * 2 ** this.rerollCount * multiplier * 1.25),
       Number.MAX_SAFE_INTEGER,
     );
 
