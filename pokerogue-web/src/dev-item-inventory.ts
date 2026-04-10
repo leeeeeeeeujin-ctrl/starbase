@@ -93,14 +93,6 @@ export const DEV_BUFF_DEFINITIONS: readonly DevBuffDefinition[] = [
   },
 ] as const;
 
-const DEV_ITEM_IDS_BY_ICON = Object.fromEntries(
-  DEV_ITEM_DEFINITIONS.map(def => [def.createModifierType().iconImage, def.id]),
-) as Record<string, DevItemId>;
-
-const DEV_BUFF_IDS_BY_ICON = Object.fromEntries(
-  DEV_BUFF_DEFINITIONS.map(def => [def.createModifierType().iconImage, def.id]),
-) as Record<string, DevBuffId>;
-
 export function createEmptyDevItemCounts(): DevItemCounts {
   return Object.fromEntries(DEV_ITEM_DEFINITIONS.map(def => [def.id, 0])) as DevItemCounts;
 }
@@ -118,11 +110,11 @@ export function getDevBuffDefinition(buffId: DevBuffId): DevBuffDefinition {
 }
 
 export function getDevItemIdFromModifierType(modifierType: ModifierType): DevItemId | undefined {
-  return DEV_ITEM_IDS_BY_ICON[modifierType.iconImage];
+  return DEV_ITEM_DEFINITIONS.find(def => def.createModifierType().iconImage === modifierType.iconImage)?.id;
 }
 
 export function getDevBuffIdFromModifierType(modifierType: ModifierType): DevBuffId | undefined {
-  return DEV_BUFF_IDS_BY_ICON[modifierType.iconImage];
+  return DEV_BUFF_DEFINITIONS.find(def => def.createModifierType().iconImage === modifierType.iconImage)?.id;
 }
 
 export function getDevShopConsumableOptions(waveIndex: number, baseCost: number): ModifierTypeOption[] {
