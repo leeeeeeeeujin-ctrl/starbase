@@ -58,7 +58,7 @@ export class BallUiHandler extends UiHandler {
     this.scale = getTextStyleOptions(TextStyle.WINDOW).scale;
 
     const panelWidth = 172;
-    const panelHeight = 32 + 960 * this.scale;
+    const panelHeight = 32 + 480 * this.scale;
     this.pokeballSelectContainer = globalScene.add.container(
       globalScene.scaledCanvas.width - 51 - panelWidth,
       -49,
@@ -72,17 +72,17 @@ export class BallUiHandler extends UiHandler {
 
     this.tabText = addTextObject(0, 0, "", TextStyle.WINDOW, { align: "center", maxLines: 2 });
     this.tabText.setOrigin(0.5, 0);
-    this.tabText.setPositionRelative(this.pokeballSelectBg, panelWidth / 2, 8);
+    this.tabText.setPositionRelative(this.pokeballSelectBg, panelWidth / 2, 4);
     this.pokeballSelectContainer.add(this.tabText);
 
     this.optionsText = addTextObject(0, 0, "", TextStyle.WINDOW, { align: "right", maxLines: 6 });
     this.pokeballSelectContainer.add(this.optionsText);
     this.optionsText.setOrigin(0, 0);
-    this.optionsText.setPositionRelative(this.pokeballSelectBg, 42, 30);
+    this.optionsText.setPositionRelative(this.pokeballSelectBg, 42, 20);
     this.optionsText.setLineSpacing(this.scale * 72);
 
     this.countsText = addTextObject(0, 0, "", TextStyle.WINDOW, { maxLines: 6 });
-    this.countsText.setPositionRelative(this.pokeballSelectBg, 18, 30);
+    this.countsText.setPositionRelative(this.pokeballSelectBg, 18, 20);
     this.countsText.setLineSpacing(this.scale * 72);
     this.pokeballSelectContainer.add(this.countsText);
 
@@ -187,7 +187,7 @@ export class BallUiHandler extends UiHandler {
 
     this.cursorObj.setScale(this.scale * 6);
     const row = this.cursor % BallUiHandler.MAX_VISIBLE_ROWS;
-    this.cursorObj.setPositionRelative(this.pokeballSelectBg, 18, 36 + (6 + row * 96) * this.scale);
+    this.cursorObj.setPositionRelative(this.pokeballSelectBg, 12, 26 + (6 + row * 96) * this.scale);
 
     return ret;
   }
