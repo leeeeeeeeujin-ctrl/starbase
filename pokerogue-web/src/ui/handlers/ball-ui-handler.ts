@@ -3,6 +3,7 @@ import {
   DEV_BUFF_DEFINITIONS,
   DEV_ITEM_DEFINITIONS,
   getDevItemDefinition,
+  type DevBuffId,
   type DevItemId,
 } from "#app/dev-item-inventory";
 import { getPokeballName } from "#data/pokeball";
@@ -23,15 +24,22 @@ import { UiHandler } from "#ui/ui-handler";
 import { addWindow } from "#ui/ui-theme";
 import i18next from "i18next";
 
-enum BagTab {
-  BALLS = 0,
-  ITEMS = 1,
-  BUFFS = 2,
-}
+type BagPageKind = "balls" | "items" | "buffs";
+
+type BagPageEntry =
+  | { kind: "ball"; label: string; count: number; value: number }
+  | { kind: "item"; label: string; count: number; value: DevItemId }
+  | { kind: "buff"; label: string; count: number; value: DevBuffId };
+
+type BagPage = {
+  kind: BagPageKind;
+  label: string;
+  entries: BagPageEntry[];
+};
+
+const MAX_ROWS = 6;
 
 export class BallUiHandler extends UiHandler {
-  private static readonly MAX_VISIBLE_ROWS = 6;
-
   private pokeballSelectContainer: Phaser.GameObjects.Container;
   private pokeballSelectBg: Phaser.GameObjects.NineSlice;
   private optionsText: Phaser.GameObjects.Text;
@@ -39,13 +47,8 @@ export class BallUiHandler extends UiHandler {
   private tabText: Phaser.GameObjects.Text;
 
   private cursorObj: Phaser.GameObjects.Image | null;
-  private activeTab = BagTab.BALLS;
-  private tabCursors: Record<BagTab, number> = {
-    [BagTab.BALLS]: 0,
-    [BagTab.ITEMS]: 0,
-    [BagTab.BUFFS]: 0,
-  };
-
+  private pageIndex = 0;
+  private cursorByPage: number[] = [0];
   private scale = 0.1666666667;
 
   constructor() {
@@ -57,32 +60,34 @@ export class BallUiHandler extends UiHandler {
 
     this.scale = getTextStyleOptions(TextStyle.WINDOW).scale;
 
-    const panelWidth = 172;
-    const panelHeight = 32 + 480 * this.scale;
+    const optionsText = addTextObject(0, 0, this.getLongestPageLabelBlock(), TextStyle.WINDOW, { align: "right", maxLines: 6 });
+    const optionsTextWidth = optionsText.displayWidth;
+    const panelWidth = 50 + Math.max(64, optionsTextWidth);
+
     this.pokeballSelectContainer = globalScene.add.container(
-      globalScene.scaledCanvas.width - 51 - panelWidth,
+      globalScene.scaledCanvas.width - 51 - Math.max(64, optionsTextWidth),
       -49,
     );
     this.pokeballSelectContainer.setVisible(false);
     ui.add(this.pokeballSelectContainer);
 
-    this.pokeballSelectBg = addWindow(0, 0, panelWidth, panelHeight);
+    this.pokeballSelectBg = addWindow(0, 0, panelWidth, 32 + 480 * this.scale);
     this.pokeballSelectBg.setOrigin(0, 1);
     this.pokeballSelectContainer.add(this.pokeballSelectBg);
 
-    this.tabText = addTextObject(0, 0, "", TextStyle.WINDOW, { align: "center", maxLines: 2 });
+    this.tabText = addTextObject(0, 0, "", TextStyle.WINDOW, { align: "center", maxLines: 1 });
     this.tabText.setOrigin(0.5, 0);
-    this.tabText.setPositionRelative(this.pokeballSelectBg, panelWidth / 2, 4);
+    this.tabText.setPositionRelative(this.pokeballSelectBg, panelWidth / 2, 2);
     this.pokeballSelectContainer.add(this.tabText);
 
     this.optionsText = addTextObject(0, 0, "", TextStyle.WINDOW, { align: "right", maxLines: 6 });
     this.pokeballSelectContainer.add(this.optionsText);
     this.optionsText.setOrigin(0, 0);
-    this.optionsText.setPositionRelative(this.pokeballSelectBg, 42, 20);
+    this.optionsText.setPositionRelative(this.pokeballSelectBg, 42, 9);
     this.optionsText.setLineSpacing(this.scale * 72);
 
     this.countsText = addTextObject(0, 0, "", TextStyle.WINDOW, { maxLines: 6 });
-    this.countsText.setPositionRelative(this.pokeballSelectBg, 18, 20);
+    this.countsText.setPositionRelative(this.pokeballSelectBg, 18, 9);
     this.countsText.setLineSpacing(this.scale * 72);
     this.pokeballSelectContainer.add(this.countsText);
 
@@ -101,33 +106,42 @@ export class BallUiHandler extends UiHandler {
 
   processInput(button: Button): boolean {
     const ui = this.getUi();
+    const page = this.getCurrentPage();
+    const entryCount = page.entries.length;
 
     let success = false;
-
-    const entryCount = this.getCurrentOptionCount();
 
     if (button === Button.ACTION || button === Button.CANCEL) {
       const commandPhase = globalScene.phaseManager.getCurrentPhase() as CommandPhase;
       success = true;
+
       if (button === Button.ACTION && this.cursor < entryCount) {
-        if (this.activeTab === BagTab.BALLS) {
-          if (globalScene.pokeballCounts[this.cursor]) {
-            if (commandPhase.handleCommand(Command.BALL, this.cursor)) {
-              globalScene.ui.setMode(UiMode.COMMAND, commandPhase.getFieldIndex());
-              globalScene.ui.setMode(UiMode.MESSAGE);
-              success = true;
+        const entry = page.entries[this.cursor];
+        if (!entry) {
+          ui.playError();
+          return false;
+        }
+
+        switch (entry.kind) {
+          case "ball":
+            if (globalScene.pokeballCounts[entry.value]) {
+              if (commandPhase.handleCommand(Command.BALL, entry.value)) {
+                globalScene.ui.setMode(UiMode.COMMAND, commandPhase.getFieldIndex());
+                globalScene.ui.setMode(UiMode.MESSAGE);
+              }
+            } else {
+              ui.playError();
             }
-          } else {
-            ui.playError();
-          }
-        } else if (this.activeTab === BagTab.ITEMS) {
-          success = this.openSelectedDevItem();
-        } else {
-          success = this.openSelectedDevBuff();
+            break;
+          case "item":
+            success = this.openDevItem(entry.value);
+            break;
+          case "buff":
+            success = this.openDevBuff(entry.value);
+            break;
         }
       } else {
         ui.setMode(UiMode.COMMAND, commandPhase.getFieldIndex());
-        success = true;
       }
     } else {
       switch (button) {
@@ -138,10 +152,10 @@ export class BallUiHandler extends UiHandler {
           success = this.setCursor(this.cursor < entryCount ? this.cursor + 1 : 0);
           break;
         case Button.LEFT:
-          success = this.shiftActiveTab(-1);
+          success = this.shiftPage(-1);
           break;
         case Button.RIGHT:
-          success = this.shiftActiveTab(1);
+          success = this.shiftPage(1);
           break;
       }
     }
@@ -154,31 +168,24 @@ export class BallUiHandler extends UiHandler {
   }
 
   refreshView() {
-    const entries = [...this.getCurrentEntries(), { label: i18next.t("commandUiHandler:ballCancel"), count: null as number | null }];
+    const page = this.getCurrentPage();
+    const entries = [...page.entries, { label: i18next.t("commandUiHandler:ballCancel"), count: null as number | null }];
+
     if (this.cursor > entries.length - 1) {
       this.cursor = Math.max(0, entries.length - 1);
-      this.tabCursors[this.activeTab] = this.cursor;
+      this.cursorByPage[this.pageIndex] = this.cursor;
     }
-    const startIndex = this.getPageStart(entries.length);
-    const visibleEntries = entries.slice(startIndex, startIndex + BallUiHandler.MAX_VISIBLE_ROWS);
-    const totalPages = Math.max(1, Math.ceil(entries.length / BallUiHandler.MAX_VISIBLE_ROWS));
-    const currentPage = Math.floor(startIndex / BallUiHandler.MAX_VISIBLE_ROWS) + 1;
 
-    this.optionsText.setText(visibleEntries.map(entry => entry.label).join("\n"));
-    this.countsText.setText(visibleEntries.map(entry => (entry.count == null ? "" : `×${entry.count}`)).join("\n"));
-    const tabLabel =
-      this.activeTab === BagTab.BALLS
-        ? i18next.t("ballUiHandler:ballsTab")
-        : this.activeTab === BagTab.ITEMS
-          ? i18next.t("ballUiHandler:itemsTab")
-          : i18next.t("ballUiHandler:buffsTab");
-    this.tabText.setText(totalPages > 1 ? `${tabLabel} ${currentPage}/${totalPages}` : tabLabel);
+    this.optionsText.setText(entries.map(entry => entry.label).join("\n"));
+    this.countsText.setText(entries.map(entry => (entry.count == null ? "" : `×${entry.count}`)).join("\n"));
 
+    const pages = this.getPages();
+    this.tabText.setText(pages.length > 1 ? `${page.label} ${this.pageIndex + 1}/${pages.length}` : page.label);
   }
 
   setCursor(cursor: number): boolean {
     const ret = super.setCursor(cursor);
-    this.tabCursors[this.activeTab] = cursor;
+    this.cursorByPage[this.pageIndex] = cursor;
 
     if (!this.cursorObj) {
       this.cursorObj = globalScene.add.image(0, 0, "cursor");
@@ -186,89 +193,128 @@ export class BallUiHandler extends UiHandler {
     }
 
     this.cursorObj.setScale(this.scale * 6);
-    const row = this.cursor % BallUiHandler.MAX_VISIBLE_ROWS;
-    this.cursorObj.setPositionRelative(this.pokeballSelectBg, 12, 26 + (6 + row * 96) * this.scale);
+    this.cursorObj.setPositionRelative(this.pokeballSelectBg, 12, 15 + (6 + this.cursor * 96) * this.scale);
 
     return ret;
   }
 
-  private setActiveTab(tab: BagTab): boolean {
-    if (tab === this.activeTab || !this.getAvailableTabs().includes(tab)) {
-      return false;
+  clear() {
+    super.clear();
+    this.pokeballSelectContainer.setVisible(false);
+    this.eraseCursor();
+  }
+
+  eraseCursor() {
+    if (this.cursorObj) {
+      this.cursorObj.destroy();
     }
-    this.activeTab = tab;
-    this.refreshView();
-    return this.setCursor(this.tabCursors[tab] ?? 0);
+    this.cursorObj = null;
   }
 
-  private shiftActiveTab(delta: number): boolean {
-    const tabs = this.getAvailableTabs();
-    const currentIndex = tabs.indexOf(this.activeTab);
-    const nextIndex = (currentIndex + delta + tabs.length) % tabs.length;
-    return this.setActiveTab(tabs[nextIndex]!);
-  }
-
-  private hasItemTab(): boolean {
+  private isDevMode(): boolean {
     return globalScene.gameMode?.modeId === GameModes.DEV;
   }
 
-  private getAvailableTabs(): BagTab[] {
-    if (!this.hasItemTab()) {
-      return [BagTab.BALLS];
+  private getPages(): BagPage[] {
+    const pages: BagPage[] = [
+      {
+        kind: "balls",
+        label: i18next.t("ballUiHandler:ballsTab"),
+        entries: Object.keys(globalScene.pokeballCounts).map((key, index) => ({
+          kind: "ball" as const,
+          label: getPokeballName(index),
+          count: globalScene.pokeballCounts[key],
+          value: index,
+        })),
+      },
+    ];
+
+    if (!this.isDevMode()) {
+      return pages;
     }
-    return [BagTab.BALLS, BagTab.ITEMS, BagTab.BUFFS];
+
+    const itemPages = this.chunkEntries(
+      DEV_ITEM_DEFINITIONS.map(def => ({
+        kind: "item" as const,
+        label: def.createModifierType().name,
+        count: globalScene.devItemCounts[def.id],
+        value: def.id,
+      })),
+      i18next.t("ballUiHandler:itemsTab"),
+    );
+
+    const buffPages = this.chunkEntries(
+      DEV_BUFF_DEFINITIONS.map(def => ({
+        kind: "buff" as const,
+        label: def.createModifierType().name,
+        count: globalScene.devBuffCounts[def.id],
+        value: def.id,
+      })),
+      i18next.t("ballUiHandler:buffsTab"),
+    );
+
+    return [...pages, ...itemPages, ...buffPages];
   }
 
-  private getCurrentEntries(): { label: string; count: number }[] {
-    if (this.activeTab === BagTab.ITEMS && this.hasItemTab()) {
-      return DEV_ITEM_DEFINITIONS.map(def => {
-        const modifierType = def.createModifierType();
-        return {
-          label: modifierType.name,
-          count: globalScene.devItemCounts[def.id],
-        };
+  private chunkEntries<T extends BagPageEntry>(entries: T[], label: string): BagPage[] {
+    const chunks: BagPage[] = [];
+    for (let start = 0; start < entries.length; start += MAX_ROWS) {
+      chunks.push({
+        kind: entries[start]?.kind === "buff" ? "buffs" : "items",
+        label,
+        entries: entries.slice(start, start + MAX_ROWS),
       });
     }
+    return chunks;
+  }
 
-    if (this.activeTab === BagTab.BUFFS && this.hasItemTab()) {
-      return DEV_BUFF_DEFINITIONS.map(def => {
-        const modifierType = def.createModifierType();
-        return {
-          label: modifierType.name,
-          count: globalScene.devBuffCounts[def.id],
-        };
-      });
+  private getCurrentPage(): BagPage {
+    const pages = this.getPages();
+    if (this.pageIndex >= pages.length) {
+      this.pageIndex = 0;
     }
-
-    return Object.keys(globalScene.pokeballCounts).map((key, index) => ({
-      label: getPokeballName(index),
-      count: globalScene.pokeballCounts[key],
-    }));
-  }
-
-  private getCurrentOptionCount(): number {
-    return this.getCurrentEntries().length;
-  }
-
-  private getPageStart(totalEntries: number): number {
-    if (totalEntries <= BallUiHandler.MAX_VISIBLE_ROWS) {
-      return 0;
+    if (this.cursorByPage.length !== pages.length) {
+      this.cursorByPage = pages.map((_, index) => this.cursorByPage[index] ?? 0);
     }
-    return Math.floor(this.cursor / BallUiHandler.MAX_VISIBLE_ROWS) * BallUiHandler.MAX_VISIBLE_ROWS;
+    return pages[this.pageIndex]!;
   }
 
-  private openSelectedDevItem(): boolean {
-    const itemId = DEV_ITEM_DEFINITIONS[this.cursor]?.id;
-    if (!itemId) {
+  private shiftPage(delta: number): boolean {
+    const pages = this.getPages();
+    if (pages.length <= 1) {
       return false;
     }
+    this.pageIndex = (this.pageIndex + delta + pages.length) % pages.length;
+    this.refreshView();
+    return this.setCursor(this.cursorByPage[this.pageIndex] ?? 0);
+  }
+
+  private getLongestPageLabelBlock(): string {
+    const ballLabels = Object.keys(globalScene.pokeballCounts).map((_, index) => getPokeballName(index));
+    const devItemLabels = DEV_ITEM_DEFINITIONS.map(def => def.createModifierType().name);
+    const devBuffLabels = DEV_BUFF_DEFINITIONS.map(def => def.createModifierType().name);
+
+    const groups = [ballLabels, ...this.chunkLabels(devItemLabels), ...this.chunkLabels(devBuffLabels)];
+    return groups
+      .map(group => [...group, i18next.t("commandUiHandler:ballCancel")].join("\n"))
+      .sort((a, b) => b.length - a.length)[0] ?? i18next.t("commandUiHandler:ballCancel");
+  }
+
+  private chunkLabels(labels: string[]): string[][] {
+    const chunks: string[][] = [];
+    for (let start = 0; start < labels.length; start += MAX_ROWS) {
+      chunks.push(labels.slice(start, start + MAX_ROWS));
+    }
+    return chunks;
+  }
+
+  private openDevItem(itemId: DevItemId): boolean {
     if (!globalScene.devItemCounts[itemId]) {
       globalScene.ui.playError();
       return false;
     }
 
     const modifierType = getDevItemDefinition(itemId).createModifierType();
-    const party = globalScene.getPlayerParty();
     const resetBagMode = () => {
       this.refreshView();
       globalScene.ui.setMode(UiMode.BALL);
@@ -321,11 +367,7 @@ export class BallUiHandler extends UiHandler {
     return true;
   }
 
-  private openSelectedDevBuff(): boolean {
-    const buffId = DEV_BUFF_DEFINITIONS[this.cursor]?.id;
-    if (!buffId) {
-      return false;
-    }
+  private openDevBuff(buffId: DevBuffId): boolean {
     if (!globalScene.devBuffCounts[buffId]) {
       globalScene.ui.playError();
       return false;
@@ -341,18 +383,5 @@ export class BallUiHandler extends UiHandler {
 
     globalScene.ui.playError();
     return false;
-  }
-
-  clear() {
-    super.clear();
-    this.pokeballSelectContainer.setVisible(false);
-    this.eraseCursor();
-  }
-
-  eraseCursor() {
-    if (this.cursorObj) {
-      this.cursorObj.destroy();
-    }
-    this.cursorObj = null;
   }
 }
