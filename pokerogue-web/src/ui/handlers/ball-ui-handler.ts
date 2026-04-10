@@ -5,7 +5,8 @@ import {
   getDevItemDefinition,
   type DevItemId,
 } from "#app/dev-item-inventory";
-import { getPokeballName } from "#data/pokeball";
+import { getPokeballAtlasKey, getPokeballName } from "#data/pokeball";
+import { PokeballType } from "#enums/pokeball";
 import { Button } from "#enums/buttons";
 import { Command } from "#enums/command";
 import { GameModes } from "#enums/game-modes";
@@ -40,6 +41,7 @@ export class BallUiHandler extends UiHandler {
   private rightOptionsText: Phaser.GameObjects.Text;
   private rightCountsText: Phaser.GameObjects.Text;
   private tabText: Phaser.GameObjects.Text;
+  private entryIcons: Phaser.GameObjects.Sprite[] = [];
 
   private cursorObj: Phaser.GameObjects.Image | null;
   private activeTab = BagTab.BALLS;
@@ -99,6 +101,21 @@ export class BallUiHandler extends UiHandler {
     this.rightCountsText.setPositionRelative(this.pokeballSelectBg, 132, 30);
     this.rightCountsText.setLineSpacing(this.scale * 72);
     this.pokeballSelectContainer.add(this.rightCountsText);
+
+    for (let column = 0; column < BallUiHandler.COLUMN_X_OFFSETS.length; column++) {
+      for (let row = 0; row < BallUiHandler.MAX_ROWS_PER_COLUMN; row++) {
+        const icon = globalScene.add.sprite(0, 0, "items", "potion");
+        icon.setScale(0.5);
+        icon.setVisible(false);
+        icon.setPositionRelative(
+          this.pokeballSelectBg,
+          BallUiHandler.COLUMN_X_OFFSETS[column] + 18,
+          36 + (6 + row * 96) * this.scale,
+        );
+        this.entryIcons.push(icon);
+        this.pokeballSelectContainer.add(icon);
+      }
+    }
 
     this.setCursor(0);
   }
@@ -183,6 +200,16 @@ export class BallUiHandler extends UiHandler {
           ? i18next.t("ballUiHandler:itemsTab")
           : i18next.t("ballUiHandler:buffsTab"),
     );
+
+    this.entryIcons.forEach(icon => icon.setVisible(false));
+    entries.slice(0, this.entryIcons.length).forEach((entry, index) => {
+      const icon = this.entryIcons[index];
+      if (!icon || !entry.iconTexture) {
+        return;
+      }
+      icon.setTexture(entry.iconTexture, entry.iconFrame);
+      icon.setVisible(true);
+    });
   }
 
   setCursor(cursor: number): boolean {
@@ -230,13 +257,15 @@ export class BallUiHandler extends UiHandler {
     return [BagTab.BALLS, BagTab.ITEMS, BagTab.BUFFS];
   }
 
-  private getCurrentEntries(): { label: string; count: number }[] {
+  private getCurrentEntries(): { label: string; count: number; iconTexture?: string; iconFrame?: string }[] {
     if (this.activeTab === BagTab.ITEMS && this.hasItemTab()) {
       return DEV_ITEM_DEFINITIONS.map(def => {
         const modifierType = def.createModifierType();
         return {
           label: modifierType.name,
           count: globalScene.devItemCounts[def.id],
+          iconTexture: "items",
+          iconFrame: modifierType.iconImage,
         };
       });
     }
@@ -247,6 +276,8 @@ export class BallUiHandler extends UiHandler {
         return {
           label: modifierType.name,
           count: globalScene.devBuffCounts[def.id],
+          iconTexture: "items",
+          iconFrame: modifierType.iconImage,
         };
       });
     }
@@ -254,6 +285,7 @@ export class BallUiHandler extends UiHandler {
     return Object.keys(globalScene.pokeballCounts).map((key, index) => ({
       label: getPokeballName(index),
       count: globalScene.pokeballCounts[key],
+      iconTexture: getPokeballAtlasKey(index as PokeballType),
     }));
   }
 
