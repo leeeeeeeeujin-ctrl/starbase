@@ -80,6 +80,7 @@ export class BallUiHandler extends UiHandler {
     this.tabText = addTextObject(0, 0, "", TextStyle.WINDOW, { align: "center", maxLines: 1 });
     this.tabText.setOrigin(0.5, 0);
     this.tabText.setPositionRelative(this.pokeballSelectBg, panelWidth / 2, 2);
+    this.tabText.setVisible(false);
     this.pokeballSelectContainer.add(this.tabText);
 
     this.optionsText = addTextObject(0, 0, "", TextStyle.WINDOW, { align: "right", maxLines: 6 });
@@ -181,7 +182,7 @@ export class BallUiHandler extends UiHandler {
     this.optionsText.setText(entries.map(entry => entry.label).join("\n"));
     this.countsText.setText(entries.map(entry => (entry.count == null ? "" : `×${entry.count}`)).join("\n"));
 
-    this.tabText.setText(page.pageTotal > 1 ? `${page.label} ${page.pageNumber}/${page.pageTotal}` : page.label);
+    this.tabText.setText("");
   }
 
   setCursor(cursor: number): boolean {
