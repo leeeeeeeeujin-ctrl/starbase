@@ -1,6 +1,6 @@
 import { globalScene } from "#app/global-scene";
 import Overrides from "#app/overrides";
-import { getDevItemIdFromModifierType } from "#app/dev-item-inventory";
+import { getDevItemIdFromModifierType, getDevShopConsumableOptions } from "#app/dev-item-inventory";
 import { ModifierPoolType } from "#enums/modifier-pool-type";
 import { GameModes } from "#enums/game-modes";
 import type { ModifierTier } from "#enums/modifier-tier";
@@ -17,12 +17,14 @@ import {
   FusePokemonModifierType,
   getPlayerModifierTypeOptions,
   getPlayerShopModifierTypeOptionsForWave,
+  markDevShopOptionPurchased,
   PokemonModifierType,
   PokemonMoveModifierType,
   PokemonPpRestoreModifierType,
   PokemonPpUpModifierType,
   RememberMoveModifierType,
   regenerateModifierPoolThresholds,
+  resetDevShopStock,
   TmModifierType,
 } from "#modifiers/modifier-type";
 import { BattlePhase } from "#phases/battle-phase";
@@ -42,6 +44,8 @@ export class SelectModifierPhase extends BattlePhase {
   private isCopy: boolean;
 
   private typeOptions: ModifierTypeOption[];
+  private modifierSelectCallback: ModifierSelectCallback | null = null;
+  private pendingDevShopPurchaseId: string | null = null;
 
   private isDevShopPhase(): boolean {
     return globalScene.gameMode?.modeId === GameModes.DEV && globalScene.gameMode.getShopStatus();
@@ -80,13 +84,9 @@ export class SelectModifierPhase extends BattlePhase {
     }
     const modifierCount = this.getModifierCount();
 
-    this.typeOptions = this.getModifierTypeOptions(modifierCount);
-    if (this.isDevShopPhase()) {
-      this.typeOptions = this.typeOptions.map(option => ({
-        ...option,
-        cost: this.getDevShopRewardCost(option.type?.tier ?? 0),
-      }));
-    }
+    this.typeOptions = this.isDevShopPhase()
+      ? getDevShopConsumableOptions(globalScene.currentBattle.waveIndex, globalScene.getWaveMoneyAmount(1))
+      : this.getModifierTypeOptions(modifierCount);
 
     const modifierSelectCallback = (rowCursor: number, cursor: number) => {
       if (rowCursor < 0 || cursor < 0) {
@@ -139,6 +139,7 @@ export class SelectModifierPhase extends BattlePhase {
       }
     };
 
+    this.modifierSelectCallback = modifierSelectCallback;
     this.resetModifierSelect(modifierSelectCallback);
   }
 
@@ -183,7 +184,7 @@ export class SelectModifierPhase extends BattlePhase {
       globalScene.ui.playError();
       return false;
     }
-
+    this.pendingDevShopPurchaseId = this.isDevShopPhase() ? modifierType.id ?? modifierType.iconImage ?? null : null;
     return this.applyChosenModifier(modifierType, cost, modifierSelectCallback);
   }
 
@@ -226,6 +227,9 @@ export class SelectModifierPhase extends BattlePhase {
     if (rerollCost < 0 || globalScene.money < rerollCost) {
       globalScene.ui.playError();
       return false;
+    }
+    if (this.isDevShopPhase()) {
+      resetDevShopStock();
     }
     globalScene.reroll = true;
     globalScene.phaseManager.unshiftNew(
@@ -320,11 +324,20 @@ export class SelectModifierPhase extends BattlePhase {
           globalScene.animateMoneyChanged(false);
         }
         globalScene.playSound("se/buy");
+        if (this.pendingDevShopPurchaseId) {
+          markDevShopOptionPurchased(this.pendingDevShopPurchaseId);
+          this.pendingDevShopPurchaseId = null;
+        }
         (globalScene.ui.getHandler() as ModifierSelectUiHandler).updateCostText();
+        if (this.isDevShopPhase() && this.modifierSelectCallback) {
+          this.resetModifierSelect(this.modifierSelectCallback);
+        }
       } else {
+        this.pendingDevShopPurchaseId = null;
         globalScene.ui.playError();
       }
     } else {
+      this.pendingDevShopPurchaseId = null;
       globalScene.ui.clearText();
       globalScene.ui.setMode(UiMode.MESSAGE);
       super.end();
@@ -435,6 +448,7 @@ export class SelectModifierPhase extends BattlePhase {
   // Function that resets the reward selection screen,
   // e.g. after pressing cancel in the party ui or while learning a move
   private resetModifierSelect(modifierSelectCallback: ModifierSelectCallback) {
+    this.pendingDevShopPurchaseId = null;
     globalScene.ui.setMode(
       UiMode.MODIFIER_SELECT,
       this.isPlayer(),
@@ -517,10 +531,5 @@ export class SelectModifierPhase extends BattlePhase {
 
   addModifier(modifier: Modifier): boolean {
     return globalScene.addModifier(modifier, false, true);
-  }
-
-  private getDevShopRewardCost(tier: number): number {
-    const tierCosts = [150, 300, 600, 1200, 2400];
-    return tierCosts[tier] ?? tierCosts[0];
   }
 }
