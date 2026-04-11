@@ -354,7 +354,7 @@ export class BallUiHandler extends UiHandler {
       const commandPhase = globalScene.phaseManager.getCurrentPhase() as CommandPhase;
       const success = commandPhase.handleDevItemCommand(itemId, slotIndex, moveIndex);
       if (success) {
-        void globalScene.ui.revertModes();
+        return;
       } else {
         globalScene.ui.playError();
         resetBagMode();
@@ -406,7 +406,6 @@ export class BallUiHandler extends UiHandler {
     const commandPhase = globalScene.phaseManager.getCurrentPhase() as CommandPhase;
     const success = commandPhase.handleDevBuffCommand(buffId);
     if (success) {
-      void globalScene.ui.revertModes();
       return true;
     }
 
