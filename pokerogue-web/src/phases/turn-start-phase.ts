@@ -2,6 +2,7 @@ import { applyAbAttrs } from "#abilities/apply-ab-attrs";
 import type { TurnCommand } from "#app/battle";
 import { getDevBuffDefinition, getDevItemDefinition, type DevBuffId, type DevItemId } from "#app/dev-item-inventory";
 import { globalScene } from "#app/global-scene";
+import { getPokemonNameWithAffix } from "#app/messages";
 import { ArenaTagSide } from "#enums/arena-tag-side";
 import type { BattlerIndex } from "#enums/battler-index";
 import { Command } from "#enums/command";
@@ -14,6 +15,38 @@ import { inSpeedOrder } from "#utils/speed-order-generator";
 
 export class TurnStartPhase extends FieldPhase {
   public readonly phaseName = "TurnStartPhase";
+
+  private getDevBuffMessage(pokemon: Pokemon, buffId: DevBuffId): string {
+    const pokemonName = getPokemonNameWithAffix(pokemon);
+    switch (buffId) {
+      case "x_attack":
+        return `${pokemonName}의 공격이 올랐다!`;
+      case "x_defense":
+        return `${pokemonName}의 방어가 올랐다!`;
+      case "x_speed":
+        return `${pokemonName}의 스피드가 올랐다!`;
+      case "x_sp_atk":
+        return `${pokemonName}의 특수공격이 올랐다!`;
+      case "x_sp_def":
+        return `${pokemonName}의 특수방어가 올랐다!`;
+      case "x_accuracy":
+        return `${pokemonName}의 명중률이 올랐다!`;
+      case "dire_hit":
+        return `${pokemonName}의 급소율이 올라갔다!`;
+    }
+  }
+
+  private getDevItemPostMessage(targetPokemon: Pokemon, itemId: DevItemId): string | null {
+    const pokemonName = getPokemonNameWithAffix(targetPokemon);
+    switch (itemId) {
+      case "ether":
+        return `${pokemonName}의 PP가 회복되었다!`;
+      case "elixir":
+        return `${pokemonName}의 모든 PP가 회복되었다!`;
+      default:
+        return null;
+    }
+  }
 
   /**
    * Returns an ordering of the current field based on command priority
@@ -183,6 +216,7 @@ export class TurnStartPhase extends FieldPhase {
         return;
       }
       globalScene.devBuffCounts[buffId] = Math.max(0, globalScene.devBuffCounts[buffId] - 1);
+      globalScene.phaseManager.queueMessage(this.getDevBuffMessage(pokemon, buffId));
       return;
     }
 
@@ -211,5 +245,9 @@ export class TurnStartPhase extends FieldPhase {
     }
 
     globalScene.devItemCounts[itemId] = Math.max(0, globalScene.devItemCounts[itemId] - 1);
+    const postMessage = this.getDevItemPostMessage(targetPokemon, itemId);
+    if (postMessage) {
+      globalScene.phaseManager.queueMessage(postMessage);
+    }
   }
 }

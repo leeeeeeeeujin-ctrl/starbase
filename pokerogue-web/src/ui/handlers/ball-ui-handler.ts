@@ -322,8 +322,8 @@ export class BallUiHandler extends UiHandler {
 
   private getLongestPageLabelBlock(): string {
     const ballLabels = Object.keys(globalScene.pokeballCounts).map((_, index) => getPokeballName(index));
-    const devItemLabels = DEV_ITEM_DEFINITIONS.map(def => def.createModifierType().name);
-    const devBuffLabels = DEV_BUFF_DEFINITIONS.map(def => def.createModifierType().name);
+    const devItemLabels = DEV_ITEM_DEFINITIONS.map(def => this.getDevItemLabel(def.id));
+    const devBuffLabels = DEV_BUFF_DEFINITIONS.map(def => this.getDevBuffLabel(def.id));
 
     const groups = [ballLabels, ...this.chunkLabels(devItemLabels), ...this.chunkLabels(devBuffLabels)];
     return groups
@@ -354,8 +354,7 @@ export class BallUiHandler extends UiHandler {
       const commandPhase = globalScene.phaseManager.getCurrentPhase() as CommandPhase;
       const success = commandPhase.handleDevItemCommand(itemId, slotIndex, moveIndex);
       if (success) {
-        globalScene.ui.setMode(UiMode.COMMAND, commandPhase.getFieldIndex());
-        globalScene.ui.setMode(UiMode.MESSAGE);
+        void globalScene.ui.revertModes();
       } else {
         globalScene.ui.playError();
         resetBagMode();
@@ -407,8 +406,7 @@ export class BallUiHandler extends UiHandler {
     const commandPhase = globalScene.phaseManager.getCurrentPhase() as CommandPhase;
     const success = commandPhase.handleDevBuffCommand(buffId);
     if (success) {
-      globalScene.ui.setMode(UiMode.COMMAND, commandPhase.getFieldIndex());
-      globalScene.ui.setMode(UiMode.MESSAGE);
+      void globalScene.ui.revertModes();
       return true;
     }
 

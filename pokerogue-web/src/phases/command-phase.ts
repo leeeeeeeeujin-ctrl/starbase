@@ -492,6 +492,7 @@ export class CommandPhase extends FieldPhase {
     if (this.fieldIndex) {
       globalScene.currentBattle.turnCommands[this.fieldIndex - 1]!.skip = true;
     }
+    this.end();
     return true;
   }
 
