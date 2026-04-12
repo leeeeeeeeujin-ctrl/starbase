@@ -107,6 +107,9 @@ export class TouchControl {
   }
 
   touchButtonDown(node: HTMLElement, key: string) {
+    if (this.buttonLock.length > 0 && !this.buttonLock.includes(key)) {
+      this.releasePressedKeys();
+    }
     if (this.buttonLock.includes(key)) {
       return;
     }
@@ -210,6 +213,13 @@ export class TouchControl {
    * Deactivates all currently pressed keys.
    */
   deactivatePressedKey(): void {
+    this.releasePressedKeys();
+  }
+
+  private releasePressedKeys(): void {
+    for (const key of this.buttonLock) {
+      this.simulateKeyboardEvent("keyup", key);
+    }
     for (const key of Object.keys(this.inputInterval)) {
       clearInterval(this.inputInterval[key]);
     }
