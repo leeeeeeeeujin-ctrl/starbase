@@ -8,6 +8,8 @@ import { ModifierTier } from "#enums/modifier-tier";
 import { PlayerGender } from "#enums/player-gender";
 import { TrainerType } from "#enums/trainer-type";
 import { TrainerVariant } from "#enums/trainer-variant";
+import { trainerConfigs } from "#trainers/trainer-config";
+import i18next from "i18next";
 
 export interface FixedBattleConfigs {
   [key: number]: FixedBattleConfig;
@@ -394,4 +396,25 @@ export const classicFixedBattles: FixedBattleConfigs = {
       ],
       allowLuckUpgrades: false,
     }),
+};
+
+function getDevIntroTrainer(): Trainer {
+  const variant = globalScene.gameData.gender === PlayerGender.MALE ? TrainerVariant.FEMALE : TrainerVariant.DEFAULT;
+  const trainerConfig = trainerConfigs[TrainerType.RIVAL].clone();
+
+  trainerConfig.title = "";
+  trainerConfig.name = i18next.t("trainerNames:devInspector");
+  trainerConfig.nameFemale = i18next.t("trainerNames:devInspectorFemale");
+  trainerConfig.encounterMessages = [i18next.t("dialogue:devIntro.encounter.1")];
+  trainerConfig.femaleEncounterMessages = [i18next.t("dialogue:devIntroFemale.encounter.1")];
+  trainerConfig.victoryMessages = [i18next.t("dialogue:devIntro.victory.1")];
+  trainerConfig.femaleVictoryMessages = [i18next.t("dialogue:devIntroFemale.victory.1")];
+  trainerConfig.defeatMessages = [i18next.t("dialogue:devIntro.defeat.1")];
+  trainerConfig.femaleDefeatMessages = [i18next.t("dialogue:devIntroFemale.defeat.1")];
+
+  return new Trainer(TrainerType.RIVAL, variant, undefined, undefined, undefined, trainerConfig);
+}
+
+export const devFixedBattles: FixedBattleConfigs = {
+  [ClassicFixedBossWaves.RIVAL_1]: new FixedBattleConfig().setBattleType(BattleType.TRAINER).setGetTrainerFunc(getDevIntroTrainer),
 };

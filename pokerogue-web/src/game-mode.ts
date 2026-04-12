@@ -18,7 +18,7 @@ import { ChallengeType } from "#enums/challenge-type";
 import { Challenges } from "#enums/challenges";
 import { GameModes } from "#enums/game-modes";
 import { SpeciesId } from "#enums/species-id";
-import { classicFixedBattles, type FixedBattleConfigs } from "#trainers/fixed-battle-configs";
+import { classicFixedBattles, devFixedBattles, type FixedBattleConfigs } from "#trainers/fixed-battle-configs";
 import type { CustomDailyRunConfig } from "#types/daily-run";
 import { applyChallenges } from "#utils/challenge-utils";
 import { BooleanHolder, randSeedInt, randSeedItem } from "#utils/common";
@@ -497,7 +497,7 @@ export function getGameMode(gameMode: GameModes): GameMode {
           hasTrainers: false,
           hasMysteryEncounters: false,
         },
-        {},
+        devFixedBattles,
       );
     case GameModes.ENDLESS:
       return new GameMode(GameModes.ENDLESS, {

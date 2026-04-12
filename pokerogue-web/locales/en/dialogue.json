@@ -3471,6 +3471,28 @@
       "1": "@c{shock}Wait, you cleared that test already?!$@c{smile_wave_wink}Okay, okay, I get it.\nYou're not stumbling out of the gate today.$@c{smile_eclosed}Enjoy the win while it lasts.\nNext time I bring out a real squad."
     }
   },
+  "devIntro": {
+    "encounter": {
+      "1": "@c{serious_smile_fists}Hold it.\nAnyone entering development mode gets checked before floor ten.$@c{smile}Nothing elaborate.\nTwo Pokémon, one quick inspection, and then I let you climb.$@c{serious_mopen_fists}Show me your opening line."
+    },
+    "victory": {
+      "1": "@c{smile}Fine. You pass.\nYou have enough control to keep going.$@c{serious_smile_fists}Past this point, the run is on you.\nNo more early inspections."
+    },
+    "defeat": {
+      "1": "@c{neutral}If you fold here, the upper floors will only punish you harder.\nReset and come back ready."
+    }
+  },
+  "devIntroFemale": {
+    "encounter": {
+      "1": "@c{smile_wave}Found you.\nDevelopment mode players don't get to slip past the first inspection.$@c{smile_ehalf}No ceremony.\nJust two Pokémon and a quick read on how stable your start is.$@c{angry_mopen}Come on. Show me."
+    },
+    "victory": {
+      "1": "@c{smile_wave_wink}Good enough.\nYou're not going to collapse before floor ten, at least.$@c{smile_eclosed}Go on, then.\nFrom here on, your decisions carry the run."
+    },
+    "defeat": {
+      "1": "@c{neutral}If this is where you break, the rest won't be any kinder.\nGet your setup in order and try again."
+    }
+  },
   "rival2": {
     "encounter": {
       "1": "@c{smile}Hey, you’re here too?\n@c{smile_eclosed}Still a perfect record, huh…?$@c{serious_mopen_fists}I know it kind of looks like I followed you here, but that’s mostly not true.$@c{serious_smile_fists}Honestly though, I’ve been itching for a rematch since you beat me back at home.$I’ve been doing a lot of my own training so I’ll definitely put up a fight this time.$@c{serious_mopen_fists}Don’t hold back, just like before!\nLet’s go!"

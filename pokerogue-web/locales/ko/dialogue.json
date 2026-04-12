@@ -3471,6 +3471,28 @@
       "1": "@c{shock}뭐야, 시험용 파티를 이렇게 빨리 정리한다고?$@c{smile_wave_wink}좋아, 인정.\n출발부터 만만한 상대는 아니었네.$@c{smile_eclosed}다음에 만날 땐 진짜 파티로 올 테니까 각오해."
     }
   },
+  "devIntro": {
+    "encounter": {
+      "1": "@c{serious_smile_fists}거기서 멈춰.\n개발 모드 진입자는 10층 전에 한 번 검사를 받는다.$@c{smile}복잡한 건 없다.\n두 마리로 네 출발 상태만 확인하고 끝낸다.$@c{serious_mopen_fists}준비됐으면 바로 시작하지."
+    },
+    "victory": {
+      "1": "@c{smile}좋아. 통과다.\n적어도 초반을 버틸 기본기는 있다는 뜻이군.$@c{serious_smile_fists}이제부턴 네 선택이 런을 만든다.\n여기서 더 붙잡지는 않겠다."
+    },
+    "defeat": {
+      "1": "@c{neutral}여기서 멈추면 위쪽은 더 버겁다.\n정비를 다시 하고 들어와."
+    }
+  },
+  "devIntroFemale": {
+    "encounter": {
+      "1": "@c{smile_wave}찾았다.\n개발 모드에 들어온 이상 출발 전 검사는 받고 가야지.$@c{smile_ehalf}거창한 건 아냐.\n딱 두 마리로 네 감각만 확인할 거거든.$@c{angry_mopen}자, 보여 줘."
+    },
+    "victory": {
+      "1": "@c{smile_wave_wink}좋네.\n출발선에서 바로 무너질 정도는 아니란 뜻이야.$@c{smile_eclosed}그럼 올라가 봐.\n다음부터는 진짜로 네 판단으로 버텨야 하니까."
+    },
+    "defeat": {
+      "1": "@c{neutral}지금 무너지면 위쪽은 더 버겁지.\n준비를 다시 하고 와."
+    }
+  },
   "rival2": {
     "encounter": {
       "1": "@c{smile}어라, 너 여깄었구나?\n@c{smile_eclosed}아직도 전승 중이라, 이거지…?$@c{serious_mopen_fists}널 쫓아서 온 것 같아 보이겠지만, 오해야.$@c{serious_smile_fists}그래도 솔직히 그 때부터 쭉 재대결이 간절했어.$그 동안의 훈련도 있겠다 마침 좋은 기회같지?$@c{serious_mopen_fists}자, 전처럼!\n배틀이야!"
