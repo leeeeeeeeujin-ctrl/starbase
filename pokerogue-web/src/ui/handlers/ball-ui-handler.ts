@@ -362,7 +362,7 @@ export class BallUiHandler extends UiHandler {
     };
 
     if (modifierType instanceof PokemonMoveModifierType) {
-      globalScene.ui.setModeWithoutClear(
+      globalScene.ui.setMode(
         UiMode.PARTY,
         PartyUiMode.MOVE_MODIFIER,
         -1,
@@ -381,7 +381,7 @@ export class BallUiHandler extends UiHandler {
       return true;
     }
 
-    globalScene.ui.setModeWithoutClear(
+    globalScene.ui.setMode(
       UiMode.PARTY,
       PartyUiMode.MODIFIER,
       -1,

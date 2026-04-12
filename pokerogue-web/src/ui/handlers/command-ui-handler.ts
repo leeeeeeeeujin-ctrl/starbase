@@ -124,7 +124,7 @@ export class CommandUiHandler extends UiHandler {
             break;
           // Ball
           case Command.BALL:
-            ui.setModeWithoutClear(UiMode.BALL);
+            ui.setMode(UiMode.BALL);
             success = true;
             break;
           // Pokemon
