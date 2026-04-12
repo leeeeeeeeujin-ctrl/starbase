@@ -158,30 +158,47 @@ export class CommandUiHandler extends UiHandler {
     } else {
       switch (button) {
         case Button.UP:
-          success = this.getNextCursor(button, cursor) !== null
-            ? this.setCursor(this.getNextCursor(button, cursor)!)
-            : false;
+          if (cursor === Command.POKEMON || cursor === Command.RUN) {
+            success = this.setCursor(cursor - 2);
+          } else if (cursor === Command.FIGHT || cursor === Command.BALL) {
+            success = this.setCursor(cursor + 2);
+          }
           break;
         case Button.DOWN:
-          success = this.getNextCursor(button, cursor) !== null
-            ? this.setCursor(this.getNextCursor(button, cursor)!)
-            : false;
+          if (cursor === Command.FIGHT || cursor === Command.BALL) {
+            success = this.setCursor(cursor + 2);
+          } else if (cursor === Command.POKEMON || cursor === Command.RUN) {
+            success = this.setCursor(cursor - 2);
+          }
           break;
         case Button.LEFT:
-          success = this.getNextCursor(button, cursor) !== null
-            ? this.setCursor(this.getNextCursor(button, cursor)!)
-            : false;
+          if (cursor === Command.BALL || cursor === Command.RUN) {
+            success = this.setCursor(cursor - 1);
+          } else if ((cursor === Command.FIGHT || cursor === Command.POKEMON) && this.canTera()) {
+            success = this.setCursor(Command.TERA);
+            this.toggleTeraButton();
+          } else if (cursor === Command.FIGHT) {
+            success = this.setCursor(Command.BALL);
+          } else if (cursor === Command.POKEMON) {
+            success = this.setCursor(Command.RUN);
+          }
           break;
         case Button.RIGHT:
-          success = this.getNextCursor(button, cursor) !== null
-            ? this.setCursor(this.getNextCursor(button, cursor)!)
-            : false;
+          if (cursor === Command.FIGHT || cursor === Command.POKEMON) {
+            success = this.setCursor(cursor + 1);
+          } else if (cursor === Command.TERA) {
+            success = this.setCursor(Command.FIGHT);
+            this.toggleTeraButton();
+          } else if (cursor === Command.BALL) {
+            success = this.setCursor(Command.FIGHT);
+          } else if (cursor === Command.RUN) {
+            success = this.setCursor(Command.POKEMON);
+          }
           break;
       }
     }
 
     if (success) {
-      this.toggleTeraButton();
       ui.playSelect();
     }
 
@@ -234,55 +251,6 @@ export class CommandUiHandler extends UiHandler {
     }
 
     return changed;
-  }
-
-  private getNextCursor(button: Button, cursor: number): number | null {
-    if (cursor === Command.TERA) {
-      switch (button) {
-        case Button.RIGHT:
-        case Button.UP:
-          return Command.FIGHT;
-        case Button.DOWN:
-          return Command.POKEMON;
-        case Button.LEFT:
-        default:
-          return null;
-      }
-    }
-
-    switch (button) {
-      case Button.UP:
-        if (cursor === Command.POKEMON || cursor === Command.RUN) {
-          return cursor - 2;
-        }
-        return null;
-      case Button.DOWN:
-        if (cursor === Command.FIGHT || cursor === Command.BALL) {
-          return cursor + 2;
-        }
-        return null;
-      case Button.LEFT:
-        if (cursor === Command.FIGHT && this.canTera()) {
-          return Command.TERA;
-        }
-        if (cursor === Command.POKEMON && this.canTera()) {
-          return Command.TERA;
-        }
-        if (cursor === Command.BALL || cursor === Command.RUN) {
-          return cursor - 1;
-        }
-        return null;
-      case Button.RIGHT:
-        if (cursor === Command.FIGHT || cursor === Command.POKEMON) {
-          return cursor + 1;
-        }
-        if (cursor === Command.TERA) {
-          return Command.FIGHT;
-        }
-        return null;
-      default:
-        return null;
-    }
   }
 
   clear(): void {
