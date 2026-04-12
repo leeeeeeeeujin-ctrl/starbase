@@ -4,6 +4,7 @@ import { Device } from "#enums/devices";
 import { PlayerGender } from "#enums/player-gender";
 import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
+import { GameModes } from "#enums/game-modes";
 import { AchvBar } from "#ui/achv-bar";
 import { AchvsUiHandler } from "#ui/achvs-ui-handler";
 import { AutoCompleteUiHandler } from "#ui/autocomplete-ui-handler";
@@ -266,7 +267,7 @@ export class UI extends Phaser.GameObjects.Container {
 
     if (handler instanceof AwaitableUiHandler && handler.tutorialActive) {
       const success = handler.processTutorialInput(button);
-      if (import.meta.env.DEV || globalScene.gameMode?.isDevMode()) {
+      if (import.meta.env.DEV || globalScene.gameMode?.modeId === GameModes.DEV) {
         console.debug("[UI.processInput]", {
           mode: UiMode[this.mode],
           handler: handler.constructor.name,
@@ -281,7 +282,7 @@ export class UI extends Phaser.GameObjects.Container {
     const success = handler.processInput(button);
     if (
       import.meta.env.DEV ||
-      globalScene.gameMode?.isDevMode() ||
+      globalScene.gameMode?.modeId === GameModes.DEV ||
       [UiMode.COMMAND, UiMode.BALL, UiMode.PARTY].includes(this.mode)
     ) {
       console.debug("[UI.processInput]", {

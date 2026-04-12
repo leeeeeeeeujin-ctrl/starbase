@@ -3,6 +3,7 @@ import { globalScene } from "#app/global-scene";
 import { getTypeRgb } from "#data/type";
 import { Button } from "#enums/buttons";
 import { Command } from "#enums/command";
+import { GameModes } from "#enums/game-modes";
 import { PokemonType } from "#enums/pokemon-type";
 import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
@@ -202,7 +203,7 @@ export class CommandUiHandler extends UiHandler {
       ui.playSelect();
     }
 
-    if (import.meta.env.DEV || globalScene.gameMode?.isDevMode()) {
+    if (import.meta.env.DEV || globalScene.gameMode?.modeId === GameModes.DEV) {
       console.debug("[CommandUiHandler.processInput]", {
         button,
         cursorBefore: Command[cursor],
