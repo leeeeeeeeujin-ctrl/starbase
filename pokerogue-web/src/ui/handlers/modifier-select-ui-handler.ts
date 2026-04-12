@@ -895,110 +895,117 @@ class ModifierOption extends Phaser.GameObjects.Container {
     promiseHolder: Promise<void>[],
     isReward = true,
   ): Promise<void> {
+    if (!isReward) {
+      this.itemContainer.setScale(2);
+      this.itemContainer.setAlpha(1);
+      this.itemText.setAlpha(1);
+      this.itemText.setY(25);
+      if (this.itemCostText) {
+        this.itemCostText.setAlpha(1);
+        this.itemCostText.setY(35);
+      }
+      promiseHolder.push(Promise.resolve());
+      return;
+    }
+
     /** Promises for the pokeball and upgrade animations */
     const animPromises: Promise<void>[] = [];
-    if (isReward) {
-      const { promise: bouncePromise, resolve: resolveBounce } = Promise.withResolvers<void>();
-      globalScene.tweens.add({
-        targets: this.pb,
-        y: 0,
-        duration: 1250,
-        ease: "Bounce.Out",
-        onComplete: () => {
-          resolveBounce();
-        },
-      });
-      animPromises.push(bouncePromise);
+    const { promise: bouncePromise, resolve: resolveBounce } = Promise.withResolvers<void>();
+    globalScene.tweens.add({
+      targets: this.pb,
+      y: 0,
+      duration: 1250,
+      ease: "Bounce.Out",
+      onComplete: () => {
+        resolveBounce();
+      },
+    });
+    animPromises.push(bouncePromise);
 
-      let lastValue = 1;
-      let bounceCount = 0;
-      let bounce = false;
+    let lastValue = 1;
+    let bounceCount = 0;
+    let bounce = false;
 
-      globalScene.tweens.addCounter({
-        from: 1,
-        to: 0,
-        duration: 1250,
-        ease: "Bounce.Out",
-        onUpdate: t => {
-          if (!globalScene) {
-            return;
-          }
-          const value = t.getValue()!;
-          if (!bounce && value > lastValue) {
-            globalScene.playSound("se/pb_bounce_1", {
-              volume: 1 / ++bounceCount,
-            });
-            bounce = true;
-          } else if (bounce && value < lastValue) {
-            bounce = false;
-          }
-          lastValue = value;
-        },
-      });
+    globalScene.tweens.addCounter({
+      from: 1,
+      to: 0,
+      duration: 1250,
+      ease: "Bounce.Out",
+      onUpdate: t => {
+        if (!globalScene) {
+          return;
+        }
+        const value = t.getValue()!;
+        if (!bounce && value > lastValue) {
+          globalScene.playSound("se/pb_bounce_1", {
+            volume: 1 / ++bounceCount,
+          });
+          bounce = true;
+        } else if (bounce && value < lastValue) {
+          bounce = false;
+        }
+        lastValue = value;
+      },
+    });
 
-      // TODO: Figure out proper delay between chains and then convert this into a single tween chain
-      // rather than starting multiple tween chains.
+    // TODO: Figure out proper delay between chains and then convert this into a single tween chain
+    // rather than starting multiple tween chains.
 
-      for (let u = 0; u < this.modifierTypeOption.upgradeCount; u++) {
-        const { resolve, promise } = Promise.withResolvers<void>();
-        globalScene.tweens.chain({
-          tweens: [
-            {
-              delay: remainingDuration - 2000 * (this.modifierTypeOption.upgradeCount - (u + 1 + upgradeCountOffset)),
-              onStart: () => {
-                globalScene.playSound("se/upgrade", {
-                  rate: 1 + 0.25 * u,
-                });
-                this.pbTint.setPosition(this.pb.x, this.pb.y).setTintFill(0xffffff).setVisible(true).setAlpha(0);
-              },
-              targets: this.pbTint,
-              alpha: 1,
-              duration: 1000,
-              ease: "Sine.easeIn",
-              onComplete: () => {
-                this.pb.setTexture("pb", this.getPbAtlasKey(-this.modifierTypeOption.upgradeCount + (u + 1)));
-              },
+    for (let u = 0; u < this.modifierTypeOption.upgradeCount; u++) {
+      const { resolve, promise } = Promise.withResolvers<void>();
+      globalScene.tweens.chain({
+        tweens: [
+          {
+            delay: remainingDuration - 2000 * (this.modifierTypeOption.upgradeCount - (u + 1 + upgradeCountOffset)),
+            onStart: () => {
+              globalScene.playSound("se/upgrade", {
+                rate: 1 + 0.25 * u,
+              });
+              this.pbTint.setPosition(this.pb.x, this.pb.y).setTintFill(0xffffff).setVisible(true).setAlpha(0);
             },
-            {
-              targets: this.pbTint,
-              alpha: 0,
-              duration: 750,
-              ease: "Sine.easeOut",
-              onComplete: () => {
-                this.pbTint.setVisible(false);
-                resolve();
-              },
+            targets: this.pbTint,
+            alpha: 1,
+            duration: 1000,
+            ease: "Sine.easeIn",
+            onComplete: () => {
+              this.pb.setTexture("pb", this.getPbAtlasKey(-this.modifierTypeOption.upgradeCount + (u + 1)));
             },
-          ],
-        });
-        animPromises.push(promise);
-      }
+          },
+          {
+            targets: this.pbTint,
+            alpha: 0,
+            duration: 750,
+            ease: "Sine.easeOut",
+            onComplete: () => {
+              this.pbTint.setVisible(false);
+              resolve();
+            },
+          },
+        ],
+      });
+      animPromises.push(promise);
     }
 
     const finalPromises: Promise<void>[] = [];
-    const revealDelay = isReward ? remainingDuration + 2000 : remainingDuration;
-    globalScene.time.delayedCall(revealDelay, () => {
-      if (isReward) {
-        this.pb.setTexture("pb", `${this.getPbAtlasKey(0)}_open`);
-        globalScene.playSound("se/pb_rel");
+    globalScene.time.delayedCall(remainingDuration + 2000, () => {
+      this.pb.setTexture("pb", `${this.getPbAtlasKey(0)}_open`);
+      globalScene.playSound("se/pb_rel");
 
-        const { resolve: pbResolve, promise: pbPromise } = Promise.withResolvers<void>();
+      const { resolve: pbResolve, promise: pbPromise } = Promise.withResolvers<void>();
 
-        globalScene.tweens.add({
-          targets: this.pb,
-          duration: 500,
-          ease: "Sine.easeIn",
-          alpha: 0,
-          onComplete: () => {
-            Promise.allSettled(animPromises).then(() => this.pb.destroy());
-            pbResolve();
-          },
-        });
-        finalPromises.push(pbPromise);
-      }
+      globalScene.tweens.add({
+        targets: this.pb,
+        duration: 500,
+        ease: "Sine.easeIn",
+        alpha: 0,
+        onComplete: () => {
+          Promise.allSettled(animPromises).then(() => this.pb.destroy());
+          pbResolve();
+        },
+      });
+      finalPromises.push(pbPromise);
 
-      /** Delay for the rest of the tweens to ensure they show after the pokeball animation begins to appear */
-      const delay = isReward ? 250 : 0;
+      const delay = 250;
 
       const { resolve: itemResolve, promise: itemPromise } = Promise.withResolvers<void>();
       globalScene.tweens.add({
@@ -1014,21 +1021,19 @@ class ModifierOption extends Phaser.GameObjects.Container {
       });
       finalPromises.push(itemPromise);
 
-      if (isReward) {
-        const { resolve: itemTintResolve, promise: itemTintPromise } = Promise.withResolvers<void>();
-        globalScene.tweens.add({
-          targets: this.itemTint,
-          alpha: 0,
-          delay,
-          duration: 500,
-          ease: "Sine.easeIn",
-          onComplete: () => {
-            this.itemTint.destroy();
-            itemTintResolve();
-          },
-        });
-        finalPromises.push(itemTintPromise);
-      }
+      const { resolve: itemTintResolve, promise: itemTintPromise } = Promise.withResolvers<void>();
+      globalScene.tweens.add({
+        targets: this.itemTint,
+        alpha: 0,
+        delay,
+        duration: 500,
+        ease: "Sine.easeIn",
+        onComplete: () => {
+          this.itemTint.destroy();
+          itemTintResolve();
+        },
+      });
+      finalPromises.push(itemTintPromise);
 
       const { resolve: itemTextResolve, promise: itemTextPromise } = Promise.withResolvers<void>();
       globalScene.tweens.add({
