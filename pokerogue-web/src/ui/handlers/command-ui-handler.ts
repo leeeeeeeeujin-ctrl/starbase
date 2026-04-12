@@ -240,13 +240,14 @@ export class CommandUiHandler extends UiHandler {
     if (cursor === Command.TERA) {
       switch (button) {
         case Button.RIGHT:
-        case Button.LEFT:
         case Button.UP:
           return Command.FIGHT;
         case Button.DOWN:
           return Command.POKEMON;
+        case Button.LEFT:
+        default:
+          return null;
       }
-      return null;
     }
 
     switch (button) {
@@ -254,28 +255,31 @@ export class CommandUiHandler extends UiHandler {
         if (cursor === Command.POKEMON || cursor === Command.RUN) {
           return cursor - 2;
         }
-        return cursor + 2;
+        return null;
       case Button.DOWN:
         if (cursor === Command.FIGHT || cursor === Command.BALL) {
           return cursor + 2;
         }
-        return cursor - 2;
+        return null;
       case Button.LEFT:
         if (cursor === Command.FIGHT && this.canTera()) {
           return Command.TERA;
         }
-        if (cursor === Command.FIGHT) {
-          return Command.BALL;
-        }
         if (cursor === Command.POKEMON && this.canTera()) {
           return Command.TERA;
         }
-        return cursor % 2 === 1 ? cursor - 1 : cursor + 1;
+        if (cursor === Command.BALL || cursor === Command.RUN) {
+          return cursor - 1;
+        }
+        return null;
       case Button.RIGHT:
-        if (cursor === Command.POKEMON || cursor === Command.FIGHT) {
+        if (cursor === Command.FIGHT || cursor === Command.POKEMON) {
           return cursor + 1;
         }
-        return cursor - 1;
+        if (cursor === Command.TERA) {
+          return Command.FIGHT;
+        }
+        return null;
       default:
         return null;
     }
