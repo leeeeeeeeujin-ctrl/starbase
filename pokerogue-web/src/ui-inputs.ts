@@ -1,6 +1,7 @@
 import { globalScene } from "#app/global-scene";
 import type { InputsController } from "#app/inputs-controller";
 import { Button } from "#enums/buttons";
+import { GameModes } from "#enums/game-modes";
 import { UiMode } from "#enums/ui-mode";
 import { Setting, SettingKeys, settingIndex } from "#system/settings";
 import type { MessageUiHandler } from "#ui/message-ui-handler";
@@ -50,6 +51,15 @@ export class UiInputs {
       event => {
         this.detectInputMethod(event);
 
+        if (import.meta.env.DEV || globalScene.gameMode?.modeId === GameModes.DEV) {
+          console.debug("[UiInputs.input_down]", {
+            button: event.button,
+            controllerType: event.controller_type,
+            isTouch: event.isTouch ?? false,
+            uiMode: globalScene.ui?.getMode?.(),
+          });
+        }
+
         const actions = this.getActionsKeyDown();
         if (!actions.hasOwnProperty(event.button)) {
           return;
@@ -62,6 +72,15 @@ export class UiInputs {
     this.events.on(
       "input_up",
       event => {
+        if (import.meta.env.DEV || globalScene.gameMode?.modeId === GameModes.DEV) {
+          console.debug("[UiInputs.input_up]", {
+            button: event.button,
+            controllerType: event.controller_type,
+            isTouch: event.isTouch ?? false,
+            uiMode: globalScene.ui?.getMode?.(),
+          });
+        }
+
         const actions = this.getActionsKeyUp();
         if (!actions.hasOwnProperty(event.button)) {
           return;
@@ -125,12 +144,24 @@ export class UiInputs {
   }
 
   buttonDirection(direction: Button): void {
+    if (import.meta.env.DEV || globalScene.gameMode?.modeId === GameModes.DEV) {
+      console.debug("[UiInputs.buttonDirection]", {
+        direction,
+        uiMode: globalScene.ui?.getMode?.(),
+      });
+    }
     const inputSuccess = globalScene.ui.processInput(direction);
     const vibrationLength = 5;
     this.doVibration(inputSuccess, vibrationLength);
   }
 
   buttonAb(button: Button): void {
+    if (import.meta.env.DEV || globalScene.gameMode?.modeId === GameModes.DEV) {
+      console.debug("[UiInputs.buttonAb]", {
+        button,
+        uiMode: globalScene.ui?.getMode?.(),
+      });
+    }
     globalScene.ui.processInput(button);
   }
 
