@@ -202,6 +202,16 @@ export class CommandUiHandler extends UiHandler {
       ui.playSelect();
     }
 
+    if (import.meta.env.DEV || globalScene.gameMode?.isDevMode()) {
+      console.debug("[CommandUiHandler.processInput]", {
+        button,
+        cursorBefore: Command[cursor],
+        cursorAfter: Command[this.getCursor()],
+        success,
+        canTera: this.canTera(),
+      });
+    }
+
     return success;
   }
 

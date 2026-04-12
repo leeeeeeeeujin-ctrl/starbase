@@ -265,10 +265,33 @@ export class UI extends Phaser.GameObjects.Container {
     const handler = this.getHandler();
 
     if (handler instanceof AwaitableUiHandler && handler.tutorialActive) {
-      return handler.processTutorialInput(button);
+      const success = handler.processTutorialInput(button);
+      if (import.meta.env.DEV || globalScene.gameMode?.isDevMode()) {
+        console.debug("[UI.processInput]", {
+          mode: UiMode[this.mode],
+          handler: handler.constructor.name,
+          button,
+          success,
+          tutorial: true,
+        });
+      }
+      return success;
     }
 
-    return handler.processInput(button);
+    const success = handler.processInput(button);
+    if (
+      import.meta.env.DEV ||
+      globalScene.gameMode?.isDevMode() ||
+      [UiMode.COMMAND, UiMode.BALL, UiMode.PARTY].includes(this.mode)
+    ) {
+      console.debug("[UI.processInput]", {
+        mode: UiMode[this.mode],
+        handler: handler.constructor.name,
+        button,
+        success,
+      });
+    }
+    return success;
   }
 
   showTextPromise(text: string, callbackDelay = 0, prompt = true, promptDelay?: number | null): Promise<void> {
