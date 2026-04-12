@@ -159,22 +159,32 @@ export class CommandUiHandler extends UiHandler {
     } else {
       switch (button) {
         case Button.UP:
-          if (cursor === Command.POKEMON || cursor === Command.RUN) {
-            success = this.setCursor(cursor - 2);
-          } else if (cursor === Command.FIGHT || cursor === Command.BALL) {
-            success = this.setCursor(cursor + 2);
+          if (cursor === Command.POKEMON) {
+            success = this.setCursor(Command.FIGHT);
+          } else if (cursor === Command.RUN) {
+            success = this.setCursor(Command.BALL);
+          } else if (cursor === Command.FIGHT) {
+            success = this.setCursor(Command.POKEMON);
+          } else if (cursor === Command.BALL) {
+            success = this.setCursor(Command.RUN);
           }
           break;
         case Button.DOWN:
-          if (cursor === Command.FIGHT || cursor === Command.BALL) {
-            success = this.setCursor(cursor + 2);
-          } else if (cursor === Command.POKEMON || cursor === Command.RUN) {
-            success = this.setCursor(cursor - 2);
+          if (cursor === Command.FIGHT) {
+            success = this.setCursor(Command.POKEMON);
+          } else if (cursor === Command.BALL) {
+            success = this.setCursor(Command.RUN);
+          } else if (cursor === Command.POKEMON) {
+            success = this.setCursor(Command.FIGHT);
+          } else if (cursor === Command.RUN) {
+            success = this.setCursor(Command.BALL);
           }
           break;
         case Button.LEFT:
-          if (cursor === Command.BALL || cursor === Command.RUN) {
-            success = this.setCursor(cursor - 1);
+          if (cursor === Command.BALL) {
+            success = this.setCursor(Command.FIGHT);
+          } else if (cursor === Command.RUN) {
+            success = this.setCursor(Command.POKEMON);
           } else if ((cursor === Command.FIGHT || cursor === Command.POKEMON) && this.canTera()) {
             success = this.setCursor(Command.TERA);
             this.toggleTeraButton();
@@ -185,8 +195,10 @@ export class CommandUiHandler extends UiHandler {
           }
           break;
         case Button.RIGHT:
-          if (cursor === Command.FIGHT || cursor === Command.POKEMON) {
-            success = this.setCursor(cursor + 1);
+          if (cursor === Command.FIGHT) {
+            success = this.setCursor(Command.BALL);
+          } else if (cursor === Command.POKEMON) {
+            success = this.setCursor(Command.RUN);
           } else if (cursor === Command.TERA) {
             success = this.setCursor(Command.FIGHT);
             this.toggleTeraButton();
@@ -239,6 +251,21 @@ export class CommandUiHandler extends UiHandler {
     return this.fieldIndex ? this.cursor2 : this.cursor;
   }
 
+  private getGridIndex(cursor: number): number {
+    switch (cursor) {
+      case Command.FIGHT:
+        return 0;
+      case Command.BALL:
+        return 1;
+      case Command.POKEMON:
+        return 2;
+      case Command.RUN:
+        return 3;
+      default:
+        return -1;
+    }
+  }
+
   setCursor(cursor: number): boolean {
     const changed = this.getCursor() !== cursor;
     if (changed) {
@@ -257,7 +284,10 @@ export class CommandUiHandler extends UiHandler {
     if (cursor === Command.TERA) {
       this.cursorObj.setVisible(false);
     } else {
-      this.cursorObj.setPosition(-5 + (cursor % 2 === 1 ? 56 : 0), 8 + (cursor >= 2 ? 16 : 0));
+      const gridIndex = this.getGridIndex(cursor);
+      const column = gridIndex === 1 || gridIndex === 3 ? 1 : 0;
+      const row = gridIndex >= 2 ? 1 : 0;
+      this.cursorObj.setPosition(-5 + (column ? 56 : 0), 8 + (row ? 16 : 0));
       this.cursorObj.setVisible(true);
     }
 
