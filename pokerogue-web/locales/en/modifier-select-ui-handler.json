@@ -9,6 +9,7 @@
   "checkTeamDesc": "Check your team or use a form changing item.",
   "rerollCost": "₽{{formattedMoney}}",
   "itemCost": "₽{{formattedMoney}}",
+  "soldOut": "Sold Out",
   "leaveShopButton": "Leave Shop",
   "leaveShopDesc": "Close the shop and continue to the next wave.",
   "continueNextWaveButton": "Continue",

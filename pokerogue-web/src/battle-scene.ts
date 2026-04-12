@@ -47,6 +47,7 @@ import { EaseType } from "#enums/ease-type";
 import { ExpGainsSpeed } from "#enums/exp-gains-speed";
 import { ExpNotification } from "#enums/exp-notification";
 import { FormChangeItem } from "#enums/form-change-item";
+import { ClassicFixedBossWaves } from "#enums/fixed-boss-waves";
 import { GameModes } from "#enums/game-modes";
 import { ModifierPoolType } from "#enums/modifier-pool-type";
 import { MoneyFormat } from "#enums/money-format";
@@ -1303,7 +1304,10 @@ export class BattleScene extends SceneBase {
     // Set attributes of the `resolved` object based on the type of battle being created.
     if (fromSession) {
       this.handleSavedBattle(resolved, props);
-    } else if (this.gameMode.isFixedBattle(waveIndex)) {
+    } else if (
+      this.gameMode.isFixedBattle(waveIndex)
+      || (this.gameMode.modeId === GameModes.DEV && waveIndex === ClassicFixedBossWaves.RIVAL_1)
+    ) {
       this.handleFixedBattle(resolved);
     } else {
       this.handleNonFixedBattle(resolved);

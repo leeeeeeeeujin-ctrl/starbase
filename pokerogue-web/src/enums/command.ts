@@ -1,8 +1,8 @@
 export enum Command {
   FIGHT = 0,
-  BALL,
-  ITEM,
-  POKEMON,
-  RUN,
-  TERA,
+  BALL = 1,
+  POKEMON = 2,
+  RUN = 3,
+  TERA = 4,
+  ITEM = 5,
 }

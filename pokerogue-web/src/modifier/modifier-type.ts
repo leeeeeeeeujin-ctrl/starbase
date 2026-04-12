@@ -2653,7 +2653,11 @@ export function getPlayerShopModifierTypeOptionsForWave(waveIndex: number, baseC
       devShopStock = generatedOptions;
     }
 
-    return devShopStock.filter(option => !devShopPurchasedOptionIds.has(getDevShopOptionKey(option)));
+    return devShopStock.map(option =>
+      !devShopPurchasedOptionIds.has(getDevShopOptionKey(option))
+        ? option
+        : new ModifierTypeOption(option.type, option.upgradeCount, option.cost, true),
+    );
   }
 
   if (!(waveIndex % 10)) {
@@ -2921,11 +2925,13 @@ export class ModifierTypeOption {
   public type: ModifierType;
   public upgradeCount: number;
   public cost: number;
+  public soldOut: boolean;
 
-  constructor(type: ModifierType, upgradeCount: number, cost = 0) {
+  constructor(type: ModifierType, upgradeCount: number, cost = 0, soldOut = false) {
     this.type = type;
     this.upgradeCount = upgradeCount;
     this.cost = Math.min(Math.round(cost), Number.MAX_SAFE_INTEGER);
+    this.soldOut = soldOut;
   }
 }
 

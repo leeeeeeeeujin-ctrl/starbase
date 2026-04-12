@@ -174,6 +174,10 @@ export class SelectModifierPhase extends BattlePhase {
       shopOptions[
         rowCursor > 2 || shopOptions.length <= SHOP_OPTIONS_ROW_LIMIT ? cursor : cursor + SHOP_OPTIONS_ROW_LIMIT
       ];
+    if (!shopOption || shopOption.soldOut) {
+      globalScene.ui.playError();
+      return false;
+    }
     const modifierType = shopOption.type;
     // Apply Black Sludge to healing item cost
     const healingItemCost = new NumberHolder(shopOption.cost);

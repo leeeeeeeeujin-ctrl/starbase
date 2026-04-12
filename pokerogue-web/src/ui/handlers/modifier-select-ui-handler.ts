@@ -224,15 +224,17 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
       : [];
     const optionsYOffset =
       shopTypeOptions.length > SHOP_OPTIONS_ROW_LIMIT ? -SINGLE_SHOP_ROW_YOFFSET : -DOUBLE_SHOP_ROW_YOFFSET;
+    const devFixedRowY = -globalScene.scaledCanvas.height / 2 - globalScene.game.canvas.height / 32 - 70;
+    const devShopRowOffset = isDevShop ? 1 : 0;
 
     for (let m = 0; m < typeOptions.length; m++) {
       const sliceWidth = globalScene.scaledCanvas.width / (typeOptions.length + 2);
       const option = new ModifierOption(
         sliceWidth * (m + 1) + sliceWidth * 0.5,
-        -globalScene.scaledCanvas.height / 2 + optionsYOffset,
+        isDevShop ? devFixedRowY : -globalScene.scaledCanvas.height / 2 + optionsYOffset,
         typeOptions[m],
       );
-      option.setScale(0.5);
+      option.setScale(isDevShop ? 0.375 : 0.5);
       globalScene.add.existing(option);
       this.modifierContainer.add(option);
       this.options.push(option);
@@ -253,7 +255,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
       const sliceWidth = globalScene.scaledCanvas.width / (rowOptions.length + 2);
       const option = new ModifierOption(
         sliceWidth * (col + 1) + sliceWidth * 0.5,
-        -globalScene.scaledCanvas.height / 2 - globalScene.game.canvas.height / 32 - (42 - (28 * row - 1)),
+        -globalScene.scaledCanvas.height / 2 - globalScene.game.canvas.height / 32 - (42 - (28 * (row + devShopRowOffset) - 1)),
         shopTypeOptions[m],
       );
       option.setScale(0.375);
@@ -849,6 +851,10 @@ class ModifierOption extends Phaser.GameObjects.Container {
     this.itemText.setTint(
       this.modifierTypeOption.type?.tier ? getModifierTierTextTint(this.modifierTypeOption.type?.tier) : undefined,
     );
+    if (this.modifierTypeOption.soldOut) {
+      this.itemText.setText(i18next.t("modifierSelectUiHandler:soldOut"));
+      this.itemText.setTint(getTextColor(TextStyle.SUMMARY_GRAY, false));
+    }
     this.add(this.itemText);
 
     if (this.modifierTypeOption.cost) {
@@ -1061,6 +1067,12 @@ class ModifierOption extends Phaser.GameObjects.Container {
   }
 
   updateCostText(): void {
+    if (this.modifierTypeOption.soldOut) {
+      this.itemCostText.setText(i18next.t("modifierSelectUiHandler:soldOut"));
+      this.itemCostText.setColor(getTextColor(TextStyle.SUMMARY_GRAY, false));
+      this.itemCostText.setShadowColor(getTextColor(TextStyle.SUMMARY_GRAY, true));
+      return;
+    }
     const cost = Overrides.WAIVE_ROLL_FEE_OVERRIDE ? 0 : this.modifierTypeOption.cost;
     const textStyle = cost <= globalScene.money ? TextStyle.MONEY : TextStyle.PARTY_RED;
 
