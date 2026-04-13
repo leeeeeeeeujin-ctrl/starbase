@@ -51,37 +51,43 @@ export const DEV_ITEM_DEFINITIONS: readonly DevItemDefinition[] = [
 export const DEV_BUFF_DEFINITIONS: readonly DevBuffDefinition[] = [
   {
     id: "x_attack",
-    createModifierType: () => modifierTypeInitObj.TEMP_STAT_STAGE_BOOSTER(Stat.ATK),
+    createModifierType: () =>
+      modifierTypeInitObj.TEMP_STAT_STAGE_BOOSTER().generateType([], [Stat.ATK])!,
     unlockWave: 5,
     costMultiplier: 0.12,
   },
   {
     id: "x_defense",
-    createModifierType: () => modifierTypeInitObj.TEMP_STAT_STAGE_BOOSTER(Stat.DEF),
+    createModifierType: () =>
+      modifierTypeInitObj.TEMP_STAT_STAGE_BOOSTER().generateType([], [Stat.DEF])!,
     unlockWave: 5,
     costMultiplier: 0.12,
   },
   {
     id: "x_speed",
-    createModifierType: () => modifierTypeInitObj.TEMP_STAT_STAGE_BOOSTER(Stat.SPD),
+    createModifierType: () =>
+      modifierTypeInitObj.TEMP_STAT_STAGE_BOOSTER().generateType([], [Stat.SPD])!,
     unlockWave: 5,
     costMultiplier: 0.14,
   },
   {
     id: "x_sp_atk",
-    createModifierType: () => modifierTypeInitObj.TEMP_STAT_STAGE_BOOSTER(Stat.SPATK),
+    createModifierType: () =>
+      modifierTypeInitObj.TEMP_STAT_STAGE_BOOSTER().generateType([], [Stat.SPATK])!,
     unlockWave: 15,
     costMultiplier: 0.16,
   },
   {
     id: "x_sp_def",
-    createModifierType: () => modifierTypeInitObj.TEMP_STAT_STAGE_BOOSTER(Stat.SPDEF),
+    createModifierType: () =>
+      modifierTypeInitObj.TEMP_STAT_STAGE_BOOSTER().generateType([], [Stat.SPDEF])!,
     unlockWave: 15,
     costMultiplier: 0.16,
   },
   {
     id: "x_accuracy",
-    createModifierType: () => modifierTypeInitObj.TEMP_STAT_STAGE_BOOSTER(Stat.ACC),
+    createModifierType: () =>
+      modifierTypeInitObj.TEMP_STAT_STAGE_BOOSTER().generateType([], [Stat.ACC])!,
     unlockWave: 15,
     costMultiplier: 0.18,
   },

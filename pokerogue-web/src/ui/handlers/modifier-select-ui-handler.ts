@@ -224,7 +224,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
       : [];
     const optionsYOffset =
       shopTypeOptions.length > SHOP_OPTIONS_ROW_LIMIT ? -SINGLE_SHOP_ROW_YOFFSET : -DOUBLE_SHOP_ROW_YOFFSET;
-    const devFixedRowY = -globalScene.scaledCanvas.height / 2 - globalScene.game.canvas.height / 32 - 70;
+    const devFixedRowY = -globalScene.scaledCanvas.height / 2 - globalScene.game.canvas.height / 32 - 43;
     const devShopRowOffset = isDevShop ? 1 : 0;
 
     for (let m = 0; m < typeOptions.length; m++) {
