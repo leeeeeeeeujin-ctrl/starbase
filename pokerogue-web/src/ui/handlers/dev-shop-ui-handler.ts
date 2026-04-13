@@ -198,6 +198,14 @@ export class DevShopUiHandler extends AwaitableUiHandler {
     return options;
   }
 
+  private chunkOptions(options: ModifierTypeOption[], size: number): ModifierTypeOption[][] {
+    const rows: ModifierTypeOption[][] = [];
+    for (let i = 0; i < options.length; i += size) {
+      rows.push(options.slice(i, i + size));
+    }
+    return rows;
+  }
+
   private renderActions() {
     this.actions.forEach(action => {
       const text = addTextObject(action.x - 4, action.y - 2, action.label, TextStyle.PARTY);
