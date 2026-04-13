@@ -1,6 +1,6 @@
 import { globalScene } from "#app/global-scene";
+import Overrides from "#app/overrides";
 import { Button } from "#enums/buttons";
-import { GameModes } from "#enums/game-modes";
 import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
 import { HealShopCostModifier } from "#modifiers/modifier";
@@ -8,36 +8,38 @@ import type { ModifierTypeOption } from "#modifiers/modifier-type";
 import { getPlayerShopModifierTypeOptionsForWave } from "#modifiers/modifier-type";
 import type { ModifierSelectCallback } from "#phases/select-modifier-phase";
 import { AwaitableUiHandler } from "#ui/awaitable-ui-handler";
-import { addTextObject, getTextColor } from "#ui/text";
-import { addWindow } from "#ui/ui-theme";
+import {
+  DOUBLE_SHOP_ROW_YOFFSET,
+  ModifierOption,
+  OPTION_BUTTON_YPOSITION,
+  SHOP_OPTIONS_ROW_LIMIT,
+  SINGLE_SHOP_ROW_YOFFSET,
+} from "#ui/modifier-select-ui-handler";
+import { addTextObject } from "#ui/text";
 import { formatMoney, NumberHolder } from "#utils/common";
+import i18next from "i18next";
 import Phaser from "phaser";
 
-type ShopRowView = {
-  rowCursor: number;
-  options: ModifierTypeOption[];
-  xPositions: number[];
-};
-
-type ActionView = {
-  label: string;
+type DevAction = {
   cursor: number;
+  label: string;
+  description: string;
   x: number;
-  text: Phaser.GameObjects.Text;
+  y: number;
 };
 
 export class DevShopUiHandler extends AwaitableUiHandler {
   protected declare onActionInput: ModifierSelectCallback | null;
 
-  private container: Phaser.GameObjects.Container;
+  private modifierContainer: Phaser.GameObjects.Container;
   private descriptionText: Phaser.GameObjects.Text;
   private cursorObj: Phaser.GameObjects.Image | null = null;
+
   private rowCursor = 1;
-  private rowViews: ShopRowView[] = [];
-  private actionViews: ActionView[] = [];
-  private actionCursors: number[] = [];
-  private player = true;
-  private typeOptions: ModifierTypeOption[] = [];
+  private actionCursor = 0;
+  private fixedOptions: ModifierOption[] = [];
+  private shopRows: ModifierOption[][] = [];
+  private actions: DevAction[] = [];
   private rerollCost = -1;
 
   constructor() {
@@ -46,8 +48,8 @@ export class DevShopUiHandler extends AwaitableUiHandler {
 
   setup(): void {
     const ui = this.getUi();
-    this.container = globalScene.add.container(0, 0);
-    ui.add(this.container);
+    this.modifierContainer = globalScene.add.container(0, 0);
+    ui.add(this.modifierContainer);
 
     this.descriptionText = addTextObject(10, -56, "", TextStyle.WINDOW, {
       wordWrap: { width: globalScene.scaledCanvas.width - 20 },
@@ -72,33 +74,60 @@ export class DevShopUiHandler extends AwaitableUiHandler {
 
     super.show(args);
 
-    this.player = !!args[0];
-    this.typeOptions = args[1] as ModifierTypeOption[];
+    const fixedTypeOptions = args[1] as ModifierTypeOption[];
     this.onActionInput = args[2] as ModifierSelectCallback;
     this.rerollCost = args[3] as number;
     this.awaitingActionInput = true;
+    this.rowCursor = fixedTypeOptions.length ? 1 : 2;
+    this.actionCursor = 0;
     this.cursor = 0;
-    this.rowCursor = 1;
 
-    this.container.removeAll(true);
-    this.rowViews = [];
-    this.actionViews = [];
-    this.actionCursors = [];
+    this.clearRenderedState();
 
     const baseShopCost = new NumberHolder(globalScene.getWaveMoneyAmount(1));
     globalScene.applyModifier(HealShopCostModifier, true, baseShopCost);
-    const randomOptions = getPlayerShopModifierTypeOptionsForWave(globalScene.currentBattle.waveIndex, baseShopCost.value);
+    const randomTypeOptions = getPlayerShopModifierTypeOptionsForWave(globalScene.currentBattle.waveIndex, baseShopCost.value);
 
-    this.buildRowWindow(this.typeOptions, -globalScene.scaledCanvas.height / 2 - globalScene.game.canvas.height / 32 - 58, 1);
-    this.buildRowWindow(randomOptions, -globalScene.scaledCanvas.height / 2 - globalScene.game.canvas.height / 32 - 24, 2);
-    if (randomOptions.length > 7) {
-      this.buildRowWindow(randomOptions.slice(7), -globalScene.scaledCanvas.height / 2 - globalScene.game.canvas.height / 32 + 4, 3);
-    }
+    const randomRows = this.chunkOptions(randomTypeOptions, SHOP_OPTIONS_ROW_LIMIT);
+    const rewardRowY =
+      -globalScene.scaledCanvas.height / 2
+      - (randomRows.length > 1 ? SINGLE_SHOP_ROW_YOFFSET : DOUBLE_SHOP_ROW_YOFFSET);
 
-    this.buildActions();
+    this.fixedOptions = this.createOptionRow(fixedTypeOptions, rewardRowY, 0.5);
+    this.shopRows = randomRows.map((row, index) => {
+      const y = -globalScene.scaledCanvas.height / 2
+        - globalScene.game.canvas.height / 32
+        - (42 - (28 * index - 1));
+      return this.createOptionRow(row, y, 0.375);
+    });
+
+    this.actions = [
+      {
+        cursor: 0,
+        label: i18next.t("modifierSelectUiHandler:reroll"),
+        description: i18next.t("modifierSelectUiHandler:rerollDesc"),
+        x: 16,
+        y: OPTION_BUTTON_YPOSITION,
+      },
+      {
+        cursor: 1,
+        label: i18next.t("modifierSelectUiHandler:checkTeam"),
+        description: i18next.t("modifierSelectUiHandler:checkTeamDesc"),
+        x: globalScene.scaledCanvas.width - 1,
+        y: OPTION_BUTTON_YPOSITION,
+      },
+      {
+        cursor: 2,
+        label: i18next.t("modifierSelectUiHandler:leaveShopButton"),
+        description: i18next.t("modifierSelectUiHandler:leaveShopDesc"),
+        x: 16,
+        y: OPTION_BUTTON_YPOSITION - 12,
+      },
+    ];
+
+    this.renderActions();
     this.descriptionText.setVisible(true);
-    this.setCursor(0);
-
+    this.refreshCursor();
     return true;
   }
 
@@ -122,7 +151,7 @@ export class DevShopUiHandler extends AwaitableUiHandler {
         success = this.moveHorizontal(1);
         break;
       case Button.ACTION:
-        success = this.onActionInput(this.rowCursor, this.cursor);
+        success = this.onActionInput(this.rowCursor, this.rowCursor === 0 ? this.actionCursor : this.cursor);
         break;
       case Button.CANCEL:
         success = this.onActionInput(0, 2);
@@ -139,160 +168,146 @@ export class DevShopUiHandler extends AwaitableUiHandler {
     super.clear();
     this.onActionInput = null;
     this.awaitingActionInput = false;
-    this.container.removeAll(true);
-    this.rowViews = [];
-    this.actionViews = [];
-    this.actionCursors = [];
+    this.clearRenderedState();
     this.descriptionText.setVisible(false);
     this.eraseCursor();
   }
 
-  private buildRowWindow(options: ModifierTypeOption[], y: number, rowCursor: number) {
-    if (!options.length) {
-      return;
-    }
-    const visibleOptions = rowCursor === 2 ? options.slice(0, 7) : options;
-    const width = globalScene.scaledCanvas.width - 20;
-    const window = addWindow(10, y, width, 28);
-    this.container.add(window);
-
-    const sliceWidth = globalScene.scaledCanvas.width / (visibleOptions.length + 2);
-    const xPositions: number[] = [];
-
-    visibleOptions.forEach((option, index) => {
-      const x = sliceWidth * (index + 1) + sliceWidth * 0.5;
-      xPositions.push(x);
-      const sprite = globalScene.add.sprite(x, y + 8, "items", option.type.iconImage);
-      sprite.setScale(2);
-      this.container.add(sprite);
-
-      const nameText = addTextObject(x, y + 17, option.soldOut ? "매진" : option.type.name, TextStyle.WINDOW, {
-        align: "center",
-      });
-      nameText.setOrigin(0.5, 0);
-      if (option.soldOut) {
-        nameText.setColor(getTextColor(TextStyle.SUMMARY_GRAY));
-      }
-      this.container.add(nameText);
-
-      const costText = addTextObject(
-        x,
-        y + 28,
-        option.soldOut ? "매진" : formatMoney(globalScene.moneyFormat, option.cost),
-        option.soldOut ? TextStyle.SUMMARY_GRAY : TextStyle.MONEY,
-      );
-      costText.setOrigin(0.5, 0);
-      this.container.add(costText);
-    });
-
-    this.rowViews.push({
-      rowCursor,
-      options: visibleOptions,
-      xPositions,
-    });
+  private clearRenderedState() {
+    this.modifierContainer.removeAll(true);
+    this.fixedOptions = [];
+    this.shopRows = [];
+    this.actions = [];
   }
 
-  private buildActions() {
-    const y = -70;
-    const labels = ["리롤", "파티 확인", "상점 나가기"];
-    const cursors = [0, 1, 2];
-    const xs = [30, globalScene.scaledCanvas.width - 74, 30];
+  private createOptionRow(typeOptions: ModifierTypeOption[], y: number, scale: number): ModifierOption[] {
+    const options: ModifierOption[] = [];
+    if (!typeOptions.length) {
+      return options;
+    }
 
-    labels.forEach((label, index) => {
-      const text = addTextObject(xs[index], y + index * 18, label, TextStyle.WINDOW_BATTLE_COMMAND);
-      this.container.add(text);
-      this.actionViews.push({ label, cursor: cursors[index], x: xs[index], text });
-      this.actionCursors.push(cursors[index]);
+    const sliceWidth = globalScene.scaledCanvas.width / (typeOptions.length + 2);
+    typeOptions.forEach((typeOption, index) => {
+      const option = new ModifierOption(sliceWidth * (index + 1) + sliceWidth * 0.5, y, typeOption);
+      option.setScale(scale);
+      globalScene.add.existing(option);
+      this.modifierContainer.add(option);
+      void option.show(0, 0, [], false);
+      options.push(option);
+    });
+    return options;
+  }
+
+  private renderActions() {
+    this.actions.forEach(action => {
+      const text = addTextObject(action.x - 4, action.y - 2, action.label, TextStyle.PARTY);
+      text.setOrigin(0, 0);
+      this.modifierContainer.add(text);
+      if (action.cursor === 0 && this.rerollCost >= 0) {
+        const costText = addTextObject(
+          action.x - 4,
+          action.y + 8,
+          i18next.t("modifierSelectUiHandler:rerollCost", {
+            formattedMoney: formatMoney(globalScene.moneyFormat, this.rerollCost),
+          }),
+          TextStyle.MONEY,
+        );
+        costText.setOrigin(0, 0);
+        this.modifierContainer.add(costText);
+      }
     });
   }
 
   private moveVertical(direction: -1 | 1): boolean {
-    const rowOrder = [0, 1, 2, 3].filter(row => row === 0 || this.getRowView(row));
-    const currentIndex = rowOrder.indexOf(this.rowCursor);
+    const rows = this.getAvailableRows();
+    const currentIndex = rows.indexOf(this.rowCursor);
     const nextIndex = currentIndex + direction;
-    if (nextIndex < 0 || nextIndex >= rowOrder.length) {
+    if (nextIndex < 0 || nextIndex >= rows.length) {
       return false;
     }
-    const nextRow = rowOrder[nextIndex];
-    this.rowCursor = nextRow;
-    this.cursor = 0;
+
+    this.rowCursor = rows[nextIndex];
+    if (this.rowCursor === 0) {
+      this.actionCursor = 0;
+    } else {
+      const maxCursor = this.getCurrentRowOptions().length - 1;
+      this.cursor = Math.min(this.cursor, Math.max(maxCursor, 0));
+    }
     this.refreshCursor();
     return true;
   }
 
   private moveHorizontal(direction: -1 | 1): boolean {
     if (this.rowCursor === 0) {
-      const currentIndex = this.actionCursors.indexOf(this.cursor);
-      const nextIndex = currentIndex + direction;
-      if (nextIndex < 0 || nextIndex >= this.actionCursors.length) {
+      const nextCursor = this.actionCursor + direction;
+      if (nextCursor < 0 || nextCursor >= this.actions.length) {
         return false;
       }
-      this.cursor = this.actionCursors[nextIndex];
+      this.actionCursor = nextCursor;
       this.refreshCursor();
       return true;
     }
-    const rowView = this.getRowView(this.rowCursor);
-    if (!rowView) {
-      return false;
-    }
-    const nextIndex = this.cursor + direction;
-    if (nextIndex < 0 || nextIndex >= rowView.options.length) {
-      return false;
-    }
-    this.cursor = nextIndex;
-    this.refreshCursor();
-    return true;
-  }
 
-  setCursor(cursor: number): boolean {
-    this.cursor = cursor;
+    const nextCursor = this.cursor + direction;
+    const rowOptions = this.getCurrentRowOptions();
+    if (nextCursor < 0 || nextCursor >= rowOptions.length) {
+      return false;
+    }
+    this.cursor = nextCursor;
     this.refreshCursor();
     return true;
   }
 
   private refreshCursor() {
-    const ui = this.getUi();
     if (!this.cursorObj) {
       this.cursorObj = globalScene.add.image(0, 0, "cursor");
-      this.container.add(this.cursorObj);
+      this.modifierContainer.add(this.cursorObj);
     }
 
     if (this.rowCursor === 0) {
-      const action = this.actionViews.find(view => view.cursor === this.cursor) ?? this.actionViews[0];
+      const action = this.actions[this.actionCursor];
       if (!action) {
         return;
       }
-      this.cursorObj.setPosition(action.x - 14, action.text.y + 8);
-      this.descriptionText.setText(action.label);
+      this.cursorObj.setScale(1);
+      this.cursorObj.setPosition(action.x - 10, action.y + 4);
+      this.descriptionText.setText(action.description);
       return;
     }
 
-    const rowView = this.getRowView(this.rowCursor);
-    if (!rowView) {
+    const rowOptions = this.getCurrentRowOptions();
+    const option = rowOptions[this.cursor];
+    if (!option) {
       return;
     }
-    const index = Math.min(this.cursor, rowView.options.length - 1);
-    this.cursor = index;
-    const option = rowView.options[index];
-    this.cursorObj.setPosition(rowView.xPositions[index] - 16, this.getCursorYForRow(this.rowCursor));
-    this.descriptionText.setText(option.type.getDescription());
+
+    this.cursorObj.setScale(this.rowCursor === 1 ? 2 : 1.5);
+    this.cursorObj.setPosition(option.x - (this.rowCursor === 1 ? 20 : 16), option.y);
+    this.descriptionText.setText(option.modifierTypeOption.type.getDescription());
   }
 
-  private getCursorYForRow(rowCursor: number): number {
-    switch (rowCursor) {
-      case 1:
-        return -globalScene.scaledCanvas.height / 2 - globalScene.game.canvas.height / 32 - 50;
-      case 2:
-        return -globalScene.scaledCanvas.height / 2 - globalScene.game.canvas.height / 32 - 16;
-      case 3:
-        return -globalScene.scaledCanvas.height / 2 - globalScene.game.canvas.height / 32 + 12;
-      default:
-        return -62;
+  private getAvailableRows(): number[] {
+    const rows = [0];
+    if (this.fixedOptions.length) {
+      rows.push(1);
     }
+    if (this.shopRows[0]?.length) {
+      rows.push(2);
+    }
+    if (this.shopRows[1]?.length) {
+      rows.push(3);
+    }
+    return rows;
   }
 
-  private getRowView(rowCursor: number): ShopRowView | undefined {
-    return this.rowViews.find(view => view.rowCursor === rowCursor);
+  private getCurrentRowOptions(): ModifierOption[] {
+    if (this.rowCursor === 1) {
+      return this.fixedOptions;
+    }
+    if (this.rowCursor >= 2) {
+      return this.shopRows[this.rowCursor - 2] ?? [];
+    }
+    return [];
   }
 
   private eraseCursor() {

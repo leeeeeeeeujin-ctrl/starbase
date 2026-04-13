@@ -21,9 +21,9 @@ import i18next from "i18next";
 import Phaser from "phaser";
 
 export const SHOP_OPTIONS_ROW_LIMIT = 7;
-const SINGLE_SHOP_ROW_YOFFSET = 12;
-const DOUBLE_SHOP_ROW_YOFFSET = 24;
-const OPTION_BUTTON_YPOSITION = -62;
+export const SINGLE_SHOP_ROW_YOFFSET = 12;
+export const DOUBLE_SHOP_ROW_YOFFSET = 24;
+export const OPTION_BUTTON_YPOSITION = -62;
 
 export class ModifierSelectUiHandler extends AwaitableUiHandler {
   private modifierContainer: Phaser.GameObjects.Container;
@@ -798,7 +798,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
   }
 }
 
-class ModifierOption extends Phaser.GameObjects.Container {
+export class ModifierOption extends Phaser.GameObjects.Container {
   public modifierTypeOption: ModifierTypeOption;
   private pb: Phaser.GameObjects.Sprite;
   private pbTint: Phaser.GameObjects.Sprite;
