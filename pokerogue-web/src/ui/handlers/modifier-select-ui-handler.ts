@@ -225,7 +225,8 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     const optionsYOffset =
       shopTypeOptions.length > SHOP_OPTIONS_ROW_LIMIT ? -SINGLE_SHOP_ROW_YOFFSET : -DOUBLE_SHOP_ROW_YOFFSET;
     const devFixedRowY = -globalScene.scaledCanvas.height / 2 - globalScene.game.canvas.height / 32 - 43;
-    const devShopRowOffset = isDevShop ? 1 : 0;
+    const devShopRowYStart = devFixedRowY + 34;
+    const devShopRowYGap = 28;
 
     for (let m = 0; m < typeOptions.length; m++) {
       const sliceWidth = globalScene.scaledCanvas.width / (typeOptions.length + 2);
@@ -253,9 +254,14 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
         row ? undefined : SHOP_OPTIONS_ROW_LIMIT,
       );
       const sliceWidth = globalScene.scaledCanvas.width / (rowOptions.length + 2);
+      const optionY = isDevShop
+        ? devShopRowYStart + row * devShopRowYGap
+        : -globalScene.scaledCanvas.height / 2
+          - globalScene.game.canvas.height / 32
+          - (42 - (28 * row - 1));
       const option = new ModifierOption(
         sliceWidth * (col + 1) + sliceWidth * 0.5,
-        -globalScene.scaledCanvas.height / 2 - globalScene.game.canvas.height / 32 - (42 - (28 * (row + devShopRowOffset) - 1)),
+        optionY,
         shopTypeOptions[m],
       );
       option.setScale(0.375);
