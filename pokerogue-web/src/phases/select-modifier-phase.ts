@@ -28,7 +28,6 @@ import {
   TmModifierType,
 } from "#modifiers/modifier-type";
 import { BattlePhase } from "#phases/battle-phase";
-import type { ModifierSelectUiHandler } from "#ui/modifier-select-ui-handler";
 import { SHOP_OPTIONS_ROW_LIMIT } from "#ui/modifier-select-ui-handler";
 import { PartyOption, PartyUiHandler, PartyUiMode } from "#ui/party-ui-handler";
 import { NumberHolder } from "#utils/common";
@@ -107,6 +106,24 @@ export class SelectModifierPhase extends BattlePhase {
       switch (rowCursor) {
         // Execute one of the options from the bottom row
         case 0:
+          if (this.isDevShopPhase()) {
+            switch (cursor) {
+              case 0:
+                return this.rerollModifiers();
+              case 1:
+                globalScene.ui.setModeWithoutClear(UiMode.PARTY, PartyUiMode.CHECK, -1, () => {
+                  this.resetModifierSelect(modifierSelectCallback);
+                });
+                return true;
+              case 2:
+                globalScene.ui.clearText();
+                globalScene.ui.setMode(UiMode.MESSAGE);
+                super.end();
+                return true;
+              default:
+                return false;
+            }
+          }
           switch (cursor) {
             case 0:
               return this.rerollModifiers();
@@ -208,7 +225,9 @@ export class SelectModifierPhase extends BattlePhase {
         }
         globalScene.devItemCounts[devItemId]++;
         globalScene.playSound("se/buy");
-        (globalScene.ui.getHandler() as ModifierSelectUiHandler).updateCostText();
+        if (this.modifierSelectCallback) {
+          this.resetModifierSelect(this.modifierSelectCallback);
+        }
         return false;
       }
       const devBuffId = getDevBuffIdFromModifierType(modifierType);
@@ -224,7 +243,6 @@ export class SelectModifierPhase extends BattlePhase {
           this.pendingDevShopPurchaseId = null;
         }
         globalScene.playSound("se/buy");
-        (globalScene.ui.getHandler() as ModifierSelectUiHandler).updateCostText();
         if (this.isDevShopPhase() && this.modifierSelectCallback) {
           this.resetModifierSelect(this.modifierSelectCallback);
         }
@@ -351,7 +369,6 @@ export class SelectModifierPhase extends BattlePhase {
           markDevShopOptionPurchased(this.pendingDevShopPurchaseId);
           this.pendingDevShopPurchaseId = null;
         }
-        (globalScene.ui.getHandler() as ModifierSelectUiHandler).updateCostText();
         if (this.isDevShopPhase() && this.modifierSelectCallback) {
           this.resetModifierSelect(this.modifierSelectCallback);
         }
@@ -473,7 +490,7 @@ export class SelectModifierPhase extends BattlePhase {
   private resetModifierSelect(modifierSelectCallback: ModifierSelectCallback) {
     this.pendingDevShopPurchaseId = null;
     globalScene.ui.setMode(
-      UiMode.MODIFIER_SELECT,
+      this.isDevShopPhase() ? UiMode.DEV_SHOP : UiMode.MODIFIER_SELECT,
       this.isPlayer(),
       this.typeOptions,
       modifierSelectCallback,

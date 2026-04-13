@@ -16,6 +16,7 @@ import { GameChallengesUiHandler } from "#ui/challenges-select-ui-handler";
 import { ChangePasswordFormUiHandler } from "#ui/change-password-form-ui-handler";
 import { CommandUiHandler } from "#ui/command-ui-handler";
 import { ConfirmUiHandler } from "#ui/confirm-ui-handler";
+import { DevShopUiHandler } from "#ui/dev-shop-ui-handler";
 import { EggGachaUiHandler } from "#ui/egg-gacha-ui-handler";
 import { EggHatchSceneUiHandler } from "#ui/egg-hatch-scene-ui-handler";
 import { EggListUiHandler } from "#ui/egg-list-ui-handler";
@@ -82,6 +83,7 @@ const transitionModes = [
 const noTransitionModes = [
   UiMode.TITLE,
   UiMode.CONFIRM,
+  UiMode.DEV_SHOP,
   UiMode.OPTION_SELECT,
   UiMode.MENU,
   UiMode.MENU_OPTION_SELECT,
@@ -140,6 +142,7 @@ export class UI extends Phaser.GameObjects.Container {
       new BallUiHandler(),
       new TargetSelectUiHandler(),
       new ModifierSelectUiHandler(),
+      new DevShopUiHandler(),
       new SaveSlotSelectUiHandler(),
       new PartyUiHandler(),
       new SummaryUiHandler(),
