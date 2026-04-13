@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dev Shop Layout Preview</title>
+  <style>
+    :root {
+      --bg: #111827;
+      --panel: #1f2937;
+      --panel-2: #111827;
+      --line: #374151;
+      --text: #f9fafb;
+      --muted: #9ca3af;
+      --accent: #f97316;
+      --selected: #22c55e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Consolas, "Malgun Gothic", monospace;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      min-height: 100vh;
+    }
+    .sidebar {
+      width: 360px;
+      background: var(--panel);
+      border-right: 1px solid var(--line);
+      padding: 16px;
+      overflow: auto;
+    }
+    .canvas-wrap {
+      flex: 1;
+      padding: 16px;
+      overflow: auto;
+      background: #0b1220;
+    }
+    h1, h2 {
+      margin: 0 0 12px;
+      font-size: 16px;
+    }
+    .section {
+      margin-bottom: 18px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--line);
+    }
+    .row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .row > label {
+      min-width: 88px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    input, textarea, select, button {
+      font: inherit;
+    }
+    input[type="number"], input[type="text"], textarea, select {
+      width: 100%;
+      background: var(--panel-2);
+      color: var(--text);
+      border: 1px solid var(--line);
+      padding: 6px 8px;
+    }
+    textarea {
+      min-height: 180px;
+      resize: vertical;
+    }
+    button {
+      background: #2563eb;
+      color: white;
+      border: 0;
+      padding: 8px 10px;
+      cursor: pointer;
+    }
+    button.secondary {
+      background: #374151;
+    }
+    button.warn {
+      background: #b91c1c;
+    }
+    .stage {
+      position: relative;
+      width: 1280px;
+      height: 720px;
+      border: 1px solid #334155;
+      background: #94a3b8;
+      background-size: cover;
+      background-position: center;
+      image-rendering: pixelated;
+      overflow: hidden;
+    }
+    .overlay {
+      position: absolute;
+      inset: 0;
+    }
+    .element {
+      position: absolute;
+      transform-origin: top left;
+      user-select: none;
+      cursor: move;
+    }
+    .element.selected {
+      outline: 2px dashed var(--selected);
+      outline-offset: 2px;
+    }
+    .shop-card {
+      width: 140px;
+      text-align: center;
+      color: white;
+      text-shadow:
+        -2px 0 #1f1b2d,
+        0 2px #1f1b2d,
+        2px 0 #1f1b2d,
+        0 -2px #1f1b2d;
+    }
+    .shop-card img {
+      width: 84px;
+      height: 84px;
+      image-rendering: pixelated;
+      display: block;
+      margin: 0 auto 6px;
+      pointer-events: none;
+    }
+    .shop-card .name {
+      font-size: 18px;
+      line-height: 1;
+      white-space: nowrap;
+    }
+    .shop-card .price {
+      margin-top: 4px;
+      color: #fde047;
+      font-size: 16px;
+      line-height: 1;
+      white-space: nowrap;
+    }
+    .action {
+      color: white;
+      font-size: 28px;
+      line-height: 1.2;
+      text-shadow:
+        -2px 0 #1f1b2d,
+        0 2px #1f1b2d,
+        2px 0 #1f1b2d,
+        0 -2px #1f1b2d;
+      white-space: nowrap;
+    }
+    .hint {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .list {
+      display: grid;
+      gap: 4px;
+      max-height: 180px;
+      overflow: auto;
+    }
+    .list button {
+      text-align: left;
+      font-size: 12px;
+      padding: 6px 8px;
+      background: #1f2937;
+    }
+    .list button.active {
+      background: #065f46;
+    }
+  </style>
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="section">
+      <h1>DEV Shop Layout Preview</h1>
+      <div class="hint">배경 이미지를 올리고, 요소를 드래그해서 배치한다. 오른쪽 숫자는 바로 수정 가능하다.</div>
+    </div>
+
+    <div class="section">
+      <h2>배경</h2>
+      <div class="row">
+        <label>이미지</label>
+        <input id="bg-upload" type="file" accept="image/*" />
+      </div>
+      <div class="row">
+        <label></label>
+        <button id="btn-reset-layout" class="secondary" type="button">기본 배치 복원</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>요소 목록</h2>
+      <div id="element-list" class="list"></div>
+    </div>
+
+    <div class="section">
+      <h2>선택 요소</h2>
+      <div class="row">
+        <label>ID</label>
+        <input id="field-id" type="text" readonly />
+      </div>
+      <div class="row">
+        <label>종류</label>
+        <input id="field-kind" type="text" readonly />
+      </div>
+      <div class="row">
+        <label>X</label>
+        <input id="field-x" type="number" step="1" />
+      </div>
+      <div class="row">
+        <label>Y</label>
+        <input id="field-y" type="number" step="1" />
+      </div>
+      <div class="row">
+        <label>Scale</label>
+        <input id="field-scale" type="number" step="0.05" />
+      </div>
+      <div class="row">
+        <label>이름</label>
+        <input id="field-name" type="text" />
+      </div>
+      <div class="row">
+        <label>가격/설명</label>
+        <input id="field-price" type="text" />
+      </div>
+      <div class="row">
+        <label>이미지</label>
+        <input id="field-image" type="text" />
+      </div>
+      <div class="row">
+        <label></label>
+        <button id="btn-delete" class="warn" type="button">선택 요소 삭제</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>추가</h2>
+      <div class="row">
+        <label></label>
+        <button id="btn-add-card" type="button">상품 카드 추가</button>
+        <button id="btn-add-action" class="secondary" type="button">액션 텍스트 추가</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>내보내기</h2>
+      <div class="row">
+        <label></label>
+        <button id="btn-export" type="button">JSON 생성</button>
+        <button id="btn-copy" class="secondary" type="button">복사</button>
+      </div>
+      <textarea id="export-json" spellcheck="false"></textarea>
+    </div>
+  </aside>
+
+  <main class="canvas-wrap">
+    <div id="stage" class="stage">
+      <div id="overlay" class="overlay"></div>
+    </div>
+  </main>
+
+  <script>
+    const DEFAULTS = [
+      { id: "fixed-0", kind: "card", x: 370, y: 255, scale: 1, name: "상처약", price: "₽44", image: "" },
+      { id: "fixed-1", kind: "card", x: 640, y: 255, scale: 1, name: "만병통치제", price: "₽220", image: "" },
+      { id: "fixed-2", kind: "card", x: 910, y: 255, scale: 1, name: "PP에이드", price: "₽88", image: "" },
+      { id: "random-0", kind: "card", x: 520, y: 40, scale: 1, name: "플러스파워", price: "₽26", image: "" },
+      { id: "random-1", kind: "card", x: 810, y: 40, scale: 1, name: "디펜드업", price: "₽26", image: "" },
+      { id: "action-reroll", kind: "action", x: 42, y: 430, scale: 1, name: "갱신", price: "₽313", image: "" },
+      { id: "action-check", kind: "action", x: 1140, y: 430, scale: 1, name: "파티 확인", price: "", image: "" },
+      { id: "action-leave", kind: "action", x: 42, y: 490, scale: 1, name: "상점 나가기", price: "", image: "" }
+    ];
+
+    const stage = document.getElementById("stage");
+    const overlay = document.getElementById("overlay");
+    const listEl = document.getElementById("element-list");
+    const exportEl = document.getElementById("export-json");
+    const fields = {
+      id: document.getElementById("field-id"),
+      kind: document.getElementById("field-kind"),
+      x: document.getElementById("field-x"),
+      y: document.getElementById("field-y"),
+      scale: document.getElementById("field-scale"),
+      name: document.getElementById("field-name"),
+      price: document.getElementById("field-price"),
+      image: document.getElementById("field-image"),
+    };
+
+    let elements = [];
+    let selectedId = null;
+    let dragState = null;
+
+    function cloneDefaults() {
+      return DEFAULTS.map(item => ({ ...item }));
+    }
+
+    function getSelected() {
+      return elements.find(item => item.id === selectedId) || null;
+    }
+
+    function render() {
+      overlay.innerHTML = "";
+      listEl.innerHTML = "";
+
+      for (const item of elements) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.textContent = `${item.id} · ${item.name || item.kind}`;
+        if (item.id === selectedId) btn.classList.add("active");
+        btn.addEventListener("click", () => select(item.id));
+        listEl.appendChild(btn);
+
+        const el = document.createElement("div");
+        el.className = `element ${item.kind === "card" ? "shop-card" : "action"}${item.id === selectedId ? " selected" : ""}`;
+        el.style.left = `${item.x}px`;
+        el.style.top = `${item.y}px`;
+        el.style.transform = `scale(${item.scale})`;
+        el.dataset.id = item.id;
+
+        if (item.kind === "card") {
+          const img = document.createElement("img");
+          img.src = item.image || "data:image/svg+xml;utf8," + encodeURIComponent(`
+            <svg xmlns="http://www.w3.org/2000/svg" width="84" height="84">
+              <rect width="84" height="84" rx="10" fill="#94a3b8"/>
+              <rect x="6" y="6" width="72" height="72" rx="8" fill="#e5e7eb"/>
+              <path d="M18 42h48" stroke="#64748b" stroke-width="6"/>
+            </svg>
+          `);
+          const name = document.createElement("div");
+          name.className = "name";
+          name.textContent = item.name || "상품";
+          const price = document.createElement("div");
+          price.className = "price";
+          price.textContent = item.price || "";
+          el.append(img, name, price);
+        } else {
+          el.textContent = item.name || "액션";
+          if (item.price) {
+            const sub = document.createElement("div");
+            sub.style.fontSize = "22px";
+            sub.style.color = "#fde047";
+            sub.style.lineHeight = "1";
+            sub.textContent = item.price;
+            el.appendChild(sub);
+          }
+        }
+
+        el.addEventListener("mousedown", startDrag);
+        el.addEventListener("click", () => select(item.id));
+        overlay.appendChild(el);
+      }
+
+      syncFields();
+    }
+
+    function select(id) {
+      selectedId = id;
+      render();
+    }
+
+    function syncFields() {
+      const item = getSelected();
+      fields.id.value = item?.id || "";
+      fields.kind.value = item?.kind || "";
+      fields.x.value = item?.x ?? "";
+      fields.y.value = item?.y ?? "";
+      fields.scale.value = item?.scale ?? "";
+      fields.name.value = item?.name || "";
+      fields.price.value = item?.price || "";
+      fields.image.value = item?.image || "";
+    }
+
+    function updateSelected(patch) {
+      const item = getSelected();
+      if (!item) return;
+      Object.assign(item, patch);
+      render();
+    }
+
+    function startDrag(event) {
+      const target = event.currentTarget;
+      const id = target.dataset.id;
+      select(id);
+      const item = getSelected();
+      if (!item) return;
+      const rect = stage.getBoundingClientRect();
+      dragState = {
+        id,
+        offsetX: event.clientX - rect.left - item.x,
+        offsetY: event.clientY - rect.top - item.y,
+      };
+      window.addEventListener("mousemove", onDrag);
+      window.addEventListener("mouseup", endDrag);
+    }
+
+    function onDrag(event) {
+      if (!dragState) return;
+      const item = getSelected();
+      if (!item || item.id !== dragState.id) return;
+      const rect = stage.getBoundingClientRect();
+      item.x = Math.round(event.clientX - rect.left - dragState.offsetX);
+      item.y = Math.round(event.clientY - rect.top - dragState.offsetY);
+      render();
+    }
+
+    function endDrag() {
+      dragState = null;
+      window.removeEventListener("mousemove", onDrag);
+      window.removeEventListener("mouseup", endDrag);
+    }
+
+    function exportJson() {
+      exportEl.value = JSON.stringify(elements, null, 2);
+    }
+
+    document.getElementById("btn-reset-layout").addEventListener("click", () => {
+      elements = cloneDefaults();
+      selectedId = elements[0]?.id || null;
+      render();
+      exportJson();
+    });
+
+    document.getElementById("btn-add-card").addEventListener("click", () => {
+      const id = `card-${Date.now()}`;
+      elements.push({ id, kind: "card", x: 400, y: 300, scale: 1, name: "새 상품", price: "₽0", image: "" });
+      select(id);
+      exportJson();
+    });
+
+    document.getElementById("btn-add-action").addEventListener("click", () => {
+      const id = `action-${Date.now()}`;
+      elements.push({ id, kind: "action", x: 40, y: 500, scale: 1, name: "새 액션", price: "", image: "" });
+      select(id);
+      exportJson();
+    });
+
+    document.getElementById("btn-delete").addEventListener("click", () => {
+      if (!selectedId) return;
+      elements = elements.filter(item => item.id !== selectedId);
+      selectedId = elements[0]?.id || null;
+      render();
+      exportJson();
+    });
+
+    document.getElementById("btn-export").addEventListener("click", exportJson);
+    document.getElementById("btn-copy").addEventListener("click", async () => {
+      exportJson();
+      await navigator.clipboard.writeText(exportEl.value);
+    });
+
+    document.getElementById("bg-upload").addEventListener("change", event => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      stage.style.backgroundImage = `url("${url}")`;
+    });
+
+    for (const input of Object.values(fields)) {
+      input.addEventListener("input", () => {
+        const item = getSelected();
+        if (!item) return;
+        updateSelected({
+          x: Number(fields.x.value || 0),
+          y: Number(fields.y.value || 0),
+          scale: Number(fields.scale.value || 1),
+          name: fields.name.value,
+          price: fields.price.value,
+          image: fields.image.value,
+        });
+        exportJson();
+      });
+    }
+
+    elements = cloneDefaults();
+    selectedId = elements[0].id;
+    render();
+    exportJson();
+  </script>
+</body>
+</html>
