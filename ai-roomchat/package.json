@@ -67,8 +67,8 @@
     "rank:cleanup:sessions": "node scripts/cleanupExpiredRankSessions.js"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.673.0",
-    "@aws-sdk/s3-request-presigner": "^3.673.0",
+    "@aws-sdk/client-s3": "^3.1044.0",
+    "@aws-sdk/s3-request-presigner": "^3.1044.0",
     "@capacitor/core": "^6.2.0",
     "@ffmpeg/ffmpeg": "^0.12.10",
     "@imgly/background-removal-node": "^1.4.5",
@@ -89,7 +89,7 @@
     "jsonwebtoken": "^9.0.0",
     "minimist": "^1.2.8",
     "monaco-editor": "^0.52.2",
-    "next": "^14.2.33",
+    "next": "^16.2.5",
     "node-fetch": "^3.3.2",
     "openai": "^4.67.1",
     "pino": "^8.14.0",
