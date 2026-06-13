@@ -19,9 +19,9 @@
   },
   "homepage": "https://github.com/socketio/socket.io#readme",
   "dependencies": {
-    "joi": "^17.4.0",
+    "joi": "^18.2.1",
     "socket.io": "^4.0.1",
-    "uuid": "^8.3.2"
+    "uuid": "^14.0.0"
   },
   "devDependencies": {
     "@types/chai": "^4.2.16",
