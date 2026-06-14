@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@types/ws": "^8.5.14",
-    "ws": "^8.18.0"
+    "ws": "^7.5.11"
   },
   "devDependencies": {
     "@colyseus/core": "workspace:^"
