@@ -47,7 +47,7 @@
     "@colyseus/uwebsockets-transport": "workspace:^",
     "@colyseus/schema": "^3.0.0",
     "@types/ws": "^8.5.14",
-    "ws": "^8.18.0"
+    "ws": "^7.5.11"
   },
   "peerDependencies": {
     "@colyseus/auth": "0.16.x",
