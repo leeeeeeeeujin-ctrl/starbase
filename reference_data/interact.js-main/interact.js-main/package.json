@@ -95,7 +95,7 @@
     "typedoc-plugin-markdown": "^3.17.1",
     "typescript": "^5.3.3",
     "vijest": "^0.0.2",
-    "vite": "^5.0.7",
+    "vite": "^6.4.3",
     "vue": "^3.3.11",
     "yargs": "^17.5.1"
   },
